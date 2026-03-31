@@ -1,7 +1,11 @@
 import * as Lark from "@larksuiteoapi/node-sdk";
 import { z } from "zod";
 
-import type { BotMessenger, IncomingTextMessage } from "./bot-service.js";
+import type {
+  BotMessenger,
+  IncomingMenuAction,
+  IncomingTextMessage,
+} from "./bot-service.js";
 
 const incomingMessageEventSchema = z.object({
   sender: z.object({
@@ -22,6 +26,16 @@ const textMessageContentSchema = z.object({
   text: z.string(),
 });
 
+const menuEventSchema = z.object({
+  operator: z.object({
+    operator_id: z.object({
+      user_id: z.string().min(1).optional(),
+      open_id: z.string().min(1).optional(),
+    }),
+  }),
+  event_key: z.string().min(1),
+});
+
 export interface FeishuGatewayConfig {
   appId: string;
   appSecret: string;
@@ -29,6 +43,7 @@ export interface FeishuGatewayConfig {
 
 export interface FeishuGatewayHandlers {
   onTextMessage: (message: IncomingTextMessage) => Promise<void> | void;
+  onMenuAction: (action: IncomingMenuAction) => Promise<void> | void;
 }
 
 interface FeishuClientLike {
@@ -101,6 +116,14 @@ export class FeishuGateway implements BotMessenger {
 
         await handlers.onTextMessage(message);
       },
+      "application.bot.menu_v6": async (event: unknown) => {
+        const action = parseIncomingMenuAction(event);
+        if (!action) {
+          return;
+        }
+
+        await handlers.onMenuAction(action);
+      },
     });
 
     await this.wsClient.start({
@@ -158,6 +181,27 @@ export function parseIncomingTextMessage(
     chatId: parsedEvent.data.message.chat_id,
     messageId: parsedEvent.data.message.message_id,
     text: parsedContent.data.text,
+  };
+}
+
+export function parseIncomingMenuAction(
+  event: unknown,
+): IncomingMenuAction | undefined {
+  const parsedEvent = menuEventSchema.safeParse(event);
+  if (!parsedEvent.success) {
+    return undefined;
+  }
+
+  const userId =
+    parsedEvent.data.operator.operator_id.user_id ??
+    parsedEvent.data.operator.operator_id.open_id;
+  if (!userId) {
+    return undefined;
+  }
+
+  return {
+    userId,
+    eventKey: parsedEvent.data.event_key,
   };
 }
 

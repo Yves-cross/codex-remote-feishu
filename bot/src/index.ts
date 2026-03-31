@@ -29,4 +29,7 @@ await gateway.start({
   onTextMessage: async (message) => {
     await service.handleTextMessage(message);
   },
+  onMenuAction: async (action) => {
+    await service.handleMenuAction(action);
+  },
 });

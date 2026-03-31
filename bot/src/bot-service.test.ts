@@ -350,6 +350,449 @@ describe("BotService", () => {
     service.close();
   });
 
+  it("prompts for approvals, re-prompts on non-y/n replies, and approves on y", async () => {
+    vi.useFakeTimers();
+
+    const approvalEntry = createHistoryEntry({
+      classification: "serverRequest",
+      method: "serverRequest/approval",
+      raw: JSON.stringify({
+        method: "serverRequest/approval",
+        params: {
+          id: "req-1",
+          tool: "commandExecution",
+          command: "npm test --watch=false",
+        },
+      }),
+      payload: {
+        method: "serverRequest/approval",
+        params: {
+          id: "req-1",
+          tool: "commandExecution",
+          command: "npm test --watch=false",
+        },
+      },
+      receivedAt: "2026-03-31T00:00:01.000Z",
+    });
+
+    const historyBySession = new Map<string, ReturnType<typeof createHistoryEntry>[]>([
+      ["session-1", []],
+    ]);
+
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+          }),
+        ),
+      getHistory: vi
+        .fn()
+        .mockImplementation(async (sessionId: string) => historyBySession.get(sessionId) ?? []),
+      sendApproval: vi.fn().mockResolvedValue(undefined),
+      sendPrompt: vi.fn().mockResolvedValue(undefined),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger, { pollIntervalMs: 100 });
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-1",
+      text: "/attach workspace-a",
+    });
+
+    historyBySession.set("session-1", [approvalEntry]);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      expect.stringContaining("Approval requested"),
+    );
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      expect.stringContaining("Command: npm test --watch=false"),
+    );
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      expect.stringContaining("Reply with y to approve or n to deny."),
+    );
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "maybe later",
+    });
+
+    expect(relay.sendApproval).not.toHaveBeenCalled();
+    expect(relay.sendPrompt).not.toHaveBeenCalled();
+    expect(messenger.sendText).toHaveBeenLastCalledWith(
+      "chat-1",
+      expect.stringContaining("Reply with y to approve or n to deny"),
+    );
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-3",
+      text: "y",
+    });
+
+    expect(relay.sendApproval).toHaveBeenCalledWith("session-1", "req-1", true);
+    expect(messenger.sendText).toHaveBeenLastCalledWith(
+      "chat-1",
+      "Approved request for [workspace-a].",
+    );
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-4",
+      text: "continue working",
+    });
+
+    expect(relay.sendPrompt).toHaveBeenCalledWith(
+      "session-1",
+      "continue working",
+    );
+
+    service.close();
+  });
+
+  it("denies approvals on n replies", async () => {
+    vi.useFakeTimers();
+
+    const approvalEntry = createHistoryEntry({
+      classification: "serverRequest",
+      method: "serverRequest/approval",
+      raw: JSON.stringify({
+        method: "serverRequest/approval",
+        params: {
+          id: "req-2",
+          tool: "fileChange",
+          path: "src/bot-service.ts",
+        },
+      }),
+      payload: {
+        method: "serverRequest/approval",
+        params: {
+          id: "req-2",
+          tool: "fileChange",
+          path: "src/bot-service.ts",
+        },
+      },
+      receivedAt: "2026-03-31T00:00:01.000Z",
+    });
+    const historyBySession = new Map<string, ReturnType<typeof createHistoryEntry>[]>([
+      ["session-1", []],
+    ]);
+
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+          }),
+        ),
+      getHistory: vi
+        .fn()
+        .mockImplementation(async (sessionId: string) => historyBySession.get(sessionId) ?? []),
+      sendApproval: vi.fn().mockResolvedValue(undefined),
+      sendPrompt: vi.fn().mockResolvedValue(undefined),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger, { pollIntervalMs: 100 });
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-1",
+      text: "/attach workspace-a",
+    });
+
+    historyBySession.set("session-1", [approvalEntry]);
+    await vi.advanceTimersByTimeAsync(100);
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "n",
+    });
+
+    expect(relay.sendApproval).toHaveBeenCalledWith("session-1", "req-2", false);
+    expect(messenger.sendText).toHaveBeenLastCalledWith(
+      "chat-1",
+      "Denied request for [workspace-a].",
+    );
+
+    service.close();
+  });
+
+  it("clears cancelled pending approvals when codex completes the turn", async () => {
+    vi.useFakeTimers();
+
+    const approvalEntry = createHistoryEntry({
+      classification: "serverRequest",
+      method: "serverRequest/approval",
+      raw: JSON.stringify({
+        method: "serverRequest/approval",
+        params: {
+          id: "req-3",
+          tool: "fileChange",
+          path: "src/bot-service.ts",
+        },
+      }),
+      payload: {
+        method: "serverRequest/approval",
+        params: {
+          id: "req-3",
+          tool: "fileChange",
+          path: "src/bot-service.ts",
+        },
+      },
+      receivedAt: "2026-03-31T00:00:01.000Z",
+    });
+    const turnCompletedEntry = createHistoryEntry({
+      classification: "turnLifecycle",
+      method: "turn/completed",
+      raw: '{"method":"turn/completed"}',
+      payload: {
+        method: "turn/completed",
+      },
+      receivedAt: "2026-03-31T00:00:02.000Z",
+    });
+
+    const historyBySession = new Map<string, ReturnType<typeof createHistoryEntry>[]>([
+      ["session-1", []],
+    ]);
+
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+          }),
+        ),
+      getHistory: vi
+        .fn()
+        .mockImplementation(async (sessionId: string) => historyBySession.get(sessionId) ?? []),
+      sendApproval: vi.fn().mockResolvedValue(undefined),
+      sendPrompt: vi.fn().mockResolvedValue(undefined),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger, { pollIntervalMs: 100 });
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-1",
+      text: "/attach workspace-a",
+    });
+
+    historyBySession.set("session-1", [approvalEntry]);
+    await vi.advanceTimersByTimeAsync(100);
+
+    historyBySession.set("session-1", [approvalEntry, turnCompletedEntry]);
+    await vi.advanceTimersByTimeAsync(100);
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "resume after cancel",
+    });
+
+    expect(relay.sendApproval).not.toHaveBeenCalled();
+    expect(relay.sendPrompt).toHaveBeenCalledWith(
+      "session-1",
+      "resume after cancel",
+    );
+
+    service.close();
+  });
+
+  it("handles /stop edge cases for detached and idle sessions", async () => {
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+          }),
+        ),
+      getSession: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            state: "idle",
+            attachedUser: "user-1",
+          }),
+        ),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger);
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-1",
+      text: "/stop",
+    });
+
+    expect(relay.interrupt).not.toHaveBeenCalled();
+    expect(messenger.sendText).toHaveBeenNthCalledWith(
+      1,
+      "chat-1",
+      "Attach to a session first with /attach <session>.",
+    );
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "/attach workspace-a",
+    });
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-3",
+      text: "/stop",
+    });
+
+    expect(relay.getSession).toHaveBeenCalledWith("session-1");
+    expect(relay.interrupt).not.toHaveBeenCalled();
+    expect(messenger.sendText).toHaveBeenLastCalledWith(
+      "chat-1",
+      "Session [workspace-a] is already idle; nothing to stop.",
+    );
+  });
+
+  it("routes menu actions through the same list, stop, and detach handlers", async () => {
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+            state: "executing",
+          }),
+        ),
+      getSession: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+            state: "executing",
+          }),
+        ),
+      detach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: null,
+          }),
+        ),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger);
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-1",
+      text: "/attach workspace-a",
+    });
+
+    await service.handleMenuAction({
+      userId: "user-1",
+      eventKey: "stop",
+    });
+    await service.handleMenuAction({
+      userId: "user-1",
+      eventKey: "detach",
+    });
+    await service.handleMenuAction({
+      userId: "user-1",
+      eventKey: "list",
+    });
+    await service.handleMenuAction({
+      userId: "user-1",
+      eventKey: "mystery",
+    });
+
+    expect(relay.interrupt).toHaveBeenCalledWith("session-1");
+    expect(relay.detach).toHaveBeenCalledWith("session-1");
+    expect(relay.listSessions).toHaveBeenCalledTimes(2);
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      expect.stringContaining("Sent stop request to [workspace-a]."),
+    );
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      "Detached from [workspace-a].",
+    );
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      expect.stringContaining("workspace-a"),
+    );
+    expect(messenger.sendText).toHaveBeenCalledWith(
+      "chat-1",
+      'Unknown menu action "mystery".',
+    );
+  });
+
   it("keeps forwarded messages isolated per attached user", async () => {
     vi.useFakeTimers();
 

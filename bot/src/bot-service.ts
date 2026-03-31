@@ -14,6 +14,11 @@ export interface IncomingTextMessage {
   text: string;
 }
 
+export interface IncomingMenuAction {
+  userId: string;
+  eventKey: string;
+}
+
 export interface BotMessenger {
   sendText: (chatId: string, text: string) => Promise<void>;
 }
@@ -42,6 +47,14 @@ interface UserAttachment {
   chatId: string;
 }
 
+interface PendingApproval {
+  sessionId: string;
+  sessionName: string;
+  chatId: string;
+  requestId: string | number;
+  signature: string;
+}
+
 interface HistoryCursor {
   historySize: number;
   receivedAt: string | null;
@@ -66,6 +79,10 @@ interface BotServiceOptions {
 export class BotService {
   private readonly attachments = new Map<string, UserAttachment>();
 
+  private readonly lastSeenChats = new Map<string, string>();
+
+  private readonly pendingApprovals = new Map<string, PendingApproval>();
+
   private readonly forwarders = new Map<string, AttachmentForwarder>();
 
   private readonly pollIntervalMs: number;
@@ -88,6 +105,7 @@ export class BotService {
   }
 
   async handleTextMessage(message: IncomingTextMessage): Promise<void> {
+    this.lastSeenChats.set(message.userId, message.chatId);
     const parsed = parseIncomingText(message.text);
 
     try {
@@ -122,6 +140,38 @@ export class BotService {
       }
     } catch (error) {
       await this.reply(message.chatId, this.formatErrorMessage(error));
+    }
+  }
+
+  async handleMenuAction(action: IncomingMenuAction): Promise<void> {
+    const chatId =
+      this.attachments.get(action.userId)?.chatId ??
+      this.lastSeenChats.get(action.userId);
+    if (!chatId) {
+      return;
+    }
+
+    const normalizedAction = normalizeMenuActionKey(action.eventKey);
+
+    try {
+      switch (normalizedAction) {
+        case "list":
+          await this.handleList(chatId);
+          return;
+        case "stop":
+          await this.handleStop(action.userId, chatId);
+          return;
+        case "detach":
+          await this.handleDetach(action.userId, chatId);
+          return;
+        default:
+          await this.reply(
+            chatId,
+            `Unknown menu action "${action.eventKey}".`,
+          );
+      }
+    } catch (error) {
+      await this.reply(chatId, this.formatErrorMessage(error));
     }
   }
 
@@ -231,10 +281,25 @@ export class BotService {
       return;
     }
 
+    const session = await this.relayClient.getSession(attachment.sessionId);
+    this.attachments.set(userId, {
+      ...attachment,
+      sessionName: session.displayName,
+      chatId,
+    });
+
+    if (session.state === "idle") {
+      await this.reply(
+        chatId,
+        `Session ${formatSessionTag(session.displayName)} is already idle; nothing to stop.`,
+      );
+      return;
+    }
+
     await this.relayClient.interrupt(attachment.sessionId);
     await this.reply(
       chatId,
-      `Sent stop request to ${formatSessionTag(attachment.sessionName)}.`,
+      `Sent stop request to ${formatSessionTag(session.displayName)}.`,
     );
   }
 
@@ -312,6 +377,12 @@ export class BotService {
       return;
     }
 
+    const pendingApproval = this.pendingApprovals.get(userId);
+    if (pendingApproval && pendingApproval.sessionId === attachment.sessionId) {
+      await this.handleApprovalReply(userId, pendingApproval, content);
+      return;
+    }
+
     await this.relayClient.sendPrompt(attachment.sessionId, content);
   }
 
@@ -374,6 +445,13 @@ export class BotService {
 
     this.forwarders.set(userId, forwarder);
     this.scheduleForwarding(userId, forwarder);
+
+    if (
+      session.state === "waitingApproval" &&
+      session.lastMessage?.classification === "serverRequest"
+    ) {
+      void this.presentApprovalRequest(userId, attachment, session.lastMessage);
+    }
   }
 
   private stopForwarding(userId: string): void {
@@ -383,6 +461,7 @@ export class BotService {
     }
 
     this.forwarders.delete(userId);
+    this.pendingApprovals.delete(userId);
   }
 
   private scheduleForwarding(
@@ -440,6 +519,18 @@ export class BotService {
         }
 
         if (entry.classification !== "agentMessage") {
+          if (entry.classification === "serverRequest") {
+            await this.presentApprovalRequest(userId, currentAttachment, entry);
+            continue;
+          }
+
+          if (
+            entry.method === "turn/completed" &&
+            this.pendingApprovals.get(userId)?.sessionId === sessionId
+          ) {
+            this.pendingApprovals.delete(userId);
+          }
+
           continue;
         }
 
@@ -469,6 +560,72 @@ export class BotService {
         this.scheduleForwarding(userId, forwarder);
       }
     }
+  }
+
+  private async presentApprovalRequest(
+    userId: string,
+    attachment: UserAttachment,
+    entry: RelayHistoryEntry,
+  ): Promise<void> {
+    const request = extractApprovalRequest(entry);
+    if (!request) {
+      return;
+    }
+
+    const existing = this.pendingApprovals.get(userId);
+    if (
+      existing &&
+      existing.sessionId === attachment.sessionId &&
+      existing.signature === request.signature
+    ) {
+      return;
+    }
+
+    this.pendingApprovals.set(userId, {
+      sessionId: attachment.sessionId,
+      sessionName: attachment.sessionName,
+      chatId: attachment.chatId,
+      requestId: request.requestId,
+      signature: request.signature,
+    });
+
+    await this.reply(
+      attachment.chatId,
+      formatFeishuMessageChunks({
+        sessionName: attachment.sessionName,
+        content: formatApprovalPrompt(request),
+      }),
+    );
+  }
+
+  private async handleApprovalReply(
+    userId: string,
+    pendingApproval: PendingApproval,
+    content: string,
+  ): Promise<void> {
+    const normalized = content.trim().toLowerCase();
+    if (normalized !== "y" && normalized !== "n") {
+      await this.reply(
+        pendingApproval.chatId,
+        `Reply with y to approve or n to deny the pending request for ${formatSessionTag(
+          pendingApproval.sessionName,
+        )}.`,
+      );
+      return;
+    }
+
+    await this.relayClient.sendApproval(
+      pendingApproval.sessionId,
+      pendingApproval.requestId,
+      normalized === "y",
+    );
+    this.pendingApprovals.delete(userId);
+    await this.reply(
+      pendingApproval.chatId,
+      `${
+        normalized === "y" ? "Approved" : "Denied"
+      } request for ${formatSessionTag(pendingApproval.sessionName)}.`,
+    );
   }
 
   private async reply(chatId: string, message: string | string[]): Promise<void> {
@@ -679,6 +836,187 @@ function getEntrySignature(entry: RelayHistoryEntry): string {
     entry.method ?? null,
     entry.raw,
   ]);
+}
+
+interface ApprovalRequestDetails {
+  requestId: string | number;
+  lines: string[];
+  signature: string;
+}
+
+function normalizeMenuActionKey(eventKey: string): string {
+  return eventKey.trim().replace(/^\/+/, "").toLowerCase();
+}
+
+function extractApprovalRequest(
+  entry: RelayHistoryEntry,
+): ApprovalRequestDetails | null {
+  const rawPayload = entry.payload ?? safeParseJson(entry.raw);
+  const payload = asRecord(rawPayload);
+  const params = getNestedRecord(payload, ["params"]);
+  const requestId =
+    getApprovalRequestId(params) ?? getApprovalRequestId(payload);
+
+  if (requestId === undefined) {
+    return null;
+  }
+
+  const action = getFirstStringFromObjects([params, payload], [
+    ["tool"],
+    ["toolName"],
+    ["action"],
+    ["kind"],
+    ["type"],
+    ["name"],
+  ]);
+  const command = getFirstStringFromObjects([params, payload], [
+    ["command"],
+    ["commandLine"],
+    ["cmd"],
+    ["shellCommand"],
+  ]);
+  const path =
+    getFirstStringFromObjects([params, payload], [
+      ["path"],
+      ["filePath"],
+      ["file"],
+      ["targetPath"],
+    ]) ?? getChangePathsSummary(params ?? payload);
+  const description = getFirstStringFromObjects([params, payload], [
+    ["message"],
+    ["reason"],
+    ["description"],
+    ["title"],
+    ["summary"],
+  ]);
+
+  const detailLines = [
+    action ? `Action: ${humanizeApprovalValue(action)}` : undefined,
+    command ? `Command: ${command}` : undefined,
+    path ? `Path: ${path}` : undefined,
+    description ? `Details: ${description}` : undefined,
+    `Request ID: ${String(requestId)}`,
+  ].filter((line): line is string => line !== undefined);
+
+  if (detailLines.length === 1) {
+    detailLines.unshift(`Details: ${truncatePreview(entry.raw)}`);
+  }
+
+  return {
+    requestId,
+    lines: detailLines,
+    signature: getEntrySignature(entry),
+  };
+}
+
+function formatApprovalPrompt(request: ApprovalRequestDetails): string {
+  return [
+    "Approval requested.",
+    ...request.lines,
+    "Reply with y to approve or n to deny.",
+  ].join("\n");
+}
+
+function getApprovalRequestId(
+  value: Record<string, unknown> | undefined,
+): string | number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const candidate = value.id ?? value.requestId;
+  return typeof candidate === "string" || typeof candidate === "number"
+    ? candidate
+    : undefined;
+}
+
+function humanizeApprovalValue(value: string): string {
+  const normalized = value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (normalized.length === 0) {
+    return value;
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function getFirstStringFromObjects(
+  objects: Array<Record<string, unknown> | undefined>,
+  paths: readonly (readonly string[])[],
+): string | undefined {
+  for (const object of objects) {
+    for (const path of paths) {
+      const value = getNestedString(object, path);
+      if (value && value.trim().length > 0) {
+        return value;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function getChangePathsSummary(
+  value: Record<string, unknown> | undefined,
+): string | undefined {
+  const changes = value?.changes;
+  if (!Array.isArray(changes)) {
+    return undefined;
+  }
+
+  const paths = changes
+    .map((change) => {
+      const record = asRecord(change);
+      return getFirstStringFromObjects([record], [
+        ["path"],
+        ["filePath"],
+        ["file"],
+      ]);
+    })
+    .filter((path): path is string => path !== undefined)
+    .slice(0, 3);
+
+  if (paths.length === 0) {
+    return undefined;
+  }
+
+  return paths.join(", ");
+}
+
+function asRecord(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function getNestedRecord(
+  value: Record<string, unknown> | undefined,
+  path: readonly string[],
+): Record<string, unknown> | undefined {
+  return asRecord(getNestedValue(value, path));
+}
+
+function getNestedValue(
+  value: unknown,
+  path: readonly string[],
+): unknown {
+  let current: unknown = value;
+
+  for (const segment of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return current;
 }
 
 function safeParseJson(value: string): unknown {

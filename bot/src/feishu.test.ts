@@ -42,6 +42,7 @@ describe("FeishuGateway", () => {
     }
 
     const onTextMessage = vi.fn();
+    const onMenuAction = vi.fn();
     const gateway = new FeishuGateway(
       {
         appId: "app-id",
@@ -54,7 +55,7 @@ describe("FeishuGateway", () => {
       },
     );
 
-    await gateway.start({ onTextMessage });
+    await gateway.start({ onTextMessage, onMenuAction });
 
     expect(startedDispatchers).toHaveLength(1);
 
@@ -79,6 +80,20 @@ describe("FeishuGateway", () => {
       chatId: "chat-1",
       messageId: "message-1",
       text: "/list",
+    });
+
+    await startedDispatchers[0].handles["application.bot.menu_v6"]({
+      operator: {
+        operator_id: {
+          user_id: "user-1",
+        },
+      },
+      event_key: "stop",
+    });
+
+    expect(onMenuAction).toHaveBeenCalledWith({
+      userId: "user-1",
+      eventKey: "stop",
     });
 
     await gateway.sendText("chat-1", "hello from bot");
@@ -135,6 +150,7 @@ describe("FeishuGateway", () => {
     }
 
     const onTextMessage = vi.fn();
+    const onMenuAction = vi.fn();
     const gateway = new FeishuGateway(
       {
         appId: "app-id",
@@ -147,7 +163,7 @@ describe("FeishuGateway", () => {
       },
     );
 
-    await gateway.start({ onTextMessage });
+    await gateway.start({ onTextMessage, onMenuAction });
 
     await dispatchers[0].handles["im.message.receive_v1"]({
       sender: {
@@ -177,6 +193,13 @@ describe("FeishuGateway", () => {
       },
     });
 
+    await dispatchers[0].handles["application.bot.menu_v6"]({
+      operator: {
+        operator_id: {},
+      },
+    });
+
     expect(onTextMessage).not.toHaveBeenCalled();
+    expect(onMenuAction).not.toHaveBeenCalled();
   });
 });
