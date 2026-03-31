@@ -12,7 +12,10 @@ import { z } from "zod";
 import {
   SessionRegistry,
   type MessageClassification,
+  type MessageDirection,
   type SessionConnection,
+  type SessionDetail,
+  type SessionHistoryEntry,
 } from "./session-registry.js";
 
 const messageClassificationSchema = z.enum([
@@ -24,6 +27,8 @@ const messageClassificationSchema = z.enum([
   "unknown",
 ]);
 
+const messageDirectionSchema = z.enum(["in", "out"]);
+
 const registerMessageSchema = z.object({
   type: z.literal("register"),
   sessionId: z.string().min(1),
@@ -34,6 +39,7 @@ const registerMessageSchema = z.object({
 const sessionMessageSchema = z.object({
   type: z.literal("message"),
   sessionId: z.string().min(1),
+  direction: messageDirectionSchema.default("out"),
   classification: messageClassificationSchema,
   method: z.string().min(1).optional(),
   raw: z.string(),
@@ -48,6 +54,26 @@ const autoDetachMessageSchema = z.object({
   reason: z.string().min(1),
 });
 
+const sessionInputSchema = z.union([
+  z.object({
+    type: z.literal("prompt"),
+    content: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("approval"),
+    approved: z.boolean(),
+  }),
+  z.object({
+    method: z.string().min(1),
+    params: z.unknown().optional(),
+    content: z.string().optional(),
+  }),
+]);
+
+const attachBodySchema = z.object({
+  userId: z.string().min(1),
+});
+
 export interface RelayServerConfig {
   apiPort: number;
   wsPort: number;
@@ -55,11 +81,37 @@ export interface RelayServerConfig {
   historyLimit: number;
 }
 
+export interface UserSessionMessageEvent {
+  type: "message";
+  userId: string;
+  sessionId: string;
+  session: SessionDetail;
+  message: SessionHistoryEntry;
+}
+
+export interface UserSessionAutoDetachEvent {
+  type: "auto-detach";
+  userId: string;
+  sessionId: string;
+  session: SessionDetail;
+  reason: string;
+}
+
+export type UserSessionEvent =
+  | UserSessionMessageEvent
+  | UserSessionAutoDetachEvent;
+
+type UserSessionCallback = (event: UserSessionEvent) => void;
+
 export interface StartedRelayServer {
   apiPort: number;
   wsPort: number;
   apiBaseUrl: string;
   wsUrl: string;
+  subscribeUserEvents: (
+    userId: string,
+    callback: UserSessionCallback,
+  ) => () => void;
   close: () => Promise<void>;
 }
 
@@ -70,6 +122,8 @@ export async function startRelayServer(
     gracePeriodMs: config.gracePeriodMs,
     historyLimit: config.historyLimit,
   });
+
+  const userCallbacks = new Map<string, Set<UserSessionCallback>>();
 
   const app = express();
   app.disable("x-powered-by");
@@ -105,6 +159,104 @@ export async function startRelayServer(
     response.json(registry.getHistory(request.params.id, parsedLimit));
   });
 
+  app.post("/sessions/:id/input", (request, response) => {
+    const session = registry.getSession(request.params.id);
+    if (!session) {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    const input = sessionInputSchema.safeParse(request.body);
+    if (!input.success) {
+      response.status(400).json({
+        error: "Invalid input body",
+        details: input.error.flatten(),
+      });
+      return;
+    }
+
+    const payload = buildRelayInputPayload(input.data);
+    const delivered = registry.deliverToSession(request.params.id, payload);
+    if (delivered === "offline") {
+      response.status(409).json({ error: "Session is offline" });
+      return;
+    }
+
+    response.json({ ok: true });
+  });
+
+  app.post("/sessions/:id/interrupt", (request, response) => {
+    const delivered = registry.deliverToSession(request.params.id, {
+      type: "interrupt",
+    });
+
+    if (delivered === "not_found") {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (delivered === "offline") {
+      response.status(409).json({ error: "Session is offline" });
+      return;
+    }
+
+    response.json({ ok: true });
+  });
+
+  app.post("/sessions/:id/attach", (request, response) => {
+    const attached = attachBodySchema.safeParse(request.body);
+    if (!attached.success) {
+      response.status(400).json({
+        error: "Invalid attach body",
+        details: attached.error.flatten(),
+      });
+      return;
+    }
+
+    const result = registry.attachUser(request.params.id, attached.data.userId);
+    if (result.status === "not_found") {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (result.status === "offline") {
+      response.status(409).json({ error: "Session is offline" });
+      return;
+    }
+
+    if (result.status === "conflict") {
+      response.status(409).json({
+        error: "Session is already attached by another user",
+      });
+      return;
+    }
+
+    if (result.previousUser !== attached.data.userId) {
+      notifyAttachmentStatus(registry, request.params.id, {
+        attached: true,
+        userId: attached.data.userId,
+      });
+    }
+
+    response.json(result.session);
+  });
+
+  app.post("/sessions/:id/detach", (request, response) => {
+    const result = registry.detachUser(request.params.id);
+    if (result.status === "not_found") {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (result.previousUser) {
+      notifyAttachmentStatus(registry, request.params.id, {
+        attached: false,
+      });
+    }
+
+    response.json(result.session);
+  });
+
   app.use(
     (
       error: unknown,
@@ -138,6 +290,7 @@ export async function startRelayServer(
           socket.close(1000, "Replaced by a newer connection");
         }
       },
+      send: (payload) => sendJson(socket, payload),
     };
 
     socket.on("message", (data, isBinary) => {
@@ -184,6 +337,13 @@ export async function startRelayServer(
           sessionId: registration.data.sessionId,
           resumed: result.resumed,
         });
+
+        if (result.session.attachedUser) {
+          notifyAttachmentStatus(registry, registration.data.sessionId, {
+            attached: true,
+            userId: result.session.attachedUser,
+          });
+        }
         return;
       }
 
@@ -214,7 +374,8 @@ export async function startRelayServer(
           return;
         }
 
-        registry.recordMessage(sessionId, {
+        const entry = registry.recordMessage(sessionId, {
+          direction: message.data.direction as MessageDirection,
           classification: message.data.classification as MessageClassification,
           method: message.data.method,
           raw: message.data.raw,
@@ -222,6 +383,10 @@ export async function startRelayServer(
           threadId: message.data.threadId,
           turnId: message.data.turnId,
         });
+
+        if (entry) {
+          emitAttachedUserMessage(registry, userCallbacks, sessionId, entry);
+        }
         return;
       }
 
@@ -252,10 +417,30 @@ export async function startRelayServer(
           return;
         }
 
+        const detached = registry.detachUser(sessionId);
         sendJson(socket, {
           type: "ack",
           acknowledged: "auto-detach",
         });
+
+        if (
+          detached.status === "ok" &&
+          detached.previousUser &&
+          detached.session
+        ) {
+          notifyAttachmentStatus(registry, sessionId, {
+            attached: false,
+            reason: autoDetach.data.reason,
+          });
+
+          emitUserEvent(userCallbacks, detached.previousUser, {
+            type: "auto-detach",
+            userId: detached.previousUser,
+            sessionId,
+            session: detached.session,
+            reason: autoDetach.data.reason,
+          });
+        }
         return;
       }
 
@@ -279,6 +464,22 @@ export async function startRelayServer(
     wsPort: getPort(websocketServer),
     apiBaseUrl: `http://127.0.0.1:${getPort(httpServer)}`,
     wsUrl: `ws://127.0.0.1:${getPort(websocketServer)}`,
+    subscribeUserEvents: (userId, callback) => {
+      const callbacks = userCallbacks.get(userId) ?? new Set<UserSessionCallback>();
+      callbacks.add(callback);
+      userCallbacks.set(userId, callbacks);
+
+      return () => {
+        const current = userCallbacks.get(userId);
+        if (!current) {
+          return;
+        }
+        current.delete(callback);
+        if (current.size === 0) {
+          userCallbacks.delete(userId);
+        }
+      };
+    },
     close: async () => {
       if (closed) {
         return;
@@ -334,9 +535,16 @@ async function onceWebSocketListening(server: WebSocketServer): Promise<void> {
   });
 }
 
-function sendJson(socket: WebSocket, payload: unknown): void {
-  if (socket.readyState === WebSocket.OPEN) {
+function sendJson(socket: WebSocket, payload: unknown): boolean {
+  if (socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+
+  try {
     socket.send(JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -431,4 +639,88 @@ function closeWebSocketServer(server: WebSocketServer): Promise<void> {
       resolve();
     });
   });
+}
+
+function buildRelayInputPayload(
+  input: z.infer<typeof sessionInputSchema>,
+): Record<string, unknown> {
+  if ("type" in input && input.type === "prompt") {
+    return {
+      type: "input",
+      content: input.content,
+    };
+  }
+
+  if ("type" in input && input.type === "approval") {
+    return {
+      type: "input",
+      approval: input.approved,
+    };
+  }
+
+  return {
+    type: "input",
+    ...(input.content ? { content: input.content } : {}),
+    method: input.method,
+    ...(input.params === undefined ? {} : { params: input.params }),
+  };
+}
+
+function notifyAttachmentStatus(
+  registry: SessionRegistry,
+  sessionId: string,
+  payload: {
+    attached: boolean;
+    userId?: string;
+    reason?: string;
+  },
+): void {
+  registry.deliverToSession(sessionId, {
+    type: "attach-status-changed",
+    attached: payload.attached,
+    ...(payload.userId ? { userId: payload.userId } : {}),
+    ...(payload.reason ? { reason: payload.reason } : {}),
+  });
+}
+
+function emitAttachedUserMessage(
+  registry: SessionRegistry,
+  userCallbacks: Map<string, Set<UserSessionCallback>>,
+  sessionId: string,
+  message: SessionHistoryEntry,
+): void {
+  const session = registry.getSession(sessionId);
+  if (!session?.attachedUser) {
+    return;
+  }
+
+  if (
+    (message.classification !== "agentMessage" &&
+      message.classification !== "serverRequest")
+  ) {
+    return;
+  }
+
+  emitUserEvent(userCallbacks, session.attachedUser, {
+    type: "message",
+    userId: session.attachedUser,
+    sessionId,
+    session,
+    message,
+  });
+}
+
+function emitUserEvent(
+  userCallbacks: Map<string, Set<UserSessionCallback>>,
+  userId: string,
+  event: UserSessionEvent,
+): void {
+  const callbacks = userCallbacks.get(userId);
+  if (!callbacks) {
+    return;
+  }
+
+  for (const callback of callbacks) {
+    callback(event);
+  }
 }

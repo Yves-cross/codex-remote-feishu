@@ -1,5 +1,7 @@
 export type SessionState = "idle" | "executing" | "waitingApproval";
 
+export type MessageDirection = "in" | "out";
+
 export type MessageClassification =
   | "agentMessage"
   | "toolCall"
@@ -10,9 +12,11 @@ export type MessageClassification =
 
 export interface SessionConnection {
   close: () => void;
+  send: (payload: unknown) => boolean;
 }
 
 export interface SessionMessage {
+  direction?: MessageDirection;
   classification: MessageClassification;
   method?: string;
   raw: string;
@@ -21,7 +25,8 @@ export interface SessionMessage {
   turnId?: string | null;
 }
 
-export interface SessionHistoryEntry extends SessionMessage {
+export interface SessionHistoryEntry extends Omit<SessionMessage, "direction"> {
+  direction: MessageDirection;
   receivedAt: string;
 }
 
@@ -31,6 +36,9 @@ export interface SessionSummary {
   state: SessionState;
   online: boolean;
   turnCount: number;
+  threadId: string | null;
+  turnId: string | null;
+  attachedUser: string | null;
   metadata: Record<string, unknown>;
   graceExpiresAt: string | null;
 }
@@ -52,12 +60,29 @@ export interface RegisterSessionResult {
   session: SessionDetail;
 }
 
+export type SessionDeliveryResult = "ok" | "not_found" | "offline";
+
+export interface AttachUserResult {
+  status: "ok" | "not_found" | "offline" | "conflict";
+  session?: SessionDetail;
+  previousUser?: string | null;
+}
+
+export interface DetachUserResult {
+  status: "ok" | "not_found";
+  session?: SessionDetail;
+  previousUser?: string | null;
+}
+
 interface SessionRecord {
   sessionId: string;
   displayName: string;
   state: SessionState;
   online: boolean;
   turnCount: number;
+  threadId: string | null;
+  turnId: string | null;
+  attachedUser: string | null;
   metadata: Record<string, unknown>;
   history: SessionHistoryEntry[];
   connection?: SessionConnection;
@@ -98,6 +123,9 @@ export class SessionRegistry {
         state: "idle",
         online: true,
         turnCount: 0,
+        threadId: null,
+        turnId: null,
+        attachedUser: null,
         metadata: {},
         history: [],
         graceExpiresAt: null,
@@ -118,7 +146,10 @@ export class SessionRegistry {
     };
   }
 
-  disconnect(sessionId: string, connection?: SessionConnection): SessionSummary | undefined {
+  disconnect(
+    sessionId: string,
+    connection?: SessionConnection,
+  ): SessionSummary | undefined {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return undefined;
@@ -131,7 +162,9 @@ export class SessionRegistry {
     this.clearGraceTimer(session);
     session.connection = undefined;
     session.online = false;
-    session.graceExpiresAt = new Date(Date.now() + this.gracePeriodMs).toISOString();
+    session.graceExpiresAt = new Date(
+      Date.now() + this.gracePeriodMs,
+    ).toISOString();
     session.graceTimer = setTimeout(() => {
       this.evict(sessionId);
     }, this.gracePeriodMs);
@@ -148,8 +181,19 @@ export class SessionRegistry {
       return undefined;
     }
 
+    if (message.threadId !== undefined) {
+      session.threadId = message.threadId;
+    }
+
+    if (message.turnId !== undefined) {
+      session.turnId = message.turnId;
+    }
+
     const entry: SessionHistoryEntry = {
       ...message,
+      direction: message.direction ?? "out",
+      threadId: message.threadId ?? session.threadId,
+      turnId: message.turnId ?? session.turnId,
       receivedAt: new Date().toISOString(),
     };
 
@@ -170,7 +214,9 @@ export class SessionRegistry {
   }
 
   listSessions(): SessionSummary[] {
-    return Array.from(this.sessions.values(), (session) => this.toSummary(session));
+    return Array.from(this.sessions.values(), (session) =>
+      this.toSummary(session),
+    );
   }
 
   getHistory(sessionId: string, limit?: number): SessionHistoryEntry[] {
@@ -192,6 +238,66 @@ export class SessionRegistry {
 
   getConnection(sessionId: string): SessionConnection | undefined {
     return this.sessions.get(sessionId)?.connection;
+  }
+
+  deliverToSession(sessionId: string, payload: unknown): SessionDeliveryResult {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return "not_found";
+    }
+
+    if (!session.online || !session.connection) {
+      return "offline";
+    }
+
+    return session.connection.send(payload) ? "ok" : "offline";
+  }
+
+  attachUser(sessionId: string, userId: string): AttachUserResult {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { status: "not_found" };
+    }
+
+    if (!session.online || !session.connection) {
+      return {
+        status: "offline",
+        session: this.toDetail(session),
+      };
+    }
+
+    if (session.attachedUser && session.attachedUser !== userId) {
+      return {
+        status: "conflict",
+        session: this.toDetail(session),
+        previousUser: session.attachedUser,
+      };
+    }
+
+    const previousUser = session.attachedUser;
+    session.attachedUser = userId;
+
+    return {
+      status: "ok",
+      session: this.toDetail(session),
+      previousUser,
+    };
+  }
+
+  detachUser(sessionId: string): DetachUserResult {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { status: "not_found" };
+    }
+
+    const previousUser = session.attachedUser;
+    session.attachedUser = null;
+
+    return {
+      status: "ok",
+      session: this.toDetail(session),
+      previousUser,
+    };
   }
 
   dispose(): void {
@@ -231,8 +337,20 @@ export class SessionRegistry {
       return;
     }
 
+    if (
+      (message.classification === "agentMessage" ||
+        message.classification === "toolCall") &&
+      session.state !== "waitingApproval"
+    ) {
+      session.state = "executing";
+      return;
+    }
+
     if (message.method === "turn/completed") {
-      if (session.state === "executing" || session.state === "waitingApproval") {
+      if (
+        session.state === "executing" ||
+        session.state === "waitingApproval"
+      ) {
         session.turnCount += 1;
       }
       session.state = "idle";
@@ -246,6 +364,9 @@ export class SessionRegistry {
       state: session.state,
       online: session.online,
       turnCount: session.turnCount,
+      threadId: session.threadId,
+      turnId: session.turnId,
+      attachedUser: session.attachedUser,
       metadata: { ...session.metadata },
       graceExpiresAt: session.graceExpiresAt,
     };

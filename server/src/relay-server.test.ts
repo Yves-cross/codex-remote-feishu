@@ -5,8 +5,20 @@ import {
   readRelayServerConfig,
   startRelayServer,
   type StartedRelayServer,
+  type UserSessionEvent,
 } from "./relay-server.js";
 import type { SessionDetail } from "./session-registry.js";
+
+interface SocketTracker {
+  queue: unknown[];
+  closedError: Error | null;
+  waiters: Array<{
+    resolve: (message: unknown) => void;
+    reject: (error: Error) => void;
+  }>;
+}
+
+const socketTrackers = new WeakMap<WebSocket, SocketTracker>();
 
 describe("relay server", () => {
   let server: StartedRelayServer | undefined;
@@ -362,12 +374,356 @@ describe("relay server", () => {
       historyLimit: 100,
     });
   });
+
+  it("delivers REST input and interrupts to the correct wrapper and rejects unavailable sessions", async () => {
+    server = await startRelayServer({
+      apiPort: 0,
+      wsPort: 0,
+      gracePeriodMs: 200,
+      historyLimit: 10,
+    });
+
+    const sessionA = await connect(server.wsUrl);
+    await sendJson(sessionA, {
+      type: "register",
+      sessionId: "session-a",
+      displayName: "workspace-a",
+      metadata: {},
+    });
+    await nextJsonMessage(sessionA);
+
+    const sessionB = await connect(server.wsUrl);
+    await sendJson(sessionB, {
+      type: "register",
+      sessionId: "session-b",
+      displayName: "workspace-b",
+      metadata: {},
+    });
+    await nextJsonMessage(sessionB);
+
+    const promptResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-a/input`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "prompt",
+          content: "hello from bot",
+        }),
+      },
+    );
+    expect(promptResponse.status).toBe(200);
+    expect(await promptResponse.json()).toEqual({ ok: true });
+    expect(await nextJsonMessage(sessionA)).toEqual({
+      type: "input",
+      content: "hello from bot",
+    });
+    await expectNoMessage(sessionB, 150);
+
+    const interruptResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-b/interrupt`,
+      {
+        method: "POST",
+      },
+    );
+    expect(interruptResponse.status).toBe(200);
+    expect(await interruptResponse.json()).toEqual({ ok: true });
+    expect(await nextJsonMessage(sessionB)).toEqual({
+      type: "interrupt",
+    });
+    await expectNoMessage(sessionA, 150);
+
+    const missingSession = await fetch(
+      `${server.apiBaseUrl}/sessions/missing/input`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "prompt",
+          content: "hello",
+        }),
+      },
+    );
+    expect(missingSession.status).toBe(404);
+    expect(await missingSession.json()).toEqual({ error: "Session not found" });
+
+    sessionA.close();
+    await waitForClose(sessionA);
+
+    const offlineResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-a/input`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "prompt",
+          content: "still there?",
+        }),
+      },
+    );
+    expect(offlineResponse.status).toBe(409);
+    expect(await offlineResponse.json()).toEqual({
+      error: "Session is offline",
+    });
+
+    sessionB.close();
+    await waitForClose(sessionB);
+  });
+
+  it("manages attach state, notifies wrappers, and forwards attached session events to callbacks", async () => {
+    server = await startRelayServer({
+      apiPort: 0,
+      wsPort: 0,
+      gracePeriodMs: 200,
+      historyLimit: 10,
+    });
+
+    const client = await connect(server.wsUrl);
+    await register(client);
+
+    const events: UserSessionEvent[] = [];
+    const unsubscribe = server.subscribeUserEvents("user-1", (event) => {
+      events.push(event);
+    });
+
+    const attachResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-1/attach`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: "user-1",
+        }),
+      },
+    );
+    expect(attachResponse.status).toBe(200);
+    expect(await attachResponse.json()).toEqual(
+      expect.objectContaining({
+        sessionId: "session-1",
+        attachedUser: "user-1",
+      }),
+    );
+    expect(await nextJsonMessage(client)).toEqual({
+      type: "attach-status-changed",
+      attached: true,
+      userId: "user-1",
+    });
+
+    await sendJson(client, {
+      type: "message",
+      sessionId: "session-1",
+      classification: "agentMessage",
+      method: "item/agentMessage/delta",
+      raw: "agent says hi",
+      payload: { text: "hi" },
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    await sendJson(client, {
+      type: "message",
+      sessionId: "session-1",
+      classification: "serverRequest",
+      method: "serverRequest/approval",
+      raw: "approval needed",
+      payload: { id: "req-1" },
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    await waitForCondition(() => events.length === 2);
+    expect(events).toHaveLength(2);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "message",
+        sessionId: "session-1",
+        userId: "user-1",
+        message: expect.objectContaining({
+          raw: "agent says hi",
+          classification: "agentMessage",
+        }),
+      }),
+      expect.objectContaining({
+        type: "message",
+        sessionId: "session-1",
+        userId: "user-1",
+        message: expect.objectContaining({
+          raw: "approval needed",
+          classification: "serverRequest",
+        }),
+      }),
+    ]);
+
+    const secondAttach = await fetch(
+      `${server.apiBaseUrl}/sessions/session-1/attach`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: "user-2",
+        }),
+      },
+    );
+    expect(secondAttach.status).toBe(409);
+    expect(await secondAttach.json()).toEqual({
+      error: "Session is already attached by another user",
+    });
+
+    await sendJson(client, {
+      type: "auto-detach",
+      sessionId: "session-1",
+      reason: "local-input",
+    });
+    expect(await nextJsonMessage(client)).toEqual({
+      type: "ack",
+      acknowledged: "auto-detach",
+    });
+    expect(await nextJsonMessage(client)).toEqual({
+      type: "attach-status-changed",
+      attached: false,
+      reason: "local-input",
+    });
+
+    await waitForCondition(() => events.length === 3);
+    expect(events.at(-1)).toEqual(
+      expect.objectContaining({
+        type: "auto-detach",
+        sessionId: "session-1",
+        userId: "user-1",
+        reason: "local-input",
+      }),
+    );
+    expect(await fetchSession(server.apiBaseUrl, "session-1")).toEqual(
+      expect.objectContaining({
+        attachedUser: null,
+        threadId: "thread-1",
+        turnId: "turn-1",
+      }),
+    );
+
+    const detachResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-1/detach`,
+      {
+        method: "POST",
+      },
+    );
+    expect(detachResponse.status).toBe(200);
+    expect(await detachResponse.json()).toEqual(
+      expect.objectContaining({
+        attachedUser: null,
+      }),
+    );
+    await expectNoMessage(client, 150);
+
+    unsubscribe();
+    client.close();
+    await waitForClose(client);
+  });
+
+  it("keeps message history and callbacks isolated per session", async () => {
+    server = await startRelayServer({
+      apiPort: 0,
+      wsPort: 0,
+      gracePeriodMs: 200,
+      historyLimit: 10,
+    });
+
+    const sessionA = await connect(server.wsUrl);
+    await sendJson(sessionA, {
+      type: "register",
+      sessionId: "session-a",
+      displayName: "workspace-a",
+      metadata: {},
+    });
+    await nextJsonMessage(sessionA);
+
+    const sessionB = await connect(server.wsUrl);
+    await sendJson(sessionB, {
+      type: "register",
+      sessionId: "session-b",
+      displayName: "workspace-b",
+      metadata: {},
+    });
+    await nextJsonMessage(sessionB);
+
+    const events: UserSessionEvent[] = [];
+    const unsubscribe = server.subscribeUserEvents("user-a", (event) => {
+      events.push(event);
+    });
+
+    const attachResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-a/attach`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: "user-a",
+        }),
+      },
+    );
+    expect(attachResponse.status).toBe(200);
+    await nextJsonMessage(sessionA);
+
+    await sendJson(sessionA, {
+      type: "message",
+      sessionId: "session-a",
+      classification: "agentMessage",
+      method: "item/agentMessage/delta",
+      raw: "only a",
+    });
+    await sendJson(sessionB, {
+      type: "message",
+      sessionId: "session-b",
+      classification: "agentMessage",
+      method: "item/agentMessage/delta",
+      raw: "only b",
+    });
+
+    await waitForCondition(() => events.length === 1);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(
+      expect.objectContaining({
+        sessionId: "session-a",
+        message: expect.objectContaining({
+          raw: "only a",
+        }),
+      }),
+    );
+
+    const historyA = await fetch(`${server.apiBaseUrl}/sessions/session-a/history`);
+    const historyB = await fetch(`${server.apiBaseUrl}/sessions/session-b/history`);
+    expect((await historyA.json()).map((entry: { raw: string }) => entry.raw)).toEqual([
+      "only a",
+    ]);
+    expect((await historyB.json()).map((entry: { raw: string }) => entry.raw)).toEqual([
+      "only b",
+    ]);
+
+    unsubscribe();
+    sessionA.close();
+    sessionB.close();
+    await Promise.all([waitForClose(sessionA), waitForClose(sessionB)]);
+  });
 });
 
 async function connect(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
-    socket.once("open", () => resolve(socket));
+    socket.once("open", () => {
+      ensureSocketTracker(socket);
+      resolve(socket);
+    });
     socket.once("error", reject);
   });
 }
@@ -400,29 +756,99 @@ async function sendJson(client: WebSocket, payload: unknown): Promise<void> {
 }
 
 async function nextJsonMessage(client: WebSocket): Promise<unknown> {
+  const tracker = ensureSocketTracker(client);
+  if (tracker.queue.length > 0) {
+    return tracker.queue.shift();
+  }
+
+  if (tracker.closedError) {
+    throw tracker.closedError;
+  }
+
   return new Promise((resolve, reject) => {
-    const onMessage = (data: WebSocket.RawData) => {
-      cleanup();
-      resolve(JSON.parse(data.toString()));
-    };
-    const onError = (error: Error) => {
-      cleanup();
-      reject(error);
-    };
-    const onClose = () => {
-      cleanup();
-      reject(new Error("Socket closed before message was received"));
-    };
-    const cleanup = () => {
-      client.off("message", onMessage);
-      client.off("error", onError);
-      client.off("close", onClose);
+    tracker.waiters.push({ resolve, reject });
+  });
+}
+
+async function expectNoMessage(client: WebSocket, waitMs: number): Promise<void> {
+  const tracker = ensureSocketTracker(client);
+  if (tracker.queue.length > 0) {
+    throw new Error(`Unexpected WebSocket message: ${JSON.stringify(tracker.queue[0])}`);
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const waiter = {
+      resolve: (message: unknown) => {
+        cleanup();
+        reject(
+          new Error(`Unexpected WebSocket message: ${JSON.stringify(message)}`),
+        );
+      },
+      reject: (error: Error) => {
+        cleanup();
+        if (error.message === "Socket closed before message was received") {
+          resolve();
+          return;
+        }
+        reject(error);
+      },
     };
 
-    client.on("message", onMessage);
-    client.once("error", onError);
-    client.once("close", onClose);
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, waitMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      const index = tracker.waiters.indexOf(waiter);
+      if (index >= 0) {
+        tracker.waiters.splice(index, 1);
+      }
+    };
+
+    tracker.waiters.push(waiter);
   });
+}
+
+function ensureSocketTracker(client: WebSocket): SocketTracker {
+  const existing = socketTrackers.get(client);
+  if (existing) {
+    return existing;
+  }
+
+  const tracker: SocketTracker = {
+    queue: [],
+    closedError: null,
+    waiters: [],
+  };
+
+  client.on("message", (data) => {
+    const parsed = JSON.parse(data.toString()) as unknown;
+    const waiter = tracker.waiters.shift();
+    if (waiter) {
+      waiter.resolve(parsed);
+      return;
+    }
+    tracker.queue.push(parsed);
+  });
+
+  client.on("error", (error) => {
+    tracker.closedError = error;
+    while (tracker.waiters.length > 0) {
+      tracker.waiters.shift()?.reject(error);
+    }
+  });
+
+  client.on("close", () => {
+    tracker.closedError = new Error("Socket closed before message was received");
+    while (tracker.waiters.length > 0) {
+      tracker.waiters.shift()?.reject(tracker.closedError);
+    }
+  });
+
+  socketTrackers.set(client, tracker);
+  return tracker;
 }
 
 async function fetchSession(
@@ -446,4 +872,17 @@ async function waitForClose(client: WebSocket): Promise<void> {
 
 async function sleep(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForCondition(
+  predicate: () => boolean,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("Timed out waiting for condition");
+    }
+    await sleep(10);
+  }
 }

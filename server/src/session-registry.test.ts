@@ -5,6 +5,7 @@ import { SessionRegistry } from "./session-registry.js";
 function createConnection() {
   return {
     close: vi.fn(),
+    send: vi.fn(() => true),
   };
 }
 
@@ -238,5 +239,52 @@ describe("SessionRegistry", () => {
     expect(
       registry.getHistory("session-1", 1).map((entry) => entry.raw),
     ).toEqual(["third"]);
+  });
+
+  it("tracks thread and turn ids and manages attached users", () => {
+    const registry = new SessionRegistry({
+      gracePeriodMs: 5_000,
+      historyLimit: 5,
+    });
+
+    registry.register({
+      sessionId: "session-1",
+      displayName: "workspace-a",
+      metadata: {},
+      connection: createConnection(),
+    });
+
+    registry.recordMessage("session-1", {
+      direction: "out",
+      classification: "threadLifecycle",
+      method: "thread/started",
+      raw: '{"method":"thread/started"}',
+      threadId: "thread-1",
+      turnId: null,
+    });
+    registry.recordMessage("session-1", {
+      direction: "out",
+      classification: "turnLifecycle",
+      method: "turn/started",
+      raw: '{"method":"turn/started"}',
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+
+    registry.attachUser("session-1", "user-1");
+    expect(registry.getSession("session-1")).toEqual(
+      expect.objectContaining({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        attachedUser: "user-1",
+      }),
+    );
+
+    registry.detachUser("session-1");
+    expect(registry.getSession("session-1")).toEqual(
+      expect.objectContaining({
+        attachedUser: null,
+      }),
+    );
   });
 });
