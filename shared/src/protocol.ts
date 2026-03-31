@@ -64,8 +64,7 @@ export function classifyMethod(
     if (itemType && TOOL_CALL_ITEM_TYPES.has(itemType)) {
       return "toolCall";
     }
-    // item/started or item/completed for agentMessage type
-    return "agentMessage";
+    return "unknown";
   }
 
   // Server requests (approval)
