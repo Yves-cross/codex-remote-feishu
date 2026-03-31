@@ -11,7 +11,10 @@ use tokio::process::Command;
 use tracing::{debug, error, info};
 
 use crate::classifier::{MessageClassification, MessageClassifier};
-use crate::ws_client::{self, OutboundRelayMessage, RelayRegistration};
+use crate::ws_client::{
+    self, should_forward_outbound_message, OutboundRelayMessage, RelayForwardingMode,
+    RelayRegistration,
+};
 
 /// Forward lines from an async reader to an async writer, byte-for-byte.
 /// Each line is delimited by `\n`. The newline is included in the forwarded bytes.
@@ -229,8 +232,9 @@ where
                     "classified codex stdout line"
                 );
 
-                if attached.load(Ordering::SeqCst) {
-                    if let Some(relay_message) = build_relay_message(&classified, line) {
+                if let Some(relay_message) = build_relay_message(&classified, line) {
+                    if should_forward_outbound_message(attached.load(Ordering::SeqCst), &relay_message)
+                    {
                         if let Some(relay_tx) = relay_tx.as_ref() {
                             let _ = relay_tx.send(relay_message);
                         }
@@ -355,13 +359,17 @@ fn build_relay_message(
     classified: &crate::classifier::ClassifiedMessage,
     line: &[u8],
 ) -> Option<OutboundRelayMessage> {
-    let classification = match classified.classification {
-        MessageClassification::AgentMessage => "agentMessage",
-        MessageClassification::ServerRequest => "serverRequest",
+    let (forwarding_mode, classification) = match classified.classification {
+        MessageClassification::AgentMessage => {
+            (RelayForwardingMode::WhenAttached, "agentMessage")
+        }
+        MessageClassification::ServerRequest => (RelayForwardingMode::Always, "serverRequest"),
+        MessageClassification::TurnLifecycle => (RelayForwardingMode::Always, "turnLifecycle"),
         _ => return None,
     };
 
     Some(OutboundRelayMessage::Classified {
+        forwarding_mode,
         classification,
         method: classified.method.clone(),
         thread_id: classified.thread_id.clone(),

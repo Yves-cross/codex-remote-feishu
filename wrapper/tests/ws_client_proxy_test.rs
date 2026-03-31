@@ -322,7 +322,121 @@ async fn stdio_proxy_continues_when_relay_is_unreachable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn forwards_only_agent_and_server_request_messages_when_attached() {
+async fn forwards_lifecycle_events_and_server_requests_even_when_detached() {
+    let relay = MockRelayServer::start().await;
+    let mock_codex = fixture_path("mock_codex_echo.sh");
+    let mut wrapper = spawn_wrapper_process(
+        &["--codex-binary", &mock_codex, "--relay-url", relay.url()],
+        Vec::new(),
+        None,
+    )
+    .await;
+
+    let mut stdin = wrapper.stdin.take().expect("missing wrapper stdin");
+    let stdout = wrapper.stdout.take().expect("missing wrapper stdout");
+    let mut stdout = BufReader::new(stdout);
+
+    let register = relay.next_message().await;
+    let session_id = register
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .expect("register message missing sessionId")
+        .to_string();
+
+    stdin
+        .write_all(
+            b"{\"method\":\"turn/started\",\"params\":{\"threadId\":\"thread-1\",\"turnId\":\"turn-1\"}}\n",
+        )
+        .await
+        .expect("failed to write detached turn started");
+    let _ = read_stdout_line(&mut stdout).await;
+
+    let detached_turn_started = relay.next_message().await;
+    assert_eq!(
+        detached_turn_started.get("type").and_then(Value::as_str),
+        Some("message")
+    );
+    assert_eq!(
+        detached_turn_started
+            .get("classification")
+            .and_then(Value::as_str),
+        Some("turnLifecycle")
+    );
+    assert_eq!(
+        detached_turn_started.get("sessionId").and_then(Value::as_str),
+        Some(session_id.as_str())
+    );
+    assert_eq!(
+        detached_turn_started.get("threadId").and_then(Value::as_str),
+        Some("thread-1")
+    );
+    assert_eq!(
+        detached_turn_started.get("turnId").and_then(Value::as_str),
+        Some("turn-1")
+    );
+
+    stdin
+        .write_all(b"{\"method\":\"serverRequest/approval\",\"params\":{\"id\":\"req-1\"}}\n")
+        .await
+        .expect("failed to write detached server request");
+    let _ = read_stdout_line(&mut stdout).await;
+
+    let detached_server_request = relay.next_message().await;
+    assert_eq!(
+        detached_server_request
+            .get("classification")
+            .and_then(Value::as_str),
+        Some("serverRequest")
+    );
+    assert_eq!(
+        detached_server_request
+            .get("sessionId")
+            .and_then(Value::as_str),
+        Some(session_id.as_str())
+    );
+    assert_eq!(
+        detached_server_request
+            .get("turnId")
+            .and_then(Value::as_str),
+        Some("turn-1")
+    );
+
+    stdin
+        .write_all(
+            b"{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"thread-1\",\"turnId\":\"turn-1\"}}\n",
+        )
+        .await
+        .expect("failed to write detached turn completed");
+    let _ = read_stdout_line(&mut stdout).await;
+
+    let detached_turn_completed = relay.next_message().await;
+    assert_eq!(
+        detached_turn_completed
+            .get("classification")
+            .and_then(Value::as_str),
+        Some("turnLifecycle")
+    );
+    assert_eq!(
+        detached_turn_completed.get("method").and_then(Value::as_str),
+        Some("turn/completed")
+    );
+
+    stdin
+        .write_all(
+            b"{\"method\":\"item/agentMessage/delta\",\"params\":{\"delta\":\"keep detached local\"}}\n",
+        )
+        .await
+        .expect("failed to write detached agent message");
+    let _ = read_stdout_line(&mut stdout).await;
+    relay.expect_no_message(Duration::from_millis(250)).await;
+
+    drop(stdin);
+    let status = wrapper.wait().await.expect("failed to wait for wrapper");
+    assert!(status.success(), "wrapper should exit successfully");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn forwards_agent_messages_only_when_attached_and_forwards_lifecycle_events() {
     let relay = MockRelayServer::start().await;
     let mock_codex = fixture_path("mock_codex_echo.sh");
     let mut wrapper = spawn_wrapper_process(
@@ -373,7 +487,18 @@ async fn forwards_only_agent_and_server_request_messages_when_attached() {
         .await
         .expect("failed to write turn started");
     let _ = read_stdout_line(&mut stdout).await;
-    relay.expect_no_message(Duration::from_millis(250)).await;
+
+    let forwarded_turn_start = relay.next_message().await;
+    assert_eq!(
+        forwarded_turn_start
+            .get("classification")
+            .and_then(Value::as_str),
+        Some("turnLifecycle")
+    );
+    assert_eq!(
+        forwarded_turn_start.get("method").and_then(Value::as_str),
+        Some("turn/started")
+    );
 
     stdin
         .write_all(

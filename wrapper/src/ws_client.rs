@@ -27,8 +27,15 @@ pub struct RelayRegistration {
 }
 
 #[derive(Debug, Clone)]
+pub enum RelayForwardingMode {
+    Always,
+    WhenAttached,
+}
+
+#[derive(Debug, Clone)]
 pub enum OutboundRelayMessage {
     Classified {
+        forwarding_mode: RelayForwardingMode,
         classification: &'static str,
         method: Option<String>,
         thread_id: Option<String>,
@@ -39,6 +46,20 @@ pub enum OutboundRelayMessage {
     AutoDetach {
         reason: &'static str,
     },
+}
+
+pub fn should_forward_outbound_message(attached: bool, message: &OutboundRelayMessage) -> bool {
+    match message {
+        OutboundRelayMessage::Classified {
+            forwarding_mode: RelayForwardingMode::Always,
+            ..
+        }
+        | OutboundRelayMessage::AutoDetach { .. } => true,
+        OutboundRelayMessage::Classified {
+            forwarding_mode: RelayForwardingMode::WhenAttached,
+            ..
+        } => attached,
+    }
 }
 
 pub fn spawn_relay_client(
@@ -178,6 +199,7 @@ fn registration_message(registration: &RelayRegistration) -> Value {
 fn outbound_message_to_json(session_id: &str, message: OutboundRelayMessage) -> Value {
     match message {
         OutboundRelayMessage::Classified {
+            forwarding_mode: _,
             classification,
             method,
             thread_id,
@@ -449,5 +471,37 @@ mod tests {
         );
 
         assert!(matches!(child_input_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn always_forwarded_messages_ignore_attachment_state() {
+        let message = OutboundRelayMessage::Classified {
+            forwarding_mode: RelayForwardingMode::Always,
+            classification: "turnLifecycle",
+            method: Some("turn/started".to_owned()),
+            thread_id: Some("thread-1".to_owned()),
+            turn_id: Some("turn-1".to_owned()),
+            raw: "{\"method\":\"turn/started\"}\n".to_owned(),
+            payload: None,
+        };
+
+        assert!(should_forward_outbound_message(true, &message));
+        assert!(should_forward_outbound_message(false, &message));
+    }
+
+    #[test]
+    fn agent_messages_require_attachment_state() {
+        let message = OutboundRelayMessage::Classified {
+            forwarding_mode: RelayForwardingMode::WhenAttached,
+            classification: "agentMessage",
+            method: Some("item/agentMessage/delta".to_owned()),
+            thread_id: Some("thread-1".to_owned()),
+            turn_id: Some("turn-1".to_owned()),
+            raw: "{\"method\":\"item/agentMessage/delta\"}\n".to_owned(),
+            payload: None,
+        };
+
+        assert!(should_forward_outbound_message(true, &message));
+        assert!(!should_forward_outbound_message(false, &message));
     }
 }
