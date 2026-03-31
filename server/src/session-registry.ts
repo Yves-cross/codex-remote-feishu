@@ -181,6 +181,10 @@ export class SessionRegistry {
       return undefined;
     }
 
+    if (this.shouldIgnoreMessage(session, message)) {
+      return undefined;
+    }
+
     if (message.threadId !== undefined) {
       session.threadId = message.threadId;
     }
@@ -333,6 +337,9 @@ export class SessionRegistry {
     }
 
     if (message.classification === "serverRequest") {
+      if (session.state === "idle") {
+        return;
+      }
       session.state = "waitingApproval";
       return;
     }
@@ -355,6 +362,13 @@ export class SessionRegistry {
       }
       session.state = "idle";
     }
+  }
+
+  private shouldIgnoreMessage(
+    session: SessionRecord,
+    message: SessionMessage,
+  ): boolean {
+    return message.classification === "serverRequest" && session.state === "idle";
   }
 
   private toSummary(session: SessionRecord): SessionSummary {

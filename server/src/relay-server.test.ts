@@ -151,6 +151,38 @@ describe("relay server", () => {
     await waitForClose(client);
   });
 
+  it("ignores approval messages while idle", async () => {
+    server = await startRelayServer({
+      apiPort: 0,
+      wsPort: 0,
+      gracePeriodMs: 50,
+      historyLimit: 10,
+    });
+
+    const client = await connect(server.wsUrl);
+    await register(client);
+
+    await sendJson(client, {
+      type: "message",
+      sessionId: "session-1",
+      classification: "serverRequest",
+      method: "serverRequest/approval",
+      raw: '{"method":"serverRequest/approval"}',
+    });
+
+    expect(await fetchSession(server.apiBaseUrl, "session-1")).toEqual(
+      expect.objectContaining({
+        state: "idle",
+        turnCount: 0,
+        historySize: 0,
+        lastMessage: null,
+      }),
+    );
+
+    client.close();
+    await waitForClose(client);
+  });
+
   it("keeps disconnected sessions during grace period, resumes on reconnect, and evicts after timeout", async () => {
     server = await startRelayServer({
       apiPort: 0,
@@ -161,6 +193,13 @@ describe("relay server", () => {
 
     const initialClient = await connect(server.wsUrl);
     await register(initialClient);
+    await sendJson(initialClient, {
+      type: "message",
+      sessionId: "session-1",
+      classification: "turnLifecycle",
+      method: "turn/started",
+      raw: '{"method":"turn/started"}',
+    });
     await sendJson(initialClient, {
       type: "message",
       sessionId: "session-1",
@@ -227,8 +266,8 @@ describe("relay server", () => {
     await sendJson(client, {
       type: "message",
       sessionId: "session-1",
-      classification: "agentMessage",
-      method: "item/agentMessage/delta",
+      classification: "turnLifecycle",
+      method: "turn/started",
       raw: "first",
     });
     await sendJson(client, {

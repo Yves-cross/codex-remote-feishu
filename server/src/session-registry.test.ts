@@ -93,6 +93,53 @@ describe("SessionRegistry", () => {
     );
   });
 
+  it("ignores approval requests while idle and does not increment turn counts", () => {
+    const registry = new SessionRegistry({
+      gracePeriodMs: 5_000,
+      historyLimit: 10,
+    });
+
+    registry.register({
+      sessionId: "session-1",
+      displayName: "workspace-a",
+      metadata: {},
+      connection: createConnection(),
+    });
+
+    expect(
+      registry.recordMessage("session-1", {
+        classification: "serverRequest",
+        method: "serverRequest/approval",
+        raw: '{"method":"serverRequest/approval"}',
+      }),
+    ).toBeUndefined();
+    expect(registry.getSession("session-1")).toEqual(
+      expect.objectContaining({
+        state: "idle",
+        turnCount: 0,
+        historySize: 0,
+        lastMessage: null,
+      }),
+    );
+
+    registry.recordMessage("session-1", {
+      classification: "turnLifecycle",
+      method: "turn/completed",
+      raw: '{"method":"turn/completed"}',
+    });
+
+    expect(registry.getSession("session-1")).toEqual(
+      expect.objectContaining({
+        state: "idle",
+        turnCount: 0,
+        historySize: 1,
+        lastMessage: expect.objectContaining({
+          method: "turn/completed",
+        }),
+      }),
+    );
+  });
+
   it("starts a grace period on disconnect and resumes within the window", () => {
     const registry = new SessionRegistry({
       gracePeriodMs: 5_000,
@@ -105,6 +152,11 @@ describe("SessionRegistry", () => {
       displayName: "workspace-a",
       metadata: {},
       connection: firstConnection,
+    });
+    registry.recordMessage("session-1", {
+      classification: "turnLifecycle",
+      method: "turn/started",
+      raw: '{"method":"turn/started"}',
     });
     registry.recordMessage("session-1", {
       classification: "serverRequest",
@@ -140,7 +192,7 @@ describe("SessionRegistry", () => {
         graceExpiresAt: null,
       }),
     );
-    expect(registry.getHistory("session-1")).toHaveLength(1);
+    expect(registry.getHistory("session-1")).toHaveLength(2);
   });
 
   it("evicts sessions after the grace period expires", () => {
@@ -217,8 +269,8 @@ describe("SessionRegistry", () => {
     });
 
     registry.recordMessage("session-1", {
-      classification: "agentMessage",
-      method: "item/agentMessage/delta",
+      classification: "turnLifecycle",
+      method: "turn/started",
       raw: "first",
     });
     registry.recordMessage("session-1", {
