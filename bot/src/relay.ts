@@ -67,10 +67,10 @@ export class RelayClient {
     this.fetchImplementation = options.fetch ?? fetch;
   }
 
-  async listSessions(): Promise<RelaySessionDetail[]> {
+  async listSessions(): Promise<RelaySessionSummary[]> {
     return this.request("/sessions", {
       method: "GET",
-      responseSchema: z.array(sessionDetailSchema),
+      responseSchema: z.array(sessionSummarySchema),
     });
   }
 

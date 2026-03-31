@@ -3,12 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { RelayClient, RelayClientError } from "./relay.js";
 
 describe("RelayClient", () => {
-  it("wraps the session listing, detail, and history REST APIs", async () => {
+  it("parses real relay session list summaries and wraps detail/history APIs", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse([
-          createSessionDetail({
+          createSessionSummary({
             sessionId: "session-1",
             displayName: "workspace-a",
           }),
@@ -44,7 +44,7 @@ describe("RelayClient", () => {
     });
 
     await expect(client.listSessions()).resolves.toEqual([
-      expect.objectContaining({
+      createSessionSummary({
         sessionId: "session-1",
         displayName: "workspace-a",
       }),
@@ -252,6 +252,34 @@ function createSessionDetail(
     graceExpiresAt: overrides.graceExpiresAt ?? null,
     historySize: overrides.historySize ?? 0,
     lastMessage: overrides.lastMessage ?? null,
+  };
+}
+
+function createSessionSummary(
+  overrides: Partial<{
+    sessionId: string;
+    displayName: string;
+    state: "idle" | "executing" | "waitingApproval";
+    online: boolean;
+    turnCount: number;
+    threadId: string | null;
+    turnId: string | null;
+    attachedUser: string | null;
+    metadata: Record<string, unknown>;
+    graceExpiresAt: string | null;
+  }> = {},
+) {
+  return {
+    sessionId: overrides.sessionId ?? "session-1",
+    displayName: overrides.displayName ?? "workspace-a",
+    state: overrides.state ?? "idle",
+    online: overrides.online ?? true,
+    turnCount: overrides.turnCount ?? 0,
+    threadId: overrides.threadId ?? null,
+    turnId: overrides.turnId ?? null,
+    attachedUser: overrides.attachedUser ?? null,
+    metadata: overrides.metadata ?? {},
+    graceExpiresAt: overrides.graceExpiresAt ?? null,
   };
 }
 
