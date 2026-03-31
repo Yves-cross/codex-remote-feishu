@@ -72,6 +72,7 @@ interface AttachmentForwarder {
   sessionId: string;
   cursor: number | undefined;
   polling: boolean;
+  inFlight: Promise<void> | null;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -503,7 +504,26 @@ export class BotService {
 
     const pendingApproval = this.pendingApprovals.get(userId);
     if (pendingApproval && pendingApproval.sessionId === attachment.sessionId) {
-      await this.handleApprovalReply(userId, pendingApproval, content);
+      await this.syncForwarding(userId, attachment.sessionId);
+
+      const currentAttachment = this.attachments.get(userId);
+      if (
+        !currentAttachment ||
+        currentAttachment.sessionId !== attachment.sessionId
+      ) {
+        return;
+      }
+
+      const currentPendingApproval = this.pendingApprovals.get(userId);
+      if (
+        currentPendingApproval &&
+        currentPendingApproval.sessionId === currentAttachment.sessionId
+      ) {
+        await this.handleApprovalReply(userId, currentPendingApproval, content);
+        return;
+      }
+
+      await this.relayClient.sendPrompt(currentAttachment.sessionId, content);
       return;
     }
 
@@ -564,6 +584,7 @@ export class BotService {
       sessionId: attachment.sessionId,
       cursor: session.userEventCursor,
       polling: false,
+      inFlight: null,
       timer: null,
     };
 
@@ -601,6 +622,23 @@ export class BotService {
     }, this.pollIntervalMs);
   }
 
+  private async syncForwarding(
+    userId: string,
+    sessionId: string,
+  ): Promise<void> {
+    const forwarder = this.forwarders.get(userId);
+    if (!forwarder || forwarder.sessionId !== sessionId) {
+      return;
+    }
+
+    if (forwarder.timer) {
+      this.timerApi.clearTimeout(forwarder.timer);
+      forwarder.timer = null;
+    }
+
+    await this.pollForwarding(userId, sessionId);
+  }
+
   private async pollForwarding(
     userId: string,
     sessionId: string,
@@ -618,13 +656,34 @@ export class BotService {
     }
 
     if (forwarder.polling) {
-      this.scheduleForwarding(userId, forwarder);
+      await forwarder.inFlight;
       return;
     }
 
     forwarder.polling = true;
     forwarder.timer = null;
+    forwarder.inFlight = this.consumeForwardedUserEvents(
+      userId,
+      sessionId,
+      forwarder,
+    );
 
+    try {
+      await forwarder.inFlight;
+    } finally {
+      if (this.forwarders.get(userId) === forwarder) {
+        forwarder.polling = false;
+        forwarder.inFlight = null;
+        this.scheduleForwarding(userId, forwarder);
+      }
+    }
+  }
+
+  private async consumeForwardedUserEvents(
+    userId: string,
+    sessionId: string,
+    forwarder: AttachmentForwarder,
+  ): Promise<void> {
     try {
       const batch = await this.relayClient.listUserEvents(userId, forwarder.cursor);
 
@@ -653,11 +712,8 @@ export class BotService {
         this.stopForwarding(userId);
         return;
       }
-    } finally {
-      if (this.forwarders.get(userId) === forwarder) {
-        forwarder.polling = false;
-        this.scheduleForwarding(userId, forwarder);
-      }
+
+      throw error;
     }
   }
 

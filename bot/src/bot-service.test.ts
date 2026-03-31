@@ -588,7 +588,7 @@ describe("BotService", () => {
     service.close();
   });
 
-  it("clears cancelled pending approvals when codex completes the turn", async () => {
+  it("clears cancelled pending approvals before an immediate follow-up prompt is handled", async () => {
     vi.useFakeTimers();
 
     const approvalEntry = createHistoryEntry({
@@ -684,7 +684,7 @@ describe("BotService", () => {
         message: turnCompletedEntry,
       }),
     ]);
-    await vi.advanceTimersByTimeAsync(100);
+    const messagesBeforeFollowUpPrompt = messenger.sendText.mock.calls.length;
 
     await service.handleTextMessage({
       userId: "user-1",
@@ -698,6 +698,7 @@ describe("BotService", () => {
       "session-1",
       "resume after cancel",
     );
+    expect(messenger.sendText).toHaveBeenCalledTimes(messagesBeforeFollowUpPrompt);
 
     service.close();
   });
