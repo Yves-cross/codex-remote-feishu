@@ -338,10 +338,12 @@ export async function startRelayServer(
           resumed: result.resumed,
         });
 
-        if (result.session.attachedUser) {
+        if (result.resumed || result.session.attachedUser) {
           notifyAttachmentStatus(registry, registration.data.sessionId, {
-            attached: true,
-            userId: result.session.attachedUser,
+            attached: result.session.attachedUser !== null,
+            ...(result.session.attachedUser
+              ? { userId: result.session.attachedUser }
+              : {}),
           });
         }
         return;

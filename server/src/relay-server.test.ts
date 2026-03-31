@@ -252,6 +252,84 @@ describe("relay server", () => {
     expect(missingResponse.status).toBe(404);
   });
 
+  it("replays detached attach status when a wrapper reconnects after offline detach", async () => {
+    server = await startRelayServer({
+      apiPort: 0,
+      wsPort: 0,
+      gracePeriodMs: 200,
+      historyLimit: 10,
+    });
+
+    const initialClient = await connect(server.wsUrl);
+    await register(initialClient);
+
+    const attachResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-1/attach`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: "user-1",
+        }),
+      },
+    );
+    expect(attachResponse.status).toBe(200);
+    expect(await nextJsonMessage(initialClient)).toEqual({
+      type: "attach-status-changed",
+      attached: true,
+      userId: "user-1",
+    });
+
+    initialClient.close();
+    await waitForClose(initialClient);
+
+    const detachResponse = await fetch(
+      `${server.apiBaseUrl}/sessions/session-1/detach`,
+      {
+        method: "POST",
+      },
+    );
+    expect(detachResponse.status).toBe(200);
+    expect(await detachResponse.json()).toEqual(
+      expect.objectContaining({
+        sessionId: "session-1",
+        attachedUser: null,
+        online: false,
+      }),
+    );
+
+    const resumedClient = await connect(server.wsUrl);
+    await sendJson(resumedClient, {
+      type: "register",
+      sessionId: "session-1",
+      displayName: "workspace-a",
+      metadata: {},
+    });
+    expect(await nextJsonMessage(resumedClient)).toEqual(
+      expect.objectContaining({
+        type: "registered",
+        sessionId: "session-1",
+        resumed: true,
+      }),
+    );
+    await expect(
+      Promise.race([
+        nextJsonMessage(resumedClient),
+        sleep(200).then(() => {
+          throw new Error("Timed out waiting for attach-status replay");
+        }),
+      ]),
+    ).resolves.toEqual({
+      type: "attach-status-changed",
+      attached: false,
+    });
+
+    resumedClient.close();
+    await waitForClose(resumedClient);
+  });
+
   it("returns history in order and honors the limit query", async () => {
     server = await startRelayServer({
       apiPort: 0,
