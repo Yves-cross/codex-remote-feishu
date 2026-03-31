@@ -1,0 +1,29 @@
+commands:
+  install-server: cd server && npm install
+  install-bot: cd bot && npm install
+  install-shared: cd shared && npm install
+  install-wrapper: cd wrapper && cargo build
+  install: npm install && cd shared && npm install && cd ../server && npm install && cd ../bot && npm install && cd ../wrapper && cargo build
+  build-shared: cd shared && npm run build
+  build-server: cd server && npm run build
+  build-bot: cd bot && npm run build
+  build-wrapper: cd wrapper && cargo build
+  build: npm run build
+  test-wrapper: cd wrapper && cargo test
+  test-server: cd server && npx vitest run
+  test-bot: cd bot && npx vitest run
+  test-shared: cd shared && npx vitest run
+  test: cd wrapper && cargo test && cd ../shared && npx vitest run && cd ../server && npx vitest run && cd ../bot && npx vitest run
+  lint-server: cd server && npx eslint src/
+  lint-bot: cd bot && npx eslint src/
+  typecheck-server: cd server && npx tsc --noEmit
+  typecheck-bot: cd bot && npx tsc --noEmit
+  typecheck: cd shared && npx tsc --noEmit && cd ../server && npx tsc --noEmit && cd ../bot && npx tsc --noEmit
+
+services:
+  relay-server:
+    start: cd server && PORT=9501 WS_PORT=9500 node dist/index.js &
+    stop: lsof -ti :9500 -ti :9501 | xargs kill 2>/dev/null
+    healthcheck: curl -sf http://localhost:9501/sessions
+    port: 9500
+    depends_on: []
