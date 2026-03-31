@@ -1063,10 +1063,34 @@ describe("BotService", () => {
     service.close();
   });
 
-  it("sends lightweight notifications when not attached", async () => {
+  it("sends lightweight notifications for previously attached sessions when not attached", async () => {
     vi.useFakeTimers();
 
     const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+      ]),
+      attach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: "user-1",
+          }),
+        ),
+      detach: vi
+        .fn()
+        .mockResolvedValue(
+          createSessionDetail({
+            sessionId: "session-1",
+            displayName: "workspace-a",
+            attachedUser: null,
+          }),
+        ),
       listEvents: vi
         .fn()
         .mockResolvedValueOnce({
@@ -1106,7 +1130,14 @@ describe("BotService", () => {
       userId: "user-1",
       chatId: "chat-1",
       messageId: "message-1",
-      text: "/list",
+      text: "/attach workspace-a",
+    });
+
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "/detach",
     });
 
     await vi.advanceTimersByTimeAsync(100);
@@ -1117,8 +1148,131 @@ describe("BotService", () => {
     );
     expect(messenger.sendText).toHaveBeenCalledWith(
       "chat-1",
+      "Detached from [workspace-a].",
+    );
+    expect(messenger.sendText).not.toHaveBeenCalledWith(
+      "chat-1",
       "[workspace-b] Input required.",
     );
+
+    service.close();
+  });
+
+  it("keeps lightweight notifications isolated to subscribed users and sessions", async () => {
+    vi.useFakeTimers();
+
+    const relay = createRelayDouble({
+      listSessions: vi.fn().mockResolvedValue([
+        createSessionDetail({
+          sessionId: "session-1",
+          displayName: "workspace-a",
+        }),
+        createSessionDetail({
+          sessionId: "session-2",
+          displayName: "workspace-b",
+        }),
+      ]),
+      attach: vi.fn().mockImplementation(async (sessionId: string, userId: string) =>
+        createSessionDetail({
+          sessionId,
+          displayName: sessionId === "session-1" ? "workspace-a" : "workspace-b",
+          attachedUser: userId,
+        }),
+      ),
+      detach: vi.fn().mockImplementation(async (sessionId: string) =>
+        createSessionDetail({
+          sessionId,
+          displayName: sessionId === "session-1" ? "workspace-a" : "workspace-b",
+          attachedUser: null,
+        }),
+      ),
+      listEvents: vi
+        .fn()
+        .mockResolvedValueOnce({
+          latestEventId: 0,
+          events: [],
+        })
+        .mockResolvedValueOnce({
+          latestEventId: 2,
+          events: [
+            {
+              type: "turn-completed",
+              id: 1,
+              occurredAt: "2026-03-31T00:00:01.000Z",
+              sessionId: "session-1",
+              displayName: "workspace-a",
+              turnCount: 3,
+            },
+            {
+              type: "input-required",
+              id: 2,
+              occurredAt: "2026-03-31T00:00:02.000Z",
+              sessionId: "session-2",
+              displayName: "workspace-b",
+              requestId: "req-1",
+            },
+          ],
+        })
+        .mockResolvedValue({
+          latestEventId: 2,
+          events: [],
+        }),
+    });
+    const messenger = createMessengerDouble();
+    const service = new BotService(relay, messenger, { pollIntervalMs: 100 });
+
+    await service.handleTextMessage({
+      userId: "user-a",
+      chatId: "chat-a",
+      messageId: "message-1",
+      text: "/attach workspace-a",
+    });
+    await service.handleTextMessage({
+      userId: "user-a",
+      chatId: "chat-a",
+      messageId: "message-2",
+      text: "/detach",
+    });
+    await service.handleTextMessage({
+      userId: "user-b",
+      chatId: "chat-b",
+      messageId: "message-3",
+      text: "/attach workspace-b",
+    });
+    await service.handleTextMessage({
+      userId: "user-b",
+      chatId: "chat-b",
+      messageId: "message-4",
+      text: "/detach",
+    });
+    await service.handleTextMessage({
+      userId: "user-c",
+      chatId: "chat-c",
+      messageId: "message-5",
+      text: "/list",
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    const chatAMessages = messenger.sendText.mock.calls
+      .filter(([chatId]) => chatId === "chat-a")
+      .map(([, text]) => text)
+      .join("\n");
+    const chatBMessages = messenger.sendText.mock.calls
+      .filter(([chatId]) => chatId === "chat-b")
+      .map(([, text]) => text)
+      .join("\n");
+    const chatCMessages = messenger.sendText.mock.calls
+      .filter(([chatId]) => chatId === "chat-c")
+      .map(([, text]) => text)
+      .join("\n");
+
+    expect(chatAMessages).toContain("[workspace-a] Turn completed.");
+    expect(chatAMessages).not.toContain("[workspace-b] Input required.");
+    expect(chatBMessages).toContain("[workspace-b] Input required.");
+    expect(chatBMessages).not.toContain("[workspace-a] Turn completed.");
+    expect(chatCMessages).not.toContain("[workspace-a] Turn completed.");
+    expect(chatCMessages).not.toContain("[workspace-b] Input required.");
 
     service.close();
   });
@@ -1132,14 +1286,25 @@ describe("BotService", () => {
           sessionId: "session-1",
           displayName: "workspace-a",
         }),
+        createSessionDetail({
+          sessionId: "session-2",
+          displayName: "workspace-b",
+        }),
       ]),
-      attach: vi
+      attach: vi.fn().mockImplementation(async (sessionId: string) =>
+        createSessionDetail({
+          sessionId,
+          displayName: sessionId === "session-1" ? "workspace-a" : "workspace-b",
+          attachedUser: "user-1",
+        }),
+      ),
+      detach: vi
         .fn()
         .mockResolvedValue(
           createSessionDetail({
-            sessionId: "session-1",
-            displayName: "workspace-a",
-            attachedUser: "user-1",
+            sessionId: "session-2",
+            displayName: "workspace-b",
+            attachedUser: null,
           }),
         ),
       listEvents: vi
@@ -1181,6 +1346,18 @@ describe("BotService", () => {
       userId: "user-1",
       chatId: "chat-1",
       messageId: "message-1",
+      text: "/attach workspace-b",
+    });
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-2",
+      text: "/detach",
+    });
+    await service.handleTextMessage({
+      userId: "user-1",
+      chatId: "chat-1",
+      messageId: "message-3",
       text: "/attach workspace-a",
     });
 

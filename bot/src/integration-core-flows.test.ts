@@ -531,6 +531,97 @@ describe("integration core flows", () => {
     expect((await relayClient.getHistory(session.sessionId)).map((entry) => entry.raw)).toHaveLength(2);
   });
 
+  it("scopes background notifications to users that previously attached to each session", async () => {
+    const server = await startTestRelayServer();
+    const relayClient = new RelayClient({
+      baseUrl: server.apiBaseUrl,
+    });
+    const wrapperA = await spawnMockWrapper(server.wsUrl, "workspace-notify-a");
+    const wrapperB = await spawnMockWrapper(server.wsUrl, "workspace-notify-b");
+
+    await waitForSession(relayClient, "workspace-notify-a");
+    await waitForSession(relayClient, "workspace-notify-b");
+
+    const messenger = createMessengerRecorder();
+    const service = new BotService(relayClient, messenger, {
+      pollIntervalMs: 25,
+    });
+    cleanups.push(async () => {
+      service.close();
+    });
+
+    await service.handleTextMessage(
+      createIncomingText("user-a", "chat-a", "/attach workspace-notify-a"),
+    );
+    await service.handleTextMessage(
+      createIncomingText("user-a", "chat-a", "/detach"),
+    );
+    await service.handleTextMessage(
+      createIncomingText("user-b", "chat-b", "/attach workspace-notify-b"),
+    );
+    await service.handleTextMessage(
+      createIncomingText("user-b", "chat-b", "/detach"),
+    );
+    await service.handleTextMessage(
+      createIncomingText("user-c", "chat-c", "/list"),
+    );
+
+    await wrapperA.emitCodexMessages([
+      {
+        method: "turn/started",
+        params: {
+          threadId: "thread-notify",
+          turnId: "turn-notify-a",
+        },
+      },
+      {
+        method: "turn/completed",
+        params: {
+          threadId: "thread-notify",
+          turnId: "turn-notify-a",
+          status: "completed",
+        },
+      },
+    ]);
+    await wrapperB.emitCodexMessages([
+      {
+        method: "turn/started",
+        params: {
+          threadId: "thread-notify",
+          turnId: "turn-notify-b",
+        },
+      },
+      {
+        method: "serverRequest/approval",
+        params: {
+          id: "req-notify-b",
+          tool: "shell",
+          command: "npm test",
+        },
+      },
+    ]);
+
+    await waitForCondition(() => {
+      return (
+        messenger.messagesFor("chat-a").includes("[workspace-notify-a] Turn completed.") &&
+        messenger.messagesFor("chat-b").includes("[workspace-notify-b] Input required.")
+      );
+    });
+
+    expect(messenger.messagesFor("chat-a")).not.toContain(
+      "[workspace-notify-b] Input required.",
+    );
+    expect(messenger.messagesFor("chat-b")).not.toContain(
+      "[workspace-notify-a] Turn completed.",
+    );
+    expect(messenger.messagesFor("chat-c")).not.toContain(
+      "[workspace-notify-a] Turn completed.",
+    );
+    expect(messenger.messagesFor("chat-c")).not.toContain(
+      "[workspace-notify-b] Input required.",
+    );
+  });
+
   it("keeps multiple sessions isolated, preserves ordering, and avoids duplicates across reconnects", async () => {
     const server = await startTestRelayServer();
     const relayClient = new RelayClient({

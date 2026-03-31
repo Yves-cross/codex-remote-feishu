@@ -87,6 +87,8 @@ interface BotServiceOptions {
 export class BotService {
   private readonly attachments = new Map<string, UserAttachment>();
 
+  private readonly notificationChats = new Map<string, Map<string, string>>();
+
   private readonly lastSeenChats = new Map<string, string>();
 
   private readonly pendingApprovals = new Map<string, PendingApproval>();
@@ -234,7 +236,7 @@ export class BotService {
   }
 
   private ensureEventPollingStarted(): void {
-    if (this.lastSeenChats.size === 0 || this.eventTimer || this.eventPolling) {
+    if (!this.hasNotificationChats() || this.eventTimer || this.eventPolling) {
       return;
     }
 
@@ -242,7 +244,7 @@ export class BotService {
   }
 
   private scheduleEventPolling(): void {
-    if (this.lastSeenChats.size === 0 || this.eventTimer) {
+    if (!this.hasNotificationChats() || this.eventTimer) {
       return;
     }
 
@@ -301,7 +303,12 @@ export class BotService {
         ? `${formatSessionTag(event.displayName)} Turn completed.`
         : `${formatSessionTag(event.displayName)} Input required.`;
 
-    for (const [userId, chatId] of this.lastSeenChats) {
+    for (const [userId, chatsBySession] of this.notificationChats) {
+      const chatId = chatsBySession.get(event.sessionId);
+      if (!chatId) {
+        continue;
+      }
+
       if (this.attachments.get(userId)?.sessionId === event.sessionId) {
         continue;
       }
@@ -377,6 +384,8 @@ export class BotService {
       chatId,
     };
     this.attachments.set(userId, attachment);
+    this.registerNotificationChat(userId, attachedSession.sessionId, chatId);
+    this.ensureEventPollingStarted();
 
     await this.reply(
       chatId,
@@ -800,6 +809,30 @@ export class BotService {
     }
 
     return "An unexpected bot error occurred.";
+  }
+
+  private hasNotificationChats(): boolean {
+    for (const chatsBySession of this.notificationChats.values()) {
+      if (chatsBySession.size > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private registerNotificationChat(
+    userId: string,
+    sessionId: string,
+    chatId: string,
+  ): void {
+    let chatsBySession = this.notificationChats.get(userId);
+    if (!chatsBySession) {
+      chatsBySession = new Map<string, string>();
+      this.notificationChats.set(userId, chatsBySession);
+    }
+
+    chatsBySession.set(sessionId, chatId);
   }
 
   private async handleForwardedUserEvent(
