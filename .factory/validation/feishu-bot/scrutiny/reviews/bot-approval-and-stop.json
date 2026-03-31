@@ -1,0 +1,39 @@
+{
+  "featureId": "bot-approval-and-stop",
+  "reviewedAt": "2026-04-01T06:28:37+08:00",
+  "commitId": "6b898df768bdff3e4c70de76faa16c3004bcecfe",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed the mission docs, handoff, transcript skeleton, skill file, and commit 6b898df768bdff3e4c70de76faa16c3004bcecfe. The feature adds approval prompting, y/n handling, idle-aware /stop behavior, and menu routing, but it still misses the validation contract's cancelled-approval requirement because pending approval state is only cleared by background polling; I also found a new fire-and-forget approval-prompt path that can raise an unhandled rejection during attach.",
+    "issues": [
+      {
+        "file": "bot/src/bot-service.ts",
+        "line": 502,
+        "severity": "blocking",
+        "description": "`handlePrompt()` treats any non-command text as an approval reply whenever `pendingApprovals` still contains an entry, but that map is only cleared later by the forwarding poller when it eventually notices `turn/completed` at lines 650-653. Because the default poll interval is 1s, a user prompt sent immediately after Codex cancels the approval can still be rejected as a malformed y/n reply instead of being forwarded, so the implementation does not reliably satisfy the feature/validation requirement that cancelled approvals clear pending state (`features.json:619-630`, `validation-contract.md:186-187`)."
+      },
+      {
+        "file": "bot/src/bot-service.ts",
+        "line": 575,
+        "severity": "non_blocking",
+        "description": "When a user attaches to a session that is already in `waitingApproval`, `startForwarding()` fire-and-forgets `presentApprovalRequest()` with `void`. That callee awaits `this.reply()` at lines 714-720, so any Feishu send failure in this new attach-time approval path bypasses the surrounding request error handling and becomes an unhandled rejection instead of a normal bot error response."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The architecture docs still describe the bot as holding only the in-memory user\u2192session attach mapping, but this feature adds additional long-lived in-memory caches (`lastSeenChats` and `pendingApprovals`). If those caches are now part of the intended design, the statelessness invariant should be updated so future workers do not assume attach state is the bot's only persisted runtime state.",
+      "evidence": ".factory/library/architecture.md:88-90 and 157-159 say the bot is stateless except for attach mapping; bot/src/bot-service.ts:85-89 now adds `lastSeenChats` and `pendingApprovals`, and bot/src/bot-service.ts:121, 164-166, 502, 651-653 actively relies on them for menu actions and approval handling."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The shared docs do not record that Feishu `application.bot.menu_v6` events lack a `chat_id`, so menu replies depend on cached chat context from earlier text traffic or an active attachment. That constraint drove the new `lastSeenChats` behavior and is worth documenting for future bot work.",
+      "evidence": "node_modules/@larksuiteoapi/node-sdk/types/index.d.ts:285462-285480 defines `application.bot.menu_v6` with operator IDs and `event_key` but no chat identifier; bot/src/feishu.ts:187-205 therefore returns only `{userId,eventKey}`, and bot/src/bot-service.ts:87, 121, 164-166 now caches/reuses chat IDs to answer menu actions."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission docs, transcript skeleton, handoff, and commit 6b898df768bdff3e4c70de76faa16c3004bcecfe. Approval prompting, /stop, and menu routing are mostly in place, but cancelled approvals are only cleared on the next polling pass, so immediate post-cancel prompts can still be mishandled; I also noted a smaller unhandled-rejection risk in the attach-time approval prompt path."
+}

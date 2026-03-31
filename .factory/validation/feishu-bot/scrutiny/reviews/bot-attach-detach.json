@@ -1,0 +1,28 @@
+{
+  "featureId": "bot-attach-detach",
+  "reviewedAt": "2026-03-31T22:25:42Z",
+  "commitId": "cc4f056780c0bf333f2484849d761dbddf3716c7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed the mission docs, handoff, transcript skeleton, and commit cc4f056780c0bf333f2484849d761dbddf3716c7. The feature adds attach summaries, partial matching, detach confirmations, richer status/history output, and per-user polling forwarders, but the new forwarding path is built on polling the bounded history buffer, which can silently drop agent messages during bursty output.",
+    "issues": [
+      {
+        "file": "bot/src/bot-service.ts",
+        "line": 627,
+        "severity": "blocking",
+        "description": "Attached-session forwarding polls `/sessions/:id/history` on a timer and diffs the latest snapshot (`bot/src/bot-service.ts:597-683`) instead of consuming a per-message stream. The relay server keeps history in a ring buffer (`server/src/session-registry.ts:204-208`) and `getHistory()` only returns the surviving snapshot (`server/src/session-registry.ts:226-240`), with a default size of 100 entries (`server/src/relay-server.ts:575-584`). If more than `MESSAGE_BUFFER_SIZE` agent messages arrive between polls, older entries are evicted before the bot fetches them, so attached users miss output. That breaks the feature's core forwarding guarantee in `validation-contract.md:176-179` and the no-loss expectation in `validation-contract.md:236-238`."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared docs describe direct server-to-bot forwarding for attached agent output, but the bot-facing API surface only exposes coarse `/events` notifications plus bounded `/sessions/:id/history` snapshots. That gap is not documented, and it pushed this feature toward lossy history polling instead of a guaranteed-delivery message feed.",
+      "evidence": ".factory/library/architecture.md:102-112 says attached output is forwarded server \u2192 bot; server/src/relay-server.ts:155-194 exposes only `/events` and `/sessions/:id/history`; server/src/session-registry.ts:204-208 makes history a bounded ring buffer."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission docs, handoff, transcript skeleton, and commit cc4f056780c0bf333f2484849d761dbddf3716c7. The bot now supports attach summaries, ambiguous-match handling, status/history output, and per-user forwarding, but the forwarding implementation polls a bounded history snapshot, so bursty agent output can be dropped before it reaches Feishu."
+}

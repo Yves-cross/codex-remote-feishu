@@ -1,0 +1,33 @@
+{
+  "featureId": "bot-command-parser",
+  "reviewedAt": "2026-03-31T22:26:33.169132+00:00",
+  "commitId": "17543ba87f5a2454290a1166f2415f61257d6097",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The parser, formatter, mocked Feishu gateway, and relay client scaffold are in place, but the feature does not work against the real relay API because the bot validates `/sessions` responses with the wrong schema.",
+    "issues": [
+      {
+        "file": "bot/src/relay.ts",
+        "line": 70,
+        "severity": "blocking",
+        "description": "listSessions() parses GET `/sessions` as `RelaySessionDetail[]`, which requires `historySize` and `lastMessage`. The relay server actually returns `SessionSummary[]` from `registry.listSessions()` without those fields (`server/src/session-registry.ts:220-223`), so real `/list` and `/attach` calls fail with an invalid-response error. The tests masked this by mocking detail payloads for `/sessions` in `bot/src/relay.test.ts:10-16`."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The feature-to-validation mapping is misleading: `bot-command-parser` is marked as fulfilling `VAL-BOT-001`, but that validation includes partial-match and ambiguous `/attach` behavior that this feature does not implement.",
+      "evidence": "`features.json:551-573` maps this feature to `VAL-BOT-001`; `validation-contract.md:166-169` says `/attach <name>` supports partial matching and rejects ambiguous matches; `bot/src/bot-service.ts:275-285` in commit `17543ba87f5a2454290a1166f2415f61257d6097` only checks exact `sessionId`/`displayName` equality."
+    },
+    {
+      "area": "services",
+      "observation": "Shared state does not document how to run the bot service even though this feature adds a runnable bot entrypoint and the architecture describes it as a first-class component.",
+      "evidence": "`architecture.md:74-84` documents the Feishu Bot service, `bot/src/index.ts:1-32` boots it, but `.factory/services.yaml:24-30` only defines `relay-server`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the handoff, transcript skeleton, skill guidance, and commit `17543ba87f5a2454290a1166f2415f61257d6097`. Result: fail, because the RelayClient uses the wrong schema for `/sessions`, which breaks core `/list` and `/attach` behavior against the real relay server."
+}
