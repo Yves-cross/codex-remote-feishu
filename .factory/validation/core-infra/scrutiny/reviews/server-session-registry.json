@@ -1,0 +1,34 @@
+{
+  "featureId": "server-session-registry",
+  "reviewedAt": "2026-03-31T13:41:42.813138Z",
+  "commitId": "8047a61",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit establishes the relay HTTP/WS servers, session registry, grace-period reconnect flow, and REST lookup/history endpoints, but one core state-machine bug remains and the history limit parser is too permissive for malformed queries.",
+    "issues": [
+      {
+        "file": "server/src/session-registry.ts",
+        "line": 229,
+        "severity": "blocking",
+        "description": "`applyStateTransition()` moves any `serverRequest` message into `waitingApproval` without checking that the session is currently `executing`. The feature description requires the `executing -> waitingApproval` transition only after a turn has started; as written, a stray or out-of-order approval frame can flip an idle session into `waitingApproval`, and a later `turn/completed` at line 235 will incorrectly increment `turnCount` even though no turn was ever running. That breaks the registry's core state-tracking contract and is not covered by the tests."
+      },
+      {
+        "file": "server/src/relay-server.ts",
+        "line": 366,
+        "severity": "non_blocking",
+        "description": "`parseLimitQuery()` uses `Number.parseInt()`, so malformed values such as `?limit=1.5`, `?limit=1e2`, or `?limit=5junk` are silently accepted as integers instead of being rejected with HTTP 400. The history endpoint therefore does not consistently return the proper status code/JSON error for invalid query strings."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The documented TypeScript workflow says to reuse shared types from the `shared/` workspace package, but the current package/tsconfig setup does not make `shared` importable from sibling source packages during a normal `tsc --noEmit` pass. That mismatch led the worker to investigate module resolution and duplicate core types locally, so the skill/mission guidance is misleading until the workspace wiring is clarified or fixed.",
+      "evidence": "AGENTS.md:29-35 requires 'Shared types in `shared/` package \u2014 import from there, don't duplicate'; shared/package.json:6-7 exports only `./dist` artifacts; shared/tsconfig.json:2-18 and server/tsconfig.json:2-17 have no project references/path mapping; the worker transcript skeleton records a failed `check-shared-import.ts` probe with `TS2307: Cannot find module 'shared' or its corresponding type declarations.`"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission docs, handoff, transcript skeleton, and commit 8047a61. The feature largely implements the requested registry/API behavior, but the state machine still allows invalid idle-to-waitingApproval transitions, and the history limit query accepts malformed values too loosely."
+}

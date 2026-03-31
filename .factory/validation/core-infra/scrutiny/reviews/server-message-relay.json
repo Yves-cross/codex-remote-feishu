@@ -1,0 +1,39 @@
+{
+  "featureId": "server-message-relay",
+  "reviewedAt": "2026-03-31T21:08:17+08:00",
+  "commitId": "750f4e7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The server covers the basic history, routing, attach, and callback behaviors, but two blocking protocol issues remain: it does not replay a detached state to reconnecting wrappers, and its new approval-input payload is not consumable by the wrapper.",
+    "issues": [
+      {
+        "file": "server/src/relay-server.ts",
+        "line": 341,
+        "severity": "blocking",
+        "description": "On register the server only replays attachment state when `attachedUser` is truthy. If a wrapper was previously attached, disconnects, and the user detaches while the session is offline, the wrapper keeps its old `attached=true` flag across reconnects (`wrapper/src/ws_client.rs:62-103` reuses the same `AtomicBool`, and `wrapper/src/ws_client.rs:221-228` only updates it on `attach-status-changed`). Because this branch sends nothing for the detached case, the wrapper can reconnect still thinking it is attached and will keep forwarding/accepting traffic even though the server state is detached."
+      },
+      {
+        "file": "server/src/relay-server.ts",
+        "line": 654,
+        "severity": "blocking",
+        "description": "`POST /sessions/:id/input` claims to support approval replies by transforming `{type:\"approval\", approved:boolean}` into `{type:\"input\", approval:boolean}`, but the wrapper never consumes that wire format. `wrapper/src/ws_client.rs:269-277` only turns `content`, `turn/start`, or `turn/interrupt` into codex stdin writes, so approval responses are silently ignored. That breaks the relay contract needed by the mission's approval flow (`features.json:109`, `validation-contract.md:187`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The reconnect contract for attachment state is not documented in AGENTS or architecture: the wrapper preserves its `attached` flag across reconnects and depends on the server to replay the current status, including `attached:false` after offline detaches.",
+      "evidence": "wrapper/src/ws_client.rs:62-103 keeps the same `attached` AtomicBool through reconnect loops, and wrapper/src/ws_client.rs:221-228 only mutates it when an `attach-status-changed` frame arrives; server/src/relay-server.ts:341-345 currently replays only the attached=true case."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The approval-response wire format between bot, server, and wrapper is underspecified. Mission/validation docs require approval replies to traverse the relay, but the wrapper only documents/implements `turn/start` and `turn/interrupt` as inbound commands.",
+      "evidence": "features.json:109 and validation-contract.md:187 require approval replies via the relay; server/src/relay-server.ts:654-658 emits `{type:\"input\", approval:boolean}`; wrapper/src/ws_client.rs:269-277 only handles `content`, `turn/start`, and `turn/interrupt`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. I reviewed the mission docs, handoff, transcript skeleton, and commit 750f4e7. The feature implements the requested REST endpoints/history buffering, but I found two blocking relay-contract issues: detached state is not replayed to reconnecting wrappers, and approval inputs are encoded in a format the wrapper ignores."
+}

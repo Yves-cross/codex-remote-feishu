@@ -16,6 +16,7 @@ commands:
   test: cd wrapper && cargo test && cd ../shared && npx vitest run && cd ../server && npx vitest run && cd ../bot && npx vitest run
   lint-server: cd server && npx eslint src/
   lint-bot: cd bot && npx eslint src/
+  lint-wrapper: tmpdir=$(mktemp -d) && cd "$tmpdir" && apt-get download rust-clippy >/dev/null && dpkg-deb -x rust-clippy_*.deb "$tmpdir/extract" && PATH="$tmpdir/extract/usr/bin:$PATH" cargo clippy --manifest-path "/data/dl/fschannel/wrapper/Cargo.toml" --all-targets --all-features -- -D warnings
   typecheck-server: cd server && npx tsc --noEmit
   typecheck-bot: cd bot && npx tsc --noEmit
   typecheck: cd shared && npx tsc --noEmit && cd ../server && npx tsc --noEmit && cd ../bot && npx tsc --noEmit
