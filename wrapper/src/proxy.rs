@@ -6,6 +6,8 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWrite
 use tokio::process::Command;
 use tracing::{debug, error, info};
 
+use crate::classifier::MessageClassifier;
+
 /// Forward lines from an async reader to an async writer, byte-for-byte.
 /// Each line is delimited by `\n`. The newline is included in the forwarded bytes.
 /// Returns when the reader reaches EOF.
@@ -13,6 +15,19 @@ pub async fn forward_lines(
     mut reader: impl AsyncBufRead + Unpin,
     mut writer: impl AsyncWrite + Unpin,
 ) -> io::Result<()> {
+    forward_lines_with_observer(&mut reader, &mut writer, |_| {}).await
+}
+
+async fn forward_lines_with_observer<R, W, F>(
+    reader: &mut R,
+    writer: &mut W,
+    mut observer: F,
+) -> io::Result<()>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+    F: FnMut(&[u8]),
+{
     let mut buf = Vec::with_capacity(4096);
     loop {
         buf.clear();
@@ -23,6 +38,7 @@ pub async fn forward_lines(
         }
         writer.write_all(&buf).await?;
         writer.flush().await?;
+        observer(&buf);
     }
     Ok(())
 }
@@ -122,7 +138,21 @@ where
 
     // Forward child stdout → wrapper stdout
     let stdout_handle = tokio::spawn(async move {
-        let result = forward_lines(BufReader::new(child_stdout), wrapper_stdout).await;
+        let mut classifier = MessageClassifier::default();
+        let mut child_stdout = BufReader::new(child_stdout);
+        let mut wrapper_stdout = wrapper_stdout;
+        let result =
+            forward_lines_with_observer(&mut child_stdout, &mut wrapper_stdout, |line| {
+                let classified = classifier.classify(line);
+                debug!(
+                    classification = ?classified.classification,
+                    method = ?classified.method,
+                    thread_id = ?classified.thread_id,
+                    turn_id = ?classified.turn_id,
+                    "classified codex stdout line"
+                );
+            })
+            .await;
         if let Err(ref e) = result {
             error!(error = %e, "stdout forwarding error");
         }
@@ -231,6 +261,7 @@ fn send_signal(pid: u32, signal: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::classifier::MessageClassification;
     use tokio::io::{duplex, AsyncReadExt};
 
     #[tokio::test]
@@ -384,5 +415,51 @@ mod tests {
         assert_eq!(buf, b"{\"msg\":1}\n{\"msg\":2}");
 
         handle.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_forward_lines_with_classifier_observer_preserves_bytes_and_tracks_context() {
+        let (mut input_writer, input_reader) = duplex(4096);
+        let (output_writer, mut output_reader) = duplex(4096);
+
+        let input = concat!(
+            "{\"method\":\"thread/started\",\"params\":{\"threadId\":\"thread-1\"}}\n",
+            "{\"method\":\"turn/started\",\"params\":{\"turnId\":\"turn-1\",\"threadId\":\"thread-1\"}}\n",
+            "{malformed json}\n"
+        );
+
+        let mut reader = BufReader::new(input_reader);
+        let mut writer = output_writer;
+        let mut classifier = MessageClassifier::default();
+        let mut observed = Vec::new();
+
+        let handle = tokio::spawn(async move {
+            forward_lines_with_observer(&mut reader, &mut writer, |line| {
+                observed.push(classifier.classify(line));
+            })
+            .await
+            .map(|_| observed)
+        });
+
+        input_writer.write_all(input.as_bytes()).await.unwrap();
+        drop(input_writer);
+
+        let mut forwarded = Vec::new();
+        output_reader.read_to_end(&mut forwarded).await.unwrap();
+        assert_eq!(forwarded, input.as_bytes());
+
+        let observed = handle.await.unwrap().unwrap();
+        assert_eq!(observed.len(), 3);
+        assert_eq!(
+            observed[0].classification,
+            MessageClassification::ThreadLifecycle
+        );
+        assert_eq!(
+            observed[1].classification,
+            MessageClassification::TurnLifecycle
+        );
+        assert_eq!(observed[2].classification, MessageClassification::Unknown);
+        assert_eq!(observed[2].thread_id.as_deref(), Some("thread-1"));
+        assert_eq!(observed[2].turn_id.as_deref(), Some("turn-1"));
     }
 }
