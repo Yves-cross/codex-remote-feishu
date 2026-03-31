@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-wrapper-stderr-tracing",
+  "reviewedAt": "2026-03-31T17:18:18.155923Z",
+  "commitId": "70001fd855ba1d9b3e046863e43e70003b8cfaa8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the prior failure, fix handoff, transcript skeleton, and commit 70001fd855ba1d9b3e046863e43e70003b8cfaa8. The fix reroutes wrapper tracing off stderr via initialize_tracing() into a per-process `/tmp/codex-relay-wrapper-<pid>.log` file with a sink fallback, while the proxy still reserves wrapper stderr for raw child passthrough. Updated integration tests now assert stderr stays clean and that degraded-mode / relay warnings appear in the wrapper log file, so the stderr-contamination issue from the original wrapper-stdio-proxy review is adequately addressed.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The shared guidance still says wrapper work should use tracing, but it does not record the wrapper-specific invariant that stderr is reserved for child-process passthrough and wrapper diagnostics must go to a separate sink. That omission already led to the original blocking regression and could be reintroduced in future wrapper work.",
+      "evidence": "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/AGENTS.md:24 requires `tracing` for structured logging; /data/dl/fschannel/.factory/skills/rust-worker/SKILL.md:34 says to use `tracing` for logging; /data/dl/fschannel/wrapper/src/main.rs:38-63 now redirects tracing to `/tmp/codex-relay-wrapper-<pid>.log` or `std::io::sink()` to keep stderr clean; /data/dl/fschannel/.factory/validation/core-infra/scrutiny/reviews/wrapper-stdio-proxy.json documents the original stderr-contamination failure."
+    }
+  ],
+  "addressesFailureFrom": "/data/dl/fschannel/.factory/validation/core-infra/scrutiny/reviews/wrapper-stdio-proxy.json",
+  "summary": "Pass. I reviewed the fix handoff, transcript skeleton, prior review, and commit 70001fd855ba1d9b3e046863e43e70003b8cfaa8. The implementation cleanly moves wrapper tracing off stderr and the updated tests verify child stderr passthrough remains uncontaminated, so the original stderr-tracing blocking issue is resolved."
+}

@@ -1,0 +1,31 @@
+{
+  "featureId": "fix-wrapper-ws-attached-state",
+  "reviewedAt": "2026-03-31T17:24:26.680144Z",
+  "commitId": "81b94c56b9a3a0affa458cc38abcb3b8d178ef86",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly resolves the prior reconnect-state flaw: relay disconnect handling now clears the wrapper's local attached flag, drains any queued outbound relay messages before reconnect, and requires a fresh server `attach-status-changed` replay before forwarding remote input or agent/serverRequest traffic again. The added unit and integration tests cover the disconnect cleanup path plus the reconnect-before-reattach gap that originally allowed stale backlog replay.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared architecture/docs still do not spell out the reconnect-time attachment invariant that this fix depends on: wrappers must clear local attachment state on relay disconnect and wait for a replayed `attach-status-changed` message to reattach after reconnect.",
+      "evidence": ".factory/library/architecture.md:158-160 says the server is the source of truth and sessions reconnect gracefully, and validation-contract.md:143 notes wrappers receive `attach-status-changed`, but neither document states the reconnect replay requirement. The implemented rule now lives in wrapper/src/ws_client.rs:367-376 and server/src/relay-server.ts:344-350."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Architecture terminology is still behind the implemented relay protocol: it describes wrapper forwarding as `approval` traffic even though the actual protocol and tests use `serverRequest` / `approval-response` naming.",
+      "evidence": ".factory/library/architecture.md:52,107,122 still say `approval`; validation-contract.md:58-61 and wrapper/src/proxy.rs:232-235 use `serverRequest`, and wrapper/src/ws_client.rs:244-253 handles `approval-response`."
+    },
+    {
+      "area": "skills",
+      "observation": "The rust-worker skill's procedure tracking is looser than the documented workflow: the skill requires a RED test step and manual verification, but this fix's handoff reports `followedProcedure: true` with `interactiveChecks: []`, and the transcript skeleton shows the new reconnect test being run only after ApplyPatch.",
+      "evidence": ".factory/skills/rust-worker/SKILL.md:24-29 and :41 require failing tests first plus manual verification; /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/handoffs/2026-03-31T16-03-31-059Z__fix-wrapper-ws-attached-state__e85379bd-f723-4b96-8431-a371cd11c6ed.json records `interactiveChecks: []` and `followedProcedure: true`; the transcript skeleton sequence shows ApplyPatch before the first targeted run of `disconnect_clears_attached_state_and_drops_stale_messages_until_reattached`."
+    }
+  ],
+  "addressesFailureFrom": "/data/dl/fschannel/.factory/validation/core-infra/scrutiny/reviews/wrapper-ws-client.json",
+  "summary": "Pass. I reviewed the mission docs, prior wrapper-ws-client failure review, worker handoff, transcript skeleton, and commit 81b94c56b9a3a0affa458cc38abcb3b8d178ef86. The fix adequately addresses the original blocking bug by clearing stale attachment state and dropping queued relay messages on disconnect, then requiring reattachment via the server's replay before forwarding resumes."
+}

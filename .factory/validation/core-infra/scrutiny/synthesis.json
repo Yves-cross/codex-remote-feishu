@@ -1,16 +1,16 @@
 {
   "milestone": "core-infra",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
-      "command": "cd \"/data/dl/fschannel\" && cargo test --manifest-path wrapper/Cargo.toml && npm --prefix shared run test && npm --prefix server run test && npm --prefix bot run test",
+      "command": "cd \"/data/dl/fschannel\" && cd wrapper && cargo test && cd ../shared && npx vitest run && cd ../server && npx vitest run && cd ../bot && npx vitest run",
       "exitCode": 0
     },
     "typecheck": {
       "passed": true,
-      "command": "cd \"/data/dl/fschannel\" && npx tsc --noEmit -p shared/tsconfig.json && npx tsc --noEmit -p server/tsconfig.json && npx tsc --noEmit -p bot/tsconfig.json",
+      "command": "cd \"/data/dl/fschannel\" && cd shared && npx tsc --noEmit && cd ../server && npx tsc --noEmit && cd ../bot && npx tsc --noEmit",
       "exitCode": 0
     },
     "lint": {
@@ -21,99 +21,65 @@
   },
   "reviewsSummary": {
     "total": 7,
-    "passed": 2,
-    "failed": 5,
-    "failedFeatures": [
-      "project-scaffold",
-      "wrapper-stdio-proxy",
-      "wrapper-ws-client",
-      "server-session-registry",
-      "server-message-relay"
-    ]
+    "passed": 7,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "project-scaffold",
-      "severity": "blocking",
-      "description": "shared/src/protocol.ts misclassifies non-tool item/started and item/completed messages as agentMessage instead of leaving them non-agent/unknown, so TypeScript consumers inherit a wrong Codex classification contract."
-    },
-    {
-      "featureId": "wrapper-stdio-proxy",
-      "severity": "blocking",
-      "description": "wrapper/src/main.rs writes tracing logs to stderr, contaminating the child stderr passthrough stream and breaking byte-for-byte proxy transparency whenever wrapper diagnostics are emitted."
-    },
-    {
-      "featureId": "wrapper-stdio-proxy",
-      "severity": "blocking",
-      "description": "wrapper/src/proxy.rs aborts stdout/stderr draining after a hardcoded 3 second timeout once the child exits, which can drop trailing proxied output under backpressure."
-    },
-    {
-      "featureId": "wrapper-ws-client",
-      "severity": "blocking",
-      "description": "wrapper/src/ws_client.rs preserves attached=true across relay disconnects, so the wrapper can queue an unbounded backlog of forwarded relay output while no socket is connected and later replay stale messages after reconnect."
-    },
-    {
-      "featureId": "server-session-registry",
-      "severity": "blocking",
-      "description": "server/src/session-registry.ts allows idle sessions to transition directly to waitingApproval on any serverRequest frame, which violates the required executing -> waitingApproval state machine and can incorrectly increment turnCount on a later turn/completed."
-    },
-    {
-      "featureId": "server-message-relay",
-      "severity": "blocking",
-      "description": "server/src/relay-server.ts only replays attach-status-changed when attachedUser is truthy, so reconnecting wrappers can retain stale attached state after an offline detach."
-    },
-    {
-      "featureId": "server-message-relay",
-      "severity": "blocking",
-      "description": "server/src/relay-server.ts encodes approval replies as {type:\"input\",approval:boolean}, but wrapper/src/ws_client.rs ignores that wire format, so approval responses never reach codex."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "services.yaml",
-      "description": "Added a reusable lint-wrapper command that extracts Debian's rust-clippy package into a temporary PATH and runs cargo clippy against the wrapper crate.",
-      "sourceFeature": "wrapper-config"
-    }
-  ],
+  "blockingIssues": [],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "rust-worker skill",
-      "suggestion": "Replace the unconditional `cargo clippy` step with guidance to use `.factory/services.yaml`'s `lint-wrapper` command or the documented rust-clippy extraction workaround when clippy is not on PATH.",
-      "evidence": "wrapper-stdio-proxy, wrapper-config, and wrapper-ws-client reviews all found workers rediscovering the same Debian environment limitation even though `.factory/library/environment.md` already documents it.",
+      "target": "AGENTS.md",
+      "suggestion": "Document the wrapper/relay invariants that now span multiple fixes: wrapper stderr is reserved for child passthrough, wrappers clear local attachment on relay disconnect and wait for an `attach-status-changed` replay (including `attached:false`) after reconnect, approval replies carry `requestId` plus a decision across the server-wrapper boundary, and the turn state machine is `idle -> executing -> waitingApproval -> idle`.",
+      "evidence": "Pass reviews for fix-wrapper-stderr-tracing, fix-wrapper-ws-attached-state, fix-server-state-transition, fix-server-reconnect-detach, and fix-approval-wire-format all noted that these rules are still fragmented across code and docs even though they are now required for correctness.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify how server and bot packages should consume `shared` protocol/constants during normal `tsc --noEmit` development, or explicitly document the current temporary exception when build-order constraints force local duplication.",
+      "evidence": "The original scrutiny round already found the shared import guidance incompatible with the current workspace wiring, and the fix-approval-wire-format review still observed `server/src/relay-server.ts` hard-coding `APPROVAL_RESPONSE_MESSAGE_TYPE` instead of importing it from `shared`.",
       "isSystemic": true
     },
     {
       "target": "ts-worker skill",
-      "suggestion": "Document an exception for scaffold/setup tasks whose feature contract explicitly allows zero tests so workers do not have to violate the skill's mandatory RED-test-first wording.",
-      "evidence": "The project-scaffold review found the feature correctly delivered setup work with no tests while still marking the current ts-worker procedure as followed, showing the skill text does not fit this task class.",
+      "suggestion": "Update the procedure for focused regression fixes to explain when targeted tests are sufficient, when manual `curl` verification is optional, and when a worker may complete a small cross-language protocol alignment without bouncing back to the orchestrator.",
+      "evidence": "The fix-server-reconnect-detach and fix-approval-wire-format reviews both passed, but each review noted the current ts-worker wording still assumes RED-first/manual API verification and says Rust protocol changes should return to the orchestrator.",
       "isSystemic": true
     },
     {
-      "target": "AGENTS.md",
-      "suggestion": "Clarify the current TypeScript workspace import expectations for the `shared` package (or required build/reference setup) before instructing workers to always import shared types directly from `shared`.",
-      "evidence": "The server-session-registry review found the existing guidance to import from `shared` conflicts with the current package exports/tsconfig wiring, which led the worker to probe module resolution and duplicate core types locally.",
+      "target": "rust-worker skill",
+      "suggestion": "Add wrapper-specific guidance that `tracing` must never write to stderr in the wrapper proxy, and clarify that targeted regression tests can be the primary verification path for narrowly scoped wrapper fixes.",
+      "evidence": "The fix-wrapper-stderr-tracing and fix-wrapper-ws-attached-state reviews both surfaced gaps between the generic rust-worker procedure and the wrapper proxy's actual invariants, even though the fixes themselves were correct.",
       "isSystemic": true
     },
     {
-      "target": "AGENTS.md",
-      "suggestion": "Add a protocol-compatibility rule that classification tables, attachment reconnect semantics, and approval-response wire formats must be updated consistently across Rust, shared TypeScript, and mission contracts in the same change.",
-      "evidence": "Reviews found mismatches in shared vs Rust message classification (project-scaffold and wrapper-message-classifier), reconnect attachment expectations (wrapper-ws-client and server-message-relay), and approval reply payload format (server-message-relay).",
-      "isSystemic": true
+      "target": "validation-contract.md",
+      "suggestion": "Resolve the conflict between `VAL-WRAP-006`'s fixed `<=5s` exit expectation and the accepted `fix-wrapper-drain-timeout` behavior of draining stdout/stderr until EOF after child exit.",
+      "evidence": "The fix-wrapper-drain-timeout review passed because the wrapper now waits for descendant-held stdout/stderr to close, which can legitimately outlive the old `<=5s` wording in the validation contract.",
+      "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "architecture.md still uses `approval` and `online/offline/evicted` terminology.",
-      "reason": "duplicate of the broader protocol-compatibility guidance recommendation above."
+      "observation": "Architecture/library entries still use older `approval` terminology and omit some current message categories such as `unknown` and `threadLifecycle`.",
+      "reason": "duplicate of the broader protocol-invariants guidance recommendation above."
     },
     {
-      "observation": "features.json and validation-contract.md disagree on whether missing relay configuration should fail fast or degrade gracefully.",
-      "reason": "out-of-scope mission-contract inconsistency; it does not fit the AGENTS/skill guidance bucket and was not safe to rewrite during scrutiny."
+      "observation": "Reconnect-time attachment replay and detached-state recovery are not explicitly documented in shared knowledge files.",
+      "reason": "duplicate of the broader protocol-invariants guidance recommendation above."
     },
     {
-      "observation": "Library documentation omits explicit attachment-state behavior across relay reconnects.",
-      "reason": "documentation-only library update deferred under the current no-doc-edit task constraints."
+      "observation": "Shared docs do not separately describe the `idle`/`executing`/`waitingApproval` turn-state machine.",
+      "reason": "duplicate of the broader protocol-invariants guidance recommendation above."
+    },
+    {
+      "observation": "Individual fix reviews noted handoff/procedure mismatches for RED testing and manual verification.",
+      "reason": "consolidated into the aggregated ts-worker and rust-worker skill recommendations above."
+    },
+    {
+      "observation": "The explicit approval-response relay payload is not yet described in architecture/library docs.",
+      "reason": "duplicate of the broader protocol-invariants guidance recommendation above."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/core-infra/scrutiny/synthesis.round1.json"
 }

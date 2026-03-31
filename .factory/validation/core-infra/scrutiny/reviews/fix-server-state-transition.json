@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-server-state-transition",
+  "reviewedAt": "2026-03-31T17:17:53Z",
+  "commitId": "cb28ecb5f37425da59f33563e8d2e4b2d8eb9d93",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly addresses the prior blocking registry bug: idle `serverRequest` frames are ignored before they mutate state/history, `waitingApproval` is no longer entered from `idle`, and `turnCount` now stays unchanged for the invalid idle-approval path. The added registry and relay-server tests cover the regression and update adjacent scenarios to begin from a valid `turn/started` lifecycle.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared docs still describe relay session state only in terms of connection lifecycle (`online`/`offline`/`evicted`) and do not document the separate turn-state machine (`idle`/`executing`/`waitingApproval`) or its valid transitions. Future workers still have to infer those rules from the code.",
+      "evidence": ".factory/library/architecture.md:64-66,98,158-160 document only `online`/`offline`/`evicted`; shared/src/types.ts:6 defines `idle | executing | waitingApproval`, and server/src/session-registry.ts:334-363 contains the actual turn-state transition rules."
+    }
+  ],
+  "addressesFailureFrom": "/data/dl/fschannel/.factory/validation/core-infra/scrutiny/reviews/server-session-registry.json",
+  "summary": "Pass. I reviewed the mission docs, prior `server-session-registry` failure review, worker handoff, transcript skeleton, and commit cb28ecb5f37425da59f33563e8d2e4b2d8eb9d93. The change fixes the original blocking idle-to-waitingApproval transition bug, preserves `turnCount` on invalid idle approval/completion sequences, and adds focused server-layer regression coverage; I found no new blocking issues in the fix."
+}
