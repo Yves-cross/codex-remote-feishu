@@ -1,0 +1,10 @@
+{
+  "name": "codex-relay",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "bot"
+  ]
+}
