@@ -1,7 +1,7 @@
 {
   "milestone": "feishu-bot",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,33 +20,14 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 4,
-    "failed": 1,
-    "failedFeatures": [
-      "fix-bot-approval-cancellation"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "fix-bot-approval-cancellation",
-      "severity": "blocking",
-      "description": "The fix resolves the original cancelled-approval prompt misclassification, but `bot/src/bot-service.ts` now rethrows unexpected forwarding errors out of the fire-and-forget timer path (`void this.pollForwarding(...)`), which can crash the bot on Node 22 via an unhandled promise rejection."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated `.factory/library/architecture.md` to document the cursor-based `/users/:id/events` feed and attach-time `userEventCursor` contract now used for lossless attached forwarding.",
-      "sourceFeature": "fix-bot-lossless-forwarding"
-    },
-    {
-      "target": "library",
-      "description": "Updated `.factory/library/architecture.md` to note the bot's in-memory per-user/per-session notification route map that scopes detached background notifications.",
-      "sourceFeature": "fix-bot-notification-isolation"
-    }
-  ],
+  "blockingIssues": [],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/feishu-bot/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/feishu-bot/scrutiny/synthesis.round2.json"
 }

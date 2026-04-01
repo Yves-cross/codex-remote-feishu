@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-bot-polling-error-handling",
+  "reviewedAt": "2026-04-01T00:48:25Z",
+  "commitId": "9ca6280c6faa0411847ac21c1d6872e09c3b7ac8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed mission/shared-state docs, the prior failing review, both handoffs, both transcript skeletons, the ts-worker skill, and commits bc5eae629795c3f248d1d114dd279dd242684464 and 9ca6280c6faa0411847ac21c1d6872e09c3b7ac8. The original approval-cancellation fix still clears queued approvals before processing the next prompt via the synchronous forwarding drain in bot/src/bot-service.ts:503-531, and the follow-up fix directly addresses the prior blocking regression by routing the timer callback through runScheduledForwarding() at bot/src/bot-service.ts:621-644 so unexpected poll/send failures are caught and logged instead of escaping the fire-and-forget timer path. The added regression test at bot/src/bot-service.test.ts:376-441 forces listUserEvents() to reject, asserts no unhandledRejection is emitted, confirms the error is logged, and verifies forwarding continues polling afterward. I did not find new blocking or non-blocking correctness issues within the reviewed scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/data/dl/fschannel/.factory/validation/feishu-bot/scrutiny/reviews/fix-bot-approval-cancellation.json",
+  "summary": "Pass. Commit 9ca6280c6faa0411847ac21c1d6872e09c3b7ac8 adequately fixes the prior blocking unhandled-rejection bug introduced by commit bc5eae629795c3f248d1d114dd279dd242684464 without regressing the approval-cancellation behavior; no blocking issues found."
+}

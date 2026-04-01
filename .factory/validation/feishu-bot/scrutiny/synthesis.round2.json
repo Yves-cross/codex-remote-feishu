@@ -1,0 +1,52 @@
+{
+  "milestone": "feishu-bot",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd \"/data/dl/fschannel/wrapper\" && cargo test && cd \"/data/dl/fschannel/shared\" && npx vitest run && cd \"/data/dl/fschannel/server\" && npx vitest run && cd \"/data/dl/fschannel/bot\" && npx vitest run",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd \"/data/dl/fschannel/shared\" && npx tsc --noEmit && cd \"/data/dl/fschannel/server\" && npx tsc --noEmit && cd \"/data/dl/fschannel/bot\" && npx tsc --noEmit",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cd \"/data/dl/fschannel/server\" && npx eslint src/ && cd \"/data/dl/fschannel/bot\" && npx eslint src/ && tmpdir=$(mktemp -d) && cd \"$tmpdir\" && apt-get download rust-clippy >/dev/null && dpkg-deb -x rust-clippy_*.deb \"$tmpdir/extract\" && PATH=\"$tmpdir/extract/usr/bin:$PATH\" cargo clippy --manifest-path \"/data/dl/fschannel/wrapper/Cargo.toml\" --all-targets --all-features -- -D warnings",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": [
+      "fix-bot-approval-cancellation"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "fix-bot-approval-cancellation",
+      "severity": "blocking",
+      "description": "The fix resolves the original cancelled-approval prompt misclassification, but `bot/src/bot-service.ts` now rethrows unexpected forwarding errors out of the fire-and-forget timer path (`void this.pollForwarding(...)`), which can crash the bot on Node 22 via an unhandled promise rejection."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated `.factory/library/architecture.md` to document the cursor-based `/users/:id/events` feed and attach-time `userEventCursor` contract now used for lossless attached forwarding.",
+      "sourceFeature": "fix-bot-lossless-forwarding"
+    },
+    {
+      "target": "library",
+      "description": "Updated `.factory/library/architecture.md` to note the bot's in-memory per-user/per-session notification route map that scopes detached background notifications.",
+      "sourceFeature": "fix-bot-notification-isolation"
+    }
+  ],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/feishu-bot/scrutiny/synthesis.round1.json"
+}
