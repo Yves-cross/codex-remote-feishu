@@ -1,0 +1,89 @@
+{
+  "surface": "relay-bot-integration",
+  "groupId": "cross-shutdown-rerun",
+  "testedAt": "2026-04-01T08:12:18.545Z",
+  "isolation": {
+    "surface": "relay-bot-integration",
+    "repoRoot": "/data/dl/fschannel",
+    "missionDir": "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7",
+    "ports": {
+      "relayPort": 9510,
+      "relayApiPort": 9511
+    },
+    "workspaces": "/tmp/codex-relay-cross-shutdown-*",
+    "feishuDelivery": "mocked messenger only; no real Feishu network access"
+  },
+  "toolsUsed": [
+    "node"
+  ],
+  "commands": [
+    {
+      "command": "node \"/tmp/cross-shutdown-rerun.mjs\"",
+      "exitCode": 0,
+      "observation": "An isolated real server/wrapper/bot harness on ports 9510/9511 attached a mocked Feishu user, sent SIGTERM to the server, confirmed the wrapper kept local stdio proxying after relay loss, and observed that no shutdown message reached the attached chat while BotService only logged repeated relay-unavailable polling errors."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-020",
+      "title": "Graceful shutdown propagation across server, wrapper, and bot",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Inspect relay-bot integration coverage before rerun",
+          "expected": "Existing coverage includes SIGTERM shutdown propagation or the gap is identified",
+          "observed": "bot/src/integration-core-flows.test.ts covers reconnect/offline flows but does not include a SIGTERM shutdown propagation scenario."
+        },
+        {
+          "action": "Start an isolated relay server, wrapper, and BotService with mocked Feishu delivery, then attach the user to the wrapper session",
+          "expected": "The session registers and the user attaches successfully",
+          "observed": "The wrapper registered as session cross-shutdown-rerun-1775031137586-46e28c on ports 9510/9511 and the mocked chat received the normal attach summary."
+        },
+        {
+          "action": "Send SIGTERM to the server process",
+          "expected": "Graceful shutdown propagates to the wrapper and bot, with user-facing shutdown notification",
+          "observed": "The server exited immediately with signal SIGTERM and the API became unavailable, but no shutdown notification reached the attached chat."
+        },
+        {
+          "action": "Observe bot behavior after server shutdown",
+          "expected": "Bot informs the attached user about shutdown without noisy failures",
+          "observed": "No user-facing shutdown message was sent; BotService only emitted repeated background 'Relay server is unavailable, please try again later' polling errors."
+        },
+        {
+          "action": "Send a local prompt through the wrapper after the server is gone",
+          "expected": "Wrapper continues local stdio proxying in degraded mode",
+          "observed": "The mock codex input log recorded the local turn/start prompt and wrapper stdout emitted turn/started, agentMessage echo, and turn/completed frames after server shutdown."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-shutdown-rerun/shutdown-check.json"
+        ],
+        "botMessagesAfterSignal": "none",
+        "wrapperLocalProxy": "The post-shutdown local turn/start prompt was logged by mock codex and echoed back on wrapper stdout.",
+        "consoleErrors": "Repeated background forwarding errors reported 'Relay server is unavailable, please try again later'; no shutdown notice was delivered to the attached user."
+      },
+      "issues": "features.json still marks robustness-graceful-shutdown as pending and assigns it to VAL-CROSS-020. Current behavior lacks the required end-to-end shutdown propagation, so this assertion remains blocked pending that feature."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Existing relay-bot integration coverage does not include a server SIGTERM shutdown scenario.",
+      "resolved": true,
+      "resolution": "Ran a dedicated isolated Node harness with mocked Feishu delivery and captured fresh evidence in shutdown-check.json.",
+      "affectedAssertions": [
+        "VAL-CROSS-020"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The pending robustness-graceful-shutdown feature is still required for graceful shutdown propagation; the current build does not notify attached users or otherwise propagate shutdown intent through the bot path.",
+      "affectedAssertions": [
+        "VAL-CROSS-020"
+      ],
+      "quickFixAttempted": "Retested with an isolated real wrapper/server/bot harness on ports 9510/9511. The wrapper kept local proxying after server SIGTERM, but no user-facing shutdown message appeared and BotService only logged relay-unavailable polling errors."
+    }
+  ],
+  "summary": "Retested 1 assertion: VAL-CROSS-020 is blocked because graceful shutdown propagation is still deferred to the pending robustness-graceful-shutdown feature."
+}

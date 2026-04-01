@@ -1,0 +1,58 @@
+{
+  "surface": "relay-bot-integration",
+  "groupId": "cross-rerun",
+  "testedAt": "2026-04-01T07:41:42.657Z",
+  "isolation": {
+    "surface": "relay-bot-integration",
+    "repoRoot": "/data/dl/fschannel",
+    "missionDir": "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7",
+    "ports": "ephemeral only",
+    "workspaces": "/tmp/codex-relay-cross-rerun-*",
+    "feishuDelivery": "mocked messenger only; no real Feishu network access"
+  },
+  "toolsUsed": [
+    "vitest",
+    "node"
+  ],
+  "commands": [
+    {
+      "command": "npm --prefix \"/data/dl/fschannel/shared\" run build && npm --prefix \"/data/dl/fschannel/server\" run build && npm --prefix \"/data/dl/fschannel/bot\" run build && cargo build --manifest-path \"/data/dl/fschannel/wrapper/Cargo.toml\"",
+      "exitCode": 0,
+      "observation": "Build prerequisites completed successfully; full output saved in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/build-prereqs.txt."
+    },
+    {
+      "command": "npm --prefix \"/data/dl/fschannel/bot\" exec -- vitest run \"src/integration-core-flows.test.ts\" -t \"notifies the attached user when the wrapper disconnects and resumes forwarding after reconnect\"",
+      "exitCode": 0,
+      "observation": "The targeted reconnect integration test passed (1 passed, 5 skipped); output saved in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/vitest-integration-core-flows.txt."
+    },
+    {
+      "command": "node \"/tmp/cross-rerun-check.mjs\" > \"/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/manual-cross-rerun-check.json\"",
+      "exitCode": 0,
+      "observation": "An isolated manual relay-bot end-to-end harness captured detach/history evidence for VAL-CROSS-004 and disconnect/grace/reconnect/expiry evidence for VAL-CROSS-014 in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/manual-cross-rerun-check.json."
+    }
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Detach stops message forwarding end-to-end",
+      "status": "pass",
+      "reason": "After /detach, the local prompt still reached mock codex stdin and echoed on wrapper stdout, proving the wrapper kept local proxying active; the resulting agentMessage delta was retained in relay history, and Feishu never received that post-detach content (only the brief turn-completed notification).",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/manual-cross-rerun-check.json"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-014",
+      "title": "Wrapper disconnect \u2014 grace period, user notification, reconnect resume",
+      "status": "pass",
+      "reason": "A forced wrapper disconnect put the session into grace with online=false and graceExpiresAt set, notified the attached chat that the session went offline, then resumed on the same session ID with the same executing state, attached user, and preserved pre-disconnect history; after a later full stop, the session was evicted with HTTP 404 once the grace window expired.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/manual-cross-rerun-check.json",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-rerun/vitest-integration-core-flows.txt"
+      ]
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Retested 2 assertions: 2 passed, 0 failed, 0 blocked."
+}

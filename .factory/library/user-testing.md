@@ -87,4 +87,5 @@ Additional surface guidance:
   - Prefer the integration suite's ephemeral ports. If you use the shared relay on `9500/9501`, reserve unique session names, user IDs, and temp workspaces for your validator only.
   - Use temp directories under `/tmp` for mock codex scripts and logs, and clean up any child processes you start.
   - Never call the real Feishu network; keep messenger/SDK behavior mocked or recorded locally.
+  - Coverage gap: `bot/src/integration-core-flows.test.ts` does not yet cover server `SIGTERM` shutdown propagation, so `VAL-CROSS-020` should be retested with a dedicated isolated Node harness on reserved ports until `robustness-graceful-shutdown` lands.
 - Evidence to capture: messenger outputs, relay session snapshots, logged wrapper inputs, reconnect/offline state observations, and any approval or attachment transitions needed to prove the assigned assertions.
