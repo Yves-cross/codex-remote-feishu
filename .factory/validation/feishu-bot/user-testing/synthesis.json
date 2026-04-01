@@ -1,0 +1,67 @@
+{
+  "milestone": "feishu-bot",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 34,
+    "passed": 29,
+    "failed": 5,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-BOT-001",
+    "VAL-BOT-002",
+    "VAL-BOT-003",
+    "VAL-BOT-004",
+    "VAL-BOT-005",
+    "VAL-BOT-006",
+    "VAL-BOT-007",
+    "VAL-BOT-009",
+    "VAL-BOT-011",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003",
+    "VAL-CROSS-005",
+    "VAL-CROSS-006",
+    "VAL-CROSS-007",
+    "VAL-CROSS-008",
+    "VAL-CROSS-009",
+    "VAL-CROSS-010",
+    "VAL-CROSS-011",
+    "VAL-CROSS-012",
+    "VAL-CROSS-013",
+    "VAL-CROSS-015",
+    "VAL-CROSS-016",
+    "VAL-CROSS-017",
+    "VAL-CROSS-018",
+    "VAL-CROSS-019",
+    "VAL-CROSS-021",
+    "VAL-CROSS-022",
+    "VAL-CROSS-023"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-BOT-008",
+      "reason": "Empty agent messages still fall back to raw JSON text instead of being suppressed."
+    },
+    {
+      "id": "VAL-BOT-010",
+      "reason": "Relay-unreachable bot commands surface the raw `fetch failed` message instead of a clearer user-facing relay-down error."
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "reason": "Post-detach agent output stopped reaching Feishu, but the relay history did not retain the post-detach delta."
+    },
+    {
+      "id": "VAL-CROSS-014",
+      "reason": "The disconnect/reconnect flow never notified the attached user that the wrapper disconnected."
+    },
+    {
+      "id": "VAL-CROSS-020",
+      "reason": "SIGTERM shutdown was not graceful: the server required SIGKILL and the attached bot user received no shutdown notification."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

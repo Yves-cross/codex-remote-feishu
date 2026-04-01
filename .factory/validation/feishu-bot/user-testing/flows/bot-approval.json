@@ -1,0 +1,73 @@
+{
+  "surface": "bot-service",
+  "groupId": "bot-approval",
+  "assertions": [
+    {
+      "id": "VAL-BOT-005",
+      "status": "pass",
+      "reason": "Approval prompts include action details and y/n instructions; `y` sends approval-granted, `n` sends approval-denied, non-y/n replies re-prompt, and a cancelled request clears pending state so the next prompt is forwarded.",
+      "evidence": [
+        "feishu-bot/bot-approval/vitest-bot-service.txt",
+        "feishu-bot/bot-approval/bot-approval-scenarios.json"
+      ]
+    },
+    {
+      "id": "VAL-BOT-010",
+      "status": "fail",
+      "reason": "Session-not-found errors surface as `Session not found` and malformed forwarding payloads are logged without crashing the bot, but a relay-unreachable `/list` surfaces the raw message `fetch failed` instead of a clearer relay-down error.",
+      "evidence": [
+        "feishu-bot/bot-approval/vitest-bot-service.txt",
+        "feishu-bot/bot-approval/vitest-relay.txt",
+        "feishu-bot/bot-approval/bot-approval-scenarios.json"
+      ]
+    },
+    {
+      "id": "VAL-BOT-011",
+      "status": "pass",
+      "reason": "Menu `stop`, `detach`, and `list` route through the same bot handlers and replies as text commands, unknown keys respond with `Unknown menu action \"mystery\".`, and menu events resolve user context from `open_id`.",
+      "evidence": [
+        "feishu-bot/bot-approval/vitest-bot-service.txt",
+        "feishu-bot/bot-approval/vitest-feishu.txt",
+        "feishu-bot/bot-approval/bot-approval-scenarios.json"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-009",
+      "status": "pass",
+      "reason": "`/stop` while detached replies `Attach to a session first with /attach <session>.`; `/stop` on an attached idle session replies `Session [workspace-stop] is already idle; nothing to stop.` and does not send an interrupt.",
+      "evidence": [
+        "feishu-bot/bot-approval/vitest-bot-service.txt",
+        "feishu-bot/bot-approval/bot-approval-scenarios.json"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "vitest",
+    "node"
+  ],
+  "commands": [
+    {
+      "command": "\"/data/dl/fschannel/node_modules/.bin/vitest\" run \"/data/dl/fschannel/bot/src/bot-service.test.ts\" --reporter=verbose",
+      "exitCode": 0,
+      "observation": "17 tests passed, including approval handling, /stop edge cases, menu routing, relay error replies, and forwarding poll recovery."
+    },
+    {
+      "command": "\"/data/dl/fschannel/node_modules/.bin/vitest\" run \"/data/dl/fschannel/bot/src/relay.test.ts\" --reporter=verbose",
+      "exitCode": 0,
+      "observation": "6 tests passed, including 404 relay error surfacing and malformed API response rejection."
+    },
+    {
+      "command": "\"/data/dl/fschannel/node_modules/.bin/vitest\" run \"/data/dl/fschannel/bot/src/feishu.test.ts\" --reporter=verbose",
+      "exitCode": 0,
+      "observation": "2 tests passed, covering menu event dispatch and malformed/non-text Feishu event rejection."
+    },
+    {
+      "command": "node --input-type=module <inline scenario script> > /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-approval/bot-approval-scenarios.json",
+      "exitCode": 0,
+      "observation": "Captured exact bot messages/calls for approval, /stop, menu, relay-unreachable, 404, and malformed-forwarding scenarios."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions for bot-service: 3 passed (VAL-BOT-005, VAL-BOT-011, VAL-CROSS-009) and 1 failed (VAL-BOT-010 because relay-unreachable user messaging is the raw `fetch failed`)."
+}

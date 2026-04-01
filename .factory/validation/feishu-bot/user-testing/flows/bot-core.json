@@ -1,0 +1,60 @@
+{
+  "surface": "bot-service",
+  "groupId": "bot-core",
+  "assertions": [
+    {
+      "id": "VAL-BOT-001",
+      "status": "pass",
+      "reason": "bot/src/commands.test.ts proved /list, /attach, /detach, /stop, /status, /history, prompt parsing, and unknown-command handling; bot/src/bot-service.test.ts proved /list output, unique partial /attach, ambiguous /attach rejection, /status + /history on the active attachment, /detach stopping forwarding, /stop edge handling, and detached unknown-command/prompt errors; bot/src/relay.test.ts proved the relay client wrappers used by those commands.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/vitest-bot-core.log"
+      ]
+    },
+    {
+      "id": "VAL-BOT-002",
+      "status": "pass",
+      "reason": "bot/src/bot-service.test.ts proved successful /attach replies include the session state, turn count, and last agent-message preview; the inline runtime check captured the same summary text for an attached session.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/vitest-bot-core.log",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/inline-checks.json"
+      ]
+    },
+    {
+      "id": "VAL-BOT-004",
+      "status": "pass",
+      "reason": "bot/src/commands.test.ts proved non-slash text is parsed as a prompt with newlines preserved, bot/src/bot-service.test.ts proved detached prompts are rejected with attach guidance, and the inline runtime check showed an attached multi-line prompt was forwarded intact to session-1.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/vitest-bot-core.log",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/inline-checks.json"
+      ]
+    },
+    {
+      "id": "VAL-BOT-008",
+      "status": "fail",
+      "reason": "bot/src/formatter.test.ts and the inline formatter checks proved long plain text is split and code-block chunks keep markdown triple-backtick fences, but the inline runtime check showed an empty agent message still sends a chat message containing raw JSON instead of suppressing output, so the assertion as written does not hold.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/vitest-bot-core.log",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/bot-core/inline-checks.json"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "vitest",
+    "node"
+  ],
+  "commands": [
+    {
+      "command": "npm --prefix /data/dl/fschannel/bot test -- --reporter=verbose src/commands.test.ts src/formatter.test.ts src/relay.test.ts src/bot-service.test.ts",
+      "exitCode": 0,
+      "observation": "32 tests passed across commands, formatter, relay, and bot-service coverage relevant to VAL-BOT-001/002/004/008."
+    },
+    {
+      "command": "node --input-type=module (inline validation script writing evidence/feishu-bot/bot-core/inline-checks.json)",
+      "exitCode": 0,
+      "observation": "Detached-prompt rejection, attach summary, multi-line prompt forwarding, long-message splitting, and code-block chunking passed; the empty-agent-message suppression check failed because BotService sent raw JSON text instead of suppressing the message."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Validated 4 assertions for bot-service: VAL-BOT-001 passed, VAL-BOT-002 passed, VAL-BOT-004 passed, and VAL-BOT-008 failed because empty agent messages were forwarded as raw JSON instead of being suppressed."
+}

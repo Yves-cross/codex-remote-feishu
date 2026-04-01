@@ -1,0 +1,81 @@
+{
+  "surface": "relay-bot-integration",
+  "groupId": "cross-reconnect",
+  "assertions": [
+    {
+      "id": "VAL-CROSS-014",
+      "status": "fail",
+      "reason": "Disconnect/resume behavior was only partially verified: the attached chat never received a disconnect notification.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-015",
+      "status": "pass",
+      "reason": "A live three-wrapper run showed all sessions in /list, delivered prompts and interrupts only to the attached session, kept non-attached wrapper output out of chat, and after switching attachments forwarded only the new session while the previous session stayed local/history-only.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/vitest-integration-core-flows.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-016",
+      "status": "pass",
+      "reason": "Manual ordering checks preserved three numbered agent messages in the same order through relay history and chat delivery, and two numbered prompts stayed in order from bot input through wrapper stdin and echoed chat output.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/vitest-integration-core-flows.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-017",
+      "status": "pass",
+      "reason": "Across the forced reconnect, [cross-reconnect-1775008186787-5ad6a6-b] cross-reconnect-1775008186787-5ad6a6-before-reconnect and cross-reconnect-1775008186787-5ad6a6-after-reconnect each appeared exactly once in chat and exactly once in relay history, showing no duplicate delivery around the reconnect boundary.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json",
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/vitest-integration-core-flows.txt"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-018",
+      "status": "pass",
+      "reason": "After the forced network drop recovered, the server session stayed online/attached to the same user, the wrapper replayed attached=true, the bot still targeted the same session, a recovery prompt reached only that wrapper, and the message buffer retained the pre-drop, post-drop, and recovery-echo entries exactly once.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json"
+      ]
+    },
+    {
+      "id": "VAL-CROSS-023",
+      "status": "pass",
+      "reason": "The /attach cross-reconnect-1775008186787-5ad6a6-b switch produced an attached=false relay update on cross-reconnect-1775008186787-5ad6a6-a, an attached=true update on cross-reconnect-1775008186787-5ad6a6-b, moved the bot attachment to the new session, and only [cross-reconnect-1775008186787-5ad6a6-b] cross-reconnect-1775008186787-5ad6a6-after-switch-b reached chat while cross-reconnect-1775008186787-5ad6a6-after-switch-a stayed out of chat.",
+      "evidence": [
+        "/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json"
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "vitest",
+    "node"
+  ],
+  "commands": [
+    {
+      "command": "npm --prefix \"/data/dl/fschannel/shared\" run build && npm --prefix \"/data/dl/fschannel/server\" run build && npm --prefix \"/data/dl/fschannel/bot\" run build && cargo build --manifest-path \"/data/dl/fschannel/wrapper/Cargo.toml\"",
+      "exitCode": 0,
+      "observation": "Build prerequisites completed successfully for shared, server, bot, and wrapper; full output is saved in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/build-prereqs.txt."
+    },
+    {
+      "command": "npm --prefix \"/data/dl/fschannel/bot\" exec -- vitest run \"src/integration-core-flows.test.ts\" -t \"keeps multiple sessions isolated, preserves ordering, and avoids duplicates across reconnects\"",
+      "exitCode": 0,
+      "observation": "The targeted integration-core-flows scenario passed (1 passed, 4 skipped), covering reconnect duplication protection plus multi-session isolation/order evidence; output is saved in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/vitest-integration-core-flows.txt."
+    },
+    {
+      "command": "node \"/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/cross-reconnect-check.mjs\" > \"/home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json\"",
+      "exitCode": 0,
+      "observation": "A live mocked three-wrapper relay-bot run captured /list, attach switch, reconnect/grace/expiry, and recovery consistency evidence; detailed output is saved in /home/dl/.factory/missions/33afaa22-b81b-48d3-b9b3-131d99d630c7/evidence/feishu-bot/cross-reconnect/manual-cross-reconnect-check.json."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Validated 6 reconnect/isolation assertions: 5 passed and 1 failed. Failure: VAL-CROSS-014."
+}
