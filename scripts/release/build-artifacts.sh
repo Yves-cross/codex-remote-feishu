@@ -48,7 +48,8 @@ for platform in "${platforms[@]}"; do
     CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -o "${staging_dir}/${name}${extension}" "${package}"
   done
 
-  cp README.md install.sh .env.example "${staging_dir}/"
+  cp README.md DEVELOPER.md install.sh setup.sh setup.ps1 .env.example "${staging_dir}/"
+  cp -R deploy "${staging_dir}/"
 
   if [[ "${goos}" == "windows" ]]; then
     archive_path="${output_dir}/${package_name}.zip"

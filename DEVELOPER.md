@@ -2,26 +2,30 @@
 
 ## 项目定位
 
-这个仓库当前维护的是公开可发布的 Go 实现，模块路径为：
+当前仓库维护的是公开可发布的 Go 版本：
 
 ```text
 github.com/kxn/codex-remote-feishu
 ```
 
-不要再把旧的 `fschannel`、旧的 Node/Rust 目录结构、或本机绝对路径带回主分支。
+不要再把旧的 `fschannel` 命名、旧的 Node/Rust 结构、或本机绝对路径带回仓库。
 
-## 主要二进制
+## 二进制与职责
 
 - `relayd`
-  - 常驻服务
-  - 负责 relay websocket、orchestrator、Feishu gateway、状态 API
+  - relay websocket 服务端
+  - orchestrator
+  - Feishu gateway
+  - 状态 API
 - `relay-wrapper`
-  - Codex 可执行包装器
-  - 负责 native app-server 协议翻译和 relay websocket 上报
+  - 真实 `codex` 的包装器
+  - native app-server -> canonical protocol 适配
 - `relay-install`
-  - 写配置并接管编辑器入口
+  - 安装器
+  - 写配置
+  - patch VS Code 入口
 
-## 目录结构
+## 目录
 
 ```text
 cmd/
@@ -29,20 +33,34 @@ cmd/
   relay-wrapper/
   relay-install/
 
+deploy/
+  docker/
+  feishu/
+
+docs/
+
 internal/
   adapter/
   app/
   config/
   core/
-  logging/
 
 testkit/
-  harness/
-  mockcodex/
-  mockfeishu/
-
-docs/
 ```
+
+## 用户入口
+
+- `setup.sh`
+  - macOS / Linux 的交互安装入口
+  - 无参数时默认 `-interactive`
+- `setup.ps1`
+  - Windows PowerShell 的交互安装入口
+  - 无参数时默认 `-interactive`
+- `install.sh`
+  - Linux 开发 / 运维辅助脚本
+  - 提供 `bootstrap/start/stop/status/logs/build`
+
+`setup.*` 是产品入口，`install.sh` 是仓库内运维辅助，不要混淆。
 
 ## 关键文档
 
@@ -52,11 +70,11 @@ docs/
 - [安装与部署](./docs/install-deploy-design.md)
 - [测试策略](./docs/go-test-strategy.md)
 
-如果改了下面这些内容，文档也要同步：
+如果改了这些内容，文档也要同步：
 
 - wrapper 和 relayd 之间的 canonical protocol
-- Feishu 交互行为
-- 安装流程、配置路径、运行命令
+- Feishu 输入输出逻辑
+- 安装流程、默认路径、部署方式
 
 ## 常用命令
 
@@ -80,7 +98,13 @@ go build ./cmd/relay-wrapper
 go build ./cmd/relay-install
 ```
 
-本地运行：
+安装器 smoke test：
+
+```bash
+./setup.sh -integration editor_settings -feishu-app-id cli_xxx -feishu-app-secret secret_xxx
+```
+
+Linux 本地运行：
 
 ```bash
 ./install.sh bootstrap
@@ -90,21 +114,37 @@ go build ./cmd/relay-install
 ./install.sh stop
 ```
 
-默认生成的可执行文件名：
+Docker relayd：
 
-- `bin/codex-remote-relayd`
-- `bin/codex-remote-wrapper`
-- `bin/codex-remote-install`
+```bash
+cp deploy/docker/.env.example deploy/docker/.env
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d --build
+```
+
+## 安装实现要点
+
+- Linux 默认同时启用 `editor_settings` 和 `managed_shim`
+- macOS / Windows 默认只启用 `editor_settings`
+- `managed_shim` 会把扩展 bundle 中的 `codex` 重命名为 `codex.real`
+- 然后把 `relay-wrapper` 二进制复制到原始 `codex` 路径
+- `CODEX_REAL_BINARY` 会自动指向保留下来的 `codex.real`
+
+当前配置路径仍沿用统一布局：
+
+- `<baseDir>/.config/codex-remote`
+- `<baseDir>/.local/share/codex-remote`
+
+这是当前 runtime config lookup 的约束，不要随意只改安装器而不改运行时读取逻辑。
 
 ## 实链路调试
 
-先确认不是代理污染：
+先清理代理环境，避免本地回环链路被污染：
 
 ```bash
 unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 ```
 
-再按这个顺序看：
+再按顺序看：
 
 1. 进程和端口
 
@@ -119,7 +159,7 @@ ss -ltnp | rg '9500|9501'
 curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .
 ```
 
-重点看这些字段：
+重点字段：
 
 - `instances[*].Online`
 - `instances[*].ObservedFocusedThreadID`
@@ -130,12 +170,10 @@ curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .
 - `surfaces[*].DispatchMode`
 - `surfaces[*].ActiveQueueItemID`
 - `surfaces[*].QueuedQueueItemIDs`
-- `pendingRemoteTurns`
-- `activeRemoteTurns`
 
 3. relayd 日志
 
-现在重点日志前缀有：
+重点前缀：
 
 - `surface action:`
 - `agent event:`
@@ -144,64 +182,46 @@ curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .
 - `ui event:`
 - `gateway apply failed:`
 
-调状态机问题时，不要只看最终失败点，要把一条消息沿着这几类日志串起来看。
+调状态机问题时，不要只看最终失败点，要把单条消息沿这些日志完整串起来。
 
-## 代理环境注意事项
+## 代理环境规则
 
-很多联调问题不是代码本身，而是全局代理污染了本地回环链路。
-
-本地测试、状态检查、`curl 127.0.0.1`、本地 websocket 调试前，先清理代理环境：
-
-```bash
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
-```
-
-唯一例外：
-
-- `relay-wrapper` 自己连本地 `relayd` 时不应走代理
+- 本地 wrapper <-> relayd 通信不应走代理
+- 本地 `curl 127.0.0.1` / websocket 调试前应先 `unset` 代理
 - `relay-wrapper` 拉起真实 `codex.real` 时，应恢复捕获到的代理环境
-
-原因是：
-
-- 本地 relay 流量经常会被代理干扰
-- 上游 `codex.real -> ChatGPT/OpenAI` 在有代理时往往更稳定
+- `relayd` 是否使用系统代理，只由 `FEISHU_USE_SYSTEM_PROXY` 控制
 
 ## 开发约束
 
-- 对状态机或协议问题，不要只看单层代码，先看完整链路
-- helper/internal traffic 只能靠协议相关的 request/response 标识做关联，不能靠时间或“看起来像同一 thread”
-- wrapper 负责准确翻译和标注，不负责产品层可见性策略
-- queue、attach、thread 选择、Feishu 展示都应由 orchestrator 决策
-- mock 必须和真实协议一致，不能用静态脚本假装通过
-- 公开文档里不要写本机绝对路径、个人目录、临时验证痕迹
+- 协议或状态机问题先看全链路，再改局部
+- 不要在 wrapper 层吞掉上游协议信息来“修 UI”
+- 产品可见性、队列和 thread 选择应由 orchestrator 决策
+- helper/internal traffic 只能靠明确协议标识关联，不能靠猜测
+- mock 必须贴近真实协议，不能用静态脚本假装通过
+- 公开文档、README、模板文件里不要泄露本机路径
 
 ## 发布前自检
 
-至少执行：
-
-1. `gofmt -w $(find cmd internal testkit -name '*.go' | sort)`
-2. `go test ./...`
-3. `bash scripts/check/no-local-paths.sh && bash scripts/check/no-legacy-names.sh`
-
-第 3 步的目的是防止旧项目名、本机路径和私有环境痕迹重新进入仓库。
+```bash
+gofmt -w $(find cmd internal testkit -name '*.go' | sort)
+go test ./...
+bash scripts/check/no-local-paths.sh
+bash scripts/check/no-legacy-names.sh
+```
 
 ## GitHub Actions
 
-仓库当前包含两个工作流：
-
 - `CI`
-  - 在 `master` / `main` 的 push 和 pull request 上运行
   - 检查公开文档是否泄漏本机路径
-  - 检查旧项目名和旧前缀是否回流
+  - 检查旧项目名是否回流
   - 检查 `gofmt`
-  - 运行 `go build` 和 `go test ./...`
+  - 构建并运行 `go test ./...`
 - `Release`
-  - 通过 GitHub Actions 的 `workflow_dispatch` 手动触发
-  - 自动决定下一个版本号
-  - 生成 release notes
-  - 构建多平台产物并创建 GitHub Release
+  - 自动决定下一个语义化版本
+  - 构建多平台产物
+  - 创建 GitHub Release
 
-本地可预演的对应命令：
+本地可预演：
 
 - `make check`
 - `make release-artifacts VERSION=v0.1.0`

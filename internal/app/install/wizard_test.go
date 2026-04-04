@@ -1,0 +1,80 @@
+package install
+
+import (
+	"bytes"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestRunInteractiveWizardManagedShimBlankCodexBinaryUsesAutoResolution(t *testing.T) {
+	defaults := PlatformDefaults{
+		GOOS:                       "linux",
+		BaseDir:                    "/tmp/demo",
+		InstallBinDir:              "/tmp/demo/bin",
+		VSCodeSettingsPath:         "/tmp/demo/settings.json",
+		CandidateBundleEntrypoints: []string{"/tmp/demo/.vscode-server/extensions/openai.chatgpt/bin/linux-x86_64/codex"},
+		DefaultIntegrations:        []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim},
+	}
+	input := strings.Join([]string{
+		"2",
+		"",
+		"",
+		"cli_demo",
+		"secret_demo",
+		"n",
+		"",
+		"",
+		"",
+	}, "\n")
+	var out bytes.Buffer
+	opts, err := RunInteractiveWizard(strings.NewReader(input), &out, defaults, Options{})
+	if err != nil {
+		t.Fatalf("RunInteractiveWizard: %v", err)
+	}
+	if len(opts.Integrations) != 1 || opts.Integrations[0] != IntegrationManagedShim {
+		t.Fatalf("unexpected integrations: %#v", opts.Integrations)
+	}
+	if opts.CodexRealBinary != "" {
+		t.Fatalf("expected blank codex binary for managed shim auto-resolution, got %q", opts.CodexRealBinary)
+	}
+	if opts.BundleEntrypoint != defaults.CandidateBundleEntrypoints[0] {
+		t.Fatalf("unexpected bundle entrypoint: %q", opts.BundleEntrypoint)
+	}
+}
+
+func TestRunInteractiveWizardHonorsExplicitIntegrationSeed(t *testing.T) {
+	defaults := PlatformDefaults{
+		GOOS:                "darwin",
+		BaseDir:             "/Users/demo",
+		InstallBinDir:       "/Users/demo/Library/Application Support/codex-remote/bin",
+		VSCodeSettingsPath:  "/Users/demo/Library/Application Support/Code/User/settings.json",
+		DefaultIntegrations: []WrapperIntegrationMode{IntegrationEditorSettings},
+	}
+	input := strings.Join([]string{
+		"",
+		"",
+		"",
+		"cli_demo",
+		"secret_demo",
+		"y",
+		"",
+		"",
+	}, "\n")
+	var out bytes.Buffer
+	seed := Options{
+		Integrations:       []WrapperIntegrationMode{IntegrationEditorSettings},
+		CodexRealBinary:    filepath.Join("/opt", "homebrew", "bin", "codex"),
+		VSCodeSettingsPath: defaults.VSCodeSettingsPath,
+	}
+	opts, err := RunInteractiveWizard(strings.NewReader(input), &out, defaults, seed)
+	if err != nil {
+		t.Fatalf("RunInteractiveWizard: %v", err)
+	}
+	if len(opts.Integrations) != 1 || opts.Integrations[0] != IntegrationEditorSettings {
+		t.Fatalf("unexpected integrations: %#v", opts.Integrations)
+	}
+	if opts.CodexRealBinary != filepath.Join("/opt", "homebrew", "bin", "codex") {
+		t.Fatalf("unexpected codex binary: %q", opts.CodexRealBinary)
+	}
+}

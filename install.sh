@@ -56,7 +56,7 @@ bootstrap() {
   local integration_mode="${INTEGRATION_MODE:-}"
   if [[ -z "${integration_mode}" ]]; then
     if [[ -n "${bundle_codex}" ]]; then
-      integration_mode="managed_shim"
+      integration_mode="both"
     else
       integration_mode="editor_settings"
     fi
@@ -72,18 +72,24 @@ bootstrap() {
     fi
   fi
   local wrapper_binary="${WRAPPER_BINARY:-${BIN_DIR}/codex-remote-wrapper}"
+  local relayd_binary="${RELAYD_BINARY:-${BIN_DIR}/codex-remote-relayd}"
+  local install_bin_dir="${INSTALL_BIN_DIR:-${HOME}/.local/bin}"
   local vscode_settings="${VSCODE_SETTINGS:-${HOME}/.config/Code/User/settings.json}"
   local feishu_app_id="${FEISHU_APP_ID:-}"
   local feishu_app_secret="${FEISHU_APP_SECRET:-}"
+  local use_system_proxy="${FEISHU_USE_SYSTEM_PROXY:-false}"
 
   "${BIN_DIR}/codex-remote-install" \
     -base-dir "${BASE_DIR}" \
+    -install-bin-dir "${install_bin_dir}" \
     -wrapper-binary "${wrapper_binary}" \
+    -relayd-binary "${relayd_binary}" \
     -relay-url "${relay_url}" \
     -codex-binary "${codex_binary}" \
     -integration "${integration_mode}" \
     -feishu-app-id "${feishu_app_id}" \
     -feishu-app-secret "${feishu_app_secret}" \
+    -use-system-proxy="${use_system_proxy}" \
     -vscode-settings "${vscode_settings}" \
     -bundle-entrypoint "${bundle_codex}"
 
@@ -92,6 +98,8 @@ bootstrap completed
 wrapper config: ${WRAPPER_CONFIG}
 services config: ${SERVICES_CONFIG}
 wrapper binary: ${wrapper_binary}
+relayd binary: ${relayd_binary}
+install bin dir: ${install_bin_dir}
 integration mode: ${integration_mode}
 bundle entrypoint: ${bundle_codex}
 codex binary: ${codex_binary}
@@ -169,12 +177,15 @@ environment overrides:
   RELAY_URL
   CODEX_BINARY
   WRAPPER_BINARY
+  RELAYD_BINARY
+  INSTALL_BIN_DIR
   INTEGRATION_MODE
   VSCODE_SETTINGS
   VSCODE_BUNDLE_CODEX
   VSCODE_SERVER_EXTENSIONS_DIR
   FEISHU_APP_ID
   FEISHU_APP_SECRET
+  FEISHU_USE_SYSTEM_PROXY
 EOF
 }
 

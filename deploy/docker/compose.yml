@@ -1,0 +1,19 @@
+services:
+  relayd:
+    image: codex-remote-feishu-relayd:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    restart: unless-stopped
+    environment:
+      RELAY_PORT: ${RELAY_PORT:-9500}
+      RELAY_API_PORT: ${RELAY_API_PORT:-9501}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      FEISHU_USE_SYSTEM_PROXY: ${FEISHU_USE_SYSTEM_PROXY:-false}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      ALL_PROXY: ${ALL_PROXY:-}
+    ports:
+      - "127.0.0.1:${RELAY_PORT:-9500}:9500"
+      - "127.0.0.1:${RELAY_API_PORT:-9501}:9501"

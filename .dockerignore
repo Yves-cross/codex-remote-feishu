@@ -1,0 +1,12 @@
+.git
+.github
+.codex
+archive
+bin
+dist
+coverage.out
+*.log
+*.out
+*.test
+*.exe
+.DS_Store

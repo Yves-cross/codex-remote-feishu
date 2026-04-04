@@ -1,139 +1,177 @@
 # Codex Remote Feishu
 
-`codex-remote-feishu` 用来把 VS Code 里的 Codex 会话接到飞书。
+`codex-remote-feishu` 把 VS Code 里的 Codex 会话桥接到飞书，让你可以在飞书里接管、切换 thread、继续对话、发图和停止当前 turn。
 
-它的工作方式是：
+核心目标场景是：
 
-- 用 `relay-wrapper` 包装真实 `codex` 可执行
-- 把 Codex app-server 事件转成统一事件流发给 `relayd`
-- 由 `relayd` 负责实例管理、thread 路由、消息队列、飞书投影和状态接口
-
-当前目标场景是：
-
-- Linux 主机
-- VS Code Remote 连接到这台 Linux 主机
-- 在飞书里接管并继续使用 Codex 会话
-
-## 功能
-
-- 列出当前在线的 Codex 实例，并在飞书里 attach
-- 查看和切换当前实例的 thread
-- 从飞书继续向当前 thread 发消息，或在未绑定时自动新建 thread
-- 支持图片暂存，和下一条文本一起提交给 Codex
-- 支持 `/stop` 中断当前 turn
-- 支持查看和临时覆盖模型、推理强度
-- 区分系统提示、过程消息和最终回复
+- 本机或远端 Linux 上运行 Codex / VS Code
+- 飞书里继续使用同一个 Codex instance
+- 保留 VS Code 原有 thread、模型配置和工作目录语义
 
 ## 组件
 
+- `relay-wrapper`
+  - 包装真实 `codex`
+  - 把原生 app-server 协议翻译成统一事件流
 - `relayd`
   - 常驻服务
-  - 管理实例、surface、queue、Feishu 网关和状态 API
-- `relay-wrapper`
-  - 替代 VS Code 实际调用的 `codex`
-  - 代理 VS Code 和真实 `codex.real`
+  - 管理实例、thread、消息队列、Feishu 投影和状态接口
 - `relay-install`
-  - 写配置
-  - 集成 VS Code / VS Code Remote
+  - 安装器
+  - 负责写配置并接管 VS Code / VS Code Remote
 
-## 快速开始
+## 功能
 
-### 1. 准备
+- 在飞书里列出在线实例并 attach
+- 列出 thread 并切换当前输入目标
+- 文本消息排队、typing reaction、stop 中断
+- 支持暂存图片，并在下一条文本里一起发给 Codex
+- 查看当前生效的模型和推理强度，并做飞书侧临时覆盖
+- 区分系统提示、过程消息和最终回复
 
-- 安装 Go
-- 在远端 Linux 主机上安装并可运行 `codex`
-- 用 VS Code Remote 连接到这台机器，并安装 OpenAI/Codex 扩展
-- 准备飞书机器人的 `App ID` 和 `App Secret`
+## 安装前准备
 
-### 2. 引导安装
+1. 安装 Go 1.24+
+2. 确保真实 `codex` 在目标机器上可运行
+3. 安装 VS Code 的 ChatGPT / Codex 扩展
+4. 准备飞书自建应用
+
+飞书应用配置可参考：
+
+- [deploy/feishu/app-template.json](./deploy/feishu/app-template.json)
+- [deploy/feishu/README.md](./deploy/feishu/README.md)
+
+至少要准备：
+
+- `App ID`
+- `App Secret`
+- 消息接收、reaction、机器人菜单相关权限和事件
+
+## 交互安装
+
+macOS / Linux:
 
 ```bash
-FEISHU_APP_ID=cli_xxx \
-FEISHU_APP_SECRET=xxx \
-./install.sh bootstrap
+./setup.sh
 ```
 
-`bootstrap` 会：
+Windows PowerShell:
 
-- 构建 `codex-remote-relayd`、`codex-remote-wrapper`、`codex-remote-install`
-- 自动探测 VS Code Remote 扩展的 `codex` 入口
-- 能 patch bundle 时优先使用 `managed_shim`
-- 否则退回修改 `chatgpt.cliExecutable`
+```powershell
+.\setup.ps1
+```
 
-### 3. 启动服务
+安装向导会：
+
+- 构建 `relayd`、`relay-wrapper`、`relay-install`
+- 询问飞书 `App ID` / `App Secret`
+- 询问 relay 地址
+- 让你选择 VS Code 集成方式
+- 自动写入 `wrapper.env`、`services.env`、`install-state.json`
+
+默认集成方式：
+
+- Linux: `editor_settings + managed_shim`
+- macOS: `editor_settings`
+- Windows: `editor_settings`
+
+两种集成方式的区别：
+
+- `editor_settings`
+  - 修改 `settings.json` 的 `chatgpt.cliExecutable`
+  - 更适合本机桌面 VS Code
+- `managed_shim`
+  - 直接替换扩展 bundle 里的 `codex`
+  - 原始入口会保留成 `codex.real`
+  - 更适合 VS Code Remote
+
+如果你想做非交互安装，可以直接给 `setup.sh` / `setup.ps1` 透传 `relay-install` 的参数，例如：
+
+```bash
+./setup.sh \
+  -integration both \
+  -feishu-app-id cli_xxx \
+  -feishu-app-secret secret_xxx \
+  -relay-url ws://127.0.0.1:9500/ws/agent
+```
+
+## 运行 relayd
+
+本机 Linux 运维脚本：
 
 ```bash
 ./install.sh start
 ./install.sh status
+./install.sh logs
+./install.sh stop
 ```
 
-默认会生成这些文件：
+默认会写入：
 
 - `~/.config/codex-remote/wrapper.env`
 - `~/.config/codex-remote/services.env`
 - `~/.local/share/codex-remote/install-state.json`
 - `~/.local/share/codex-remote/logs/codex-remote-relayd.log`
 
-### 4. 重新打开 VS Code Remote
+## Docker 部署
 
-完成 `bootstrap` 后，重新打开远端窗口或重启相关扩展，让 Codex 改为通过 `relay-wrapper` 启动。
+如果你只想把 `relayd` 容器化，可以使用：
 
-### 5. 在飞书里接管
+- [deploy/docker/Dockerfile](./deploy/docker/Dockerfile)
+- [deploy/docker/compose.yml](./deploy/docker/compose.yml)
+- [deploy/docker/.env.example](./deploy/docker/.env.example)
 
-先确保远端 VS Code 里已经打开 Codex，并存在可见实例，然后在飞书里使用：
+用法：
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d --build
+```
+
+注意：
+
+- Docker 只部署 `relayd`
+- `relay-wrapper` 仍然运行在 VS Code 所在机器
+- wrapper 连接容器时，默认仍使用 `ws://127.0.0.1:9500/ws/agent`
+
+## 飞书端使用
+
+命令：
 
 - `/list`：列出在线实例
-- 回复数字：attach 到对应实例
+- 回复序号：attach 到对应实例
 - `/threads` 或 `/use`：列出当前实例可见 thread
-- 回复数字：切换输入目标 thread
-
-## 飞书命令
-
-- `/list`：列出在线实例
-- `/status`：查看当前接管状态、输入目标、模型配置
-- `/threads` 或 `/use`：列出当前实例的 thread
-- `/follow`：切回“跟随当前 VS Code”
+- 回复序号：切换输入目标 thread
+- `/status`：查看当前接管状态、队列和模型配置
+- `/follow`：切回跟随当前 VS Code thread
+- `/stop`：中断当前 turn，并清空尚未发出的飞书队列
 - `/detach`：断开当前实例接管
-- `/stop`：中断当前正在执行的 turn，并清空尚未发出的飞书队列
-- `/model`：查看或设置飞书侧临时模型覆盖
-- `/reasoning`：查看或设置飞书侧临时推理强度覆盖
+- `/model`：查看或设置飞书侧模型覆盖
+- `/reasoning`：查看或设置飞书侧推理强度覆盖
 
-机器人菜单当前支持：
+机器人菜单：
 
 - `list`
 - `status`
-- `stop`
 - `threads`
+- `stop`
 
-## 飞书侧需要开通什么
+## 排障
 
-至少需要让机器人能接收：
-
-- 文本消息
-- 图片消息
-- reaction 创建事件
-- 机器人菜单事件
-
-如果要在单聊里收消息，飞书应用还需要开通对应的 P2P 消息权限。
-
-## 状态与排障
-
-查看服务状态：
+先确认不是代理污染本地链路：
 
 ```bash
-./install.sh status
-./install.sh logs
-curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 ```
 
-常见排障顺序：
+然后按顺序检查：
 
-1. 确认 `relayd` 已启动
-2. 检查 `services.env` 里的飞书凭证和端口
-3. 检查 `wrapper.env` 里的 `RELAY_SERVER_URL` 和 `CODEX_REAL_BINARY`
-4. 确认 VS Code Remote 扩展入口已经被 shim 或 settings 接管
-5. 打开 Codex 界面并确认 wrapper instance 已连上
-6. 查看 `codex-remote-relayd.log`
+1. `./install.sh status`
+2. `curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .`
+3. `wrapper.env` 里的 `RELAY_SERVER_URL` 和 `CODEX_REAL_BINARY`
+4. `services.env` 里的飞书凭证和端口
+5. VS Code 是否真的已经通过 wrapper 启动 Codex
+6. `codex-remote-relayd.log`
 
 ## 文档
 
@@ -142,16 +180,12 @@ curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status
 - [飞书产品行为](./docs/feishu-product-design.md)
 - [安装与部署](./docs/install-deploy-design.md)
 - [测试策略](./docs/go-test-strategy.md)
-- [app-server 重构背景](./docs/app-server-redesign.md)
 
-## 持续集成与发版
+## 发布
 
-- Push / PR 会自动跑 GitHub Actions CI
-- 在 GitHub Actions 里手动触发 `Release` workflow 可以发版
-- `Release` 会自动计算下一个语义化版本号，运行测试，构建多平台产物，并创建 GitHub Release
+- Push / PR 会触发 GitHub Actions CI
+- `Release` workflow 会自动计算版本号、构建多平台产物并创建 GitHub Release
 
 ## 开发
 
-开发者说明见：
-
-- [DEVELOPER.md](./DEVELOPER.md)
+开发者说明见 [DEVELOPER.md](./DEVELOPER.md)。
