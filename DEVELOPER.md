@@ -96,6 +96,56 @@ go build ./cmd/relay-install
 - `bin/codex-remote-wrapper`
 - `bin/codex-remote-install`
 
+## 实链路调试
+
+先确认不是代理污染：
+
+```bash
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
+```
+
+再按这个顺序看：
+
+1. 进程和端口
+
+```bash
+ps -ef | rg 'relayd|relay-wrapper' | rg -v rg
+ss -ltnp | rg '9500|9501'
+```
+
+2. relayd 状态接口
+
+```bash
+curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .
+```
+
+重点看这些字段：
+
+- `instances[*].Online`
+- `instances[*].ObservedFocusedThreadID`
+- `instances[*].ActiveThreadID`
+- `instances[*].ActiveTurnID`
+- `surfaces[*].AttachedInstanceID`
+- `surfaces[*].SelectedThreadID`
+- `surfaces[*].DispatchMode`
+- `surfaces[*].ActiveQueueItemID`
+- `surfaces[*].QueuedQueueItemIDs`
+- `pendingRemoteTurns`
+- `activeRemoteTurns`
+
+3. relayd 日志
+
+现在重点日志前缀有：
+
+- `surface action:`
+- `agent event:`
+- `ui command:`
+- `relay command ack:`
+- `ui event:`
+- `gateway apply failed:`
+
+调状态机问题时，不要只看最终失败点，要把一条消息沿着这几类日志串起来看。
+
 ## 代理环境注意事项
 
 很多联调问题不是代码本身，而是全局代理污染了本地回环链路。

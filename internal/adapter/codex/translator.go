@@ -917,8 +917,6 @@ func (t *Translator) trafficClassForTurn(threadID, turnID string) agentproto.Tra
 	switch {
 	case turnID != "" && t.internalTurnIDs[turnID]:
 		return agentproto.TrafficClassInternalHelper
-	case threadID != "" && t.internalThreadIDs[threadID]:
-		return agentproto.TrafficClassInternalHelper
 	default:
 		return agentproto.TrafficClassPrimary
 	}

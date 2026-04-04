@@ -31,6 +31,8 @@ type Service struct {
 	itemBuffers     map[string]*itemBuffer
 	threadRefreshes map[string]bool
 	pendingTurnText map[string]*completedTextItem
+	pendingRemote   map[string]*remoteTurnBinding
+	activeRemote    map[string]*remoteTurnBinding
 }
 
 type itemBuffer struct {
@@ -40,6 +42,17 @@ type itemBuffer struct {
 	ItemID     string
 	ItemKind   string
 	Text       string
+}
+
+type remoteTurnBinding struct {
+	InstanceID       string
+	SurfaceSessionID string
+	QueueItemID      string
+	SourceMessageID  string
+	CommandID        string
+	ThreadID         string
+	TurnID           string
+	Status           string
 }
 
 type completedTextItem struct {
@@ -70,6 +83,8 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		itemBuffers:     map[string]*itemBuffer{},
 		threadRefreshes: map[string]bool{},
 		pendingTurnText: map[string]*completedTextItem{},
+		pendingRemote:   map[string]*remoteTurnBinding{},
+		activeRemote:    map[string]*remoteTurnBinding{},
 	}
 }
 
@@ -220,31 +235,30 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = event.TurnID
 		inst.ActiveThreadID = event.ThreadID
-		if surface := s.findAttachedSurface(instanceID); surface != nil {
+		if surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID); surface != nil {
 			surface.ActiveTurnOrigin = event.Initiator.Kind
 		}
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			if event.ThreadID != "" {
 				inst.ObservedFocusedThreadID = event.ThreadID
 				thread := s.ensureThread(inst, event.ThreadID)
-				surface := s.findAttachedSurface(instanceID)
 				events := []control.UIEvent{}
 				_ = thread
-				if surface != nil {
+				for _, surface := range s.findAttachedSurfaces(instanceID) {
 					events = append(events, s.bindSurfaceToThread(surface, inst, event.ThreadID)...)
 				}
 				return append(append(preface, s.pauseForLocal(instanceID)...), events...)
 			}
 			return append(preface, s.pauseForLocal(instanceID)...)
 		}
-		return append(preface, s.markRemoteTurnRunning(instanceID)...)
+		return append(preface, s.markRemoteTurnRunning(instanceID, event.ThreadID, event.TurnID)...)
 	case agentproto.EventTurnCompleted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = ""
 		if event.ThreadID != "" {
 			inst.ActiveThreadID = event.ThreadID
 		}
-		if surface := s.findAttachedSurface(instanceID); surface != nil {
+		if surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID); surface != nil {
 			surface.ActiveTurnOrigin = ""
 		}
 		deleteMatchingItemBuffers(s.itemBuffers, instanceID, event.ThreadID, event.TurnID)
@@ -252,7 +266,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			return append(events, s.enterHandoff(instanceID)...)
 		}
-		return append(events, s.completeRemoteTurn(instanceID, event.Status, event.ErrorMessage)...)
+		return append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage)...)
 	case agentproto.EventItemStarted:
 		s.trackItemStart(instanceID, event)
 		return preface
@@ -741,11 +755,13 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	events = append(events, s.discardDrafts(surface)...)
 	surface.QueuedQueueItemIDs = nil
 	surface.SelectionPrompt = nil
+	s.clearRemoteOwnership(surface)
 	return events
 }
 
 func (s *Service) detach(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	events := s.discardDrafts(surface)
+	s.clearRemoteOwnership(surface)
 	surface.AttachedInstanceID = ""
 	surface.SelectedThreadID = ""
 	surface.RouteMode = state.RouteModeUnbound
@@ -828,7 +844,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 		return nil
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
-	if inst == nil || inst.ActiveTurnID != "" {
+	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.pendingRemote[inst.InstanceID] != nil {
 		return nil
 	}
 
@@ -840,6 +856,14 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	}
 	item.Status = state.QueueItemDispatching
 	surface.ActiveQueueItemID = item.ID
+	s.pendingRemote[inst.InstanceID] = &remoteTurnBinding{
+		InstanceID:       inst.InstanceID,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		QueueItemID:      item.ID,
+		SourceMessageID:  item.SourceMessageID,
+		ThreadID:         item.FrozenThreadID,
+		Status:           string(item.Status),
+	}
 
 	command := &agentproto.Command{
 		Kind: agentproto.CommandPromptSend,
@@ -882,17 +906,23 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	}
 }
 
-func (s *Service) markRemoteTurnRunning(instanceID string) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
-	if surface == nil || surface.ActiveQueueItemID == "" {
+func (s *Service) markRemoteTurnRunning(instanceID, threadID, turnID string) []control.UIEvent {
+	binding := s.promotePendingRemote(instanceID, threadID, turnID)
+	if binding == nil {
 		return nil
 	}
-	item := surface.QueueItems[surface.ActiveQueueItemID]
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil || surface.ActiveQueueItemID == "" {
+		s.clearRemoteTurn(instanceID, turnID)
+		return nil
+	}
+	item := surface.QueueItems[binding.QueueItemID]
 	if item == nil {
+		s.clearRemoteTurn(instanceID, turnID)
 		return nil
 	}
 	if item.FrozenThreadID == "" {
-		item.FrozenThreadID = s.root.Instances[instanceID].ActiveThreadID
+		item.FrozenThreadID = threadID
 		if item.FrozenThreadID != "" {
 			surface.SelectedThreadID = item.FrozenThreadID
 			surface.RouteMode = state.RouteModePinned
@@ -915,13 +945,19 @@ func (s *Service) markRemoteTurnRunning(instanceID string) []control.UIEvent {
 	return events
 }
 
-func (s *Service) completeRemoteTurn(instanceID, status, errorMessage string) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
-	if surface == nil || surface.ActiveQueueItemID == "" {
+func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string) []control.UIEvent {
+	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
+	if binding == nil {
 		return nil
 	}
-	item := surface.QueueItems[surface.ActiveQueueItemID]
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil || surface.ActiveQueueItemID == "" {
+		s.clearRemoteTurn(instanceID, turnID)
+		return nil
+	}
+	item := surface.QueueItems[binding.QueueItemID]
 	if item == nil {
+		s.clearRemoteTurn(instanceID, turnID)
 		return nil
 	}
 	if status == "failed" {
@@ -951,11 +987,12 @@ func (s *Service) completeRemoteTurn(instanceID, status, errorMessage string) []
 		})
 	}
 	events = append(events, s.dispatchNext(surface)...)
+	s.clearRemoteTurn(instanceID, turnID)
 	return events
 }
 
 func (s *Service) renderTextItem(instanceID, threadID, turnID, itemID, text string, final bool) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
+	surface := s.turnSurface(instanceID, threadID, turnID)
 	if surface == nil {
 		return nil
 	}
@@ -1098,21 +1135,10 @@ func (s *Service) normalizeTurnInitiator(instanceID string, event agentproto.Eve
 	if event.Initiator.Kind != agentproto.InitiatorLocalUI && event.Initiator.Kind != agentproto.InitiatorUnknown {
 		return event.Initiator
 	}
-	surface := s.findAttachedSurface(instanceID)
-	if surface == nil || surface.ActiveQueueItemID == "" {
-		return event.Initiator
+	if binding := s.lookupRemoteTurn(instanceID, event.ThreadID, event.TurnID); binding != nil {
+		return agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: binding.SurfaceSessionID}
 	}
-	item := surface.QueueItems[surface.ActiveQueueItemID]
-	if item == nil {
-		return event.Initiator
-	}
-	if item.Status != state.QueueItemDispatching && item.Status != state.QueueItemRunning {
-		return event.Initiator
-	}
-	if !queuedItemMatchesTurn(s.root.Instances[instanceID], item, event.ThreadID) {
-		return event.Initiator
-	}
-	return agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: surface.SurfaceSessionID}
+	return event.Initiator
 }
 
 func queuedItemMatchesTurn(inst *state.InstanceRecord, item *state.QueueItemRecord, threadID string) bool {
@@ -1128,34 +1154,140 @@ func queuedItemMatchesTurn(inst *state.InstanceRecord, item *state.QueueItemReco
 	return threadID == "" || threadID == inst.ActiveThreadID
 }
 
-func (s *Service) pauseForLocal(instanceID string) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
+func (s *Service) pendingRemoteBinding(instanceID, threadID string) *remoteTurnBinding {
+	binding := s.pendingRemote[instanceID]
+	if binding == nil {
+		return nil
+	}
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
+		delete(s.pendingRemote, instanceID)
 		return nil
 	}
-	if surface.DispatchMode == state.DispatchModePausedForLocal {
+	item := surface.QueueItems[binding.QueueItemID]
+	if item == nil || (item.Status != state.QueueItemDispatching && item.Status != state.QueueItemRunning) {
+		delete(s.pendingRemote, instanceID)
 		return nil
 	}
-	surface.DispatchMode = state.DispatchModePausedForLocal
-	return notice(surface, "local_activity_detected", "检测到本地 VS Code 正在使用，飞书消息将继续排队。")
+	if !queuedItemMatchesTurn(s.root.Instances[instanceID], item, threadID) {
+		return nil
+	}
+	return binding
+}
+
+func (s *Service) promotePendingRemote(instanceID, threadID, turnID string) *remoteTurnBinding {
+	binding := s.pendingRemoteBinding(instanceID, threadID)
+	if binding == nil {
+		return s.activeRemoteBinding(instanceID, turnID)
+	}
+	delete(s.pendingRemote, instanceID)
+	if threadID != "" {
+		binding.ThreadID = threadID
+	}
+	binding.TurnID = turnID
+	binding.Status = string(state.QueueItemRunning)
+	s.activeRemote[instanceID] = binding
+	return binding
+}
+
+func (s *Service) activeRemoteBinding(instanceID, turnID string) *remoteTurnBinding {
+	binding := s.activeRemote[instanceID]
+	if binding == nil {
+		return nil
+	}
+	if turnID != "" && binding.TurnID != "" && binding.TurnID != turnID {
+		return nil
+	}
+	return binding
+}
+
+func (s *Service) lookupRemoteTurn(instanceID, threadID, turnID string) *remoteTurnBinding {
+	if binding := s.activeRemoteBinding(instanceID, turnID); binding != nil {
+		if threadID == "" || binding.ThreadID == "" || binding.ThreadID == threadID {
+			return binding
+		}
+	}
+	return s.pendingRemoteBinding(instanceID, threadID)
+}
+
+func (s *Service) clearRemoteTurn(instanceID, turnID string) {
+	if binding := s.activeRemoteBinding(instanceID, turnID); binding != nil {
+		delete(s.activeRemote, instanceID)
+	}
+	if binding := s.pendingRemote[instanceID]; binding != nil && (turnID == "" || binding.TurnID == turnID) {
+		delete(s.pendingRemote, instanceID)
+	}
+}
+
+func (s *Service) clearRemoteOwnership(surface *state.SurfaceConsoleRecord) {
+	if surface == nil || surface.AttachedInstanceID == "" {
+		return
+	}
+	if binding := s.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		delete(s.pendingRemote, surface.AttachedInstanceID)
+	}
+	if binding := s.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		delete(s.activeRemote, surface.AttachedInstanceID)
+	}
+}
+
+func (s *Service) remoteBindingForSurface(surface *state.SurfaceConsoleRecord) *remoteTurnBinding {
+	if surface == nil || surface.AttachedInstanceID == "" {
+		return nil
+	}
+	if binding := s.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		return binding
+	}
+	if binding := s.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		return binding
+	}
+	return nil
+}
+
+func (s *Service) clearTurnArtifacts(instanceID, threadID, turnID string) {
+	deleteMatchingItemBuffers(s.itemBuffers, instanceID, threadID, turnID)
+	if turnID == "" {
+		return
+	}
+	delete(s.pendingTurnText, turnRenderKey(instanceID, threadID, turnID))
+}
+
+func (s *Service) turnSurface(instanceID, threadID, turnID string) *state.SurfaceConsoleRecord {
+	if binding := s.lookupRemoteTurn(instanceID, threadID, turnID); binding != nil {
+		if surface := s.root.Surfaces[binding.SurfaceSessionID]; surface != nil {
+			return surface
+		}
+	}
+	return s.findAttachedSurface(instanceID)
+}
+
+func (s *Service) pauseForLocal(instanceID string) []control.UIEvent {
+	var events []control.UIEvent
+	for _, surface := range s.findAttachedSurfaces(instanceID) {
+		if surface.DispatchMode == state.DispatchModePausedForLocal {
+			continue
+		}
+		surface.DispatchMode = state.DispatchModePausedForLocal
+		events = append(events, notice(surface, "local_activity_detected", "检测到本地 VS Code 正在使用，飞书消息将继续排队。")...)
+	}
+	return events
 }
 
 func (s *Service) enterHandoff(instanceID string) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
-	if surface == nil {
-		return nil
+	var events []control.UIEvent
+	for _, surface := range s.findAttachedSurfaces(instanceID) {
+		if surface.DispatchMode != state.DispatchModePausedForLocal {
+			continue
+		}
+		if len(surface.QueuedQueueItemIDs) == 0 {
+			surface.DispatchMode = state.DispatchModeNormal
+			delete(s.handoffUntil, surface.SurfaceSessionID)
+			continue
+		}
+		surface.DispatchMode = state.DispatchModeHandoffWait
+		s.handoffUntil[surface.SurfaceSessionID] = s.now().Add(s.config.TurnHandoffWait)
 	}
-	if surface.DispatchMode != state.DispatchModePausedForLocal {
-		return nil
-	}
-	if len(surface.QueuedQueueItemIDs) == 0 {
-		surface.DispatchMode = state.DispatchModeNormal
-		delete(s.handoffUntil, surface.SurfaceSessionID)
-		return nil
-	}
-	surface.DispatchMode = state.DispatchModeHandoffWait
-	s.handoffUntil[surface.SurfaceSessionID] = s.now().Add(s.config.TurnHandoffWait)
-	return nil
+	return events
 }
 
 func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Snapshot {
@@ -1352,6 +1484,104 @@ func (s *Service) SurfaceChatID(surfaceID string) string {
 	return surface.ChatID
 }
 
+func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
+	if commandID == "" {
+		return
+	}
+	surface := s.root.Surfaces[surfaceID]
+	if surface == nil || surface.AttachedInstanceID == "" {
+		return
+	}
+	binding := s.pendingRemote[surface.AttachedInstanceID]
+	if binding == nil || binding.SurfaceSessionID != surfaceID {
+		return
+	}
+	if surface.ActiveQueueItemID != "" && binding.QueueItemID != surface.ActiveQueueItemID {
+		return
+	}
+	binding.CommandID = commandID
+}
+
+func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, noticeCode, noticeText string, tryDispatchNext bool) []control.UIEvent {
+	if surface == nil || item == nil {
+		return nil
+	}
+	item.Status = state.QueueItemFailed
+	if surface.ActiveQueueItemID == item.ID {
+		surface.ActiveQueueItemID = ""
+	}
+	if binding := s.remoteBindingForSurface(surface); binding != nil {
+		s.clearTurnArtifacts(binding.InstanceID, binding.ThreadID, binding.TurnID)
+	}
+	s.clearRemoteOwnership(surface)
+
+	events := []control.UIEvent{{
+		Kind:             control.UIEventPendingInput,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		PendingInput: &control.PendingInputState{
+			QueueItemID:     item.ID,
+			SourceMessageID: item.SourceMessageID,
+			Status:          string(item.Status),
+			TypingOff:       true,
+		},
+	}}
+	if noticeText != "" {
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice: &control.Notice{
+				Code: noticeCode,
+				Text: noticeText,
+			},
+		})
+	}
+	if tryDispatchNext {
+		events = append(events, s.dispatchNext(surface)...)
+	}
+	return events
+}
+
+func (s *Service) HandleCommandDispatchFailure(surfaceID string, err error) []control.UIEvent {
+	surface := s.root.Surfaces[surfaceID]
+	if surface == nil || surface.ActiveQueueItemID == "" {
+		return nil
+	}
+	item := surface.QueueItems[surface.ActiveQueueItemID]
+	if item == nil || item.Status != state.QueueItemDispatching {
+		return nil
+	}
+	noticeText := ""
+	if err != nil {
+		noticeText = fmt.Sprintf("消息未成功发送到本地 Codex：%v", err)
+	}
+	return s.failSurfaceActiveQueueItem(surface, item, "dispatch_failed", noticeText, true)
+}
+
+func (s *Service) HandleCommandRejected(instanceID, commandID, errorMessage string) []control.UIEvent {
+	if commandID == "" {
+		return nil
+	}
+	binding := s.pendingRemote[instanceID]
+	if binding == nil || binding.CommandID != commandID {
+		return nil
+	}
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil {
+		delete(s.pendingRemote, instanceID)
+		return nil
+	}
+	item := surface.QueueItems[binding.QueueItemID]
+	if item == nil || item.Status != state.QueueItemDispatching {
+		delete(s.pendingRemote, instanceID)
+		return nil
+	}
+	text := "本地 Codex 拒绝了这条消息。"
+	if strings.TrimSpace(errorMessage) != "" {
+		text = fmt.Sprintf("本地 Codex 拒绝了这条消息：%s", strings.TrimSpace(errorMessage))
+	}
+	return s.failSurfaceActiveQueueItem(surface, item, "command_rejected", text, true)
+}
+
 func (s *Service) Instance(instanceID string) *state.InstanceRecord {
 	return s.root.Instances[instanceID]
 }
@@ -1370,6 +1600,94 @@ func (s *Service) Instances() []*state.InstanceRecord {
 	return instances
 }
 
+func (s *Service) Surfaces() []*state.SurfaceConsoleRecord {
+	surfaces := make([]*state.SurfaceConsoleRecord, 0, len(s.root.Surfaces))
+	for _, surface := range s.root.Surfaces {
+		surfaces = append(surfaces, surface)
+	}
+	sort.Slice(surfaces, func(i, j int) bool {
+		return surfaces[i].SurfaceSessionID < surfaces[j].SurfaceSessionID
+	})
+	return surfaces
+}
+
+type RemoteTurnStatus struct {
+	InstanceID       string `json:"instanceId"`
+	SurfaceSessionID string `json:"surfaceSessionId"`
+	QueueItemID      string `json:"queueItemId"`
+	SourceMessageID  string `json:"sourceMessageId,omitempty"`
+	CommandID        string `json:"commandId,omitempty"`
+	ThreadID         string `json:"threadId,omitempty"`
+	TurnID           string `json:"turnId,omitempty"`
+	Status           string `json:"status"`
+}
+
+func (s *Service) PendingRemoteTurns() []RemoteTurnStatus {
+	values := make([]RemoteTurnStatus, 0, len(s.pendingRemote))
+	for _, binding := range s.pendingRemote {
+		if binding == nil {
+			continue
+		}
+		values = append(values, RemoteTurnStatus{
+			InstanceID:       binding.InstanceID,
+			SurfaceSessionID: binding.SurfaceSessionID,
+			QueueItemID:      binding.QueueItemID,
+			SourceMessageID:  binding.SourceMessageID,
+			CommandID:        binding.CommandID,
+			ThreadID:         binding.ThreadID,
+			TurnID:           binding.TurnID,
+			Status:           binding.Status,
+		})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].InstanceID == values[j].InstanceID {
+			return values[i].QueueItemID < values[j].QueueItemID
+		}
+		return values[i].InstanceID < values[j].InstanceID
+	})
+	return values
+}
+
+func (s *Service) ActiveRemoteTurns() []RemoteTurnStatus {
+	values := make([]RemoteTurnStatus, 0, len(s.activeRemote))
+	for _, binding := range s.activeRemote {
+		if binding == nil {
+			continue
+		}
+		values = append(values, RemoteTurnStatus{
+			InstanceID:       binding.InstanceID,
+			SurfaceSessionID: binding.SurfaceSessionID,
+			QueueItemID:      binding.QueueItemID,
+			SourceMessageID:  binding.SourceMessageID,
+			CommandID:        binding.CommandID,
+			ThreadID:         binding.ThreadID,
+			TurnID:           binding.TurnID,
+			Status:           binding.Status,
+		})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		if values[i].InstanceID == values[j].InstanceID {
+			return values[i].TurnID < values[j].TurnID
+		}
+		return values[i].InstanceID < values[j].InstanceID
+	})
+	return values
+}
+
+func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
+	inst := s.root.Instances[instanceID]
+	if inst == nil {
+		return nil
+	}
+	inst.Online = true
+
+	var events []control.UIEvent
+	for _, surface := range s.findAttachedSurfaces(instanceID) {
+		events = append(events, s.dispatchNext(surface)...)
+	}
+	return events
+}
+
 func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
@@ -1380,12 +1698,26 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 
 	surfaces := s.findAttachedSurfaces(instanceID)
 	if len(surfaces) == 0 {
+		delete(s.pendingRemote, instanceID)
+		delete(s.activeRemote, instanceID)
 		return nil
 	}
 
 	var events []control.UIEvent
 	for _, surface := range surfaces {
 		surface.PromptOverride = state.ModelConfigRecord{}
+		surface.ActiveTurnOrigin = ""
+		surface.DispatchMode = state.DispatchModeNormal
+		delete(s.handoffUntil, surface.SurfaceSessionID)
+
+		if surface.ActiveQueueItemID != "" {
+			if item := surface.QueueItems[surface.ActiveQueueItemID]; item != nil && (item.Status == state.QueueItemDispatching || item.Status == state.QueueItemRunning) {
+				events = append(events, s.failSurfaceActiveQueueItem(surface, item, "attached_instance_offline", fmt.Sprintf("当前接管实例已离线：%s", inst.DisplayName), false)...)
+				continue
+			}
+			surface.ActiveQueueItemID = ""
+		}
+
 		events = append(events, control.UIEvent{
 			Kind:             control.UIEventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
@@ -1395,6 +1727,8 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 			},
 		})
 	}
+	delete(s.pendingRemote, instanceID)
+	delete(s.activeRemote, instanceID)
 	return events
 }
 
@@ -1494,12 +1828,12 @@ func (s *Service) maybePromoteWorkspaceRoot(inst *state.InstanceRecord, cwd stri
 }
 
 func (s *Service) threadFocusEvents(instanceID, threadID string) []control.UIEvent {
-	surface := s.findAttachedSurface(instanceID)
-	if surface == nil {
-		return nil
-	}
 	inst := s.root.Instances[instanceID]
-	return s.maybeRequestThreadRefresh(surface, inst, threadID)
+	var events []control.UIEvent
+	for _, surface := range s.findAttachedSurfaces(instanceID) {
+		events = append(events, s.maybeRequestThreadRefresh(surface, inst, threadID)...)
+	}
+	return events
 }
 
 func (s *Service) bindSurfaceToThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []control.UIEvent {

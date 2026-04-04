@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1318,5 +1319,330 @@ func TestThreadsSnapshotDoesNotDropPreviouslyObservedThread(t *testing.T) {
 	}
 	if thread.Loaded {
 		t.Fatalf("expected preserved thread to be marked not loaded after empty snapshot, got %#v", thread)
+	}
+}
+
+func TestPendingRemoteDispatchReservesInstanceBeforeTurnStarts(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-2", ChatID: "chat-2", ActorUserID: "user-2", InstanceID: "inst-1"})
+
+	first := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	dispatched := false
+	for _, event := range first {
+		if event.Command != nil {
+			dispatched = true
+			break
+		}
+	}
+	if !dispatched {
+		t.Fatalf("expected first surface to dispatch immediately, got %#v", first)
+	}
+	if binding := svc.pendingRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-1" {
+		t.Fatalf("expected pending remote binding for surface-1, got %#v", binding)
+	}
+
+	second := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-2",
+		MessageID:        "msg-2",
+		Text:             "排队",
+	})
+	if len(second) != 1 || second[0].PendingInput == nil || second[0].PendingInput.Status != string(state.QueueItemQueued) {
+		t.Fatalf("expected second surface message to stay queued, got %#v", second)
+	}
+	for _, event := range second {
+		if event.Command != nil {
+			t.Fatalf("expected no second dispatch while instance reserved, got %#v", second)
+		}
+	}
+	if svc.root.Surfaces["surface-2"].ActiveQueueItemID != "" {
+		t.Fatalf("expected second surface to remain idle while first dispatch is pending")
+	}
+	if len(svc.root.Surfaces["surface-2"].QueuedQueueItemIDs) != 1 {
+		t.Fatalf("expected second surface queue to retain one item, got %#v", svc.root.Surfaces["surface-2"].QueuedQueueItemIDs)
+	}
+}
+
+func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-2", ChatID: "chat-2", ActorUserID: "user-2", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-2",
+		MessageID:        "msg-2",
+		Text:             "你好",
+	})
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	if binding := svc.activeRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-2" || binding.TurnID != "turn-1" {
+		t.Fatalf("expected active remote binding to belong to surface-2, got %#v", binding)
+	}
+	if len(started) == 0 || started[0].PendingInput == nil || started[0].SurfaceSessionID != "surface-2" {
+		t.Fatalf("expected running state to project to surface-2, got %#v", started)
+	}
+
+	mid := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"text": "您好"},
+	})
+	if len(mid) != 0 {
+		t.Fatalf("expected assistant text to stay buffered until turn completion, got %#v", mid)
+	}
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	if svc.activeRemote["inst-1"] != nil {
+		t.Fatalf("expected active remote binding to clear after completion, got %#v", svc.activeRemote["inst-1"])
+	}
+	var sawFinal, sawTypingOff bool
+	for _, event := range finished {
+		if event.Block != nil && event.Block.Final {
+			sawFinal = true
+			if event.SurfaceSessionID != "surface-2" || event.Block.Text != "您好" {
+				t.Fatalf("expected final block on surface-2, got %#v", event)
+			}
+		}
+		if event.PendingInput != nil && event.PendingInput.TypingOff {
+			sawTypingOff = true
+			if event.SurfaceSessionID != "surface-2" {
+				t.Fatalf("expected typing-off on surface-2, got %#v", event)
+			}
+		}
+	}
+	if !sawFinal || !sawTypingOff {
+		t.Fatalf("expected final block and typing-off on surface-2, got %#v", finished)
+	}
+}
+
+func TestHandleCommandDispatchFailureClearsPendingRemoteState(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+
+	events := svc.HandleCommandDispatchFailure("surface-1", errors.New("relay unavailable"))
+	if svc.pendingRemote["inst-1"] != nil {
+		t.Fatalf("expected pending remote binding to clear after dispatch failure")
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveQueueItemID != "" {
+		t.Fatalf("expected surface active queue to clear after dispatch failure")
+	}
+	item := surface.QueueItems["queue-1"]
+	if item == nil || item.Status != state.QueueItemFailed {
+		t.Fatalf("expected queue item to be marked failed, got %#v", item)
+	}
+	var sawTypingOff, sawNotice bool
+	for _, event := range events {
+		if event.PendingInput != nil && event.PendingInput.TypingOff {
+			sawTypingOff = true
+		}
+		if event.Notice != nil && event.Notice.Code == "dispatch_failed" {
+			sawNotice = true
+		}
+	}
+	if !sawTypingOff || !sawNotice {
+		t.Fatalf("expected typing-off and failure notice, got %#v", events)
+	}
+}
+
+func TestHandleCommandRejectedClearsPendingRemoteState(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.BindPendingRemoteCommand("surface-1", "cmd-1")
+
+	events := svc.HandleCommandRejected("inst-1", "cmd-1", "translator failed")
+	if svc.pendingRemote["inst-1"] != nil {
+		t.Fatalf("expected pending remote binding to clear after rejected command")
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveQueueItemID != "" {
+		t.Fatalf("expected active queue to clear after rejected command")
+	}
+	item := surface.QueueItems["queue-1"]
+	if item == nil || item.Status != state.QueueItemFailed {
+		t.Fatalf("expected queue item to be marked failed, got %#v", item)
+	}
+	var sawTypingOff, sawNotice bool
+	for _, event := range events {
+		if event.PendingInput != nil && event.PendingInput.TypingOff {
+			sawTypingOff = true
+		}
+		if event.Notice != nil && event.Notice.Code == "command_rejected" {
+			sawNotice = true
+		}
+	}
+	if !sawTypingOff || !sawNotice {
+		t.Fatalf("expected typing-off and rejection notice, got %#v", events)
+	}
+}
+
+func TestApplyInstanceDisconnectedFailsActiveRemoteItem(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-2",
+		Text:             "第二条",
+	})
+
+	events := svc.ApplyInstanceDisconnected("inst-1")
+	if svc.activeRemote["inst-1"] != nil || svc.pendingRemote["inst-1"] != nil {
+		t.Fatalf("expected remote ownership to clear on disconnect")
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveQueueItemID != "" {
+		t.Fatalf("expected active queue to clear on disconnect")
+	}
+	if surface.DispatchMode != state.DispatchModeNormal {
+		t.Fatalf("expected dispatch mode to reset on disconnect, got %s", surface.DispatchMode)
+	}
+	active := surface.QueueItems["queue-1"]
+	if active == nil || active.Status != state.QueueItemFailed {
+		t.Fatalf("expected active queue item to fail on disconnect, got %#v", active)
+	}
+	queued := surface.QueueItems["queue-2"]
+	if queued == nil || queued.Status != state.QueueItemQueued {
+		t.Fatalf("expected queued item to remain queued on disconnect, got %#v", queued)
+	}
+	var sawTypingOff, sawNotice bool
+	for _, event := range events {
+		if event.PendingInput != nil && event.PendingInput.QueueItemID == "queue-1" && event.PendingInput.TypingOff {
+			sawTypingOff = true
+		}
+		if event.Notice != nil && event.Notice.Code == "attached_instance_offline" {
+			sawNotice = true
+		}
+	}
+	if !sawTypingOff || !sawNotice {
+		t.Fatalf("expected typing-off and offline notice, got %#v", events)
+	}
+}
+
+func TestApplyInstanceConnectedResumesQueuedInput(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplyInstanceDisconnected("inst-1")
+	queued := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	if len(queued) != 1 || queued[0].PendingInput == nil || queued[0].PendingInput.Status != string(state.QueueItemQueued) {
+		t.Fatalf("expected offline input to remain queued, got %#v", queued)
+	}
+
+	events := svc.ApplyInstanceConnected("inst-1")
+	if len(events) < 2 || events[0].PendingInput == nil || events[0].PendingInput.Status != string(state.QueueItemDispatching) || events[1].Command == nil {
+		t.Fatalf("expected reconnect to resume queued input dispatch, got %#v", events)
+	}
+	if svc.pendingRemote["inst-1"] == nil {
+		t.Fatalf("expected reconnect to reserve pending remote turn")
 	}
 }

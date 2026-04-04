@@ -87,6 +87,7 @@ For local service control during debugging:
 For app-server helper or internal traffic:
 
 - Never suppress or classify helper turns by thread-local heuristics such as "same thread" or "next turn on this thread".
+- A remembered "helper thread id" is not a valid classifier for later turn/item traffic. Helper turns and normal user turns can share the same thread.
 - Correlate helper thread/turn lifecycle only through protocol-level identifiers returned by the server, such as request `id -> result.thread.id` or `id -> result.turn.id`.
 - If the real protocol provides an exact correlation handle, use it. Do not replace it with timing-based or adjacency-based guesses in production logic or mocks.
 

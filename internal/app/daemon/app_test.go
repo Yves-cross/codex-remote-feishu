@@ -2,12 +2,15 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 type recordingGateway struct {
@@ -267,5 +270,66 @@ func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T)
 	}
 	if !hasTyping {
 		t.Fatalf("expected queued message to resume dispatch after tick, got %#v", gateway.operations)
+	}
+}
+
+func TestDaemonStatusExportsSurfacesAndRemoteTurnState(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway)
+
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+
+	req := httptest.NewRequest("GET", "/v1/status", nil)
+	rec := httptest.NewRecorder()
+	app.handleStatus(rec, req)
+
+	var payload struct {
+		Instances          []struct{ InstanceID string }
+		Surfaces           []struct{ SurfaceSessionID, AttachedInstanceID, ActiveQueueItemID string }
+		PendingRemoteTurns []struct {
+			InstanceID       string
+			SurfaceSessionID string
+			QueueItemID      string
+			SourceMessageID  string
+			Status           string
+		}
+		ActiveRemoteTurns []struct{}
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if len(payload.Instances) != 1 || payload.Instances[0].InstanceID != "inst-1" {
+		t.Fatalf("expected one instance in status payload, got %#v", payload.Instances)
+	}
+	if len(payload.Surfaces) != 1 || payload.Surfaces[0].SurfaceSessionID != "feishu:chat:1" || payload.Surfaces[0].AttachedInstanceID != "inst-1" {
+		t.Fatalf("expected attached surface in status payload, got %#v", payload.Surfaces)
+	}
+	if len(payload.PendingRemoteTurns) != 1 || payload.PendingRemoteTurns[0].SurfaceSessionID != "feishu:chat:1" || payload.PendingRemoteTurns[0].SourceMessageID != "msg-1" || payload.PendingRemoteTurns[0].Status != "dispatching" {
+		t.Fatalf("expected pending remote turn in status payload, got %#v", payload.PendingRemoteTurns)
+	}
+	if len(payload.ActiveRemoteTurns) != 0 {
+		t.Fatalf("expected no active remote turns before turn/started, got %#v", payload.ActiveRemoteTurns)
 	}
 }

@@ -3,9 +3,11 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -117,9 +119,17 @@ func (a *App) Shutdown(ctx context.Context) error {
 func (a *App) HandleAction(ctx context.Context, action control.Action) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if action.Kind == control.ActionStatus {
-		log.Printf("surface status requested: surface=%s chat=%s actor=%s message=%s", action.SurfaceSessionID, action.ChatID, action.ActorUserID, action.MessageID)
-	}
+	log.Printf(
+		"surface action: surface=%s chat=%s actor=%s kind=%s message=%s instance=%s thread=%s text=%q",
+		action.SurfaceSessionID,
+		action.ChatID,
+		action.ActorUserID,
+		action.Kind,
+		action.MessageID,
+		action.InstanceID,
+		action.ThreadID,
+		actionTextPreview(action.Text),
+	)
 	events := a.service.ApplySurfaceAction(action)
 	a.handleUIEvents(ctx, events)
 }
@@ -146,6 +156,7 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	inst.Online = true
 	a.service.UpsertInstance(inst)
 	log.Printf("relay instance connected: id=%s workspace=%s display=%s", inst.InstanceID, inst.WorkspaceKey, inst.DisplayName)
+	a.handleUIEvents(ctx, a.service.ApplyInstanceConnected(inst.InstanceID))
 
 	command := agentproto.Command{
 		CommandID: a.nextCommandID(),
@@ -160,12 +171,31 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, event := range events {
+		log.Printf(
+			"agent event: instance=%s kind=%s thread=%s turn=%s item=%s initiator=%s traffic=%s status=%s",
+			instanceID,
+			event.Kind,
+			event.ThreadID,
+			event.TurnID,
+			event.ItemID,
+			event.Initiator.Kind,
+			event.TrafficClass,
+			event.Status,
+		)
 		uiEvents := a.service.ApplyAgentEvent(instanceID, event)
 		a.handleUIEvents(ctx, uiEvents)
 	}
 }
 
-func (a *App) onCommandAck(context.Context, string, agentproto.CommandAck) {}
+func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentproto.CommandAck) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	log.Printf("relay command ack: instance=%s command=%s accepted=%t error=%s", instanceID, ack.CommandID, ack.Accepted, ack.Error)
+	if ack.Accepted {
+		return
+	}
+	a.handleUIEvents(ctx, a.service.HandleCommandRejected(instanceID, ack.CommandID, ack.Error))
+}
 
 func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 	a.mu.Lock()
@@ -194,10 +224,26 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 				event.Command.CommandID = a.nextCommandID()
 			}
 			instanceID := a.service.AttachedInstanceID(event.SurfaceSessionID)
-			if instanceID != "" {
-				if err := a.relay.SendCommand(instanceID, *event.Command); err != nil {
-					log.Printf("relay send command failed: instance=%s kind=%s err=%v", instanceID, event.Command.Kind, err)
-				}
+			a.service.BindPendingRemoteCommand(event.SurfaceSessionID, event.Command.CommandID)
+			log.Printf(
+				"ui command: surface=%s instance=%s kind=%s thread=%s turn=%s sourceMessage=%s",
+				event.SurfaceSessionID,
+				instanceID,
+				event.Command.Kind,
+				event.Command.Target.ThreadID,
+				event.Command.Target.TurnID,
+				event.Command.Origin.MessageID,
+			)
+			if instanceID == "" {
+				log.Printf("ui command skipped: surface=%s kind=%s err=no attached instance", event.SurfaceSessionID, event.Command.Kind)
+				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, errors.New("no attached instance"))
+				a.handleUIEvents(context.Background(), rollback)
+				continue
+			}
+			if err := a.relay.SendCommand(instanceID, *event.Command); err != nil {
+				log.Printf("relay send command failed: instance=%s kind=%s err=%v", instanceID, event.Command.Kind, err)
+				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, err)
+				a.handleUIEvents(context.Background(), rollback)
 			}
 			continue
 		}
@@ -205,6 +251,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 		if chatID == "" {
 			continue
 		}
+		log.Printf("ui event: surface=%s chat=%s kind=%s", event.SurfaceSessionID, chatID, event.Kind)
 		operations := a.projector.Project(chatID, event)
 		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		err := a.gateway.Apply(applyCtx, operations)
@@ -223,10 +270,24 @@ func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	payload := struct {
-		Instances []*state.InstanceRecord `json:"instances"`
+		Instances          []*state.InstanceRecord         `json:"instances"`
+		Surfaces           []*state.SurfaceConsoleRecord   `json:"surfaces"`
+		PendingRemoteTurns []orchestrator.RemoteTurnStatus `json:"pendingRemoteTurns"`
+		ActiveRemoteTurns  []orchestrator.RemoteTurnStatus `json:"activeRemoteTurns"`
 	}{
-		Instances: a.service.Instances(),
+		Instances:          a.service.Instances(),
+		Surfaces:           a.service.Surfaces(),
+		PendingRemoteTurns: a.service.PendingRemoteTurns(),
+		ActiveRemoteTurns:  a.service.ActiveRemoteTurns(),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func actionTextPreview(text string) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	if len(text) <= 120 {
+		return text
+	}
+	return text[:117] + "..."
 }
