@@ -1,0 +1,47 @@
+package config
+
+import (
+	"os"
+	"strings"
+)
+
+var ProxyEnvKeys = []string{
+	"http_proxy",
+	"https_proxy",
+	"all_proxy",
+	"HTTP_PROXY",
+	"HTTPS_PROXY",
+	"ALL_PROXY",
+}
+
+func CaptureAndClearProxyEnv() []string {
+	var restored []string
+	for _, key := range ProxyEnvKeys {
+		if value, ok := os.LookupEnv(key); ok {
+			restored = append(restored, key+"="+value)
+			_ = os.Unsetenv(key)
+		}
+	}
+	return restored
+}
+
+func FilterEnvWithoutProxy(env []string) []string {
+	filtered := env[:0]
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if containsString(ProxyEnvKeys, key) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}

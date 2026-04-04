@@ -1,0 +1,198 @@
+package wrapper
+
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"fschannel/internal/adapter/relayws"
+	"fschannel/internal/core/agentproto"
+)
+
+func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", "..", ".."))
+
+	helloCh := make(chan agentproto.Hello, 1)
+	eventsCh := make(chan []agentproto.Event, 8)
+	server := relayws.NewServer(relayws.ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+		OnEvents: func(_ context.Context, _ string, events []agentproto.Event) {
+			eventsCh <- events
+		},
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+
+	stdinReader, stdinWriter := io.Pipe()
+	defer stdinWriter.Close()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cfg := Config{
+		RelayServerURL:  wsURL,
+		CodexRealBinary: "go",
+		Args:            []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
+		InstanceID:      "inst-wrapper",
+		DisplayName:     "fschannel",
+		WorkspaceRoot:   repoRoot,
+		WorkspaceKey:    repoRoot,
+		ShortName:       filepath.Base(repoRoot),
+		Version:         "test",
+	}
+	app := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := app.Run(ctx, stdinReader, &stdout, &stderr)
+		done <- err
+	}()
+
+	select {
+	case <-helloCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for wrapper hello")
+	}
+
+	if err := server.SendCommand("inst-wrapper", agentproto.Command{
+		CommandID: "cmd-refresh",
+		Kind:      agentproto.CommandThreadsRefresh,
+	}); err != nil {
+		t.Fatalf("send refresh: %v", err)
+	}
+
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return len(events) == 1 && events[0].Kind == agentproto.EventThreadsSnapshot && len(events[0].Threads) == 1
+	}, &stdout, &stderr, done)
+
+	if err := server.SendCommand("inst-wrapper", agentproto.Command{
+		CommandID: "cmd-prompt",
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/data/dl/droid"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "列一下文件"}}},
+	}); err != nil {
+		t.Fatalf("send prompt: %v", err)
+	}
+
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return len(events) == 1 && events[0].Kind == agentproto.EventTurnStarted
+	}, &stdout, &stderr, done)
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return len(events) == 1 && events[0].Kind == agentproto.EventItemDelta && events[0].ItemKind == "agent_message"
+	}, &stdout, &stderr, done)
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return len(events) == 1 && events[0].Kind == agentproto.EventItemCompleted
+	}, &stdout, &stderr, done)
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return len(events) == 1 && events[0].Kind == agentproto.EventTurnCompleted
+	}, &stdout, &stderr, done)
+
+	if strings.Contains(stdout.String(), "relay-turn-start") {
+		t.Fatalf("internal relay request leaked to parent stdout: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "\"method\":\"turn/started\"") {
+		t.Fatalf("expected notifications to reach parent stdout, got %s", stdout.String())
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("wrapper run failed: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for wrapper shutdown")
+	}
+}
+
+func TestWrapperKillsChildWhenRelayConnectionFails(t *testing.T) {
+	tempDir := t.TempDir()
+	pidFile := filepath.Join(tempDir, "mockcodex.pid")
+	script := filepath.Join(tempDir, "mockcodex-sleep.sh")
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env bash\nset -euo pipefail\necho $$ > "+pidFile+"\ntrap 'exit 0' TERM INT\nwhile true; do sleep 1; done\n"), 0o755); err != nil {
+		t.Fatalf("write mock codex script: %v", err)
+	}
+
+	stdinReader, stdinWriter := io.Pipe()
+	defer stdinWriter.Close()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cfg := Config{
+		RelayServerURL:  "ws://127.0.0.1:1/ws/agent",
+		CodexRealBinary: script,
+		InstanceID:      "inst-wrapper",
+		DisplayName:     "fschannel",
+		WorkspaceRoot:   tempDir,
+		WorkspaceKey:    tempDir,
+		ShortName:       filepath.Base(tempDir),
+		Version:         "test",
+	}
+	app := New(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := app.Run(ctx, stdinReader, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("expected wrapper run to fail when relay server is unavailable")
+	}
+
+	var pidBytes []byte
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pidBytes, err = os.ReadFile(pidFile)
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("read mock codex pid: %v", err)
+	}
+	pid := strings.TrimSpace(string(pidBytes))
+	if pid == "" {
+		t.Fatal("expected mock codex pid to be recorded")
+	}
+
+	check := exec.Command("bash", "-lc", "kill -0 "+pid)
+	if err := check.Run(); err == nil {
+		t.Fatalf("expected mock codex child to be terminated, pid=%s stdout=%s stderr=%s", pid, stdout.String(), stderr.String())
+	}
+}
+
+func waitForEvent(t *testing.T, eventsCh <-chan []agentproto.Event, timeout time.Duration, match func([]agentproto.Event) bool, stdout, stderr *bytes.Buffer, done <-chan error) {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case events := <-eventsCh:
+			if match(events) {
+				return
+			}
+		case err := <-done:
+			t.Fatalf("wrapper exited early: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+		case <-deadline:
+			t.Fatalf("timed out waiting for matching event\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+		}
+	}
+}

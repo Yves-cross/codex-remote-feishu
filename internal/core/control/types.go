@@ -1,0 +1,170 @@
+package control
+
+import (
+	"time"
+
+	"fschannel/internal/core/agentproto"
+	"fschannel/internal/core/render"
+)
+
+type ActionKind string
+
+const (
+	ActionListInstances    ActionKind = "surface.menu.list_instances"
+	ActionStatus           ActionKind = "surface.menu.status"
+	ActionStop             ActionKind = "surface.menu.stop"
+	ActionModelCommand     ActionKind = "surface.command.model"
+	ActionReasoningCommand ActionKind = "surface.command.reasoning"
+	ActionTextMessage      ActionKind = "surface.message.text"
+	ActionImageMessage     ActionKind = "surface.message.image"
+	ActionReactionCreated  ActionKind = "surface.message.reaction.created"
+	ActionAttachInstance   ActionKind = "surface.button.attach_instance"
+	ActionShowThreads      ActionKind = "surface.button.show_threads"
+	ActionUseThread        ActionKind = "surface.button.use_thread"
+	ActionFollowLocal      ActionKind = "surface.button.follow_local"
+	ActionDetach           ActionKind = "surface.button.detach"
+)
+
+type Action struct {
+	Kind             ActionKind
+	SurfaceSessionID string
+	ChatID           string
+	ActorUserID      string
+	MessageID        string
+	Text             string
+	InstanceID       string
+	ThreadID         string
+	LocalPath        string
+	MIMEType         string
+	TargetMessageID  string
+}
+
+type SelectionPromptKind string
+
+const (
+	SelectionPromptAttachInstance SelectionPromptKind = "attach_instance"
+	SelectionPromptUseThread      SelectionPromptKind = "use_thread"
+)
+
+type SelectionOption struct {
+	Index     int
+	OptionID  string
+	Label     string
+	Subtitle  string
+	IsCurrent bool
+	Disabled  bool
+}
+
+type SelectionPrompt struct {
+	PromptID  string
+	Kind      SelectionPromptKind
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	Options   []SelectionOption
+}
+
+type Snapshot struct {
+	SurfaceSessionID string
+	ActorUserID      string
+	Attachment       AttachmentSummary
+	NextPrompt       PromptRouteSummary
+	Instances        []InstanceSummary
+	Threads          []ThreadSummary
+}
+
+type AttachmentSummary struct {
+	InstanceID            string
+	DisplayName           string
+	SelectedThreadID      string
+	SelectedThreadTitle   string
+	SelectedThreadPreview string
+	RouteMode             string
+}
+
+type PromptRouteSummary struct {
+	RouteMode                      string
+	ThreadID                       string
+	ThreadTitle                    string
+	CWD                            string
+	CreateThread                   bool
+	BaseModel                      string
+	BaseReasoningEffort            string
+	BaseModelSource                string
+	BaseReasoningEffortSource      string
+	OverrideModel                  string
+	OverrideReasoningEffort        string
+	EffectiveModel                 string
+	EffectiveReasoningEffort       string
+	EffectiveModelSource           string
+	EffectiveReasoningEffortSource string
+}
+
+type InstanceSummary struct {
+	InstanceID              string
+	DisplayName             string
+	WorkspaceRoot           string
+	WorkspaceKey            string
+	Online                  bool
+	State                   string
+	ObservedFocusedThreadID string
+}
+
+type ThreadSummary struct {
+	ThreadID          string
+	Name              string
+	DisplayTitle      string
+	Preview           string
+	CWD               string
+	State             string
+	Model             string
+	ReasoningEffort   string
+	Loaded            bool
+	IsObservedFocused bool
+	IsSelected        bool
+}
+
+type PendingInputState struct {
+	QueueItemID     string
+	SourceMessageID string
+	Status          string
+	QueuePosition   int
+	TypingOn        bool
+	TypingOff       bool
+	ThumbsDown      bool
+}
+
+type Notice struct {
+	Code string
+	Text string
+}
+
+type ThreadSelectionChanged struct {
+	ThreadID  string
+	RouteMode string
+	Title     string
+	Preview   string
+}
+
+type UIEventKind string
+
+const (
+	UIEventSnapshot              UIEventKind = "snapshot.updated"
+	UIEventSelectionPrompt       UIEventKind = "selection.prompt"
+	UIEventPendingInput          UIEventKind = "pending.input.state"
+	UIEventNotice                UIEventKind = "notice"
+	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
+	UIEventBlockCommitted        UIEventKind = "block.committed"
+	UIEventAgentCommand          UIEventKind = "agent.command"
+)
+
+type UIEvent struct {
+	Kind             UIEventKind
+	SurfaceSessionID string
+	Snapshot         *Snapshot
+	SelectionPrompt  *SelectionPrompt
+	PendingInput     *PendingInputState
+	Notice           *Notice
+	ThreadSelection  *ThreadSelectionChanged
+	Block            *render.Block
+	Command          *agentproto.Command
+}

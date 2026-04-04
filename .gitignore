@@ -1,5 +1,8 @@
-node_modules/
-dist/
-target/
 .env
 *.log
+bin/
+coverage.out
+*.test
+*.exe
+*.out
+.DS_Store
