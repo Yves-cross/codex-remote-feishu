@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"fschannel/internal/adapter/relayws"
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
 func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
@@ -52,7 +52,7 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 		CodexRealBinary: "go",
 		Args:            []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
 		InstanceID:      "inst-wrapper",
-		DisplayName:     "fschannel",
+		DisplayName:     "codex-remote",
 		WorkspaceRoot:   repoRoot,
 		WorkspaceKey:    repoRoot,
 		ShortName:       filepath.Base(repoRoot),
@@ -160,7 +160,7 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 		CodexRealBinary: "go",
 		Args:            []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
 		InstanceID:      "inst-wrapper",
-		DisplayName:     "fschannel",
+		DisplayName:     "codex-remote",
 		WorkspaceRoot:   repoRoot,
 		WorkspaceKey:    repoRoot,
 		ShortName:       filepath.Base(repoRoot),
@@ -225,7 +225,7 @@ func TestWrapperKillsChildWhenRelayConnectionFails(t *testing.T) {
 		RelayServerURL:  "ws://127.0.0.1:1/ws/agent",
 		CodexRealBinary: script,
 		InstanceID:      "inst-wrapper",
-		DisplayName:     "fschannel",
+		DisplayName:     "codex-remote",
 		WorkspaceRoot:   tempDir,
 		WorkspaceKey:    tempDir,
 		ShortName:       filepath.Base(tempDir),

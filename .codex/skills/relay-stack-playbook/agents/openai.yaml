@@ -1,0 +1,4 @@
+interface:
+  display_name: "Relay 联调守则"
+  short_description: "fschannel 协议、状态机和 Feishu 联调排障流程"
+  default_prompt: "Use $relay-stack-playbook for relayd / relay-wrapper / Feishu / VS Code integration debugging or protocol changes in this repository."

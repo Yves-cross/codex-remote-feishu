@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"fschannel/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 type Planner struct{}

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 
 	"github.com/gorilla/websocket"
 )

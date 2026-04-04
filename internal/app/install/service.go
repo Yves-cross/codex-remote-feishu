@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"fschannel/internal/adapter/editor"
-	"fschannel/internal/config"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
+	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
 type WrapperIntegrationMode string
@@ -46,8 +46,8 @@ func NewService() *Service {
 }
 
 func (s *Service) Bootstrap(opts Options) (InstallState, error) {
-	configDir := filepath.Join(opts.BaseDir, ".config", "codex-relay")
-	stateDir := filepath.Join(opts.BaseDir, ".local", "share", "codex-relay")
+	configDir := filepath.Join(opts.BaseDir, ".config", "codex-remote")
+	stateDir := filepath.Join(opts.BaseDir, ".local", "share", "codex-remote")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return InstallState{}, err
 	}
@@ -64,10 +64,10 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	}
 
 	if err := config.WriteEnvFile(wrapperConfigPath, map[string]string{
-		"RELAY_SERVER_URL":                     opts.RelayServerURL,
-		"CODEX_REAL_BINARY":                    opts.CodexRealBinary,
-		"CODEX_RELAY_WRAPPER_NAME_MODE":        "workspace_basename",
-		"CODEX_RELAY_WRAPPER_INTEGRATION_MODE": string(opts.IntegrationMode),
+		"RELAY_SERVER_URL":                      opts.RelayServerURL,
+		"CODEX_REAL_BINARY":                     opts.CodexRealBinary,
+		"CODEX_REMOTE_WRAPPER_NAME_MODE":        "workspace_basename",
+		"CODEX_REMOTE_WRAPPER_INTEGRATION_MODE": string(opts.IntegrationMode),
 	}); err != nil {
 		return InstallState{}, err
 	}

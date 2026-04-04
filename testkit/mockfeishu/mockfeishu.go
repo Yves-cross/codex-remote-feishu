@@ -1,8 +1,8 @@
 package mockfeishu
 
 import (
-	"fschannel/internal/core/control"
-	"fschannel/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 type Recorder struct {

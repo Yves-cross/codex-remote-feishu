@@ -10,13 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"fschannel/internal/adapter/feishu"
-	"fschannel/internal/adapter/relayws"
-	"fschannel/internal/core/agentproto"
-	"fschannel/internal/core/control"
-	"fschannel/internal/core/orchestrator"
-	"fschannel/internal/core/renderer"
-	"fschannel/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
+	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 type App struct {

@@ -3,7 +3,7 @@ package feishu
 import (
 	"testing"
 
-	"fschannel/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 func TestMenuActionKindKnownValues(t *testing.T) {

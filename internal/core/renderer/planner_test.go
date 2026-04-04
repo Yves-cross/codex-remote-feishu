@@ -3,7 +3,7 @@ package renderer
 import (
 	"testing"
 
-	"fschannel/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 func TestPlannerPreservesFullAssistantMarkdownAsSingleBlock(t *testing.T) {

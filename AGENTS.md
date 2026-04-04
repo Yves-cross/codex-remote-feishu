@@ -1,5 +1,17 @@
 # AGENTS
 
+## Project Skill
+
+For work on this repository's relay stack, use the project skill at `.codex/skills/relay-stack-playbook/`.
+
+Trigger it for:
+
+- `relayd` / `relay-wrapper`
+- Feishu bot integration
+- VS Code remote integration
+- Codex app-server protocol changes
+- `/list`, `/attach`, `/use`, queue, thread routing, missing reply, helper/internal traffic issues
+
 ## Proxy Environment
 
 This repository is often developed on hosts where `http_proxy` / `https_proxy` are set globally.

@@ -1,70 +1,71 @@
-# Go 重写测试策略
+# Go 测试策略
 
 ## 1. 目标
 
-测试第一优先级是全自动化。
+当前测试策略仍然是：
 
-这意味着：
+- 自动化优先
+- 真实状态机优先
+- mock 必须与真实协议一致
 
-- 单元测试要覆盖核心状态机
-- 协议翻译要有 contract test
-- wrapper/daemon/bot 的关键链路要有 integration test
-- 至少有一组端到端测试使用“行为正确的 mock Codex”和“行为正确的 mock Feishu”
+“测试通过”在这个仓库里至少意味着两件事：
 
-## 2. 分层策略
+1. `go test ./...` 全绿
+2. 当前用户可见问题在对应层级有覆盖，而不是只改了一个局部函数
 
-## 2.1 纯单元测试
+## 2. 当前测试层次
 
-覆盖模块：
+### 2.1 纯领域测试
 
-- `core/agentproto`
-- `core/control`
-- `core/render`
-- `core/state`
-- `core/orchestrator`
-- `core/renderer`
+重点模块：
 
-重点断言：
+- `internal/core/orchestrator`
+- `internal/core/renderer`
+- `internal/core/state`
+- `internal/core/control`
 
-- attach 后默认 pin 当前 thread
-- queue item 入队时冻结 thread/cwd
-- `local.interaction.observed` 触发 `paused_for_local`
-- `turn.completed(local_ui)` 进入 `handoff_wait`
-- handoff 超时后恢复 remote queue
-- stop 只清飞书侧 queue / staged image
-- staged image 跟随第一条文本绑定
-- renderer 对 fenced code block / 文件列表分块正确
+重点覆盖：
 
-## 2.2 协议 contract test
+- attach 后默认 thread 选择
+- routeMode / dispatchMode 状态机
+- queue item 冻结 thread/cwd/override
+- staged image 绑定
+- local-priority / handoff
+- renderer 的文本切分与代码块处理
 
-覆盖模块：
+### 2.2 协议翻译测试
 
-- `adapter/codex`
-- `adapter/relayws`
+重点模块：
 
-重点断言：
+- `internal/adapter/codex`
+- `internal/adapter/relayws`
 
-- 原生 `turn/start` -> canonical `local.interaction.observed(turn_start)`
-- 原生 `turn/steer` -> canonical `local.interaction.observed(turn_steer)`
-- 远端 `prompt.send` -> 正确生成 `thread/start` / `thread/resume` / `turn/start`
-- `turn.started` 的 `initiator` 判定正确
-- reconnect 时 `instanceId` 复用规则正确
+重点覆盖：
 
-## 2.3 适配层集成测试
+- native `turn/start` / `turn/steer` -> canonical event
+- remote `prompt.send` -> native `thread/start` / `thread/resume` / `turn/start`
+- `initiator` 判定
+- `trafficClass=internal_helper` 标注
+- helper/internal traffic 不污染正常远端 turn
+- websocket hello / command / event / ack 流程
 
-覆盖模块：
+### 2.3 运行时集成测试
 
-- `adapter/feishu`
-- `app/daemon`
-- `app/wrapper`
+重点模块：
 
-重点断言：
+- `internal/app/wrapper`
+- `internal/app/install`
+- `internal/app/daemon`
+- `internal/adapter/feishu`
 
-- 飞书菜单 / 消息 / reaction / 图片事件被正确翻成 `SurfaceAction`
-- notice / render block / pending state 被正确发回飞书接口
-- wrapper 和 daemon 之间 WS 断线重连正确
+重点覆盖：
 
-## 2.4 端到端测试
+- wrapper 与 mock Codex 的桥接
+- install 配置写入和 editor patch
+- Feishu action 解析
+- projector 输出
+
+### 2.4 Harness / e2e
 
 使用：
 
@@ -72,74 +73,66 @@
 - `testkit/mockfeishu`
 - `testkit/harness`
 
-场景至少包括：
+重点覆盖：
 
-1. `/list -> attach -> 发文本 -> 收到完整文本 block`
-2. `attach 后本地 VS Code 发起 turn/start，飞书进入 paused_for_local`
-3. `本地 turn 完成，handoff_wait 后飞书队列恢复`
-4. `发两张图片 + 一条文本，prompt.send(inputs[])` 顺序正确
-5. `飞书 queue 中追加两条消息，只有 dispatching 项有 Typing`
-6. `stop -> interrupt 当前 turn + discard 剩余 queue`
-7. `切 thread 后新消息进入新 thread，旧 queue 不被改写`
+- attach -> 发文本 -> 收到输出
+- 本地 VS Code turn 导致 pause_for_local
+- handoff 恢复远端 queue
+- helper/internal turn 不进入 Feishu 主渲染
+- thread 切换和 queue 冻结
 
-## 3. Mock 设计约束
+## 3. Mock 约束
 
-## 3.1 Mock Codex 必须是状态机，不是静态脚本
+### 3.1 `mockcodex`
 
-`mockcodex` 必须维护：
+必须是状态机，而不是静态脚本。
 
-- loaded threads
+它至少要维护：
+
+- thread 集合
 - focused thread
 - active turn
-- interrupted / completed 状态
 - thread cwd
 - turn inputs
 
-必须支持原生请求：
+并且必须支持当前真实链路用到的 native 请求和通知。
 
-- `thread/start`
-- `thread/resume`
-- `thread/loaded/list`
-- `thread/read`
-- `turn/start`
-- `turn/steer`
-- `turn/interrupt`
+### 3.2 `mockfeishu`
 
-必须发出的通知：
+必须记录真实副作用，而不是只记录“调用过一次”：
 
-- `thread/started`
-- `turn/started`
-- `item/started`
-- `item/agentMessage/delta`
-- `item/completed`
-- `turn/completed`
+- 文本
+- 卡片
+- typing reaction
+- thumbsdown reaction
+- selection prompt
 
-## 3.2 Mock Feishu 必须记录真实交互副作用
+## 4. 代理环境要求
 
-`mockfeishu` 必须记录：
+本仓库经常运行在设置了全局 `http_proxy` / `https_proxy` 的机器上。
 
-- 收到的文本
-- 收到的卡片
-- 添加/移除 reaction
-- 下载图片请求
-- 菜单点击和按钮回调
+本地测试和 localhost 检查默认都应该清掉代理环境：
 
-测试要断言副作用顺序，而不是只断言“调用过一次”。
+```bash
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u all_proxy go test ./...
+```
 
-## 4. 通过标准
+## 5. 除了单元测试还应该做什么
 
-第一版完成标准冻结为：
+对状态机或协议 bug，不应只看单测。
+
+至少还应核对：
+
+- `relayd` 当前 `/v1/status`
+- `codex-remote-relayd.log`
+- 当前 wrapper instance 是否在线
+- 真实 Feishu / VS Code 复现路径是否和测试覆盖的链路一致
+
+## 6. 当前通过标准
+
+当前版本的最小通过标准：
 
 1. `go test ./...` 全绿
-2. 关键 e2e 场景全绿
-3. 不依赖手工点按钮或人工观察日志判断正确性
-4. mock 不使用与真实协议矛盾的偷懒行为
-
-## 5. 开发顺序
-
-实施时按 TDD 推进：
-
-1. 先写纯领域测试
-2. 再写 protocol contract test
-3. 再写 integration/e2e harness
-4. 最后补 installer 测试
+2. helper/internal traffic 的标注与 server 侧过滤有测试
+3. wrapper / orchestrator / harness 三层至少有一层覆盖用户报告的现象
+4. mock 行为不与当前真实协议冲突

@@ -3,7 +3,7 @@ package state
 import (
 	"time"
 
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
 type RouteMode string

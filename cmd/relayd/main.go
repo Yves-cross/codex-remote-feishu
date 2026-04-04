@@ -7,9 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fschannel/internal/adapter/feishu"
-	"fschannel/internal/app/daemon"
-	"fschannel/internal/config"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon"
+	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
 func main() {

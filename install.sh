@@ -10,22 +10,22 @@ XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
 XDG_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 
-CONFIG_DIR="${XDG_CONFIG_HOME}/codex-relay"
-STATE_DIR="${XDG_DATA_HOME}/codex-relay"
-RUN_DIR="${XDG_STATE_HOME}/codex-relay"
+CONFIG_DIR="${XDG_CONFIG_HOME}/codex-remote"
+STATE_DIR="${XDG_DATA_HOME}/codex-remote"
+RUN_DIR="${XDG_STATE_HOME}/codex-remote"
 LOG_DIR="${STATE_DIR}/logs"
 
 WRAPPER_CONFIG="${CONFIG_DIR}/wrapper.env"
 SERVICES_CONFIG="${CONFIG_DIR}/services.env"
-PID_FILE="${RUN_DIR}/relayd.pid"
-LOG_FILE="${LOG_DIR}/relayd.log"
+PID_FILE="${RUN_DIR}/codex-remote-relayd.pid"
+LOG_FILE="${LOG_DIR}/codex-remote-relayd.log"
 
 mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${STATE_DIR}" "${RUN_DIR}" "${LOG_DIR}"
 
 build_bins() {
-  "${GO_BIN}" build -o "${BIN_DIR}/relayd" "${ROOT_DIR}/cmd/relayd"
-  "${GO_BIN}" build -o "${BIN_DIR}/relay-wrapper" "${ROOT_DIR}/cmd/relay-wrapper"
-  "${GO_BIN}" build -o "${BIN_DIR}/relay-install" "${ROOT_DIR}/cmd/relay-install"
+  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-relayd" "${ROOT_DIR}/cmd/relayd"
+  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-wrapper" "${ROOT_DIR}/cmd/relay-wrapper"
+  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-install" "${ROOT_DIR}/cmd/relay-install"
 }
 
 detect_vscode_bundle_codex() {
@@ -71,12 +71,12 @@ bootstrap() {
       codex_binary="codex"
     fi
   fi
-  local wrapper_binary="${WRAPPER_BINARY:-${BIN_DIR}/relay-wrapper}"
+  local wrapper_binary="${WRAPPER_BINARY:-${BIN_DIR}/codex-remote-wrapper}"
   local vscode_settings="${VSCODE_SETTINGS:-${HOME}/.config/Code/User/settings.json}"
   local feishu_app_id="${FEISHU_APP_ID:-}"
   local feishu_app_secret="${FEISHU_APP_SECRET:-}"
 
-  "${BIN_DIR}/relay-install" \
+  "${BIN_DIR}/codex-remote-install" \
     -base-dir "${BASE_DIR}" \
     -wrapper-binary "${wrapper_binary}" \
     -relay-url "${relay_url}" \
@@ -105,7 +105,7 @@ start() {
     return 0
   fi
   rm -f "${PID_FILE}"
-  setsid env CODEX_RELAY_SERVICES_CONFIG="${SERVICES_CONFIG}" "${BIN_DIR}/relayd" </dev/null >>"${LOG_FILE}" 2>&1 &
+  setsid env CODEX_REMOTE_SERVICES_CONFIG="${SERVICES_CONFIG}" "${BIN_DIR}/codex-remote-relayd" </dev/null >>"${LOG_FILE}" 2>&1 &
   local pid=$!
   echo "${pid}" > "${PID_FILE}"
   sleep 1

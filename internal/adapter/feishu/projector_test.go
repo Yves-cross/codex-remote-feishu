@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"fschannel/internal/core/control"
-	"fschannel/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 func TestProjectSelectionPromptAsCard(t *testing.T) {

@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"fschannel/internal/adapter/codex"
-	"fschannel/internal/adapter/relayws"
-	"fschannel/internal/config"
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/codex"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
+	"github.com/kxn/codex-remote-feishu/internal/config"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
 type App struct {

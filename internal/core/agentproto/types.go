@@ -5,10 +5,10 @@ import "time"
 type InitiatorKind string
 
 const (
-	InitiatorUnknown       InitiatorKind = "unknown"
-	InitiatorLocalUI       InitiatorKind = "local_ui"
+	InitiatorUnknown        InitiatorKind = "unknown"
+	InitiatorLocalUI        InitiatorKind = "local_ui"
 	InitiatorInternalHelper InitiatorKind = "internal_helper"
-	InitiatorRemoteSurface InitiatorKind = "remote_surface"
+	InitiatorRemoteSurface  InitiatorKind = "remote_surface"
 )
 
 type TrafficClass string

@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"fschannel/internal/app/wrapper"
+	"github.com/kxn/codex-remote-feishu/internal/app/wrapper"
 )
 
 func main() {

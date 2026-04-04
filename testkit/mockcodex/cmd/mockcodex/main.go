@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"fschannel/testkit/mockcodex"
+	"github.com/kxn/codex-remote-feishu/testkit/mockcodex"
 )
 
 func main() {

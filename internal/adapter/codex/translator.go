@@ -6,25 +6,25 @@ import (
 	"slices"
 	"strings"
 
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
 type Translator struct {
-	instanceID                  string
-	nextID                      int
-	currentThreadID             string
-	knownThreadCWD              map[string]string
-	pendingRemoteTurnByThread   map[string]string
-	pendingLocalTurnByThread    map[string]bool
-	pendingLocalNewThreadTurn   bool
-	pendingThreadCreate         map[string]pendingThreadCreate
-	pendingThreadResume         map[string]pendingThreadResume
-	pendingThreadNameSet        map[string]pendingThreadNameSet
-	pendingInternalThreadSet    map[string]bool
-	pendingInternalTurnSet      map[string]bool
-	internalThreadIDs           map[string]bool
-	internalTurnIDs             map[string]bool
-	turnInitiators              map[string]agentproto.Initiator
+	instanceID                string
+	nextID                    int
+	currentThreadID           string
+	knownThreadCWD            map[string]string
+	pendingRemoteTurnByThread map[string]string
+	pendingLocalTurnByThread  map[string]bool
+	pendingLocalNewThreadTurn bool
+	pendingThreadCreate       map[string]pendingThreadCreate
+	pendingThreadResume       map[string]pendingThreadResume
+	pendingThreadNameSet      map[string]pendingThreadNameSet
+	pendingInternalThreadSet  map[string]bool
+	pendingInternalTurnSet    map[string]bool
+	internalThreadIDs         map[string]bool
+	internalTurnIDs           map[string]bool
+	turnInitiators            map[string]agentproto.Initiator
 
 	latestThreadStartParams map[string]any
 	latestTurnStartTemplate map[string]any
@@ -59,22 +59,22 @@ type Result struct {
 
 func NewTranslator(instanceID string) *Translator {
 	return &Translator{
-		instanceID:                  instanceID,
-		knownThreadCWD:              map[string]string{},
-		pendingRemoteTurnByThread:   map[string]string{},
-		pendingLocalTurnByThread:    map[string]bool{},
-		pendingThreadCreate:         map[string]pendingThreadCreate{},
-		pendingThreadResume:         map[string]pendingThreadResume{},
-		pendingThreadNameSet:        map[string]pendingThreadNameSet{},
-		pendingInternalThreadSet:    map[string]bool{},
-		pendingInternalTurnSet:      map[string]bool{},
-		internalThreadIDs:           map[string]bool{},
-		internalTurnIDs:             map[string]bool{},
-		turnInitiators:              map[string]agentproto.Initiator{},
-		turnStartByThread:           map[string]map[string]any{},
-		pendingThreadReads:          map[string]string{},
-		threadRefreshRecords:        map[string]agentproto.ThreadSnapshotRecord{},
-		pendingSuppressedResponse:   map[string]bool{},
+		instanceID:                instanceID,
+		knownThreadCWD:            map[string]string{},
+		pendingRemoteTurnByThread: map[string]string{},
+		pendingLocalTurnByThread:  map[string]bool{},
+		pendingThreadCreate:       map[string]pendingThreadCreate{},
+		pendingThreadResume:       map[string]pendingThreadResume{},
+		pendingThreadNameSet:      map[string]pendingThreadNameSet{},
+		pendingInternalThreadSet:  map[string]bool{},
+		pendingInternalTurnSet:    map[string]bool{},
+		internalThreadIDs:         map[string]bool{},
+		internalTurnIDs:           map[string]bool{},
+		turnInitiators:            map[string]agentproto.Initiator{},
+		turnStartByThread:         map[string]map[string]any{},
+		pendingThreadReads:        map[string]string{},
+		threadRefreshRecords:      map[string]agentproto.ThreadSnapshotRecord{},
+		pendingSuppressedResponse: map[string]bool{},
 	}
 }
 

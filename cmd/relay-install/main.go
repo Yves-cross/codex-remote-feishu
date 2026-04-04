@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"fschannel/internal/app/install"
+	"github.com/kxn/codex-remote-feishu/internal/app/install"
 )
 
 func main() {
 	home, _ := os.UserHomeDir()
 	baseDir := flag.String("base-dir", home, "base directory for config and install state")
-	wrapperBinary := flag.String("wrapper-binary", "/usr/local/bin/relay-wrapper", "wrapper binary path")
+	wrapperBinary := flag.String("wrapper-binary", "/usr/local/bin/codex-remote-wrapper", "wrapper binary path")
 	relayURL := flag.String("relay-url", "ws://127.0.0.1:9500/ws/agent", "relay websocket url")
 	codexBinary := flag.String("codex-binary", "codex", "real codex binary path")
 	integrationMode := flag.String("integration", string(install.IntegrationEditorSettings), "integration mode: editor_settings or managed_shim")

@@ -1,4 +1,4 @@
-module fschannel
+module github.com/kxn/codex-remote-feishu
 
 go 1.24.6
 

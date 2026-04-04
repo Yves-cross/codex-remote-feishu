@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"fschannel/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
 func TestObserveClientTurnStartProducesLocalInteraction(t *testing.T) {

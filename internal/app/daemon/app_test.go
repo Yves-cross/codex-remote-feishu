@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"fschannel/internal/adapter/feishu"
-	"fschannel/internal/core/agentproto"
-	"fschannel/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 type recordingGateway struct {

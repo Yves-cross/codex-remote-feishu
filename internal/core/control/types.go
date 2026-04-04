@@ -3,8 +3,8 @@ package control
 import (
 	"time"
 
-	"fschannel/internal/core/agentproto"
-	"fschannel/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 type ActionKind string

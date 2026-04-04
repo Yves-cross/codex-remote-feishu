@@ -1,6 +1,8 @@
 # App-Server Relay 重构设计
 
-详细协议规格见：
+这份文档保留的是**为什么这么设计**的理由说明。
+
+当前已经实现的实际协议和运行时模型见：
 
 - [relay-protocol-spec.md](./relay-protocol-spec.md)
 - [feishu-product-design.md](./feishu-product-design.md)

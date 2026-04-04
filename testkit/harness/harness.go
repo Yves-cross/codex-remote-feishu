@@ -3,14 +3,14 @@ package harness
 import (
 	"time"
 
-	"fschannel/internal/adapter/codex"
-	"fschannel/internal/core/agentproto"
-	"fschannel/internal/core/control"
-	"fschannel/internal/core/orchestrator"
-	"fschannel/internal/core/renderer"
-	"fschannel/internal/core/state"
-	"fschannel/testkit/mockcodex"
-	"fschannel/testkit/mockfeishu"
+	"github.com/kxn/codex-remote-feishu/internal/adapter/codex"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
+	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/testkit/mockcodex"
+	"github.com/kxn/codex-remote-feishu/testkit/mockfeishu"
 )
 
 type Harness struct {

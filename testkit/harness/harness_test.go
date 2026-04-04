@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"fschannel/internal/core/control"
-	"fschannel/testkit/mockcodex"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/testkit/mockcodex"
 )
 
 func TestRemotePromptWithoutSelectedThreadCreatesThreadAndProjectsReply(t *testing.T) {

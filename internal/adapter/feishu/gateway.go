@@ -16,7 +16,7 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/larksuite/oapi-sdk-go/v3/ws"
 
-	"fschannel/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 type ActionHandler func(context.Context, control.Action)
@@ -280,7 +280,7 @@ func (g *LiveGateway) downloadImage(ctx context.Context, messageID, rawContent s
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", err
 	}
-	file, err := os.CreateTemp(dir, "fschannel-image-*")
+	file, err := os.CreateTemp(dir, "codex-remote-image-*")
 	if err != nil {
 		return "", "", err
 	}

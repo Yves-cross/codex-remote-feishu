@@ -10,7 +10,7 @@ import (
 func TestPatchBundleEntrypoint(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bin", "linux-x86_64", "codex")
-	if err := PatchBundleEntrypoint(path, "/usr/local/bin/relay-wrapper"); err != nil {
+	if err := PatchBundleEntrypoint(path, "/usr/local/bin/codex-remote-wrapper"); err != nil {
 		t.Fatalf("patch bundle entrypoint: %v", err)
 	}
 	raw, err := os.ReadFile(path)
@@ -18,7 +18,7 @@ func TestPatchBundleEntrypoint(t *testing.T) {
 		t.Fatalf("read bundle entrypoint: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, "WRAPPER_BIN=\"/usr/local/bin/relay-wrapper\"") {
+	if !strings.Contains(text, "WRAPPER_BIN=\"/usr/local/bin/codex-remote-wrapper\"") {
 		t.Fatalf("unexpected bundle content: %s", text)
 	}
 	if !strings.Contains(text, "export CODEX_REAL_BINARY=\"${CODEX_REAL_BINARY:-$REAL_BIN}\"") {

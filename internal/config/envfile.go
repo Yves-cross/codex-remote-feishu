@@ -54,8 +54,8 @@ func WriteEnvFile(path string, values map[string]string) error {
 	keys := []string{
 		"RELAY_SERVER_URL",
 		"CODEX_REAL_BINARY",
-		"CODEX_RELAY_WRAPPER_NAME_MODE",
-		"CODEX_RELAY_WRAPPER_INTEGRATION_MODE",
+		"CODEX_REMOTE_WRAPPER_NAME_MODE",
+		"CODEX_REMOTE_WRAPPER_INTEGRATION_MODE",
 		"RELAY_PORT",
 		"RELAY_API_PORT",
 		"FEISHU_APP_ID",
@@ -88,8 +88,8 @@ func WriteEnvFile(path string, values map[string]string) error {
 
 func LoadWrapperConfig() (WrapperConfig, error) {
 	configPath := firstEnv(
-		os.Getenv("CODEX_RELAY_WRAPPER_CONFIG"),
-		xdgConfigPath("codex-relay", "wrapper.env"),
+		os.Getenv("CODEX_REMOTE_WRAPPER_CONFIG"),
+		xdgConfigPath("codex-remote", "wrapper.env"),
 		filepath.Join(mustGetwd(), ".env"),
 	)
 	values, err := loadOptionalEnv(configPath)
@@ -100,13 +100,13 @@ func LoadWrapperConfig() (WrapperConfig, error) {
 		RelayServerURL:  chooseNonEmpty(os.Getenv("RELAY_SERVER_URL"), values["RELAY_SERVER_URL"], "ws://127.0.0.1:9500/ws/agent"),
 		CodexRealBinary: chooseNonEmpty(os.Getenv("CODEX_REAL_BINARY"), values["CODEX_REAL_BINARY"], "codex"),
 		NameMode: chooseNonEmpty(
-			os.Getenv("CODEX_RELAY_WRAPPER_NAME_MODE"),
-			values["CODEX_RELAY_WRAPPER_NAME_MODE"],
+			os.Getenv("CODEX_REMOTE_WRAPPER_NAME_MODE"),
+			values["CODEX_REMOTE_WRAPPER_NAME_MODE"],
 			"workspace_basename",
 		),
 		IntegrationMode: chooseNonEmpty(
-			os.Getenv("CODEX_RELAY_WRAPPER_INTEGRATION_MODE"),
-			values["CODEX_RELAY_WRAPPER_INTEGRATION_MODE"],
+			os.Getenv("CODEX_REMOTE_WRAPPER_INTEGRATION_MODE"),
+			values["CODEX_REMOTE_WRAPPER_INTEGRATION_MODE"],
 			"editor_settings",
 		),
 		ConfigPath: configPath,
@@ -116,8 +116,8 @@ func LoadWrapperConfig() (WrapperConfig, error) {
 
 func LoadServicesConfig() (ServicesConfig, error) {
 	configPath := firstEnv(
-		os.Getenv("CODEX_RELAY_SERVICES_CONFIG"),
-		xdgConfigPath("codex-relay", "services.env"),
+		os.Getenv("CODEX_REMOTE_SERVICES_CONFIG"),
+		xdgConfigPath("codex-remote", "services.env"),
 		filepath.Join(mustGetwd(), ".env"),
 	)
 	values, err := loadOptionalEnv(configPath)

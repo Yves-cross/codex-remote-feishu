@@ -14,7 +14,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:            baseDir,
-		WrapperBinary:      "/usr/local/bin/relay-wrapper",
+		WrapperBinary:      "/usr/local/bin/codex-remote-wrapper",
 		RelayServerURL:     "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary:    "/usr/local/bin/codex",
 		IntegrationMode:    IntegrationEditorSettings,
@@ -47,7 +47,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}
-	if !strings.Contains(string(settingsRaw), "relay-wrapper") {
+	if !strings.Contains(string(settingsRaw), "codex-remote-wrapper") {
 		t.Fatalf("expected settings to contain wrapper path, got %s", settingsRaw)
 	}
 }
@@ -59,7 +59,7 @@ func TestBootstrapManagedShimWritesBundleEntrypoint(t *testing.T) {
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:          baseDir,
-		WrapperBinary:    "/usr/local/bin/relay-wrapper",
+		WrapperBinary:    "/usr/local/bin/codex-remote-wrapper",
 		RelayServerURL:   "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary:  filepath.Join(filepath.Dir(entrypoint), "codex.real"),
 		IntegrationMode:  IntegrationManagedShim,
@@ -78,7 +78,7 @@ func TestBootstrapManagedShimWritesBundleEntrypoint(t *testing.T) {
 		t.Fatalf("read bundle entrypoint: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, "relay-wrapper") {
+	if !strings.Contains(text, "codex-remote-wrapper") {
 		t.Fatalf("expected bundle entrypoint to reference wrapper path, got %s", text)
 	}
 	if !strings.Contains(text, "CODEX_REAL_BINARY") {
@@ -88,7 +88,7 @@ func TestBootstrapManagedShimWritesBundleEntrypoint(t *testing.T) {
 
 func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) {
 	baseDir := t.TempDir()
-	configDir := filepath.Join(baseDir, ".config", "codex-relay")
+	configDir := filepath.Join(baseDir, ".config", "codex-remote")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
-		WrapperBinary:   "/usr/local/bin/relay-wrapper",
+		WrapperBinary:   "/usr/local/bin/codex-remote-wrapper",
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		IntegrationMode: IntegrationEditorSettings,
