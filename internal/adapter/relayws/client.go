@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 
 	"github.com/gorilla/websocket"
 )
@@ -30,6 +31,8 @@ type Client struct {
 	outbox  chan agentproto.Envelope
 	closed  chan struct{}
 	closeMu sync.Once
+
+	rawLogger *debuglog.RawLogger
 }
 
 func NewClient(url string, hello agentproto.Hello, callbacks ClientCallbacks) *Client {
@@ -106,6 +109,10 @@ func (c *Client) Close() {
 	})
 }
 
+func (c *Client) SetRawLogger(logger *debuglog.RawLogger) {
+	c.rawLogger = logger
+}
+
 func (c *Client) SendEvents(events []agentproto.Event) error {
 	if len(events) == 0 {
 		return nil
@@ -171,6 +178,7 @@ func (c *Client) RunOnce(ctx context.Context) error {
 	if err := conn.WriteMessage(websocket.TextMessage, helloBytes); err != nil {
 		return err
 	}
+	c.logRaw("out", helloBytes, agentproto.EnvelopeHello, c.hello.Instance.InstanceID, "")
 
 	writeErr := make(chan error, 1)
 	go func() {
@@ -188,6 +196,7 @@ func (c *Client) RunOnce(ctx context.Context) error {
 					writeErr <- err
 					return
 				}
+				c.logRaw("out", payload, envelope.Type, envelopeInstanceID(envelope, c.hello.Instance.InstanceID), envelopeCommandID(envelope))
 				if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
 					writeErr <- err
 					return
@@ -211,6 +220,15 @@ func (c *Client) RunOnce(ctx context.Context) error {
 			continue
 		}
 		envelope, err := agentproto.UnmarshalEnvelope(raw)
+		envelopeType := envelope.Type
+		instanceID := envelopeInstanceID(envelope, c.hello.Instance.InstanceID)
+		commandID := envelopeCommandID(envelope)
+		if err != nil {
+			envelopeType = ""
+			instanceID = c.hello.Instance.InstanceID
+			commandID = ""
+		}
+		c.logRaw("in", raw, envelopeType, instanceID, commandID)
 		if err != nil {
 			log.Printf("relay client decode failed: %v", err)
 			continue
@@ -250,4 +268,54 @@ func (c *Client) RunOnce(ctx context.Context) error {
 			})
 		}
 	}
+}
+
+func (c *Client) logRaw(direction string, payload []byte, envelopeType agentproto.EnvelopeType, instanceID, commandID string) {
+	if c.rawLogger == nil {
+		return
+	}
+	c.rawLogger.Log(debuglog.RawEntry{
+		InstanceID:   instanceID,
+		Channel:      "relay.ws",
+		Direction:    direction,
+		EnvelopeType: string(envelopeType),
+		CommandID:    commandID,
+		Frame:        payload,
+	})
+}
+
+func envelopeInstanceID(envelope agentproto.Envelope, fallback string) string {
+	switch envelope.Type {
+	case agentproto.EnvelopeHello:
+		if envelope.Hello != nil {
+			return envelope.Hello.Instance.InstanceID
+		}
+	case agentproto.EnvelopeEventBatch:
+		if envelope.EventBatch != nil {
+			return envelope.EventBatch.InstanceID
+		}
+	case agentproto.EnvelopeCommandAck:
+		if envelope.CommandAck != nil {
+			return envelope.CommandAck.InstanceID
+		}
+	case agentproto.EnvelopeCommand:
+		return fallback
+	case agentproto.EnvelopeWelcome:
+		return fallback
+	}
+	return fallback
+}
+
+func envelopeCommandID(envelope agentproto.Envelope) string {
+	switch envelope.Type {
+	case agentproto.EnvelopeCommand:
+		if envelope.Command != nil {
+			return envelope.Command.CommandID
+		}
+	case agentproto.EnvelopeCommandAck:
+		if envelope.CommandAck != nil {
+			return envelope.CommandAck.CommandID
+		}
+	}
+	return ""
 }

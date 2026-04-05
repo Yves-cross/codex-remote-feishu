@@ -99,6 +99,8 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 		"FEISHU_APP_ID":                         choosePreservedValue(opts.FeishuAppID, existingValues["FEISHU_APP_ID"]),
 		"FEISHU_APP_SECRET":                     choosePreservedValue(opts.FeishuAppSecret, existingValues["FEISHU_APP_SECRET"]),
 		"FEISHU_USE_SYSTEM_PROXY":               boolString(opts.UseSystemProxy),
+		config.DebugRelayFlowEnv:                choosePreservedValue("", existingValues[config.DebugRelayFlowEnv]),
+		config.DebugRelayRawEnv:                 choosePreservedValue("", existingValues[config.DebugRelayRawEnv]),
 	}); err != nil {
 		return InstallState{}, err
 	}

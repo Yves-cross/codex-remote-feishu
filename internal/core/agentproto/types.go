@@ -138,6 +138,7 @@ type Prompt struct {
 type PromptOverrides struct {
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoningEffort,omitempty"`
+	AccessMode      string `json:"accessMode,omitempty"`
 }
 
 type Request struct {

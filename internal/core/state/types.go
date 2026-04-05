@@ -50,6 +50,7 @@ type Root struct {
 type ModelConfigRecord struct {
 	Model           string
 	ReasoningEffort string
+	AccessMode      string
 }
 
 type InstanceRecord struct {
@@ -82,22 +83,24 @@ type ThreadRecord struct {
 }
 
 type SurfaceConsoleRecord struct {
-	SurfaceSessionID   string
-	Platform           string
-	ChatID             string
-	ActorUserID        string
-	AttachedInstanceID string
-	SelectedThreadID   string
-	RouteMode          RouteMode
-	DispatchMode       DispatchMode
-	ActiveTurnOrigin   agentproto.InitiatorKind
-	ActiveQueueItemID  string
-	QueuedQueueItemIDs []string
-	StagedImages       map[string]*StagedImageRecord
-	QueueItems         map[string]*QueueItemRecord
-	PromptOverride     ModelConfigRecord
-	SelectionPrompt    *SelectionPromptRecord
-	LastSelection      *SelectionAnnouncementRecord
+	SurfaceSessionID     string
+	Platform             string
+	ChatID               string
+	ActorUserID          string
+	AttachedInstanceID   string
+	SelectedThreadID     string
+	RouteMode            RouteMode
+	DispatchMode         DispatchMode
+	ActiveTurnOrigin     agentproto.InitiatorKind
+	ActiveQueueItemID    string
+	QueuedQueueItemIDs   []string
+	StagedImages         map[string]*StagedImageRecord
+	QueueItems           map[string]*QueueItemRecord
+	PromptOverride       ModelConfigRecord
+	SelectionPrompt      *SelectionPromptRecord
+	PendingRequests      map[string]*RequestPromptRecord
+	ActiveRequestCapture *RequestCaptureRecord
+	LastSelection        *SelectionAnnouncementRecord
 }
 
 type SelectionAnnouncementRecord struct {
@@ -124,6 +127,35 @@ type SelectionOptionRecord struct {
 	Subtitle string
 	Current  bool
 	Disabled bool
+}
+
+type RequestPromptOptionRecord struct {
+	OptionID string
+	Label    string
+	Style    string
+}
+
+type RequestPromptRecord struct {
+	RequestID   string
+	RequestType string
+	InstanceID  string
+	ThreadID    string
+	TurnID      string
+	Title       string
+	Body        string
+	Options     []RequestPromptOptionRecord
+	CreatedAt   time.Time
+}
+
+type RequestCaptureRecord struct {
+	RequestID   string
+	RequestType string
+	InstanceID  string
+	ThreadID    string
+	TurnID      string
+	Mode        string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type QueueItemRecord struct {

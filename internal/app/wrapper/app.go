@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -46,6 +48,9 @@ type Config struct {
 	DaemonBinaryPath     string
 	DaemonUseSystemProxy bool
 	RuntimePaths         relayruntime.Paths
+	DebugRelayFlow       bool
+	DebugRelayRaw        bool
+	RawLogPath           string
 }
 
 func LoadConfig(args []string) (Config, error) {
@@ -96,17 +101,40 @@ func LoadConfig(args []string) (Config, error) {
 		DaemonBinaryPath:     binaryIdentity.BinaryPath,
 		DaemonUseSystemProxy: services.FeishuUseSystemProxy,
 		RuntimePaths:         paths,
+		DebugRelayFlow:       loaded.DebugRelayFlow || services.DebugRelayFlow,
+		DebugRelayRaw:        loaded.DebugRelayRaw || services.DebugRelayRaw,
+		RawLogPath:           relayruntime.WrapperRawLogFile(paths.LogsDir, os.Getpid()),
 	}, nil
 }
 
 func New(cfg Config) *App {
+	translator := codex.NewTranslator(cfg.InstanceID)
+	if cfg.DebugRelayFlow {
+		translator.SetDebugLogger(func(format string, args ...any) {
+			log.Printf("relay flow translator: "+format, args...)
+		})
+	}
 	return &App{
 		config:     cfg,
-		translator: codex.NewTranslator(cfg.InstanceID),
+		translator: translator,
+	}
+}
+
+func (a *App) debugf(format string, args ...any) {
+	if a.config.DebugRelayFlow {
+		log.Printf("relay flow wrapper: "+format, args...)
 	}
 }
 
 func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	rawLogger, err := a.openRawLogger()
+	if err != nil {
+		log.Printf("relay raw wrapper log disabled: %v", err)
+	}
+	if rawLogger != nil {
+		defer rawLogger.Close()
+	}
+
 	manager := relayruntime.NewManager(relayruntime.ManagerConfig{
 		RelayServerURL: a.config.RelayServerURL,
 		Identity: agentproto.BinaryIdentity{
@@ -124,6 +152,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	if err := manager.EnsureReady(ctx); err != nil {
 		return 1, err
 	}
+	a.debugf("runtime ready: relay=%s instance=%s workspace=%s", a.config.RelayServerURL, a.config.InstanceID, a.config.WorkspaceRoot)
 
 	childCtx, childCancel := context.WithCancel(ctx)
 	defer childCancel()
@@ -139,6 +168,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	if err != nil {
 		return 1, err
 	}
+	a.debugf("child started: binary=%s pid=%d cwd=%s", a.config.CodexRealBinary, cmd.Process.Pid, a.config.WorkspaceRoot)
 
 	writeCh := make(chan []byte, 128)
 	errCh := make(chan error, 8)
@@ -161,6 +191,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		Capabilities: agentproto.Capabilities{ThreadsRefresh: true},
 	}, relayws.ClientCallbacks{
 		OnWelcome: func(_ context.Context, welcome agentproto.Welcome) error {
+			a.debugf("relay welcome: connectedOnce=%t server=%s", connectedOnce, relayWelcomeSummary(welcome))
 			if manager.WelcomeCompatible(welcome) {
 				connectedOnce = true
 				return nil
@@ -170,15 +201,31 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			}
 			return fmt.Errorf("relay bootstrap welcome mismatch: %s", relayWelcomeSummary(welcome))
 		},
-		OnConnect: func(context.Context) error { return nil },
+		OnConnect: func(context.Context) error {
+			a.debugf("relay connected: instance=%s connectedOnce=%t", a.config.InstanceID, connectedOnce)
+			return nil
+		},
 		OnCommand: func(ctx context.Context, command agentproto.Command) error {
+			a.debugf(
+				"relay command received: command=%s kind=%s thread=%s turn=%s cwd=%s surface=%s inputs=%d",
+				command.CommandID,
+				command.Kind,
+				command.Target.ThreadID,
+				command.Target.TurnID,
+				command.Target.CWD,
+				firstNonEmpty(command.Origin.Surface, command.Origin.ChatID),
+				len(command.Prompt.Inputs),
+			)
 			outbound, err := a.translator.TranslateCommand(command)
 			if err != nil {
+				a.debugf("relay command translation failed: command=%s err=%v", command.CommandID, err)
 				return err
 			}
+			a.debugf("relay command translated: command=%s outbound=%d frames=%s", command.CommandID, len(outbound), summarizeFrames(outbound))
 			for _, line := range outbound {
 				select {
 				case writeCh <- line:
+					a.debugf("relay command queued for codex: command=%s frame=%s", command.CommandID, summarizeFrame(line))
 				case <-ctx.Done():
 					return ctx.Err()
 				}
@@ -186,6 +233,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			return nil
 		},
 	})
+	client.SetRawLogger(rawLogger)
 
 	go func() {
 		if err := runRelayClient(ctx, a.config.RelayServerURL, client, manager, func() bool { return connectedOnce }); err != nil && err != context.Canceled {
@@ -193,9 +241,9 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		}
 	}()
 
-	go writeLoop(ctx, childStdin, writeCh, errCh)
-	go stdinLoop(ctx, stdin, writeCh, a.translator, client, errCh)
-	go stdoutLoop(ctx, childStdout, stdout, writeCh, a.translator, client, errCh)
+	go writeLoop(ctx, childStdin, writeCh, errCh, a.debugf, rawLogger)
+	go stdinLoop(ctx, stdin, writeCh, a.translator, client, errCh, a.debugf, rawLogger)
+	go stdoutLoop(ctx, childStdout, stdout, writeCh, a.translator, client, errCh, a.debugf, rawLogger)
 	go streamCopy(childStderr, stderr, errCh)
 
 	waitErr := make(chan error, 1)
@@ -233,6 +281,13 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		stopChild()
 		return 0, ctx.Err()
 	}
+}
+
+func (a *App) openRawLogger() (*debuglog.RawLogger, error) {
+	if !a.config.DebugRelayRaw {
+		return nil, nil
+	}
+	return debuglog.OpenRaw(a.config.RawLogPath, "wrapper", a.config.InstanceID, os.Getpid())
 }
 
 func runRelayClient(ctx context.Context, relayURL string, client *relayws.Client, manager *relayruntime.Manager, connectedOnce func() bool) error {
@@ -309,18 +364,30 @@ func startChild(cmd *exec.Cmd) (io.WriteCloser, io.ReadCloser, io.ReadCloser, er
 	return stdin, stdout, stderr, nil
 }
 
-func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, errCh chan<- error) {
+func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, errCh chan<- error, debugf func(string, ...any), rawLogger *debuglog.RawLogger) {
 	reader := bufio.NewReader(stdin)
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
+			logRawFrame(rawLogger, "parent.stdin", "in", line, "", "")
+			if debugf != nil {
+				debugf("stdin from parent: %s", summarizeFrame(line))
+			}
 			if result, parseErr := translator.ObserveClient(line); parseErr == nil {
+				if debugf != nil && (len(result.Events) > 0 || len(result.OutboundToCodex) > 0 || result.Suppress) {
+					debugf("stdin observe result: events=%s followups=%d suppress=%t", summarizeEventKinds(result.Events), len(result.OutboundToCodex), result.Suppress)
+				}
 				if sendErr := client.SendEvents(result.Events); sendErr != nil {
 					log.Printf("relay send client events failed: %v", sendErr)
 				}
+			} else if debugf != nil {
+				debugf("stdin observe parse failed: err=%v preview=%q", parseErr, previewRawLine(line))
 			}
 			select {
 			case writeCh <- line:
+				if debugf != nil {
+					debugf("stdin forwarded to codex: %s", summarizeFrame(line))
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -336,19 +403,35 @@ func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, tran
 	}
 }
 
-func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writer, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, errCh chan<- error) {
+func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writer, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, errCh chan<- error, debugf func(string, ...any), rawLogger *debuglog.RawLogger) {
 	reader := bufio.NewReader(childStdout)
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
+			logRawFrame(rawLogger, "codex.stdout", "in", line, "", "")
+			if debugf != nil {
+				debugf("stdout from codex: %s", summarizeFrame(line))
+			}
 			result, parseErr := translator.ObserveServer(line)
 			if parseErr == nil {
+				if debugf != nil {
+					debugf(
+						"stdout observe result: events=%s followups=%d frames=%s suppress=%t",
+						summarizeEventKinds(result.Events),
+						len(result.OutboundToCodex),
+						summarizeFrames(result.OutboundToCodex),
+						result.Suppress,
+					)
+				}
 				if sendErr := client.SendEvents(result.Events); sendErr != nil {
 					log.Printf("relay send server events failed: %v", sendErr)
 				}
 				for _, followup := range result.OutboundToCodex {
 					select {
 					case writeCh <- followup:
+						if debugf != nil {
+							debugf("stdout queued followup to codex: %s", summarizeFrame(followup))
+						}
 					case <-ctx.Done():
 						return
 					}
@@ -360,6 +443,9 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 					}
 				}
 			} else {
+				if debugf != nil {
+					debugf("stdout observe parse failed: err=%v preview=%q", parseErr, previewRawLine(line))
+				}
 				if _, writeErr := parentStdout.Write(line); writeErr != nil {
 					errCh <- writeErr
 					return
@@ -377,7 +463,7 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 	}
 }
 
-func writeLoop(ctx context.Context, childStdin io.WriteCloser, writeCh <-chan []byte, errCh chan<- error) {
+func writeLoop(ctx context.Context, childStdin io.WriteCloser, writeCh <-chan []byte, errCh chan<- error, debugf func(string, ...any), rawLogger *debuglog.RawLogger) {
 	defer childStdin.Close()
 	for {
 		select {
@@ -387,6 +473,10 @@ func writeLoop(ctx context.Context, childStdin io.WriteCloser, writeCh <-chan []
 			if len(line) == 0 {
 				continue
 			}
+			if debugf != nil {
+				debugf("write to codex: %s", summarizeFrame(line))
+			}
+			logRawFrame(rawLogger, "codex.stdin", "out", line, "", "")
 			if _, err := childStdin.Write(line); err != nil {
 				errCh <- err
 				return
@@ -395,10 +485,155 @@ func writeLoop(ctx context.Context, childStdin io.WriteCloser, writeCh <-chan []
 	}
 }
 
+func logRawFrame(rawLogger *debuglog.RawLogger, channel, direction string, payload []byte, envelopeType, commandID string) {
+	if rawLogger == nil {
+		return
+	}
+	rawLogger.Log(debuglog.RawEntry{
+		Channel:      channel,
+		Direction:    direction,
+		EnvelopeType: envelopeType,
+		CommandID:    commandID,
+		Frame:        payload,
+	})
+}
+
 func streamCopy(src io.Reader, dst io.Writer, errCh chan<- error) {
 	if _, err := io.Copy(dst, src); err != nil && !strings.Contains(err.Error(), "file already closed") {
 		errCh <- err
 	}
+}
+
+func summarizeFrames(lines [][]byte) string {
+	if len(lines) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(lines))
+	for _, line := range lines {
+		parts = append(parts, summarizeFrame(line))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func summarizeEventKinds(events []agentproto.Event) string {
+	if len(events) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(events))
+	for _, event := range events {
+		part := string(event.Kind)
+		if event.ThreadID != "" {
+			part += " thread=" + event.ThreadID
+		}
+		if event.TurnID != "" {
+			part += " turn=" + event.TurnID
+		}
+		if event.Initiator.Kind != "" {
+			part += " initiator=" + string(event.Initiator.Kind)
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func summarizeFrame(line []byte) string {
+	var message map[string]any
+	if err := json.Unmarshal(line, &message); err != nil {
+		return fmt.Sprintf("raw=%q", previewRawLine(line))
+	}
+	parts := []string{}
+	if id := lookupStringFromMap(message, "id"); id != "" {
+		parts = append(parts, "id="+id)
+	}
+	if method := lookupStringFromMap(message, "method"); method != "" {
+		parts = append(parts, "method="+method)
+	}
+	if threadID := firstNonEmpty(
+		lookupNestedString(message, "params", "threadId"),
+		lookupNestedString(message, "params", "thread", "id"),
+		lookupNestedString(message, "result", "thread", "id"),
+	); threadID != "" {
+		parts = append(parts, "thread="+threadID)
+	}
+	if turnID := firstNonEmpty(
+		lookupNestedString(message, "params", "turnId"),
+		lookupNestedString(message, "params", "turn", "id"),
+		lookupNestedString(message, "result", "turn", "id"),
+	); turnID != "" {
+		parts = append(parts, "turn="+turnID)
+	}
+	if cwd := lookupNestedString(message, "params", "cwd"); cwd != "" {
+		parts = append(parts, "cwd="+cwd)
+	}
+	if inputs := countJSONArray(message, "params", "input"); inputs > 0 {
+		parts = append(parts, fmt.Sprintf("inputs=%d", inputs))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("raw=%q", previewRawLine(line))
+	}
+	return strings.Join(parts, " ")
+}
+
+func lookupStringFromMap(message map[string]any, key string) string {
+	value, ok := message[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return typed
+	default:
+		return fmt.Sprint(typed)
+	}
+}
+
+func lookupNestedString(message map[string]any, path ...string) string {
+	var current any = message
+	for _, key := range path {
+		asMap, ok := current.(map[string]any)
+		if !ok {
+			return ""
+		}
+		current, ok = asMap[key]
+		if !ok {
+			return ""
+		}
+	}
+	switch value := current.(type) {
+	case string:
+		return value
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(value)
+	}
+}
+
+func countJSONArray(message map[string]any, path ...string) int {
+	var current any = message
+	for _, key := range path {
+		asMap, ok := current.(map[string]any)
+		if !ok {
+			return 0
+		}
+		current, ok = asMap[key]
+		if !ok {
+			return 0
+		}
+	}
+	values, ok := current.([]any)
+	if !ok {
+		return 0
+	}
+	return len(values)
+}
+
+func previewRawLine(line []byte) string {
+	text := strings.TrimSpace(string(line))
+	if len(text) > 200 {
+		return text[:200] + "..."
+	}
+	return text
 }
 
 func childEnvWithProxy(proxyEnv []string) []string {

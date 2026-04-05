@@ -2,14 +2,18 @@ package relayws
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 
 	"github.com/gorilla/websocket"
 )
@@ -258,6 +262,117 @@ func TestServerSendsWelcomeBeforeOnHelloCommand(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for command callback")
+	}
+}
+
+func TestRelayWSRawLoggerCapturesIncomingAndOutgoingEnvelopes(t *testing.T) {
+	rawPath := filepath.Join(t.TempDir(), "relay-raw.ndjson")
+	rawLogger, err := debuglog.OpenRaw(rawPath, "daemon", "", 1)
+	if err != nil {
+		t.Fatalf("OpenRaw: %v", err)
+	}
+	defer rawLogger.Close()
+
+	helloCh := make(chan agentproto.Hello, 1)
+	eventsCh := make(chan []agentproto.Event, 1)
+	commandCh := make(chan agentproto.Command, 1)
+
+	server := NewServer(ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+		OnEvents: func(_ context.Context, _ string, events []agentproto.Event) {
+			eventsCh <- events
+		},
+	})
+	server.SetRawLogger(rawLogger)
+	defer server.Close()
+
+	mux := http.NewServeMux()
+	mux.Handle("/ws/agent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	httpServer := httptest.NewServer(mux)
+	defer httpServer.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	client := NewClient(wsURL, agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{
+			InstanceID:  "inst-raw",
+			DisplayName: "raw",
+		},
+	}, ClientCallbacks{
+		OnCommand: func(_ context.Context, command agentproto.Command) error {
+			commandCh <- command
+			return nil
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = client.Run(ctx)
+	}()
+	defer client.Close()
+
+	select {
+	case <-helloCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for hello")
+	}
+
+	if err := server.SendCommand("inst-raw", agentproto.Command{
+		CommandID: "cmd-raw",
+		Kind:      agentproto.CommandThreadsRefresh,
+	}); err != nil {
+		t.Fatalf("send command: %v", err)
+	}
+
+	select {
+	case <-commandCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for command")
+	}
+
+	if err := client.SendEvents([]agentproto.Event{{Kind: agentproto.EventThreadFocused, ThreadID: "thread-1"}}); err != nil {
+		t.Fatalf("send events: %v", err)
+	}
+	select {
+	case <-eventsCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for events")
+	}
+
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) < 4 {
+		t.Fatalf("expected multiple raw log entries, got %d: %s", len(lines), raw)
+	}
+	var sawHello, sawWelcome, sawCommand, sawEventBatch bool
+	for _, line := range lines {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			t.Fatalf("unmarshal raw line: %v\nline=%s", err, line)
+		}
+		if payload["channel"] != "relay.ws" {
+			t.Fatalf("unexpected channel: %#v", payload)
+		}
+		switch payload["envelopeType"] {
+		case string(agentproto.EnvelopeHello):
+			sawHello = true
+		case string(agentproto.EnvelopeWelcome):
+			sawWelcome = true
+		case string(agentproto.EnvelopeCommand):
+			sawCommand = true
+		case string(agentproto.EnvelopeEventBatch):
+			sawEventBatch = true
+		}
+	}
+	if !sawHello || !sawWelcome || !sawCommand || !sawEventBatch {
+		t.Fatalf("missing expected envelope types in raw log: %s", raw)
 	}
 }
 

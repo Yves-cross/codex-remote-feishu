@@ -15,6 +15,8 @@ const (
 	ActionStop             ActionKind = "surface.menu.stop"
 	ActionModelCommand     ActionKind = "surface.command.model"
 	ActionReasoningCommand ActionKind = "surface.command.reasoning"
+	ActionAccessCommand    ActionKind = "surface.command.access"
+	ActionRespondRequest   ActionKind = "surface.request.respond"
 	ActionTextMessage      ActionKind = "surface.message.text"
 	ActionImageMessage     ActionKind = "surface.message.image"
 	ActionReactionCreated  ActionKind = "surface.message.reaction.created"
@@ -36,6 +38,10 @@ type Action struct {
 	Text             string
 	PromptID         string
 	OptionID         string
+	RequestID        string
+	RequestType      string
+	RequestOptionID  string
+	Approved         bool
 	InstanceID       string
 	ThreadID         string
 	LocalPath        string
@@ -99,10 +105,13 @@ type PromptRouteSummary struct {
 	BaseReasoningEffortSource      string
 	OverrideModel                  string
 	OverrideReasoningEffort        string
+	OverrideAccessMode             string
 	EffectiveModel                 string
 	EffectiveReasoningEffort       string
+	EffectiveAccessMode            string
 	EffectiveModelSource           string
 	EffectiveReasoningEffortSource string
+	EffectiveAccessModeSource      string
 }
 
 type InstanceSummary struct {
@@ -151,11 +160,28 @@ type ThreadSelectionChanged struct {
 	Preview   string
 }
 
+type RequestPromptOption struct {
+	OptionID string
+	Label    string
+	Style    string
+}
+
+type RequestPrompt struct {
+	RequestID   string
+	RequestType string
+	Title       string
+	Body        string
+	ThreadID    string
+	ThreadTitle string
+	Options     []RequestPromptOption
+}
+
 type UIEventKind string
 
 const (
 	UIEventSnapshot              UIEventKind = "snapshot.updated"
 	UIEventSelectionPrompt       UIEventKind = "selection.prompt"
+	UIEventRequestPrompt         UIEventKind = "request.prompt"
 	UIEventPendingInput          UIEventKind = "pending.input.state"
 	UIEventNotice                UIEventKind = "notice"
 	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
@@ -168,6 +194,7 @@ type UIEvent struct {
 	SurfaceSessionID string
 	Snapshot         *Snapshot
 	SelectionPrompt  *SelectionPrompt
+	RequestPrompt    *RequestPrompt
 	PendingInput     *PendingInputState
 	Notice           *Notice
 	ThreadSelection  *ThreadSelectionChanged

@@ -191,6 +191,178 @@ func TestStatusReflectsObservedDefaultConfigAndSurfaceOverride(t *testing.T) {
 	if snapshot.NextPrompt.EffectiveModelSource != "surface_override" || snapshot.NextPrompt.EffectiveReasoningEffortSource != "surface_override" {
 		t.Fatalf("expected override sources in snapshot, got %#v", snapshot.NextPrompt)
 	}
+	if snapshot.NextPrompt.EffectiveAccessMode != agentproto.AccessModeFullAccess || snapshot.NextPrompt.EffectiveAccessModeSource != "surface_default" {
+		t.Fatalf("expected default full access in snapshot, got %#v", snapshot.NextPrompt)
+	}
+}
+
+func TestStatusUsesSurfaceDefaultsWhenObservedConfigUnknown(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected surface snapshot")
+	}
+	if snapshot.NextPrompt.EffectiveModel != "gpt-5.4" || snapshot.NextPrompt.EffectiveModelSource != "surface_default" {
+		t.Fatalf("expected default model fallback, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.EffectiveReasoningEffort != "xhigh" || snapshot.NextPrompt.EffectiveReasoningEffortSource != "surface_default" {
+		t.Fatalf("expected xhigh reasoning fallback, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.EffectiveAccessMode != agentproto.AccessModeFullAccess || snapshot.NextPrompt.EffectiveAccessModeSource != "surface_default" {
+		t.Fatalf("expected default full access, got %#v", snapshot.NextPrompt)
+	}
+}
+
+func TestTextMessageFreezesObservedPromptConfigWhenNoSurfaceOverride(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		CWDDefaults: map[string]state.ModelConfigRecord{
+			"/data/dl/droid": {Model: "gpt-5.4", ReasoningEffort: "high"},
+		},
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	var item *state.QueueItemRecord
+	for _, current := range surface.QueueItems {
+		item = current
+	}
+	if item == nil {
+		t.Fatal("expected queue item")
+	}
+	if item.FrozenOverride.Model != "gpt-5.4" || item.FrozenOverride.ReasoningEffort != "high" {
+		t.Fatalf("expected queued item to freeze observed config, got %#v", item.FrozenOverride)
+	}
+	if item.FrozenOverride.AccessMode != agentproto.AccessModeFullAccess {
+		t.Fatalf("expected queued item to freeze full access, got %#v", item.FrozenOverride)
+	}
+}
+
+func TestTextMessageFreezesFallbackReasoningWhenConfigUnknown(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	var item *state.QueueItemRecord
+	for _, current := range surface.QueueItems {
+		item = current
+	}
+	if item == nil {
+		t.Fatal("expected queue item")
+	}
+	if item.FrozenOverride.Model != "gpt-5.4" {
+		t.Fatalf("expected queued item to freeze default model, got %#v", item.FrozenOverride)
+	}
+	if item.FrozenOverride.ReasoningEffort != "xhigh" || item.FrozenOverride.AccessMode != agentproto.AccessModeFullAccess {
+		t.Fatalf("expected queued item to freeze fallback config, got %#v", item.FrozenOverride)
+	}
+}
+
+func TestAccessCommandUpdatesSnapshotAndQueueFreeze(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAccessCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/access confirm",
+	})
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected surface snapshot")
+	}
+	if snapshot.NextPrompt.OverrideAccessMode != agentproto.AccessModeConfirm {
+		t.Fatalf("expected access override in snapshot, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.EffectiveAccessMode != agentproto.AccessModeConfirm || snapshot.NextPrompt.EffectiveAccessModeSource != "surface_override" {
+		t.Fatalf("expected confirm access in snapshot, got %#v", snapshot.NextPrompt)
+	}
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	var item *state.QueueItemRecord
+	for _, current := range surface.QueueItems {
+		item = current
+	}
+	if item == nil {
+		t.Fatal("expected queue item")
+	}
+	if item.FrozenOverride.AccessMode != agentproto.AccessModeConfirm {
+		t.Fatalf("expected queued item to freeze access override, got %#v", item.FrozenOverride)
+	}
 }
 
 func TestQueuedMessageFreezesSurfaceOverrideAtEnqueue(t *testing.T) {
@@ -930,6 +1102,347 @@ func TestDispatchingRemoteTurnOverridesStaleLocalClassification(t *testing.T) {
 	}
 	if surface.DispatchMode != state.DispatchModeNormal {
 		t.Fatalf("expected surface to remain in normal mode, got %q", surface.DispatchMode)
+	}
+}
+
+func TestApprovalRequestPromptUsesAttachedSurfaceForLocalTurn(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+		Metadata: map[string]any{
+			"requestType":  "approval",
+			"title":        "需要确认",
+			"body":         "本地 Codex 想执行 `git push`。",
+			"acceptLabel":  "允许执行",
+			"declineLabel": "拒绝",
+		},
+	})
+	if len(events) != 1 || events[0].RequestPrompt == nil {
+		t.Fatalf("expected one request prompt event, got %#v", events)
+	}
+	prompt := events[0].RequestPrompt
+	if prompt.RequestID != "req-1" || prompt.ThreadTitle != "droid · 修复登录流程" {
+		t.Fatalf("unexpected request prompt: %#v", prompt)
+	}
+	if len(prompt.Options) != 3 || prompt.Options[0].OptionID != "accept" || prompt.Options[1].OptionID != "decline" || prompt.Options[2].OptionID != "captureFeedback" {
+		t.Fatalf("unexpected request options: %#v", prompt.Options)
+	}
+	record := svc.root.Surfaces["surface-1"].PendingRequests["req-1"]
+	if record == nil || record.RequestType != "approval" {
+		t.Fatalf("expected pending request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+	if len(record.Options) != 3 {
+		t.Fatalf("expected request options in state, got %#v", record)
+	}
+}
+
+func TestRespondRequestDispatchesCommandAndClearsOnResolve(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+		Metadata:  map[string]any{"requestType": "approval", "title": "需要确认"},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "om-card-1",
+		RequestID:        "req-1",
+		RequestOptionID:  "accept",
+	})
+	if len(events) != 1 || events[0].Command == nil {
+		t.Fatalf("expected one agent command event, got %#v", events)
+	}
+	command := events[0].Command
+	if command.Kind != agentproto.CommandRequestRespond || command.Request.RequestID != "req-1" {
+		t.Fatalf("unexpected request respond command: %#v", command)
+	}
+	if command.Request.Response["decision"] != "accept" || command.Request.Response["type"] != "approval" {
+		t.Fatalf("unexpected request respond payload: %#v", command.Request.Response)
+	}
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestResolved,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+	})
+	if len(svc.root.Surfaces["surface-1"].PendingRequests) != 0 {
+		t.Fatalf("expected request state to be cleared, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+
+	expired := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-1",
+		RequestOptionID:  "decline",
+	})
+	if len(expired) != 1 || expired[0].Notice == nil || expired[0].Notice.Code != "request_expired" {
+		t.Fatalf("expected expired notice after resolve, got %#v", expired)
+	}
+}
+
+func TestRespondRequestAcceptForSessionDispatchesDecision(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+		Metadata: map[string]any{
+			"requestType": "approval",
+			"title":       "需要确认",
+			"options": []map[string]any{
+				{"id": "accept", "label": "允许一次"},
+				{"id": "acceptForSession", "label": "本会话允许"},
+				{"id": "decline", "label": "拒绝"},
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "om-card-1",
+		RequestID:        "req-1",
+		RequestOptionID:  "acceptForSession",
+	})
+	if len(events) != 1 || events[0].Command == nil {
+		t.Fatalf("expected one agent command event, got %#v", events)
+	}
+	if events[0].Command.Request.Response["decision"] != "acceptForSession" {
+		t.Fatalf("unexpected request decision payload: %#v", events[0].Command.Request.Response)
+	}
+}
+
+func TestPendingRequestBlocksTextUntilHandled(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+		Metadata:  map[string]any{"requestType": "approval", "title": "需要确认"},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-msg-1",
+		Text:             "你先看看当前有哪些文件没有提交",
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_pending" {
+		t.Fatalf("expected request_pending notice, got %#v", events)
+	}
+	if len(svc.root.Surfaces["surface-1"].QueueItems) != 0 {
+		t.Fatalf("expected no queued text while request is pending, got %#v", svc.root.Surfaces["surface-1"].QueueItems)
+	}
+}
+
+func TestCaptureFeedbackQueuesFollowupAndDeclinesRequest(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		ActiveThreadID:          "thread-1",
+		ActiveTurnID:            "turn-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-1",
+		Metadata:  map[string]any{"requestType": "approval", "title": "需要确认"},
+	})
+
+	startCapture := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "om-card-1",
+		RequestID:        "req-1",
+		RequestOptionID:  "captureFeedback",
+	})
+	if len(startCapture) != 1 || startCapture[0].Notice == nil || startCapture[0].Notice.Code != "request_capture_started" {
+		t.Fatalf("expected request_capture_started notice, got %#v", startCapture)
+	}
+	if svc.root.Surfaces["surface-1"].ActiveRequestCapture == nil {
+		t.Fatalf("expected active request capture to be created")
+	}
+
+	feedback := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-msg-2",
+		Text:             "不要直接执行，先列一下当前未提交文件，再继续。",
+	})
+	var command *agentproto.Command
+	var pending *control.PendingInputState
+	var gotNotice bool
+	for _, event := range feedback {
+		if event.Command != nil {
+			command = event.Command
+		}
+		if event.PendingInput != nil {
+			pending = event.PendingInput
+		}
+		if event.Notice != nil && event.Notice.Code == "request_feedback_queued" {
+			gotNotice = true
+		}
+	}
+	if command == nil || command.Request.Response["decision"] != "decline" {
+		t.Fatalf("expected decline command from captured feedback, got %#v", feedback)
+	}
+	if pending == nil || pending.Status != string(state.QueueItemQueued) {
+		t.Fatalf("expected queued follow-up input, got %#v", feedback)
+	}
+	if !gotNotice {
+		t.Fatalf("expected feedback queued notice, got %#v", feedback)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveRequestCapture != nil {
+		t.Fatalf("expected capture to be cleared, got %#v", surface.ActiveRequestCapture)
+	}
+	if len(surface.QueuedQueueItemIDs) != 1 {
+		t.Fatalf("expected one queued follow-up item, got %#v", surface.QueuedQueueItemIDs)
+	}
+	item := surface.QueueItems[surface.QueuedQueueItemIDs[0]]
+	if item == nil || item.FrozenThreadID != "thread-1" {
+		t.Fatalf("expected queued follow-up to stay on original thread, got %#v", item)
+	}
+	if item.SourceMessageID != "om-msg-2" || len(item.Inputs) != 1 || item.Inputs[0].Text == "" {
+		t.Fatalf("unexpected follow-up queue item: %#v", item)
+	}
+}
+
+func TestTickExpiresRequestCapture(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.root.Surfaces["surface-1"] = &state.SurfaceConsoleRecord{
+		SurfaceSessionID: "surface-1",
+		PendingRequests:  map[string]*state.RequestPromptRecord{},
+		QueueItems:       map[string]*state.QueueItemRecord{},
+		StagedImages:     map[string]*state.StagedImageRecord{},
+		ActiveRequestCapture: &state.RequestCaptureRecord{
+			RequestID: "req-1",
+			Mode:      requestCaptureModeDeclineWithFeedback,
+			CreatedAt: now.Add(-11 * time.Minute),
+			ExpiresAt: now.Add(-1 * time.Second),
+		},
+	}
+
+	events := svc.Tick(now)
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_capture_expired" {
+		t.Fatalf("expected request capture expiry notice, got %#v", events)
+	}
+	if svc.root.Surfaces["surface-1"].ActiveRequestCapture != nil {
+		t.Fatalf("expected expired capture to be cleared")
 	}
 }
 

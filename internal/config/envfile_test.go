@@ -14,6 +14,8 @@ func TestLoadWrapperConfigUsesUnifiedDefaultFile(t *testing.T) {
 		"RELAY_SERVER_URL":               "ws://127.0.0.1:9600/ws/agent",
 		"CODEX_REAL_BINARY":              "/opt/codex",
 		"CODEX_REMOTE_WRAPPER_NAME_MODE": "workspace_basename",
+		DebugRelayFlowEnv:                "true",
+		DebugRelayRawEnv:                 "true",
 	}); err != nil {
 		t.Fatalf("write unified env: %v", err)
 	}
@@ -31,6 +33,12 @@ func TestLoadWrapperConfigUsesUnifiedDefaultFile(t *testing.T) {
 	if cfg.CodexRealBinary != "/opt/codex" {
 		t.Fatalf("CodexRealBinary = %q", cfg.CodexRealBinary)
 	}
+	if !cfg.DebugRelayFlow {
+		t.Fatal("expected DebugRelayFlow to be true")
+	}
+	if !cfg.DebugRelayRaw {
+		t.Fatal("expected DebugRelayRaw to be true")
+	}
 }
 
 func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
@@ -45,6 +53,8 @@ func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
 		"FEISHU_APP_ID":           "cli_override",
 		"FEISHU_APP_SECRET":       "secret_override",
 		"FEISHU_USE_SYSTEM_PROXY": "true",
+		DebugRelayFlowEnv:         "true",
+		DebugRelayRawEnv:          "true",
 	}); err != nil {
 		t.Fatalf("write override env: %v", err)
 	}
@@ -65,6 +75,12 @@ func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
 	}
 	if !cfg.FeishuUseSystemProxy {
 		t.Fatal("expected FeishuUseSystemProxy to be true")
+	}
+	if !cfg.DebugRelayFlow {
+		t.Fatal("expected DebugRelayFlow to be true")
+	}
+	if !cfg.DebugRelayRaw {
+		t.Fatal("expected DebugRelayRaw to be true")
 	}
 }
 

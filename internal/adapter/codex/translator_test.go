@@ -3,6 +3,8 @@ package codex
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -258,6 +260,143 @@ func TestTranslatePromptSendToExistingThreadResumesWhenTargetDiffersFromCurrent(
 	}
 }
 
+func TestTranslatePromptSendReasoningOnlyDoesNotCreateInvalidCollaborationMode(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{ChatID: "surface-1"},
+		Target:    agentproto.Target{ThreadID: "thread-2", CWD: "/tmp/two"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+		Overrides: agentproto.PromptOverrides{ReasoningEffort: "xhigh"},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"id":"relay-thread-resume-0","result":{}}`))
+	if err != nil {
+		t.Fatalf("observe resume response: %v", err)
+	}
+	if !result.Suppress || len(result.OutboundToCodex) != 1 {
+		t.Fatalf("expected suppressed followup turn/start, got %#v", result)
+	}
+
+	var turnStart map[string]any
+	if err := json.Unmarshal(result.OutboundToCodex[0], &turnStart); err != nil {
+		t.Fatalf("unmarshal turn/start: %v", err)
+	}
+	params, _ := turnStart["params"].(map[string]any)
+	if params["effort"] != "xhigh" {
+		t.Fatalf("expected top-level effort override, got %#v", params)
+	}
+	if value, exists := params["collaborationMode"]; exists && value != nil {
+		t.Fatalf("expected reasoning-only override to avoid custom collaborationMode, got %#v", params)
+	}
+}
+
+func TestObserveServerThreadResumeErrorEmitsFailedTurnCompleted(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{ChatID: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-2", CWD: "/tmp/two"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"id":"relay-thread-resume-0","error":{"message":"resume failed"}}`))
+	if err != nil {
+		t.Fatalf("observe resume error: %v", err)
+	}
+	if len(result.OutboundToCodex) != 0 || len(result.Events) != 1 {
+		t.Fatalf("expected failed event without followup, got %#v", result)
+	}
+	if result.Events[0].Kind != agentproto.EventTurnCompleted || result.Events[0].Status != "failed" || result.Events[0].ThreadID != "thread-2" {
+		t.Fatalf("unexpected failed event: %#v", result.Events[0])
+	}
+	if !strings.Contains(result.Events[0].ErrorMessage, "resume failed") {
+		t.Fatalf("expected resume error message, got %#v", result.Events[0])
+	}
+}
+
+func TestObserveServerSuppressedTurnStartErrorEmitsFailedTurnCompleted(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{ChatID: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-2", CWD: "/tmp/two"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"id":"relay-thread-resume-0","result":{}}`))
+	if err != nil {
+		t.Fatalf("observe resume response: %v", err)
+	}
+	if len(result.OutboundToCodex) != 1 {
+		t.Fatalf("expected followup turn/start, got %#v", result)
+	}
+
+	var turnStart map[string]any
+	if err := json.Unmarshal(result.OutboundToCodex[0], &turnStart); err != nil {
+		t.Fatalf("unmarshal turn/start: %v", err)
+	}
+	requestID, _ := turnStart["id"].(string)
+	if requestID == "" {
+		t.Fatalf("expected followup request id, got %#v", turnStart)
+	}
+
+	failed, err := tr.ObserveServer([]byte(fmt.Sprintf(`{"id":%q,"error":{"message":"Invalid request: missing field 'model'"}}`, requestID)))
+	if err != nil {
+		t.Fatalf("observe turn/start error: %v", err)
+	}
+	if len(failed.OutboundToCodex) != 0 || len(failed.Events) != 1 {
+		t.Fatalf("expected failed event without suppression, got %#v", failed)
+	}
+	if failed.Events[0].Kind != agentproto.EventTurnCompleted || failed.Events[0].Status != "failed" || failed.Events[0].ThreadID != "thread-2" {
+		t.Fatalf("unexpected failed event: %#v", failed.Events[0])
+	}
+	if !strings.Contains(failed.Events[0].ErrorMessage, "missing field 'model'") {
+		t.Fatalf("expected turn/start error message, got %#v", failed.Events[0])
+	}
+}
+
+func TestTranslatorDebugLogsRemoteResumeFollowup(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	var debugLogs []string
+	tr.SetDebugLogger(func(format string, args ...any) {
+		debugLogs = append(debugLogs, fmt.Sprintf(format, args...))
+	})
+
+	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/one"}}`)); err != nil {
+		t.Fatalf("observe client thread resume: %v", err)
+	}
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		CommandID: "cmd-1",
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{Surface: "feishu:chat:1"},
+		Target:    agentproto.Target{ThreadID: "thread-2", CWD: "/tmp/two"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if _, err := tr.ObserveServer([]byte(`{"id":"relay-thread-resume-0","result":{}}`)); err != nil {
+		t.Fatalf("observe resume response: %v", err)
+	}
+
+	joined := strings.Join(debugLogs, "\n")
+	if !strings.Contains(joined, "translate remote prompt: command=cmd-1 action=thread/resume request=relay-thread-resume-0") {
+		t.Fatalf("expected thread/resume debug log, got %s", joined)
+	}
+	if !strings.Contains(joined, "observe server thread/resume result: request=relay-thread-resume-0 thread=thread-2 followup=relay-turn-start-1") {
+		t.Fatalf("expected followup debug log, got %s", joined)
+	}
+}
+
 func TestTranslatePromptSendAppliesOverridesToExistingThreadTurnStart(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	if _, err := tr.ObserveClient([]byte(`{"method":"turn/start","params":{"threadId":"thread-1","cwd":"/tmp/project","collaborationMode":{"mode":"custom","settings":{"model":"gpt-5.3-codex","reasoning_effort":"medium"}}}}`)); err != nil {
@@ -284,6 +423,9 @@ func TestTranslatePromptSendAppliesOverridesToExistingThreadTurnStart(t *testing
 	params, _ := turnStart["params"].(map[string]any)
 	if params["model"] != "gpt-5.4" || params["effort"] != "high" {
 		t.Fatalf("expected top-level overrides in turn/start, got %#v", params)
+	}
+	if params["approvalPolicy"] != "never" || !reflect.DeepEqual(params["sandboxPolicy"], map[string]any{"type": "dangerFullAccess"}) {
+		t.Fatalf("expected default full access in turn/start, got %#v", params)
 	}
 	settings, _ := params["collaborationMode"].(map[string]any)
 	settingsMap, _ := settings["settings"].(map[string]any)
@@ -316,6 +458,9 @@ func TestTranslatePromptSendAppliesOverridesToNewThreadStartAndFollowupTurn(t *t
 	if params["model"] != "gpt-5.4" {
 		t.Fatalf("expected thread/start override model, got %#v", params)
 	}
+	if params["approvalPolicy"] != "never" || params["sandbox"] != "danger-full-access" {
+		t.Fatalf("expected default full access in thread/start, got %#v", params)
+	}
 	config, _ := params["config"].(map[string]any)
 	if config["model_reasoning_effort"] != "high" {
 		t.Fatalf("expected thread/start reasoning override in config, got %#v", params)
@@ -335,6 +480,52 @@ func TestTranslatePromptSendAppliesOverridesToNewThreadStartAndFollowupTurn(t *t
 	turnParams, _ := turnStart["params"].(map[string]any)
 	if turnParams["model"] != "gpt-5.4" || turnParams["effort"] != "high" {
 		t.Fatalf("expected followup turn/start overrides, got %#v", turnParams)
+	}
+	if turnParams["approvalPolicy"] != "never" || !reflect.DeepEqual(turnParams["sandboxPolicy"], map[string]any{"type": "dangerFullAccess"}) {
+		t.Fatalf("expected default full access in followup turn/start, got %#v", turnParams)
+	}
+}
+
+func TestTranslatePromptSendConfirmAccessModeOverridesPolicies(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{ChatID: "surface-1"},
+		Target:    agentproto.Target{CWD: "/tmp/project"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+		Overrides: agentproto.PromptOverrides{AccessMode: agentproto.AccessModeConfirm},
+	})
+	if err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one thread/start command, got %d", len(commands))
+	}
+
+	var threadStart map[string]any
+	if err := json.Unmarshal(commands[0], &threadStart); err != nil {
+		t.Fatalf("unmarshal thread/start: %v", err)
+	}
+	params, _ := threadStart["params"].(map[string]any)
+	if params["approvalPolicy"] != "on-request" || params["sandbox"] != "workspace-write" {
+		t.Fatalf("expected confirm mode on thread/start, got %#v", params)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"id":"relay-thread-start-0","result":{"thread":{"id":"thread-created"}}}`))
+	if err != nil {
+		t.Fatalf("observe server response: %v", err)
+	}
+	if len(result.OutboundToCodex) != 1 {
+		t.Fatalf("expected followup turn/start, got %#v", result)
+	}
+	var turnStart map[string]any
+	if err := json.Unmarshal(result.OutboundToCodex[0], &turnStart); err != nil {
+		t.Fatalf("unmarshal followup turn/start: %v", err)
+	}
+	turnParams, _ := turnStart["params"].(map[string]any)
+	if turnParams["approvalPolicy"] != "on-request" || !reflect.DeepEqual(turnParams["sandboxPolicy"], map[string]any{"type": "workspaceWrite"}) {
+		t.Fatalf("expected confirm mode on followup turn/start, got %#v", turnParams)
 	}
 }
 
@@ -399,8 +590,11 @@ func TestInternalHelperThreadStartDoesNotPoisonRemoteThreadStart(t *testing.T) {
 		t.Fatalf("unmarshal thread/start: %v", err)
 	}
 	params, _ := threadStart["params"].(map[string]any)
-	if params["approvalPolicy"] != "on-request" {
+	if params["approvalPolicy"] != "never" {
 		t.Fatalf("helper thread start overwrote approval policy, got %#v", params)
+	}
+	if params["sandbox"] != "danger-full-access" {
+		t.Fatalf("expected default full access sandbox, got %#v", params)
 	}
 	if _, exists := params["ephemeral"]; exists {
 		t.Fatalf("helper thread start leaked ephemeral flag into remote thread/start: %#v", params)
@@ -650,6 +844,158 @@ func TestInternalHelperThreadMarkerDoesNotPoisonLaterRemoteTurnOnSameThread(t *t
 	}
 	if completed.Events[0].TrafficClass != agentproto.TrafficClassPrimary || completed.Events[0].Initiator.Kind != agentproto.InitiatorRemoteSurface {
 		t.Fatalf("expected remote primary turn completed event, got %#v", completed.Events[0])
+	}
+}
+
+func TestObserveServerRequestStartedProducesApprovalEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe client thread resume: %v", err)
+	}
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{Surface: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if _, err := tr.ObserveServer([]byte(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}`)); err != nil {
+		t.Fatalf("observe turn started: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"method":"serverRequest/started","params":{"thread":{"id":"thread-1"},"turn":{"id":"turn-1"},"request":{"id":"req-1","type":"approval","title":"Run command?","message":"Need approval before continuing.","command":"git push","acceptLabel":"Allow","declineLabel":"Block"}}}`))
+	if err != nil {
+		t.Fatalf("observe request started: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-1" {
+		t.Fatalf("unexpected request started event: %#v", event)
+	}
+	if event.Initiator.Kind != agentproto.InitiatorRemoteSurface {
+		t.Fatalf("expected remote initiator, got %#v", event)
+	}
+	if event.Metadata["requestType"] != "approval" || event.Metadata["title"] != "Run command?" {
+		t.Fatalf("unexpected request metadata: %#v", event.Metadata)
+	}
+	body, _ := event.Metadata["body"].(string)
+	if !strings.Contains(body, "Need approval before continuing.") || !strings.Contains(body, "git push") {
+		t.Fatalf("expected message and command in body, got %#v", event.Metadata)
+	}
+	if event.Metadata["acceptLabel"] != "Allow" || event.Metadata["declineLabel"] != "Block" {
+		t.Fatalf("unexpected approval labels: %#v", event.Metadata)
+	}
+}
+
+func TestObserveServerRequestStartedNormalizesApprovalKindAndExtractsOptions(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"serverRequest/started","params":{"thread":{"id":"thread-1"},"turn":{"id":"turn-1"},"request":{"id":"req-2","type":"approval_command","title":"Run command?","options":[{"id":"accept","label":"Allow"},{"id":"acceptForSession","label":"Allow this session"},{"id":"decline","label":"Decline"}]}}}`))
+	if err != nil {
+		t.Fatalf("observe request started: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Metadata["requestType"] != "approval" || event.Metadata["requestKind"] != "approval_command" {
+		t.Fatalf("unexpected normalized request metadata: %#v", event.Metadata)
+	}
+	options, ok := event.Metadata["options"].([]map[string]any)
+	if !ok || len(options) != 3 {
+		t.Fatalf("expected extracted options, got %#v", event.Metadata["options"])
+	}
+	if options[1]["id"] != "acceptForSession" {
+		t.Fatalf("unexpected extracted options payload: %#v", options)
+	}
+}
+
+func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe client thread resume: %v", err)
+	}
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{Surface: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if _, err := tr.ObserveServer([]byte(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}`)); err != nil {
+		t.Fatalf("observe turn started: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"method":"request/resolved","params":{"threadId":"thread-1","turnId":"turn-1","requestId":"req-1","result":{"decision":"decline"}}}`))
+	if err != nil {
+		t.Fatalf("observe request resolved: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request resolved event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestResolved || event.RequestID != "req-1" {
+		t.Fatalf("unexpected request resolved event: %#v", event)
+	}
+	if event.Metadata["decision"] != "decline" {
+		t.Fatalf("unexpected resolved request metadata: %#v", event.Metadata)
+	}
+}
+
+func TestTranslateRequestRespondApproval(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: "req-1",
+			Response: map[string]any{
+				"type":     "approval",
+				"decision": "acceptForSession",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate request respond: %v", err)
+	}
+	if len(payloads) != 1 {
+		t.Fatalf("expected one payload, got %d", len(payloads))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal request respond payload: %v", err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	if payload["id"] != "req-1" || result["decision"] != "acceptForSession" {
+		t.Fatalf("unexpected request respond payload: %#v", payload)
+	}
+}
+
+func TestTranslateRequestRespondApprovalFallsBackToApprovedBool(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: "req-legacy",
+			Response: map[string]any{
+				"type":     "approval",
+				"approved": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate request respond: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal request respond payload: %v", err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	if payload["id"] != "req-legacy" || result["decision"] != "accept" {
+		t.Fatalf("unexpected legacy request respond payload: %#v", payload)
 	}
 }
 

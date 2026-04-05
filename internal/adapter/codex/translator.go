@@ -12,6 +12,7 @@ import (
 type Translator struct {
 	instanceID                string
 	nextID                    int
+	debugLog                  func(string, ...any)
 	currentThreadID           string
 	knownThreadCWD            map[string]string
 	pendingRemoteTurnByThread map[string]string
@@ -35,7 +36,7 @@ type Translator struct {
 	pendingThreadReads         map[string]string
 	threadRefreshRecords       map[string]agentproto.ThreadSnapshotRecord
 	threadRefreshOrder         []string
-	pendingSuppressedResponse  map[string]bool
+	pendingSuppressedResponse  map[string]suppressedResponseContext
 }
 
 type pendingThreadCreate struct {
@@ -50,6 +51,11 @@ type pendingThreadResume struct {
 type pendingThreadNameSet struct {
 	ThreadID string
 	Name     string
+}
+
+type suppressedResponseContext struct {
+	Action   string
+	ThreadID string
 }
 
 type Result struct {
@@ -75,7 +81,17 @@ func NewTranslator(instanceID string) *Translator {
 		turnStartByThread:         map[string]map[string]any{},
 		pendingThreadReads:        map[string]string{},
 		threadRefreshRecords:      map[string]agentproto.ThreadSnapshotRecord{},
-		pendingSuppressedResponse: map[string]bool{},
+		pendingSuppressedResponse: map[string]suppressedResponseContext{},
+	}
+}
+
+func (t *Translator) SetDebugLogger(debugLog func(string, ...any)) {
+	t.debugLog = debugLog
+}
+
+func (t *Translator) debugf(format string, args ...any) {
+	if t.debugLog != nil {
+		t.debugLog(format, args...)
 	}
 }
 
@@ -95,6 +111,7 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 		if cwd != "" {
 			t.knownThreadCWD[threadID] = cwd
 		}
+		t.debugf("observe client thread/resume: thread=%s cwd=%s", threadID, cwd)
 		return Result{Events: []agentproto.Event{{
 			Kind:        agentproto.EventThreadFocused,
 			ThreadID:    threadID,
@@ -117,6 +134,7 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 			if requestID, ok := message["id"]; ok {
 				t.pendingInternalTurnSet[fmt.Sprint(requestID)] = true
 			}
+			t.debugf("observe client turn/start internal-helper: thread=%s cwd=%s", threadID, cwd)
 			return Result{Events: []agentproto.Event{{
 				Kind:         agentproto.EventLocalInteractionObserved,
 				ThreadID:     threadID,
@@ -141,6 +159,7 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 		if !isNull(template["approvalPolicy"]) || !isNull(template["sandboxPolicy"]) {
 			t.newThreadTurnTemplate = cloneMap(template)
 		}
+		t.debugf("observe client turn/start: thread=%s cwd=%s newThread=%t", threadID, cwd, threadID == "")
 		events := configObservedEvents(threadID, cwd, params, threadID == "")
 		events = append(events, agentproto.Event{
 			Kind:         agentproto.EventLocalInteractionObserved,
@@ -159,6 +178,7 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 		if threadID != "" {
 			t.pendingLocalTurnByThread[threadID] = true
 		}
+		t.debugf("observe client turn/steer: thread=%s", threadID)
 		return Result{Events: []agentproto.Event{{
 			Kind:         agentproto.EventLocalInteractionObserved,
 			ThreadID:     threadID,
@@ -187,8 +207,22 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 
 	if id, ok := message["id"]; ok {
 		requestID := fmt.Sprint(id)
-		if t.pendingSuppressedResponse[requestID] {
+		if pending, ok := t.pendingSuppressedResponse[requestID]; ok {
 			delete(t.pendingSuppressedResponse, requestID)
+			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
+				delete(t.pendingRemoteTurnByThread, pending.ThreadID)
+				t.debugf("observe server suppressed response error: request=%s action=%s thread=%s error=%s", requestID, pending.Action, pending.ThreadID, errMsg)
+				if pending.Action == "turn/start" {
+					return Result{Events: []agentproto.Event{{
+						Kind:         agentproto.EventTurnCompleted,
+						ThreadID:     pending.ThreadID,
+						Status:       "failed",
+						ErrorMessage: errMsg,
+					}}}, nil
+				}
+				return Result{}, nil
+			}
+			t.debugf("observe server suppressed response: request=%s", requestID)
 			return Result{Suppress: true}, nil
 		}
 		if t.pendingInternalThreadSet[requestID] {
@@ -215,19 +249,28 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			return Result{}, nil
 		}
 		if pending, exists := t.pendingThreadCreate[requestID]; exists {
+			delete(t.pendingThreadCreate, requestID)
+			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
+				t.debugf("observe server thread/start error: request=%s error=%s", requestID, errMsg)
+				return Result{Events: []agentproto.Event{{
+					Kind:         agentproto.EventTurnCompleted,
+					Status:       "failed",
+					ErrorMessage: errMsg,
+				}}}, nil
+			}
 			threadID := lookupString(message, "result", "thread", "id")
 			if threadID == "" {
 				threadID = lookupString(message, "result", "id")
 			}
-			delete(t.pendingThreadCreate, requestID)
 			t.currentThreadID = threadID
 			if pending.Command.Target.CWD != "" {
 				t.knownThreadCWD[threadID] = pending.Command.Target.CWD
 			}
-			followup, err := t.directTurnStart(threadID, pending.Command, true)
+			followup, followupID, err := t.directTurnStart(threadID, pending.Command, true)
 			if err != nil {
 				return Result{}, err
 			}
+			t.debugf("observe server thread/start result: request=%s thread=%s followup=%s", requestID, threadID, followupID)
 			return Result{
 				Suppress:        true,
 				OutboundToCodex: [][]byte{followup},
@@ -235,14 +278,24 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}
 		if pending, exists := t.pendingThreadResume[requestID]; exists {
 			delete(t.pendingThreadResume, requestID)
+			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
+				t.debugf("observe server thread/resume error: request=%s thread=%s error=%s", requestID, pending.ThreadID, errMsg)
+				return Result{Events: []agentproto.Event{{
+					Kind:         agentproto.EventTurnCompleted,
+					ThreadID:     pending.ThreadID,
+					Status:       "failed",
+					ErrorMessage: errMsg,
+				}}}, nil
+			}
 			t.currentThreadID = pending.ThreadID
 			if pending.Command.Target.CWD != "" {
 				t.knownThreadCWD[pending.ThreadID] = pending.Command.Target.CWD
 			}
-			followup, err := t.directTurnStart(pending.ThreadID, pending.Command, false)
+			followup, followupID, err := t.directTurnStart(pending.ThreadID, pending.Command, false)
 			if err != nil {
 				return Result{}, err
 			}
+			t.debugf("observe server thread/resume result: request=%s thread=%s followup=%s", requestID, pending.ThreadID, followupID)
 			return Result{
 				Suppress:        true,
 				OutboundToCodex: [][]byte{followup},
@@ -437,10 +490,21 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			turnID = lookupString(message, "params", "turnId")
 		}
 		trafficClass := t.trafficClassForTurn(threadID, turnID)
+		pendingRemoteSurface := t.pendingRemoteTurnByThread[threadID]
+		pendingLocal := t.pendingLocalTurnByThread[threadID]
 		initiator := t.resolveTurnInitiator(threadID, turnID, trafficClass)
 		if turnID != "" {
 			t.turnInitiators[turnID] = initiator
 		}
+		t.debugf(
+			"observe server turn/started: thread=%s turn=%s initiator=%s traffic=%s pendingRemoteSurface=%s pendingLocal=%t",
+			threadID,
+			turnID,
+			initiator.Kind,
+			trafficClass,
+			pendingRemoteSurface,
+			pendingLocal,
+		)
 		return Result{Events: []agentproto.Event{{
 			Kind:         agentproto.EventTurnStarted,
 			ThreadID:     threadID,
@@ -470,6 +534,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}
 		delete(t.turnInitiators, turnID)
 		delete(t.internalTurnIDs, turnID)
+		t.debugf("observe server turn/completed: thread=%s turn=%s status=%s initiator=%s", threadID, turnID, status, initiator.Kind)
 		return Result{Events: []agentproto.Event{{
 			Kind:         agentproto.EventTurnCompleted,
 			ThreadID:     threadID,
@@ -478,6 +543,51 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			ErrorMessage: errMsg,
 			TrafficClass: trafficClass,
 			Initiator:    initiator,
+		}}}, nil
+	case "serverRequest/started", "request/started":
+		params := lookupMap(message, "params")
+		request := extractRequestPayload(message)
+		requestID := extractRequestID(message, request)
+		if requestID == "" {
+			return Result{}, nil
+		}
+		threadID := extractRequestThreadID(message, request)
+		turnID := extractRequestTurnID(message, request)
+		metadata := extractRequestMetadata(extractRequestType(request, params), request, params)
+		return Result{Events: []agentproto.Event{{
+			Kind:         agentproto.EventRequestStarted,
+			ThreadID:     threadID,
+			TurnID:       turnID,
+			RequestID:    requestID,
+			Status:       "pending",
+			TrafficClass: t.trafficClassForTurn(threadID, turnID),
+			Initiator:    t.initiatorForTurn(threadID, turnID),
+			Metadata:     metadata,
+		}}}, nil
+	case "serverRequest/resolved", "request/resolved":
+		params := lookupMap(message, "params")
+		request := extractRequestPayload(message)
+		requestID := extractRequestID(message, request)
+		if requestID == "" {
+			return Result{}, nil
+		}
+		threadID := extractRequestThreadID(message, request)
+		turnID := extractRequestTurnID(message, request)
+		metadata := extractResolvedRequestMetadata(extractRequestType(request, params), request, params)
+		status := firstNonEmptyString(
+			lookupStringFromAny(params["status"]),
+			lookupStringFromAny(request["status"]),
+			"resolved",
+		)
+		return Result{Events: []agentproto.Event{{
+			Kind:         agentproto.EventRequestResolved,
+			ThreadID:     threadID,
+			TurnID:       turnID,
+			RequestID:    requestID,
+			Status:       status,
+			TrafficClass: t.trafficClassForTurn(threadID, turnID),
+			Initiator:    t.initiatorForTurn(threadID, turnID),
+			Metadata:     metadata,
 		}}}, nil
 	case "item/completed":
 		threadID := lookupString(message, "params", "threadId")
@@ -616,6 +726,16 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			t.pendingLocalNewThreadTurn = false
 			requestID := t.nextRequest("thread-start")
 			t.pendingThreadCreate[requestID] = pendingThreadCreate{Command: command}
+			t.debugf(
+				"translate remote prompt: command=%s action=thread/start request=%s targetThread=%s cwd=%s currentThread=%s surface=%s inputs=%d",
+				command.CommandID,
+				requestID,
+				command.Target.ThreadID,
+				command.Target.CWD,
+				t.currentThreadID,
+				choose(command.Origin.Surface, command.Origin.ChatID),
+				len(command.Prompt.Inputs),
+			)
 			payload := map[string]any{
 				"id":     requestID,
 				"method": "thread/start",
@@ -634,6 +754,17 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 				ThreadID: command.Target.ThreadID,
 				Command:  command,
 			}
+			t.debugf(
+				"translate remote prompt: command=%s action=thread/resume request=%s targetThread=%s cwd=%s currentThread=%s knownCWD=%s surface=%s inputs=%d",
+				command.CommandID,
+				requestID,
+				command.Target.ThreadID,
+				command.Target.CWD,
+				t.currentThreadID,
+				t.knownThreadCWD[command.Target.ThreadID],
+				choose(command.Origin.Surface, command.Origin.ChatID),
+				len(command.Prompt.Inputs),
+			)
 			payload := map[string]any{
 				"id":     requestID,
 				"method": "thread/resume",
@@ -648,10 +779,20 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			}
 			return [][]byte{append(bytes, '\n')}, nil
 		}
-		payload, err := t.directTurnStart(command.Target.ThreadID, command, false)
+		payload, requestID, err := t.directTurnStart(command.Target.ThreadID, command, false)
 		if err != nil {
 			return nil, err
 		}
+		t.debugf(
+			"translate remote prompt: command=%s action=turn/start request=%s targetThread=%s cwd=%s currentThread=%s surface=%s inputs=%d",
+			command.CommandID,
+			requestID,
+			command.Target.ThreadID,
+			command.Target.CWD,
+			t.currentThreadID,
+			choose(command.Origin.Surface, command.Origin.ChatID),
+			len(command.Prompt.Inputs),
+		)
 		return [][]byte{payload}, nil
 	case agentproto.CommandTurnInterrupt:
 		payload := map[string]any{
@@ -662,7 +803,7 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 				"turnId":   command.Target.TurnID,
 			},
 		}
-		t.pendingSuppressedResponse[lookupStringFromAny(payload["id"])] = true
+		t.pendingSuppressedResponse[lookupStringFromAny(payload["id"])] = suppressedResponseContext{Action: "turn/interrupt"}
 		bytes, err := json.Marshal(payload)
 		if err != nil {
 			return nil, err
@@ -703,6 +844,10 @@ func (t *Translator) translateRequestRespond(command agentproto.Command) ([][]by
 	responseType, _ := command.Request.Response["type"].(string)
 	switch responseType {
 	case "approval":
+		if decision, _ := command.Request.Response["decision"].(string); strings.TrimSpace(decision) != "" {
+			result["decision"] = strings.TrimSpace(decision)
+			break
+		}
 		approved, _ := command.Request.Response["approved"].(bool)
 		if approved {
 			result["decision"] = "accept"
@@ -747,7 +892,7 @@ func (t *Translator) buildThreadStartParams(cwd string, overrides agentproto.Pro
 	return params
 }
 
-func (t *Translator) directTurnStart(threadID string, command agentproto.Command, newThread bool) ([]byte, error) {
+func (t *Translator) directTurnStart(threadID string, command agentproto.Command, newThread bool) ([]byte, string, error) {
 	delete(t.pendingLocalTurnByThread, threadID)
 	t.pendingRemoteTurnByThread[threadID] = choose(command.Origin.Surface, command.Origin.ChatID)
 	template := t.selectTurnTemplate(threadID, newThread)
@@ -763,17 +908,21 @@ func (t *Translator) directTurnStart(threadID string, command agentproto.Command
 	setDefault(template, "collaborationMode", nil)
 	setDefault(template, "attachments", []any{})
 	applyPromptOverridesToTurnStart(template, command.Overrides)
+	requestID := t.nextRequest("turn-start")
 	payload := map[string]any{
-		"id":     t.nextRequest("turn-start"),
+		"id":     requestID,
 		"method": "turn/start",
 		"params": template,
 	}
-	t.pendingSuppressedResponse[lookupStringFromAny(payload["id"])] = true
+	t.pendingSuppressedResponse[lookupStringFromAny(payload["id"])] = suppressedResponseContext{
+		Action:   "turn/start",
+		ThreadID: threadID,
+	}
 	bytes, err := json.Marshal(payload)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return append(bytes, '\n'), nil
+	return append(bytes, '\n'), requestID, nil
 }
 
 func (t *Translator) selectTurnTemplate(threadID string, newThread bool) map[string]any {
@@ -839,9 +988,6 @@ func extractObservedConfig(params map[string]any) (model, effort string) {
 }
 
 func applyPromptOverridesToThreadStart(params map[string]any, overrides agentproto.PromptOverrides) {
-	if overrides.Model == "" && overrides.ReasoningEffort == "" {
-		return
-	}
 	if overrides.Model != "" {
 		params["model"] = overrides.Model
 	}
@@ -851,12 +997,11 @@ func applyPromptOverridesToThreadStart(params map[string]any, overrides agentpro
 		configMap["reasoning_effort"] = overrides.ReasoningEffort
 		params["config"] = configMap
 	}
+	params["approvalPolicy"] = agentproto.ApprovalPolicyForAccessMode(overrides.AccessMode)
+	params["sandbox"] = agentproto.ThreadSandboxForAccessMode(overrides.AccessMode)
 }
 
 func applyPromptOverridesToTurnStart(template map[string]any, overrides agentproto.PromptOverrides) {
-	if overrides.Model == "" && overrides.ReasoningEffort == "" {
-		return
-	}
 	if overrides.Model != "" {
 		template["model"] = overrides.Model
 	}
@@ -864,18 +1009,22 @@ func applyPromptOverridesToTurnStart(template map[string]any, overrides agentpro
 		template["effort"] = overrides.ReasoningEffort
 	}
 	collaborationMode := lookupMapFromAny(template["collaborationMode"])
-	if len(collaborationMode) == 0 {
-		collaborationMode = map[string]any{"mode": "custom"}
-	}
 	settings := lookupMapFromAny(collaborationMode["settings"])
-	if overrides.Model != "" {
-		settings["model"] = overrides.Model
+	if overrides.Model != "" || lookupStringFromAny(settings["model"]) != "" {
+		if len(collaborationMode) == 0 {
+			collaborationMode = map[string]any{"mode": "custom"}
+		}
+		if overrides.Model != "" {
+			settings["model"] = overrides.Model
+		}
+		if overrides.ReasoningEffort != "" {
+			settings["reasoning_effort"] = overrides.ReasoningEffort
+		}
+		collaborationMode["settings"] = settings
+		template["collaborationMode"] = collaborationMode
 	}
-	if overrides.ReasoningEffort != "" {
-		settings["reasoning_effort"] = overrides.ReasoningEffort
-	}
-	collaborationMode["settings"] = settings
-	template["collaborationMode"] = collaborationMode
+	template["approvalPolicy"] = agentproto.ApprovalPolicyForAccessMode(overrides.AccessMode)
+	template["sandboxPolicy"] = agentproto.TurnSandboxPolicyForAccessMode(overrides.AccessMode)
 }
 
 func (t *Translator) nextRequest(prefix string) string {
@@ -1159,6 +1308,26 @@ func lookupBoolFromAny(value any) bool {
 	return current
 }
 
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func extractJSONRPCErrorMessage(message map[string]any) string {
+	if message == nil {
+		return ""
+	}
+	errorMap, _ := message["error"].(map[string]any)
+	return firstNonEmptyString(
+		lookupStringFromAny(errorMap["message"]),
+		lookupStringFromAny(message["error"]),
+	)
+}
+
 func choose(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -1249,4 +1418,256 @@ func extractStringList(value any) []string {
 		}
 	}
 	return out
+}
+
+func extractRequestPayload(message map[string]any) map[string]any {
+	request := lookupMap(message, "params", "request")
+	if len(request) > 0 {
+		return request
+	}
+	request = lookupMap(message, "params", "serverRequest")
+	if len(request) > 0 {
+		return request
+	}
+	return map[string]any{}
+}
+
+func extractRequestID(message map[string]any, request map[string]any) string {
+	return firstNonEmptyString(
+		lookupStringFromAny(request["id"]),
+		lookupString(message, "params", "requestId"),
+		lookupString(message, "params", "id"),
+	)
+}
+
+func extractRequestThreadID(message map[string]any, request map[string]any) string {
+	return firstNonEmptyString(
+		lookupString(message, "params", "thread", "id"),
+		lookupString(message, "params", "threadId"),
+		lookupString(request, "thread", "id"),
+		lookupStringFromAny(request["threadId"]),
+	)
+}
+
+func extractRequestTurnID(message map[string]any, request map[string]any) string {
+	return firstNonEmptyString(
+		lookupString(message, "params", "turn", "id"),
+		lookupString(message, "params", "turnId"),
+		lookupString(request, "turn", "id"),
+		lookupStringFromAny(request["turnId"]),
+	)
+}
+
+func extractRequestType(request, params map[string]any) string {
+	switch raw := strings.ToLower(strings.TrimSpace(extractRawRequestType(request, params))); {
+	case raw == "", raw == "approval", raw == "confirm", raw == "confirmation":
+		return "approval"
+	case strings.HasPrefix(raw, "approval"):
+		return "approval"
+	case strings.HasPrefix(raw, "confirm"):
+		return "approval"
+	default:
+		return raw
+	}
+}
+
+func extractRawRequestType(request, params map[string]any) string {
+	return strings.TrimSpace(firstNonEmptyString(
+		lookupStringFromAny(request["type"]),
+		lookupStringFromAny(request["requestType"]),
+		lookupStringFromAny(request["kind"]),
+		lookupStringFromAny(params["type"]),
+		lookupStringFromAny(params["requestType"]),
+		lookupStringFromAny(params["kind"]),
+	))
+}
+
+func extractRequestMetadata(requestType string, request, params map[string]any) map[string]any {
+	metadata := map[string]any{}
+	if requestType != "" {
+		metadata["requestType"] = requestType
+	}
+	if rawType := extractRawRequestType(request, params); rawType != "" {
+		metadata["requestKind"] = strings.ToLower(strings.TrimSpace(rawType))
+	}
+	title := firstNonEmptyString(
+		lookupStringFromAny(request["title"]),
+		lookupStringFromAny(request["name"]),
+		lookupStringFromAny(params["title"]),
+	)
+	if title == "" {
+		switch requestType {
+		case "", "approval":
+			title = "需要确认"
+		default:
+			title = "需要处理请求"
+		}
+	}
+	if title != "" {
+		metadata["title"] = title
+	}
+	body := firstNonEmptyString(
+		lookupStringFromAny(request["message"]),
+		lookupStringFromAny(request["description"]),
+		lookupStringFromAny(request["body"]),
+		lookupStringFromAny(request["prompt"]),
+		lookupStringFromAny(request["reason"]),
+		lookupStringFromAny(params["message"]),
+		lookupStringFromAny(params["description"]),
+		lookupStringFromAny(params["body"]),
+	)
+	command := extractRequestCommand(request, params)
+	if command != "" {
+		if body != "" {
+			body += "\n\n"
+		}
+		body += "```text\n" + command + "\n```"
+	}
+	if body != "" {
+		metadata["body"] = body
+	}
+	acceptLabel := firstNonEmptyString(
+		lookupStringFromAny(request["acceptLabel"]),
+		lookupStringFromAny(request["approveLabel"]),
+		lookupStringFromAny(request["allowLabel"]),
+		lookupStringFromAny(request["confirmLabel"]),
+		lookupStringFromAny(params["acceptLabel"]),
+	)
+	if acceptLabel != "" {
+		metadata["acceptLabel"] = acceptLabel
+	}
+	declineLabel := firstNonEmptyString(
+		lookupStringFromAny(request["declineLabel"]),
+		lookupStringFromAny(request["denyLabel"]),
+		lookupStringFromAny(request["rejectLabel"]),
+		lookupStringFromAny(params["declineLabel"]),
+	)
+	if declineLabel != "" {
+		metadata["declineLabel"] = declineLabel
+	}
+	if options := extractRequestOptions(request, params); len(options) != 0 {
+		metadata["options"] = options
+	}
+	return metadata
+}
+
+func extractResolvedRequestMetadata(requestType string, request, params map[string]any) map[string]any {
+	metadata := map[string]any{}
+	if requestType != "" {
+		metadata["requestType"] = requestType
+	}
+	decision := firstNonEmptyString(
+		lookupString(params, "result", "decision"),
+		lookupString(params, "response", "decision"),
+		lookupStringFromAny(params["decision"]),
+		lookupString(request, "result", "decision"),
+		lookupString(request, "response", "decision"),
+		lookupStringFromAny(request["decision"]),
+	)
+	if decision != "" {
+		metadata["decision"] = decision
+	}
+	return metadata
+}
+
+func extractRequestCommand(request, params map[string]any) string {
+	command := firstNonEmptyString(
+		lookupStringFromAny(request["command"]),
+		lookupString(request, "command", "command"),
+		lookupString(request, "command", "text"),
+		lookupStringFromAny(params["command"]),
+		lookupString(params, "command", "command"),
+		lookupString(params, "command", "text"),
+	)
+	return strings.TrimSpace(command)
+}
+
+func extractRequestOptions(request, params map[string]any) []map[string]any {
+	source := firstNonNil(
+		request["options"],
+		request["choices"],
+		params["options"],
+		params["choices"],
+	)
+	if source == nil {
+		return nil
+	}
+	var rawOptions []any
+	switch typed := source.(type) {
+	case []any:
+		rawOptions = typed
+	case []map[string]any:
+		rawOptions = make([]any, 0, len(typed))
+		for _, item := range typed {
+			rawOptions = append(rawOptions, item)
+		}
+	default:
+		return nil
+	}
+	if len(rawOptions) == 0 {
+		return nil
+	}
+	options := make([]map[string]any, 0, len(rawOptions))
+	for _, raw := range rawOptions {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		optionID := normalizeRequestOptionID(firstNonEmptyString(
+			lookupStringFromAny(record["id"]),
+			lookupStringFromAny(record["optionId"]),
+			lookupStringFromAny(record["decision"]),
+			lookupStringFromAny(record["value"]),
+			lookupStringFromAny(record["action"]),
+		))
+		if optionID == "" {
+			continue
+		}
+		option := map[string]any{"id": optionID}
+		label := firstNonEmptyString(
+			lookupStringFromAny(record["label"]),
+			lookupStringFromAny(record["title"]),
+			lookupStringFromAny(record["text"]),
+			lookupStringFromAny(record["name"]),
+		)
+		if label != "" {
+			option["label"] = label
+		}
+		style := firstNonEmptyString(
+			lookupStringFromAny(record["style"]),
+			lookupStringFromAny(record["appearance"]),
+			lookupStringFromAny(record["variant"]),
+		)
+		if style != "" {
+			option["style"] = style
+		}
+		options = append(options, option)
+	}
+	return options
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func normalizeRequestOptionID(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	switch normalized {
+	case "accept", "allow", "approve", "yes":
+		return "accept"
+	case "acceptforsession", "allowforsession", "allowthissession", "session":
+		return "acceptForSession"
+	case "decline", "deny", "reject", "no":
+		return "decline"
+	default:
+		return strings.TrimSpace(value)
+	}
 }

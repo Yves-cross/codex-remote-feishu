@@ -84,6 +84,59 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 	}
 }
 
+func TestProjectRequestPromptAsCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventRequestPrompt,
+		RequestPrompt: &control.RequestPrompt{
+			RequestID:   "req-1",
+			RequestType: "approval",
+			Title:       "需要确认",
+			Body:        "本地 Codex 想执行：\n\n```text\ngit push\n```",
+			ThreadID:    "thread-1",
+			ThreadTitle: "droid · 修复登录流程",
+			Options: []control.RequestPromptOption{
+				{OptionID: "accept", Label: "允许执行", Style: "primary"},
+				{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
+				{OptionID: "decline", Label: "拒绝", Style: "default"},
+				{OptionID: "captureFeedback", Label: "告诉 Codex 怎么改", Style: "default"},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardTitle != "需要确认" {
+		t.Fatalf("unexpected card title: %#v", ops[0])
+	}
+	if !containsAll(ops[0].CardBody, "当前会话：droid · 修复登录流程", "git push") {
+		t.Fatalf("unexpected card body: %#v", ops[0])
+	}
+	if len(ops[0].CardElements) != 2 {
+		t.Fatalf("expected action row and hint, got %#v", ops[0].CardElements)
+	}
+	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
+	if len(actionRow) != 4 {
+		t.Fatalf("expected 4 request option buttons, got %#v", ops[0].CardElements[0])
+	}
+	acceptValue, _ := actionRow[0]["value"].(map[string]any)
+	sessionValue, _ := actionRow[1]["value"].(map[string]any)
+	declineValue, _ := actionRow[2]["value"].(map[string]any)
+	feedbackValue, _ := actionRow[3]["value"].(map[string]any)
+	if acceptValue["kind"] != "request_respond" || acceptValue["request_id"] != "req-1" || acceptValue["request_option_id"] != "accept" {
+		t.Fatalf("unexpected accept payload: %#v", acceptValue)
+	}
+	if sessionValue["request_option_id"] != "acceptForSession" {
+		t.Fatalf("unexpected accept-for-session payload: %#v", sessionValue)
+	}
+	if declineValue["request_option_id"] != "decline" {
+		t.Fatalf("unexpected decline payload: %#v", declineValue)
+	}
+	if feedbackValue["request_option_id"] != "captureFeedback" {
+		t.Fatalf("unexpected feedback payload: %#v", feedbackValue)
+	}
+}
+
 func TestProjectTypingAndThumbsDownReactions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -189,10 +242,13 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 				BaseModelSource:                "thread",
 				BaseReasoningEffortSource:      "thread",
 				OverrideModel:                  "gpt-5.4",
+				OverrideAccessMode:             "confirm",
 				EffectiveModel:                 "gpt-5.4",
 				EffectiveReasoningEffort:       "medium",
+				EffectiveAccessMode:            "confirm",
 				EffectiveModelSource:           "surface_override",
 				EffectiveReasoningEffortSource: "thread",
+				EffectiveAccessModeSource:      "surface_override",
 			},
 		},
 	})
@@ -203,9 +259,80 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 		"如果现在从飞书发送一条消息：",
 		"模型：`gpt-5.4`（飞书临时覆盖）",
 		"推理强度：`medium`（会话配置）",
-		"飞书临时覆盖：模型 `gpt-5.4`",
+		"执行权限：`confirm`（飞书临时覆盖）",
+		"飞书临时覆盖：模型 `gpt-5.4`，权限 `confirm`",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0])
+	}
+}
+
+func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:          "inst-1",
+				DisplayName:         "droid",
+				SelectedThreadID:    "thread-1",
+				SelectedThreadTitle: "droid · 修复登录流程",
+				RouteMode:           "pinned",
+			},
+			NextPrompt: control.PromptRouteSummary{
+				ThreadID:                       "thread-1",
+				ThreadTitle:                    "droid · 修复登录流程",
+				CWD:                            "/data/dl/droid",
+				EffectiveModel:                 "未知",
+				EffectiveReasoningEffort:       "未知",
+				EffectiveAccessMode:            "full_access",
+				EffectiveModelSource:           "surface_default",
+				EffectiveReasoningEffortSource: "surface_default",
+				EffectiveAccessModeSource:      "surface_default",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !strings.Contains(ops[0].CardBody, "执行权限：`full`（飞书默认）") {
+		t.Fatalf("expected compact full access token in snapshot body, got %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:          "inst-1",
+				DisplayName:         "droid",
+				SelectedThreadID:    "thread-1",
+				SelectedThreadTitle: "droid · 修复登录流程",
+				RouteMode:           "pinned",
+			},
+			NextPrompt: control.PromptRouteSummary{
+				ThreadID:                       "thread-1",
+				ThreadTitle:                    "droid · 修复登录流程",
+				CWD:                            "/data/dl/droid",
+				EffectiveModel:                 "gpt-5.4",
+				EffectiveReasoningEffort:       "xhigh",
+				EffectiveAccessMode:            "full_access",
+				EffectiveModelSource:           "surface_default",
+				EffectiveReasoningEffortSource: "surface_default",
+				EffectiveAccessModeSource:      "surface_default",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"模型：`gpt-5.4`（飞书默认）",
+		"推理强度：`xhigh`（飞书默认）",
+		"执行权限：`full`（飞书默认）",
+	) {
+		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
+	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
 func TestBootstrapWritesConfigsAndState(t *testing.T) {
@@ -160,6 +161,70 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	}
 	if _, err := os.Stat(servicesPath); !os.IsNotExist(err) {
 		t.Fatalf("expected legacy services.env to be removed, got err=%v", err)
+	}
+}
+
+func TestBootstrapPreservesExistingDebugRelayFlowFlag(t *testing.T) {
+	baseDir := t.TempDir()
+	configDir := filepath.Join(baseDir, ".config", "codex-remote")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.env")
+	if err := os.WriteFile(configPath, []byte(config.DebugRelayFlowEnv+"=true\n"), 0o600); err != nil {
+		t.Fatalf("seed unified config: %v", err)
+	}
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:         baseDir,
+		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
+		CodexRealBinary: "/usr/local/bin/codex",
+		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
+	})
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+
+	raw, err := os.ReadFile(state.ConfigPath)
+	if err != nil {
+		t.Fatalf("read unified config: %v", err)
+	}
+	if !strings.Contains(string(raw), config.DebugRelayFlowEnv+"=true") {
+		t.Fatalf("expected debug relay flow flag to be preserved, got %s", raw)
+	}
+}
+
+func TestBootstrapPreservesExistingDebugRelayRawFlag(t *testing.T) {
+	baseDir := t.TempDir()
+	configDir := filepath.Join(baseDir, ".config", "codex-remote")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.env")
+	if err := os.WriteFile(configPath, []byte(config.DebugRelayRawEnv+"=true\n"), 0o600); err != nil {
+		t.Fatalf("seed unified config: %v", err)
+	}
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:         baseDir,
+		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
+		CodexRealBinary: "/usr/local/bin/codex",
+		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
+	})
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+
+	raw, err := os.ReadFile(state.ConfigPath)
+	if err != nil {
+		t.Fatalf("read unified config: %v", err)
+	}
+	if !strings.Contains(string(raw), config.DebugRelayRawEnv+"=true") {
+		t.Fatalf("expected debug relay raw flag to be preserved, got %s", raw)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
@@ -86,6 +87,23 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardBody:         "",
 			CardThemeKey:     "system",
 			CardElements:     selectionPromptElements(*event.SelectionPrompt),
+		}}
+	case control.UIEventRequestPrompt:
+		if event.RequestPrompt == nil {
+			return nil
+		}
+		title := strings.TrimSpace(event.RequestPrompt.Title)
+		if title == "" {
+			title = "需要确认"
+		}
+		return []Operation{{
+			Kind:             OperationSendCard,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        title,
+			CardBody:         requestPromptBody(*event.RequestPrompt),
+			CardThemeKey:     chooseThemeKey(event.RequestPrompt.ThreadID, "approval"),
+			CardElements:     requestPromptElements(*event.RequestPrompt),
 		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
@@ -264,6 +282,91 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 	}
 }
 
+func requestPromptBody(prompt control.RequestPrompt) string {
+	lines := []string{}
+	if prompt.ThreadTitle != "" {
+		lines = append(lines, "当前会话："+prompt.ThreadTitle)
+	}
+	body := strings.TrimSpace(prompt.Body)
+	if body == "" {
+		body = "本地 Codex 正在等待你的确认。"
+	}
+	if body != "" {
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, body)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func requestPromptElements(prompt control.RequestPrompt) []map[string]any {
+	options := prompt.Options
+	if len(options) == 0 {
+		options = []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许一次", Style: "primary"},
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+			{OptionID: "captureFeedback", Label: "告诉 Codex 怎么改", Style: "default"},
+		}
+	}
+	actions := make([]map[string]any, 0, len(options))
+	for _, option := range options {
+		button := requestPromptButton(prompt, option)
+		if len(button) == 0 {
+			continue
+		}
+		actions = append(actions, button)
+	}
+	hint := "这个确认只影响当前这一次请求。"
+	if requestPromptContainsOption(options, "captureFeedback") {
+		hint = "如果想拒绝并补充处理意见，请点击“告诉 Codex 怎么改”后再发送下一条文字。"
+	}
+	return []map[string]any{
+		{
+			"tag":     "action",
+			"actions": actions,
+		},
+		{
+			"tag":     "markdown",
+			"content": hint,
+		},
+	}
+}
+
+func requestPromptButton(prompt control.RequestPrompt, option control.RequestPromptOption) map[string]any {
+	label := strings.TrimSpace(option.Label)
+	if label == "" {
+		return nil
+	}
+	buttonType := strings.TrimSpace(option.Style)
+	if buttonType == "" {
+		buttonType = "default"
+	}
+	return map[string]any{
+		"tag":  "button",
+		"type": buttonType,
+		"text": map[string]any{
+			"tag":     "plain_text",
+			"content": label,
+		},
+		"value": map[string]any{
+			"kind":              "request_respond",
+			"request_id":        prompt.RequestID,
+			"request_type":      strings.TrimSpace(prompt.RequestType),
+			"request_option_id": strings.TrimSpace(option.OptionID),
+		},
+	}
+}
+
+func requestPromptContainsOption(options []control.RequestPromptOption, optionID string) bool {
+	for _, option := range options {
+		if strings.TrimSpace(option.OptionID) == optionID {
+			return true
+		}
+	}
+	return false
+}
+
 func formatSnapshot(snapshot control.Snapshot) string {
 	lines := []string{}
 	if snapshot.Attachment.InstanceID == "" {
@@ -298,8 +401,9 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		if snapshot.NextPrompt.CWD != "" {
 			lines = append(lines, fmt.Sprintf("工作目录：`%s`", snapshot.NextPrompt.CWD))
 		}
-		lines = append(lines, fmt.Sprintf("模型：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveModel), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource)))
-		lines = append(lines, fmt.Sprintf("推理强度：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource)))
+		lines = append(lines, fmt.Sprintf("模型：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource)))
+		lines = append(lines, fmt.Sprintf("推理强度：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource)))
+		lines = append(lines, fmt.Sprintf("执行权限：`%s`（%s）", agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource)))
 		overrideParts := []string{}
 		if snapshot.NextPrompt.OverrideModel != "" {
 			overrideParts = append(overrideParts, "模型 `"+snapshot.NextPrompt.OverrideModel+"`")
@@ -307,15 +411,18 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		if snapshot.NextPrompt.OverrideReasoningEffort != "" {
 			overrideParts = append(overrideParts, "推理 `"+snapshot.NextPrompt.OverrideReasoningEffort+"`")
 		}
+		if snapshot.NextPrompt.OverrideAccessMode != "" {
+			overrideParts = append(overrideParts, "权限 `"+agentproto.DisplayAccessModeShort(snapshot.NextPrompt.OverrideAccessMode)+"`")
+		}
 		if len(overrideParts) == 0 {
 			lines = append(lines, "飞书临时覆盖：无")
 		} else {
 			lines = append(lines, "飞书临时覆盖："+strings.Join(overrideParts, "，"))
 		}
 		lines = append(lines, fmt.Sprintf("底层真实配置：模型 `%s`（%s）；推理 `%s`（%s）",
-			displaySnapshotValue(snapshot.NextPrompt.BaseModel),
+			displaySnapshotValue(snapshot.NextPrompt.BaseModel, snapshot.NextPrompt.BaseModelSource),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseModelSource),
-			displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort),
+			displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort, snapshot.NextPrompt.BaseReasoningEffortSource),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
 		))
 	}
@@ -365,7 +472,7 @@ func formatSnapshot(snapshot control.Snapshot) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func displaySnapshotValue(value string) string {
+func displaySnapshotValue(value, source string) string {
 	if strings.TrimSpace(value) == "" {
 		return "未知"
 	}
@@ -380,6 +487,8 @@ func snapshotConfigSourceLabel(source string) string {
 		return "工作目录默认配置"
 	case "surface_override":
 		return "飞书临时覆盖"
+	case "surface_default":
+		return "飞书默认"
 	default:
 		return "未知"
 	}

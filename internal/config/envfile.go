@@ -15,6 +15,8 @@ type WrapperConfig struct {
 	NameMode        string
 	IntegrationMode string
 	ConfigPath      string
+	DebugRelayFlow  bool
+	DebugRelayRaw   bool
 }
 
 type ServicesConfig struct {
@@ -24,10 +26,14 @@ type ServicesConfig struct {
 	FeishuAppSecret      string
 	FeishuUseSystemProxy bool
 	ConfigPath           string
+	DebugRelayFlow       bool
+	DebugRelayRaw        bool
 }
 
 const (
 	UnifiedConfigEnvPath = "CODEX_REMOTE_CONFIG"
+	DebugRelayFlowEnv    = "CODEX_REMOTE_DEBUG_RELAY_FLOW"
+	DebugRelayRawEnv     = "CODEX_REMOTE_DEBUG_RELAY_RAW"
 )
 
 func LoadEnvFile(path string) (map[string]string, error) {
@@ -68,6 +74,8 @@ func WriteEnvFile(path string, values map[string]string) error {
 		"FEISHU_APP_ID",
 		"FEISHU_APP_SECRET",
 		"FEISHU_USE_SYSTEM_PROXY",
+		DebugRelayFlowEnv,
+		DebugRelayRawEnv,
 	}
 	written := map[string]bool{}
 	for _, key := range keys {
@@ -119,6 +127,16 @@ func LoadWrapperConfig() (WrapperConfig, error) {
 			"editor_settings",
 		),
 		ConfigPath: configPath,
+		DebugRelayFlow: chooseBool(
+			os.Getenv(DebugRelayFlowEnv),
+			values[DebugRelayFlowEnv],
+			false,
+		),
+		DebugRelayRaw: chooseBool(
+			os.Getenv(DebugRelayRawEnv),
+			values[DebugRelayRawEnv],
+			false,
+		),
 	}
 	return cfg, nil
 }
@@ -152,6 +170,16 @@ func LoadServicesConfig() (ServicesConfig, error) {
 			false,
 		),
 		ConfigPath: configPath,
+		DebugRelayFlow: chooseBool(
+			os.Getenv(DebugRelayFlowEnv),
+			values[DebugRelayFlowEnv],
+			false,
+		),
+		DebugRelayRaw: chooseBool(
+			os.Getenv(DebugRelayRawEnv),
+			values[DebugRelayRawEnv],
+			false,
+		),
 	}
 	return cfg, nil
 }

@@ -64,6 +64,12 @@ type completedTextItem struct {
 	Text       string
 }
 
+const (
+	requestCaptureModeDeclineWithFeedback = "decline_with_feedback"
+	defaultModel                          = "gpt-5.4"
+	defaultReasoningEffort                = "xhigh"
+)
+
 func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Service {
 	if now == nil {
 		now = time.Now
@@ -109,6 +115,10 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.handleModelCommand(surface, action)
 	case control.ActionReasoningCommand:
 		return s.handleReasoningCommand(surface, action)
+	case control.ActionAccessCommand:
+		return s.handleAccessCommand(surface, action)
+	case control.ActionRespondRequest:
+		return s.respondRequest(surface, action)
 	case control.ActionShowThreads:
 		return s.presentThreadSelection(surface, false)
 	case control.ActionShowAllThreads:
@@ -266,6 +276,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 	case agentproto.EventTurnCompleted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = ""
+		s.clearRequestsForTurn(instanceID, event.ThreadID, event.TurnID)
 		if event.ThreadID != "" {
 			inst.ActiveThreadID = event.ThreadID
 			s.touchThread(s.ensureThread(inst, event.ThreadID))
@@ -287,8 +298,10 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		return preface
 	case agentproto.EventItemCompleted:
 		return append(preface, s.completeItem(instanceID, event)...)
-	case agentproto.EventRequestStarted, agentproto.EventRequestResolved:
-		return preface
+	case agentproto.EventRequestStarted:
+		return append(preface, s.presentRequestPrompt(instanceID, event)...)
+	case agentproto.EventRequestResolved:
+		return append(preface, s.resolveRequestPrompt(instanceID, event)...)
 	default:
 		return preface
 	}
@@ -322,6 +335,20 @@ func (s *Service) Tick(now time.Time) []control.UIEvent {
 		})
 		events = append(events, s.dispatchNext(surface)...)
 	}
+	for _, surface := range s.root.Surfaces {
+		if !requestCaptureExpired(now, surface.ActiveRequestCapture) {
+			continue
+		}
+		clearSurfaceRequestCapture(surface)
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice: &control.Notice{
+				Code: "request_capture_expired",
+				Text: "上一条确认反馈已过期，请重新点击卡片按钮后再发送处理意见。",
+			},
+		})
+	}
 	return events
 }
 
@@ -333,6 +360,9 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		}
 		if action.ActorUserID != "" {
 			surface.ActorUserID = action.ActorUserID
+		}
+		if surface.PendingRequests == nil {
+			surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 		}
 		return surface
 	}
@@ -346,6 +376,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		DispatchMode:     state.DispatchModeNormal,
 		QueueItems:       map[string]*state.QueueItemRecord{},
 		StagedImages:     map[string]*state.StagedImageRecord{},
+		PendingRequests:  map[string]*state.RequestPromptRecord{},
 	}
 	s.root.Surfaces[action.SurfaceSessionID] = surface
 	return surface
@@ -441,6 +472,7 @@ func (s *Service) attachInstance(surface *state.SurfaceConsoleRecord, instanceID
 	}
 
 	events := s.discardDrafts(surface)
+	clearSurfaceRequestCapture(surface)
 	surface.PromptOverride = state.ModelConfigRecord{}
 	surface.AttachedInstanceID = instanceID
 	surface.SelectionPrompt = nil
@@ -593,7 +625,9 @@ func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action
 		}}
 	}
 	if len(parts) == 2 && isClearCommand(parts[1]) {
-		surface.PromptOverride = state.ModelConfigRecord{}
+		surface.PromptOverride.Model = ""
+		surface.PromptOverride.ReasoningEffort = ""
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
 		return notice(surface, "surface_override_cleared", "已清除飞书临时模型覆盖。之后从飞书发送的消息将恢复使用底层真实配置。")
 	}
 	if len(parts) > 3 {
@@ -627,9 +661,7 @@ func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, ac
 	}
 	if len(parts) == 2 && isClearCommand(parts[1]) {
 		surface.PromptOverride.ReasoningEffort = ""
-		if surface.PromptOverride.Model == "" {
-			surface.PromptOverride = state.ModelConfigRecord{}
-		}
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
 		return notice(surface, "surface_override_reasoning_cleared", "已清除飞书临时推理强度覆盖。")
 	}
 	if len(parts) != 2 || !looksLikeReasoningEffort(parts[1]) {
@@ -638,6 +670,38 @@ func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, ac
 	surface.PromptOverride.ReasoningEffort = strings.ToLower(parts[1])
 	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
 	return notice(surface, "surface_override_updated", formatOverrideNotice(summary, "已更新飞书临时推理强度覆盖。"))
+}
+
+func (s *Service) handleAccessCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		return notice(surface, "not_attached", "当前还没有接管任何实例。")
+	}
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{{
+			Kind:             control.UIEventSnapshot,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Snapshot:         s.buildSnapshot(surface),
+		}}
+	}
+	if len(parts) != 2 {
+		return notice(surface, "surface_access_usage", "用法：`/access` 查看当前配置；`/access full`；`/access confirm`；`/access clear`。")
+	}
+	if isClearCommand(parts[1]) {
+		surface.PromptOverride.AccessMode = ""
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+		summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+		return notice(surface, "surface_access_reset", formatOverrideNotice(summary, "已恢复飞书默认执行权限。"))
+	}
+	mode := agentproto.NormalizeAccessMode(parts[1])
+	if mode == "" {
+		return notice(surface, "surface_access_usage", "执行权限建议使用 `full` 或 `confirm`。")
+	}
+	surface.PromptOverride.AccessMode = mode
+	surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	return notice(surface, "surface_access_updated", formatOverrideNotice(summary, "已更新飞书执行权限模式。"))
 }
 
 func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -657,6 +721,13 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		return s.resolveSelection(surface, text)
 	}
 
+	if surface.ActiveRequestCapture != nil {
+		return s.consumeCapturedRequestFeedback(surface, action, text)
+	}
+	if pending := activePendingRequest(surface); pending != nil {
+		return notice(surface, "request_pending", "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。")
+	}
+
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")
@@ -665,42 +736,20 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	threadID, cwd, routeMode, createThread := freezeRoute(inst, surface)
 	inputs := s.consumeStagedInputs(surface)
 	inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: text})
-
-	s.nextQueueItemID++
-	itemID := fmt.Sprintf("queue-%d", s.nextQueueItemID)
-	item := &state.QueueItemRecord{
-		ID:                 itemID,
-		SurfaceSessionID:   surface.SurfaceSessionID,
-		SourceMessageID:    action.MessageID,
-		Inputs:             inputs,
-		FrozenThreadID:     threadID,
-		FrozenCWD:          cwd,
-		FrozenOverride:     surface.PromptOverride,
-		RouteModeAtEnqueue: routeMode,
-		Status:             state.QueueItemQueued,
-	}
-	surface.QueueItems[item.ID] = item
-	surface.QueuedQueueItemIDs = append(surface.QueuedQueueItemIDs, item.ID)
-
-	events := []control.UIEvent{{
-		Kind:             control.UIEventPendingInput,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		PendingInput: &control.PendingInputState{
-			QueueItemID:     item.ID,
-			SourceMessageID: item.SourceMessageID,
-			Status:          string(item.Status),
-			QueuePosition:   len(surface.QueuedQueueItemIDs),
-		},
-	}}
-
 	if createThread {
 		_ = createThread
 	}
-	events = append(events, s.dispatchNext(surface)...)
-	return events
+	return s.enqueueQueueItem(surface, action.MessageID, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)
 }
 
 func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	if surface.ActiveRequestCapture != nil {
+		return notice(surface, "request_capture_waiting_text", "当前正在等待你发送一条文字处理意见，请先发送文本或重新处理确认卡片。")
+	}
+	if pending := activePendingRequest(surface); pending != nil {
+		_ = pending
+		return notice(surface, "request_pending", "当前有待确认请求。请先处理确认卡片，再发送图片。")
+	}
 	s.nextImageID++
 	image := &state.StagedImageRecord{
 		ImageID:          fmt.Sprintf("img-%d", s.nextImageID),
@@ -783,6 +832,7 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	events = append(events, s.discardDrafts(surface)...)
 	surface.QueuedQueueItemIDs = nil
 	surface.SelectionPrompt = nil
+	clearSurfaceRequests(surface)
 	s.clearRemoteOwnership(surface)
 	return events
 }
@@ -797,6 +847,7 @@ func (s *Service) detach(surface *state.SurfaceConsoleRecord) []control.UIEvent 
 	surface.PromptOverride = state.ModelConfigRecord{}
 	surface.SelectionPrompt = nil
 	surface.ActiveQueueItemID = ""
+	clearSurfaceRequests(surface)
 	surface.LastSelection = nil
 	return append(events, notice(surface, "detached", "已断开当前实例接管。")...)
 }
@@ -844,6 +895,250 @@ func (s *Service) resolveSelectionOption(surface *state.SurfaceConsoleRecord, pr
 		}
 	}
 	return notice(surface, "selection_invalid", "这个按钮对应的选项无效。")
+}
+
+func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	if surface == nil || action.RequestID == "" {
+		return nil
+	}
+	if surface.PendingRequests == nil {
+		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
+	}
+	request := surface.PendingRequests[action.RequestID]
+	if request == nil {
+		return notice(surface, "request_expired", "这个确认请求已经结束或过期了。")
+	}
+	requestType := normalizeRequestType(firstNonEmpty(action.RequestType, request.RequestType))
+	if requestType == "" {
+		requestType = "approval"
+	}
+	if requestType != "approval" {
+		return notice(surface, "request_unsupported", fmt.Sprintf("飞书端暂不支持处理 %s 类型的请求。", requestType))
+	}
+	optionID := normalizeRequestOptionID(firstNonEmpty(action.RequestOptionID, requestOptionIDFromApproved(action.Approved)))
+	if optionID == "" {
+		return notice(surface, "request_invalid", "这个确认按钮缺少有效的处理选项。")
+	}
+	if !requestHasOption(request, optionID) {
+		return notice(surface, "request_invalid", "这个确认按钮对应的选项无效或当前不可用。")
+	}
+	if optionID == "captureFeedback" {
+		surface.ActiveRequestCapture = &state.RequestCaptureRecord{
+			RequestID:   request.RequestID,
+			RequestType: request.RequestType,
+			InstanceID:  request.InstanceID,
+			ThreadID:    request.ThreadID,
+			TurnID:      request.TurnID,
+			Mode:        requestCaptureModeDeclineWithFeedback,
+			CreatedAt:   s.now(),
+			ExpiresAt:   s.now().Add(10 * time.Minute),
+		}
+		return notice(surface, "request_capture_started", "已进入反馈模式。接下来一条普通文本会作为对当前确认请求的处理意见，不会进入普通消息队列。")
+	}
+	decision := decisionForRequestOption(optionID)
+	if decision == "" {
+		return notice(surface, "request_invalid", "这个确认按钮对应的决策暂不支持。")
+	}
+	clearSurfaceRequestCaptureByRequestID(surface, request.RequestID)
+	return []control.UIEvent{{
+		Kind:             control.UIEventAgentCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Command: &agentproto.Command{
+			Kind: agentproto.CommandRequestRespond,
+			Origin: agentproto.Origin{
+				Surface:   surface.SurfaceSessionID,
+				UserID:    surface.ActorUserID,
+				ChatID:    surface.ChatID,
+				MessageID: action.MessageID,
+			},
+			Target: agentproto.Target{
+				ThreadID:               request.ThreadID,
+				TurnID:                 request.TurnID,
+				UseActiveTurnIfOmitted: request.TurnID == "",
+			},
+			Request: agentproto.Request{
+				RequestID: request.RequestID,
+				Response: map[string]any{
+					"type":     requestType,
+					"decision": decision,
+				},
+			},
+		},
+	}}
+}
+
+func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
+	if event.RequestID == "" {
+		return nil
+	}
+	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
+	if surface == nil {
+		return nil
+	}
+	if surface.PendingRequests == nil {
+		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
+	}
+	requestType := normalizeRequestType(metadataString(event.Metadata, "requestType"))
+	if requestType == "" {
+		requestType = "approval"
+	}
+	if requestType != "approval" {
+		return notice(surface, "request_unsupported", fmt.Sprintf("飞书端暂不支持处理 %s 类型的请求。", requestType))
+	}
+	inst := s.root.Instances[instanceID]
+	var thread *state.ThreadRecord
+	if inst != nil {
+		thread = inst.Threads[event.ThreadID]
+	}
+	threadTitle := displayThreadTitle(inst, thread, event.ThreadID)
+	title := firstNonEmpty(metadataString(event.Metadata, "title"), "需要确认")
+	body := strings.TrimSpace(metadataString(event.Metadata, "body"))
+	if body == "" {
+		body = "本地 Codex 正在等待你的确认。"
+	}
+	options := buildApprovalRequestOptions(event.Metadata)
+	record := &state.RequestPromptRecord{
+		RequestID:   event.RequestID,
+		RequestType: requestType,
+		InstanceID:  instanceID,
+		ThreadID:    event.ThreadID,
+		TurnID:      event.TurnID,
+		Title:       title,
+		Body:        body,
+		Options:     options,
+		CreatedAt:   s.now(),
+	}
+	surface.PendingRequests[event.RequestID] = record
+	return []control.UIEvent{{
+		Kind:             control.UIEventRequestPrompt,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		RequestPrompt: &control.RequestPrompt{
+			RequestID:   record.RequestID,
+			RequestType: record.RequestType,
+			Title:       record.Title,
+			Body:        record.Body,
+			ThreadID:    record.ThreadID,
+			ThreadTitle: threadTitle,
+			Options:     requestPromptOptionsToControl(record.Options),
+		},
+	}}
+}
+
+func (s *Service) resolveRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
+	if event.RequestID != "" {
+		for _, surface := range s.findAttachedSurfaces(instanceID) {
+			if surface.PendingRequests == nil {
+				continue
+			}
+			delete(surface.PendingRequests, event.RequestID)
+			clearSurfaceRequestCaptureByRequestID(surface, event.RequestID)
+		}
+		return nil
+	}
+	s.clearRequestsForTurn(instanceID, event.ThreadID, event.TurnID)
+	return nil
+}
+
+func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRecord, action control.Action, text string) []control.UIEvent {
+	capture := surface.ActiveRequestCapture
+	if requestCaptureExpired(s.now(), capture) {
+		clearSurfaceRequestCapture(surface)
+		return notice(surface, "request_capture_expired", "上一条确认反馈已过期，请重新点击卡片按钮后再发送处理意见。")
+	}
+	if capture == nil || capture.Mode != requestCaptureModeDeclineWithFeedback {
+		clearSurfaceRequestCapture(surface)
+		return notice(surface, "request_capture_expired", "当前反馈模式已失效，请重新处理确认卡片。")
+	}
+	request := surface.PendingRequests[capture.RequestID]
+	if request == nil {
+		clearSurfaceRequestCapture(surface)
+		return notice(surface, "request_expired", "这个确认请求已经结束或过期了。请重新发送消息。")
+	}
+	inst := s.root.Instances[request.InstanceID]
+	if inst == nil {
+		clearSurfaceRequestCapture(surface)
+		return notice(surface, "not_attached", "当前接管实例不可用，请重新接管后再发送消息。")
+	}
+
+	threadID := request.ThreadID
+	cwd := inst.WorkspaceRoot
+	routeMode := state.RouteModePinned
+	if thread := inst.Threads[threadID]; threadVisible(thread) && thread.CWD != "" {
+		cwd = thread.CWD
+	}
+	if threadID == "" {
+		var createThread bool
+		threadID, cwd, routeMode, createThread = freezeRoute(inst, surface)
+		_ = createThread
+	}
+
+	clearSurfaceRequestCapture(surface)
+	events := []control.UIEvent{{
+		Kind:             control.UIEventAgentCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Command: &agentproto.Command{
+			Kind: agentproto.CommandRequestRespond,
+			Origin: agentproto.Origin{
+				Surface:   surface.SurfaceSessionID,
+				UserID:    surface.ActorUserID,
+				ChatID:    surface.ChatID,
+				MessageID: action.MessageID,
+			},
+			Target: agentproto.Target{
+				ThreadID:               request.ThreadID,
+				TurnID:                 request.TurnID,
+				UseActiveTurnIfOmitted: request.TurnID == "",
+			},
+			Request: agentproto.Request{
+				RequestID: request.RequestID,
+				Response: map[string]any{
+					"type":     "approval",
+					"decision": "decline",
+				},
+			},
+		},
+	}}
+	events = append(events, notice(surface, "request_feedback_queued", "已记录处理意见。当前确认会先被拒绝，随后继续处理你的下一步要求。")...)
+	events = append(events, s.enqueueQueueItem(surface, action.MessageID, []agentproto.Input{{Type: agentproto.InputText, Text: text}}, threadID, cwd, routeMode, surface.PromptOverride, true)...)
+	return events
+}
+
+func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+	s.nextQueueItemID++
+	itemID := fmt.Sprintf("queue-%d", s.nextQueueItemID)
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	item := &state.QueueItemRecord{
+		ID:                 itemID,
+		SurfaceSessionID:   surface.SurfaceSessionID,
+		SourceMessageID:    sourceMessageID,
+		Inputs:             inputs,
+		FrozenThreadID:     threadID,
+		FrozenCWD:          cwd,
+		FrozenOverride:     s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		RouteModeAtEnqueue: routeMode,
+		Status:             state.QueueItemQueued,
+	}
+	surface.QueueItems[item.ID] = item
+	if front {
+		surface.QueuedQueueItemIDs = append([]string{item.ID}, surface.QueuedQueueItemIDs...)
+	} else {
+		surface.QueuedQueueItemIDs = append(surface.QueuedQueueItemIDs, item.ID)
+	}
+	position := len(surface.QueuedQueueItemIDs)
+	if front {
+		position = 1
+	}
+	events := []control.UIEvent{{
+		Kind:             control.UIEventPendingInput,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		PendingInput: &control.PendingInputState{
+			QueueItemID:     item.ID,
+			SourceMessageID: item.SourceMessageID,
+			Status:          string(item.Status),
+			QueuePosition:   position,
+		},
+	}}
+	return append(events, s.dispatchNext(surface)...)
 }
 
 func (s *Service) consumeStagedInputs(surface *state.SurfaceConsoleRecord) []agentproto.Input {
@@ -934,6 +1229,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 		Overrides: agentproto.PromptOverrides{
 			Model:           item.FrozenOverride.Model,
 			ReasoningEffort: item.FrozenOverride.ReasoningEffort,
+			AccessMode:      item.FrozenOverride.AccessMode,
 		},
 	}
 
@@ -1295,12 +1591,80 @@ func (s *Service) remoteBindingForSurface(surface *state.SurfaceConsoleRecord) *
 	return nil
 }
 
+func clearSurfaceRequests(surface *state.SurfaceConsoleRecord) {
+	if surface == nil {
+		return
+	}
+	surface.PendingRequests = map[string]*state.RequestPromptRecord{}
+	clearSurfaceRequestCapture(surface)
+}
+
+func clearSurfaceRequestsForTurn(surface *state.SurfaceConsoleRecord, threadID, turnID string) {
+	if surface == nil {
+		return
+	}
+	if len(surface.PendingRequests) != 0 {
+		for requestID, request := range surface.PendingRequests {
+			if request == nil {
+				delete(surface.PendingRequests, requestID)
+				continue
+			}
+			if turnID != "" && request.TurnID != "" && request.TurnID != turnID {
+				continue
+			}
+			if threadID != "" && request.ThreadID != "" && request.ThreadID != threadID {
+				continue
+			}
+			delete(surface.PendingRequests, requestID)
+		}
+	}
+	clearSurfaceRequestCaptureForTurn(surface, threadID, turnID)
+}
+
+func clearSurfaceRequestCapture(surface *state.SurfaceConsoleRecord) {
+	if surface == nil {
+		return
+	}
+	surface.ActiveRequestCapture = nil
+}
+
+func clearSurfaceRequestCaptureByRequestID(surface *state.SurfaceConsoleRecord, requestID string) {
+	if surface == nil || surface.ActiveRequestCapture == nil {
+		return
+	}
+	if requestID == "" || surface.ActiveRequestCapture.RequestID != requestID {
+		return
+	}
+	surface.ActiveRequestCapture = nil
+}
+
+func clearSurfaceRequestCaptureForTurn(surface *state.SurfaceConsoleRecord, threadID, turnID string) {
+	if surface == nil || surface.ActiveRequestCapture == nil {
+		return
+	}
+	capture := surface.ActiveRequestCapture
+	if turnID != "" && capture.TurnID != "" && capture.TurnID != turnID {
+		return
+	}
+	if threadID != "" && capture.ThreadID != "" && capture.ThreadID != threadID {
+		return
+	}
+	surface.ActiveRequestCapture = nil
+}
+
+func (s *Service) clearRequestsForTurn(instanceID, threadID, turnID string) {
+	for _, surface := range s.findAttachedSurfaces(instanceID) {
+		clearSurfaceRequestsForTurn(surface, threadID, turnID)
+	}
+}
+
 func (s *Service) clearTurnArtifacts(instanceID, threadID, turnID string) {
 	deleteMatchingItemBuffers(s.itemBuffers, instanceID, threadID, turnID)
 	if turnID == "" {
 		return
 	}
 	delete(s.pendingTurnText, turnRenderKey(instanceID, threadID, turnID))
+	s.clearRequestsForTurn(instanceID, threadID, turnID)
 }
 
 func (s *Service) turnSurface(instanceID, threadID, turnID string) *state.SurfaceConsoleRecord {
@@ -1416,44 +1780,106 @@ func (s *Service) resolveNextPromptSummary(inst *state.InstanceRecord, surface *
 	} else {
 		createThread = threadID == ""
 	}
-	if override.Model == "" && override.ReasoningEffort == "" {
+	if promptOverrideIsEmpty(override) {
 		override = surface.PromptOverride
 	}
 	threadTitle := ""
 	if threadID != "" {
 		threadTitle = displayThreadTitle(inst, inst.Threads[threadID], threadID)
 	}
-	baseModel, baseEffort := resolveBasePromptConfig(inst, threadID, cwd)
-	effectiveModel := baseModel
-	effectiveEffort := baseEffort
-	if override.Model != "" {
-		effectiveModel = configValue{Value: override.Model, Source: "surface_override"}
-	}
-	if override.ReasoningEffort != "" {
-		effectiveEffort = configValue{Value: override.ReasoningEffort, Source: "surface_override"}
-	}
+	resolution := s.resolvePromptConfig(inst, surface, threadID, cwd, override)
 	return control.PromptRouteSummary{
 		RouteMode:                      string(routeMode),
 		ThreadID:                       threadID,
 		ThreadTitle:                    threadTitle,
 		CWD:                            cwd,
 		CreateThread:                   createThread,
-		BaseModel:                      baseModel.Value,
-		BaseReasoningEffort:            baseEffort.Value,
-		BaseModelSource:                baseModel.Source,
-		BaseReasoningEffortSource:      baseEffort.Source,
-		OverrideModel:                  override.Model,
-		OverrideReasoningEffort:        override.ReasoningEffort,
-		EffectiveModel:                 effectiveModel.Value,
-		EffectiveReasoningEffort:       effectiveEffort.Value,
-		EffectiveModelSource:           effectiveModel.Source,
-		EffectiveReasoningEffortSource: effectiveEffort.Source,
+		BaseModel:                      resolution.BaseModel.Value,
+		BaseReasoningEffort:            resolution.BaseReasoningEffort.Value,
+		BaseModelSource:                resolution.BaseModel.Source,
+		BaseReasoningEffortSource:      resolution.BaseReasoningEffort.Source,
+		OverrideModel:                  resolution.Override.Model,
+		OverrideReasoningEffort:        resolution.Override.ReasoningEffort,
+		OverrideAccessMode:             resolution.Override.AccessMode,
+		EffectiveModel:                 resolution.EffectiveModel.Value,
+		EffectiveReasoningEffort:       resolution.EffectiveReasoningEffort.Value,
+		EffectiveAccessMode:            resolution.EffectiveAccessMode,
+		EffectiveModelSource:           resolution.EffectiveModel.Source,
+		EffectiveReasoningEffortSource: resolution.EffectiveReasoningEffort.Source,
+		EffectiveAccessModeSource:      resolution.EffectiveAccessModeSource,
 	}
 }
 
 type configValue struct {
 	Value  string
 	Source string
+}
+
+type promptConfigResolution struct {
+	Override                  state.ModelConfigRecord
+	BaseModel                 configValue
+	BaseReasoningEffort       configValue
+	EffectiveModel            configValue
+	EffectiveReasoningEffort  configValue
+	EffectiveAccessMode       string
+	EffectiveAccessModeSource string
+}
+
+func promptOverrideIsEmpty(value state.ModelConfigRecord) bool {
+	return strings.TrimSpace(value.Model) == "" &&
+		strings.TrimSpace(value.ReasoningEffort) == "" &&
+		strings.TrimSpace(value.AccessMode) == ""
+}
+
+func compactPromptOverride(value state.ModelConfigRecord) state.ModelConfigRecord {
+	value.AccessMode = agentproto.NormalizeAccessMode(value.AccessMode)
+	if promptOverrideIsEmpty(value) {
+		return state.ModelConfigRecord{}
+	}
+	return value
+}
+
+func (s *Service) resolveFrozenPromptOverride(inst *state.InstanceRecord, surface *state.SurfaceConsoleRecord, threadID, cwd string, override state.ModelConfigRecord) state.ModelConfigRecord {
+	resolution := s.resolvePromptConfig(inst, surface, threadID, cwd, override)
+	return state.ModelConfigRecord{
+		Model:           resolution.EffectiveModel.Value,
+		ReasoningEffort: resolution.EffectiveReasoningEffort.Value,
+		AccessMode:      resolution.EffectiveAccessMode,
+	}
+}
+
+func (s *Service) resolvePromptConfig(inst *state.InstanceRecord, surface *state.SurfaceConsoleRecord, threadID, cwd string, override state.ModelConfigRecord) promptConfigResolution {
+	if surface != nil && promptOverrideIsEmpty(override) {
+		override = surface.PromptOverride
+	}
+	override = compactPromptOverride(override)
+	baseModel, baseEffort := resolveBasePromptConfig(inst, threadID, cwd)
+	effectiveModel := baseModel
+	if override.Model != "" {
+		effectiveModel = configValue{Value: override.Model, Source: "surface_override"}
+	} else if effectiveModel.Value == "" {
+		effectiveModel = configValue{Value: defaultModel, Source: "surface_default"}
+	}
+	effectiveEffort := baseEffort
+	if override.ReasoningEffort != "" {
+		effectiveEffort = configValue{Value: override.ReasoningEffort, Source: "surface_override"}
+	} else if effectiveEffort.Value == "" {
+		effectiveEffort = configValue{Value: defaultReasoningEffort, Source: "surface_default"}
+	}
+	effectiveAccessMode := agentproto.EffectiveAccessMode(override.AccessMode)
+	effectiveAccessModeSource := "surface_default"
+	if agentproto.NormalizeAccessMode(override.AccessMode) != "" {
+		effectiveAccessModeSource = "surface_override"
+	}
+	return promptConfigResolution{
+		Override:                  override,
+		BaseModel:                 baseModel,
+		BaseReasoningEffort:       baseEffort,
+		EffectiveModel:            effectiveModel,
+		EffectiveReasoningEffort:  effectiveEffort,
+		EffectiveAccessMode:       effectiveAccessMode,
+		EffectiveAccessModeSource: effectiveAccessModeSource,
+	}
 }
 
 func resolveBasePromptConfig(inst *state.InstanceRecord, threadID, cwd string) (configValue, configValue) {
@@ -1762,6 +2188,7 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 		surface.ActiveTurnOrigin = ""
 		surface.DispatchMode = state.DispatchModeNormal
 		delete(s.handoffUntil, surface.SurfaceSessionID)
+		clearSurfaceRequests(surface)
 
 		if surface.ActiveQueueItemID != "" {
 			if item := surface.QueueItems[surface.ActiveQueueItemID]; item != nil && (item.Status == state.QueueItemDispatching || item.Status == state.QueueItemRunning) {
@@ -1931,6 +2358,281 @@ func notice(surface *state.SurfaceConsoleRecord, code, text string) []control.UI
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &control.Notice{Code: code, Text: text},
 	}}
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return strings.TrimSpace(value)
+}
+
+func lookupStringFromAny(value any) string {
+	if value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	default:
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func normalizeRequestType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case normalized == "", normalized == "approval", normalized == "confirm", normalized == "confirmation":
+		return strings.ToLower(strings.TrimSpace(firstNonEmpty(value, "approval")))
+	case strings.HasPrefix(normalized, "approval"):
+		return "approval"
+	case strings.HasPrefix(normalized, "confirm"):
+		return "approval"
+	default:
+		return normalized
+	}
+}
+
+func normalizeRequestOptionID(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	switch normalized {
+	case "accept", "allow", "approve", "yes":
+		return "accept"
+	case "acceptforsession", "allowforsession", "allowthissession", "session":
+		return "acceptForSession"
+	case "decline", "deny", "reject", "no":
+		return "decline"
+	case "capturefeedback", "feedback", "tellcodexwhattodo", "tellcodexwhattododifferently":
+		return "captureFeedback"
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
+func requestOptionIDFromApproved(approved bool) string {
+	if approved {
+		return "accept"
+	}
+	return "decline"
+}
+
+func requestHasOption(request *state.RequestPromptRecord, optionID string) bool {
+	if request == nil {
+		return false
+	}
+	if len(request.Options) == 0 {
+		switch optionID {
+		case "accept", "decline":
+			return true
+		default:
+			return false
+		}
+	}
+	for _, option := range request.Options {
+		if normalizeRequestOptionID(option.OptionID) == optionID {
+			return true
+		}
+	}
+	return false
+}
+
+func decisionForRequestOption(optionID string) string {
+	switch normalizeRequestOptionID(optionID) {
+	case "accept":
+		return "accept"
+	case "acceptForSession":
+		return "acceptForSession"
+	case "decline":
+		return "decline"
+	default:
+		return ""
+	}
+}
+
+func activePendingRequest(surface *state.SurfaceConsoleRecord) *state.RequestPromptRecord {
+	if surface == nil || len(surface.PendingRequests) == 0 {
+		return nil
+	}
+	for requestID, request := range surface.PendingRequests {
+		if request == nil {
+			delete(surface.PendingRequests, requestID)
+			continue
+		}
+		return request
+	}
+	return nil
+}
+
+func requestCaptureExpired(now time.Time, capture *state.RequestCaptureRecord) bool {
+	if capture == nil || capture.ExpiresAt.IsZero() {
+		return false
+	}
+	return !now.Before(capture.ExpiresAt)
+}
+
+func requestPromptOptionsToControl(options []state.RequestPromptOptionRecord) []control.RequestPromptOption {
+	if len(options) == 0 {
+		return nil
+	}
+	out := make([]control.RequestPromptOption, 0, len(options))
+	for _, option := range options {
+		label := strings.TrimSpace(option.Label)
+		if label == "" {
+			continue
+		}
+		out = append(out, control.RequestPromptOption{
+			OptionID: strings.TrimSpace(option.OptionID),
+			Label:    label,
+			Style:    strings.TrimSpace(option.Style),
+		})
+	}
+	return out
+}
+
+func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptOptionRecord {
+	var options []state.RequestPromptOptionRecord
+	seen := map[string]bool{}
+	add := func(optionID, label, style string) {
+		optionID = normalizeRequestOptionID(optionID)
+		if optionID == "" || seen[optionID] {
+			return
+		}
+		switch optionID {
+		case "accept", "acceptForSession", "decline", "captureFeedback":
+		default:
+			return
+		}
+		if label == "" {
+			switch optionID {
+			case "accept":
+				label = "允许一次"
+			case "acceptForSession":
+				label = "本会话允许"
+			case "decline":
+				label = "拒绝"
+			case "captureFeedback":
+				label = "告诉 Codex 怎么改"
+			default:
+				return
+			}
+		}
+		if style == "" {
+			switch optionID {
+			case "accept":
+				style = "primary"
+			default:
+				style = "default"
+			}
+		}
+		options = append(options, state.RequestPromptOptionRecord{
+			OptionID: optionID,
+			Label:    label,
+			Style:    style,
+		})
+		seen[optionID] = true
+	}
+
+	for _, option := range metadataRequestOptions(metadata) {
+		add(option.OptionID, option.Label, option.Style)
+	}
+	if len(options) == 0 {
+		add("accept", firstNonEmpty(metadataString(metadata, "acceptLabel"), "允许一次"), "primary")
+		if approvalRequestSupportsSession(metadata) {
+			add("acceptForSession", "本会话允许", "default")
+		}
+		add("decline", firstNonEmpty(metadataString(metadata, "declineLabel"), "拒绝"), "default")
+	}
+	add("captureFeedback", "告诉 Codex 怎么改", "default")
+	return options
+}
+
+func approvalRequestSupportsSession(metadata map[string]any) bool {
+	if len(metadataRequestOptions(metadata)) != 0 {
+		for _, option := range metadataRequestOptions(metadata) {
+			if normalizeRequestOptionID(option.OptionID) == "acceptForSession" {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(metadataString(metadata, "requestKind"))) {
+	case "approval_command", "approval_file_change", "approval_network":
+		return true
+	default:
+		return false
+	}
+}
+
+func metadataRequestOptions(metadata map[string]any) []state.RequestPromptOptionRecord {
+	if len(metadata) == 0 {
+		return nil
+	}
+	raw, ok := metadata["options"]
+	if !ok {
+		return nil
+	}
+	var values []any
+	switch typed := raw.(type) {
+	case []any:
+		values = typed
+	case []map[string]any:
+		values = make([]any, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, item)
+		}
+	default:
+		return nil
+	}
+	options := make([]state.RequestPromptOptionRecord, 0, len(values))
+	for _, value := range values {
+		record, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		optionID := firstNonEmpty(
+			lookupStringFromAny(record["id"]),
+			lookupStringFromAny(record["optionId"]),
+			lookupStringFromAny(record["decision"]),
+			lookupStringFromAny(record["value"]),
+			lookupStringFromAny(record["action"]),
+		)
+		optionID = normalizeRequestOptionID(optionID)
+		if optionID == "" {
+			continue
+		}
+		label := firstNonEmpty(
+			lookupStringFromAny(record["label"]),
+			lookupStringFromAny(record["title"]),
+			lookupStringFromAny(record["text"]),
+			lookupStringFromAny(record["name"]),
+		)
+		style := firstNonEmpty(
+			lookupStringFromAny(record["style"]),
+			lookupStringFromAny(record["appearance"]),
+			lookupStringFromAny(record["variant"]),
+		)
+		options = append(options, state.RequestPromptOptionRecord{
+			OptionID: optionID,
+			Label:    label,
+			Style:    style,
+		})
+	}
+	return options
 }
 
 func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) control.UIEvent {
@@ -2195,8 +2897,9 @@ func looksLikeReasoningEffort(value string) bool {
 
 func formatOverrideNotice(summary control.PromptRouteSummary, prefix string) string {
 	lines := []string{prefix}
-	lines = append(lines, fmt.Sprintf("当前生效模型：%s", displayConfigValue(summary.EffectiveModel)))
-	lines = append(lines, fmt.Sprintf("当前推理强度：%s", displayConfigValue(summary.EffectiveReasoningEffort)))
+	lines = append(lines, fmt.Sprintf("当前生效模型：%s", displayConfigValue(summary.EffectiveModel, summary.EffectiveModelSource)))
+	lines = append(lines, fmt.Sprintf("当前推理强度：%s", displayConfigValue(summary.EffectiveReasoningEffort, summary.EffectiveReasoningEffortSource)))
+	lines = append(lines, fmt.Sprintf("当前执行权限：%s", agentproto.DisplayAccessModeShort(summary.EffectiveAccessMode)))
 	if summary.ThreadTitle != "" {
 		lines = append(lines, fmt.Sprintf("当前输入目标：%s", summary.ThreadTitle))
 	} else if summary.CreateThread {
@@ -2206,7 +2909,7 @@ func formatOverrideNotice(summary control.PromptRouteSummary, prefix string) str
 	return strings.Join(lines, "\n")
 }
 
-func displayConfigValue(value string) string {
+func displayConfigValue(value, source string) string {
 	if strings.TrimSpace(value) == "" {
 		return "未知"
 	}
@@ -2221,6 +2924,8 @@ func configSourceLabel(value string) string {
 		return "工作目录默认配置"
 	case "surface_override":
 		return "飞书临时覆盖"
+	case "surface_default":
+		return "飞书默认"
 	default:
 		return "未知"
 	}

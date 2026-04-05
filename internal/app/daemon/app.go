@@ -17,15 +17,20 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 )
 
 type App struct {
-	service   *orchestrator.Service
-	projector *feishu.Projector
-	gateway   feishu.Gateway
-	relay     *relayws.Server
+	service           *orchestrator.Service
+	projector         *feishu.Projector
+	gateway           feishu.Gateway
+	markdownPreviewer feishu.MarkdownPreviewService
+	relay             *relayws.Server
+	debugRelayFlow    bool
+	rawLogger         *debuglog.RawLogger
 
 	relayServer *http.Server
 	apiServer   *http.Server
@@ -67,6 +72,25 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 	apiMux.HandleFunc("/v1/status", app.handleStatus)
 	app.apiServer = &http.Server{Addr: apiAddr, Handler: apiMux}
 	return app
+}
+
+func (a *App) SetMarkdownPreviewer(previewer feishu.MarkdownPreviewService) {
+	a.markdownPreviewer = previewer
+}
+
+func (a *App) SetDebugRelayFlow(enabled bool) {
+	a.debugRelayFlow = enabled
+}
+
+func (a *App) SetRawLogger(logger *debuglog.RawLogger) {
+	a.rawLogger = logger
+	a.relay.SetRawLogger(logger)
+}
+
+func (a *App) debugf(format string, args ...any) {
+	if a.debugRelayFlow {
+		log.Printf("relay flow daemon: "+format, args...)
+	}
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -114,6 +138,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	_ = a.relay.Close()
 	_ = a.relayServer.Shutdown(ctx)
 	_ = a.apiServer.Shutdown(ctx)
+	if a.rawLogger != nil {
+		_ = a.rawLogger.Close()
+	}
 	return nil
 }
 
@@ -192,6 +219,14 @@ func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentprot
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	log.Printf("relay command ack: instance=%s command=%s accepted=%t error=%s", instanceID, ack.CommandID, ack.Accepted, ack.Error)
+	a.debugf(
+		"command ack state: instance=%s command=%s accepted=%t pending=%s active=%s",
+		instanceID,
+		ack.CommandID,
+		ack.Accepted,
+		summarizeRemoteStatuses(a.service.PendingRemoteTurns()),
+		summarizeRemoteStatuses(a.service.ActiveRemoteTurns()),
+	)
 	if ack.Accepted {
 		return
 	}
@@ -225,7 +260,29 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 				event.Command.CommandID = a.nextCommandID()
 			}
 			instanceID := a.service.AttachedInstanceID(event.SurfaceSessionID)
+			snapshot := a.service.SurfaceSnapshot(event.SurfaceSessionID)
+			a.debugf(
+				"dispatch prepare: surface=%s instance=%s command=%s kind=%s selectedThread=%s route=%s promptThread=%s promptCreate=%t pending=%s active=%s sourceMessage=%s",
+				event.SurfaceSessionID,
+				instanceID,
+				event.Command.CommandID,
+				event.Command.Kind,
+				snapshotSelectedThreadID(snapshot),
+				snapshotRouteMode(snapshot),
+				snapshotPromptThreadID(snapshot),
+				snapshotPromptCreateThread(snapshot),
+				summarizeRemoteStatuses(a.service.PendingRemoteTurns()),
+				summarizeRemoteStatuses(a.service.ActiveRemoteTurns()),
+				event.Command.Origin.MessageID,
+			)
 			a.service.BindPendingRemoteCommand(event.SurfaceSessionID, event.Command.CommandID)
+			a.debugf(
+				"dispatch bound: surface=%s instance=%s command=%s pending=%s",
+				event.SurfaceSessionID,
+				instanceID,
+				event.Command.CommandID,
+				summarizeRemoteStatuses(a.service.PendingRemoteTurns()),
+			)
 			log.Printf(
 				"ui command: surface=%s instance=%s kind=%s thread=%s turn=%s sourceMessage=%s",
 				event.SurfaceSessionID,
@@ -245,6 +302,16 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 				log.Printf("relay send command failed: instance=%s kind=%s err=%v", instanceID, event.Command.Kind, err)
 				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, err)
 				a.handleUIEvents(context.Background(), rollback)
+			} else {
+				a.debugf(
+					"dispatch sent: surface=%s instance=%s command=%s kind=%s pending=%s active=%s",
+					event.SurfaceSessionID,
+					instanceID,
+					event.Command.CommandID,
+					event.Command.Kind,
+					summarizeRemoteStatuses(a.service.PendingRemoteTurns()),
+					summarizeRemoteStatuses(a.service.ActiveRemoteTurns()),
+				)
 			}
 			continue
 		}
@@ -255,6 +322,29 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 			continue
 		}
 		log.Printf("ui event: surface=%s chat=%s actor=%s kind=%s", event.SurfaceSessionID, chatID, actorUserID, event.Kind)
+		if a.markdownPreviewer != nil && event.Kind == control.UIEventBlockCommitted && event.Block != nil {
+			rewriteCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			rewrittenBlock, err := a.markdownPreviewer.RewriteFinalBlock(rewriteCtx, feishu.MarkdownPreviewRequest{
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				ActorUserID:      actorUserID,
+				WorkspaceRoot:    a.previewWorkspaceRoot(event.SurfaceSessionID, *event.Block),
+				ThreadCWD:        a.previewThreadCWD(event.SurfaceSessionID, *event.Block),
+				Block:            *event.Block,
+			})
+			cancel()
+			event.Block = &rewrittenBlock
+			if err != nil {
+				log.Printf(
+					"markdown preview rewrite failed: surface=%s instance=%s thread=%s item=%s err=%v",
+					event.SurfaceSessionID,
+					rewrittenBlock.InstanceID,
+					rewrittenBlock.ThreadID,
+					rewrittenBlock.ItemID,
+					err,
+				)
+			}
+		}
 		operations := a.projector.Project(chatID, event)
 		for i := range operations {
 			if operations[i].SurfaceSessionID == "" {
@@ -298,10 +388,90 @@ func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func summarizeRemoteStatuses(values []orchestrator.RemoteTurnStatus) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, strings.Join([]string{
+			"instance=" + value.InstanceID,
+			"surface=" + value.SurfaceSessionID,
+			"queue=" + value.QueueItemID,
+			"command=" + value.CommandID,
+			"thread=" + value.ThreadID,
+			"turn=" + value.TurnID,
+			"status=" + value.Status,
+		}, ","))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func snapshotSelectedThreadID(snapshot *control.Snapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.Attachment.SelectedThreadID
+}
+
+func snapshotRouteMode(snapshot *control.Snapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.Attachment.RouteMode
+}
+
+func snapshotPromptThreadID(snapshot *control.Snapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	return snapshot.NextPrompt.ThreadID
+}
+
+func snapshotPromptCreateThread(snapshot *control.Snapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	return snapshot.NextPrompt.CreateThread
+}
+
 func actionTextPreview(text string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
 	if len(text) <= 120 {
 		return text
 	}
 	return text[:117] + "..."
+}
+
+func (a *App) previewWorkspaceRoot(surfaceID string, block render.Block) string {
+	instanceID := strings.TrimSpace(block.InstanceID)
+	if instanceID == "" {
+		instanceID = a.service.AttachedInstanceID(surfaceID)
+	}
+	if instanceID == "" {
+		return ""
+	}
+	inst := a.service.Instance(instanceID)
+	if inst == nil {
+		return ""
+	}
+	return inst.WorkspaceRoot
+}
+
+func (a *App) previewThreadCWD(surfaceID string, block render.Block) string {
+	instanceID := strings.TrimSpace(block.InstanceID)
+	if instanceID == "" {
+		instanceID = a.service.AttachedInstanceID(surfaceID)
+	}
+	if instanceID == "" {
+		return ""
+	}
+	inst := a.service.Instance(instanceID)
+	if inst == nil {
+		return ""
+	}
+	if thread := inst.Threads[block.ThreadID]; thread != nil {
+		return thread.CWD
+	}
+	return ""
 }

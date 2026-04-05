@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 
 	"github.com/gorilla/websocket"
 )
@@ -27,6 +28,8 @@ type Server struct {
 	mu       sync.RWMutex
 	conns    map[string]*serverConn
 	shutdown chan struct{}
+
+	rawLogger *debuglog.RawLogger
 }
 
 type serverConn struct {
@@ -47,6 +50,10 @@ func NewServer(callbacks ServerCallbacks) *Server {
 
 func (s *Server) SetServerIdentity(identity agentproto.ServerIdentity) {
 	s.identity = identity
+}
+
+func (s *Server) SetRawLogger(logger *debuglog.RawLogger) {
+	s.rawLogger = logger
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +93,7 @@ func (s *Server) SendCommand(instanceID string, command agentproto.Command) erro
 	current.mu.Lock()
 	defer current.mu.Unlock()
 	current.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	s.logRaw("out", payload, agentproto.EnvelopeCommand, instanceID, command.CommandID)
 	return current.conn.WriteMessage(websocket.TextMessage, payload)
 }
 
@@ -116,6 +124,19 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 			continue
 		}
 		envelope, err := agentproto.UnmarshalEnvelope(raw)
+		envelopeType := envelope.Type
+		currentInstanceID := instanceID
+		commandID := envelopeCommandID(envelope)
+		if envelope.Type == agentproto.EnvelopeHello && envelope.Hello != nil {
+			currentInstanceID = envelope.Hello.Instance.InstanceID
+		} else if derived := envelopeInstanceID(envelope, currentInstanceID); derived != "" {
+			currentInstanceID = derived
+		}
+		if err != nil {
+			envelopeType = ""
+			commandID = ""
+		}
+		s.logRaw("in", raw, envelopeType, currentInstanceID, commandID)
 		if err != nil {
 			_ = writeError(conn, "bad_envelope", err.Error())
 			continue
@@ -152,6 +173,7 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 					Server:     serverPtr,
 				},
 			})
+			s.logRaw("out", payload, agentproto.EnvelopeWelcome, hello.Instance.InstanceID, "")
 			err = conn.WriteMessage(websocket.TextMessage, payload)
 			if err != nil {
 				return
@@ -181,6 +203,20 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 			}
 		}
 	}
+}
+
+func (s *Server) logRaw(direction string, payload []byte, envelopeType agentproto.EnvelopeType, instanceID, commandID string) {
+	if s.rawLogger == nil {
+		return
+	}
+	s.rawLogger.Log(debuglog.RawEntry{
+		InstanceID:   instanceID,
+		Channel:      "relay.ws",
+		Direction:    direction,
+		EnvelopeType: string(envelopeType),
+		CommandID:    commandID,
+		Frame:        payload,
+	})
 }
 
 func writeError(conn *websocket.Conn, code, message string) error {

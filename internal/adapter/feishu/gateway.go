@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -61,6 +62,13 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	}
 }
 
+func (g *LiveGateway) Client() *lark.Client {
+	if g == nil {
+		return nil
+	}
+	return g.client
+}
+
 func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 	dispatch := dispatcher.NewEventDispatcher("", "")
 	dispatch.OnP2MessageReceiveV1(func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
@@ -99,10 +107,13 @@ func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 		if event == nil || event.Event == nil || event.Event.EventKey == nil {
 			return nil
 		}
-		action, ok := menuAction(*event.Event.EventKey)
+		rawKey := *event.Event.EventKey
+		action, ok := menuAction(rawKey)
 		if !ok {
+			log.Printf("feishu bot menu ignored: raw_key=%q normalized=%q", rawKey, normalizeMenuEventKey(rawKey))
 			return nil
 		}
+		log.Printf("feishu bot menu handled: raw_key=%q normalized=%q action=%s", rawKey, normalizeMenuEventKey(rawKey), action.Kind)
 		operatorID := operatorUserID(event.Event.Operator)
 		action.SurfaceSessionID = surfaceIDForInbound("", "p2p", operatorID)
 		action.ActorUserID = operatorID
@@ -412,6 +423,32 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			PromptID:         promptID,
 			OptionID:         optionID,
 		}, true
+	case "request_respond":
+		requestID := strings.TrimSpace(stringMapValue(value, "request_id"))
+		if requestID == "" {
+			return control.Action{}, false
+		}
+		optionID := strings.TrimSpace(stringMapValue(value, "request_option_id"))
+		if optionID == "" {
+			if value["approved"] != nil {
+				if boolMapValue(value, "approved") {
+					optionID = "accept"
+				} else {
+					optionID = "decline"
+				}
+			}
+		}
+		return control.Action{
+			Kind:             control.ActionRespondRequest,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			RequestID:        requestID,
+			RequestType:      strings.TrimSpace(stringMapValue(value, "request_type")),
+			RequestOptionID:  optionID,
+			Approved:         boolMapValue(value, "approved"),
+		}, true
 	default:
 		return control.Action{}, false
 	}
@@ -444,6 +481,8 @@ func parseTextAction(text string) (control.Action, bool) {
 			return control.Action{Kind: control.ActionModelCommand, Text: trimmed}, true
 		case "/reasoning", "/effort":
 			return control.Action{Kind: control.ActionReasoningCommand, Text: trimmed}, true
+		case "/access", "/approval":
+			return control.Action{Kind: control.ActionAccessCommand, Text: trimmed}, true
 		}
 	}
 	switch trimmed {
@@ -467,16 +506,19 @@ func parseTextAction(text string) (control.Action, bool) {
 }
 
 func menuAction(eventKey string) (control.Action, bool) {
-	switch eventKey {
+	if action, ok := dynamicMenuAction(eventKey); ok {
+		return action, true
+	}
+	switch normalizeMenuEventKey(eventKey) {
 	case "list":
 		return control.Action{Kind: control.ActionListInstances}, true
 	case "status":
 		return control.Action{Kind: control.ActionStatus}, true
 	case "stop":
 		return control.Action{Kind: control.ActionStop}, true
-	case "threads", "use", "sessions", "show_threads", "show_sessions":
+	case "threads", "use", "sessions", "showthreads", "showsessions":
 		return control.Action{Kind: control.ActionShowThreads}, true
-	case "threads_all", "useall", "sessions_all", "show_all_threads", "show_all_sessions":
+	case "threadsall", "useall", "sessionsall", "showallthreads", "showallsessions":
 		return control.Action{Kind: control.ActionShowAllThreads}, true
 	case "reasonlow", "reason_low", "reason-low":
 		return control.Action{Kind: control.ActionReasoningCommand, Text: "/reasoning low"}, true
@@ -486,9 +528,61 @@ func menuAction(eventKey string) (control.Action, bool) {
 		return control.Action{Kind: control.ActionReasoningCommand, Text: "/reasoning high"}, true
 	case "reasonxhigh", "reason_xhigh", "reason-xhigh":
 		return control.Action{Kind: control.ActionReasoningCommand, Text: "/reasoning xhigh"}, true
+	case "accessfull", "approvalfull":
+		return control.Action{Kind: control.ActionAccessCommand, Text: "/access full"}, true
+	case "accessconfirm", "approvalconfirm":
+		return control.Action{Kind: control.ActionAccessCommand, Text: "/access confirm"}, true
 	default:
 		return control.Action{}, false
 	}
+}
+
+func dynamicMenuAction(eventKey string) (control.Action, bool) {
+	trimmed := strings.TrimSpace(eventKey)
+	lower := strings.ToLower(trimmed)
+	for _, prefix := range []string{"model_", "model-"} {
+		if strings.HasPrefix(lower, prefix) {
+			model := strings.TrimSpace(trimmed[len(prefix):])
+			if model == "" {
+				return control.Action{}, false
+			}
+			return control.Action{Kind: control.ActionModelCommand, Text: "/model " + model}, true
+		}
+	}
+	for _, prefix := range []string{"reason_", "reason-"} {
+		if strings.HasPrefix(lower, prefix) {
+			effort := strings.ToLower(strings.TrimSpace(trimmed[len(prefix):]))
+			if !menuReasoningEffort(effort) {
+				return control.Action{}, false
+			}
+			return control.Action{Kind: control.ActionReasoningCommand, Text: "/reasoning " + effort}, true
+		}
+	}
+	return control.Action{}, false
+}
+
+func menuReasoningEffort(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "low", "medium", "high", "xhigh":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeMenuEventKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(value))
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func menuActionKind(eventKey string) (control.ActionKind, bool) {
@@ -605,6 +699,18 @@ func stringMapValue(values map[string]interface{}, key string) string {
 	default:
 		return fmt.Sprint(current)
 	}
+}
+
+func boolMapValue(values map[string]interface{}, key string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return false
+	}
+	current, _ := value.(bool)
+	return current
 }
 
 func ResolveReceiveTarget(chatID, actorUserID string) (string, string) {

@@ -1,21 +1,23 @@
 package relayruntime
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
 type Paths struct {
-	ConfigDir       string
-	ConfigFile      string
-	DataDir         string
-	LogsDir         string
-	DaemonLogFile   string
-	StateDir        string
-	ManagerLockFile string
-	DaemonLockFile  string
-	PIDFile         string
-	IdentityFile    string
+	ConfigDir        string
+	ConfigFile       string
+	DataDir          string
+	LogsDir          string
+	DaemonLogFile    string
+	DaemonRawLogFile string
+	StateDir         string
+	ManagerLockFile  string
+	DaemonLockFile   string
+	PIDFile          string
+	IdentityFile     string
 }
 
 func DefaultPaths() (Paths, error) {
@@ -37,16 +39,17 @@ func DefaultPaths() (Paths, error) {
 	logsDir := filepath.Join(dataDir, "logs")
 	stateDir := filepath.Join(stateHome, ProductName)
 	return Paths{
-		ConfigDir:       configDir,
-		ConfigFile:      filepath.Join(configDir, "config.env"),
-		DataDir:         dataDir,
-		LogsDir:         logsDir,
-		DaemonLogFile:   filepath.Join(logsDir, "codex-remote-relayd.log"),
-		StateDir:        stateDir,
-		ManagerLockFile: filepath.Join(stateDir, "relay-manager.lock"),
-		DaemonLockFile:  filepath.Join(stateDir, "relayd.lock"),
-		PIDFile:         filepath.Join(stateDir, "codex-remote-relayd.pid"),
-		IdentityFile:    filepath.Join(stateDir, "codex-remote-relayd.identity.json"),
+		ConfigDir:        configDir,
+		ConfigFile:       filepath.Join(configDir, "config.env"),
+		DataDir:          dataDir,
+		LogsDir:          logsDir,
+		DaemonLogFile:    filepath.Join(logsDir, "codex-remote-relayd.log"),
+		DaemonRawLogFile: filepath.Join(logsDir, "codex-remote-relayd-raw.ndjson"),
+		StateDir:         stateDir,
+		ManagerLockFile:  filepath.Join(stateDir, "relay-manager.lock"),
+		DaemonLockFile:   filepath.Join(stateDir, "relayd.lock"),
+		PIDFile:          filepath.Join(stateDir, "codex-remote-relayd.pid"),
+		IdentityFile:     filepath.Join(stateDir, "codex-remote-relayd.identity.json"),
 	}, nil
 }
 
@@ -59,4 +62,11 @@ func xdgBase(envKey, fallbackSuffix string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, fallbackSuffix), nil
+}
+
+func WrapperRawLogFile(logsDir string, pid int) string {
+	if pid <= 0 {
+		return filepath.Join(logsDir, "codex-remote-wrapper-unknown-raw.ndjson")
+	}
+	return filepath.Join(logsDir, fmt.Sprintf("codex-remote-wrapper-%d-raw.ndjson", pid))
 }

@@ -9,16 +9,20 @@ import (
 
 func TestMenuActionKindKnownValues(t *testing.T) {
 	tests := map[string]control.ActionKind{
-		"list":          control.ActionListInstances,
-		"status":        control.ActionStatus,
-		"stop":          control.ActionStop,
-		"threads":       control.ActionShowThreads,
-		"sessions":      control.ActionShowThreads,
-		"use":           control.ActionShowThreads,
-		"show_threads":  control.ActionShowThreads,
-		"show_sessions": control.ActionShowThreads,
-		"useall":        control.ActionShowAllThreads,
-		"threads_all":   control.ActionShowAllThreads,
+		"list":           control.ActionListInstances,
+		"status":         control.ActionStatus,
+		"stop":           control.ActionStop,
+		"threads":        control.ActionShowThreads,
+		"sessions":       control.ActionShowThreads,
+		"use":            control.ActionShowThreads,
+		"show_threads":   control.ActionShowThreads,
+		"show_sessions":  control.ActionShowThreads,
+		"useall":         control.ActionShowAllThreads,
+		"threads_all":    control.ActionShowAllThreads,
+		"accessfull":     control.ActionAccessCommand,
+		"access_full":    control.ActionAccessCommand,
+		"accessconfirm":  control.ActionAccessCommand,
+		"access_confirm": control.ActionAccessCommand,
 	}
 	for key, want := range tests {
 		got, ok := menuActionKind(key)
@@ -31,8 +35,10 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 func TestMenuActionReasoningPresets(t *testing.T) {
 	tests := map[string]string{
 		"reasonlow":    "/reasoning low",
+		"reason_low":   "/reasoning low",
 		"reasonmedium": "/reasoning medium",
 		"reasonhigh":   "/reasoning high",
+		"reason_xhigh": "/reasoning xhigh",
 		"reasonxhigh":  "/reasoning xhigh",
 	}
 	for key, wantText := range tests {
@@ -42,6 +48,60 @@ func TestMenuActionReasoningPresets(t *testing.T) {
 		}
 		if got.Kind != control.ActionReasoningCommand || got.Text != wantText {
 			t.Fatalf("event key %q => %#v, want reasoning command %q", key, got, wantText)
+		}
+	}
+}
+
+func TestMenuActionDynamicModelPreset(t *testing.T) {
+	tests := map[string]string{
+		"model_gpt-5.4":       "/model gpt-5.4",
+		"model_gpt-5.4-mini":  "/model gpt-5.4-mini",
+		"model-gpt-5.4":       "/model gpt-5.4",
+		" model_gpt-5.4 \n\t": "/model gpt-5.4",
+	}
+	for key, wantText := range tests {
+		got, ok := menuAction(key)
+		if !ok {
+			t.Fatalf("expected dynamic model action for %q", key)
+		}
+		if got.Kind != control.ActionModelCommand || got.Text != wantText {
+			t.Fatalf("event key %q => %#v, want model command %q", key, got, wantText)
+		}
+	}
+}
+
+func TestMenuActionAccessPresets(t *testing.T) {
+	tests := map[string]string{
+		"accessfull":     "/access full",
+		"access_full":    "/access full",
+		"accessFull":     "/access full",
+		"accessconfirm":  "/access confirm",
+		"access_confirm": "/access confirm",
+		"accessConfirm":  "/access confirm",
+	}
+	for key, wantText := range tests {
+		got, ok := menuAction(key)
+		if !ok {
+			t.Fatalf("expected menu action for %q", key)
+		}
+		if got.Kind != control.ActionAccessCommand || got.Text != wantText {
+			t.Fatalf("event key %q => %#v, want access command %q", key, got, wantText)
+		}
+	}
+}
+
+func TestNormalizeMenuEventKey(t *testing.T) {
+	tests := map[string]string{
+		"access_full":      "accessfull",
+		"access-full":      "accessfull",
+		" accessFull \n":   "accessfull",
+		"show_all_threads": "showallthreads",
+		"approval_confirm": "approvalconfirm",
+		"reason_xhigh":     "reasonxhigh",
+	}
+	for input, want := range tests {
+		if got := normalizeMenuEventKey(input); got != want {
+			t.Fatalf("normalizeMenuEventKey(%q) = %q, want %q", input, got, want)
 		}
 	}
 }
@@ -94,6 +154,9 @@ func TestParseTextActionRecognizesModelAndReasoningCommands(t *testing.T) {
 		"/model gpt-5.4":  control.ActionModelCommand,
 		"/reasoning high": control.ActionReasoningCommand,
 		"/effort medium":  control.ActionReasoningCommand,
+		"/access":         control.ActionAccessCommand,
+		"/access full":    control.ActionAccessCommand,
+		"/approval":       control.ActionAccessCommand,
 	}
 	for input, want := range tests {
 		action, handled := parseTextAction(input)
@@ -161,5 +224,70 @@ func TestParseCardActionTriggerEventBuildsPromptSelectionAction(t *testing.T) {
 	}
 	if action.PromptID != "prompt-1" || action.OptionID != "thread-1" {
 		t.Fatalf("unexpected prompt selection payload: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsRequestRespondAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{})
+	gateway.recordSurfaceMessage("om-card-2", "feishu:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":              "request_respond",
+					"request_id":        "req-1",
+					"request_type":      "approval",
+					"request_option_id": "acceptForSession",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-2",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Kind != control.ActionRespondRequest {
+		t.Fatalf("unexpected action kind: %#v", action)
+	}
+	if action.RequestID != "req-1" || action.RequestType != "approval" || action.RequestOptionID != "acceptForSession" {
+		t.Fatalf("unexpected request respond payload: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventFallsBackToApprovedBool(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{})
+	gateway.recordSurfaceMessage("om-card-3", "feishu:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":         "request_respond",
+					"request_id":   "req-legacy",
+					"request_type": "approval",
+					"approved":     false,
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-3",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected legacy card callback to be parsed")
+	}
+	if action.RequestOptionID != "decline" || action.Approved {
+		t.Fatalf("unexpected legacy request respond payload: %#v", action)
 	}
 }

@@ -223,6 +223,107 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 	}
 }
 
+func TestWrapperWritesRawFramesWhenEnabled(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", "..", ".."))
+
+	helloCh := make(chan agentproto.Hello, 1)
+	server := relayws.NewServer(relayws.ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "test",
+			BuildFingerprint: "fp-test",
+			BinaryPath:       "/test/codex-remote",
+		},
+		PID: 1,
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+
+	stdinReader, stdinWriter := io.Pipe()
+	defer stdinWriter.Close()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawPath := filepath.Join(t.TempDir(), "wrapper-raw.ndjson")
+
+	cfg := Config{
+		RelayServerURL:   wsURL,
+		CodexRealBinary:  "go",
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
+		InstanceID:       "inst-wrapper-raw",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    repoRoot,
+		WorkspaceKey:     repoRoot,
+		ShortName:        filepath.Base(repoRoot),
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: "/test/codex-remote",
+		DebugRelayRaw:    true,
+		RawLogPath:       rawPath,
+	}
+	app := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := app.Run(ctx, stdinReader, &stdout, &stderr)
+		done <- err
+	}()
+
+	waitForHello(t, helloCh, "inst-wrapper-raw")
+
+	line := `{"id":"helper-thread-1","method":"thread/start","params":{"cwd":"` + repoRoot + `","approvalPolicy":"never","sandbox":"read-only","ephemeral":true,"persistExtendedHistory":false}}` + "\n"
+	if _, err := io.WriteString(stdinWriter, line); err != nil {
+		t.Fatalf("write helper thread start: %v", err)
+	}
+
+	waitForStdout(t, 10*time.Second, &stdout, &stderr, done, func(out string) bool {
+		return strings.Contains(out, `"id":"helper-thread-1"`) && strings.Contains(out, `"method":"thread/started"`)
+	})
+
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, `"channel":"parent.stdin"`) {
+		t.Fatalf("expected parent.stdin raw frame, got %s", text)
+	}
+	if !strings.Contains(text, `"channel":"codex.stdin"`) {
+		t.Fatalf("expected codex.stdin raw frame, got %s", text)
+	}
+	if !strings.Contains(text, `"channel":"codex.stdout"`) {
+		t.Fatalf("expected codex.stdout raw frame, got %s", text)
+	}
+	if !strings.Contains(text, `"channel":"relay.ws"`) {
+		t.Fatalf("expected relay.ws raw frame, got %s", text)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("wrapper run failed: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for wrapper shutdown")
+	}
+}
+
 func TestWrapperFailsBeforeStartingChildWhenRelayBootstrapFails(t *testing.T) {
 	tempDir := t.TempDir()
 	pidFile := filepath.Join(tempDir, "mockcodex.pid")

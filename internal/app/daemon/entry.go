@@ -3,11 +3,14 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/config"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -20,19 +23,27 @@ func RunMain(ctx context.Context, version string) error {
 		config.CaptureAndClearProxyEnv()
 	}
 
+	paths, err := relayruntime.DefaultPaths()
+	if err != nil {
+		return err
+	}
+
 	var gateway feishu.Gateway = feishu.NopGateway{}
+	var markdownPreviewer feishu.MarkdownPreviewService
 	if cfg.FeishuAppID != "" && cfg.FeishuAppSecret != "" {
-		gateway = feishu.NewLiveGateway(feishu.LiveGatewayConfig{
+		liveGateway := feishu.NewLiveGateway(feishu.LiveGatewayConfig{
 			AppID:          cfg.FeishuAppID,
 			AppSecret:      cfg.FeishuAppSecret,
 			TempDir:        os.TempDir(),
 			UseSystemProxy: cfg.FeishuUseSystemProxy,
 		})
-	}
-
-	paths, err := relayruntime.DefaultPaths()
-	if err != nil {
-		return err
+		gateway = liveGateway
+		markdownPreviewer = feishu.NewDriveMarkdownPreviewer(
+			feishu.NewLarkDrivePreviewAPI(liveGateway.Client()),
+			feishu.MarkdownPreviewConfig{
+				StatePath: filepath.Join(paths.StateDir, "feishu-md-preview.json"),
+			},
+		)
 	}
 	lock, err := relayruntime.AcquireLock(ctx, paths.DaemonLockFile, false)
 	if err != nil {
@@ -55,6 +66,16 @@ func RunMain(ctx context.Context, version string) error {
 	defer os.Remove(paths.IdentityFile)
 
 	app := New(":"+cfg.RelayPort, ":"+cfg.RelayAPIPort, gateway, identity)
+	app.SetMarkdownPreviewer(markdownPreviewer)
+	app.SetDebugRelayFlow(cfg.DebugRelayFlow)
+	if cfg.DebugRelayRaw {
+		rawLogger, err := debuglog.OpenRaw(paths.DaemonRawLogFile, "daemon", "", os.Getpid())
+		if err != nil {
+			log.Printf("relay raw daemon log disabled: %v", err)
+		} else {
+			app.SetRawLogger(rawLogger)
+		}
+	}
 	if err := app.Run(ctx); err != nil && err != context.Canceled {
 		return fmt.Errorf("run daemon: %w", err)
 	}
