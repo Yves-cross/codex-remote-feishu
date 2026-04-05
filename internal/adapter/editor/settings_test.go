@@ -13,7 +13,7 @@ func TestPatchVSCodeSettings(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{\"editor.fontSize\":14}\n"), 0o644); err != nil {
 		t.Fatalf("seed settings: %v", err)
 	}
-	if err := PatchVSCodeSettings(path, "/usr/local/bin/codex-remote-wrapper"); err != nil {
+	if err := PatchVSCodeSettings(path, "/usr/local/bin/codex-remote"); err != nil {
 		t.Fatalf("patch settings: %v", err)
 	}
 	raw, err := os.ReadFile(path)
@@ -21,7 +21,7 @@ func TestPatchVSCodeSettings(t *testing.T) {
 		t.Fatalf("read settings: %v", err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, "\"chatgpt.cliExecutable\": \"/usr/local/bin/codex-remote-wrapper\"") {
+	if !strings.Contains(text, "\"chatgpt.cliExecutable\": \"/usr/local/bin/codex-remote\"") {
 		t.Fatalf("unexpected settings content: %s", text)
 	}
 }

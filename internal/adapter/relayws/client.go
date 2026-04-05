@@ -16,6 +16,7 @@ import (
 
 type ClientCallbacks struct {
 	OnCommand func(context.Context, agentproto.Command) error
+	OnWelcome func(context.Context, agentproto.Welcome) error
 	OnConnect func(context.Context) error
 }
 
@@ -47,8 +48,12 @@ func NewClient(url string, hello agentproto.Hello, callbacks ClientCallbacks) *C
 func (c *Client) Run(ctx context.Context) error {
 	backoff := 200 * time.Millisecond
 	for {
-		err := c.runOnce(ctx)
+		err := c.RunOnce(ctx)
 		if err == nil || errors.Is(err, context.Canceled) {
+			return err
+		}
+		var fatalErr FatalError
+		if errors.As(err, &fatalErr) {
 			return err
 		}
 		log.Printf("relay client connect failed: url=%s err=%v", c.url, err)
@@ -61,6 +66,21 @@ func (c *Client) Run(ctx context.Context) error {
 			backoff *= 2
 		}
 	}
+}
+
+type FatalError struct {
+	Err error
+}
+
+func (e FatalError) Error() string {
+	if e.Err == nil {
+		return "fatal relay error"
+	}
+	return e.Err.Error()
+}
+
+func (e FatalError) Unwrap() error {
+	return e.Err
 }
 
 func normalizeRelayURL(raw string) string {
@@ -123,7 +143,7 @@ func (c *Client) enqueue(envelope agentproto.Envelope) error {
 	}
 }
 
-func (c *Client) runOnce(ctx context.Context) error {
+func (c *Client) RunOnce(ctx context.Context) error {
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, c.url, http.Header{})
 	if err != nil {
 		return err
@@ -197,6 +217,14 @@ func (c *Client) runOnce(ctx context.Context) error {
 		}
 		switch envelope.Type {
 		case agentproto.EnvelopeWelcome:
+			if envelope.Welcome == nil {
+				continue
+			}
+			if c.callbacks.OnWelcome != nil {
+				if err := c.callbacks.OnWelcome(ctx, *envelope.Welcome); err != nil {
+					return err
+				}
+			}
 			if c.callbacks.OnConnect != nil {
 				if err := c.callbacks.OnConnect(ctx); err != nil {
 					return err

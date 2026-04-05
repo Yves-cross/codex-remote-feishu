@@ -10,15 +10,18 @@
 
 ## 组件
 
-- `relay-wrapper`
-  - 包装真实 `codex`
-  - 把原生 app-server 协议翻译成统一事件流
-- `relayd`
-  - 常驻服务
-  - 管理实例、thread、消息队列、Feishu 投影和状态接口
-- `relay-install`
-  - 安装器
-  - 负责写配置并接管 VS Code / VS Code Remote
+当前 release 只发布一个统一二进制：
+
+- `codex-remote`
+  - `daemon` role
+    - 常驻服务
+    - 管理实例、thread、消息队列、Feishu 投影和状态接口
+  - `app-server` / wrapper role
+    - 包装真实 `codex`
+    - 把原生 app-server 协议翻译成统一事件流
+  - `install` role
+    - 安装器
+    - 负责写配置并接管 VS Code / VS Code Remote
 
 ## 功能
 
@@ -84,11 +87,11 @@ Windows PowerShell:
 
 安装向导会：
 
-- 构建 `relayd`、`relay-wrapper`、`relay-install`
+- 构建 `codex-remote`
 - 询问飞书 `App ID` / `App Secret`
 - 询问 relay 地址
 - 让你选择 VS Code 集成方式
-- 自动写入 `wrapper.env`、`services.env`、`install-state.json`
+- 自动写入统一配置 `config.env` 和 `install-state.json`
 
 默认集成方式：
 
@@ -106,7 +109,7 @@ Windows PowerShell:
   - 原始入口会保留成 `codex.real`
   - 更适合 VS Code Remote
 
-如果你想做非交互安装，可以直接给 `setup.sh` / `setup.ps1` 透传 `relay-install` 的参数，例如：
+如果你想做非交互安装，可以直接给 `setup.sh` / `setup.ps1` 透传 `codex-remote install` 的参数，例如：
 
 ```bash
 ./setup.sh \
@@ -129,8 +132,7 @@ Windows PowerShell:
 
 默认会写入：
 
-- `~/.config/codex-remote/wrapper.env`
-- `~/.config/codex-remote/services.env`
+- `~/.config/codex-remote/config.env`
 - `~/.local/share/codex-remote/install-state.json`
 - `~/.local/share/codex-remote/logs/codex-remote-relayd.log`
 
@@ -157,8 +159,8 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 
 注意：
 
-- Docker 只部署 `relayd`
-- `relay-wrapper` 仍然运行在 VS Code 所在机器
+- Docker 只部署 `codex-remote daemon`
+- `codex-remote` 的 wrapper role 仍然运行在 VS Code 所在机器
 - wrapper 连接容器时，默认仍使用 `ws://127.0.0.1:9500/ws/agent`
 
 ## 飞书端使用
@@ -195,8 +197,7 @@ unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 
 1. `./install.sh status`
 2. `curl --noproxy '*' -sf http://127.0.0.1:9501/v1/status | jq .`
-3. `wrapper.env` 里的 `RELAY_SERVER_URL` 和 `CODEX_REAL_BINARY`
-4. `services.env` 里的飞书凭证和端口
+3. `config.env` 里的 `RELAY_SERVER_URL`、`CODEX_REAL_BINARY`、飞书凭证和端口
 5. VS Code 是否真的已经通过 wrapper 启动 Codex
 6. `codex-remote-relayd.log`
 

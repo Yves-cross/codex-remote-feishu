@@ -15,17 +15,14 @@ STATE_DIR="${XDG_DATA_HOME}/codex-remote"
 RUN_DIR="${XDG_STATE_HOME}/codex-remote"
 LOG_DIR="${STATE_DIR}/logs"
 
-WRAPPER_CONFIG="${CONFIG_DIR}/wrapper.env"
-SERVICES_CONFIG="${CONFIG_DIR}/services.env"
+CONFIG_FILE="${CONFIG_DIR}/config.env"
 PID_FILE="${RUN_DIR}/codex-remote-relayd.pid"
 LOG_FILE="${LOG_DIR}/codex-remote-relayd.log"
 
 mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${STATE_DIR}" "${RUN_DIR}" "${LOG_DIR}"
 
 build_bins() {
-  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-relayd" "${ROOT_DIR}/cmd/relayd"
-  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-wrapper" "${ROOT_DIR}/cmd/relay-wrapper"
-  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote-install" "${ROOT_DIR}/cmd/relay-install"
+  "${GO_BIN}" build -o "${BIN_DIR}/codex-remote" "${ROOT_DIR}/cmd/codex-remote"
 }
 
 detect_vscode_bundle_codex() {
@@ -71,19 +68,17 @@ bootstrap() {
       codex_binary="codex"
     fi
   fi
-  local wrapper_binary="${WRAPPER_BINARY:-${BIN_DIR}/codex-remote-wrapper}"
-  local relayd_binary="${RELAYD_BINARY:-${BIN_DIR}/codex-remote-relayd}"
+  local binary_path="${BINARY_PATH:-${BIN_DIR}/codex-remote}"
   local install_bin_dir="${INSTALL_BIN_DIR:-${HOME}/.local/bin}"
   local vscode_settings="${VSCODE_SETTINGS:-${HOME}/.config/Code/User/settings.json}"
   local feishu_app_id="${FEISHU_APP_ID:-}"
   local feishu_app_secret="${FEISHU_APP_SECRET:-}"
   local use_system_proxy="${FEISHU_USE_SYSTEM_PROXY:-false}"
 
-  "${BIN_DIR}/codex-remote-install" \
+  "${BIN_DIR}/codex-remote" install \
     -base-dir "${BASE_DIR}" \
     -install-bin-dir "${install_bin_dir}" \
-    -wrapper-binary "${wrapper_binary}" \
-    -relayd-binary "${relayd_binary}" \
+    -binary "${binary_path}" \
     -relay-url "${relay_url}" \
     -codex-binary "${codex_binary}" \
     -integration "${integration_mode}" \
@@ -95,10 +90,8 @@ bootstrap() {
 
   cat <<EOF
 bootstrap completed
-wrapper config: ${WRAPPER_CONFIG}
-services config: ${SERVICES_CONFIG}
-wrapper binary: ${wrapper_binary}
-relayd binary: ${relayd_binary}
+config: ${CONFIG_FILE}
+binary: ${binary_path}
 install bin dir: ${install_bin_dir}
 integration mode: ${integration_mode}
 bundle entrypoint: ${bundle_codex}
@@ -113,7 +106,7 @@ start() {
     return 0
   fi
   rm -f "${PID_FILE}"
-  setsid env CODEX_REMOTE_SERVICES_CONFIG="${SERVICES_CONFIG}" "${BIN_DIR}/codex-remote-relayd" </dev/null >>"${LOG_FILE}" 2>&1 &
+  setsid env CODEX_REMOTE_CONFIG="${CONFIG_FILE}" "${BIN_DIR}/codex-remote" daemon </dev/null >>"${LOG_FILE}" 2>&1 &
   local pid=$!
   echo "${pid}" > "${PID_FILE}"
   sleep 1
@@ -157,8 +150,7 @@ status() {
   else
     echo "relayd: stopped"
   fi
-  echo "wrapper config: ${WRAPPER_CONFIG}"
-  echo "services config: ${SERVICES_CONFIG}"
+  echo "config: ${CONFIG_FILE}"
   echo "log file: ${LOG_FILE}"
 }
 
@@ -176,8 +168,7 @@ environment overrides:
   BASE_DIR
   RELAY_URL
   CODEX_BINARY
-  WRAPPER_BINARY
-  RELAYD_BINARY
+  BINARY_PATH
   INSTALL_BIN_DIR
   INTEGRATION_MODE
   VSCODE_SETTINGS

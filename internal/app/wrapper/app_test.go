@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,6 +33,15 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 			eventsCh <- events
 		},
 	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "test",
+			BuildFingerprint: "fp-test",
+			BinaryPath:       "/test/codex-remote",
+		},
+		PID: 1,
+	})
 	defer server.Close()
 
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,15 +56,18 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 	var stderr bytes.Buffer
 
 	cfg := Config{
-		RelayServerURL:  wsURL,
-		CodexRealBinary: "go",
-		Args:            []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
-		InstanceID:      "inst-wrapper",
-		DisplayName:     "codex-remote",
-		WorkspaceRoot:   repoRoot,
-		WorkspaceKey:    repoRoot,
-		ShortName:       filepath.Base(repoRoot),
-		Version:         "test",
+		RelayServerURL:   wsURL,
+		CodexRealBinary:  "go",
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
+		InstanceID:       "inst-wrapper",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    repoRoot,
+		WorkspaceKey:     repoRoot,
+		ShortName:        filepath.Base(repoRoot),
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: "/test/codex-remote",
 	}
 	app := New(cfg)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -67,11 +78,7 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 		done <- err
 	}()
 
-	select {
-	case <-helloCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for wrapper hello")
-	}
+	waitForHello(t, helloCh, "inst-wrapper")
 
 	if err := server.SendCommand("inst-wrapper", agentproto.Command{
 		CommandID: "cmd-refresh",
@@ -142,6 +149,15 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 			eventsCh <- events
 		},
 	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "test",
+			BuildFingerprint: "fp-test",
+			BinaryPath:       "/test/codex-remote",
+		},
+		PID: 1,
+	})
 	defer server.Close()
 
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,15 +172,18 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 	var stderr bytes.Buffer
 
 	cfg := Config{
-		RelayServerURL:  wsURL,
-		CodexRealBinary: "go",
-		Args:            []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
-		InstanceID:      "inst-wrapper",
-		DisplayName:     "codex-remote",
-		WorkspaceRoot:   repoRoot,
-		WorkspaceKey:    repoRoot,
-		ShortName:       filepath.Base(repoRoot),
-		Version:         "test",
+		RelayServerURL:   wsURL,
+		CodexRealBinary:  "go",
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
+		InstanceID:       "inst-wrapper",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    repoRoot,
+		WorkspaceKey:     repoRoot,
+		ShortName:        filepath.Base(repoRoot),
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: "/test/codex-remote",
 	}
 	app := New(cfg)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,11 +194,7 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 		done <- err
 	}()
 
-	select {
-	case <-helloCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for wrapper hello")
-	}
+	waitForHello(t, helloCh, "inst-wrapper")
 
 	line := `{"id":"helper-thread-1","method":"thread/start","params":{"cwd":"` + repoRoot + `","approvalPolicy":"never","sandbox":"read-only","ephemeral":true,"persistExtendedHistory":false}}` + "\n"
 	if _, err := io.WriteString(stdinWriter, line); err != nil {
@@ -208,7 +223,7 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 	}
 }
 
-func TestWrapperKillsChildWhenRelayConnectionFails(t *testing.T) {
+func TestWrapperFailsBeforeStartingChildWhenRelayBootstrapFails(t *testing.T) {
 	tempDir := t.TempDir()
 	pidFile := filepath.Join(tempDir, "mockcodex.pid")
 	script := filepath.Join(tempDir, "mockcodex-sleep.sh")
@@ -222,14 +237,17 @@ func TestWrapperKillsChildWhenRelayConnectionFails(t *testing.T) {
 	var stderr bytes.Buffer
 
 	cfg := Config{
-		RelayServerURL:  "ws://127.0.0.1:1/ws/agent",
-		CodexRealBinary: script,
-		InstanceID:      "inst-wrapper",
-		DisplayName:     "codex-remote",
-		WorkspaceRoot:   tempDir,
-		WorkspaceKey:    tempDir,
-		ShortName:       filepath.Base(tempDir),
-		Version:         "test",
+		RelayServerURL:   "ws://127.0.0.1:1/ws/agent",
+		CodexRealBinary:  script,
+		InstanceID:       "inst-wrapper",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    tempDir,
+		WorkspaceKey:     tempDir,
+		ShortName:        filepath.Base(tempDir),
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: filepath.Join(tempDir, "missing-codex-remote"),
 	}
 	app := New(cfg)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -240,26 +258,8 @@ func TestWrapperKillsChildWhenRelayConnectionFails(t *testing.T) {
 		t.Fatal("expected wrapper run to fail when relay server is unavailable")
 	}
 
-	var pidBytes []byte
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		pidBytes, err = os.ReadFile(pidFile)
-		if err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if err != nil {
-		t.Fatalf("read mock codex pid: %v", err)
-	}
-	pid := strings.TrimSpace(string(pidBytes))
-	if pid == "" {
-		t.Fatal("expected mock codex pid to be recorded")
-	}
-
-	check := exec.Command("bash", "-lc", "kill -0 "+pid)
-	if err := check.Run(); err == nil {
-		t.Fatalf("expected mock codex child to be terminated, pid=%s stdout=%s stderr=%s", pid, stdout.String(), stderr.String())
+	if _, err := os.Stat(pidFile); !os.IsNotExist(err) {
+		t.Fatalf("expected child codex not to start, stat err=%v stdout=%s stderr=%s", err, stdout.String(), stderr.String())
 	}
 }
 
@@ -295,6 +295,21 @@ func waitForStdout(t *testing.T, timeout time.Duration, stdout, stderr *bytes.Bu
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for matching stdout\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+		}
+	}
+}
+
+func waitForHello(t *testing.T, helloCh <-chan agentproto.Hello, wantInstanceID string) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case hello := <-helloCh:
+			if hello.Instance.InstanceID == wantInstanceID {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for wrapper hello %q", wantInstanceID)
 		}
 	}
 }

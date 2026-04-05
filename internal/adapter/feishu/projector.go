@@ -18,15 +18,18 @@ const (
 )
 
 type Operation struct {
-	Kind         OperationKind
-	ChatID       string
-	MessageID    string
-	EmojiType    string
-	Text         string
-	CardTitle    string
-	CardBody     string
-	CardThemeKey string
-	CardElements []map[string]any
+	Kind             OperationKind
+	SurfaceSessionID string
+	ReceiveID        string
+	ReceiveIDType    string
+	ChatID           string
+	MessageID        string
+	EmojiType        string
+	Text             string
+	CardTitle        string
+	CardBody         string
+	CardThemeKey     string
+	CardElements     []map[string]any
 }
 
 type Projector struct{}
@@ -42,22 +45,24 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			return nil
 		}
 		return []Operation{{
-			Kind:         OperationSendCard,
-			ChatID:       chatID,
-			CardTitle:    "当前状态",
-			CardBody:     formatSnapshot(*event.Snapshot),
-			CardThemeKey: "system",
+			Kind:             OperationSendCard,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        "当前状态",
+			CardBody:         formatSnapshot(*event.Snapshot),
+			CardThemeKey:     "system",
 		}}
 	case control.UIEventNotice:
 		if event.Notice == nil {
 			return nil
 		}
 		return []Operation{{
-			Kind:         OperationSendCard,
-			ChatID:       chatID,
-			CardTitle:    "系统提示",
-			CardBody:     event.Notice.Text,
-			CardThemeKey: "system",
+			Kind:             OperationSendCard,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        "系统提示",
+			CardBody:         event.Notice.Text,
+			CardThemeKey:     "system",
 		}}
 	case control.UIEventSelectionPrompt:
 		if event.SelectionPrompt == nil {
@@ -74,12 +79,13 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			}
 		}
 		return []Operation{{
-			Kind:         OperationSendCard,
-			ChatID:       chatID,
-			CardTitle:    title,
-			CardBody:     "",
-			CardThemeKey: "system",
-			CardElements: selectionPromptElements(*event.SelectionPrompt),
+			Kind:             OperationSendCard,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        title,
+			CardBody:         "",
+			CardThemeKey:     "system",
+			CardElements:     selectionPromptElements(*event.SelectionPrompt),
 		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
@@ -88,26 +94,29 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		var ops []Operation
 		if event.PendingInput.TypingOn {
 			ops = append(ops, Operation{
-				Kind:      OperationAddReaction,
-				ChatID:    chatID,
-				MessageID: event.PendingInput.SourceMessageID,
-				EmojiType: "THINKING",
+				Kind:             OperationAddReaction,
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				MessageID:        event.PendingInput.SourceMessageID,
+				EmojiType:        "THINKING",
 			})
 		}
 		if event.PendingInput.TypingOff {
 			ops = append(ops, Operation{
-				Kind:      OperationRemoveReaction,
-				ChatID:    chatID,
-				MessageID: event.PendingInput.SourceMessageID,
-				EmojiType: "THINKING",
+				Kind:             OperationRemoveReaction,
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				MessageID:        event.PendingInput.SourceMessageID,
+				EmojiType:        "THINKING",
 			})
 		}
 		if event.PendingInput.ThumbsDown {
 			ops = append(ops, Operation{
-				Kind:      OperationAddReaction,
-				ChatID:    chatID,
-				MessageID: event.PendingInput.SourceMessageID,
-				EmojiType: "THUMBSDOWN",
+				Kind:             OperationAddReaction,
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				MessageID:        event.PendingInput.SourceMessageID,
+				EmojiType:        "THUMBSDOWN",
 			})
 		}
 		return ops
@@ -115,7 +124,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Block == nil {
 			return nil
 		}
-		return projectBlock(chatID, *event.Block)
+		return projectBlock(event.SurfaceSessionID, chatID, *event.Block)
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil
@@ -128,23 +137,25 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			body += "\n\n最近信息：\n" + preview
 		}
 		return []Operation{{
-			Kind:         OperationSendCard,
-			ChatID:       chatID,
-			CardTitle:    "系统提示",
-			CardBody:     body,
-			CardThemeKey: chooseThemeKey(event.ThreadSelection.ThreadID, "system"),
+			Kind:             OperationSendCard,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        "系统提示",
+			CardBody:         body,
+			CardThemeKey:     chooseThemeKey(event.ThreadSelection.ThreadID, "system"),
 		}}
 	default:
 		return nil
 	}
 }
 
-func projectBlock(chatID string, block render.Block) []Operation {
+func projectBlock(surfaceSessionID, chatID string, block render.Block) []Operation {
 	if !block.Final {
 		return []Operation{{
-			Kind:   OperationSendText,
-			ChatID: chatID,
-			Text:   block.Text,
+			Kind:             OperationSendText,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			Text:             block.Text,
 		}}
 	}
 	titlePrefix := "过程信息"
@@ -160,11 +171,12 @@ func projectBlock(chatID string, block render.Block) []Operation {
 		body = fenced(block.Language, block.Text)
 	}
 	return []Operation{{
-		Kind:         OperationSendCard,
-		ChatID:       chatID,
-		CardTitle:    title,
-		CardBody:     body,
-		CardThemeKey: chooseThemeKey(block.ThemeKey, block.ThreadID),
+		Kind:             OperationSendCard,
+		SurfaceSessionID: surfaceSessionID,
+		ChatID:           chatID,
+		CardTitle:        title,
+		CardBody:         body,
+		CardThemeKey:     chooseThemeKey(block.ThemeKey, block.ThreadID),
 	}}
 }
 

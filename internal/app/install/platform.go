@@ -135,7 +135,7 @@ func recommendedBundleEntrypoint(defaults PlatformDefaults) string {
 func integrationHelpText(goos string) string {
 	return strings.TrimSpace(fmt.Sprintf(`
 1. editor_settings
-   适合本机桌面 VS Code。安装器会修改 settings.json，把 chatgpt.cliExecutable 指向 relay-wrapper。
+   适合本机桌面 VS Code。安装器会修改 settings.json，把 chatgpt.cliExecutable 指向 codex-remote。
 
 2. managed_shim
    适合 VS Code Remote 场景。安装器会直接替换扩展 bundle 里的 codex 入口，并保留原始 codex.real。

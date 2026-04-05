@@ -47,9 +47,7 @@ jobs:
 
       - name: Build
         run: |
-          go build ./cmd/relayd
-          go build ./cmd/relay-wrapper
-          go build ./cmd/relay-install
+          go build ./cmd/...
 
       - name: Smoke test release installer
         run: bash scripts/check/smoke-install-release.sh

@@ -126,10 +126,17 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 	switch operation.Kind {
 	case OperationSendText:
 		body, _ := json.Marshal(map[string]string{"text": operation.Text})
+		receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
+		if receiveID == "" || receiveIDType == "" {
+			receiveID, receiveIDType = ResolveReceiveTarget(operation.ChatID, "")
+		}
+		if receiveID == "" || receiveIDType == "" {
+			return fmt.Errorf("send text failed: missing receive target")
+		}
 		resp, err := g.client.Im.V1.Message.Create(ctx, larkim.NewCreateMessageReqBuilder().
-			ReceiveIdType(larkim.ReceiveIdTypeChatId).
+			ReceiveIdType(receiveIDType).
 			Body(larkim.NewCreateMessageReqBodyBuilder().
-				ReceiveId(operation.ChatID).
+				ReceiveId(receiveID).
 				MsgType("text").
 				Content(string(body)).
 				Build()).
@@ -141,7 +148,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			return fmt.Errorf("send text failed: code=%d msg=%s", resp.Code, resp.Msg)
 		}
 		if resp.Data != nil {
-			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), surfaceID(operation.ChatID, ""))
+			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), operation.SurfaceSessionID)
 		}
 		return nil
 	case OperationSendCard:
@@ -149,10 +156,17 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 		if err != nil {
 			return err
 		}
+		receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
+		if receiveID == "" || receiveIDType == "" {
+			receiveID, receiveIDType = ResolveReceiveTarget(operation.ChatID, "")
+		}
+		if receiveID == "" || receiveIDType == "" {
+			return fmt.Errorf("send card failed: missing receive target")
+		}
 		resp, err := g.client.Im.V1.Message.Create(ctx, larkim.NewCreateMessageReqBuilder().
-			ReceiveIdType(larkim.ReceiveIdTypeChatId).
+			ReceiveIdType(receiveIDType).
 			Body(larkim.NewCreateMessageReqBodyBuilder().
-				ReceiveId(operation.ChatID).
+				ReceiveId(receiveID).
 				MsgType("interactive").
 				Content(string(card)).
 				Build()).
@@ -164,7 +178,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			return fmt.Errorf("send card failed: code=%d msg=%s", resp.Code, resp.Msg)
 		}
 		if resp.Data != nil {
-			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), surfaceID(operation.ChatID, ""))
+			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), operation.SurfaceSessionID)
 		}
 		return nil
 	case OperationAddReaction:
@@ -590,5 +604,23 @@ func stringMapValue(values map[string]interface{}, key string) string {
 		return current.String()
 	default:
 		return fmt.Sprint(current)
+	}
+}
+
+func ResolveReceiveTarget(chatID, actorUserID string) (string, string) {
+	if strings.TrimSpace(chatID) != "" {
+		return chatID, larkim.ReceiveIdTypeChatId
+	}
+	actorUserID = strings.TrimSpace(actorUserID)
+	if actorUserID == "" {
+		return "", ""
+	}
+	switch {
+	case strings.HasPrefix(actorUserID, "ou_"):
+		return actorUserID, larkim.ReceiveIdTypeOpenId
+	case strings.HasPrefix(actorUserID, "on_"):
+		return actorUserID, larkim.ReceiveIdTypeUnionId
+	default:
+		return actorUserID, larkim.ReceiveIdTypeUserId
 	}
 }

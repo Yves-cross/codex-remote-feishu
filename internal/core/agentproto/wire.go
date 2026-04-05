@@ -24,14 +24,23 @@ type Capabilities struct {
 	ThreadsRefresh bool `json:"threadsRefresh,omitempty"`
 }
 
+type BinaryIdentity struct {
+	Product          string `json:"product,omitempty"`
+	Version          string `json:"version,omitempty"`
+	BuildFingerprint string `json:"buildFingerprint,omitempty"`
+	BinaryPath       string `json:"binaryPath,omitempty"`
+}
+
 type InstanceHello struct {
-	InstanceID    string `json:"instanceId"`
-	DisplayName   string `json:"displayName,omitempty"`
-	WorkspaceRoot string `json:"workspaceRoot,omitempty"`
-	WorkspaceKey  string `json:"workspaceKey,omitempty"`
-	ShortName     string `json:"shortName,omitempty"`
-	Version       string `json:"version,omitempty"`
-	PID           int    `json:"pid,omitempty"`
+	InstanceID       string `json:"instanceId"`
+	DisplayName      string `json:"displayName,omitempty"`
+	WorkspaceRoot    string `json:"workspaceRoot,omitempty"`
+	WorkspaceKey     string `json:"workspaceKey,omitempty"`
+	ShortName        string `json:"shortName,omitempty"`
+	Version          string `json:"version,omitempty"`
+	BuildFingerprint string `json:"buildFingerprint,omitempty"`
+	BinaryPath       string `json:"binaryPath,omitempty"`
+	PID              int    `json:"pid,omitempty"`
 }
 
 type Hello struct {
@@ -41,8 +50,16 @@ type Hello struct {
 }
 
 type Welcome struct {
-	Protocol   string    `json:"protocol"`
-	ServerTime time.Time `json:"serverTime,omitempty"`
+	Protocol   string          `json:"protocol"`
+	ServerTime time.Time       `json:"serverTime,omitempty"`
+	Server     *ServerIdentity `json:"server,omitempty"`
+}
+
+type ServerIdentity struct {
+	BinaryIdentity
+	PID        int       `json:"pid,omitempty"`
+	StartedAt  time.Time `json:"startedAt,omitempty"`
+	ConfigPath string    `json:"configPath,omitempty"`
 }
 
 type EventBatch struct {

@@ -98,7 +98,11 @@ wrapper 建立连接后首先发送：
       "displayName": "dl",
       "workspaceRoot": "/workspace/demo",
       "workspaceKey": "/workspace/demo",
-      "shortName": "demo"
+      "shortName": "demo",
+      "version": "1.0.0",
+      "buildFingerprint": "sha256:abcd...",
+      "binaryPath": "<wrapper-binary-path>",
+      "pid": 12345
     },
     "capabilities": {
       "threadsRefresh": true
@@ -115,7 +119,16 @@ wrapper 建立连接后首先发送：
 {
   "type": "welcome",
   "welcome": {
-    "protocol": "relay.agent.v1"
+    "protocol": "relay.agent.v1",
+    "server": {
+      "product": "codex-remote",
+      "version": "1.0.0",
+      "buildFingerprint": "sha256:abcd...",
+      "binaryPath": "<daemon-binary-path>",
+      "pid": 23456,
+      "startedAt": "2026-04-05T10:00:00Z",
+      "configPath": "<config-env-path>"
+    }
   }
 }
 ```

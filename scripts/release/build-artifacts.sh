@@ -23,12 +23,6 @@ platforms=(
   "windows amd64"
 )
 
-binaries=(
-  "codex-remote-relayd=./cmd/relayd"
-  "codex-remote-wrapper=./cmd/relay-wrapper"
-  "codex-remote-install=./cmd/relay-install"
-)
-
 archives=()
 
 for platform in "${platforms[@]}"; do
@@ -42,11 +36,7 @@ for platform in "${platforms[@]}"; do
     extension=".exe"
   fi
 
-  for binary in "${binaries[@]}"; do
-    name="${binary%%=*}"
-    package="${binary#*=}"
-    CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -o "${staging_dir}/${name}${extension}" "${package}"
-  done
+  CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build -trimpath -o "${staging_dir}/codex-remote${extension}" ./cmd/codex-remote
 
   cp README.md QUICKSTART.md DEVELOPER.md install.sh install-release.sh setup.sh setup.ps1 .env.example "${staging_dir}/"
   cp -R deploy "${staging_dir}/"

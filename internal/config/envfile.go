@@ -26,6 +26,10 @@ type ServicesConfig struct {
 	ConfigPath           string
 }
 
+const (
+	UnifiedConfigEnvPath = "CODEX_REMOTE_CONFIG"
+)
+
 func LoadEnvFile(path string) (map[string]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -50,6 +54,9 @@ func LoadEnvFile(path string) (map[string]string, error) {
 }
 
 func WriteEnvFile(path string, values map[string]string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	builder := strings.Builder{}
 	keys := []string{
 		"RELAY_SERVER_URL",
@@ -87,12 +94,14 @@ func WriteEnvFile(path string, values map[string]string) error {
 }
 
 func LoadWrapperConfig() (WrapperConfig, error) {
-	configPath := firstEnv(
+	configPath, values, err := loadOptionalEnvChain(
+		xdgConfigPath("codex-remote", "config.env"),
+		os.Getenv(UnifiedConfigEnvPath),
 		os.Getenv("CODEX_REMOTE_WRAPPER_CONFIG"),
+		xdgConfigPath("codex-remote", "config.env"),
 		xdgConfigPath("codex-remote", "wrapper.env"),
 		filepath.Join(mustGetwd(), ".env"),
 	)
-	values, err := loadOptionalEnv(configPath)
 	if err != nil {
 		return WrapperConfig{}, err
 	}
@@ -115,12 +124,14 @@ func LoadWrapperConfig() (WrapperConfig, error) {
 }
 
 func LoadServicesConfig() (ServicesConfig, error) {
-	configPath := firstEnv(
+	configPath, values, err := loadOptionalEnvChain(
+		xdgConfigPath("codex-remote", "config.env"),
+		os.Getenv(UnifiedConfigEnvPath),
 		os.Getenv("CODEX_REMOTE_SERVICES_CONFIG"),
+		xdgConfigPath("codex-remote", "config.env"),
 		xdgConfigPath("codex-remote", "services.env"),
 		filepath.Join(mustGetwd(), ".env"),
 	)
-	values, err := loadOptionalEnv(configPath)
 	if err != nil {
 		return ServicesConfig{}, err
 	}
@@ -157,6 +168,36 @@ func loadOptionalEnv(path string) (map[string]string, error) {
 		return map[string]string{}, nil
 	}
 	return nil, err
+}
+
+func loadOptionalEnvChain(defaultPath string, candidates ...string) (string, map[string]string, error) {
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		values, err := loadOptionalEnv(candidate)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(values) > 0 || fileExists(candidate) {
+			return candidate, values, nil
+		}
+	}
+	return defaultPath, map[string]string{}, nil
+}
+
+func fileExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func xdgConfigPath(parts ...string) string {

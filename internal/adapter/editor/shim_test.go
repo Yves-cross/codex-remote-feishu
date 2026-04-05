@@ -9,7 +9,7 @@ import (
 func TestPatchBundleEntrypoint(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bin", "linux-x86_64", "codex")
-	wrapper := filepath.Join(dir, "wrapper", "codex-remote-wrapper")
+	wrapper := filepath.Join(dir, "wrapper", "codex-remote")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir entrypoint dir: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestPatchBundleEntrypoint(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original-codex"), 0o755); err != nil {
 		t.Fatalf("seed bundle entrypoint: %v", err)
 	}
-	if err := os.WriteFile(wrapper, []byte("relay-wrapper"), 0o755); err != nil {
+	if err := os.WriteFile(wrapper, []byte("codex-remote"), 0o755); err != nil {
 		t.Fatalf("seed wrapper binary: %v", err)
 	}
 	if err := PatchBundleEntrypoint(path, wrapper); err != nil {
@@ -29,7 +29,7 @@ func TestPatchBundleEntrypoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read bundle entrypoint: %v", err)
 	}
-	if string(raw) != "relay-wrapper" {
+	if string(raw) != "codex-remote" {
 		t.Fatalf("expected copied wrapper binary, got %q", string(raw))
 	}
 

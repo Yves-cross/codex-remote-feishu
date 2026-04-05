@@ -1529,6 +1529,14 @@ func (s *Service) SurfaceChatID(surfaceID string) string {
 	return surface.ChatID
 }
 
+func (s *Service) SurfaceActorUserID(surfaceID string) string {
+	surface := s.root.Surfaces[surfaceID]
+	if surface == nil {
+		return ""
+	}
+	return surface.ActorUserID
+}
+
 func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 	if commandID == "" {
 		return

@@ -2,6 +2,7 @@ package relayws
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -131,6 +132,66 @@ func TestClientNormalizesDefaultRelayPath(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for hello over normalized path")
+	}
+}
+
+func TestClientReceivesWelcomeServerIdentity(t *testing.T) {
+	helloCh := make(chan agentproto.Hello, 1)
+	welcomeCh := make(chan agentproto.Welcome, 1)
+	server := NewServer(ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "1.0.0",
+			BuildFingerprint: "fp-1",
+			BinaryPath:       "/tmp/codex-remote",
+		},
+		PID: 12345,
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	client := NewClient(wsURL, agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{
+			InstanceID: "inst-welcome",
+		},
+	}, ClientCallbacks{
+		OnWelcome: func(_ context.Context, welcome agentproto.Welcome) error {
+			welcomeCh <- welcome
+			return context.Canceled
+		},
+	})
+
+	if err := client.Run(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("client run: %v", err)
+	}
+
+	select {
+	case hello := <-helloCh:
+		if hello.Instance.InstanceID != "inst-welcome" {
+			t.Fatalf("unexpected hello: %#v", hello)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for hello")
+	}
+
+	select {
+	case welcome := <-welcomeCh:
+		if welcome.Server == nil || welcome.Server.BuildFingerprint != "fp-1" || welcome.Server.PID != 12345 {
+			t.Fatalf("unexpected welcome server identity: %#v", welcome)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for welcome")
 	}
 }
 

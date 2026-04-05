@@ -39,7 +39,7 @@ func (g *ctxCheckingGateway) Apply(ctx context.Context, operations []feishu.Oper
 
 func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 	gateway := &recordingGateway{}
-	app := New(":0", ":0", gateway)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -131,7 +131,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 
 func TestDaemonDecouplesGatewayApplyFromCanceledParentContext(t *testing.T) {
 	gateway := &ctxCheckingGateway{}
-	app := New(":0", ":0", gateway)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -170,9 +170,41 @@ func TestDaemonDecouplesGatewayApplyFromCanceledParentContext(t *testing.T) {
 	}
 }
 
+func TestDaemonFallsBackToActorRouteForColdStartMenuActions(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-1",
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+		},
+	})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "feishu:user:ou_1",
+		ActorUserID:      "ou_1",
+	})
+
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected one operation, got %#v", gateway.operations)
+	}
+	got := gateway.operations[0]
+	if got.Kind != feishu.OperationSendCard || got.CardTitle != "在线实例" {
+		t.Fatalf("unexpected operation: %#v", got)
+	}
+	if got.ReceiveID != "ou_1" || got.ReceiveIDType != "open_id" {
+		t.Fatalf("expected actor fallback route, got %#v", got)
+	}
+}
+
 func TestDaemonNotifiesAttachedSurfaceWhenInstanceDisconnects(t *testing.T) {
 	gateway := &recordingGateway{}
-	app := New(":0", ":0", gateway)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -216,7 +248,7 @@ func TestDaemonNotifiesAttachedSurfaceWhenInstanceDisconnects(t *testing.T) {
 
 func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T) {
 	gateway := &recordingGateway{}
-	app := New(":0", ":0", gateway)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -275,7 +307,7 @@ func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T)
 
 func TestDaemonStatusExportsSurfacesAndRemoteTurnState(t *testing.T) {
 	gateway := &recordingGateway{}
-	app := New(":0", ":0", gateway)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-1",

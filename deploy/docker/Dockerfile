@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /out/codex-remote-relayd ./cmd/relayd
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /out/codex-remote ./cmd/codex-remote
 
 FROM alpine:3.21
 
@@ -14,7 +14,7 @@ RUN adduser -D -h /app app
 USER app
 WORKDIR /app
 
-COPY --from=build /out/codex-remote-relayd /usr/local/bin/codex-remote-relayd
+COPY --from=build /out/codex-remote /usr/local/bin/codex-remote
 
 ENV RELAY_PORT=9500 \
     RELAY_API_PORT=9501 \
@@ -22,4 +22,4 @@ ENV RELAY_PORT=9500 \
 
 EXPOSE 9500 9501
 
-ENTRYPOINT ["/usr/local/bin/codex-remote-relayd"]
+ENTRYPOINT ["/usr/local/bin/codex-remote", "daemon"]

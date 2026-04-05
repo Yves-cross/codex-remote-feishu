@@ -9,9 +9,8 @@ import (
 var version = "dev"
 
 func main() {
-	args := append([]string{"wrapper"}, os.Args[1:]...)
 	os.Exit(launcher.Main(launcher.Options{
-		Args:    args,
+		Args:    os.Args[1:],
 		Stdin:   os.Stdin,
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,

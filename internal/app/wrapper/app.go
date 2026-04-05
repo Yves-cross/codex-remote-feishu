@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +19,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
 type App struct {
@@ -30,18 +32,28 @@ type Config struct {
 	CodexRealBinary string
 	NameMode        string
 	Args            []string
+	ConfigPath      string
 
-	InstanceID    string
-	DisplayName   string
-	WorkspaceRoot string
-	WorkspaceKey  string
-	ShortName     string
-	Version       string
-	ChildProxyEnv []string
+	InstanceID           string
+	DisplayName          string
+	WorkspaceRoot        string
+	WorkspaceKey         string
+	ShortName            string
+	Version              string
+	BuildFingerprint     string
+	BinaryPath           string
+	ChildProxyEnv        []string
+	DaemonBinaryPath     string
+	DaemonUseSystemProxy bool
+	RuntimePaths         relayruntime.Paths
 }
 
 func LoadConfig(args []string) (Config, error) {
 	loaded, err := config.LoadWrapperConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	services, err := config.LoadServicesConfig()
 	if err != nil {
 		return Config{}, err
 	}
@@ -58,18 +70,32 @@ func LoadConfig(args []string) (Config, error) {
 	if displayName == "." || displayName == "/" {
 		displayName = workspaceRoot
 	}
+	paths, err := relayruntime.DefaultPaths()
+	if err != nil {
+		return Config{}, err
+	}
+	binaryIdentity, err := relayruntime.CurrentBinaryIdentity("dev")
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
-		RelayServerURL:  loaded.RelayServerURL,
-		CodexRealBinary: loaded.CodexRealBinary,
-		NameMode:        loaded.NameMode,
-		Args:            args,
-		InstanceID:      instanceID,
-		DisplayName:     displayName,
-		WorkspaceRoot:   workspaceRoot,
-		WorkspaceKey:    workspaceRoot,
-		ShortName:       shortName,
-		Version:         "dev",
-		ChildProxyEnv:   config.CaptureAndClearProxyEnv(),
+		RelayServerURL:       loaded.RelayServerURL,
+		CodexRealBinary:      loaded.CodexRealBinary,
+		NameMode:             loaded.NameMode,
+		Args:                 args,
+		ConfigPath:           firstNonEmpty(services.ConfigPath, loaded.ConfigPath, paths.ConfigFile),
+		InstanceID:           instanceID,
+		DisplayName:          displayName,
+		WorkspaceRoot:        workspaceRoot,
+		WorkspaceKey:         workspaceRoot,
+		ShortName:            shortName,
+		Version:              "dev",
+		BuildFingerprint:     binaryIdentity.BuildFingerprint,
+		BinaryPath:           binaryIdentity.BinaryPath,
+		ChildProxyEnv:        config.CaptureAndClearProxyEnv(),
+		DaemonBinaryPath:     binaryIdentity.BinaryPath,
+		DaemonUseSystemProxy: services.FeishuUseSystemProxy,
+		RuntimePaths:         paths,
 	}, nil
 }
 
@@ -81,6 +107,24 @@ func New(cfg Config) *App {
 }
 
 func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+	manager := relayruntime.NewManager(relayruntime.ManagerConfig{
+		RelayServerURL: a.config.RelayServerURL,
+		Identity: agentproto.BinaryIdentity{
+			Product:          relayruntime.ProductName,
+			Version:          a.config.Version,
+			BuildFingerprint: a.config.BuildFingerprint,
+			BinaryPath:       a.config.BinaryPath,
+		},
+		ConfigPath:           a.config.ConfigPath,
+		Paths:                a.config.RuntimePaths,
+		DaemonBinaryPath:     firstNonEmpty(a.config.DaemonBinaryPath, a.config.BinaryPath),
+		DaemonUseSystemProxy: a.config.DaemonUseSystemProxy,
+		CapturedProxyEnv:     a.config.ChildProxyEnv,
+	})
+	if err := manager.EnsureReady(ctx); err != nil {
+		return 1, err
+	}
+
 	childCtx, childCancel := context.WithCancel(ctx)
 	defer childCancel()
 
@@ -100,19 +144,32 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	errCh := make(chan error, 8)
 
 	var client *relayws.Client
+	connectedOnce := false
 	client = relayws.NewClient(a.config.RelayServerURL, agentproto.Hello{
 		Protocol: agentproto.WireProtocol,
 		Instance: agentproto.InstanceHello{
-			InstanceID:    a.config.InstanceID,
-			DisplayName:   a.config.DisplayName,
-			WorkspaceRoot: a.config.WorkspaceRoot,
-			WorkspaceKey:  a.config.WorkspaceKey,
-			ShortName:     a.config.ShortName,
-			Version:       a.config.Version,
-			PID:           os.Getpid(),
+			InstanceID:       a.config.InstanceID,
+			DisplayName:      a.config.DisplayName,
+			WorkspaceRoot:    a.config.WorkspaceRoot,
+			WorkspaceKey:     a.config.WorkspaceKey,
+			ShortName:        a.config.ShortName,
+			Version:          a.config.Version,
+			BuildFingerprint: a.config.BuildFingerprint,
+			BinaryPath:       a.config.BinaryPath,
+			PID:              os.Getpid(),
 		},
 		Capabilities: agentproto.Capabilities{ThreadsRefresh: true},
 	}, relayws.ClientCallbacks{
+		OnWelcome: func(_ context.Context, welcome agentproto.Welcome) error {
+			if manager.WelcomeCompatible(welcome) {
+				connectedOnce = true
+				return nil
+			}
+			if connectedOnce {
+				return relayws.FatalError{Err: fmt.Errorf("relay version mismatch after connection: %s", relayWelcomeSummary(welcome))}
+			}
+			return fmt.Errorf("relay bootstrap welcome mismatch: %s", relayWelcomeSummary(welcome))
+		},
 		OnConnect: func(context.Context) error { return nil },
 		OnCommand: func(ctx context.Context, command agentproto.Command) error {
 			outbound, err := a.translator.TranslateCommand(command)
@@ -131,7 +188,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	})
 
 	go func() {
-		if err := client.Run(ctx); err != nil && err != context.Canceled {
+		if err := runRelayClient(ctx, a.config.RelayServerURL, client, manager, func() bool { return connectedOnce }); err != nil && err != context.Canceled {
 			errCh <- err
 		}
 	}()
@@ -176,6 +233,61 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		stopChild()
 		return 0, ctx.Err()
 	}
+}
+
+func runRelayClient(ctx context.Context, relayURL string, client *relayws.Client, manager *relayruntime.Manager, connectedOnce func() bool) error {
+	backoff := 200 * time.Millisecond
+	for {
+		if !connectedOnce() {
+			if err := manager.EnsureReady(ctx); err != nil {
+				return err
+			}
+		}
+		err := client.RunOnce(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			return err
+		}
+		var fatal relayws.FatalError
+		if errors.As(err, &fatal) {
+			return err
+		}
+		if !connectedOnce() {
+			log.Printf("relay bootstrap connection failed: url=%s err=%v", relayURL, err)
+		} else {
+			log.Printf("relay steady reconnect failed: url=%s err=%v", relayURL, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 5*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+func relayWelcomeSummary(welcome agentproto.Welcome) string {
+	if welcome.Server == nil {
+		return "legacy relay without server identity"
+	}
+	switch {
+	case welcome.Server.BuildFingerprint != "":
+		return welcome.Server.BuildFingerprint
+	case welcome.Server.Version != "":
+		return welcome.Server.Version
+	default:
+		return "unknown relay identity"
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func startChild(cmd *exec.Cmd) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {

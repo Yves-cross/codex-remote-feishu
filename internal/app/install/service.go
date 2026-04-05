@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 type Options struct {
 	BaseDir            string
 	InstallBinDir      string
+	BinaryPath         string
 	WrapperBinary      string
 	RelaydBinary       string
 	RelayServerURL     string
@@ -28,9 +30,11 @@ type Options struct {
 }
 
 type InstallState struct {
+	ConfigPath             string                   `json:"configPath,omitempty"`
 	WrapperConfigPath      string                   `json:"wrapperConfigPath"`
 	ServicesConfigPath     string                   `json:"servicesConfigPath"`
 	StatePath              string                   `json:"statePath"`
+	InstalledBinary        string                   `json:"installedBinary,omitempty"`
 	InstalledWrapperBinary string                   `json:"installedWrapperBinary,omitempty"`
 	InstalledRelaydBinary  string                   `json:"installedRelaydBinary,omitempty"`
 	Integrations           []WrapperIntegrationMode `json:"integrations"`
@@ -53,11 +57,11 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return InstallState{}, err
 	}
-	installedWrapperBinary, err := installBinary(opts.WrapperBinary, opts.InstallBinDir)
+	sourceBinary, err := resolveBinaryPath(opts)
 	if err != nil {
 		return InstallState{}, err
 	}
-	installedRelaydBinary, err := installBinary(opts.RelaydBinary, opts.InstallBinDir)
+	installedBinary, err := installBinary(sourceBinary, opts.InstallBinDir)
 	if err != nil {
 		return InstallState{}, err
 	}
@@ -68,11 +72,12 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	}
 	integrations = normalizeIntegrations(integrations)
 
-	wrapperConfigPath := filepath.Join(configDir, "wrapper.env")
-	servicesConfigPath := filepath.Join(configDir, "services.env")
+	configPath := filepath.Join(configDir, "config.env")
+	legacyWrapperConfigPath := filepath.Join(configDir, "wrapper.env")
+	legacyServicesConfigPath := filepath.Join(configDir, "services.env")
 	statePath := filepath.Join(stateDir, "install-state.json")
-	existingServices, err := config.LoadEnvFile(servicesConfigPath)
-	if err != nil && !os.IsNotExist(err) {
+	existingValues, err := loadExistingConfigValues(configPath, legacyWrapperConfigPath, legacyServicesConfigPath)
+	if err != nil {
 		return InstallState{}, err
 	}
 
@@ -80,48 +85,45 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	if codexRealBinary == "" && hasIntegration(integrations, IntegrationManagedShim) && opts.BundleEntrypoint != "" {
 		codexRealBinary = editor.ManagedShimRealBinaryPath(opts.BundleEntrypoint)
 	}
-	if installedWrapperBinary == "" {
-		installedWrapperBinary = opts.WrapperBinary
-	}
-	if installedRelaydBinary == "" {
-		installedRelaydBinary = opts.RelaydBinary
+	if installedBinary == "" {
+		installedBinary = sourceBinary
 	}
 
-	if err := config.WriteEnvFile(wrapperConfigPath, map[string]string{
+	if err := config.WriteEnvFile(configPath, map[string]string{
 		"RELAY_SERVER_URL":                      opts.RelayServerURL,
 		"CODEX_REAL_BINARY":                     codexRealBinary,
 		"CODEX_REMOTE_WRAPPER_NAME_MODE":        "workspace_basename",
 		"CODEX_REMOTE_WRAPPER_INTEGRATION_MODE": integrationsConfigValue(integrations),
+		"RELAY_PORT":                            "9500",
+		"RELAY_API_PORT":                        "9501",
+		"FEISHU_APP_ID":                         choosePreservedValue(opts.FeishuAppID, existingValues["FEISHU_APP_ID"]),
+		"FEISHU_APP_SECRET":                     choosePreservedValue(opts.FeishuAppSecret, existingValues["FEISHU_APP_SECRET"]),
+		"FEISHU_USE_SYSTEM_PROXY":               boolString(opts.UseSystemProxy),
 	}); err != nil {
 		return InstallState{}, err
 	}
-	if err := config.WriteEnvFile(servicesConfigPath, map[string]string{
-		"RELAY_PORT":              "9500",
-		"RELAY_API_PORT":          "9501",
-		"FEISHU_APP_ID":           choosePreservedValue(opts.FeishuAppID, existingServices["FEISHU_APP_ID"]),
-		"FEISHU_APP_SECRET":       choosePreservedValue(opts.FeishuAppSecret, existingServices["FEISHU_APP_SECRET"]),
-		"FEISHU_USE_SYSTEM_PROXY": boolString(opts.UseSystemProxy),
-	}); err != nil {
-		return InstallState{}, err
-	}
+	cleanupLegacyConfigPath(legacyWrapperConfigPath, configPath)
+	cleanupLegacyConfigPath(legacyServicesConfigPath, configPath)
 
 	if hasIntegration(integrations, IntegrationEditorSettings) && opts.VSCodeSettingsPath != "" {
-		if err := editor.PatchVSCodeSettings(opts.VSCodeSettingsPath, installedWrapperBinary); err != nil {
+		if err := editor.PatchVSCodeSettings(opts.VSCodeSettingsPath, installedBinary); err != nil {
 			return InstallState{}, err
 		}
 	}
 	if hasIntegration(integrations, IntegrationManagedShim) {
-		if err := editor.PatchBundleEntrypoint(opts.BundleEntrypoint, installedWrapperBinary); err != nil {
+		if err := editor.PatchBundleEntrypoint(opts.BundleEntrypoint, installedBinary); err != nil {
 			return InstallState{}, err
 		}
 	}
 
 	state := InstallState{
-		WrapperConfigPath:      wrapperConfigPath,
-		ServicesConfigPath:     servicesConfigPath,
+		ConfigPath:             configPath,
+		WrapperConfigPath:      configPath,
+		ServicesConfigPath:     configPath,
 		StatePath:              statePath,
-		InstalledWrapperBinary: installedWrapperBinary,
-		InstalledRelaydBinary:  installedRelaydBinary,
+		InstalledBinary:        installedBinary,
+		InstalledWrapperBinary: installedBinary,
+		InstalledRelaydBinary:  installedBinary,
 		Integrations:           integrations,
 		VSCodeSettingsPath:     opts.VSCodeSettingsPath,
 		BundleEntrypoint:       opts.BundleEntrypoint,
@@ -197,4 +199,56 @@ func copyFile(sourcePath, targetPath string) error {
 		return err
 	}
 	return targetFile.Chmod(info.Mode().Perm())
+}
+
+func resolveBinaryPath(opts Options) (string, error) {
+	binaryPath := strings.TrimSpace(opts.BinaryPath)
+	wrapperBinary := strings.TrimSpace(opts.WrapperBinary)
+	relaydBinary := strings.TrimSpace(opts.RelaydBinary)
+
+	if binaryPath != "" {
+		return binaryPath, nil
+	}
+	if wrapperBinary != "" && relaydBinary != "" && !samePath(wrapperBinary, relaydBinary) {
+		return "", fmt.Errorf("single-binary install requires -binary, or matching deprecated -wrapper-binary and -relayd-binary")
+	}
+	if wrapperBinary != "" {
+		return wrapperBinary, nil
+	}
+	if relaydBinary != "" {
+		return relaydBinary, nil
+	}
+	return "", fmt.Errorf("binary path is required")
+}
+
+func loadExistingConfigValues(configPath, legacyWrapperConfigPath, legacyServicesConfigPath string) (map[string]string, error) {
+	if values, err := config.LoadEnvFile(configPath); err == nil {
+		return values, nil
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	merged := map[string]string{}
+	for _, path := range []string{legacyWrapperConfigPath, legacyServicesConfigPath} {
+		values, err := config.LoadEnvFile(path)
+		if err == nil {
+			for key, value := range values {
+				merged[key] = value
+			}
+			continue
+		}
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+	}
+	return merged, nil
+}
+
+func cleanupLegacyConfigPath(path, unifiedPath string) {
+	if strings.TrimSpace(path) == "" || samePath(path, unifiedPath) {
+		return
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return
+	}
 }

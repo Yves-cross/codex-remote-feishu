@@ -22,6 +22,7 @@ type ServerCallbacks struct {
 type Server struct {
 	upgrader  websocket.Upgrader
 	callbacks ServerCallbacks
+	identity  agentproto.ServerIdentity
 
 	mu       sync.RWMutex
 	conns    map[string]*serverConn
@@ -42,6 +43,10 @@ func NewServer(callbacks ServerCallbacks) *Server {
 		conns:     map[string]*serverConn{},
 		shutdown:  make(chan struct{}),
 	}
+}
+
+func (s *Server) SetServerIdentity(identity agentproto.ServerIdentity) {
+	s.identity = identity
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -132,11 +137,17 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 			if s.callbacks.OnHello != nil {
 				s.callbacks.OnHello(ctx, *envelope.Hello)
 			}
+			serverIdentity := s.identity
+			var serverPtr *agentproto.ServerIdentity
+			if serverIdentity.Product != "" || serverIdentity.Version != "" || serverIdentity.BuildFingerprint != "" || serverIdentity.PID != 0 {
+				serverPtr = &serverIdentity
+			}
 			payload, _ := agentproto.MarshalEnvelope(agentproto.Envelope{
 				Type: agentproto.EnvelopeWelcome,
 				Welcome: &agentproto.Welcome{
 					Protocol:   agentproto.WireProtocol,
 					ServerTime: time.Now(),
+					Server:     serverPtr,
 				},
 			})
 			current.mu.Lock()

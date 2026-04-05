@@ -34,8 +34,8 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 	fmt.Fprintf(out, "当前平台: %s\n", defaults.GOOS)
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "这一步会完成：")
-	fmt.Fprintln(out, "- 安装 relay-wrapper / relayd 到稳定路径")
-	fmt.Fprintln(out, "- 写入 wrapper.env / services.env")
+	fmt.Fprintln(out, "- 安装 codex-remote 统一二进制到稳定路径")
+	fmt.Fprintln(out, "- 写入统一配置文件 config.env")
 	fmt.Fprintln(out, "- 按你的选择接管 VS Code")
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, integrationHelpText(defaults.GOOS))
@@ -108,7 +108,7 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "editor_settings 说明：")
 		fmt.Fprintln(out, "- 适合本机桌面 VS Code。")
-		fmt.Fprintln(out, "- 安装器会修改 settings.json，让扩展直接调用 relay-wrapper。")
+		fmt.Fprintln(out, "- 安装器会修改 settings.json，让扩展直接调用 codex-remote。")
 		settingsPath, err := promptString(reader, out, "VS Code settings.json 路径", opts.VSCodeSettingsPath)
 		if err != nil {
 			return Options{}, err
@@ -139,7 +139,7 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "真实 Codex 配置说明：")
-	fmt.Fprintln(out, "- settings 模式下，wrapper 会调用这里指定的真实 codex。")
+	fmt.Fprintln(out, "- settings 模式下，codex-remote 的 wrapper role 会调用这里指定的真实 codex。")
 	fmt.Fprintln(out, "- managed_shim 模式下，如未显式填写，会自动使用 bundle 里保留下来的 codex.real。")
 	defaultCodexRealBinary := opts.CodexRealBinary
 	if strings.TrimSpace(defaultCodexRealBinary) == "" && !hasIntegration(opts.Integrations, IntegrationManagedShim) {

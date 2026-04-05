@@ -64,6 +64,7 @@ func TestRunInteractiveWizardHonorsExplicitIntegrationSeed(t *testing.T) {
 	var out bytes.Buffer
 	seed := Options{
 		Integrations:       []WrapperIntegrationMode{IntegrationEditorSettings},
+		BinaryPath:         filepath.Join("/opt", "homebrew", "bin", "codex-remote"),
 		CodexRealBinary:    filepath.Join("/opt", "homebrew", "bin", "codex"),
 		VSCodeSettingsPath: defaults.VSCodeSettingsPath,
 	}

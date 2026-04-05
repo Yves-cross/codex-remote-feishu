@@ -53,6 +53,27 @@ func TestMenuActionKindUnknownValueIsIgnored(t *testing.T) {
 	}
 }
 
+func TestResolveReceiveTarget(t *testing.T) {
+	tests := []struct {
+		name        string
+		chatID      string
+		actorUserID string
+		wantID      string
+		wantType    string
+	}{
+		{name: "chat id wins", chatID: "oc_1", actorUserID: "ou_1", wantID: "oc_1", wantType: "chat_id"},
+		{name: "open id fallback", actorUserID: "ou_1", wantID: "ou_1", wantType: "open_id"},
+		{name: "union id fallback", actorUserID: "on_1", wantID: "on_1", wantType: "union_id"},
+		{name: "user id fallback", actorUserID: "user_1", wantID: "user_1", wantType: "user_id"},
+	}
+	for _, tt := range tests {
+		gotID, gotType := ResolveReceiveTarget(tt.chatID, tt.actorUserID)
+		if gotID != tt.wantID || gotType != tt.wantType {
+			t.Fatalf("%s: got (%q, %q), want (%q, %q)", tt.name, gotID, gotType, tt.wantID, tt.wantType)
+		}
+	}
+}
+
 func TestSurfaceIDForInboundUsesUserScopeForP2P(t *testing.T) {
 	got := surfaceIDForInbound("oc_xxx", "p2p", "user-1")
 	if got != "feishu:user:user-1" {

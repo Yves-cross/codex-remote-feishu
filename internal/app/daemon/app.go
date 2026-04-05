@@ -34,7 +34,7 @@ type App struct {
 	mu         sync.Mutex
 }
 
-func New(relayAddr, apiAddr string, gateway feishu.Gateway) *App {
+func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agentproto.ServerIdentity) *App {
 	if gateway == nil {
 		gateway = feishu.NopGateway{}
 	}
@@ -49,6 +49,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway) *App {
 		OnCommandAck: app.onCommandAck,
 		OnDisconnect: app.onDisconnect,
 	})
+	app.relay.SetServerIdentity(serverIdentity)
 
 	relayMux := http.NewServeMux()
 	relayMux.Handle("/ws/agent", app.relay)
@@ -248,11 +249,24 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 			continue
 		}
 		chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
-		if chatID == "" {
+		actorUserID := a.service.SurfaceActorUserID(event.SurfaceSessionID)
+		receiveID, receiveIDType := feishu.ResolveReceiveTarget(chatID, actorUserID)
+		if receiveID == "" || receiveIDType == "" {
 			continue
 		}
-		log.Printf("ui event: surface=%s chat=%s kind=%s", event.SurfaceSessionID, chatID, event.Kind)
+		log.Printf("ui event: surface=%s chat=%s actor=%s kind=%s", event.SurfaceSessionID, chatID, actorUserID, event.Kind)
 		operations := a.projector.Project(chatID, event)
+		for i := range operations {
+			if operations[i].SurfaceSessionID == "" {
+				operations[i].SurfaceSessionID = event.SurfaceSessionID
+			}
+			if operations[i].ReceiveID == "" {
+				operations[i].ReceiveID = receiveID
+			}
+			if operations[i].ReceiveIDType == "" {
+				operations[i].ReceiveIDType = receiveIDType
+			}
+		}
 		applyCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		err := a.gateway.Apply(applyCtx, operations)
 		cancel()

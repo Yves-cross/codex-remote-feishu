@@ -14,15 +14,13 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	settingsPath := filepath.Join(baseDir, "Code", "User", "settings.json")
 	sourceDir := filepath.Join(baseDir, "source-bin")
 	installBinDir := filepath.Join(baseDir, "installed-bin")
-	wrapperBinary := seedBinary(t, filepath.Join(sourceDir, "codex-remote-wrapper"), "wrapper-bin")
-	relaydBinary := seedBinary(t, filepath.Join(sourceDir, "codex-remote-relayd"), "relayd-bin")
+	binaryPath := seedBinary(t, filepath.Join(sourceDir, "codex-remote"), "unified-bin")
 
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:            baseDir,
 		InstallBinDir:      installBinDir,
-		WrapperBinary:      wrapperBinary,
-		RelaydBinary:       relaydBinary,
+		BinaryPath:         binaryPath,
 		RelayServerURL:     "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary:    "/usr/local/bin/codex",
 		Integrations:       []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -35,7 +33,14 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 		t.Fatalf("bootstrap: %v", err)
 	}
 
-	wrapperRaw, err := os.ReadFile(state.WrapperConfigPath)
+	if state.ConfigPath != filepath.Join(baseDir, ".config", "codex-remote", "config.env") {
+		t.Fatalf("unexpected config path: %s", state.ConfigPath)
+	}
+	if state.WrapperConfigPath != state.ConfigPath || state.ServicesConfigPath != state.ConfigPath {
+		t.Fatalf("expected wrapper/services config paths to match unified config path")
+	}
+
+	wrapperRaw, err := os.ReadFile(state.ConfigPath)
 	if err != nil {
 		t.Fatalf("read wrapper config: %v", err)
 	}
@@ -46,12 +51,8 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 		t.Fatalf("unexpected wrapper config: %s", wrapperRaw)
 	}
 
-	serviceRaw, err := os.ReadFile(state.ServicesConfigPath)
-	if err != nil {
-		t.Fatalf("read services config: %v", err)
-	}
-	if !strings.Contains(string(serviceRaw), "FEISHU_APP_ID=cli_xxx") {
-		t.Fatalf("unexpected services config: %s", serviceRaw)
+	if !strings.Contains(string(wrapperRaw), "FEISHU_APP_ID=cli_xxx") {
+		t.Fatalf("unexpected unified config: %s", wrapperRaw)
 	}
 
 	settingsRaw, err := os.ReadFile(settingsPath)
@@ -61,11 +62,15 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if !strings.Contains(string(settingsRaw), state.InstalledWrapperBinary) {
 		t.Fatalf("expected settings to contain wrapper path, got %s", settingsRaw)
 	}
-	if state.InstalledWrapperBinary != filepath.Join(installBinDir, filepath.Base(wrapperBinary)) {
-		t.Fatalf("unexpected installed wrapper path: %s", state.InstalledWrapperBinary)
+	wantBinary := filepath.Join(installBinDir, filepath.Base(binaryPath))
+	if state.InstalledBinary != wantBinary {
+		t.Fatalf("unexpected installed binary path: %s", state.InstalledBinary)
 	}
-	if state.InstalledRelaydBinary != filepath.Join(installBinDir, filepath.Base(relaydBinary)) {
-		t.Fatalf("unexpected installed relayd path: %s", state.InstalledRelaydBinary)
+	if state.InstalledWrapperBinary != wantBinary {
+		t.Fatalf("unexpected installed wrapper alias path: %s", state.InstalledWrapperBinary)
+	}
+	if state.InstalledRelaydBinary != wantBinary {
+		t.Fatalf("unexpected installed relayd alias path: %s", state.InstalledRelaydBinary)
 	}
 }
 
@@ -74,16 +79,14 @@ func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {
 	entrypoint := filepath.Join(baseDir, ".vscode-server", "extensions", "openai.chatgpt-test", "bin", "linux-x86_64", "codex")
 	sourceDir := filepath.Join(baseDir, "source-bin")
 	installBinDir := filepath.Join(baseDir, "installed-bin")
-	wrapperBinary := seedBinary(t, filepath.Join(sourceDir, "codex-remote-wrapper"), "relay-wrapper")
-	seedBinary(t, filepath.Join(sourceDir, "codex-remote-relayd"), "relayd-bin")
+	binaryPath := seedBinary(t, filepath.Join(sourceDir, "codex-remote"), "codex-remote")
 	seedBinary(t, entrypoint, "original-codex")
 
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:          baseDir,
 		InstallBinDir:    installBinDir,
-		WrapperBinary:    wrapperBinary,
-		RelaydBinary:     filepath.Join(sourceDir, "codex-remote-relayd"),
+		BinaryPath:       binaryPath,
 		RelayServerURL:   "ws://127.0.0.1:9500/ws/agent",
 		Integrations:     []WrapperIntegrationMode{IntegrationManagedShim},
 		BundleEntrypoint: entrypoint,
@@ -100,8 +103,8 @@ func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read bundle entrypoint: %v", err)
 	}
-	if string(raw) != "relay-wrapper" {
-		t.Fatalf("expected wrapper binary content in entrypoint, got %q", string(raw))
+	if string(raw) != "codex-remote" {
+		t.Fatalf("expected unified binary content in entrypoint, got %q", string(raw))
 	}
 
 	realRaw, err := os.ReadFile(editor.ManagedShimRealBinaryPath(entrypoint))
@@ -112,7 +115,7 @@ func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {
 		t.Fatalf("expected preserved real binary content, got %q", string(realRaw))
 	}
 
-	wrapperEnv, err := os.ReadFile(state.WrapperConfigPath)
+	wrapperEnv, err := os.ReadFile(state.ConfigPath)
 	if err != nil {
 		t.Fatalf("read wrapper env: %v", err)
 	}
@@ -135,7 +138,7 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	service := NewService()
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
-		WrapperBinary:   seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote-wrapper"), "wrapper-bin"),
+		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -144,7 +147,7 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 		t.Fatalf("bootstrap: %v", err)
 	}
 
-	serviceRaw, err := os.ReadFile(state.ServicesConfigPath)
+	serviceRaw, err := os.ReadFile(state.ConfigPath)
 	if err != nil {
 		t.Fatalf("read services config: %v", err)
 	}
@@ -154,6 +157,85 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	}
 	if !strings.Contains(text, "FEISHU_APP_SECRET=secret_existing") {
 		t.Fatalf("expected app secret to be preserved, got %s", text)
+	}
+	if _, err := os.Stat(servicesPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy services.env to be removed, got err=%v", err)
+	}
+}
+
+func TestBootstrapAcceptsMatchingDeprecatedBinaryFlags(t *testing.T) {
+	baseDir := t.TempDir()
+	sourceBinary := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin")
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:        baseDir,
+		WrapperBinary:  sourceBinary,
+		RelaydBinary:   sourceBinary,
+		RelayServerURL: "ws://127.0.0.1:9500/ws/agent",
+	})
+	if err != nil {
+		t.Fatalf("bootstrap with deprecated flags: %v", err)
+	}
+	if state.InstalledBinary != sourceBinary {
+		t.Fatalf("InstalledBinary = %q, want %q", state.InstalledBinary, sourceBinary)
+	}
+}
+
+func TestBootstrapRejectsMismatchedDeprecatedBinaryFlags(t *testing.T) {
+	baseDir := t.TempDir()
+	service := NewService()
+	_, err := service.Bootstrap(Options{
+		BaseDir:        baseDir,
+		WrapperBinary:  seedBinary(t, filepath.Join(baseDir, "source-bin", "wrapper"), "wrapper"),
+		RelaydBinary:   seedBinary(t, filepath.Join(baseDir, "source-bin", "daemon"), "daemon"),
+		RelayServerURL: "ws://127.0.0.1:9500/ws/agent",
+	})
+	if err == nil || !strings.Contains(err.Error(), "single-binary install requires -binary") {
+		t.Fatalf("expected mismatched deprecated binary error, got %v", err)
+	}
+}
+
+func TestBootstrapMergesLegacySplitConfigFiles(t *testing.T) {
+	baseDir := t.TempDir()
+	configDir := filepath.Join(baseDir, ".config", "codex-remote")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	wrapperPath := filepath.Join(configDir, "wrapper.env")
+	servicesPath := filepath.Join(configDir, "services.env")
+	if err := os.WriteFile(wrapperPath, []byte("RELAY_SERVER_URL=ws://127.0.0.1:9910/ws/agent\nCODEX_REAL_BINARY=/legacy/codex\n"), 0o600); err != nil {
+		t.Fatalf("seed wrapper env: %v", err)
+	}
+	if err := os.WriteFile(servicesPath, []byte("RELAY_PORT=9910\nRELAY_API_PORT=9911\nFEISHU_APP_ID=cli_old\nFEISHU_APP_SECRET=secret_old\n"), 0o600); err != nil {
+		t.Fatalf("seed services env: %v", err)
+	}
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:         baseDir,
+		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
+		CodexRealBinary: "/usr/local/bin/codex",
+		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
+	})
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+
+	raw, err := os.ReadFile(state.ConfigPath)
+	if err != nil {
+		t.Fatalf("read unified config: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "FEISHU_APP_ID=cli_old") || !strings.Contains(text, "FEISHU_APP_SECRET=secret_old") {
+		t.Fatalf("expected legacy services values in unified config, got %s", text)
+	}
+	if _, err := os.Stat(wrapperPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy wrapper.env to be removed, got err=%v", err)
+	}
+	if _, err := os.Stat(servicesPath); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy services.env to be removed, got err=%v", err)
 	}
 }
 

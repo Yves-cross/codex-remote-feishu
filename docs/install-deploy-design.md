@@ -6,7 +6,7 @@
 
 - 在线安装脚本
 - 交互安装脚本
-- `relay-install` 非交互安装
+- `codex-remote install` 非交互安装
 - VS Code / VS Code Remote 接管方式
 - `relayd` 本机运行与 Docker 运行
 - 飞书应用配置模板
@@ -19,8 +19,8 @@
 
 职责：
 
-- 构建三个二进制
-- 调起 `relay-install`
+- 构建统一二进制 `codex-remote`
+- 调起 `codex-remote install`
 - 无参数时默认进入交互向导
 
 默认行为：
@@ -51,14 +51,13 @@
 - Linux: `~/.local/share/codex-remote/releases`
 - macOS: `~/Library/Application Support/codex-remote/releases`
 
-### 2.3 `relay-install`
+### 2.3 `codex-remote install`
 
 安装器核心逻辑。
 
 职责：
 
-- 写 `wrapper.env`
-- 写 `services.env`
+- 写统一配置 `config.env`
 - 保留已有飞书凭证
 - 安装或复制二进制到稳定目录
 - patch `settings.json`
@@ -92,8 +91,7 @@ Linux 仓库内运维脚本，不是跨平台产品入口。
 当前 runtime 仍使用统一布局：
 
 ```text
-<baseDir>/.config/codex-remote/wrapper.env
-<baseDir>/.config/codex-remote/services.env
+<baseDir>/.config/codex-remote/config.env
 <baseDir>/.local/share/codex-remote/install-state.json
 <baseDir>/.local/share/codex-remote/logs/codex-remote-relayd.log
 <baseDir>/.local/state/codex-remote/codex-remote-relayd.pid
@@ -129,8 +127,8 @@ Linux 仓库内运维脚本，不是跨平台产品入口。
 直接接管扩展 bundle 里的 `codex` 入口：
 
 1. 原始 `codex` 重命名为 `codex.real` 或 `codex.real.exe`
-2. 把 `relay-wrapper` 二进制复制到原始 `codex` 路径
-3. `wrapper.env` 的 `CODEX_REAL_BINARY` 自动指向保留的 `codex.real`
+2. 把统一二进制 `codex-remote` 复制到原始 `codex` 路径
+3. `config.env` 的 `CODEX_REAL_BINARY` 自动指向保留的 `codex.real`
 
 适用：
 
@@ -145,24 +143,14 @@ Linux 仓库内运维脚本，不是跨平台产品入口。
 
 ## 5. 配置内容
 
-### 5.1 `wrapper.env`
+### 5.1 `config.env`
 
-安装器写入：
+安装器统一写入：
 
 - `RELAY_SERVER_URL`
 - `CODEX_REAL_BINARY`
 - `CODEX_REMOTE_WRAPPER_NAME_MODE`
 - `CODEX_REMOTE_WRAPPER_INTEGRATION_MODE`
-
-规则：
-
-- 如果启用了 `managed_shim` 且未显式给 `CODEX_REAL_BINARY`
-- 则自动使用 bundle 内保留下来的 `codex.real`
-
-### 5.2 `services.env`
-
-安装器写入：
-
 - `RELAY_PORT`
 - `RELAY_API_PORT`
 - `FEISHU_APP_ID`
@@ -171,16 +159,19 @@ Linux 仓库内运维脚本，不是跨平台产品入口。
 
 规则：
 
+- wrapper role 和 daemon role 从同一个文件里各取所需
+- 如果启用了 `managed_shim` 且未显式给 `CODEX_REAL_BINARY`
+- 则自动使用 bundle 内保留下来的 `codex.real`
 - 如果这次安装没有显式传新的飞书凭证
 - 会保留已有值，不做清空
 
-### 5.3 `install-state.json`
+### 5.2 `install-state.json`
 
 当前记录：
 
 - config 路径
 - 安装状态路径
-- 已安装 wrapper / relayd 二进制路径
+- 已安装统一二进制路径
 - 实际启用的 integrations
 - `settings.json` 路径
 - bundle 入口路径
@@ -191,7 +182,7 @@ Docker 只部署 `relayd`。
 
 不放进容器的部分：
 
-- `relay-wrapper`
+- `codex-remote` 的 wrapper role
 - 真实 `codex`
 - VS Code 扩展 bundle
 
