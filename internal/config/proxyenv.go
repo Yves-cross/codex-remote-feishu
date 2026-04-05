@@ -15,11 +15,21 @@ var ProxyEnvKeys = []string{
 }
 
 func CaptureAndClearProxyEnv() []string {
+	return captureProxyEnv(true)
+}
+
+func CaptureProxyEnv() []string {
+	return captureProxyEnv(false)
+}
+
+func captureProxyEnv(clear bool) []string {
 	var restored []string
 	for _, key := range ProxyEnvKeys {
 		if value, ok := os.LookupEnv(key); ok {
 			restored = append(restored, key+"="+value)
-			_ = os.Unsetenv(key)
+			if clear {
+				_ = os.Unsetenv(key)
+			}
 		}
 	}
 	return restored

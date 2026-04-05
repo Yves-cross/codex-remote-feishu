@@ -13,6 +13,8 @@ const (
 	ActionListInstances    ActionKind = "surface.menu.list_instances"
 	ActionStatus           ActionKind = "surface.menu.status"
 	ActionStop             ActionKind = "surface.menu.stop"
+	ActionNewInstance      ActionKind = "surface.menu.new_instance"
+	ActionKillInstance     ActionKind = "surface.menu.kill_instance"
 	ActionModelCommand     ActionKind = "surface.command.model"
 	ActionReasoningCommand ActionKind = "surface.command.reasoning"
 	ActionAccessCommand    ActionKind = "surface.command.access"
@@ -54,6 +56,7 @@ type SelectionPromptKind string
 const (
 	SelectionPromptAttachInstance SelectionPromptKind = "attach_instance"
 	SelectionPromptUseThread      SelectionPromptKind = "use_thread"
+	SelectionPromptNewInstance    SelectionPromptKind = "new_instance_thread"
 )
 
 type SelectionOption struct {
@@ -79,6 +82,7 @@ type Snapshot struct {
 	SurfaceSessionID string
 	ActorUserID      string
 	Attachment       AttachmentSummary
+	PendingHeadless  PendingHeadlessSummary
 	NextPrompt       PromptRouteSummary
 	Instances        []InstanceSummary
 	Threads          []ThreadSummary
@@ -87,10 +91,24 @@ type Snapshot struct {
 type AttachmentSummary struct {
 	InstanceID            string
 	DisplayName           string
+	Source                string
+	Managed               bool
+	PID                   int
 	SelectedThreadID      string
 	SelectedThreadTitle   string
 	SelectedThreadPreview string
 	RouteMode             string
+}
+
+type PendingHeadlessSummary struct {
+	InstanceID   string
+	ThreadID     string
+	ThreadTitle  string
+	ThreadCWD    string
+	Status       string
+	PID          int
+	ExpiresAt    time.Time
+	RequestedAt  time.Time
 }
 
 type PromptRouteSummary struct {
@@ -119,6 +137,9 @@ type InstanceSummary struct {
 	DisplayName             string
 	WorkspaceRoot           string
 	WorkspaceKey            string
+	Source                  string
+	Managed                 bool
+	PID                     int
 	Online                  bool
 	State                   string
 	ObservedFocusedThreadID string
@@ -189,7 +210,24 @@ const (
 	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
 	UIEventBlockCommitted        UIEventKind = "block.committed"
 	UIEventAgentCommand          UIEventKind = "agent.command"
+	UIEventDaemonCommand         UIEventKind = "daemon.command"
 )
+
+type DaemonCommandKind string
+
+const (
+	DaemonCommandStartHeadless DaemonCommandKind = "headless.start"
+	DaemonCommandKillHeadless  DaemonCommandKind = "headless.kill"
+)
+
+type DaemonCommand struct {
+	Kind             DaemonCommandKind
+	SurfaceSessionID string
+	InstanceID       string
+	ThreadID         string
+	ThreadTitle      string
+	ThreadCWD        string
+}
 
 type UIEvent struct {
 	Kind             UIEventKind
@@ -202,4 +240,5 @@ type UIEvent struct {
 	ThreadSelection  *ThreadSelectionChanged
 	Block            *render.Block
 	Command          *agentproto.Command
+	DaemonCommand    *DaemonCommand
 }

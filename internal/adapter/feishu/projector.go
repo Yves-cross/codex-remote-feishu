@@ -85,6 +85,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 				title = "在线实例"
 			case control.SelectionPromptUseThread:
 				title = "会话列表"
+			case control.SelectionPromptNewInstance:
+				title = "选择要恢复的会话"
 			}
 		}
 		return []Operation{{
@@ -265,6 +267,8 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 		text = "接管"
 	case control.SelectionPromptUseThread:
 		text = "切换"
+	case control.SelectionPromptNewInstance:
+		text = "恢复"
 	}
 	disabled := option.Disabled
 	buttonType := "default"
@@ -380,7 +384,7 @@ func formatSnapshot(snapshot control.Snapshot) string {
 	if snapshot.Attachment.InstanceID == "" {
 		lines = append(lines, "当前未接管任何实例。")
 	} else {
-		lines = append(lines, fmt.Sprintf("已接管：%s", snapshot.Attachment.DisplayName))
+		lines = append(lines, fmt.Sprintf("已接管：%s", formatInstanceLabel(snapshot.Attachment.DisplayName, snapshot.Attachment.Source, snapshot.Attachment.Managed)))
 		switch {
 		case snapshot.Attachment.SelectedThreadTitle != "":
 			lines = append(lines, fmt.Sprintf("当前输入目标：%s", snapshot.Attachment.SelectedThreadTitle))
@@ -394,6 +398,9 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		}
 		if preview := strings.TrimSpace(snapshot.Attachment.SelectedThreadPreview); preview != "" {
 			lines = append(lines, fmt.Sprintf("最近信息：%s", preview))
+		}
+		if snapshot.Attachment.PID > 0 {
+			lines = append(lines, fmt.Sprintf("实例 PID：`%d`", snapshot.Attachment.PID))
 		}
 		lines = append(lines, fmt.Sprintf("路由模式：%s", snapshot.Attachment.RouteMode))
 		lines = append(lines, "")
@@ -434,6 +441,22 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
 		))
 	}
+	if snapshot.PendingHeadless.InstanceID != "" {
+		lines = append(lines, "")
+		lines = append(lines, "Headless 创建中：")
+		if snapshot.PendingHeadless.ThreadTitle != "" {
+			lines = append(lines, fmt.Sprintf("- 目标会话：%s", snapshot.PendingHeadless.ThreadTitle))
+		}
+		if snapshot.PendingHeadless.ThreadCWD != "" {
+			lines = append(lines, fmt.Sprintf("- 启动目录：`%s`", snapshot.PendingHeadless.ThreadCWD))
+		}
+		if snapshot.PendingHeadless.PID > 0 {
+			lines = append(lines, fmt.Sprintf("- 进程 PID：`%d`", snapshot.PendingHeadless.PID))
+		}
+		if !snapshot.PendingHeadless.ExpiresAt.IsZero() {
+			lines = append(lines, fmt.Sprintf("- 启动超时：`%s`", snapshot.PendingHeadless.ExpiresAt.Format("2006-01-02 15:04:05 MST")))
+		}
+	}
 	if len(snapshot.Instances) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, "在线实例：")
@@ -441,7 +464,10 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			if !instance.Online {
 				continue
 			}
-			line := fmt.Sprintf("- %s - 工作目录 `%s`", instance.DisplayName, instance.WorkspaceRoot)
+			line := fmt.Sprintf("- %s - 工作目录 `%s`", formatInstanceLabel(instance.DisplayName, instance.Source, instance.Managed), instance.WorkspaceRoot)
+			if instance.PID > 0 {
+				line += fmt.Sprintf(" · PID `%d`", instance.PID)
+			}
 			lines = append(lines, line)
 		}
 	}
@@ -500,6 +526,20 @@ func snapshotConfigSourceLabel(source string) string {
 	default:
 		return "未知"
 	}
+}
+
+func formatInstanceLabel(displayName, source string, managed bool) string {
+	label := strings.TrimSpace(displayName)
+	if label == "" {
+		label = "未知实例"
+	}
+	if strings.EqualFold(strings.TrimSpace(source), "headless") {
+		if managed {
+			return label + " (Headless)"
+		}
+		return label + " (Headless, unmanaged)"
+	}
+	return label
 }
 
 func chooseThemeKey(values ...string) string {

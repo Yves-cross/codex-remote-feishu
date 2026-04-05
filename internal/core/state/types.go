@@ -59,6 +59,9 @@ type InstanceRecord struct {
 	WorkspaceRoot           string
 	WorkspaceKey            string
 	ShortName               string
+	Source                  string
+	Managed                 bool
+	PID                     int
 	Online                  bool
 	ObservedFocusedThreadID string
 	ActiveThreadID          string
@@ -98,9 +101,30 @@ type SurfaceConsoleRecord struct {
 	QueueItems           map[string]*QueueItemRecord
 	PromptOverride       ModelConfigRecord
 	SelectionPrompt      *SelectionPromptRecord
+	PendingHeadless      *HeadlessLaunchRecord
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
 	LastSelection        *SelectionAnnouncementRecord
+}
+
+type HeadlessLaunchStatus string
+
+const (
+	HeadlessLaunchStarting HeadlessLaunchStatus = "starting"
+)
+
+type HeadlessLaunchRecord struct {
+	InstanceID       string
+	ThreadID         string
+	ThreadTitle      string
+	ThreadCWD        string
+	ThreadName       string
+	ThreadPreview    string
+	RequestedAt      time.Time
+	ExpiresAt        time.Time
+	Status           HeadlessLaunchStatus
+	PID              int
+	SourceInstanceID string
 }
 
 type SelectionAnnouncementRecord struct {
@@ -121,12 +145,17 @@ type SelectionPromptRecord struct {
 }
 
 type SelectionOptionRecord struct {
-	Index    int
-	OptionID string
-	Label    string
-	Subtitle string
-	Current  bool
-	Disabled bool
+	Index            int
+	OptionID         string
+	Label            string
+	Subtitle         string
+	Current          bool
+	Disabled         bool
+	TargetInstanceID string
+	TargetThreadID   string
+	TargetThreadCWD  string
+	TargetThreadName string
+	TargetPreview    string
 }
 
 type RequestPromptOptionRecord struct {

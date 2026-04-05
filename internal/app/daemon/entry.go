@@ -19,8 +19,9 @@ func RunMain(ctx context.Context, version string) error {
 	if err != nil {
 		return err
 	}
+	capturedProxyEnv := config.CaptureProxyEnv()
 	if !cfg.FeishuUseSystemProxy {
-		config.CaptureAndClearProxyEnv()
+		capturedProxyEnv = config.CaptureAndClearProxyEnv()
 	}
 
 	paths, err := relayruntime.DefaultPaths()
@@ -66,6 +67,14 @@ func RunMain(ctx context.Context, version string) error {
 	defer os.Remove(paths.IdentityFile)
 
 	app := New(":"+cfg.RelayPort, ":"+cfg.RelayAPIPort, gateway, identity)
+	baseEnv := config.FilterEnvWithoutProxy(os.Environ())
+	baseEnv = append(baseEnv, capturedProxyEnv...)
+	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
+		BinaryPath: identity.BinaryPath,
+		ConfigPath: cfg.ConfigPath,
+		BaseEnv:    baseEnv,
+		Paths:      paths,
+	})
 	app.SetMarkdownPreviewer(markdownPreviewer)
 	app.SetDebugRelayFlow(cfg.DebugRelayFlow)
 	if cfg.DebugRelayRaw {

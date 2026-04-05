@@ -14,6 +14,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
 type recordingGateway struct {
@@ -509,4 +510,169 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 	if gateway.operations[1].CardTitle == "" || !strings.Contains(gateway.operations[1].CardBody, "当前没有在线实例") {
 		t.Fatalf("expected current response card after queued notice, got %#v", gateway.operations[1])
 	}
+}
+
+func TestDaemonStartsHeadlessFromRecoverableThreadAndAutoAttaches(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
+		BinaryPath: "/tmp/codex-remote",
+		ConfigPath: "/tmp/config.env",
+		BaseEnv:    []string{"PATH=/usr/bin"},
+		Paths: relayruntime.Paths{
+			LogsDir:  t.TempDir(),
+			StateDir: t.TempDir(),
+		},
+	})
+
+	var captured relayruntime.HeadlessLaunchOptions
+	app.startHeadless = func(opts relayruntime.HeadlessLaunchOptions) (int, error) {
+		captured = opts
+		return 4321, nil
+	}
+
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-src",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", LastUsedAt: time.Now()},
+		},
+	})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionNewInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "msg-select",
+		Text:             "1",
+	})
+
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.PendingHeadless.InstanceID == "" {
+		t.Fatalf("expected pending headless snapshot, got %#v", snapshot)
+	}
+	if captured.WorkDir != "/data/dl/droid" || captured.InstanceID != snapshot.PendingHeadless.InstanceID {
+		t.Fatalf("unexpected headless launch opts: %#v", captured)
+	}
+	if !containsEnvEntry(captured.Env, "CODEX_REMOTE_INSTANCE_SOURCE=headless") || !containsEnvEntry(captured.Env, "CODEX_REMOTE_INSTANCE_MANAGED=1") {
+		t.Fatalf("expected headless env overrides, got %#v", captured.Env)
+	}
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    snapshot.PendingHeadless.InstanceID,
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+			Source:        "headless",
+			Managed:       true,
+			PID:           4321,
+		},
+	})
+
+	snapshot = app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.InstanceID == "" || snapshot.Attachment.Source != "headless" || !snapshot.Attachment.Managed || snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected auto-attached headless snapshot, got %#v", snapshot)
+	}
+}
+
+func TestDaemonKillInstanceStopsManagedHeadlessProcess(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetHeadlessRuntime(HeadlessRuntimeConfig{IdleTTL: time.Hour, KillGrace: time.Second})
+
+	stoppedPID := 0
+	app.stopProcess = func(pid int, _ time.Duration) error {
+		stoppedPID = pid
+		return nil
+	}
+
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-headless-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "headless",
+		Managed:       true,
+		PID:           4321,
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	app.managedHeadless["inst-headless-1"] = &managedHeadlessProcess{InstanceID: "inst-headless-1", PID: 4321, StartedAt: time.Now()}
+	app.service.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-headless-1"})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ThreadID:         "thread-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionKillInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if stoppedPID != 4321 {
+		t.Fatalf("expected managed headless pid to stop, got %d", stoppedPID)
+	}
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.InstanceID != "" {
+		t.Fatalf("expected surface to detach after kill, got %#v", snapshot)
+	}
+}
+
+func TestDaemonIdleHeadlessCleanupStopsDetachedManagedInstance(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetHeadlessRuntime(HeadlessRuntimeConfig{IdleTTL: time.Minute, KillGrace: time.Second})
+
+	stoppedPID := 0
+	app.stopProcess = func(pid int, _ time.Duration) error {
+		stoppedPID = pid
+		return nil
+	}
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-headless-2",
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+			Source:        "headless",
+			Managed:       true,
+			PID:           2468,
+		},
+	})
+
+	base := time.Date(2026, 4, 5, 13, 0, 0, 0, time.UTC)
+	app.onTick(context.Background(), base)
+	app.onTick(context.Background(), base.Add(2*time.Minute))
+
+	if stoppedPID != 2468 {
+		t.Fatalf("expected idle managed headless pid to stop, got %d", stoppedPID)
+	}
+}
+
+func containsEnvEntry(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

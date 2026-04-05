@@ -20,7 +20,27 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
+	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
+
+type HeadlessRuntimeConfig struct {
+	BinaryPath string
+	ConfigPath string
+	BaseEnv    []string
+	Paths      relayruntime.Paths
+	LaunchArgs []string
+	IdleTTL    time.Duration
+	KillGrace  time.Duration
+}
+
+type managedHeadlessProcess struct {
+	InstanceID string
+	PID        int
+	StartedAt  time.Time
+	IdleSince  time.Time
+	ThreadID   string
+	ThreadCWD  string
+}
 
 type App struct {
 	service           *orchestrator.Service
@@ -38,6 +58,10 @@ type App struct {
 	mu         sync.Mutex
 
 	pendingGatewayNotices map[string][]control.UIEvent
+	headlessRuntime       HeadlessRuntimeConfig
+	managedHeadless       map[string]*managedHeadlessProcess
+	startHeadless         func(relayruntime.HeadlessLaunchOptions) (int, error)
+	stopProcess           func(int, time.Duration) error
 }
 
 func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agentproto.ServerIdentity) *App {
@@ -49,6 +73,9 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		projector:             feishu.NewProjector(),
 		gateway:               gateway,
 		pendingGatewayNotices: map[string][]control.UIEvent{},
+		managedHeadless:       map[string]*managedHeadlessProcess{},
+		startHeadless:         relayruntime.StartDetachedWrapper,
+		stopProcess:           relayruntime.TerminateProcess,
 	}
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{
 		OnHello:      app.onHello,
@@ -74,6 +101,18 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 	apiMux.HandleFunc("/v1/status", app.handleStatus)
 	app.apiServer = &http.Server{Addr: apiAddr, Handler: apiMux}
 	return app
+}
+
+func (a *App) SetHeadlessRuntime(cfg HeadlessRuntimeConfig) {
+	if cfg.IdleTTL <= 0 {
+		cfg.IdleTTL = 2 * time.Hour
+	}
+	if cfg.KillGrace <= 0 {
+		cfg.KillGrace = 3 * time.Second
+	}
+	cfg.BaseEnv = append([]string{}, cfg.BaseEnv...)
+	cfg.LaunchArgs = append([]string{}, cfg.LaunchArgs...)
+	a.headlessRuntime = cfg
 }
 
 func (a *App) SetMarkdownPreviewer(previewer feishu.MarkdownPreviewService) {
@@ -183,9 +222,21 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	inst.WorkspaceRoot = hello.Instance.WorkspaceRoot
 	inst.WorkspaceKey = hello.Instance.WorkspaceKey
 	inst.ShortName = hello.Instance.ShortName
+	inst.Source = firstNonEmpty(strings.TrimSpace(hello.Instance.Source), "vscode")
+	inst.Managed = hello.Instance.Managed
+	inst.PID = hello.Instance.PID
 	inst.Online = true
 	a.service.UpsertInstance(inst)
-	log.Printf("relay instance connected: id=%s workspace=%s display=%s", inst.InstanceID, inst.WorkspaceKey, inst.DisplayName)
+	a.observeManagedHeadless(inst)
+	log.Printf(
+		"relay instance connected: id=%s workspace=%s display=%s source=%s managed=%t pid=%d",
+		inst.InstanceID,
+		inst.WorkspaceKey,
+		inst.DisplayName,
+		inst.Source,
+		inst.Managed,
+		inst.PID,
+	)
 	a.handleUIEvents(ctx, a.service.ApplyInstanceConnected(inst.InstanceID))
 
 	command := agentproto.Command{
@@ -252,7 +303,15 @@ func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 		return
 	}
 	uiEvents := a.service.ApplyInstanceDisconnected(instanceID)
-	log.Printf("relay instance disconnected: id=%s workspace=%s display=%s", inst.InstanceID, inst.WorkspaceKey, inst.DisplayName)
+	log.Printf(
+		"relay instance disconnected: id=%s workspace=%s display=%s source=%s managed=%t pid=%d",
+		inst.InstanceID,
+		inst.WorkspaceKey,
+		inst.DisplayName,
+		inst.Source,
+		inst.Managed,
+		inst.PID,
+	)
 	a.handleUIEvents(ctx, uiEvents)
 }
 
@@ -261,11 +320,17 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	defer a.mu.Unlock()
 	uiEvents := a.service.Tick(now)
 	a.handleUIEvents(ctx, uiEvents)
+	a.reapIdleHeadless(now)
 }
 
 func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 	_ = ctx
 	for _, event := range events {
+		if event.DaemonCommand != nil {
+			followup := a.handleDaemonCommand(*event.DaemonCommand)
+			a.handleUIEvents(context.Background(), followup)
+			continue
+		}
 		if event.Command != nil {
 			if event.Command.CommandID == "" {
 				event.Command.CommandID = a.nextCommandID()
@@ -449,8 +514,209 @@ func (a *App) queueGatewayFailureNotice(event control.UIEvent, err error) {
 	a.pendingGatewayNotices[event.SurfaceSessionID] = append(pending, queued)
 }
 
+func (a *App) handleDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+	switch command.Kind {
+	case control.DaemonCommandStartHeadless:
+		return a.startManagedHeadless(command)
+	case control.DaemonCommandKillHeadless:
+		return a.killManagedHeadless(command)
+	default:
+		return nil
+	}
+}
+
+func (a *App) startManagedHeadless(command control.DaemonCommand) []control.UIEvent {
+	cfg := a.headlessRuntime
+	if strings.TrimSpace(cfg.BinaryPath) == "" {
+		return a.service.HandleHeadlessLaunchFailed(
+			command.SurfaceSessionID,
+			command.InstanceID,
+			agentproto.ErrorInfo{
+				Code:             "headless_binary_missing",
+				Layer:            "daemon",
+				Stage:            "headless_start",
+				Operation:        "new_instance",
+				Message:          "headless 启动器未配置可执行文件。",
+				SurfaceSessionID: command.SurfaceSessionID,
+				ThreadID:         command.ThreadID,
+			},
+		)
+	}
+
+	env := append([]string{}, cfg.BaseEnv...)
+	env = append(env,
+		"CODEX_REMOTE_INSTANCE_ID="+command.InstanceID,
+		"CODEX_REMOTE_INSTANCE_SOURCE=headless",
+		"CODEX_REMOTE_INSTANCE_MANAGED=1",
+	)
+
+	pid, err := a.startHeadless(relayruntime.HeadlessLaunchOptions{
+		BinaryPath: cfg.BinaryPath,
+		ConfigPath: cfg.ConfigPath,
+		Env:        env,
+		Paths:      cfg.Paths,
+		WorkDir:    command.ThreadCWD,
+		InstanceID: command.InstanceID,
+		Args:       cfg.LaunchArgs,
+	})
+	if err != nil {
+		log.Printf(
+			"headless start failed: surface=%s instance=%s thread=%s cwd=%s err=%v",
+			command.SurfaceSessionID,
+			command.InstanceID,
+			command.ThreadID,
+			command.ThreadCWD,
+			err,
+		)
+		return a.service.HandleHeadlessLaunchFailed(command.SurfaceSessionID, command.InstanceID, err)
+	}
+
+	a.managedHeadless[command.InstanceID] = &managedHeadlessProcess{
+		InstanceID: command.InstanceID,
+		PID:        pid,
+		StartedAt:  time.Now().UTC(),
+		ThreadID:   command.ThreadID,
+		ThreadCWD:  command.ThreadCWD,
+	}
+	log.Printf(
+		"headless start requested: surface=%s instance=%s pid=%d thread=%s cwd=%s",
+		command.SurfaceSessionID,
+		command.InstanceID,
+		pid,
+		command.ThreadID,
+		command.ThreadCWD,
+	)
+	return a.service.HandleHeadlessLaunchStarted(command.SurfaceSessionID, command.InstanceID, pid)
+}
+
+func (a *App) killManagedHeadless(command control.DaemonCommand) []control.UIEvent {
+	pid := 0
+	if managed := a.managedHeadless[command.InstanceID]; managed != nil {
+		pid = managed.PID
+	}
+	if pid == 0 {
+		if inst := a.service.Instance(command.InstanceID); inst != nil && strings.EqualFold(strings.TrimSpace(inst.Source), "headless") && inst.Managed {
+			pid = inst.PID
+		}
+	}
+	if pid == 0 {
+		if strings.TrimSpace(command.SurfaceSessionID) == "" {
+			return nil
+		}
+		return a.service.HandleProblem(command.InstanceID, agentproto.ErrorInfo{
+			Code:             "headless_pid_unknown",
+			Layer:            "daemon",
+			Stage:            "headless_kill",
+			Operation:        "kill_instance",
+			Message:          "找不到可结束的 headless 进程。",
+			SurfaceSessionID: command.SurfaceSessionID,
+			ThreadID:         command.ThreadID,
+			Retryable:        true,
+		})
+	}
+	if err := a.stopProcess(pid, a.headlessRuntime.KillGrace); err != nil {
+		log.Printf(
+			"headless kill failed: surface=%s instance=%s pid=%d err=%v",
+			command.SurfaceSessionID,
+			command.InstanceID,
+			pid,
+			err,
+		)
+		if strings.TrimSpace(command.SurfaceSessionID) == "" {
+			return nil
+		}
+		return a.service.HandleProblem(command.InstanceID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
+			Code:             "headless_kill_failed",
+			Layer:            "daemon",
+			Stage:            "headless_kill",
+			Operation:        "kill_instance",
+			Message:          "无法结束 headless 实例。",
+			SurfaceSessionID: command.SurfaceSessionID,
+			ThreadID:         command.ThreadID,
+			Retryable:        true,
+		}))
+	}
+	delete(a.managedHeadless, command.InstanceID)
+	log.Printf("headless kill requested: surface=%s instance=%s pid=%d", command.SurfaceSessionID, command.InstanceID, pid)
+	return nil
+}
+
+func (a *App) observeManagedHeadless(inst *state.InstanceRecord) {
+	if inst == nil || !strings.EqualFold(strings.TrimSpace(inst.Source), "headless") || !inst.Managed {
+		return
+	}
+	managed := a.managedHeadless[inst.InstanceID]
+	if managed == nil {
+		managed = &managedHeadlessProcess{
+			InstanceID: inst.InstanceID,
+			StartedAt:  time.Now().UTC(),
+		}
+		a.managedHeadless[inst.InstanceID] = managed
+	}
+	if inst.PID > 0 {
+		managed.PID = inst.PID
+	}
+}
+
+func (a *App) reapIdleHeadless(now time.Time) {
+	if a.headlessRuntime.IdleTTL <= 0 {
+		return
+	}
+	attached := map[string]bool{}
+	for _, surface := range a.service.Surfaces() {
+		if surface == nil || surface.AttachedInstanceID == "" {
+			continue
+		}
+		attached[surface.AttachedInstanceID] = true
+	}
+	for instanceID, managed := range a.managedHeadless {
+		if managed == nil {
+			delete(a.managedHeadless, instanceID)
+			continue
+		}
+		inst := a.service.Instance(instanceID)
+		if inst == nil || !inst.Online || !strings.EqualFold(strings.TrimSpace(inst.Source), "headless") || !inst.Managed {
+			managed.IdleSince = time.Time{}
+			continue
+		}
+		if attached[instanceID] || inst.ActiveTurnID != "" {
+			managed.IdleSince = time.Time{}
+			continue
+		}
+		if managed.IdleSince.IsZero() {
+			managed.IdleSince = now
+			continue
+		}
+		if now.Sub(managed.IdleSince) < a.headlessRuntime.IdleTTL {
+			continue
+		}
+		if managed.PID == 0 && inst.PID > 0 {
+			managed.PID = inst.PID
+		}
+		if managed.PID == 0 {
+			log.Printf("headless idle cleanup skipped: instance=%s err=missing pid", instanceID)
+			continue
+		}
+		if err := a.stopProcess(managed.PID, a.headlessRuntime.KillGrace); err != nil {
+			log.Printf("headless idle cleanup failed: instance=%s pid=%d err=%v", instanceID, managed.PID, err)
+			continue
+		}
+		log.Printf("headless idle cleanup: instance=%s pid=%d idle_since=%s", instanceID, managed.PID, managed.IdleSince.Format(time.RFC3339))
+		delete(a.managedHeadless, instanceID)
+	}
+}
+
 func (a *App) nextCommandID() string {
 	return "cmd-" + strconv.FormatUint(atomic.AddUint64(&a.commandSeq, 1), 10)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {

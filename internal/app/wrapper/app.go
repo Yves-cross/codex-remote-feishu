@@ -42,6 +42,8 @@ type Config struct {
 	WorkspaceRoot        string
 	WorkspaceKey         string
 	ShortName            string
+	Source               string
+	Managed              bool
 	Version              string
 	BuildFingerprint     string
 	BinaryPath           string
@@ -106,15 +108,26 @@ func LoadConfig(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	instanceID, err := generateInstanceID()
-	if err != nil {
-		return Config{}, err
+	instanceID := strings.TrimSpace(os.Getenv("CODEX_REMOTE_INSTANCE_ID"))
+	if instanceID == "" {
+		instanceID, err = generateInstanceID()
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	shortName := filepath.Base(workspaceRoot)
 	displayName := shortName
 	if displayName == "." || displayName == "/" {
 		displayName = workspaceRoot
 	}
+	if override := strings.TrimSpace(os.Getenv("CODEX_REMOTE_INSTANCE_DISPLAY_NAME")); override != "" {
+		displayName = override
+	}
+	source := strings.TrimSpace(os.Getenv("CODEX_REMOTE_INSTANCE_SOURCE"))
+	if source == "" {
+		source = "vscode"
+	}
+	managed := parseBoolEnv("CODEX_REMOTE_INSTANCE_MANAGED")
 	paths, err := relayruntime.DefaultPaths()
 	if err != nil {
 		return Config{}, err
@@ -134,6 +147,8 @@ func LoadConfig(args []string) (Config, error) {
 		WorkspaceRoot:        workspaceRoot,
 		WorkspaceKey:         workspaceRoot,
 		ShortName:            shortName,
+		Source:               source,
+		Managed:              managed,
 		Version:              "dev",
 		BuildFingerprint:     binaryIdentity.BuildFingerprint,
 		BinaryPath:           binaryIdentity.BinaryPath,
@@ -224,6 +239,8 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			WorkspaceRoot:    a.config.WorkspaceRoot,
 			WorkspaceKey:     a.config.WorkspaceKey,
 			ShortName:        a.config.ShortName,
+			Source:           a.config.Source,
+			Managed:          a.config.Managed,
 			Version:          a.config.Version,
 			BuildFingerprint: a.config.BuildFingerprint,
 			BinaryPath:       a.config.BinaryPath,
@@ -401,6 +418,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func parseBoolEnv(key string) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func startChild(cmd *exec.Cmd) (io.WriteCloser, io.ReadCloser, io.ReadCloser, error) {

@@ -12,6 +12,10 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 		"list":           control.ActionListInstances,
 		"status":         control.ActionStatus,
 		"stop":           control.ActionStop,
+		"newinstance":    control.ActionNewInstance,
+		"new_instance":   control.ActionNewInstance,
+		"killinstance":   control.ActionKillInstance,
+		"kill_instance":  control.ActionKillInstance,
 		"threads":        control.ActionShowThreads,
 		"sessions":       control.ActionShowThreads,
 		"use":            control.ActionShowThreads,
@@ -174,11 +178,13 @@ func TestParseTextActionRecognizesModelAndReasoningCommands(t *testing.T) {
 
 func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 	tests := map[string]control.ActionKind{
-		"/threads":     control.ActionShowThreads,
-		"/use":         control.ActionShowThreads,
-		"/sessions":    control.ActionShowThreads,
-		"/useall":      control.ActionShowAllThreads,
-		"/sessionsall": control.ActionShowAllThreads,
+		"/threads":      control.ActionShowThreads,
+		"/use":          control.ActionShowThreads,
+		"/sessions":     control.ActionShowThreads,
+		"/useall":       control.ActionShowAllThreads,
+		"/sessionsall":  control.ActionShowAllThreads,
+		"/newinstance":  control.ActionNewInstance,
+		"/killinstance": control.ActionKillInstance,
 	}
 	for input, want := range tests {
 		action, handled := parseTextAction(input)

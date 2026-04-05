@@ -3,6 +3,7 @@ package feishu
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
@@ -134,6 +135,34 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	}
 	if feedbackValue["request_option_id"] != "captureFeedback" {
 		t.Fatalf("unexpected feedback payload: %#v", feedbackValue)
+	}
+}
+
+func TestProjectNewInstanceSelectionPromptUsesRecoverAction(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind:     control.SelectionPromptNewInstance,
+			PromptID: "prompt-3",
+			Options: []control.SelectionOption{
+				{Index: 1, OptionID: "headless-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid"},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardTitle != "选择要恢复的会话" {
+		t.Fatalf("unexpected card title: %#v", ops[0])
+	}
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	if len(actionRow) != 1 {
+		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
+	}
+	textValue, _ := actionRow[0]["text"].(map[string]any)
+	if textValue["content"] != "恢复" {
+		t.Fatalf("expected recover button label, got %#v", actionRow[0])
 	}
 }
 
@@ -350,6 +379,58 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 		"模型：`gpt-5.4`（飞书默认）",
 		"推理强度：`xhigh`（飞书默认）",
 		"执行权限：`full`（飞书默认）",
+	) {
+		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotIncludesHeadlessAttachmentAndPendingLaunch(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:          "inst-headless-1",
+				DisplayName:         "droid",
+				Source:              "headless",
+				Managed:             true,
+				PID:                 4321,
+				SelectedThreadID:    "thread-1",
+				SelectedThreadTitle: "droid · 修复登录流程",
+				RouteMode:           "pinned",
+			},
+			PendingHeadless: control.PendingHeadlessSummary{
+				InstanceID:  "inst-headless-2",
+				ThreadTitle: "droid · 新修复",
+				ThreadCWD:   "/data/dl/droid",
+				PID:         5678,
+				ExpiresAt:   time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC),
+			},
+			NextPrompt: control.PromptRouteSummary{
+				ThreadID:                       "thread-1",
+				ThreadTitle:                    "droid · 修复登录流程",
+				CWD:                            "/data/dl/droid",
+				EffectiveModel:                 "gpt-5.4",
+				EffectiveReasoningEffort:       "xhigh",
+				EffectiveAccessMode:            "full_access",
+				EffectiveModelSource:           "surface_default",
+				EffectiveReasoningEffortSource: "surface_default",
+				EffectiveAccessModeSource:      "surface_default",
+			},
+			Instances: []control.InstanceSummary{
+				{InstanceID: "inst-headless-1", DisplayName: "droid", Source: "headless", Managed: true, PID: 4321, WorkspaceRoot: "/data/dl/droid", Online: true},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"已接管：droid (Headless)",
+		"实例 PID：`4321`",
+		"Headless 创建中：",
+		"进程 PID：`5678`",
+		"droid (Headless) - 工作目录 `/data/dl/droid` · PID `4321`",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
 	}

@@ -37,6 +37,8 @@ type InstanceHello struct {
 	WorkspaceRoot    string `json:"workspaceRoot,omitempty"`
 	WorkspaceKey     string `json:"workspaceKey,omitempty"`
 	ShortName        string `json:"shortName,omitempty"`
+	Source           string `json:"source,omitempty"`
+	Managed          bool   `json:"managed,omitempty"`
 	Version          string `json:"version,omitempty"`
 	BuildFingerprint string `json:"buildFingerprint,omitempty"`
 	BinaryPath       string `json:"binaryPath,omitempty"`

@@ -2383,3 +2383,234 @@ func TestApplyInstanceConnectedResumesQueuedInput(t *testing.T) {
 		t.Fatalf("expected reconnect to reserve pending remote turn")
 	}
 }
+
+func TestNewInstanceRequiresDetachedSurface(t *testing.T) {
+	now := time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "headless_requires_detach" {
+		t.Fatalf("expected headless_requires_detach notice, got %#v", events)
+	}
+}
+
+func TestNewInstanceSelectionLaunchesHeadlessAndBlocksNormalInput(t *testing.T) {
+	now := time.Date(2026, 4, 5, 9, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-src",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {
+				ThreadID:   "thread-1",
+				Name:       "修复登录流程",
+				CWD:        "/data/dl/droid",
+				LastUsedAt: now,
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	if len(events) != 1 || events[0].SelectionPrompt == nil || events[0].SelectionPrompt.Kind != control.SelectionPromptNewInstance {
+		t.Fatalf("expected new-instance selection prompt, got %#v", events)
+	}
+
+	events = svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "msg-select",
+		Text:             "1",
+	})
+	if len(events) != 2 || events[0].Notice == nil || events[1].DaemonCommand == nil || events[1].DaemonCommand.Kind != control.DaemonCommandStartHeadless {
+		t.Fatalf("expected notice + headless start command, got %#v", events)
+	}
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.PendingHeadless.ThreadID != "thread-1" || snapshot.PendingHeadless.ThreadCWD != "/data/dl/droid" {
+		t.Fatalf("expected pending headless snapshot, got %#v", snapshot)
+	}
+	if !strings.HasPrefix(snapshot.PendingHeadless.InstanceID, "inst-headless-") {
+		t.Fatalf("expected generated headless instance id, got %#v", snapshot.PendingHeadless)
+	}
+
+	blocked := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	if len(blocked) != 1 || blocked[0].Notice == nil || blocked[0].Notice.Code != "headless_starting" {
+		t.Fatalf("expected headless_starting notice while launch pending, got %#v", blocked)
+	}
+}
+
+func TestApplyInstanceConnectedAttachesPendingHeadless(t *testing.T) {
+	now := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-src",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", LastUsedAt: now},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionTextMessage, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", MessageID: "msg-select", Text: "1"})
+	pending := svc.SurfaceSnapshot("surface-1").PendingHeadless
+
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    pending.InstanceID,
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	events := svc.ApplyInstanceConnected(pending.InstanceID)
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.InstanceID != pending.InstanceID || snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected headless instance to auto-attach, got %#v", snapshot)
+	}
+	if snapshot.Attachment.Source != "headless" || !snapshot.Attachment.Managed {
+		t.Fatalf("expected managed headless attachment, got %#v", snapshot.Attachment)
+	}
+	var attached bool
+	for _, event := range events {
+		if event.Notice != nil && event.Notice.Code == "headless_attached" {
+			attached = true
+		}
+	}
+	if !attached {
+		t.Fatalf("expected headless_attached notice, got %#v", events)
+	}
+}
+
+func TestKillInstanceCancelsPendingHeadlessLaunch(t *testing.T) {
+	now := time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-src",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", LastUsedAt: now},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionTextMessage, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", MessageID: "msg-select", Text: "1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionKillInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 2 || events[0].DaemonCommand == nil || events[0].DaemonCommand.Kind != control.DaemonCommandKillHeadless || events[1].Notice == nil || events[1].Notice.Code != "headless_cancelled" {
+		t.Fatalf("expected kill command + cancellation notice, got %#v", events)
+	}
+	if snapshot := svc.SurfaceSnapshot("surface-1"); snapshot == nil || snapshot.PendingHeadless.InstanceID != "" {
+		t.Fatalf("expected pending headless to clear, got %#v", snapshot)
+	}
+}
+
+func TestKillInstanceDetachesManagedHeadless(t *testing.T) {
+	now := time.Date(2026, 4, 5, 11, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-headless-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "headless",
+		Managed:       true,
+		PID:           4321,
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-headless-1"})
+	surface := svc.root.Surfaces["surface-1"]
+	surface.SelectedThreadID = "thread-1"
+	surface.RouteMode = state.RouteModePinned
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionKillInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 2 || events[0].DaemonCommand == nil || events[0].DaemonCommand.InstanceID != "inst-headless-1" || events[1].Notice == nil || events[1].Notice.Code != "headless_kill_requested" {
+		t.Fatalf("expected kill command + headless notice, got %#v", events)
+	}
+	if snapshot := svc.SurfaceSnapshot("surface-1"); snapshot == nil || snapshot.Attachment.InstanceID != "" {
+		t.Fatalf("expected surface to detach after kill request, got %#v", snapshot)
+	}
+}
+
+func TestKillInstanceRejectsNormalInstance(t *testing.T) {
+	now := time.Date(2026, 4, 5, 11, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "vscode",
+		Managed:       false,
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionKillInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "headless_kill_forbidden" {
+		t.Fatalf("expected headless_kill_forbidden notice, got %#v", events)
+	}
+}
