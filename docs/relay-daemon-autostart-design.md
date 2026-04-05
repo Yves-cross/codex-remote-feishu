@@ -140,6 +140,9 @@ wrapper 只能终止它能明确识别为 `codex-remote daemon` 的进程。
 
 - `hello.instance.buildFingerprint`
 - `hello.instance.binaryPath` 可选，仅用于日志/诊断
+- `hello.probe`
+  - `true` 表示当前连接只做 relay 兼容性探测
+  - daemon 必须只返回 `welcome`，不能把它注册成实例，也不能下发初始化 command
 
 示意：
 
@@ -148,6 +151,7 @@ wrapper 只能终止它能明确识别为 `codex-remote daemon` 的进程。
   "type": "hello",
   "hello": {
     "protocol": "relay.agent.v1",
+    "probe": true,
     "instance": {
       "instanceId": "inst-123",
       "version": "1.0.0",
@@ -177,6 +181,12 @@ wrapper 只能终止它能明确识别为 `codex-remote daemon` 的进程。
   }
 }
 ```
+
+补充握手顺序要求：
+
+- daemon 在普通实例连接上必须先发送 `welcome`，再触发任何后续 command
+- probe 连接只允许收到 `welcome`
+- wrapper 的 probe 逻辑需要兼容旧 daemon 的历史行为，也就是在 `welcome` 前可能先收到 `command`
 
 ### 6.3 兼容性判定
 

@@ -45,6 +45,7 @@ type InstanceHello struct {
 
 type Hello struct {
 	Protocol     string        `json:"protocol"`
+	Probe        bool          `json:"probe,omitempty"`
 	Instance     InstanceHello `json:"instance"`
 	Capabilities Capabilities  `json:"capabilities,omitempty"`
 }

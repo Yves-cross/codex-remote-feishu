@@ -93,6 +93,7 @@ wrapper 建立连接后首先发送：
   "type": "hello",
   "hello": {
     "protocol": "relay.agent.v1",
+    "probe": false,
     "instance": {
       "instanceId": "inst-67f7045577c78c7a",
       "displayName": "dl",
@@ -111,9 +112,15 @@ wrapper 建立连接后首先发送：
 }
 ```
 
+说明：
+
+- 普通 wrapper 连接使用默认 `probe=false`
+- runtime manager 的兼容性探测连接使用 `probe=true`
+- `probe=true` 的连接只用于版本/可达性检查，`relayd` 不得把它注册成可见实例，也不得触发普通实例初始化动作
+
 ### 3.4 `welcome`
 
-`relayd` 接收 `hello` 后返回：
+`relayd` 接收 `hello` 后首先返回：
 
 ```json
 {
@@ -132,6 +139,12 @@ wrapper 建立连接后首先发送：
   }
 }
 ```
+
+握手顺序规则：
+
+- 对普通实例连接，首个业务 envelope 必须是 `welcome`
+- `welcome` 之后，`relayd` 才可以发送 `command`
+- 对 `probe=true` 的连接，只返回 `welcome`，不注册实例，不触发 `threads.refresh`
 
 ### 3.5 `event_batch`
 

@@ -126,16 +126,18 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 				_ = writeError(conn, "bad_hello", "missing hello payload")
 				return
 			}
-			instanceID = envelope.Hello.Instance.InstanceID
-			current := &serverConn{conn: conn}
-			s.mu.Lock()
-			if previous := s.conns[instanceID]; previous != nil && previous.conn != conn {
-				_ = previous.conn.Close()
-			}
-			s.conns[instanceID] = current
-			s.mu.Unlock()
-			if s.callbacks.OnHello != nil {
-				s.callbacks.OnHello(ctx, *envelope.Hello)
+			hello := *envelope.Hello
+			probeOnly := hello.Probe
+			var current *serverConn
+			if !probeOnly {
+				instanceID = hello.Instance.InstanceID
+				current = &serverConn{conn: conn}
+				s.mu.Lock()
+				if previous := s.conns[instanceID]; previous != nil && previous.conn != conn {
+					_ = previous.conn.Close()
+				}
+				s.conns[instanceID] = current
+				s.mu.Unlock()
 			}
 			serverIdentity := s.identity
 			var serverPtr *agentproto.ServerIdentity
@@ -150,11 +152,15 @@ func (s *Server) serveConn(ctx context.Context, cancel context.CancelFunc, conn 
 					Server:     serverPtr,
 				},
 			})
-			current.mu.Lock()
-			err = current.conn.WriteMessage(websocket.TextMessage, payload)
-			current.mu.Unlock()
+			err = conn.WriteMessage(websocket.TextMessage, payload)
 			if err != nil {
 				return
+			}
+			if probeOnly {
+				continue
+			}
+			if s.callbacks.OnHello != nil {
+				s.callbacks.OnHello(ctx, hello)
 			}
 		case agentproto.EnvelopeEventBatch:
 			if envelope.EventBatch == nil {

@@ -239,6 +239,7 @@ func (m *Manager) currentDaemonPID(result ProbeResult) (int, error) {
 func probeHello(identity agentproto.BinaryIdentity) agentproto.Hello {
 	return agentproto.Hello{
 		Protocol: agentproto.WireProtocol,
+		Probe:    true,
 		Instance: agentproto.InstanceHello{
 			InstanceID:       "probe",
 			DisplayName:      "probe",
@@ -286,18 +287,33 @@ func probeWelcome(ctx context.Context, relayURL string, hello agentproto.Hello) 
 	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		return agentproto.Welcome{}, ProbeUnknown, err
 	}
-	_, raw, err := conn.ReadMessage()
-	if err != nil {
-		return agentproto.Welcome{}, ProbeUnknown, err
+	for attempt := 0; attempt < 8; attempt++ {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
+			return agentproto.Welcome{}, ProbeUnknown, err
+		}
+		envelope, err := agentproto.UnmarshalEnvelope(raw)
+		if err != nil {
+			return agentproto.Welcome{}, ProbeUnknown, err
+		}
+		switch envelope.Type {
+		case agentproto.EnvelopeWelcome:
+			if envelope.Welcome == nil {
+				return agentproto.Welcome{}, ProbeUnknown, errors.New("relay handshake welcome missing payload")
+			}
+			return *envelope.Welcome, ProbeCompatible, nil
+		case agentproto.EnvelopeError:
+			if envelope.Error != nil && envelope.Error.Message != "" {
+				return agentproto.Welcome{}, ProbeUnknown, errors.New(envelope.Error.Message)
+			}
+			return agentproto.Welcome{}, ProbeUnknown, errors.New("relay handshake returned error")
+		case agentproto.EnvelopeCommand, agentproto.EnvelopePing, agentproto.EnvelopePong, agentproto.EnvelopeCommandAck, agentproto.EnvelopeEventBatch:
+			continue
+		default:
+			return agentproto.Welcome{}, ProbeUnknown, fmt.Errorf("unexpected relay handshake envelope: %s", envelope.Type)
+		}
 	}
-	envelope, err := agentproto.UnmarshalEnvelope(raw)
-	if err != nil {
-		return agentproto.Welcome{}, ProbeUnknown, err
-	}
-	if envelope.Type != agentproto.EnvelopeWelcome || envelope.Welcome == nil {
-		return agentproto.Welcome{}, ProbeUnknown, fmt.Errorf("unexpected relay handshake envelope: %s", envelope.Type)
-	}
-	return *envelope.Welcome, ProbeCompatible, nil
+	return agentproto.Welcome{}, ProbeUnknown, errors.New("relay handshake did not produce welcome")
 }
 
 func normalizeRelayURL(raw string) string {

@@ -3,10 +3,15 @@ package relayruntime
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
@@ -215,6 +220,91 @@ func TestManagerEnsureReadyReplacesIncompatibleDaemonDuringBootstrap(t *testing.
 	}
 	if starts != 1 {
 		t.Fatalf("expected one replacement start, got %d", starts)
+	}
+}
+
+func TestProbeWelcomeAcceptsLegacyCommandBeforeWelcome(t *testing.T) {
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		if _, _, err := conn.ReadMessage(); err != nil {
+			t.Errorf("read hello: %v", err)
+			return
+		}
+
+		commandPayload, err := agentproto.MarshalEnvelope(agentproto.Envelope{
+			Type: agentproto.EnvelopeCommand,
+			Command: &agentproto.Command{
+				CommandID: "cmd-legacy",
+				Kind:      agentproto.CommandThreadsRefresh,
+			},
+		})
+		if err != nil {
+			t.Errorf("marshal command: %v", err)
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, commandPayload); err != nil {
+			t.Errorf("write command: %v", err)
+			return
+		}
+
+		welcomePayload, err := agentproto.MarshalEnvelope(agentproto.Envelope{
+			Type: agentproto.EnvelopeWelcome,
+			Welcome: &agentproto.Welcome{
+				Protocol: agentproto.WireProtocol,
+				Server: &agentproto.ServerIdentity{
+					BinaryIdentity: agentproto.BinaryIdentity{
+						Product:          ProductName,
+						Version:          "1.0.0",
+						BuildFingerprint: "fp-legacy",
+					},
+					PID: 123,
+				},
+			},
+		})
+		if err != nil {
+			t.Errorf("marshal welcome: %v", err)
+			return
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, welcomePayload); err != nil {
+			t.Errorf("write welcome: %v", err)
+		}
+	}))
+	defer httpServer.Close()
+
+	welcome, status, err := probeWelcome(context.Background(), "ws"+strings.TrimPrefix(httpServer.URL, "http"), probeHello(agentproto.BinaryIdentity{
+		Product:          ProductName,
+		Version:          "1.0.0",
+		BuildFingerprint: "fp-legacy",
+	}))
+	if err != nil {
+		t.Fatalf("probeWelcome: %v", err)
+	}
+	if status != ProbeCompatible {
+		t.Fatalf("status = %s, want %s", status, ProbeCompatible)
+	}
+	if welcome.Server == nil || welcome.Server.BuildFingerprint != "fp-legacy" {
+		t.Fatalf("unexpected welcome: %#v", welcome)
+	}
+}
+
+func TestProbeHelloMarksProbeMode(t *testing.T) {
+	hello := probeHello(agentproto.BinaryIdentity{
+		Product:          ProductName,
+		Version:          "1.0.0",
+		BuildFingerprint: "fp-1",
+	})
+	if !hello.Probe {
+		t.Fatal("expected probe hello to set Probe")
+	}
+	if hello.Instance.InstanceID != "probe" {
+		t.Fatalf("probe instance id = %q, want probe", hello.Instance.InstanceID)
 	}
 }
 

@@ -195,6 +195,134 @@ func TestClientReceivesWelcomeServerIdentity(t *testing.T) {
 	}
 }
 
+func TestServerSendsWelcomeBeforeOnHelloCommand(t *testing.T) {
+	commandErrCh := make(chan error, 1)
+	var server *Server
+	server = NewServer(ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			commandErrCh <- server.SendCommand(hello.Instance.InstanceID, agentproto.Command{
+				CommandID: "cmd-1",
+				Kind:      agentproto.CommandThreadsRefresh,
+			})
+		},
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	helloPayload, err := agentproto.MarshalEnvelope(agentproto.Envelope{
+		Type: agentproto.EnvelopeHello,
+		Hello: &agentproto.Hello{
+			Protocol: agentproto.WireProtocol,
+			Instance: agentproto.InstanceHello{InstanceID: "inst-order"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal hello: %v", err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, helloPayload); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+
+	for i, want := range []agentproto.EnvelopeType{agentproto.EnvelopeWelcome, agentproto.EnvelopeCommand} {
+		if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			t.Fatalf("set read deadline: %v", err)
+		}
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read frame %d: %v", i, err)
+		}
+		envelope, err := agentproto.UnmarshalEnvelope(raw)
+		if err != nil {
+			t.Fatalf("unmarshal frame %d: %v", i, err)
+		}
+		if envelope.Type != want {
+			t.Fatalf("frame %d type = %s, want %s", i, envelope.Type, want)
+		}
+	}
+
+	select {
+	case err := <-commandErrCh:
+		if err != nil {
+			t.Fatalf("send command after welcome: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for command callback")
+	}
+}
+
+func TestServerProbeHelloReturnsWelcomeWithoutRegisteringInstance(t *testing.T) {
+	helloCh := make(chan agentproto.Hello, 1)
+	server := NewServer(ServerCallbacks{
+		OnHello: func(_ context.Context, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	helloPayload, err := agentproto.MarshalEnvelope(agentproto.Envelope{
+		Type: agentproto.EnvelopeHello,
+		Hello: &agentproto.Hello{
+			Protocol: agentproto.WireProtocol,
+			Probe:    true,
+			Instance: agentproto.InstanceHello{InstanceID: "probe"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal hello: %v", err)
+	}
+	if err := conn.WriteMessage(websocket.TextMessage, helloPayload); err != nil {
+		t.Fatalf("write hello: %v", err)
+	}
+
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	_, raw, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+	envelope, err := agentproto.UnmarshalEnvelope(raw)
+	if err != nil {
+		t.Fatalf("unmarshal welcome: %v", err)
+	}
+	if envelope.Type != agentproto.EnvelopeWelcome {
+		t.Fatalf("first frame type = %s, want welcome", envelope.Type)
+	}
+
+	select {
+	case hello := <-helloCh:
+		t.Fatalf("probe hello should not invoke OnHello, got %#v", hello)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if err := server.SendCommand("probe", agentproto.Command{CommandID: "cmd-probe", Kind: agentproto.CommandThreadsRefresh}); err == nil {
+		t.Fatal("expected probe instance to be offline")
+	}
+}
+
 func TestServerCallbackContextSurvivesAfterUpgradeHandlerReturns(t *testing.T) {
 	callbackErrCh := make(chan error, 2)
 	server := NewServer(ServerCallbacks{
