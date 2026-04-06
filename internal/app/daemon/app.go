@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -62,6 +63,7 @@ type App struct {
 	commandSeq    uint64
 	mu            sync.Mutex
 	adminConfigMu sync.Mutex
+	listenMu      sync.Mutex
 
 	pendingGatewayNotices map[string][]control.UIEvent
 	headlessRuntime       HeadlessRuntimeConfig
@@ -71,6 +73,9 @@ type App struct {
 
 	adminAuth *adminauth.Manager
 	admin     adminRuntimeState
+
+	relayListener net.Listener
+	apiListener   net.Listener
 }
 
 func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agentproto.ServerIdentity) *App {
@@ -144,16 +149,48 @@ func (a *App) debugf(format string, args ...any) {
 	}
 }
 
+func (a *App) Bind() error {
+	a.listenMu.Lock()
+	defer a.listenMu.Unlock()
+
+	if a.relayListener != nil && a.apiListener != nil {
+		return nil
+	}
+
+	relayListener, err := net.Listen("tcp", a.relayServer.Addr)
+	if err != nil {
+		return err
+	}
+	apiListener, err := net.Listen("tcp", a.apiServer.Addr)
+	if err != nil {
+		_ = relayListener.Close()
+		return err
+	}
+
+	a.relayListener = relayListener
+	a.apiListener = apiListener
+	return nil
+}
+
 func (a *App) Run(ctx context.Context) error {
+	if err := a.Bind(); err != nil {
+		return err
+	}
+
+	a.listenMu.Lock()
+	relayListener := a.relayListener
+	apiListener := a.apiListener
+	a.listenMu.Unlock()
+
 	errCh := make(chan error, 3)
 
 	go func() {
-		if err := a.relayServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := a.relayServer.Serve(relayListener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 	}()
 	go func() {
-		if err := a.apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := a.apiServer.Serve(apiListener); err != nil && err != http.ErrServerClosed {
 			errCh <- err
 		}
 	}()
@@ -189,6 +226,16 @@ func (a *App) Shutdown(ctx context.Context) error {
 	_ = a.relay.Close()
 	_ = a.relayServer.Shutdown(ctx)
 	_ = a.apiServer.Shutdown(ctx)
+	a.listenMu.Lock()
+	if a.relayListener != nil {
+		_ = a.relayListener.Close()
+		a.relayListener = nil
+	}
+	if a.apiListener != nil {
+		_ = a.apiListener.Close()
+		a.apiListener = nil
+	}
+	a.listenMu.Unlock()
 	if a.rawLogger != nil {
 		_ = a.rawLogger.Close()
 	}

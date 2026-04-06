@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
@@ -399,15 +400,21 @@ func computeShimReinstallNeed(currentMode string, installState *install.InstallS
 	if installState == nil {
 		return false
 	}
-	return cleanPath(latestEntrypoint) != cleanPath(installState.BundleEntrypoint)
+	return !samePlatformPath(latestEntrypoint, installState.BundleEntrypoint)
 }
 
-func cleanPath(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
+func samePlatformPath(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
 	}
-	return filepath.Clean(path)
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func loadedConfigPath(a *App) string {

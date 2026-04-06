@@ -17,6 +17,11 @@ import (
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
+type runnableDaemon interface {
+	Bind() error
+	Run(context.Context) error
+}
+
 func RunMain(ctx context.Context, version string) error {
 	loadedConfig, err := config.LoadAppConfig()
 	if err != nil {
@@ -112,7 +117,14 @@ func RunMain(ctx context.Context, version string) error {
 		startup.SetupToken = token
 		startup.SetupTokenExpiry = expiresAt
 	}
-	logStartupState(startup, cfg)
+	return runConfiguredDaemon(ctx, app, startup, cfg, env)
+}
+
+func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startupAccessPlan, services config.ServicesConfig, env map[string]string) error {
+	if err := app.Bind(); err != nil {
+		return fmt.Errorf("bind daemon listeners: %w", err)
+	}
+	logStartupState(startup, services)
 	if err := maybeOpenSetupBrowser(startup, env); err != nil {
 		switch {
 		case err == errBrowserUnavailable:

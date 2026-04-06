@@ -2,10 +2,10 @@ package editor
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -36,11 +36,9 @@ func DetectVSCodeSettings(settingsPath, executable string) (VSCodeSettingsStatus
 	}
 	status.Exists = true
 
-	settings := map[string]any{}
-	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &settings); err != nil {
-			return status, err
-		}
+	settings, err := decodeVSCodeSettings(raw)
+	if err != nil {
+		return status, err
 	}
 	value, _ := settings["chatgpt.cliExecutable"].(string)
 	status.CLIExecutable = strings.TrimSpace(value)
@@ -84,7 +82,12 @@ func sameCleanPath(left, right string) bool {
 	if left == "" || right == "" {
 		return false
 	}
-	return filepath.Clean(left) == filepath.Clean(right)
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func sameFileContents(leftPath, rightPath string) (bool, error) {

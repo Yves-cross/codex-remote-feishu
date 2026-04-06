@@ -1,12 +1,31 @@
 package daemon
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
+
+type stubRunnableDaemon struct {
+	bindErr    error
+	bindCalled bool
+	runCalled  bool
+}
+
+func (s *stubRunnableDaemon) Bind() error {
+	s.bindCalled = true
+	return s.bindErr
+}
+
+func (s *stubRunnableDaemon) Run(context.Context) error {
+	s.runCalled = true
+	return nil
+}
 
 func TestRuntimeGatewayAppsUsesConfigApps(t *testing.T) {
 	enabled := true
@@ -62,5 +81,39 @@ func TestRuntimeGatewayAppsAppliesRuntimeOverrideCredentials(t *testing.T) {
 	}
 	if apps[0].GatewayID != "legacy-default" || apps[0].AppID != "cli_env" || apps[0].AppSecret != "secret_env" || !apps[0].Enabled {
 		t.Fatalf("unexpected runtime override app: %#v", apps[0])
+	}
+}
+
+func TestRunConfiguredDaemonSkipsBrowserWhenBindFails(t *testing.T) {
+	original := browserOpener
+	defer func() { browserOpener = original }()
+
+	called := 0
+	browserOpener = func(string, map[string]string) error {
+		called++
+		return nil
+	}
+
+	runner := &stubRunnableDaemon{bindErr: errors.New("listen tcp 127.0.0.1:9501: bind: address already in use")}
+	err := runConfiguredDaemon(context.Background(), runner, startupAccessPlan{
+		SetupRequired:   true,
+		AutoOpenBrowser: true,
+		SetupURL:        "http://localhost:9501/setup",
+	}, config.ServicesConfig{
+		RelayHost:    "127.0.0.1",
+		RelayPort:    "9500",
+		RelayAPIPort: "9501",
+	}, map[string]string{})
+	if err == nil {
+		t.Fatal("expected bind failure")
+	}
+	if !strings.Contains(err.Error(), "bind daemon listeners") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("expected browser opener to be skipped, called=%d", called)
+	}
+	if runner.runCalled {
+		t.Fatal("did not expect run to be called after bind failure")
 	}
 }

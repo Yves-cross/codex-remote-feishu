@@ -43,6 +43,7 @@ export function SetupRoute() {
   const [apps, setApps] = useState<FeishuAppSummary[]>([]);
   const [manifest, setManifest] = useState<FeishuManifestResponse["manifest"] | null>(null);
   const [vscode, setVSCode] = useState<VSCodeDetectResponse | null>(null);
+  const [vscodeError, setVSCodeError] = useState<string>("");
   const [selectedID, setSelectedID] = useState<string>(newAppID);
   const [draft, setDraft] = useState<SetupDraft>(emptyDraft);
   const [error, setError] = useState<string>("");
@@ -51,16 +52,17 @@ export function SetupRoute() {
   const [finishInfo, setFinishInfo] = useState<SetupCompleteResponse | null>(null);
 
   async function loadData(preferredID?: string) {
-    const [bootstrapState, appList, manifestResponse, vscodeResponse] = await Promise.all([
+    const [bootstrapState, appList, manifestResponse, vscodeState] = await Promise.all([
       requestJSON<BootstrapState>("/api/setup/bootstrap-state"),
       requestJSON<FeishuAppsResponse>("/api/setup/feishu/apps"),
       requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
-      requestJSON<VSCodeDetectResponse>("/api/setup/vscode/detect"),
+      loadVSCodeState("/api/setup/vscode/detect"),
     ]);
     setBootstrap(bootstrapState);
     setApps(appList.apps);
     setManifest(manifestResponse.manifest);
-    setVSCode(vscodeResponse);
+    setVSCode(vscodeState.data);
+    setVSCodeError(vscodeState.error);
     syncDraftSelection(appList.apps, preferredID ?? selectedID, setSelectedID, setDraft);
   }
 
@@ -209,17 +211,25 @@ export function SetupRoute() {
   }
 
   async function applyVSCode(mode: string) {
+    if (!vscode) {
+      return;
+    }
     await runAction(`vscode-${mode}`, async () => {
       const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/apply", "POST", { mode });
       setVSCode(response);
+      setVSCodeError("");
       setNotice({ tone: "good", message: `VS Code 集成已切换到 ${mode}。` });
     });
   }
 
   async function reinstallShim() {
+    if (!vscode) {
+      return;
+    }
     await runAction("reinstall-shim", async () => {
       const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/reinstall-shim", "POST");
       setVSCode(response);
+      setVSCodeError("");
       setNotice({ tone: "good", message: "已重新安装 managed shim。" });
     });
   }
@@ -297,13 +307,13 @@ export function SetupRoute() {
     >
       {!bootstrap && !error ? <LoadingState title="正在初始化 Setup 页面" description="读取 bootstrap、飞书 App、manifest 和 VS Code 检测结果。" /> : null}
       {error ? <ErrorState title="无法加载 Setup 状态" description="setup shell 已就位，但当前状态读取失败。" detail={error} /> : null}
-      {bootstrap && manifest && vscode ? (
+      {bootstrap && manifest ? (
         <>
           <Panel id="overview" title="当前状态" description="Setup session 现在支持跨多个步骤持续完成，不会在首个 App 保存后直接失效。">
             <StatGrid>
               <StatCard label="Phase" value={bootstrap.phase} tone={bootstrap.setupRequired ? "warn" : "accent"} detail={bootstrap.setupRequired ? "仍需完成 setup" : "setup ready to finish"} />
               <StatCard label="飞书 App" value={apps.length} detail={`已验证 ${verifiedApps.length} / runtime ${bootstrap.feishu.runtimeConfiguredApps}`} />
-              <StatCard label="VS Code" value={vscode.currentMode || "unknown"} detail={vscodeReadinessText(vscode)} />
+              <StatCard label="VS Code" value={vscode?.currentMode || "unavailable"} detail={vscodeReadinessText(vscode)} />
               <StatCard label="会话范围" value={bootstrap.session.scope || "unknown"} detail={bootstrap.session.trustedLoopback ? "loopback trusted" : "setup session cookie"} />
             </StatGrid>
             <DefinitionList
@@ -505,34 +515,35 @@ export function SetupRoute() {
           </Panel>
 
           <Panel id="vscode" title="VS Code 集成" description="SSH 默认推荐 managed shim；本机默认推荐 editor settings。这里直接复用后端检测结果，不依赖 `code` CLI。">
+            {vscodeError ? <div className="notice-banner warn">VS Code 检测暂时不可用：{vscodeError}</div> : null}
             <StatGrid>
-              <StatCard label="Recommended" value={vscode.recommendedMode} tone="accent" detail={vscode.sshSession ? "ssh session" : "local session"} />
-              <StatCard label="Current Mode" value={vscode.currentMode || "unknown"} detail={vscode.currentBinary} />
-              <StatCard label="Settings" value={vscode.settings.matchesBinary ? "ready" : "pending"} detail={vscode.settings.path} />
-              <StatCard label="Managed Shim" value={vscode.latestShim.matchesBinary ? "ready" : "pending"} detail={vscode.latestBundleEntrypoint || "bundle not detected"} />
+              <StatCard label="Recommended" value={vscode?.recommendedMode || "unavailable"} tone="accent" detail={vscode?.sshSession ? "ssh session" : "local session"} />
+              <StatCard label="Current Mode" value={vscode?.currentMode || "unknown"} detail={vscode?.currentBinary || "unavailable"} />
+              <StatCard label="Settings" value={vscode?.settings.matchesBinary ? "ready" : "pending"} detail={vscode?.settings.path || "unavailable"} />
+              <StatCard label="Managed Shim" value={vscode?.latestShim.matchesBinary ? "ready" : "pending"} detail={vscode?.latestBundleEntrypoint || "bundle not detected"} />
             </StatGrid>
             <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => void applyVSCode(vscode.recommendedMode)} disabled={busyAction !== ""}>
+              <button className="primary-button" type="button" onClick={() => void applyVSCode(vscode?.recommendedMode || "editor_settings")} disabled={!vscode || busyAction !== ""}>
                 应用推荐模式
               </button>
-              <button className="secondary-button" type="button" onClick={() => void applyVSCode("editor_settings")} disabled={busyAction !== ""}>
+              <button className="secondary-button" type="button" onClick={() => void applyVSCode("editor_settings")} disabled={!vscode || busyAction !== ""}>
                 写入 settings.json
               </button>
-              <button className="secondary-button" type="button" onClick={() => void applyVSCode("managed_shim")} disabled={busyAction !== ""}>
+              <button className="secondary-button" type="button" onClick={() => void applyVSCode("managed_shim")} disabled={!vscode || busyAction !== ""}>
                 安装 managed shim
               </button>
-              <button className="ghost-button" type="button" onClick={() => void reinstallShim()} disabled={!vscode.needsShimReinstall || busyAction !== ""}>
+              <button className="ghost-button" type="button" onClick={() => void reinstallShim()} disabled={!vscode?.needsShimReinstall || busyAction !== ""}>
                 重新安装 shim
               </button>
             </div>
             <DefinitionList
               items={[
-                { label: "Current Binary", value: vscode.currentBinary },
-                { label: "Install State Path", value: vscode.installStatePath },
-                { label: "Latest Bundle", value: vscode.latestBundleEntrypoint || "not detected" },
-                { label: "Recorded Bundle", value: vscode.recordedBundleEntrypoint || "not recorded" },
-                { label: "Needs Reinstall", value: vscode.needsShimReinstall ? "yes" : "no" },
-                { label: "Settings Target", value: vscode.settings.path },
+                { label: "Current Binary", value: vscode?.currentBinary || "unavailable" },
+                { label: "Install State Path", value: vscode?.installStatePath || "unavailable" },
+                { label: "Latest Bundle", value: vscode?.latestBundleEntrypoint || "not detected" },
+                { label: "Recorded Bundle", value: vscode?.recordedBundleEntrypoint || "not recorded" },
+                { label: "Needs Reinstall", value: vscode?.needsShimReinstall ? "yes" : "no" },
+                { label: "Settings Target", value: vscode?.settings.path || "unavailable" },
               ]}
             />
           </Panel>
@@ -554,7 +565,7 @@ export function SetupRoute() {
                 },
                 {
                   title: "VS Code 状态",
-                  meta: vscode.currentMode,
+                  meta: vscode?.currentMode || "unavailable",
                   detail: vscodeReadinessText(vscode),
                   tone: vscodeIsReady(vscode) ? "good" : "warn",
                 },
@@ -608,6 +619,20 @@ function syncDraftSelection(
 function blankToUndefined(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+async function loadVSCodeState(path: string): Promise<{ data: VSCodeDetectResponse | null; error: string }> {
+  try {
+    return {
+      data: await requestJSON<VSCodeDetectResponse>(path),
+      error: "",
+    };
+  } catch (err: unknown) {
+    return {
+      data: null,
+      error: formatError(err),
+    };
+  }
 }
 
 function statusTone(state?: string): "neutral" | "good" | "warn" | "danger" {

@@ -105,13 +105,29 @@ export async function sendJSON<TResponse>(path: string, method: string, body?: u
 
 export function formatError(error: unknown): string {
   if (error instanceof APIRequestError) {
-    if (error.code) {
-      return `${error.code}: ${error.message}`;
+    const detail = formatErrorDetails(error.details);
+    const base = error.code ? `${error.code}: ${error.message}` : error.message;
+    if (detail && detail !== error.message) {
+      return `${base} (${detail})`;
     }
-    return error.message;
+    return base;
   }
   if (error instanceof Error) {
     return error.message;
   }
   return String(error);
+}
+
+function formatErrorDetails(details: unknown): string {
+  if (details === undefined || details === null) {
+    return "";
+  }
+  if (typeof details === "string") {
+    return details.trim();
+  }
+  try {
+    return JSON.stringify(details);
+  } catch {
+    return String(details);
+  }
 }

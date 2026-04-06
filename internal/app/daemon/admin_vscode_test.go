@@ -156,6 +156,39 @@ func TestVSCodeApplyEditorSettings(t *testing.T) {
 	}
 }
 
+func TestVSCodeDetectSupportsJSONCSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binaryPath := filepath.Join(home, "bin", "codex-remote")
+	writeExecutableFile(t, binaryPath, "wrapper-binary")
+
+	settingsPath := filepath.Join(home, ".config", "Code", "User", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(settings dir): %v", err)
+	}
+	rawSettings := "{\n  // existing vscode config\n  \"chatgpt.cliExecutable\": \"" + binaryPath + "\",\n}\n"
+	if err := os.WriteFile(settingsPath, []byte(rawSettings), 0o644); err != nil {
+		t.Fatalf("WriteFile(settings): %v", err)
+	}
+
+	app, _, _ := newVSCodeAdminTestApp(t, home, binaryPath, false)
+
+	rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detect status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var detect vscodeDetectResponse
+	if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
+		t.Fatalf("decode detect: %v", err)
+	}
+	if detect.Settings.CLIExecutable != binaryPath {
+		t.Fatalf("settings cli executable = %q, want %q", detect.Settings.CLIExecutable, binaryPath)
+	}
+	if !detect.Settings.MatchesBinary {
+		t.Fatalf("expected settings to match current binary, got %#v", detect.Settings)
+	}
+}
+
 func newVSCodeAdminTestApp(t *testing.T, home, binaryPath string, sshSession bool) (*App, string, string) {
 	t.Helper()
 

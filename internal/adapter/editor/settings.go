@@ -13,7 +13,10 @@ func PatchVSCodeSettings(settingsPath string, executable string) error {
 
 	settings := map[string]any{}
 	if raw, err := os.ReadFile(settingsPath); err == nil && len(raw) > 0 {
-		_ = json.Unmarshal(raw, &settings)
+		settings, err = decodeVSCodeSettings(raw)
+		if err != nil {
+			return err
+		}
 	}
 	settings["chatgpt.cliExecutable"] = executable
 
