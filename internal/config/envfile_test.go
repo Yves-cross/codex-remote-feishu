@@ -7,7 +7,13 @@ import (
 	"testing"
 )
 
+func unsetUnifiedConfigOverride(t *testing.T) {
+	t.Helper()
+	t.Setenv(UnifiedConfigEnvPath, "")
+}
+
 func TestLoadWrapperConfigMigratesLegacyUnifiedEnvToJSON(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
 
@@ -64,6 +70,7 @@ func TestLoadWrapperConfigMigratesLegacyUnifiedEnvToJSON(t *testing.T) {
 }
 
 func TestDefaultAppConfigIncludesPreviewRootFolderName(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	cfg := DefaultAppConfig()
 	if cfg.Storage.PreviewRootFolderName != "Codex Remote Previews" {
 		t.Fatalf("PreviewRootFolderName = %q, want %q", cfg.Storage.PreviewRootFolderName, "Codex Remote Previews")
@@ -71,6 +78,7 @@ func TestDefaultAppConfigIncludesPreviewRootFolderName(t *testing.T) {
 }
 
 func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()
 	overrideDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
@@ -128,6 +136,7 @@ func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
 }
 
 func TestLoadServicesConfigAllowsHostEnvOverrides(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
 	t.Setenv("RELAY_HOST", "0.0.0.0")
@@ -146,6 +155,7 @@ func TestLoadServicesConfigAllowsHostEnvOverrides(t *testing.T) {
 }
 
 func TestLoadersPreferJSONOverLegacySplitFiles(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
 
@@ -204,6 +214,7 @@ func TestLoadersPreferJSONOverLegacySplitFiles(t *testing.T) {
 }
 
 func TestLoadersMigrateLegacySplitFilesAndUpdateInstallState(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	baseDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(baseDir, ".config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(baseDir, ".local", "share"))
@@ -272,6 +283,7 @@ func TestLoadersMigrateLegacySplitFilesAndUpdateInstallState(t *testing.T) {
 }
 
 func TestLoadersIgnoreWorkingDirectoryDotEnv(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
 	projectDir := t.TempDir()
 	t.Chdir(projectDir)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), ".config"))

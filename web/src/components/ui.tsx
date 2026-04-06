@@ -130,6 +130,39 @@ export function ErrorState(props: { title: string; description?: string; detail:
   );
 }
 
+export function BlockingModal(props: {
+  open: boolean;
+  title: string;
+  message: string;
+  detail?: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+}) {
+  if (!props.open) {
+    return null;
+  }
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="blocking-modal-title">
+        <p className="page-kicker">Blocking Error</p>
+        <h3 id="blocking-modal-title">{props.title}</h3>
+        <p>{props.message}</p>
+        {props.detail ? (
+          <details className="modal-detail">
+            <summary>查看技术详情</summary>
+            <pre>{props.detail}</pre>
+          </details>
+        ) : null}
+        <div className="modal-actions">
+          <button className="primary-button" type="button" onClick={props.onConfirm}>
+            {props.confirmLabel ?? "我知道了"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function toneLabel(tone: "neutral" | "good" | "warn" | "danger"): string {
   switch (tone) {
     case "good":

@@ -75,6 +75,16 @@ func TestFeishuManifestAndScopesRoutes(t *testing.T) {
 	if manifestResp.Manifest.Scopes.Scopes.Tenant[0] != "drive:drive" {
 		t.Fatalf("unexpected manifest scopes: %#v", manifestResp.Manifest.Scopes)
 	}
+	if len(manifestResp.Manifest.Menus) < 8 {
+		t.Fatalf("unexpected manifest menus: %#v", manifestResp.Manifest.Menus)
+	}
+	wantReasoningKeys := []string{"reason_low", "reason_medium", "reason_high", "reason_xhigh"}
+	for index, want := range wantReasoningKeys {
+		got := manifestResp.Manifest.Menus[index+4].Key
+		if got != want {
+			t.Fatalf("manifest menu[%d] key = %q, want %q", index+4, got, want)
+		}
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/api/admin/feishu/apps/main/scopes-json", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -199,6 +209,74 @@ func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
 	}
 	if wizard.ConnectionVerifiedAt != nil || wizard.ScopesExportedAt != nil || wizard.EventsConfirmedAt != nil || wizard.CallbacksConfirmedAt != nil || wizard.MenusConfirmedAt != nil || wizard.PublishedAt != nil {
 		t.Fatalf("expected app id change to reset verification/manual wizard steps, got %#v", wizard)
+	}
+}
+
+func TestFeishuPublishCheckRequiresPreviousSetupSteps(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/publish-check", "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("publish check status = %d, want 409 body=%s", rec.Code, rec.Body.String())
+	}
+	var payload feishuAppPublishCheckResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode publish check: %v", err)
+	}
+	if payload.Ready {
+		t.Fatalf("expected publish check to be blocked, got %#v", payload)
+	}
+	if len(payload.Issues) == 0 {
+		t.Fatalf("expected publish check issues, got %#v", payload)
+	}
+}
+
+func TestFeishuPublishCheckMarksPublishedWhenReady(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{}
+	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
+	}
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/verify", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	rec = performAdminRequest(t, app, http.MethodPatch, "/api/admin/feishu/apps/main/wizard", `{"scopesExported":true,"eventsConfirmed":true,"callbacksConfirmed":true,"menusConfirmed":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("wizard update status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/publish-check", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("publish check status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var payload feishuAppPublishCheckResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode publish check: %v", err)
+	}
+	if !payload.Ready {
+		t.Fatalf("expected publish check to pass, got %#v", payload)
+	}
+	if len(gateway.verifyConfigs) < 2 {
+		t.Fatalf("expected publish check to re-run gateway verify, got %#v", gateway.verifyConfigs)
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath: %v", err)
+	}
+	if loaded.Config.Feishu.Apps[0].Wizard.PublishedAt == nil {
+		t.Fatalf("expected publish check to persist publishedAt, got %#v", loaded.Config.Feishu.Apps[0].Wizard)
 	}
 }
 

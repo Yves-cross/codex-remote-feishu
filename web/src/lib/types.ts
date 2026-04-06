@@ -98,6 +98,12 @@ export interface FeishuAppVerifyResponse {
   result: VerifyResult;
 }
 
+export interface FeishuAppPublishCheckResponse {
+  app: FeishuAppSummary;
+  ready: boolean;
+  issues?: string[];
+}
+
 export interface FeishuManifestResponse {
   manifest: FeishuManifest;
 }

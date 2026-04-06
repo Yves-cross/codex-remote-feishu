@@ -6,27 +6,34 @@
 
 1. 打开“凭证与基础信息”，记录 `App ID` 和 `App Secret`。
 2. 打开“添加能力”或“机器人”，确保机器人可接收文本和图片消息，并可发送文本、卡片与 reaction。
-3. 打开“事件与回调”，订阅：
+3. 打开“事件与回调”，先完成事件订阅：
+   - 点击“订阅方式”，默认就是“长连接”，点击保存
    - `im.message.receive_v1`
    - `im.message.recalled_v1`
    - `im.message.reaction.created_v1`
    - `application.bot.menu_v6`
    - `card.action.trigger`
-4. 打开“权限管理”，补齐模板里列出的消息、P2P 和 reaction 相关权限。
-   - 如果控制台支持权限 JSON 导入，可直接使用模板中的 `scopes_import`
-5. 打开“机器人菜单”，创建以下菜单 key：
+4. 在同一个“事件与回调”页面，继续完成回调配置：
+   - 点击“回调订阅方式”
+   - 选择“长连接”，点击保存
+   - 当前版本不需要额外填写 HTTP 回调地址
+5. 打开“权限管理”，补齐模板里列出的消息、P2P 和 reaction 相关权限。
+   - 点击“批量导入/导出权限”
+   - 粘贴模板中的 `scopes_import`
+   - 点击“保存并申请开通”
+6. 打开“机器人菜单”，创建以下菜单 key：
    - `list`
    - `status`
    - `threads`（展示“切换会话”即可）
    - `stop`
-   - `reasonlow`
-   - `reasonmedium`
-   - `reasonhigh`
-   - `reasonxhigh`
+   - `reason_low`
+   - `reason_medium`
+   - `reason_high`
+   - `reason_xhigh`
    - `access_full`
    - `access_confirm`
 
-`card.action.trigger` 现在不仅用于 attach / 切换会话，也用于 approval request 卡片按钮回调；如果这个事件没配，飞书里的确认卡片会点了没反应。
+`card.action.trigger` 现在不仅用于 attach / 切换会话，也用于 approval request 卡片按钮交互；如果这个事件没配，飞书里的确认卡片会点了没反应。
 
 文本命令不需要在飞书控制台单独注册，直接给机器人发消息即可。当前建议保留这些命令：
 
@@ -48,7 +55,9 @@
 
 `app-template.json` 里的 `scopes_import` 字段就是当前后端 manifest 使用的导入样例。
 
-如果你的飞书控制台支持权限 JSON 导入，优先使用这段内容，再补手工确认：
+飞书后台这里的入口名是“批量导入/导出权限”。
+
+如果你的飞书控制台支持权限 JSON 导入，优先在这个入口里粘贴这段内容，再补手工确认：
 
 - `drive:drive`
 - `im:message`
@@ -80,13 +89,24 @@
 - `application.bot.menu_v6`
 - `card.action.trigger`
 
+进入事件列表前，先点击“订阅方式”，默认就是“长连接”，点击保存。
+
 其中：
 
 - `im.message.recalled_v1` 负责撤回尚未发送的排队输入，或取消 staged image
 - `application.bot.menu_v6` 负责实例列表、状态、推理强度和执行权限快捷菜单
 - `card.action.trigger` 负责 selection prompt 和 approval request 两类卡片交互
 
-### 3. 单聊额外权限
+### 3. 回调配置
+
+在同一个“事件与回调”页面里继续完成：
+
+- 点击“回调订阅方式”
+- 选择“长连接”
+- 点击保存
+- 不需要填写 HTTP 回调 URL
+
+### 4. 单聊额外权限
 
 如果你主要通过单聊与机器人交互，还需要额外开通 P2P 消息接收权限。
 

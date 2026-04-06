@@ -25,22 +25,22 @@
         "description": "向当前 turn 发送 stop，并丢弃尚未发出的飞书队列。"
       },
       {
-        "key": "reasonlow",
+        "key": "reason_low",
         "name": "推理 Low",
         "description": "把之后飞书发出的消息推理强度切到 low。"
       },
       {
-        "key": "reasonmedium",
+        "key": "reason_medium",
         "name": "推理 Medium",
         "description": "把之后飞书发出的消息推理强度切到 medium。"
       },
       {
-        "key": "reasonhigh",
+        "key": "reason_high",
         "name": "推理 High",
         "description": "把之后飞书发出的消息推理强度切到 high。"
       },
       {
-        "key": "reasonxhigh",
+        "key": "reason_xhigh",
         "name": "推理 XHigh",
         "description": "把之后飞书发出的消息推理强度切到 xhigh。"
       },
@@ -95,7 +95,7 @@
     },
     {
       "event": "card.action.trigger",
-      "purpose": "处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
+      "purpose": "通过飞书长连接处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
     }
   ],
   "permissions_checklist": [
@@ -112,11 +112,19 @@
     {
       "area": "事件订阅",
       "items": [
+        "点击“订阅方式”，默认就是“长连接”，点击保存。",
         "开启 P2P 消息接收事件",
         "开启消息撤回事件",
         "开启消息 reaction 创建事件",
         "开启机器人菜单点击事件",
-        "开启卡片回调事件 card.action.trigger"
+        "开启 card.action.trigger 事件并保存"
+      ]
+    },
+    {
+      "area": "回调配置",
+      "items": [
+        "点击“回调订阅方式”，选择“长连接”，点击保存。",
+        "当前版本不需要填写 HTTP 回调 URL。"
       ]
     },
     {

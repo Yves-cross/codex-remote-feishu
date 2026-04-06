@@ -32,6 +32,12 @@ type feishuAppVerifyResponse struct {
 	Result feishu.VerifyResult   `json:"result"`
 }
 
+type feishuAppPublishCheckResponse struct {
+	App    adminFeishuAppSummary `json:"app"`
+	Ready  bool                  `json:"ready"`
+	Issues []string              `json:"issues,omitempty"`
+}
+
 type feishuAppWriteRequest struct {
 	ID        string  `json:"id,omitempty"`
 	Name      *string `json:"name,omitempty"`
@@ -511,6 +517,41 @@ func (a *App) handleFeishuAppReconnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, feishuAppResponse{App: summary})
 }
 
+func (a *App) handleFeishuAppPublishCheck(w http.ResponseWriter, r *http.Request) {
+	gatewayID := canonicalGatewayID(r.PathValue("id"))
+	summary, issues, err := a.checkFeishuAppPublishReady(r.Context(), gatewayID)
+	if err != nil {
+		a.writeFeishuMutationError(w, gatewayID, err)
+		return
+	}
+	if len(issues) > 0 {
+		writeJSON(w, http.StatusConflict, feishuAppPublishCheckResponse{
+			App:    summary,
+			Ready:  false,
+			Issues: issues,
+		})
+		return
+	}
+	updated, err := a.updateFeishuAppWizard(gatewayID, feishuAppWizardUpdateRequest{Published: daemonBoolPtr(true)}, time.Now().UTC())
+	if err != nil {
+		a.writeFeishuMutationError(w, gatewayID, err)
+		return
+	}
+	summary, _, err = a.adminFeishuAppSummary(updated, gatewayID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "feishu_app_unavailable",
+			Message: "failed to load feishu app after publish check",
+			Details: gatewayID,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, feishuAppPublishCheckResponse{
+		App:   summary,
+		Ready: true,
+	})
+}
+
 func (a *App) handleFeishuAppEnable(w http.ResponseWriter, r *http.Request) {
 	a.handleFeishuAppRuntimeAction(w, r, daemonBoolPtr(true))
 }
@@ -566,6 +607,73 @@ func (a *App) handleFeishuAppScopesJSON(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, feishuapp.DefaultManifest().Scopes)
+}
+
+func (a *App) checkFeishuAppPublishReady(ctx context.Context, gatewayID string) (adminFeishuAppSummary, []string, error) {
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		return adminFeishuAppSummary{}, nil, err
+	}
+	summary, ok, err := a.adminFeishuAppSummary(loaded, gatewayID)
+	if err != nil {
+		return adminFeishuAppSummary{}, nil, err
+	}
+	if !ok {
+		return adminFeishuAppSummary{}, nil, fmt.Errorf("feishu_app_not_found:%s", gatewayID)
+	}
+	index := indexOfConfigFeishuApp(loaded.Config.Feishu.Apps, gatewayID)
+	if index < 0 {
+		return summary, []string{"当前应用还没有持久化到本地配置。"}, nil
+	}
+
+	app := loaded.Config.Feishu.Apps[index]
+	issues := make([]string, 0, 6)
+	if strings.TrimSpace(app.AppID) == "" || strings.TrimSpace(app.AppSecret) == "" {
+		issues = append(issues, "当前应用的 App ID / App Secret 还不完整。")
+	}
+	if app.Wizard.ConnectionVerifiedAt == nil {
+		issues = append(issues, "还没有完成“创建并连接飞书应用”里的连接测试。")
+	}
+	if app.Wizard.ScopesExportedAt == nil {
+		issues = append(issues, "还没有确认权限导入。")
+	}
+	if app.Wizard.EventsConfirmedAt == nil {
+		issues = append(issues, "还没有确认事件订阅。")
+	}
+	if app.Wizard.CallbacksConfirmedAt == nil {
+		issues = append(issues, "还没有确认回调长连接配置。")
+	}
+	if app.Wizard.MenusConfirmedAt == nil {
+		issues = append(issues, "还没有确认机器人菜单配置。")
+	}
+
+	if runtimeCfg, ok := a.runtimeGatewayConfigFor(loaded.Config, gatewayID); ok {
+		controller, controllerErr := a.gatewayController()
+		if controllerErr != nil {
+			issues = append(issues, "当前环境暂时无法执行飞书长连接验收。")
+		} else {
+			verifyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			result, verifyErr := controller.Verify(verifyCtx, runtimeCfg)
+			if verifyErr != nil {
+				message := strings.TrimSpace(result.ErrorMessage)
+				if message == "" {
+					message = verifyErr.Error()
+				}
+				issues = append(issues, "飞书长连接验证失败："+message)
+			} else if !result.Connected {
+				message := strings.TrimSpace(result.ErrorMessage)
+				if message == "" {
+					message = "连接没有成功建立"
+				}
+				issues = append(issues, "飞书长连接验证失败："+message)
+			}
+		}
+	} else {
+		issues = append(issues, "当前应用还没有进入运行时长连接配置。")
+	}
+
+	return summary, issues, nil
 }
 
 func (a *App) adminFeishuApps(loaded config.LoadedAppConfig) ([]adminFeishuAppSummary, error) {

@@ -39,12 +39,14 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 
 func TestMenuActionReasoningPresets(t *testing.T) {
 	tests := map[string]string{
-		"reasonlow":    "/reasoning low",
-		"reason_low":   "/reasoning low",
-		"reasonmedium": "/reasoning medium",
-		"reasonhigh":   "/reasoning high",
-		"reason_xhigh": "/reasoning xhigh",
-		"reasonxhigh":  "/reasoning xhigh",
+		"reason_low":    "/reasoning low",
+		"reasonlow":     "/reasoning low",
+		"reason_medium": "/reasoning medium",
+		"reasonmedium":  "/reasoning medium",
+		"reason_high":   "/reasoning high",
+		"reasonhigh":    "/reasoning high",
+		"reason_xhigh":  "/reasoning xhigh",
+		"reasonxhigh":   "/reasoning xhigh",
 	}
 	for key, wantText := range tests {
 		got, ok := menuAction(key)
@@ -102,6 +104,7 @@ func TestNormalizeMenuEventKey(t *testing.T) {
 		" accessFull \n":   "accessfull",
 		"show_all_threads": "showallthreads",
 		"approval_confirm": "approvalconfirm",
+		"reason_high":      "reasonhigh",
 		"reason_xhigh":     "reasonxhigh",
 	}
 	for input, want := range tests {

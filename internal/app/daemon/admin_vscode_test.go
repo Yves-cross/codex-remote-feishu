@@ -156,6 +156,53 @@ func TestVSCodeApplyEditorSettings(t *testing.T) {
 	}
 }
 
+func TestVSCodeDetectRecommendsAllOutsideSSH(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binaryPath := filepath.Join(home, "bin", "codex-remote")
+	writeExecutableFile(t, binaryPath, "wrapper-binary")
+
+	app, _, _ := newVSCodeAdminTestApp(t, home, binaryPath, false)
+
+	rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detect status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var detect vscodeDetectResponse
+	if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
+		t.Fatalf("decode detect: %v", err)
+	}
+	if detect.RecommendedMode != "all" {
+		t.Fatalf("recommended mode = %q, want all", detect.RecommendedMode)
+	}
+}
+
+func TestVSCodeApplyAllAliasesBoth(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, ".vscode-server", "extensions"))
+	binaryPath := filepath.Join(home, "bin", "codex-remote")
+	writeExecutableFile(t, binaryPath, "wrapper-binary")
+
+	entrypoint := filepath.Join(home, ".vscode-server", "extensions", "openai.chatgpt-1", "bin", "linux-x86_64", "codex")
+	writeExecutableFile(t, entrypoint, "orig")
+
+	app, configPath, _ := newVSCodeAdminTestApp(t, home, binaryPath, false)
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/apply", `{"mode":"all"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apply all status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath: %v", err)
+	}
+	if loaded.Config.Wrapper.IntegrationMode != "both" {
+		t.Fatalf("wrapper integration mode = %q, want both", loaded.Config.Wrapper.IntegrationMode)
+	}
+}
+
 func TestVSCodeDetectSupportsJSONCSettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

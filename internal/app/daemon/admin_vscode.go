@@ -163,7 +163,7 @@ func (a *App) buildVSCodeDetectResponse() (vscodeDetectResponse, error) {
 	if currentMode == "" {
 		currentMode = "editor_settings"
 	}
-	recommendedMode := "editor_settings"
+	recommendedMode := "all"
 	if admin.sshSession {
 		recommendedMode = "managed_shim"
 	}
@@ -172,7 +172,7 @@ func (a *App) buildVSCodeDetectResponse() (vscodeDetectResponse, error) {
 	return vscodeDetectResponse{
 		SSHSession:                 admin.sshSession,
 		RecommendedMode:            recommendedMode,
-		CurrentMode:                currentMode,
+		CurrentMode:                displayVSCodeMode(currentMode),
 		CurrentBinary:              currentBinary,
 		InstallStatePath:           installStatePath,
 		InstallState:               installState,
@@ -348,14 +348,24 @@ func resolveVSCodeMode(raw string, sshSession bool) (string, error) {
 		if sshSession {
 			return string(install.IntegrationManagedShim), nil
 		}
-		return string(install.IntegrationEditorSettings), nil
+		return "both", nil
 	}
 	switch raw {
-	case string(install.IntegrationEditorSettings), string(install.IntegrationManagedShim), "both":
+	case string(install.IntegrationEditorSettings), string(install.IntegrationManagedShim), "both", "all":
+		if raw == "all" {
+			return "both", nil
+		}
 		return raw, nil
 	default:
 		return "", errors.New("unsupported vscode integration mode")
 	}
+}
+
+func displayVSCodeMode(mode string) string {
+	if strings.TrimSpace(mode) == "both" {
+		return "all"
+	}
+	return mode
 }
 
 func integrationModesFor(mode string) []install.WrapperIntegrationMode {

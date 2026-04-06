@@ -55,17 +55,17 @@ func DefaultManifest() Manifest {
 			{Event: "im.message.recalled_v1", Purpose: "用户撤回尚未执行的输入时，取消排队消息或 staged image。"},
 			{Event: "im.message.reaction.created_v1", Purpose: "用户对待发送图片或排队消息加 reaction 时，表示取消。"},
 			{Event: "application.bot.menu_v6", Purpose: "处理机器人菜单里的实例、状态、推理强度和执行权限快捷键。"},
-			{Event: "card.action.trigger", Purpose: "处理选择卡片、approval request 卡片和其他交互回调。"},
+			{Event: "card.action.trigger", Purpose: "通过飞书长连接处理选择卡片、approval request 卡片和其他交互点击。"},
 		},
 		Menus: []MenuRequirement{
 			{Key: "list", Name: "列出实例", Description: "列出当前在线的 Codex 实例，并等待回复序号进行 attach。"},
 			{Key: "status", Name: "当前状态", Description: "查看当前接管实例、会话、模型和排队状态。"},
 			{Key: "threads", Name: "切换会话", Description: "列出当前实例的已知会话，并等待回复序号切换。"},
 			{Key: "stop", Name: "停止当前执行", Description: "向当前 turn 发送 stop，并丢弃尚未发出的飞书队列。"},
-			{Key: "reasonlow", Name: "推理 Low", Description: "把之后飞书发出的消息推理强度切到 low。"},
-			{Key: "reasonmedium", Name: "推理 Medium", Description: "把之后飞书发出的消息推理强度切到 medium。"},
-			{Key: "reasonhigh", Name: "推理 High", Description: "把之后飞书发出的消息推理强度切到 high。"},
-			{Key: "reasonxhigh", Name: "推理 XHigh", Description: "把之后飞书发出的消息推理强度切到 xhigh。"},
+			{Key: "reason_low", Name: "推理 Low", Description: "把之后飞书发出的消息推理强度切到 low。"},
+			{Key: "reason_medium", Name: "推理 Medium", Description: "把之后飞书发出的消息推理强度切到 medium。"},
+			{Key: "reason_high", Name: "推理 High", Description: "把之后飞书发出的消息推理强度切到 high。"},
+			{Key: "reason_xhigh", Name: "推理 XHigh", Description: "把之后飞书发出的消息推理强度切到 xhigh。"},
 			{Key: "access_full", Name: "执行权限 Full", Description: "把之后飞书发出的消息执行权限切到 full access。"},
 			{Key: "access_confirm", Name: "执行权限 Confirm", Description: "把之后飞书发出的消息执行权限切到 confirm。"},
 		},
@@ -80,15 +80,23 @@ func DefaultManifest() Manifest {
 			{
 				Area: "权限导入",
 				Items: []string{
-					"将 scopes import JSON 导入权限管理。",
+					"打开“权限管理”里的“批量导入/导出权限”，粘贴 scopes import JSON。",
+					"点击“保存并申请开通”，再回到当前页面继续。",
 					"如果需要 Markdown 预览，保持 drive:drive 权限启用。",
 				},
 			},
 			{
-				Area: "事件与回调",
+				Area: "事件订阅",
 				Items: []string{
+					"打开“事件与回调”页，在“订阅方式”里确认长连接并保存。",
 					"手工订阅 manifest 里的全部事件。",
-					"手工配置卡片回调与菜单回调，当前控制台不支持用 JSON 导入。",
+				},
+			},
+			{
+				Area: "回调配置",
+				Items: []string{
+					"在“事件与回调”页的“回调配置”里，将“回调订阅方式”设为长连接。",
+					"当前版本不需要填写 HTTP 回调 URL。",
 				},
 			},
 			{

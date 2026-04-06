@@ -1,42 +1,76 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatError, requestJSON, requestJSONAllowHTTPError, requestVoid, sendJSON } from "../lib/api";
+import { formatError, requestJSON, requestJSONAllowHTTPError, sendJSON } from "../lib/api";
 import type {
   BootstrapState,
+  FeishuAppPublishCheckResponse,
   FeishuAppResponse,
   FeishuAppSummary,
   FeishuAppVerifyResponse,
   FeishuAppsResponse,
   FeishuManifestResponse,
-  GatewayStatus,
   SetupCompleteResponse,
   VSCodeDetectResponse,
 } from "../lib/types";
-import { DataList, DefinitionList, ErrorState, LoadingState, Panel, ShellFrame, StatCard, StatGrid, StatusBadge } from "../components/ui";
+import { BlockingModal, ErrorState, LoadingState, Panel, StatusBadge } from "../components/ui";
 
 const newAppID = "__new__";
 
 type SetupDraft = {
   isNew: boolean;
-  id: string;
   name: string;
   appId: string;
   appSecret: string;
-  enabled: boolean;
 };
 
 type Notice = {
-  tone: "good" | "warn" | "danger";
+  tone: "good" | "warn";
   message: string;
 };
 
-const emptyDraft = (): SetupDraft => ({
-  isNew: true,
-  id: "",
-  name: "",
-  appId: "",
-  appSecret: "",
-  enabled: true,
-});
+type BlockingErrorState = {
+  title: string;
+  message: string;
+  detail?: string;
+} | null;
+
+type StepID =
+  | "start"
+  | "connect"
+  | "permissions"
+  | "events"
+  | "longConnection"
+  | "menus"
+  | "publish"
+  | "vscode"
+  | "finish";
+
+type WizardStep = {
+  id: StepID;
+  label: string;
+  summary: string;
+  optional?: boolean;
+};
+
+const wizardSteps: WizardStep[] = [
+  { id: "start", label: "开始", summary: "说明安装向导会做什么。" },
+  { id: "connect", label: "创建并连接飞书应用", summary: "创建应用、添加机器人能力，并完成连接测试。" },
+  { id: "permissions", label: "配置应用权限", summary: "复制 scopes JSON，并在“批量导入/导出权限”里保存申请。" },
+  { id: "events", label: "配置事件订阅", summary: "按 manifest 订阅需要的飞书事件，并在“订阅方式”里保存长连接。" },
+  { id: "longConnection", label: "配置回调订阅方式", summary: "把“回调订阅方式”设为长连接，不填写 HTTP 回调 URL。" },
+  { id: "menus", label: "配置机器人菜单", summary: "按 key 创建真正会生效的机器人菜单。" },
+  { id: "publish", label: "发布应用", summary: "发版后执行一次服务端验收检查。" },
+  { id: "vscode", label: "VS Code（可选）", summary: "SSH 推荐 managed_shim，其他情况推荐 all。", optional: true },
+  { id: "finish", label: "完成", summary: "提示首次对话路径，并进入本地管理页。" },
+];
+
+function emptyDraft(): SetupDraft {
+  return {
+    isNew: true,
+    name: "",
+    appId: "",
+    appSecret: "",
+  };
+}
 
 export function SetupRoute() {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
@@ -45,11 +79,19 @@ export function SetupRoute() {
   const [vscode, setVSCode] = useState<VSCodeDetectResponse | null>(null);
   const [vscodeError, setVSCodeError] = useState<string>("");
   const [selectedID, setSelectedID] = useState<string>(newAppID);
-  const [draft, setDraft] = useState<SetupDraft>(emptyDraft);
+  const [draft, setDraft] = useState<SetupDraft>(emptyDraft());
+  const [setupStarted, setSetupStarted] = useState(false);
+  const [permissionsConfirmed, setPermissionsConfirmed] = useState(false);
+  const [eventsConfirmed, setEventsConfirmed] = useState(false);
+  const [longConnectionConfirmed, setLongConnectionConfirmed] = useState(false);
+  const [menusConfirmed, setMenusConfirmed] = useState(false);
+  const [vscodeDeferred, setVSCodeDeferred] = useState(false);
+  const [currentStepHint, setCurrentStepHint] = useState<StepID>("start");
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyAction, setBusyAction] = useState<string>("");
   const [finishInfo, setFinishInfo] = useState<SetupCompleteResponse | null>(null);
+  const [blockingError, setBlockingError] = useState<BlockingErrorState>(null);
 
   async function loadData(preferredID?: string) {
     const [bootstrapState, appList, manifestResponse, vscodeState] = await Promise.all([
@@ -58,12 +100,23 @@ export function SetupRoute() {
       requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
       loadVSCodeState("/api/setup/vscode/detect"),
     ]);
+    const nextSelectedID = chooseAppID(appList.apps, preferredID ?? selectedID);
+    const nextActiveApp = appList.apps.find((app) => app.id === nextSelectedID) ?? null;
+
     setBootstrap(bootstrapState);
     setApps(appList.apps);
     setManifest(manifestResponse.manifest);
     setVSCode(vscodeState.data);
     setVSCodeError(vscodeState.error);
-    syncDraftSelection(appList.apps, preferredID ?? selectedID, setSelectedID, setDraft);
+    setSelectedID(nextSelectedID);
+    setDraft(appToDraft(nextActiveApp));
+    setCurrentStepHint((current) => {
+      const fallback = defaultStepFor(bootstrapState, appList.apps, nextActiveApp, vscodeState.data, vscodeDeferred, setupStarted);
+      if (current === "start" && fallback !== "start") {
+        return fallback;
+      }
+      return isStepReachable(current, bootstrapState, nextActiveApp) ? current : fallback;
+    });
   }
 
   useEffect(() => {
@@ -84,26 +137,54 @@ export function SetupRoute() {
     };
   }, []);
 
-  const activeApp = selectedID === newAppID ? null : apps.find((app) => app.id === selectedID) ?? null;
+  const activeApp = useMemo(() => apps.find((app) => app.id === selectedID) ?? null, [apps, selectedID]);
   const scopesJSON = useMemo(() => JSON.stringify(manifest?.scopesImport ?? { scopes: { tenant: [], user: [] } }, null, 2), [manifest]);
-  const verifiedApps = useMemo(() => apps.filter((app) => Boolean(app.wizard?.connectionVerifiedAt || app.verifiedAt)), [apps]);
-  const finishDisabledReason = bootstrap?.setupRequired
-    ? "先保存至少一个带完整凭证的飞书 App"
-    : verifiedApps.length === 0
-      ? "至少完成一个飞书 App 的连通性验证"
-      : "";
 
-  const wizardChecklistItems = activeApp
-    ? [
-        { label: "凭证已保存", done: Boolean(activeApp.wizard?.credentialsSavedAt), timestamp: activeApp.wizard?.credentialsSavedAt },
-        { label: "连接已验证", done: Boolean(activeApp.wizard?.connectionVerifiedAt), timestamp: activeApp.wizard?.connectionVerifiedAt },
-        { label: "Scopes 已导出", done: Boolean(activeApp.wizard?.scopesExportedAt), timestamp: activeApp.wizard?.scopesExportedAt },
-        { label: "事件已确认", done: Boolean(activeApp.wizard?.eventsConfirmedAt), timestamp: activeApp.wizard?.eventsConfirmedAt },
-        { label: "回调已确认", done: Boolean(activeApp.wizard?.callbacksConfirmedAt), timestamp: activeApp.wizard?.callbacksConfirmedAt },
-        { label: "菜单已确认", done: Boolean(activeApp.wizard?.menusConfirmedAt), timestamp: activeApp.wizard?.menusConfirmedAt },
-        { label: "机器人已发布", done: Boolean(activeApp.wizard?.publishedAt), timestamp: activeApp.wizard?.publishedAt },
-      ]
-    : [];
+  useEffect(() => {
+    if (apps.length > 0) {
+      setSetupStarted(true);
+    }
+  }, [apps.length]);
+
+  useEffect(() => {
+    setDraft(appToDraft(activeApp));
+  }, [activeApp?.id, activeApp?.name, activeApp?.appId, activeApp?.hasSecret]);
+
+  useEffect(() => {
+    setPermissionsConfirmed(Boolean(activeApp?.wizard?.scopesExportedAt));
+    setEventsConfirmed(Boolean(activeApp?.wizard?.eventsConfirmedAt));
+    setLongConnectionConfirmed(Boolean(activeApp?.wizard?.callbacksConfirmedAt));
+    setMenusConfirmed(Boolean(activeApp?.wizard?.menusConfirmedAt));
+  }, [
+    activeApp?.id,
+    activeApp?.wizard?.scopesExportedAt,
+    activeApp?.wizard?.eventsConfirmedAt,
+    activeApp?.wizard?.callbacksConfirmedAt,
+    activeApp?.wizard?.menusConfirmedAt,
+  ]);
+
+  const resolvedCurrentStep = useMemo(
+    () => (isStepReachable(currentStepHint, bootstrap, activeApp) ? currentStepHint : defaultStepFor(bootstrap, apps, activeApp, vscode, vscodeDeferred, setupStarted)),
+    [activeApp, apps, bootstrap, currentStepHint, setupStarted, vscode, vscodeDeferred],
+  );
+  const currentStepIndex = wizardSteps.findIndex((step) => step.id === resolvedCurrentStep);
+  const currentStepMeta = wizardSteps[currentStepIndex >= 0 ? currentStepIndex : 0];
+  const stepCompletion = {
+    start: setupStarted || apps.length > 0,
+    connect: Boolean(activeApp?.wizard?.connectionVerifiedAt),
+    permissions: Boolean(activeApp?.wizard?.scopesExportedAt),
+    events: Boolean(activeApp?.wizard?.eventsConfirmedAt),
+    longConnection: Boolean(activeApp?.wizard?.callbacksConfirmedAt),
+    menus: Boolean(activeApp?.wizard?.menusConfirmedAt),
+    publish: Boolean(activeApp?.wizard?.publishedAt),
+    vscode: vscodeDeferred || vscodeIsReady(vscode),
+  };
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [resolvedCurrentStep]);
 
   async function runAction(label: string, work: () => Promise<void>) {
     setBusyAction(label);
@@ -111,509 +192,711 @@ export function SetupRoute() {
     try {
       await work();
     } catch (err: unknown) {
-      setNotice({ tone: "danger", message: formatError(err) });
+      showBlockingError("这一步还没有完成", formatError(err));
     } finally {
       setBusyAction("");
     }
   }
 
-  function selectApp(app: FeishuAppSummary) {
-    setSelectedID(app.id);
-    setDraft(appToDraft(app));
-    setNotice(null);
+  function showBlockingError(title: string, message: string, detail?: string) {
+    setBlockingError({ title, message, detail });
   }
 
-  function beginNewApp() {
-    setSelectedID(newAppID);
-    setDraft(emptyDraft());
-    setNotice(null);
+  async function copyText(value: string, successMessage: string) {
+    await runAction("copy-text", async () => {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("当前浏览器不支持复制到剪贴板。");
+      }
+      await navigator.clipboard.writeText(value);
+      setNotice({ tone: "good", message: successMessage });
+    });
   }
 
-  async function saveApp() {
-    await runAction(draft.isNew ? "create-app" : "save-app", async () => {
+  async function testAndContinue() {
+    const hasPersistedSecret = Boolean(activeApp?.hasSecret);
+    if (activeApp?.readOnly) {
+      await verifyExistingAppAndAdvance(activeApp.id);
+      return;
+    }
+    if (draft.appId.trim() === "") {
+      showBlockingError("这一步还没有完成", "请先填写 App ID。");
+      return;
+    }
+    if (draft.appSecret.trim() === "" && !hasPersistedSecret) {
+      showBlockingError("这一步还没有完成", "请先填写 App Secret。");
+      return;
+    }
+
+    await runAction("connect-app", async () => {
       const payload = {
-        id: draft.isNew ? blankToUndefined(draft.id) : undefined,
         name: blankToUndefined(draft.name),
         appId: blankToUndefined(draft.appId),
         appSecret: blankToUndefined(draft.appSecret),
-        enabled: draft.enabled,
+        enabled: true,
       };
-      const path = draft.isNew ? "/api/setup/feishu/apps" : `/api/setup/feishu/apps/${encodeURIComponent(selectedID)}`;
-      const method = draft.isNew ? "POST" : "PUT";
-      const response = await sendJSON<FeishuAppResponse>(path, method, payload);
-      await loadData(response.app.id);
-      setNotice({ tone: "good", message: draft.isNew ? "飞书 App 已创建并写入配置。" : "飞书 App 配置已更新。" });
+      const response = draft.isNew
+        ? await sendJSON<FeishuAppResponse>("/api/setup/feishu/apps", "POST", payload)
+        : await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(selectedID)}`, "PUT", payload);
+      await verifyExistingAppAndAdvance(response.app.id);
     });
   }
 
-  async function deleteApp() {
-    if (!activeApp) {
-      return;
-    }
-    if (!window.confirm(`删除飞书 App “${activeApp.name || activeApp.id}”？`)) {
-      return;
-    }
-    await runAction("delete-app", async () => {
-      await requestVoid(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}`, { method: "DELETE" });
-      await loadData(newAppID);
-      setNotice({ tone: "good", message: "飞书 App 已删除。" });
-    });
-  }
-
-  async function verifyApp() {
-    if (!activeApp) {
-      return;
-    }
+  async function verifyExistingAppAndAdvance(appID: string) {
     await runAction("verify-app", async () => {
-      const response = await requestJSONAllowHTTPError<FeishuAppVerifyResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/verify`, {
+      const response = await requestJSONAllowHTTPError<FeishuAppVerifyResponse>(`/api/setup/feishu/apps/${encodeURIComponent(appID)}/verify`, {
+        method: "POST",
+      });
+      await loadData(appID);
+      if (!response.ok) {
+        const detail = `${response.data.result.errorCode || "verify_failed"} ${response.data.result.errorMessage || ""}`.trim();
+        showBlockingError("这一步还没有完成", "飞书应用连接测试失败，请检查 App ID、App Secret，以及飞书平台里是否已经添加机器人能力。", detail);
+        return;
+      }
+      setNotice({ tone: "good", message: "飞书应用连接成功，已进入下一步。" });
+      setSetupStarted(true);
+      setCurrentStepHint("permissions");
+    });
+  }
+
+  async function confirmPermissionsAndContinue() {
+    if (!permissionsConfirmed) {
+      showBlockingError("这一步还没有完成", "请先在飞书平台完成权限导入，并勾选页面上的确认项。");
+      return;
+    }
+    if (!activeApp) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的飞书应用。");
+      return;
+    }
+    await runAction("wizard-permissions", async () => {
+      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", { scopesExported: true });
+      await loadData(activeApp.id);
+      setNotice({ tone: "good", message: "权限导入已记录，继续下一步。" });
+      setCurrentStepHint("events");
+    });
+  }
+
+  async function confirmEventsAndContinue() {
+    if (!eventsConfirmed) {
+      showBlockingError("这一步还没有完成", "请先在飞书平台完成事件订阅，并勾选页面上的确认项。");
+      return;
+    }
+    if (!activeApp) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的飞书应用。");
+      return;
+    }
+    await runAction("wizard-events", async () => {
+      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", { eventsConfirmed: true });
+      await loadData(activeApp.id);
+      setNotice({ tone: "good", message: "事件订阅已记录，继续下一步。" });
+      setCurrentStepHint("longConnection");
+    });
+  }
+
+  async function confirmLongConnectionAndContinue() {
+    if (!longConnectionConfirmed) {
+      showBlockingError("这一步还没有完成", "请先在飞书平台把回调订阅方式保存为长连接，并勾选页面上的确认项。");
+      return;
+    }
+    if (!activeApp) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的飞书应用。");
+      return;
+    }
+    await runAction("wizard-long-connection", async () => {
+      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", { callbacksConfirmed: true });
+      await loadData(activeApp.id);
+      setNotice({ tone: "good", message: "回调长连接配置已记录，继续下一步。" });
+      setCurrentStepHint("menus");
+    });
+  }
+
+  async function confirmMenusAndContinue() {
+    if (!menusConfirmed) {
+      showBlockingError("这一步还没有完成", "请先在飞书平台完成机器人菜单配置，并勾选页面上的确认项。");
+      return;
+    }
+    if (!activeApp) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的飞书应用。");
+      return;
+    }
+    await runAction("wizard-menus", async () => {
+      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", { menusConfirmed: true });
+      await loadData(activeApp.id);
+      setNotice({ tone: "good", message: "机器人菜单配置已记录，继续下一步。" });
+      setCurrentStepHint("publish");
+    });
+  }
+
+  async function checkPublishAndContinue() {
+    if (!activeApp) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的飞书应用。");
+      return;
+    }
+    await runAction("publish-check", async () => {
+      const response = await requestJSONAllowHTTPError<FeishuAppPublishCheckResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/publish-check`, {
         method: "POST",
       });
       await loadData(activeApp.id);
-      if (response.ok) {
-        setNotice({ tone: "good", message: `验证成功，用时 ${(response.data.result.duration / 1_000_000_000).toFixed(1)}s。` });
+      if (!response.ok || !response.data.ready) {
+        showBlockingError(
+          "这一步还没有完成",
+          "发布验收没有通过。请先回到飞书后台完成缺失项，再重新点击“检查并继续”。",
+          (response.data.issues ?? []).join("\n"),
+        );
         return;
       }
-      setNotice({
-        tone: "danger",
-        message: `验证失败：${response.data.result.errorCode || "verify_failed"} ${response.data.result.errorMessage || ""}`.trim(),
-      });
+      setNotice({ tone: "good", message: "发布验收通过，继续下一步。" });
+      setCurrentStepHint("vscode");
     });
   }
 
-  async function updateWizardStep(field: "scopesExported" | "eventsConfirmed" | "callbacksConfirmed" | "menusConfirmed" | "published", value: boolean) {
-    if (!activeApp) {
-      return;
-    }
-    await runAction(`wizard-${field}`, async () => {
-      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", {
-        [field]: value,
+  async function applyRecommendedVSCode() {
+    await runAction("vscode-apply", async () => {
+      const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/apply", "POST", {
+        mode: vscode?.recommendedMode || "all",
       });
-      await loadData(activeApp.id);
-      setNotice({ tone: value ? "good" : "warn", message: value ? "已更新向导进度。" : "已撤销对应的向导确认状态。" });
-    });
-  }
-
-  async function copyScopesJSON() {
-    const app = activeApp;
-    if (!app) {
-      return;
-    }
-    await runAction("copy-scopes", async () => {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(scopesJSON);
-      }
-      await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(app.id)}/wizard`, "PATCH", {
-        scopesExported: true,
-      });
-      await loadData(app.id);
-      setNotice({ tone: "good", message: "Scopes JSON 已复制，并标记为已导出。" });
-    });
-  }
-
-  async function applyVSCode(mode: string) {
-    if (!vscode) {
-      return;
-    }
-    await runAction(`vscode-${mode}`, async () => {
-      const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/apply", "POST", { mode });
       setVSCode(response);
       setVSCodeError("");
-      setNotice({ tone: "good", message: `VS Code 集成已切换到 ${mode}。` });
-    });
-  }
-
-  async function reinstallShim() {
-    if (!vscode) {
-      return;
-    }
-    await runAction("reinstall-shim", async () => {
-      const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/reinstall-shim", "POST");
-      setVSCode(response);
-      setVSCodeError("");
-      setNotice({ tone: "good", message: "已重新安装 managed shim。" });
+      setVSCodeDeferred(false);
+      setNotice({ tone: "good", message: `VS Code 推荐模式已应用：${response.recommendedMode}。` });
+      setCurrentStepHint("finish");
     });
   }
 
   async function finishSetup() {
+    if (!bootstrap) {
+      return;
+    }
     await runAction("finish-setup", async () => {
       const response = await sendJSON<SetupCompleteResponse>("/api/setup/complete", "POST");
+      if (bootstrap.session.trustedLoopback) {
+        window.location.assign("/");
+        return;
+      }
       setFinishInfo(response);
-      setNotice(null);
+      setNotice({ tone: "good", message: response.message });
     });
   }
 
-  if (finishInfo && bootstrap) {
-    return (
-      <ShellFrame
-        routeLabel="Setup Completed"
-        title="安装向导已完成"
-        subtitle="Setup access 已经关闭。当前页面保留最终结果摘要，避免远程 session 结束后立即失去上下文。"
-        nav={[
-          { label: "完成摘要", href: "#summary" },
-          { label: "后续动作", href: "#next" },
-        ]}
-      >
-        <Panel id="summary" title="完成摘要" description="这一阶段会主动关闭 setup access，并清除 setup session cookie。">
-          <StatGrid>
-            <StatCard label="Phase" value={bootstrap.phase} tone="accent" detail="setup flow closed" />
-            <StatCard label="已验证 App" value={verifiedApps.length} detail={`${apps.length} total apps`} />
-            <StatCard label="VS Code 模式" value={vscode?.currentMode || "unknown"} detail={vscodeReadinessText(vscode)} />
-            <StatCard label="Admin URL" value="ready" detail={finishInfo.adminURL} />
-          </StatGrid>
-          <div className="notice-banner good">{finishInfo.message}</div>
-        </Panel>
+  function goToPreviousStep() {
+    const previous = previousStepFor(resolvedCurrentStep);
+    if (previous) {
+      setCurrentStepHint(previous);
+    }
+  }
 
-        <Panel id="next" title="后续动作" description="远程 SSH setup 在这一阶段不会自动升级成远程 admin session。">
-          <DataList
-            items={[
-              {
-                title: bootstrap.session.trustedLoopback ? "打开本地管理页" : "管理页访问限制",
-                meta: bootstrap.session.trustedLoopback ? finishInfo.adminURL : "localhost only",
-                detail: bootstrap.session.trustedLoopback
-                  ? "当前请求来自 loopback，后续可以直接继续本地管理页。"
-                  : "远程 setup access 已关闭；正式 admin 访问当前仍限定在 localhost。",
-                tone: bootstrap.session.trustedLoopback ? "good" : "warn",
-              },
-              {
-                title: "飞书长连接",
-                meta: verifiedApps.length > 0 ? "verified" : "pending",
-                detail: verifiedApps.length > 0 ? "至少一个飞书 App 已通过验证，可继续回到飞书平台完成最终人工确认。" : "如果还没有完成验证，建议重新进入 setup 或在本地 admin 中继续调整。",
-                tone: verifiedApps.length > 0 ? "good" : "warn",
-              },
-            ]}
-          />
-        </Panel>
-      </ShellFrame>
+  function renderStepBody() {
+    if (!bootstrap || !manifest) {
+      return null;
+    }
+    switch (resolvedCurrentStep) {
+      case "start":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-callout">
+              <h4>开始设置 Codex Remote</h4>
+              <p>这是一套分步向导。你现在只需要先把一个能正常工作的飞书应用接上，后面的步骤会一页一页继续做。</p>
+              <ul className="wizard-bullet-list">
+                <li>先创建并连接飞书应用。</li>
+                <li>再完成权限、事件、回调长连接、菜单和发布。</li>
+                <li>最后按需配置 VS Code 集成。</li>
+              </ul>
+            </div>
+          </div>
+        );
+      case "connect":
+        return (
+          <div className="wizard-step-layout two-column">
+            <div className="wizard-form-stack">
+              {apps.length > 1 ? <div className="notice-banner warn">当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。</div> : null}
+              {activeApp?.readOnly ? <div className="notice-banner warn">当前应用由运行时环境变量接管，setup 页面会直接对它做连接测试，但不会修改本地配置。</div> : null}
+              <label className="field">
+                <span>显示名称</span>
+                <input value={draft.name} placeholder="Main Bot" disabled={Boolean(activeApp?.readOnly)} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>App ID</span>
+                <input value={draft.appId} placeholder="cli_xxx" disabled={Boolean(activeApp?.readOnly)} onChange={(event) => setDraft((current) => ({ ...current, appId: event.target.value }))} />
+              </label>
+              <label className="field">
+                <span>App Secret</span>
+                <input
+                  type="password"
+                  value={draft.appSecret}
+                  placeholder={activeApp?.hasSecret ? "留空表示保留现有 App Secret" : "secret_xxx"}
+                  disabled={Boolean(activeApp?.readOnly)}
+                  onChange={(event) => setDraft((current) => ({ ...current, appSecret: event.target.value }))}
+                />
+              </label>
+            </div>
+
+            <div className="wizard-info-stack">
+              <div className="manifest-block">
+                <h4>先去飞书后台做什么</h4>
+                <div className="wizard-link-list">
+                  <a href="https://open.feishu.cn/app?lang=zh-CN" target="_blank" rel="noreferrer">
+                    打开飞书开发者后台
+                  </a>
+                </div>
+                <ul className="wizard-bullet-list">
+                  <li>进入后创建企业自建应用。</li>
+                  <li>必须给应用添加机器人能力，否则后续消息、菜单和事件都不会生效。</li>
+                  <li>推荐路径：左侧“应用能力”或“添加应用能力”里添加“机器人”。</li>
+                </ul>
+              </div>
+              <div className="manifest-block">
+                <h4>App ID / App Secret 在哪里</h4>
+                <ul className="wizard-bullet-list">
+                  <li>进入应用后，打开左侧“凭证与基础信息”。</li>
+                  <li>在“应用凭证”区域复制 App ID。</li>
+                  <li>同一块区域可以复制 App Secret。</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+      case "permissions":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-link-row">
+              <a href={feishuAppConsoleURL(activeApp?.appId)} target="_blank" rel="noreferrer">
+                打开当前应用后台
+              </a>
+              <span>打开后点击左侧“权限管理”。</span>
+            </div>
+            <div className="manifest-block">
+              <h4>权限导入说明</h4>
+              <ul className="wizard-bullet-list">
+                <li>先点击“复制权限配置”。</li>
+                <li>去飞书后台打开“批量导入/导出权限”。</li>
+                <li>把下面这段 JSON 粘贴进去，然后点击“保存并申请开通”。</li>
+                <li>保存完成后回到这里，再点“继续”。</li>
+              </ul>
+            </div>
+            <textarea className="code-textarea" readOnly value={scopesJSON} />
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => void copyText(scopesJSON, "权限配置 JSON 已复制。")} disabled={busyAction !== ""}>
+                复制权限配置
+              </button>
+            </div>
+            <label className="checkbox-card">
+              <input type="checkbox" checked={permissionsConfirmed} onChange={(event) => setPermissionsConfirmed(event.target.checked)} />
+              <div>
+                <strong>我已经在飞书后台完成权限导入</strong>
+                <p>飞书后台这个入口叫“批量导入/导出权限”。</p>
+              </div>
+            </label>
+          </div>
+        );
+      case "events":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-link-row">
+              <a href={feishuAppConsoleURL(activeApp?.appId)} target="_blank" rel="noreferrer">
+                打开当前应用后台
+              </a>
+              <span>打开后点击左侧“事件与回调”。</span>
+            </div>
+            <div className="manifest-block">
+              <h4>先保存事件订阅方式</h4>
+              <ul className="wizard-bullet-list">
+                <li>在“事件与回调”页点击“订阅方式”。</li>
+                <li>默认就是“长连接”，直接点击“保存”。</li>
+              </ul>
+            </div>
+            <div className="manifest-block">
+              <h4>按下面的事件列表完成订阅</h4>
+              <p>保存订阅方式后，再把下面这些事件全部订阅进去并保存。完成后，再去下一页配置回调订阅方式。</p>
+            </div>
+            <ul className="token-list">
+              {manifest.events.map((item) => (
+                <li key={item.event}>
+                  <code>{item.event}</code>
+                  <span>{item.purpose || "需要手工订阅"}</span>
+                </li>
+              ))}
+            </ul>
+            <label className="checkbox-card">
+              <input type="checkbox" checked={eventsConfirmed} onChange={(event) => setEventsConfirmed(event.target.checked)} />
+              <div>
+                <strong>我已经完成事件订阅</strong>
+                <p>事件列表要和页面展示一致，订阅方式也要保存为长连接。</p>
+              </div>
+            </label>
+          </div>
+        );
+      case "longConnection":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-link-row">
+              <a href={feishuAppConsoleURL(activeApp?.appId)} target="_blank" rel="noreferrer">
+                打开当前应用后台
+              </a>
+              <span>打开后点击左侧“事件与回调”。</span>
+            </div>
+            <div className="manifest-block">
+              <h4>回调配置这一步怎么做</h4>
+              <ul className="wizard-bullet-list">
+                <li>在同一个“事件与回调”页面里找到“回调配置”。</li>
+                <li>点击“回调订阅方式”。</li>
+                <li>选择“长连接”，然后点击“保存”。</li>
+                <li>这里不需要填写 HTTP 回调 URL。</li>
+                <li>同时确认上一页里已经订阅了 <code>card.action.trigger</code>。</li>
+              </ul>
+            </div>
+            <div className="manifest-block">
+              <h4>这一步为什么重要</h4>
+              <ul className="wizard-bullet-list">
+                <li>approval request 等卡片按钮要靠回调长连接进入服务。</li>
+                <li>如果这里没配好，用户点卡片会没有反应。</li>
+              </ul>
+            </div>
+            <label className="checkbox-card">
+              <input type="checkbox" checked={longConnectionConfirmed} onChange={(event) => setLongConnectionConfirmed(event.target.checked)} />
+              <div>
+                <strong>我已经完成回调长连接配置</strong>
+                <p>确认回调订阅方式已经保存为长连接，不填写 HTTP 回调 URL。</p>
+              </div>
+            </label>
+          </div>
+        );
+      case "menus":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-link-row">
+              <a href={feishuAppConsoleURL(activeApp?.appId)} target="_blank" rel="noreferrer">
+                打开当前应用后台
+              </a>
+              <span>打开后点击左侧“机器人”，进入自定义菜单区域。</span>
+            </div>
+            <div className="manifest-block">
+              <h4>这些菜单 key 会真正生效</h4>
+              <p>菜单的 key 必须和下面保持一致，否则用户点击后当前服务收不到正确事件。</p>
+            </div>
+            <ul className="token-list">
+              {manifest.menus.map((item) => (
+                <li key={item.key}>
+                  <code>{item.key}</code>
+                  <strong>{item.name}</strong>
+                  <span>{item.description || "当前实现会处理这个菜单事件。"}</span>
+                </li>
+              ))}
+            </ul>
+            <label className="checkbox-card">
+              <input type="checkbox" checked={menusConfirmed} onChange={(event) => setMenusConfirmed(event.target.checked)} />
+              <div>
+                <strong>我已经完成菜单配置</strong>
+                <p>请再次确认所有 key 和页面展示完全一致。</p>
+              </div>
+            </label>
+          </div>
+        );
+      case "publish":
+        return (
+          <div className="wizard-step-layout">
+            <div className="wizard-link-row">
+              <a href={feishuAppConsoleURL(activeApp?.appId)} target="_blank" rel="noreferrer">
+                打开当前应用后台
+              </a>
+              <span>打开后点击左侧“版本管理与发布”。</span>
+            </div>
+            <div className="manifest-block">
+              <h4>这一步必须真的发版</h4>
+              <ul className="wizard-bullet-list">
+                <li>前面的权限、事件、回调长连接、菜单都只是配置准备。</li>
+                <li>只有在飞书后台真正发版后，这些变更才会生效。</li>
+                <li>发版完成以后，再回来点击“检查并继续”。</li>
+              </ul>
+            </div>
+          </div>
+        );
+      case "vscode":
+        return (
+          <div className="wizard-step-layout">
+            <div className="manifest-block">
+              <h4>推荐模式</h4>
+              <ul className="wizard-bullet-list">
+                <li>SSH / Remote：推荐 <code>managed_shim</code>。</li>
+                <li>其他情况：推荐 <code>all</code>。</li>
+              </ul>
+              <p>当前页面只给出推荐结论。需要排查 bundle、shim、settings 等细节时，再展开技术信息。</p>
+            </div>
+            {vscodeError ? <div className="notice-banner warn">VS Code 检测暂时不可用：{vscodeError}</div> : null}
+            {vscode ? (
+              <details className="wizard-tech-detail">
+                <summary>查看技术详情</summary>
+                <div className="wizard-tech-grid">
+                  <div>
+                    <strong>Recommended</strong>
+                    <p>{vscode.recommendedMode}</p>
+                  </div>
+                  <div>
+                    <strong>Current Mode</strong>
+                    <p>{vscode.currentMode}</p>
+                  </div>
+                  <div>
+                    <strong>Settings</strong>
+                    <p>{vscode.settings.path || "unavailable"}</p>
+                  </div>
+                  <div>
+                    <strong>Latest Bundle</strong>
+                    <p>{vscode.latestBundleEntrypoint || "not detected"}</p>
+                  </div>
+                  <div>
+                    <strong>Recorded Bundle</strong>
+                    <p>{vscode.recordedBundleEntrypoint || "not recorded"}</p>
+                  </div>
+                  <div>
+                    <strong>Needs Reinstall</strong>
+                    <p>{vscode.needsShimReinstall ? "yes" : "no"}</p>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+          </div>
+        );
+      case "finish":
+        return (
+          <div className="wizard-step-layout">
+            <div className="manifest-block">
+              <h4>现在你可以开始第一次对话</h4>
+              <ul className="wizard-bullet-list">
+                <li>推荐先在飞书里打开“开发者小助手”。</li>
+                <li>找到刚完成发布或审批通过的应用。</li>
+                <li>点击“打开应用”后，先给机器人发一条测试消息完成第一次私聊。</li>
+                <li>如果你的工作台已经能看到该应用，也可以直接从工作台进入。</li>
+              </ul>
+            </div>
+            <div className="wizard-summary-grid">
+              <div className="wizard-summary-card">
+                <strong>飞书应用</strong>
+                <p>{activeApp?.name || activeApp?.id || "未命名应用"}</p>
+              </div>
+              <div className="wizard-summary-card">
+                <strong>平台配置</strong>
+                <p>权限、事件、回调长连接、菜单、发布均已完成。</p>
+              </div>
+              <div className="wizard-summary-card">
+                <strong>VS Code</strong>
+                <p>{stepCompletion.vscode ? "已配置或已明确稍后处理" : "暂未处理"}</p>
+              </div>
+            </div>
+          </div>
+        );
+      default:
+        return null;
+    }
+  }
+
+  function renderPrimaryAction() {
+    switch (resolvedCurrentStep) {
+      case "start":
+        return (
+          <button className="primary-button" type="button" onClick={() => { setSetupStarted(true); setCurrentStepHint("connect"); }} disabled={busyAction !== ""}>
+            开始
+          </button>
+        );
+      case "connect":
+        return (
+          <button className="primary-button" type="button" onClick={() => void testAndContinue()} disabled={busyAction !== ""}>
+            测试并继续
+          </button>
+        );
+      case "permissions":
+        return (
+          <button className="primary-button" type="button" onClick={() => void confirmPermissionsAndContinue()} disabled={busyAction !== ""}>
+            继续
+          </button>
+        );
+      case "events":
+        return (
+          <button className="primary-button" type="button" onClick={() => void confirmEventsAndContinue()} disabled={busyAction !== ""}>
+            继续
+          </button>
+        );
+      case "longConnection":
+        return (
+          <button className="primary-button" type="button" onClick={() => void confirmLongConnectionAndContinue()} disabled={busyAction !== ""}>
+            继续
+          </button>
+        );
+      case "menus":
+        return (
+          <button className="primary-button" type="button" onClick={() => void confirmMenusAndContinue()} disabled={busyAction !== ""}>
+            继续
+          </button>
+        );
+      case "publish":
+        return (
+          <button className="primary-button" type="button" onClick={() => void checkPublishAndContinue()} disabled={busyAction !== ""}>
+            检查并继续
+          </button>
+        );
+      case "vscode":
+        return (
+          <button className="primary-button" type="button" onClick={() => void applyRecommendedVSCode()} disabled={busyAction !== "" || !vscode}>
+            应用推荐配置
+          </button>
+        );
+      case "finish":
+        return (
+          <button className="primary-button" type="button" onClick={() => void finishSetup()} disabled={busyAction !== ""}>
+            完成并进入本地管理页
+          </button>
+        );
+      default:
+        return null;
+    }
+  }
+
+  function renderSecondaryAction() {
+    if (resolvedCurrentStep === "vscode") {
+      return (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setVSCodeDeferred(true);
+            setNotice({ tone: "warn", message: "VS Code 集成已留到本地管理页继续处理。" });
+            setCurrentStepHint("finish");
+          }}
+          disabled={busyAction !== ""}
+        >
+          稍后在管理页处理
+        </button>
+      );
+    }
+    if (resolvedCurrentStep === "permissions") {
+      return (
+        <button className="secondary-button" type="button" onClick={() => void copyText(scopesJSON, "权限配置 JSON 已复制。")} disabled={busyAction !== ""}>
+          复制权限配置
+        </button>
+      );
+    }
+    return null;
+  }
+
+  if (finishInfo && bootstrap && !bootstrap.session.trustedLoopback) {
+    return (
+      <div className="app-shell wizard-shell">
+        <aside className="side-rail wizard-rail">
+          <div className="brand-lockup">
+            <div className="brand-mark">CR</div>
+            <div>
+              <p className="brand-kicker">Setup Completed</p>
+              <h1>Codex Remote</h1>
+            </div>
+          </div>
+          <p className="side-copy">当前 setup access 已关闭。远程 SSH 场景下，正式管理页仍然只允许 localhost 访问。</p>
+        </aside>
+        <main className="main-stage">
+          <Panel title="安装向导已完成" description={finishInfo.message}>
+            <div className="wizard-link-row">
+              <span>本地管理页地址</span>
+              <a href={finishInfo.adminURL} target="_blank" rel="noreferrer">
+                {finishInfo.adminURL}
+              </a>
+            </div>
+          </Panel>
+        </main>
+      </div>
     );
   }
 
   return (
-    <ShellFrame
-      routeLabel="Setup Session"
-      title="安装与接入向导"
-      subtitle="多飞书 App、平台 checklist、长连接验证和 VS Code 集成现在都可以在这一页里完成。"
-      nav={[
-        { label: "当前状态", href: "#overview" },
-        { label: "飞书 App", href: "#apps" },
-        { label: "平台 Checklist", href: "#checklist" },
-        { label: "VS Code", href: "#vscode" },
-        { label: "完成 Setup", href: "#finish" },
-      ]}
-      actions={
-        <button className="secondary-button" type="button" onClick={() => void loadData(activeApp?.id)} disabled={busyAction !== ""}>
-          刷新状态
-        </button>
-      }
-    >
-      {!bootstrap && !error ? <LoadingState title="正在初始化 Setup 页面" description="读取 bootstrap、飞书 App、manifest 和 VS Code 检测结果。" /> : null}
-      {error ? <ErrorState title="无法加载 Setup 状态" description="setup shell 已就位，但当前状态读取失败。" detail={error} /> : null}
-      {bootstrap && manifest ? (
-        <>
-          <Panel id="overview" title="当前状态" description="Setup session 现在支持跨多个步骤持续完成，不会在首个 App 保存后直接失效。">
-            <StatGrid>
-              <StatCard label="Phase" value={bootstrap.phase} tone={bootstrap.setupRequired ? "warn" : "accent"} detail={bootstrap.setupRequired ? "仍需完成 setup" : "setup ready to finish"} />
-              <StatCard label="飞书 App" value={apps.length} detail={`已验证 ${verifiedApps.length} / runtime ${bootstrap.feishu.runtimeConfiguredApps}`} />
-              <StatCard label="VS Code" value={vscode?.currentMode || "unavailable"} detail={vscodeReadinessText(vscode)} />
-              <StatCard label="会话范围" value={bootstrap.session.scope || "unknown"} detail={bootstrap.session.trustedLoopback ? "loopback trusted" : "setup session cookie"} />
-            </StatGrid>
-            <DefinitionList
-              items={[
-                { label: "Config Path", value: bootstrap.config.path },
-                { label: "Admin URL", value: bootstrap.admin.url },
-                { label: "Setup URL", value: bootstrap.admin.setupURL || "not exposed" },
-                { label: "SSH Session", value: bootstrap.sshSession ? "yes" : "no" },
-                { label: "Relay Server URL", value: bootstrap.relay.serverURL },
-                { label: "Session Expires", value: bootstrap.session.expiresAt ? formatDateTime(bootstrap.session.expiresAt) : "n/a" },
-              ]}
-            />
-            <GatewayPanel gateways={bootstrap.gateways ?? []} />
-            {notice ? <div className={`notice-banner ${notice.tone}`}>{notice.message}</div> : null}
-            {!bootstrap.setupRequired ? (
-              <div className="notice-banner good">飞书凭证已经具备 runtime 条件；你现在可以继续完成人工 checklist、VS Code 集成，然后主动关闭 setup access。</div>
-            ) : null}
-          </Panel>
-
-          <Panel
-            id="apps"
-            title="飞书 App 向导"
-            description="V1 就按多 App 同时在线设计。先选一个 App，再在右侧完成凭证、验证和平台 checklist。"
-            actions={
-              <button className="secondary-button" type="button" onClick={beginNewApp} disabled={busyAction !== ""}>
-                新建 App
-              </button>
-            }
-          >
-            <div className="setup-two-column">
-              <div className="app-list-grid">
-                {apps.map((app) => (
-                  <button key={app.id} type="button" className={`app-card${selectedID === app.id ? " selected" : ""}`} onClick={() => selectApp(app)}>
-                    <div className="app-card-head">
-                      <strong>{app.name || app.id}</strong>
-                      <StatusBadge value={app.status?.state || (app.enabled ? "configured" : "disabled")} tone={statusTone(app.status?.state)} />
-                    </div>
-                    <p>{app.id}</p>
-                    <div className="app-card-flags">
-                      <StatusBadge value={app.hasSecret ? "secret ready" : "secret missing"} tone={app.hasSecret ? "good" : "warn"} />
-                      <StatusBadge value={app.wizard?.connectionVerifiedAt ? "verified" : "unverified"} tone={app.wizard?.connectionVerifiedAt ? "good" : "warn"} />
-                    </div>
-                  </button>
-                ))}
-                <button type="button" className={`app-card app-card-create${selectedID === newAppID ? " selected" : ""}`} onClick={beginNewApp}>
-                  <strong>创建新 App</strong>
-                  <p>为未来多机器人同时在线预留新的配置项。</p>
-                </button>
-              </div>
-
-              <div className="wizard-editor">
-                <div className="form-grid">
-                  <label className="field">
-                    <span>Gateway ID</span>
-                    <input value={draft.id} placeholder="main-bot" disabled={!draft.isNew} onChange={(event) => setDraft((current) => ({ ...current, id: event.target.value }))} />
-                  </label>
-                  <label className="field">
-                    <span>显示名称</span>
-                    <input value={draft.name} placeholder="Main Bot" onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
-                  </label>
-                  <label className="field">
-                    <span>App ID</span>
-                    <input value={draft.appId} placeholder="cli_xxx" onChange={(event) => setDraft((current) => ({ ...current, appId: event.target.value }))} />
-                  </label>
-                  <label className="field">
-                    <span>App Secret</span>
-                    <input
-                      type="password"
-                      value={draft.appSecret}
-                      placeholder={activeApp?.hasSecret ? "留空表示保留现有 secret" : "secret_xxx"}
-                      onChange={(event) => setDraft((current) => ({ ...current, appSecret: event.target.value }))}
-                    />
-                  </label>
-                </div>
-                <label className="checkbox-row">
-                  <input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />
-                  <span>保存后立即启用这个飞书 App</span>
-                </label>
-
-                <div className="button-row">
-                  <button className="primary-button" type="button" onClick={() => void saveApp()} disabled={busyAction !== ""}>
-                    {draft.isNew ? "保存并创建 App" : "保存 App 配置"}
-                  </button>
-                  <button className="secondary-button" type="button" onClick={() => void verifyApp()} disabled={!activeApp || busyAction !== ""}>
-                    验证长连接
-                  </button>
-                  <button className="danger-button" type="button" onClick={() => void deleteApp()} disabled={!activeApp || activeApp.readOnly || busyAction !== ""}>
-                    删除 App
-                  </button>
-                </div>
-
-                {activeApp ? (
-                  <>
-                    <div className="wizard-progress">
-                      {wizardChecklistItems.map((item) => (
-                        <div key={item.label} className="wizard-step">
-                          <StatusBadge value={item.done ? "done" : "pending"} tone={item.done ? "good" : "warn"} />
-                          <div>
-                            <strong>{item.label}</strong>
-                            <p>{item.timestamp ? formatDateTime(item.timestamp) : "尚未记录"}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {activeApp.readOnly ? <div className="notice-banner warn">当前 App 由运行时环境变量接管，setup 页面只能查看状态，不能修改配置。</div> : null}
-                  </>
-                ) : (
-                  <div className="inline-note">
-                    <StatusBadge value="Draft" tone="neutral" />
-                    <span>先填写并保存一个飞书 App，后面的验证和 checklist 才会写入真实配置。</span>
+    <>
+      <div className="app-shell wizard-shell">
+        <aside className="side-rail wizard-rail">
+          <div className="brand-lockup">
+            <div className="brand-mark">CR</div>
+            <div>
+              <p className="brand-kicker">Setup Wizard</p>
+              <h1>Codex Remote</h1>
+            </div>
+          </div>
+          <p className="side-copy">向导一次只展示当前步骤。左侧只保留步骤名和状态，不提前暴露后面的配置细节。</p>
+          <div className="wizard-step-nav" aria-label="Setup Steps">
+            {wizardSteps.map((step) => {
+              const state = stepState(step.id, resolvedCurrentStep, stepCompletion, bootstrap, activeApp);
+              const disabled = state === "locked";
+              return (
+                <button key={step.id} type="button" className={`wizard-step-link${step.id === resolvedCurrentStep ? " current" : ""}`} onClick={() => setCurrentStepHint(step.id)} disabled={disabled}>
+                  <div>
+                    <strong>{step.label}</strong>
+                    <p>{step.summary}</p>
                   </div>
-                )}
-              </div>
+                  <StatusBadge value={stepStateLabel(state)} tone={stepStateTone(state)} />
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <main className="main-stage wizard-stage">
+          <header className="page-hero wizard-hero">
+            <div>
+              <p className="page-kicker">
+                Setup Step {currentStepIndex + 1}/{wizardSteps.length}
+              </p>
+              <h2>{currentStepMeta.label}</h2>
+              <p className="wizard-hero-copy">{currentStepMeta.summary}</p>
             </div>
-          </Panel>
+            <div className="hero-actions">
+              <button className="secondary-button" type="button" onClick={() => void loadData(activeApp?.id)} disabled={busyAction !== ""}>
+                刷新状态
+              </button>
+            </div>
+          </header>
 
-          <Panel id="checklist" title="飞书平台 Checklist" description="manifest 和 scopes JSON 都来自后端 source of truth；手工项会回写到每个 App 的 wizard 状态。">
-            <div className="checklist-grid">
-              <div className="checklist-column">
-                <h4>Scopes Import JSON</h4>
-                <textarea className="code-textarea" readOnly value={scopesJSON} />
-                <div className="button-row">
-                  <button className="secondary-button" type="button" onClick={() => void copyScopesJSON()} disabled={!activeApp || busyAction !== ""}>
-                    复制并标记已导出
-                  </button>
-                  <button className="ghost-button" type="button" onClick={() => void updateWizardStep("scopesExported", false)} disabled={!activeApp || busyAction !== ""}>
-                    撤销导出标记
-                  </button>
+          {notice ? <div className={`notice-banner ${notice.tone}`}>{notice.message}</div> : null}
+          {!bootstrap && !error ? <LoadingState title="正在初始化 Setup 页面" description="读取 bootstrap、飞书应用、manifest 和 VS Code 检测结果。" /> : null}
+          {error ? <ErrorState title="无法加载 Setup 状态" description="setup shell 已就位，但当前状态读取失败。" detail={error} /> : null}
+          {bootstrap && manifest ? (
+            <Panel title={currentStepMeta.label} description={currentStepMeta.summary} className="wizard-panel">
+              {renderStepBody()}
+              <div className="wizard-footer">
+                <div className="wizard-footer-left">
+                  {resolvedCurrentStep !== "start" ? (
+                    <button className="ghost-button" type="button" onClick={goToPreviousStep} disabled={busyAction !== ""}>
+                      上一步
+                    </button>
+                  ) : null}
                 </div>
-                <div className="manifest-block">
-                  <h4>事件订阅</h4>
-                  <ul className="token-list">
-                    {manifest.events.map((item) => (
-                      <li key={item.event}>
-                        <code>{item.event}</code>
-                        <span>{item.purpose || "需要手工订阅"}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="manifest-block">
-                  <h4>机器人菜单</h4>
-                  <ul className="token-list">
-                    {manifest.menus.map((item) => (
-                      <li key={item.key}>
-                        <code>{item.key}</code>
-                        <span>{item.name}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="checklist-column">
-                <h4>手工确认</h4>
-                <div className="checkbox-card-list">
-                  <label className="checkbox-card">
-                    <input type="checkbox" checked={Boolean(activeApp?.wizard?.eventsConfirmedAt)} disabled={!activeApp || busyAction !== ""} onChange={(event) => void updateWizardStep("eventsConfirmed", event.target.checked)} />
-                    <div>
-                      <strong>事件订阅已完成</strong>
-                      <p>我已经在飞书平台里把 manifest 里的事件都订阅好了。</p>
-                    </div>
-                  </label>
-                  <label className="checkbox-card">
-                    <input type="checkbox" checked={Boolean(activeApp?.wizard?.callbacksConfirmedAt)} disabled={!activeApp || busyAction !== ""} onChange={(event) => void updateWizardStep("callbacksConfirmed", event.target.checked)} />
-                    <div>
-                      <strong>卡片 / 回调已配置</strong>
-                      <p>我已经完成了卡片 action 和相关回调入口配置。</p>
-                    </div>
-                  </label>
-                  <label className="checkbox-card">
-                    <input type="checkbox" checked={Boolean(activeApp?.wizard?.menusConfirmedAt)} disabled={!activeApp || busyAction !== ""} onChange={(event) => void updateWizardStep("menusConfirmed", event.target.checked)} />
-                    <div>
-                      <strong>机器人菜单已创建</strong>
-                      <p>manifest 里的菜单 key 已经全部加到机器人配置里。</p>
-                    </div>
-                  </label>
-                  <label className="checkbox-card">
-                    <input type="checkbox" checked={Boolean(activeApp?.wizard?.publishedAt)} disabled={!activeApp || busyAction !== ""} onChange={(event) => void updateWizardStep("published", event.target.checked)} />
-                    <div>
-                      <strong>机器人版本已发布</strong>
-                      <p>飞书平台的配置变更已经发版，允许真实消息流开始工作。</p>
-                    </div>
-                  </label>
-                </div>
-                <div className="manifest-block">
-                  <h4>推荐检查顺序</h4>
-                  <ul className="ordered-checklist">
-                    {manifest.checklist.map((section) => (
-                      <li key={section.area}>
-                        <strong>{section.area}</strong>
-                        <span>{section.items.join(" ")}</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="wizard-footer-right">
+                  {renderSecondaryAction()}
+                  {renderPrimaryAction()}
                 </div>
               </div>
-            </div>
-          </Panel>
+            </Panel>
+          ) : null}
+        </main>
+      </div>
 
-          <Panel id="vscode" title="VS Code 集成" description="SSH 默认推荐 managed shim；本机默认推荐 editor settings。这里直接复用后端检测结果，不依赖 `code` CLI。">
-            {vscodeError ? <div className="notice-banner warn">VS Code 检测暂时不可用：{vscodeError}</div> : null}
-            <StatGrid>
-              <StatCard label="Recommended" value={vscode?.recommendedMode || "unavailable"} tone="accent" detail={vscode?.sshSession ? "ssh session" : "local session"} />
-              <StatCard label="Current Mode" value={vscode?.currentMode || "unknown"} detail={vscode?.currentBinary || "unavailable"} />
-              <StatCard label="Settings" value={vscode?.settings.matchesBinary ? "ready" : "pending"} detail={vscode?.settings.path || "unavailable"} />
-              <StatCard label="Managed Shim" value={vscode?.latestShim.matchesBinary ? "ready" : "pending"} detail={vscode?.latestBundleEntrypoint || "bundle not detected"} />
-            </StatGrid>
-            <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => void applyVSCode(vscode?.recommendedMode || "editor_settings")} disabled={!vscode || busyAction !== ""}>
-                应用推荐模式
-              </button>
-              <button className="secondary-button" type="button" onClick={() => void applyVSCode("editor_settings")} disabled={!vscode || busyAction !== ""}>
-                写入 settings.json
-              </button>
-              <button className="secondary-button" type="button" onClick={() => void applyVSCode("managed_shim")} disabled={!vscode || busyAction !== ""}>
-                安装 managed shim
-              </button>
-              <button className="ghost-button" type="button" onClick={() => void reinstallShim()} disabled={!vscode?.needsShimReinstall || busyAction !== ""}>
-                重新安装 shim
-              </button>
-            </div>
-            <DefinitionList
-              items={[
-                { label: "Current Binary", value: vscode?.currentBinary || "unavailable" },
-                { label: "Install State Path", value: vscode?.installStatePath || "unavailable" },
-                { label: "Latest Bundle", value: vscode?.latestBundleEntrypoint || "not detected" },
-                { label: "Recorded Bundle", value: vscode?.recordedBundleEntrypoint || "not recorded" },
-                { label: "Needs Reinstall", value: vscode?.needsShimReinstall ? "yes" : "no" },
-                { label: "Settings Target", value: vscode?.settings.path || "unavailable" },
-              ]}
-            />
-          </Panel>
-
-          <Panel id="finish" title="完成 Setup" description="这一步会关闭 setup access，并清除 setup session cookie。之后远程 SSH 页面不会自动升级成远程 admin session。">
-            <DataList
-              items={[
-                {
-                  title: "凭证条件",
-                  meta: bootstrap.setupRequired ? "not ready" : "ready",
-                  detail: bootstrap.setupRequired ? "还没有可供 runtime 生效的飞书 App。" : "已经有可供 runtime 生效的飞书 App。",
-                  tone: bootstrap.setupRequired ? "warn" : "good",
-                },
-                {
-                  title: "验证条件",
-                  meta: `${verifiedApps.length} verified`,
-                  detail: verifiedApps.length > 0 ? "至少一个飞书 App 已通过真实连通性验证。" : "建议至少完成一个 App 的验证后再结束 setup。",
-                  tone: verifiedApps.length > 0 ? "good" : "warn",
-                },
-                {
-                  title: "VS Code 状态",
-                  meta: vscode?.currentMode || "unavailable",
-                  detail: vscodeReadinessText(vscode),
-                  tone: vscodeIsReady(vscode) ? "good" : "warn",
-                },
-              ]}
-            />
-            <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => void finishSetup()} disabled={busyAction !== "" || finishDisabledReason !== ""}>
-                完成 Setup 并关闭远程入口
-              </button>
-              {finishDisabledReason ? <p className="form-hint">{finishDisabledReason}</p> : null}
-            </div>
-          </Panel>
-        </>
-      ) : null}
-    </ShellFrame>
+      <BlockingModal open={Boolean(blockingError)} title={blockingError?.title || ""} message={blockingError?.message || ""} detail={blockingError?.detail} onConfirm={() => setBlockingError(null)} />
+    </>
   );
 }
 
-function appToDraft(app: FeishuAppSummary): SetupDraft {
+function chooseAppID(apps: FeishuAppSummary[], preferredID: string): string {
+  const preferred = apps.find((app) => app.id === preferredID);
+  if (preferred) {
+    return preferred.id;
+  }
+  if (apps.length > 0) {
+    return apps[0].id;
+  }
+  return newAppID;
+}
+
+function appToDraft(app: FeishuAppSummary | null): SetupDraft {
+  if (!app) {
+    return emptyDraft();
+  }
   return {
     isNew: false,
-    id: app.id,
     name: app.name || "",
     appId: app.appId || "",
     appSecret: "",
-    enabled: app.enabled,
   };
-}
-
-function syncDraftSelection(
-  apps: FeishuAppSummary[],
-  preferredID: string,
-  setSelectedID: (value: string) => void,
-  setDraft: (value: SetupDraft) => void,
-) {
-  const preferredApp = apps.find((app) => app.id === preferredID);
-  if (preferredApp) {
-    setSelectedID(preferredApp.id);
-    setDraft(appToDraft(preferredApp));
-    return;
-  }
-  if (apps.length > 0) {
-    setSelectedID(apps[0].id);
-    setDraft(appToDraft(apps[0]));
-    return;
-  }
-  setSelectedID(newAppID);
-  setDraft(emptyDraft());
 }
 
 function blankToUndefined(value: string): string | undefined {
@@ -623,43 +906,142 @@ function blankToUndefined(value: string): string | undefined {
 
 async function loadVSCodeState(path: string): Promise<{ data: VSCodeDetectResponse | null; error: string }> {
   try {
-    return {
-      data: await requestJSON<VSCodeDetectResponse>(path),
-      error: "",
-    };
+    return { data: await requestJSON<VSCodeDetectResponse>(path), error: "" };
   } catch (err: unknown) {
-    return {
-      data: null,
-      error: formatError(err),
-    };
+    return { data: null, error: formatError(err) };
   }
 }
 
-function statusTone(state?: string): "neutral" | "good" | "warn" | "danger" {
+function stepState(
+  stepID: StepID,
+  currentStep: StepID,
+  completion: Record<Exclude<StepID, "finish">, boolean>,
+  bootstrap: BootstrapState | null,
+  activeApp: FeishuAppSummary | null,
+): "current" | "done" | "pending" | "locked" {
+  if (stepID === currentStep) {
+    return "current";
+  }
+  if (stepID !== "finish" && completion[stepID as Exclude<StepID, "finish">]) {
+    return "done";
+  }
+  if (isStepReachable(stepID, bootstrap, activeApp)) {
+    return "pending";
+  }
+  return "locked";
+}
+
+function stepStateLabel(state: "current" | "done" | "pending" | "locked"): string {
   switch (state) {
-    case "connected":
-      return "good";
-    case "connecting":
-    case "degraded":
+    case "current":
+      return "当前";
+    case "done":
+      return "已完成";
+    case "pending":
+      return "未开始";
+    default:
+      return "已锁定";
+  }
+}
+
+function stepStateTone(state: "current" | "done" | "pending" | "locked"): "neutral" | "good" | "warn" | "danger" {
+  switch (state) {
+    case "current":
       return "warn";
-    case "auth_failed":
-      return "danger";
+    case "done":
+      return "good";
+    case "locked":
+      return "neutral";
     default:
       return "neutral";
   }
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+function defaultStepFor(
+  bootstrap: BootstrapState | null,
+  apps: FeishuAppSummary[],
+  activeApp: FeishuAppSummary | null,
+  vscode: VSCodeDetectResponse | null,
+  vscodeDeferred: boolean,
+  setupStarted: boolean,
+): StepID {
+  const started = setupStarted || apps.length > 0;
+  if (!started) {
+    return "start";
   }
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  if (!activeApp || !activeApp.wizard?.connectionVerifiedAt) {
+    return "connect";
+  }
+  if (!activeApp.wizard?.scopesExportedAt) {
+    return "permissions";
+  }
+  if (!activeApp.wizard?.eventsConfirmedAt) {
+    return "events";
+  }
+  if (!activeApp.wizard?.callbacksConfirmedAt) {
+    return "longConnection";
+  }
+  if (!activeApp.wizard?.menusConfirmedAt) {
+    return "menus";
+  }
+  if (!activeApp.wizard?.publishedAt) {
+    return "publish";
+  }
+  if (!(vscodeDeferred || vscodeIsReady(vscode))) {
+    return "vscode";
+  }
+  if (bootstrap?.setupRequired) {
+    return "connect";
+  }
+  return "finish";
+}
+
+function isStepReachable(stepID: StepID, bootstrap: BootstrapState | null, activeApp: FeishuAppSummary | null): boolean {
+  switch (stepID) {
+    case "start":
+      return true;
+    case "connect":
+      return true;
+    case "permissions":
+      return Boolean(activeApp?.wizard?.connectionVerifiedAt);
+    case "events":
+      return Boolean(activeApp?.wizard?.scopesExportedAt);
+    case "longConnection":
+      return Boolean(activeApp?.wizard?.eventsConfirmedAt);
+    case "menus":
+      return Boolean(activeApp?.wizard?.callbacksConfirmedAt);
+    case "publish":
+      return Boolean(activeApp?.wizard?.menusConfirmedAt);
+    case "vscode":
+      return Boolean(activeApp?.wizard?.publishedAt);
+    case "finish":
+      return Boolean(activeApp?.wizard?.publishedAt) && !bootstrap?.setupRequired;
+    default:
+      return false;
+  }
+}
+
+function previousStepFor(stepID: StepID): StepID | null {
+  switch (stepID) {
+    case "connect":
+      return "start";
+    case "permissions":
+      return "connect";
+    case "events":
+      return "permissions";
+    case "longConnection":
+      return "events";
+    case "menus":
+      return "longConnection";
+    case "publish":
+      return "menus";
+    case "vscode":
+      return "publish";
+    case "finish":
+      return "vscode";
+    default:
+      return null;
+  }
 }
 
 function vscodeIsReady(vscode: VSCodeDetectResponse | null): boolean {
@@ -669,45 +1051,16 @@ function vscodeIsReady(vscode: VSCodeDetectResponse | null): boolean {
   if (vscode.recommendedMode === "managed_shim") {
     return vscode.latestShim.matchesBinary;
   }
+  if (vscode.recommendedMode === "all") {
+    return vscode.settings.matchesBinary && vscode.latestShim.matchesBinary;
+  }
   return vscode.settings.matchesBinary;
 }
 
-function vscodeReadinessText(vscode: VSCodeDetectResponse | null): string {
-  if (!vscode) {
-    return "尚未检测";
+function feishuAppConsoleURL(appId?: string): string {
+  const trimmed = (appId || "").trim();
+  if (!trimmed) {
+    return "https://open.feishu.cn/app?lang=zh-CN";
   }
-  if (vscodeIsReady(vscode)) {
-    return "当前推荐模式已就绪。";
-  }
-  if (vscode.recommendedMode === "managed_shim" && !vscode.latestBundleEntrypoint) {
-    return "还没有检测到可替换的 VS Code 扩展 bundle。";
-  }
-  if (vscode.needsShimReinstall) {
-    return "检测到扩展已升级，建议重新安装 shim。";
-  }
-  return "当前模式还没有指向最新的 wrapper binary。";
-}
-
-function GatewayPanel(props: { gateways: GatewayStatus[] }) {
-  if (!props.gateways.length) {
-    return (
-      <div className="inline-note">
-        <StatusBadge value="No Runtime Gateways" tone="neutral" />
-        <span>当前还没有运行中的飞书长连接，这与 setup 阶段预期一致。</span>
-      </div>
-    );
-  }
-  return (
-    <div className="gateway-list">
-      {props.gateways.map((gateway) => (
-        <div key={gateway.gatewayId} className="gateway-card">
-          <div className="gateway-head">
-            <strong>{gateway.name || gateway.gatewayId}</strong>
-            <StatusBadge value={gateway.state} tone={statusTone(gateway.state)} />
-          </div>
-          <p>{gateway.lastError || "当前没有额外错误。完成平台 checklist 后可以继续观察连接状态。"}</p>
-        </div>
-      ))}
-    </div>
-  );
+  return `https://open.feishu.cn/app/${encodeURIComponent(trimmed)}?lang=zh-CN`;
 }

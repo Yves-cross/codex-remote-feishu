@@ -48,16 +48,20 @@
 
 ### 3.2 菜单事件
 
-当前代码支持的机器人菜单 key：
+当前默认模板使用的机器人菜单 key：
 
 - `list`
 - `status`
 - `stop`
 - `threads` / `use` / `sessions` / `show_threads` / `show_sessions`
 - `threads_all` / `useall` / `sessions_all` / `show_all_threads` / `show_all_sessions`
-- `reasonlow` / `reasonmedium` / `reasonhigh` / `reasonxhigh`
+- `reason_low` / `reason_medium` / `reason_high` / `reason_xhigh`
 - `access_full` / `approval_full`
 - `access_confirm` / `approval_confirm`
+
+推理强度菜单仍兼容历史 alias：
+
+- `reasonlow` / `reasonmedium` / `reasonhigh` / `reasonxhigh`
 
 默认模板当前只预置其中常用的一组菜单项；其余 alias 属于兼容输入。
 

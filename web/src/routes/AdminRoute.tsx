@@ -570,7 +570,7 @@ export function AdminRoute() {
               <StatCard label="Managed Shim" value={vscode?.latestShim.matchesBinary ? "ready" : "pending"} detail={vscode?.latestBundleEntrypoint || "bundle not detected"} />
             </StatGrid>
             <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => void applyVSCode(vscode?.recommendedMode || "editor_settings")} disabled={!vscode || busyAction !== ""}>
+              <button className="primary-button" type="button" onClick={() => void applyVSCode(vscode?.recommendedMode || "all")} disabled={!vscode || busyAction !== ""}>
                 应用推荐模式
               </button>
               <button className="secondary-button" type="button" onClick={() => void applyVSCode("editor_settings")} disabled={!vscode || busyAction !== ""}>
@@ -657,7 +657,7 @@ function buildWizardRows(app: FeishuAppSummary) {
     { label: "连接已验证", done: Boolean(app.wizard?.connectionVerifiedAt), timestamp: app.wizard?.connectionVerifiedAt },
     { label: "Scopes 已导出", done: Boolean(app.wizard?.scopesExportedAt), timestamp: app.wizard?.scopesExportedAt },
     { label: "事件已确认", done: Boolean(app.wizard?.eventsConfirmedAt), timestamp: app.wizard?.eventsConfirmedAt },
-    { label: "回调已确认", done: Boolean(app.wizard?.callbacksConfirmedAt), timestamp: app.wizard?.callbacksConfirmedAt },
+    { label: "回调长连接已确认", done: Boolean(app.wizard?.callbacksConfirmedAt), timestamp: app.wizard?.callbacksConfirmedAt },
     { label: "菜单已确认", done: Boolean(app.wizard?.menusConfirmedAt), timestamp: app.wizard?.menusConfirmedAt },
     { label: "机器人已发布", done: Boolean(app.wizard?.publishedAt), timestamp: app.wizard?.publishedAt },
   ];
@@ -711,6 +711,9 @@ function vscodeIsReady(vscode: VSCodeDetectResponse | null): boolean {
   if (vscode.recommendedMode === "managed_shim") {
     return vscode.latestShim.matchesBinary;
   }
+  if (vscode.recommendedMode === "all") {
+    return vscode.settings.matchesBinary && vscode.latestShim.matchesBinary;
+  }
   return vscode.settings.matchesBinary;
 }
 
@@ -724,8 +727,14 @@ function vscodeReadinessText(vscode: VSCodeDetectResponse | null): string {
   if (vscode.recommendedMode === "managed_shim" && !vscode.latestBundleEntrypoint) {
     return "还没有检测到可替换的 VS Code 扩展 bundle。";
   }
+  if (vscode.recommendedMode === "all" && !vscode.latestBundleEntrypoint) {
+    return "当前推荐的是 all，但还没有检测到可替换的 VS Code 扩展 bundle。";
+  }
   if (vscode.needsShimReinstall) {
     return "检测到扩展已升级，建议重新安装 shim。";
+  }
+  if (vscode.recommendedMode === "all") {
+    return "当前模式还没有同时覆盖 settings.json 和最新的 managed shim。";
   }
   return "当前模式还没有指向最新的 wrapper binary。";
 }
