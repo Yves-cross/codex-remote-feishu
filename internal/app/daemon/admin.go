@@ -177,9 +177,9 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/storage/preview-drive/{id}", a.requireAdmin(a.handleNotImplemented("GET /api/admin/storage/preview-drive/{id}")))
 	mux.HandleFunc("POST /api/admin/storage/preview-drive/{id}/reconcile", a.requireAdmin(a.handleNotImplemented("POST /api/admin/storage/preview-drive/{id}/reconcile")))
 	mux.HandleFunc("POST /api/admin/storage/preview-drive/{id}/cleanup", a.requireAdmin(a.handleNotImplemented("POST /api/admin/storage/preview-drive/{id}/cleanup")))
-	mux.HandleFunc("GET /api/admin/vscode/detect", a.requireAdmin(a.handleNotImplemented("GET /api/admin/vscode/detect")))
-	mux.HandleFunc("POST /api/admin/vscode/apply", a.requireAdmin(a.handleNotImplemented("POST /api/admin/vscode/apply")))
-	mux.HandleFunc("POST /api/admin/vscode/reinstall-shim", a.requireAdmin(a.handleNotImplemented("POST /api/admin/vscode/reinstall-shim")))
+	mux.HandleFunc("GET /api/admin/vscode/detect", a.requireAdmin(a.handleVSCodeDetect))
+	mux.HandleFunc("POST /api/admin/vscode/apply", a.requireAdmin(a.handleVSCodeApply))
+	mux.HandleFunc("POST /api/admin/vscode/reinstall-shim", a.requireAdmin(a.handleVSCodeReinstallShim))
 	mux.HandleFunc("GET /v1/status", a.requireAdmin(a.handleStatus))
 }
 

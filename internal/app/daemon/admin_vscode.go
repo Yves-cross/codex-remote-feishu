@@ -1,0 +1,419 @@
+package daemon
+
+import (
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
+	"github.com/kxn/codex-remote-feishu/internal/app/install"
+	"github.com/kxn/codex-remote-feishu/internal/config"
+	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+)
+
+type vscodeDetectResponse struct {
+	SSHSession                 bool                        `json:"sshSession"`
+	RecommendedMode            string                      `json:"recommendedMode"`
+	CurrentMode                string                      `json:"currentMode"`
+	CurrentBinary              string                      `json:"currentBinary"`
+	InstallStatePath           string                      `json:"installStatePath"`
+	InstallState               *install.InstallState       `json:"installState,omitempty"`
+	Settings                   editor.VSCodeSettingsStatus `json:"settings"`
+	CandidateBundleEntrypoints []string                    `json:"candidateBundleEntrypoints,omitempty"`
+	LatestBundleEntrypoint     string                      `json:"latestBundleEntrypoint,omitempty"`
+	RecordedBundleEntrypoint   string                      `json:"recordedBundleEntrypoint,omitempty"`
+	LatestShim                 editor.ManagedShimStatus    `json:"latestShim"`
+	RecordedShim               *editor.ManagedShimStatus   `json:"recordedShim,omitempty"`
+	NeedsShimReinstall         bool                        `json:"needsShimReinstall"`
+}
+
+type vscodeApplyRequest struct {
+	Mode             string `json:"mode,omitempty"`
+	SettingsPath     string `json:"settingsPath,omitempty"`
+	BundleEntrypoint string `json:"bundleEntrypoint,omitempty"`
+}
+
+func (a *App) handleVSCodeDetect(w http.ResponseWriter, _ *http.Request) {
+	payload, err := a.buildVSCodeDetectResponse()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "vscode_detect_failed",
+			Message: "failed to detect vscode integration state",
+			Details: err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (a *App) handleVSCodeApply(w http.ResponseWriter, r *http.Request) {
+	var req vscodeApplyRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "invalid_request",
+			Message: "failed to decode vscode apply payload",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	if err := a.applyVSCodeIntegration(req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "vscode_apply_failed",
+			Message: "failed to apply vscode integration",
+			Details: err.Error(),
+		})
+		return
+	}
+	payload, err := a.buildVSCodeDetectResponse()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "vscode_detect_failed",
+			Message: "vscode integration applied, but detect failed afterwards",
+			Details: err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (a *App) handleVSCodeReinstallShim(w http.ResponseWriter, r *http.Request) {
+	var req vscodeApplyRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "invalid_request",
+			Message: "failed to decode reinstall-shim payload",
+			Details: err.Error(),
+		})
+		return
+	}
+	if err := a.reinstallVSCodeShim(req.BundleEntrypoint); err != nil {
+		writeAPIError(w, http.StatusBadRequest, apiError{
+			Code:    "vscode_reinstall_failed",
+			Message: "failed to reinstall vscode managed shim",
+			Details: err.Error(),
+		})
+		return
+	}
+	payload, err := a.buildVSCodeDetectResponse()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "vscode_detect_failed",
+			Message: "shim reinstalled, but detect failed afterwards",
+			Details: err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func (a *App) buildVSCodeDetectResponse() (vscodeDetectResponse, error) {
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+	admin := a.snapshotAdminRuntime()
+	defaults, err := install.DetectPlatformDefaults()
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+	currentBinary, err := a.currentBinaryPath()
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+	installStatePath := a.installStatePath()
+	installState, err := loadInstallStateIfPresent(installStatePath)
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+
+	settingsPath := defaults.VSCodeSettingsPath
+	if installState != nil && strings.TrimSpace(installState.VSCodeSettingsPath) != "" {
+		settingsPath = installState.VSCodeSettingsPath
+	}
+	settingsStatus, err := editor.DetectVSCodeSettings(settingsPath, currentBinary)
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+
+	latestEntrypoint := ""
+	if len(defaults.CandidateBundleEntrypoints) > 0 {
+		latestEntrypoint = defaults.CandidateBundleEntrypoints[0]
+	}
+	latestShim, err := editor.DetectManagedShim(latestEntrypoint, currentBinary)
+	if err != nil {
+		return vscodeDetectResponse{}, err
+	}
+
+	recordedEntrypoint := ""
+	var recordedShim *editor.ManagedShimStatus
+	if installState != nil && strings.TrimSpace(installState.BundleEntrypoint) != "" {
+		recordedEntrypoint = installState.BundleEntrypoint
+		status, err := editor.DetectManagedShim(recordedEntrypoint, currentBinary)
+		if err != nil {
+			return vscodeDetectResponse{}, err
+		}
+		recordedShim = &status
+	}
+
+	currentMode := strings.TrimSpace(loaded.Config.Wrapper.IntegrationMode)
+	if currentMode == "" {
+		currentMode = "editor_settings"
+	}
+	recommendedMode := "editor_settings"
+	if admin.sshSession {
+		recommendedMode = "managed_shim"
+	}
+	needsReinstall := computeShimReinstallNeed(currentMode, installState, latestEntrypoint, latestShim)
+
+	return vscodeDetectResponse{
+		SSHSession:                 admin.sshSession,
+		RecommendedMode:            recommendedMode,
+		CurrentMode:                currentMode,
+		CurrentBinary:              currentBinary,
+		InstallStatePath:           installStatePath,
+		InstallState:               installState,
+		Settings:                   settingsStatus,
+		CandidateBundleEntrypoints: defaults.CandidateBundleEntrypoints,
+		LatestBundleEntrypoint:     latestEntrypoint,
+		RecordedBundleEntrypoint:   recordedEntrypoint,
+		LatestShim:                 latestShim,
+		RecordedShim:               recordedShim,
+		NeedsShimReinstall:         needsReinstall,
+	}, nil
+}
+
+func (a *App) applyVSCodeIntegration(req vscodeApplyRequest) error {
+	defaults, err := install.DetectPlatformDefaults()
+	if err != nil {
+		return err
+	}
+	currentBinary, err := a.currentBinaryPath()
+	if err != nil {
+		return err
+	}
+	mode, err := resolveVSCodeMode(strings.TrimSpace(req.Mode), a.snapshotAdminRuntime().sshSession)
+	if err != nil {
+		return err
+	}
+
+	statePath := a.installStatePath()
+	state, err := loadInstallStateIfPresent(statePath)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		state = &install.InstallState{
+			StatePath: statePath,
+		}
+	}
+	settingsPath := firstNonEmpty(strings.TrimSpace(req.SettingsPath), state.VSCodeSettingsPath, defaults.VSCodeSettingsPath)
+	bundleEntrypoint := firstNonEmpty(strings.TrimSpace(req.BundleEntrypoint), state.BundleEntrypoint)
+	if bundleEntrypoint == "" && len(defaults.CandidateBundleEntrypoints) > 0 {
+		bundleEntrypoint = defaults.CandidateBundleEntrypoints[0]
+	}
+
+	if modeIncludes(mode, install.IntegrationEditorSettings) {
+		if err := editor.PatchVSCodeSettings(settingsPath, currentBinary); err != nil {
+			return err
+		}
+		state.VSCodeSettingsPath = settingsPath
+	}
+	if modeIncludes(mode, install.IntegrationManagedShim) {
+		if strings.TrimSpace(bundleEntrypoint) == "" {
+			return errors.New("no vscode extension bundle entrypoint detected")
+		}
+		if err := editor.PatchBundleEntrypoint(bundleEntrypoint, currentBinary); err != nil {
+			return err
+		}
+		state.BundleEntrypoint = bundleEntrypoint
+	}
+
+	if err := a.updateVSCodeConfig(mode, bundleEntrypoint); err != nil {
+		return err
+	}
+
+	state.ConfigPath = loadedConfigPath(a)
+	state.InstalledBinary = currentBinary
+	state.InstalledWrapperBinary = currentBinary
+	state.InstalledRelaydBinary = currentBinary
+	state.StatePath = statePath
+	state.Integrations = integrationModesFor(mode)
+	if err := install.WriteState(statePath, *state); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *App) reinstallVSCodeShim(bundleEntrypoint string) error {
+	defaults, err := install.DetectPlatformDefaults()
+	if err != nil {
+		return err
+	}
+	currentBinary, err := a.currentBinaryPath()
+	if err != nil {
+		return err
+	}
+	statePath := a.installStatePath()
+	state, err := loadInstallStateIfPresent(statePath)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		state = &install.InstallState{StatePath: statePath}
+	}
+	target := strings.TrimSpace(bundleEntrypoint)
+	if target == "" && len(defaults.CandidateBundleEntrypoints) > 0 {
+		target = defaults.CandidateBundleEntrypoints[0]
+	}
+	if target == "" {
+		target = strings.TrimSpace(state.BundleEntrypoint)
+	}
+	if target == "" {
+		return errors.New("no vscode extension bundle entrypoint detected")
+	}
+	if err := editor.PatchBundleEntrypoint(target, currentBinary); err != nil {
+		return err
+	}
+	state.BundleEntrypoint = target
+	state.InstalledBinary = currentBinary
+	state.InstalledWrapperBinary = currentBinary
+	state.InstalledRelaydBinary = currentBinary
+	state.StatePath = statePath
+	if err := install.WriteState(statePath, *state); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a *App) updateVSCodeConfig(mode, bundleEntrypoint string) error {
+	a.adminConfigMu.Lock()
+	defer a.adminConfigMu.Unlock()
+
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		return err
+	}
+	cfg := loaded.Config
+	cfg.Wrapper.IntegrationMode = mode
+	if modeIncludes(mode, install.IntegrationManagedShim) && strings.TrimSpace(cfg.Wrapper.CodexRealBinary) == "" && strings.TrimSpace(bundleEntrypoint) != "" {
+		cfg.Wrapper.CodexRealBinary = editor.ManagedShimRealBinaryPath(bundleEntrypoint)
+	}
+	return config.WriteAppConfig(loaded.Path, cfg)
+}
+
+func (a *App) currentBinaryPath() (string, error) {
+	if strings.TrimSpace(a.headlessRuntime.BinaryPath) != "" {
+		return a.headlessRuntime.BinaryPath, nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(executable)
+	if err == nil {
+		return resolved, nil
+	}
+	return executable, nil
+}
+
+func (a *App) installStatePath() string {
+	if strings.TrimSpace(a.headlessRuntime.Paths.DataDir) != "" {
+		return filepath.Join(a.headlessRuntime.Paths.DataDir, "install-state.json")
+	}
+	paths, err := relayruntime.DefaultPaths()
+	if err != nil {
+		return filepath.Join(".", "install-state.json")
+	}
+	return filepath.Join(paths.DataDir, "install-state.json")
+}
+
+func loadInstallStateIfPresent(path string) (*install.InstallState, error) {
+	state, err := install.LoadState(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &state, nil
+}
+
+func resolveVSCodeMode(raw string, sshSession bool) (string, error) {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		if sshSession {
+			return string(install.IntegrationManagedShim), nil
+		}
+		return string(install.IntegrationEditorSettings), nil
+	}
+	switch raw {
+	case string(install.IntegrationEditorSettings), string(install.IntegrationManagedShim), "both":
+		return raw, nil
+	default:
+		return "", errors.New("unsupported vscode integration mode")
+	}
+}
+
+func integrationModesFor(mode string) []install.WrapperIntegrationMode {
+	switch mode {
+	case "both":
+		return []install.WrapperIntegrationMode{install.IntegrationEditorSettings, install.IntegrationManagedShim}
+	case string(install.IntegrationManagedShim):
+		return []install.WrapperIntegrationMode{install.IntegrationManagedShim}
+	default:
+		return []install.WrapperIntegrationMode{install.IntegrationEditorSettings}
+	}
+}
+
+func modeIncludes(mode string, target install.WrapperIntegrationMode) bool {
+	switch mode {
+	case "both":
+		return true
+	default:
+		return mode == string(target)
+	}
+}
+
+func computeShimReinstallNeed(currentMode string, installState *install.InstallState, latestEntrypoint string, latestShim editor.ManagedShimStatus) bool {
+	managedActive := modeIncludes(currentMode, install.IntegrationManagedShim)
+	if !managedActive && installState != nil {
+		for _, integration := range installState.Integrations {
+			if integration == install.IntegrationManagedShim {
+				managedActive = true
+				break
+			}
+		}
+	}
+	if !managedActive {
+		return false
+	}
+	if strings.TrimSpace(latestEntrypoint) == "" {
+		return false
+	}
+	if !latestShim.Installed || !latestShim.MatchesBinary {
+		return true
+	}
+	if installState == nil {
+		return false
+	}
+	return cleanPath(latestEntrypoint) != cleanPath(installState.BundleEntrypoint)
+}
+
+func cleanPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	return filepath.Clean(path)
+}
+
+func loadedConfigPath(a *App) string {
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		return ""
+	}
+	return loaded.Path
+}

@@ -769,12 +769,14 @@ scopes JSON 以当前已确认样例为基线：
   - `POST /api/admin/feishu/apps/:id/enable`
   - `POST /api/admin/feishu/apps/:id/disable`
   - `GET /api/admin/feishu/apps/:id/scopes-json`
+  - `GET /api/admin/vscode/detect`
+  - `POST /api/admin/vscode/apply`
+  - `POST /api/admin/vscode/reinstall-shim`
   - `GET /setup`
   - `GET /`
 - 已注册但暂时返回结构化 `501 not_implemented`：
   - `instances`
   - `storage/*`
-  - `vscode/*`
   - `PUT /api/admin/config`
 
 这样后续阶段可以在不改路径 contract 的前提下逐步把能力填实。
@@ -785,6 +787,12 @@ scopes JSON 以当前已确认样例为基线：
   - 对应 gateway 在管理页按只读展示
   - 允许查看状态、导出 manifest、执行 verify / reconnect
   - 不允许通过 Web 直接改写该 gateway 的持久化配置
+- `GET /api/admin/vscode/detect` 的口径是：
+  - 以文件系统扫描扩展目录为主，不依赖 `code` CLI
+  - 结合 `install-state.json` 判断当前记录路径、最新候选路径和 shim 漂移
+- `POST /api/admin/vscode/reinstall-shim` 的目标是：
+  - 优先把 shim 装到当前扫描到的最新 `openai.chatgpt-*` 入口
+  - 并同步更新 `install-state.json`
 
 #### 5.9.2 返回值要求
 

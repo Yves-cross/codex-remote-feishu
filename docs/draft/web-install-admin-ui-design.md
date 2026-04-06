@@ -452,6 +452,7 @@ V1 建议按 App 作用域提供接口，而不是“单 App 全局接口”：
 当前阶段额外约束：
 
 - 如果运行时仍由 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` env override 驱动，该 App 在页面上应按只读展示
+- VS Code 检测当前以文件系统扫描为主，不依赖 `code` CLI 在 `PATH`
 
 ## 7. 风险与 workaround
 
