@@ -41,6 +41,12 @@ type previewDriveCleanupResponse struct {
 	Result         feishu.PreviewDriveCleanupResult `json:"result"`
 }
 
+type previewDriveReconcileResponse struct {
+	GatewayID string                             `json:"gatewayId"`
+	Name      string                             `json:"name,omitempty"`
+	Result    feishu.PreviewDriveReconcileResult `json:"result"`
+}
+
 func (a *App) handlePreviewDriveStatus(w http.ResponseWriter, r *http.Request) {
 	runtimeCfg, err := a.previewDriveRuntimeConfig(strings.TrimSpace(r.PathValue("id")))
 	if err != nil {
@@ -113,17 +119,7 @@ func (a *App) handlePreviewDriveCleanup(w http.ResponseWriter, r *http.Request) 
 	}
 	result, err := admin.CleanupBefore(context.Background(), time.Now().Add(-time.Duration(req.OlderThanHours)*time.Hour))
 	if err != nil {
-		status := http.StatusInternalServerError
-		code := "preview_drive_cleanup_failed"
-		if strings.Contains(err.Error(), "api is not available") {
-			status = http.StatusConflict
-			code = "preview_drive_api_unavailable"
-		}
-		writeAPIError(w, status, apiError{
-			Code:    code,
-			Message: "failed to cleanup preview drive files",
-			Details: err.Error(),
-		})
+		writePreviewDriveAdminError(w, "failed to cleanup preview drive files", "preview_drive_cleanup_failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, previewDriveCleanupResponse{
@@ -131,6 +127,32 @@ func (a *App) handlePreviewDriveCleanup(w http.ResponseWriter, r *http.Request) 
 		Name:           strings.TrimSpace(runtimeCfg.Name),
 		OlderThanHours: req.OlderThanHours,
 		Result:         result,
+	})
+}
+
+func (a *App) handlePreviewDriveReconcile(w http.ResponseWriter, r *http.Request) {
+	runtimeCfg, err := a.previewDriveRuntimeConfig(strings.TrimSpace(r.PathValue("id")))
+	if err != nil {
+		writePreviewDriveRuntimeError(w, err)
+		return
+	}
+	admin := newPreviewDriveAdminService(runtimeCfg)
+	if admin == nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "preview_drive_admin_unavailable",
+			Message: "preview drive admin service is not available",
+		})
+		return
+	}
+	result, err := admin.Reconcile(context.Background())
+	if err != nil {
+		writePreviewDriveAdminError(w, "failed to reconcile preview drive state", "preview_drive_reconcile_failed", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, previewDriveReconcileResponse{
+		GatewayID: runtimeCfg.GatewayID,
+		Name:      strings.TrimSpace(runtimeCfg.Name),
+		Result:    result,
 	})
 }
 
@@ -169,4 +191,17 @@ func writePreviewDriveRuntimeError(w http.ResponseWriter, err error) {
 			Details: err.Error(),
 		})
 	}
+}
+
+func writePreviewDriveAdminError(w http.ResponseWriter, message, code string, err error) {
+	status := http.StatusInternalServerError
+	if strings.Contains(err.Error(), "api is not available") {
+		status = http.StatusConflict
+		code = "preview_drive_api_unavailable"
+	}
+	writeAPIError(w, status, apiError{
+		Code:    code,
+		Message: message,
+		Details: err.Error(),
+	})
 }

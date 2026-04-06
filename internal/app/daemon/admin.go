@@ -175,7 +175,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/storage/image-staging", a.requireAdmin(a.handleImageStagingStatus))
 	mux.HandleFunc("POST /api/admin/storage/image-staging/cleanup", a.requireAdmin(a.handleImageStagingCleanup))
 	mux.HandleFunc("GET /api/admin/storage/preview-drive/{id}", a.requireAdmin(a.handlePreviewDriveStatus))
-	mux.HandleFunc("POST /api/admin/storage/preview-drive/{id}/reconcile", a.requireAdmin(a.handleNotImplemented("POST /api/admin/storage/preview-drive/{id}/reconcile")))
+	mux.HandleFunc("POST /api/admin/storage/preview-drive/{id}/reconcile", a.requireAdmin(a.handlePreviewDriveReconcile))
 	mux.HandleFunc("POST /api/admin/storage/preview-drive/{id}/cleanup", a.requireAdmin(a.handlePreviewDriveCleanup))
 	mux.HandleFunc("GET /api/admin/vscode/detect", a.requireAdmin(a.handleVSCodeDetect))
 	mux.HandleFunc("POST /api/admin/vscode/apply", a.requireAdmin(a.handleVSCodeApply))

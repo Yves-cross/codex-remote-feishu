@@ -199,7 +199,7 @@ func TestAdminSkeletonReturnsStructuredNotImplemented(t *testing.T) {
 		SetupURL:        "http://localhost:9501/setup",
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/admin/storage/preview-drive/main/reconcile", nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/config", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rec := httptest.NewRecorder()
 	app.apiServer.Handler.ServeHTTP(rec, req)

@@ -431,12 +431,16 @@ type GatewayController interface {
 
 - 本地 state 摘要
 - 基于 `lastUsedAt` / `createdAt` 的已知 preview file cleanup
+- 只读 reconcile 摘要
+  - root/scope/file 远端缺失
+  - root/scope/file 本地未知远端节点
+  - 基于本地 `Shared` 集合的 permission drift
 
 仍然没有：
 
-- 远端 list
-- reconcile
-- permission drift 检测
+- 自动修复/回写 reconcile 结果
+- scope folder 清理
+- 全量 purge root contents
 
 #### 5.5.2 推荐状态文件
 
@@ -782,10 +786,10 @@ scopes JSON 以当前已确认样例为基线：
   - `POST /api/admin/storage/image-staging/cleanup`
   - `GET /api/admin/storage/preview-drive/:appId`
   - `POST /api/admin/storage/preview-drive/:appId/cleanup`
+  - `POST /api/admin/storage/preview-drive/:appId/reconcile`
   - `GET /setup`
   - `GET /`
 - 已注册但暂时返回结构化 `501 not_implemented`：
-  - `POST /api/admin/storage/preview-drive/:appId/reconcile`
   - `PUT /api/admin/config`
 
 这样后续阶段可以在不改路径 contract 的前提下逐步把能力填实。

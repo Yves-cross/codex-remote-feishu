@@ -40,6 +40,7 @@ type MarkdownPreviewService interface {
 type PreviewDriveAdminService interface {
 	Summary() (PreviewDriveSummary, error)
 	CleanupBefore(context.Context, time.Time) (PreviewDriveCleanupResult, error)
+	Reconcile(context.Context) (PreviewDriveReconcileResult, error)
 }
 
 type MarkdownPreviewRequest struct {
@@ -74,11 +75,14 @@ type previewDriveAPI interface {
 	QueryMetaURL(context.Context, string, string) (string, error)
 	GrantPermission(context.Context, string, string, previewPrincipal) error
 	DeleteFile(context.Context, string, string) error
+	ListFiles(context.Context, string) ([]previewRemoteNode, error)
+	ListPermissionMembers(context.Context, string, string) (map[string]bool, error)
 }
 
 type previewRemoteNode struct {
 	Token string
 	URL   string
+	Type  string
 }
 
 type previewPrincipal struct {
@@ -135,6 +139,16 @@ type PreviewDriveCleanupResult struct {
 	DeletedEstimatedBytes       int64               `json:"deletedEstimatedBytes"`
 	SkippedUnknownLastUsedCount int                 `json:"skippedUnknownLastUsedCount"`
 	Summary                     PreviewDriveSummary `json:"summary"`
+}
+
+type PreviewDriveReconcileResult struct {
+	Summary                 PreviewDriveSummary `json:"summary"`
+	RootMissing             bool                `json:"rootMissing"`
+	RemoteMissingScopeCount int                 `json:"remoteMissingScopeCount"`
+	RemoteMissingFileCount  int                 `json:"remoteMissingFileCount"`
+	LocalOnlyScopeCount     int                 `json:"localOnlyScopeCount"`
+	LocalOnlyFileCount      int                 `json:"localOnlyFileCount"`
+	PermissionDriftCount    int                 `json:"permissionDriftCount"`
 }
 
 type driveAPIError struct {
@@ -612,6 +626,151 @@ func (p *DriveMarkdownPreviewer) CleanupBefore(ctx context.Context, cutoff time.
 	return result, nil
 }
 
+func (p *DriveMarkdownPreviewer) Reconcile(ctx context.Context) (PreviewDriveReconcileResult, error) {
+	if p == nil {
+		return PreviewDriveReconcileResult{}, nil
+	}
+	if p.api == nil {
+		return PreviewDriveReconcileResult{}, fmt.Errorf("preview drive api is not available")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	state := p.loadStateLocked()
+	result := PreviewDriveReconcileResult{
+		Summary: summarizePreviewState(state, strings.TrimSpace(p.config.StatePath)),
+	}
+	if state.Root == nil || strings.TrimSpace(state.Root.Token) == "" {
+		return result, nil
+	}
+
+	rootChildren, err := p.api.ListFiles(ctx, state.Root.Token)
+	switch {
+	case err == nil:
+	case isPreviewResourceMissingError(err):
+		result.RootMissing = true
+		result.RemoteMissingScopeCount = len(state.Scopes)
+		result.RemoteMissingFileCount = len(state.Files)
+		return result, nil
+	default:
+		return PreviewDriveReconcileResult{}, err
+	}
+
+	knownScopeTokens := map[string]string{}
+	filesByScope := map[string]map[string]*previewFileRecord{}
+	for scopeKey, scope := range state.Scopes {
+		if scope == nil || scope.Folder == nil {
+			continue
+		}
+		if token := strings.TrimSpace(scope.Folder.Token); token != "" {
+			knownScopeTokens[token] = scopeKey
+		}
+	}
+	for _, record := range state.Files {
+		if record == nil {
+			continue
+		}
+		scopeKey := strings.TrimSpace(record.ScopeKey)
+		if scopeKey == "" {
+			continue
+		}
+		if filesByScope[scopeKey] == nil {
+			filesByScope[scopeKey] = map[string]*previewFileRecord{}
+		}
+		if token := strings.TrimSpace(record.Token); token != "" {
+			filesByScope[scopeKey][token] = record
+		}
+	}
+
+	rootFolders := map[string]previewRemoteNode{}
+	for _, node := range rootChildren {
+		switch strings.TrimSpace(node.Type) {
+		case previewFolderType:
+			rootFolders[node.Token] = node
+			if knownScopeTokens[node.Token] == "" {
+				result.LocalOnlyScopeCount++
+			}
+		default:
+			result.LocalOnlyFileCount++
+		}
+	}
+
+	for scopeKey, scope := range state.Scopes {
+		if scope == nil || scope.Folder == nil {
+			continue
+		}
+		scopeToken := strings.TrimSpace(scope.Folder.Token)
+		if scopeToken == "" {
+			result.RemoteMissingScopeCount++
+			continue
+		}
+		if _, ok := rootFolders[scopeToken]; !ok {
+			result.RemoteMissingScopeCount++
+			continue
+		}
+		if len(scope.Folder.Shared) > 0 {
+			drift, err := previewPermissionDrift(ctx, p.api, scopeToken, previewFolderType, scope.Folder.Shared)
+			if err != nil {
+				if isPreviewResourceMissingError(err) {
+					result.RemoteMissingScopeCount++
+					continue
+				}
+				return PreviewDriveReconcileResult{}, err
+			}
+			if drift {
+				result.PermissionDriftCount++
+			}
+		}
+
+		scopeChildren, err := p.api.ListFiles(ctx, scopeToken)
+		if err != nil {
+			if isPreviewResourceMissingError(err) {
+				result.RemoteMissingScopeCount++
+				continue
+			}
+			return PreviewDriveReconcileResult{}, err
+		}
+		expectedFiles := filesByScope[scopeKey]
+		remoteFiles := map[string]previewRemoteNode{}
+		for _, node := range scopeChildren {
+			switch strings.TrimSpace(node.Type) {
+			case previewFileType:
+				remoteFiles[node.Token] = node
+				if expectedFiles[node.Token] == nil {
+					result.LocalOnlyFileCount++
+				}
+			case previewFolderType:
+				result.LocalOnlyScopeCount++
+			default:
+				result.LocalOnlyFileCount++
+			}
+		}
+		for token, record := range expectedFiles {
+			if _, ok := remoteFiles[token]; !ok {
+				result.RemoteMissingFileCount++
+				continue
+			}
+			if len(record.Shared) == 0 {
+				continue
+			}
+			drift, err := previewPermissionDrift(ctx, p.api, token, previewFileType, record.Shared)
+			if err != nil {
+				if isPreviewResourceMissingError(err) {
+					result.RemoteMissingFileCount++
+					continue
+				}
+				return PreviewDriveReconcileResult{}, err
+			}
+			if drift {
+				result.PermissionDriftCount++
+			}
+		}
+	}
+
+	return result, nil
+}
+
 func summarizePreviewState(state *previewState, statePath string) PreviewDriveSummary {
 	state = normalizePreviewState(state)
 	summary := PreviewDriveSummary{
@@ -671,6 +830,25 @@ func previewRecordScopeKey(fileKey string) string {
 		return ""
 	}
 	return strings.TrimSpace(parts[0])
+}
+
+func previewPermissionDrift(ctx context.Context, api previewDriveAPI, token, docType string, expected map[string]bool) (bool, error) {
+	if api == nil || len(expected) == 0 {
+		return false, nil
+	}
+	actual, err := api.ListPermissionMembers(ctx, token, docType)
+	if err != nil {
+		return false, err
+	}
+	for key, wanted := range expected {
+		if !wanted {
+			continue
+		}
+		if !actual[key] {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func clearPreviewScope(state *previewState, scopeKey string) {
@@ -985,6 +1163,7 @@ func (a *larkDrivePreviewAPI) CreateFolder(ctx context.Context, name, parentToke
 	return previewRemoteNode{
 		Token: stringValue(resp.Data.Token),
 		URL:   stringValue(resp.Data.Url),
+		Type:  previewFolderType,
 	}, nil
 }
 
@@ -1066,6 +1245,73 @@ func (a *larkDrivePreviewAPI) DeleteFile(ctx context.Context, token, docType str
 		return &driveAPIError{Code: resp.Code, Msg: resp.Msg}
 	}
 	return nil
+}
+
+func (a *larkDrivePreviewAPI) ListFiles(ctx context.Context, folderToken string) ([]previewRemoteNode, error) {
+	values := []previewRemoteNode{}
+	pageToken := ""
+	for {
+		req := larkdrive.NewListFileReqBuilder().
+			FolderToken(folderToken).
+			PageSize(200)
+		if strings.TrimSpace(pageToken) != "" {
+			req.PageToken(pageToken)
+		}
+		resp, err := a.client.Drive.V1.File.List(ctx, req.Build())
+		if err != nil {
+			return nil, err
+		}
+		if !resp.Success() {
+			return nil, &driveAPIError{Code: resp.Code, Msg: resp.Msg}
+		}
+		if resp.Data != nil {
+			for _, file := range resp.Data.Files {
+				if file == nil {
+					continue
+				}
+				values = append(values, previewRemoteNode{
+					Token: stringValue(file.Token),
+					URL:   stringValue(file.Url),
+					Type:  strings.TrimSpace(stringValue(file.Type)),
+				})
+			}
+			if resp.Data.HasMore != nil && *resp.Data.HasMore && strings.TrimSpace(stringValue(resp.Data.NextPageToken)) != "" {
+				pageToken = stringValue(resp.Data.NextPageToken)
+				continue
+			}
+		}
+		break
+	}
+	return values, nil
+}
+
+func (a *larkDrivePreviewAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]bool, error) {
+	resp, err := a.client.Drive.V1.PermissionMember.List(ctx, larkdrive.NewListPermissionMemberReqBuilder().
+		Token(token).
+		Type(docType).
+		Build())
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success() {
+		return nil, &driveAPIError{Code: resp.Code, Msg: resp.Msg}
+	}
+	values := map[string]bool{}
+	if resp.Data == nil {
+		return values, nil
+	}
+	for _, item := range resp.Data.Items {
+		if item == nil {
+			continue
+		}
+		memberType := strings.TrimSpace(stringValue(item.MemberType))
+		memberID := strings.TrimSpace(stringValue(item.MemberId))
+		if memberType == "" || memberID == "" {
+			continue
+		}
+		values[memberType+":"+memberID] = true
+	}
+	return values, nil
 }
 
 func stringValue(value *string) string {

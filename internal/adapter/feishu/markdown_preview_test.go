@@ -39,18 +39,31 @@ type fakeDeleteFileCall struct {
 	DocType string
 }
 
+type fakeListFilesCall struct {
+	FolderToken string
+}
+
+type fakeListPermissionMembersCall struct {
+	Token   string
+	DocType string
+}
+
 type fakePreviewAPI struct {
 	createFolderCalls    []fakeCreateFolderCall
 	uploadFileCalls      []fakeUploadFileCall
 	queryMetaURLCalls    []fakeQueryMetaCall
 	grantPermissionCalls []fakeGrantPermissionCall
 	deleteFileCalls      []fakeDeleteFileCall
+	listFilesCalls       []fakeListFilesCall
+	listPermissionCalls  []fakeListPermissionMembersCall
 
 	createFolderFunc    func(context.Context, string, string) (previewRemoteNode, error)
 	uploadFileFunc      func(context.Context, string, string, []byte) (string, error)
 	queryMetaURLFunc    func(context.Context, string, string) (string, error)
 	grantPermissionFunc func(context.Context, string, string, previewPrincipal) error
 	deleteFileFunc      func(context.Context, string, string) error
+	listFilesFunc       func(context.Context, string) ([]previewRemoteNode, error)
+	listPermissionFunc  func(context.Context, string, string) (map[string]bool, error)
 
 	nextFolder int
 	nextFile   int
@@ -112,6 +125,22 @@ func (f *fakePreviewAPI) DeleteFile(ctx context.Context, token, docType string) 
 		return f.deleteFileFunc(ctx, token, docType)
 	}
 	return nil
+}
+
+func (f *fakePreviewAPI) ListFiles(ctx context.Context, folderToken string) ([]previewRemoteNode, error) {
+	f.listFilesCalls = append(f.listFilesCalls, fakeListFilesCall{FolderToken: folderToken})
+	if f.listFilesFunc != nil {
+		return f.listFilesFunc(ctx, folderToken)
+	}
+	return nil, nil
+}
+
+func (f *fakePreviewAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]bool, error) {
+	f.listPermissionCalls = append(f.listPermissionCalls, fakeListPermissionMembersCall{Token: token, DocType: docType})
+	if f.listPermissionFunc != nil {
+		return f.listPermissionFunc(ctx, token, docType)
+	}
+	return map[string]bool{}, nil
 }
 
 func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
@@ -357,6 +386,93 @@ func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
 	}
 	if _, ok := previewer.state.Files["feishu:app-1:chat:oc_chat|/repo/docs/old.md|sha-old"]; ok {
 		t.Fatalf("expected old preview file to be removed from state")
+	}
+}
+
+func TestDriveMarkdownPreviewerReconcileDetectsMissingRemoteNodesAndPermissionDrift(t *testing.T) {
+	state := &previewState{
+		Root: &previewFolderRecord{
+			Token: "fld-root",
+			URL:   "https://preview/fld-root",
+		},
+		Scopes: map[string]*previewScopeRecord{
+			"feishu:app-1:chat:oc_main": {
+				Folder: &previewFolderRecord{
+					Token:  "fld-main",
+					URL:    "https://preview/fld-main",
+					Shared: map[string]bool{"openchat:oc_main": true},
+				},
+			},
+			"feishu:app-1:chat:oc_missing": {
+				Folder: &previewFolderRecord{
+					Token: "fld-missing",
+					URL:   "https://preview/fld-missing",
+				},
+			},
+		},
+		Files: map[string]*previewFileRecord{
+			"feishu:app-1:chat:oc_main|/repo/docs/main.md|sha-main": {
+				Path:      "/repo/docs/main.md",
+				Token:     "file-main",
+				URL:       "https://preview/file-main",
+				ScopeKey:  "feishu:app-1:chat:oc_main",
+				Shared:    map[string]bool{"openid:ou_user": true},
+				CreatedAt: time.Now().UTC(),
+			},
+			"feishu:app-1:chat:oc_main|/repo/docs/missing.md|sha-missing": {
+				Path:      "/repo/docs/missing.md",
+				Token:     "file-missing",
+				URL:       "https://preview/file-missing",
+				ScopeKey:  "feishu:app-1:chat:oc_main",
+				CreatedAt: time.Now().UTC(),
+			},
+		},
+	}
+
+	api := newFakePreviewAPI()
+	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
+		switch folderToken {
+		case "fld-root":
+			return []previewRemoteNode{
+				{Token: "fld-main", Type: previewFolderType},
+				{Token: "fld-orphan", Type: previewFolderType},
+			}, nil
+		case "fld-main":
+			return []previewRemoteNode{
+				{Token: "file-main", Type: previewFileType},
+				{Token: "file-orphan", Type: previewFileType},
+			}, nil
+		default:
+			return nil, &driveAPIError{Code: 1061003, Msg: "missing"}
+		}
+	}
+	api.listPermissionFunc = func(_ context.Context, token, _ string) (map[string]bool, error) {
+		switch token {
+		case "fld-main":
+			return map[string]bool{"openchat:oc_main": true}, nil
+		case "file-main":
+			return map[string]bool{}, nil
+		default:
+			return map[string]bool{}, nil
+		}
+	}
+
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
+	previewer.loaded = true
+	previewer.state = normalizePreviewState(state)
+
+	result, err := previewer.Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("Reconcile returned error: %v", err)
+	}
+	if result.RemoteMissingScopeCount != 1 || result.RemoteMissingFileCount != 1 {
+		t.Fatalf("unexpected remote missing counts: %#v", result)
+	}
+	if result.LocalOnlyScopeCount != 1 || result.LocalOnlyFileCount != 1 {
+		t.Fatalf("unexpected local-only counts: %#v", result)
+	}
+	if result.PermissionDriftCount != 1 {
+		t.Fatalf("expected one permission drift, got %#v", result)
 	}
 }
 
