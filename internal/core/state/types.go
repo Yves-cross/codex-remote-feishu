@@ -102,7 +102,6 @@ type SurfaceConsoleRecord struct {
 	StagedImages         map[string]*StagedImageRecord
 	QueueItems           map[string]*QueueItemRecord
 	PromptOverride       ModelConfigRecord
-	SelectionPrompt      *SelectionPromptRecord
 	PendingHeadless      *HeadlessLaunchRecord
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
@@ -135,32 +134,6 @@ type SelectionAnnouncementRecord struct {
 	RouteMode string
 	Title     string
 	Preview   string
-}
-
-type SelectionPromptRecord struct {
-	PromptID  string
-	Kind      string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-	Title     string
-	Hint      string
-	Options   []SelectionOptionRecord
-}
-
-type SelectionOptionRecord struct {
-	Index            int
-	OptionID         string
-	Label            string
-	Subtitle         string
-	ButtonLabel      string
-	Current          bool
-	Disabled         bool
-	TargetInstanceID string
-	TargetThreadID   string
-	TargetSurfaceID  string
-	TargetThreadCWD  string
-	TargetThreadName string
-	TargetPreview    string
 }
 
 type RequestPromptOptionRecord struct {

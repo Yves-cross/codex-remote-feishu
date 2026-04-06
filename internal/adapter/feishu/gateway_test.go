@@ -313,6 +313,162 @@ func TestParseCardActionTriggerEventBuildsPromptSelectionAction(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsDirectUseThreadAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-3", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":      "use_thread",
+					"thread_id": "thread-1",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-3",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Kind != control.ActionUseThread {
+		t.Fatalf("unexpected action kind: %#v", action)
+	}
+	if action.ThreadID != "thread-1" {
+		t.Fatalf("unexpected direct thread payload: %#v", action)
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {
+		t.Fatalf("unexpected action routing: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsDirectAttachInstanceAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-4", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":        "attach_instance",
+					"instance_id": "inst-1",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-4",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Kind != control.ActionAttachInstance || action.InstanceID != "inst-1" {
+		t.Fatalf("unexpected attach action: %#v", action)
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {
+		t.Fatalf("unexpected action routing: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsResumeHeadlessAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":      "resume_headless_thread",
+					"thread_id": "thread-1",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-5",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Kind != control.ActionResumeHeadless || action.ThreadID != "thread-1" {
+		t.Fatalf("unexpected headless resume action: %#v", action)
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {
+		t.Fatalf("unexpected action routing: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsKickActions(t *testing.T) {
+	tests := []struct {
+		name         string
+		value        map[string]interface{}
+		wantKind     control.ActionKind
+		wantThreadID string
+	}{
+		{
+			name: "confirm",
+			value: map[string]interface{}{
+				"kind":      "kick_thread_confirm",
+				"thread_id": "thread-1",
+			},
+			wantKind:     control.ActionConfirmKickThread,
+			wantThreadID: "thread-1",
+		},
+		{
+			name: "cancel",
+			value: map[string]interface{}{
+				"kind":      "kick_thread_cancel",
+				"thread_id": "thread-1",
+			},
+			wantKind:     control.ActionCancelKickThread,
+			wantThreadID: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+			gateway.recordSurfaceMessage("om-card-6", "feishu:app-1:user:user-1")
+			userID := "user-1"
+			event := &larkcallback.CardActionTriggerEvent{
+				Event: &larkcallback.CardActionTriggerRequest{
+					Operator: &larkcallback.Operator{UserID: &userID},
+					Action:   &larkcallback.CallBackAction{Value: tt.value},
+					Context: &larkcallback.Context{
+						OpenChatID:    "oc_1",
+						OpenMessageID: "om-card-6",
+					},
+				},
+			}
+
+			action, ok := gateway.parseCardActionTriggerEvent(event)
+			if !ok {
+				t.Fatal("expected card callback to be parsed")
+			}
+			if action.Kind != tt.wantKind || action.ThreadID != tt.wantThreadID {
+				t.Fatalf("unexpected kick action: %#v", action)
+			}
+			if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {
+				t.Fatalf("unexpected action routing: %#v", action)
+			}
+		})
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsRequestRespondAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-2", "feishu:app-1:user:user-1")

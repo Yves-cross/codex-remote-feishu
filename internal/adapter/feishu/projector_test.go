@@ -14,8 +14,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:     control.SelectionPromptAttachInstance,
-			PromptID: "prompt-1",
+			Kind: control.SelectionPromptAttachInstance,
 			Options: []control.SelectionOption{
 				{Index: 1, OptionID: "inst-1", Label: "droid", Subtitle: "/data/dl/droid", IsCurrent: true},
 			},
@@ -41,7 +40,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
 	}
 	value, _ := actionRow[0]["value"].(map[string]any)
-	if value["prompt_id"] != "prompt-1" || value["option_id"] != "inst-1" {
+	if value["kind"] != "attach_instance" || value["instance_id"] != "inst-1" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
 }
@@ -51,10 +50,9 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:     control.SelectionPromptUseThread,
-			PromptID: "prompt-2",
-			Title:    "最近会话",
-			Hint:     "发送 `/useall` 查看全部会话。",
+			Kind:  control.SelectionPromptUseThread,
+			Title: "最近会话",
+			Hint:  "发送 `/useall` 查看全部会话。",
 			Options: []control.SelectionOption{
 				{Index: 1, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid"},
 			},
@@ -77,7 +75,7 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
 	}
 	value, _ := actionRow[0]["value"].(map[string]any)
-	if value["prompt_id"] != "prompt-2" || value["option_id"] != "thread-1" || value["kind"] != "prompt_select" {
+	if value["kind"] != "use_thread" || value["thread_id"] != "thread-1" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
 	if ops[0].CardElements[2]["content"] != "发送 `/useall` 查看全部会话。" {
@@ -146,10 +144,9 @@ func TestProjectNewInstanceSelectionPromptUsesRecoverAction(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:     control.SelectionPromptNewInstance,
-			PromptID: "prompt-3",
+			Kind: control.SelectionPromptNewInstance,
 			Options: []control.SelectionOption{
-				{Index: 1, OptionID: "headless-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid"},
+				{Index: 1, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid"},
 			},
 		},
 	})
@@ -167,6 +164,10 @@ func TestProjectNewInstanceSelectionPromptUsesRecoverAction(t *testing.T) {
 	if textValue["content"] != "恢复" {
 		t.Fatalf("expected recover button label, got %#v", actionRow[0])
 	}
+	value, _ := actionRow[0]["value"].(map[string]any)
+	if value["kind"] != "resume_headless_thread" || value["thread_id"] != "thread-1" {
+		t.Fatalf("unexpected recover payload: %#v", value)
+	}
 }
 
 func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
@@ -174,11 +175,10 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:     control.SelectionPromptKickThread,
-			PromptID: "prompt-kick",
+			Kind: control.SelectionPromptKickThread,
 			Options: []control.SelectionOption{
 				{Index: 1, OptionID: "cancel", Label: "保留当前状态，不执行强踢。", ButtonLabel: "取消"},
-				{Index: 2, OptionID: "confirm", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
+				{Index: 2, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
 			},
 		},
 	})
@@ -195,6 +195,10 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	textValue, _ := actionRow[0]["text"].(map[string]any)
 	if textValue["content"] != "强踢并占用" {
 		t.Fatalf("expected custom button label, got %#v", actionRow[0])
+	}
+	value, _ := actionRow[0]["value"].(map[string]any)
+	if value["kind"] != "kick_thread_confirm" || value["thread_id"] != "thread-1" {
+		t.Fatalf("unexpected kick confirm payload: %#v", value)
 	}
 }
 

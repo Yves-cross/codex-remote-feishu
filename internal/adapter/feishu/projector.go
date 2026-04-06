@@ -321,18 +321,46 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 	if text == "" {
 		text = "选择"
 	}
+	value := map[string]any{}
 	switch prompt.Kind {
 	case control.SelectionPromptAttachInstance:
 		if text == "选择" {
 			text = "接管"
 		}
+		value = map[string]any{
+			"kind":        "attach_instance",
+			"instance_id": strings.TrimSpace(option.OptionID),
+		}
 	case control.SelectionPromptUseThread:
 		if text == "选择" {
 			text = "切换"
 		}
+		value = map[string]any{
+			"kind":      "use_thread",
+			"thread_id": strings.TrimSpace(option.OptionID),
+		}
 	case control.SelectionPromptNewInstance:
 		if text == "选择" {
 			text = "恢复"
+		}
+		value = map[string]any{
+			"kind":      "resume_headless_thread",
+			"thread_id": strings.TrimSpace(option.OptionID),
+		}
+	case control.SelectionPromptKickThread:
+		if strings.TrimSpace(option.OptionID) == "cancel" {
+			value = map[string]any{"kind": "kick_thread_cancel"}
+		} else {
+			value = map[string]any{
+				"kind":      "kick_thread_confirm",
+				"thread_id": strings.TrimSpace(option.OptionID),
+			}
+		}
+	}
+	if len(value) == 0 {
+		value = map[string]any{
+			"kind":      "use_thread",
+			"thread_id": strings.TrimSpace(option.OptionID),
 		}
 	}
 	disabled := option.Disabled
@@ -351,11 +379,7 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 			"content": text,
 		},
 		"disabled": disabled,
-		"value": map[string]any{
-			"kind":      "prompt_select",
-			"prompt_id": prompt.PromptID,
-			"option_id": option.OptionID,
-		},
+		"value":    value,
 	}
 }
 

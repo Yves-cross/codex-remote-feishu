@@ -446,6 +446,71 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 	}
 
 	switch kind {
+	case "attach_instance":
+		instanceID := strings.TrimSpace(stringMapValue(value, "instance_id"))
+		if instanceID == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionAttachInstance,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			InstanceID:       instanceID,
+		}, true
+	case "use_thread":
+		threadID := strings.TrimSpace(stringMapValue(value, "thread_id"))
+		if threadID == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionUseThread,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			ThreadID:         threadID,
+		}, true
+	case "resume_headless_thread":
+		threadID := strings.TrimSpace(stringMapValue(value, "thread_id"))
+		if threadID == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionResumeHeadless,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			ThreadID:         threadID,
+		}, true
+	case "kick_thread_confirm":
+		threadID := strings.TrimSpace(stringMapValue(value, "thread_id"))
+		if threadID == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionConfirmKickThread,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			ThreadID:         threadID,
+		}, true
+	case "kick_thread_cancel":
+		return control.Action{
+			Kind:             control.ActionCancelKickThread,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+		}, true
 	case "prompt_select":
 		promptID := strings.TrimSpace(stringMapValue(value, "prompt_id"))
 		optionID := strings.TrimSpace(stringMapValue(value, "option_id"))

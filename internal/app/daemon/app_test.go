@@ -103,12 +103,11 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 		ActorUserID:      "user-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionTextMessage,
+		Kind:             control.ActionAttachInstance,
 		SurfaceSessionID: "feishu:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		MessageID:        "msg-select",
-		Text:             "1",
+		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
@@ -338,12 +337,11 @@ func TestDaemonNotifiesAttachedSurfaceWhenInstanceDisconnects(t *testing.T) {
 		ActorUserID:      "user-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionTextMessage,
+		Kind:             control.ActionAttachInstance,
 		SurfaceSessionID: "feishu:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		MessageID:        "msg-select",
-		Text:             "1",
+		InstanceID:       "inst-1",
 	})
 
 	before := len(gateway.operations)
@@ -670,12 +668,9 @@ func TestDaemonStartsHeadlessAndPromptsForResumeAfterRefresh(t *testing.T) {
 		}},
 	}})
 	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionTextMessage,
+		Kind:             control.ActionResumeHeadless,
 		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		MessageID:        "msg-select",
-		Text:             "1",
+		ThreadID:         "thread-1",
 	})
 
 	snapshot = app.service.SurfaceSnapshot("surface-1")
