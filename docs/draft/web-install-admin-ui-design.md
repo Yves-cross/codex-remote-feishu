@@ -18,6 +18,24 @@
 
 - [web-install-admin-prerequisites-design.md](./web-install-admin-prerequisites-design.md)
 
+## 1.1 当前实现状态
+
+截至 `2026-04-06`，这份设计稿里的主路径已经有对应实现：
+
+- 统一 `config.json` 与 legacy env 自动迁移已落地
+- 多飞书 App 同时在线、热替换、热重连与状态观测已落地
+- setup token、setup session 和 setup finish 流程已落地
+- 嵌入式 SPA、`/setup` 向导页和 `/` 本地管理页已落地
+- VS Code `detect / apply / reinstall-shim` 已接到页面
+- 实例管理、图片暂存管理、preview drive 摘要 / cleanup / reconcile 已接到页面
+
+当前仍然保留的实现边界：
+
+- 远程 SSH setup 完成后，不会自动升级成远程 admin session；正式 admin 访问当前仍限定在 localhost
+- 如果 daemon 是在“SSH + 未配置”状态下启动的，admin 监听地址会保持当前启动时绑定，直到下次重启
+- `PUT /api/admin/config` 仍未实现，页面主要通过专用 API 管理各模块
+- 前端当前主要依赖 `npm run build` 和 Go 集成测试校验，还没有独立前端自动化测试
+
 ## 2. 已确认结论
 
 本轮讨论已经明确这些原则，不再回退：
@@ -107,7 +125,11 @@
 - [internal/adapter/feishu/gateway.go](../../internal/adapter/feishu/gateway.go)
 - [internal/adapter/feishu/markdown_preview.go](../../internal/adapter/feishu/markdown_preview.go)
 
-### 4.2 当前最重要的现实约束
+### 4.2 设计时的关键约束
+
+下面这些是本设计稿最初立项时的关键阻塞。
+
+其中大部分已经在当前实现里被解除；保留这一节是为了说明为什么整体方案会被拆成多轮前置改造，而不是直接堆页面。
 
 代码调研后，当前实现存在这些关键限制：
 

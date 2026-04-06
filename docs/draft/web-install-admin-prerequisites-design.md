@@ -20,6 +20,28 @@
 
 - [web-install-admin-ui-design.md](./web-install-admin-ui-design.md)
 
+## 1.1 当前落地状态
+
+这份“前置改造设计”里列出的主项，截至 `2026-04-06` 已基本完成：
+
+- 统一 `config.json` 与 legacy env 自动迁移
+- 多飞书 App 同时在线、热更新、热重连
+- setup token、setup session、setup finish 与最小鉴权模型
+- setup / admin SPA embed 管道
+- setup 向导页
+- 本地 admin 页面
+- image staging 管理
+- preview drive 摘要 / cleanup / reconcile
+- managed headless instance 管理
+- VS Code detect / apply / reinstall-shim
+
+当前仍然保留的实现边界：
+
+- 远程 setup 完成后不自动变成远程 admin，会话在 finish 后立即关闭
+- admin 在“SSH + 未配置”场景下的对外绑定会保持到下次 daemon 重启
+- `/api/admin/config` 仍未实现通用写入，页面走分模块专用接口
+- 前端还没有单独的 UI 自动化测试
+
 ## 2. 目标与非目标
 
 ### 2.1 目标
