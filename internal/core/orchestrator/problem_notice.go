@@ -63,7 +63,7 @@ func NoticeForProblem(problem agentproto.ErrorInfo) control.Notice {
 		Code:     debugErrorNoticeCode,
 		Title:    title,
 		Text:     strings.TrimSpace(strings.Join(lines, "\n")),
-		ThemeKey: "system",
+		ThemeKey: "error",
 	}
 }
 

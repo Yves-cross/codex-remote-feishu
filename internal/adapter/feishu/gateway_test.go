@@ -219,6 +219,61 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 	}
 }
 
+func TestParseMessageEventCommandPreservesGatewayID(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-2"})
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-msg-1"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("text"),
+				Content:     stringRef(`{"text":" /list "}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected command message to be handled")
+	}
+	if action.Kind != control.ActionListInstances {
+		t.Fatalf("unexpected action kind: %#v", action)
+	}
+	if action.GatewayID != "app-2" {
+		t.Fatalf("expected gateway id to be preserved, got %#v", action)
+	}
+	if action.SurfaceSessionID != "feishu:app-2:chat:oc_chat" {
+		t.Fatalf("unexpected surface routing: %#v", action)
+	}
+	if action.ChatID != "oc_chat" || action.ActorUserID != "ou_user" || action.MessageID != "om-msg-1" {
+		t.Fatalf("unexpected command routing payload: %#v", action)
+	}
+}
+
+func TestCardTemplateUsesSemanticColors(t *testing.T) {
+	tests := map[string]string{
+		cardThemeInfo:     "grey",
+		cardThemeSuccess:  "green",
+		cardThemeApproval: "green",
+		cardThemeFinal:    "blue",
+		cardThemeError:    "red",
+		"relay-error":     "red",
+		"thread-1":        "grey",
+	}
+	for input, want := range tests {
+		if got := cardTemplate(input, ""); got != want {
+			t.Fatalf("cardTemplate(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsPromptSelectionAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-1", "feishu:app-1:user:user-1")

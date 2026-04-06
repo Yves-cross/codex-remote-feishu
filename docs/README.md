@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-06`
-> Summary: 补充 setup 向导交互重设计草案，并更新 Web 安装管理相关文档索引。
+> Summary: 将多飞书 App 草稿收敛为功能设计文档，并更新文档索引。
 
 ## 1. 适用范围
 
@@ -132,6 +132,7 @@
 
 - [acp-claude-integration-design.md](./draft/acp-claude-integration-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
+- [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-install-admin-ui-design.md](./draft/web-install-admin-ui-design.md)
 - [web-setup-wizard-redesign.md](./draft/web-setup-wizard-redesign.md)

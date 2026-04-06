@@ -278,6 +278,7 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 		}
 		commandAction, handled := parseTextAction(content.Text)
 		if handled {
+			commandAction.GatewayID = g.config.GatewayID
 			commandAction.SurfaceSessionID = surfaceSessionID
 			commandAction.ChatID = chatID
 			commandAction.ActorUserID = action.ActorUserID
@@ -406,18 +407,20 @@ func buildCard(title, body, themeKey string, extraElements []map[string]any) map
 }
 
 func cardTemplate(themeKey, fallback string) string {
-	if themeKey == "system" {
-		return "wathet"
+	key := strings.ToLower(strings.TrimSpace(themeKey))
+	if key == "" {
+		key = strings.ToLower(strings.TrimSpace(fallback))
 	}
-	templates := []string{"blue", "wathet", "green", "turquoise", "orange", "sunflower"}
-	sum := 0
-	if themeKey == "" {
-		themeKey = fallback
+	switch {
+	case key == cardThemeFinal:
+		return "blue"
+	case key == cardThemeSuccess, key == cardThemeApproval:
+		return "green"
+	case key == cardThemeError || strings.Contains(key, "error") || strings.Contains(key, "fail") || strings.Contains(key, "reject"):
+		return "red"
+	default:
+		return "grey"
 	}
-	for _, r := range themeKey {
-		sum += int(r)
-	}
-	return templates[sum%len(templates)]
 }
 
 func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardActionTriggerEvent) (control.Action, bool) {
