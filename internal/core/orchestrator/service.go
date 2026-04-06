@@ -154,6 +154,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	switch action.Kind {
 	case control.ActionListInstances:
 		return s.presentInstanceSelection(surface)
+	case control.ActionNewThread:
+		return s.prepareNewThread(surface)
 	case control.ActionNewInstance:
 		return s.startHeadlessInstance(surface)
 	case control.ActionKillInstance:
@@ -314,7 +316,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		if event.ThreadID != "" {
 			s.touchThread(s.ensureThread(inst, event.ThreadID))
 		}
-		if surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID); surface != nil {
+		if surface := s.surfaceForInitiator(instanceID, event); surface != nil {
 			surface.ActiveTurnOrigin = event.Initiator.Kind
 		}
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
@@ -330,7 +332,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			events := append(preface, s.pauseForLocal(instanceID)...)
 			return append(events, s.reevaluateFollowSurfaces(instanceID)...)
 		}
-		return append(preface, s.markRemoteTurnRunning(instanceID, event.ThreadID, event.TurnID)...)
+		return append(preface, s.markRemoteTurnRunning(instanceID, event.Initiator, event.ThreadID, event.TurnID)...)
 	case agentproto.EventTurnCompleted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = ""
@@ -723,6 +725,7 @@ func (s *Service) attachInstance(surface *state.SurfaceConsoleRecord, instanceID
 	clearSurfaceRequestCapture(surface)
 	clearSurfaceRequests(surface)
 	s.releaseSurfaceThreadClaim(surface)
+	s.clearPreparedNewThread(surface)
 	surface.PromptOverride = state.ModelConfigRecord{}
 	if !s.claimInstance(surface, instanceID) {
 		return append(events, notice(surface, "instance_busy", fmt.Sprintf("%s 当前已被其他飞书会话接管，请等待对方 /detach。", inst.DisplayName))...)
@@ -790,6 +793,7 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 	events := s.discardDrafts(surface)
 	clearSurfaceRequestCapture(surface)
 	s.releaseSurfaceThreadClaim(surface)
+	s.clearPreparedNewThread(surface)
 	surface.PromptOverride = state.ModelConfigRecord{}
 	if !s.claimInstance(surface, inst.InstanceID) {
 		surface.PendingHeadless = nil
@@ -968,23 +972,29 @@ func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")
 	}
-	if blocked := s.blockThreadSwitch(surface); blocked != nil {
+	events := []control.UIEvent{}
+	if surface.RouteMode == state.RouteModeNewThreadReady {
+		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
+			return blocked
+		}
+		events = append(events, s.discardDrafts(surface)...)
+	} else if blocked := s.blockThreadSwitch(surface); blocked != nil {
 		return blocked
 	}
 	thread := inst.Threads[threadID]
 	if !threadVisible(thread) {
-		return notice(surface, "thread_not_found", "目标会话不存在或当前不可见。")
+		return append(events, notice(surface, "thread_not_found", "目标会话不存在或当前不可见。")...)
 	}
 	if owner := s.threadClaimSurface(threadID); owner != nil && owner.SurfaceSessionID != surface.SurfaceSessionID {
 		switch s.threadKickStatus(inst, owner, threadID) {
 		case threadKickIdle:
-			return s.presentKickThreadPrompt(surface, inst, threadID, owner)
+			return append(events, s.presentKickThreadPrompt(surface, inst, threadID, owner)...)
 		case threadKickQueued:
-			return notice(surface, "thread_busy_queued", "目标会话当前还有排队任务，暂时不能强踢。请等待对方队列清空，或切换到其他会话。")
+			return append(events, notice(surface, "thread_busy_queued", "目标会话当前还有排队任务，暂时不能强踢。请等待对方队列清空，或切换到其他会话。")...)
 		case threadKickRunning:
-			return notice(surface, "thread_busy_running", "目标会话当前正在执行，暂时不能强踢。请等待执行完成，或切换到其他会话。")
+			return append(events, notice(surface, "thread_busy_running", "目标会话当前正在执行，暂时不能强踢。请等待执行完成，或切换到其他会话。")...)
 		default:
-			return notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")
+			return append(events, notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")...)
 		}
 	}
 	prevThreadID := surface.SelectedThreadID
@@ -992,10 +1002,12 @@ func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string
 	s.releaseSurfaceThreadClaim(surface)
 	if !s.claimThread(surface, inst, threadID) {
 		surface.RouteMode = state.RouteModeUnbound
-		return notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")
+		s.clearPreparedNewThread(surface)
+		return append(events, notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")...)
 	}
-	events := s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, threadID, state.RouteModePinned)
+	events = append(events, s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, threadID, state.RouteModePinned)...)
 	surface.SelectedThreadID = threadID
+	s.clearPreparedNewThread(surface)
 	surface.RouteMode = state.RouteModePinned
 	title := threadID
 	preview := ""
@@ -1008,6 +1020,70 @@ func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string
 		return events
 	}
 	return notice(surface, "selection_unchanged", fmt.Sprintf("当前输入目标保持为：%s", title))
+}
+
+func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		return notice(surface, "not_attached", "当前还没有接管任何实例。")
+	}
+	if surface.ActiveRequestCapture != nil {
+		return notice(surface, "request_capture_waiting_text", "当前正在等待你发送一条文字处理意见，请先发送文本或重新处理确认卡片。")
+	}
+	if pending := activePendingRequest(surface); pending != nil {
+		_ = pending
+		return notice(surface, "request_pending", "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。")
+	}
+	if surface.RouteMode == state.RouteModeNewThreadReady {
+		if blocked := s.blockPreparedNewThreadReprepare(surface); blocked != nil {
+			return blocked
+		}
+		if strings.TrimSpace(surface.PreparedThreadCWD) == "" {
+			return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
+		}
+		discarded := countPendingDrafts(surface)
+		events := s.discardDrafts(surface)
+		surface.PreparedAt = s.now()
+		if discarded == 0 {
+			return append(events, notice(surface, "already_new_thread_ready", "当前已经在新建会话待命状态。下一条文本会创建新会话。")...)
+		}
+		return append(events, notice(surface, "new_thread_ready_reset", fmt.Sprintf("已丢弃 %d 条未发送输入。下一条文本会创建新会话。", discarded))...)
+	}
+	threadID := strings.TrimSpace(surface.SelectedThreadID)
+	if threadID == "" || !s.surfaceOwnsThread(surface, threadID) {
+		return notice(surface, "new_thread_requires_bound_thread", "当前必须先绑定并接管一个会话，才能基于它的新建会话。请先 /use，或在 follow 模式下等到已跟随到会话。")
+	}
+	thread := inst.Threads[threadID]
+	if !threadVisible(thread) {
+		return notice(surface, "thread_not_found", "当前绑定的会话不存在或当前不可见。")
+	}
+	cwd := strings.TrimSpace(thread.CWD)
+	if cwd == "" {
+		return notice(surface, "new_thread_cwd_missing", "当前会话缺少可继承的工作目录，无法新建会话。")
+	}
+	if blocked := s.blockNewThreadPreparation(surface); blocked != nil {
+		return blocked
+	}
+	discarded := countPendingDrafts(surface)
+	events := s.discardDrafts(surface)
+	prevThreadID := surface.SelectedThreadID
+	prevRouteMode := surface.RouteMode
+	s.releaseSurfaceThreadClaim(surface)
+	surface.RouteMode = state.RouteModeNewThreadReady
+	surface.PreparedThreadCWD = cwd
+	surface.PreparedFromThreadID = threadID
+	surface.PreparedAt = s.now()
+	events = append(events, s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeNewThreadReady)...)
+	events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeNewThreadReady), preparedNewThreadSelectionTitle(), "")...)
+	text := "已清空当前远端上下文。下一条文本会创建新会话。"
+	if discarded > 0 {
+		text = fmt.Sprintf("已清空当前远端上下文，并丢弃 %d 条未发送输入。下一条文本会创建新会话。", discarded)
+	}
+	return append(events, notice(surface, "new_thread_ready", text)...)
+}
+
+func preparedNewThreadSelectionTitle() string {
+	return "新建会话（等待首条消息）"
 }
 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -1123,13 +1199,20 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	if blocked := s.unboundInputBlocked(surface); blocked != nil {
 		return blocked
 	}
+	if surface.RouteMode == state.RouteModeNewThreadReady && s.preparedNewThreadHasPendingCreate(surface) {
+		return notice(surface, "new_thread_first_input_pending", "当前新会话的首条消息已经在排队或发送中；请等待它落地后再继续发送。")
+	}
 
 	threadID, cwd, routeMode, createThread := freezeRoute(inst, surface)
 	inputs, stagedMessageIDs := s.consumeStagedInputs(surface)
 	inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: text})
-	if createThread || threadID == "" {
+	if !createThread && threadID == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
 		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use，或执行 /follow 进入跟随模式。")
+	}
+	if createThread && strings.TrimSpace(cwd) == "" {
+		s.restoreStagedInputs(surface, stagedMessageIDs)
+		return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 	}
 	return s.enqueueQueueItem(surface, action.MessageID, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)
 }
@@ -1148,6 +1231,9 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	if pending := activePendingRequest(surface); pending != nil {
 		_ = pending
 		return notice(surface, "request_pending", "当前有待确认请求。请先处理确认卡片，再发送图片。")
+	}
+	if surface.RouteMode == state.RouteModeNewThreadReady && s.preparedNewThreadHasPendingCreate(surface) {
+		return notice(surface, "new_thread_first_input_pending", "当前新会话的首条消息已经在排队或发送中；如需带图，请等它创建完成后再发送下一条。")
 	}
 	s.nextImageID++
 	image := &state.StagedImageRecord{
@@ -1674,6 +1760,8 @@ func (s *Service) consumeStagedInputs(surface *state.SurfaceConsoleRecord) ([]ag
 
 func freezeRoute(inst *state.InstanceRecord, surface *state.SurfaceConsoleRecord) (threadID, cwd string, routeMode state.RouteMode, createThread bool) {
 	switch {
+	case surface.RouteMode == state.RouteModeNewThreadReady && strings.TrimSpace(surface.PreparedThreadCWD) != "":
+		return "", surface.PreparedThreadCWD, state.RouteModeNewThreadReady, true
 	case surface.RouteMode == state.RouteModeFollowLocal && surface.SelectedThreadID != "":
 		threadID = surface.SelectedThreadID
 		if thread := inst.Threads[threadID]; threadVisible(thread) {
@@ -1752,8 +1840,8 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	return events
 }
 
-func (s *Service) markRemoteTurnRunning(instanceID, threadID, turnID string) []control.UIEvent {
-	binding := s.promotePendingRemote(instanceID, threadID, turnID)
+func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.Initiator, threadID, turnID string) []control.UIEvent {
+	binding := s.promotePendingRemote(instanceID, initiator, threadID, turnID)
 	if binding == nil {
 		return nil
 	}
@@ -1783,7 +1871,7 @@ func (s *Service) markRemoteTurnRunning(instanceID, threadID, turnID string) []c
 	if item.FrozenThreadID != "" {
 		inst := s.root.Instances[instanceID]
 		routeMode := item.RouteModeAtEnqueue
-		if routeMode == "" {
+		if routeMode == "" || routeMode == state.RouteModeNewThreadReady {
 			routeMode = state.RouteModePinned
 		}
 		events = append(events, s.bindSurfaceToThreadMode(surface, inst, item.FrozenThreadID, routeMode)...)
@@ -1991,17 +2079,14 @@ func (s *Service) normalizeTurnInitiator(instanceID string, event agentproto.Eve
 	return event.Initiator
 }
 
-func queuedItemMatchesTurn(inst *state.InstanceRecord, item *state.QueueItemRecord, threadID string) bool {
+func queuedItemMatchesTurn(item *state.QueueItemRecord, threadID string) bool {
 	if item == nil {
 		return false
 	}
 	if item.FrozenThreadID != "" {
 		return threadID == "" || threadID == item.FrozenThreadID
 	}
-	if inst == nil {
-		return threadID == ""
-	}
-	return threadID == "" || threadID == inst.ActiveThreadID
+	return threadID == ""
 }
 
 func (s *Service) pendingRemoteBinding(instanceID, threadID string) *remoteTurnBinding {
@@ -2019,14 +2104,14 @@ func (s *Service) pendingRemoteBinding(instanceID, threadID string) *remoteTurnB
 		delete(s.pendingRemote, instanceID)
 		return nil
 	}
-	if !queuedItemMatchesTurn(s.root.Instances[instanceID], item, threadID) {
+	if !queuedItemMatchesTurn(item, threadID) {
 		return nil
 	}
 	return binding
 }
 
-func (s *Service) promotePendingRemote(instanceID, threadID, turnID string) *remoteTurnBinding {
-	binding := s.pendingRemoteBinding(instanceID, threadID)
+func (s *Service) promotePendingRemote(instanceID string, initiator agentproto.Initiator, threadID, turnID string) *remoteTurnBinding {
+	binding := s.pendingRemoteBindingForInitiator(instanceID, initiator, threadID)
 	if binding == nil {
 		return s.activeRemoteBinding(instanceID, turnID)
 	}
@@ -2038,6 +2123,29 @@ func (s *Service) promotePendingRemote(instanceID, threadID, turnID string) *rem
 	binding.Status = string(state.QueueItemRunning)
 	s.activeRemote[instanceID] = binding
 	return binding
+}
+
+func (s *Service) pendingRemoteBindingForInitiator(instanceID string, initiator agentproto.Initiator, threadID string) *remoteTurnBinding {
+	if initiator.Kind == agentproto.InitiatorRemoteSurface && strings.TrimSpace(initiator.SurfaceSessionID) != "" {
+		binding := s.pendingRemote[instanceID]
+		if binding == nil {
+			return nil
+		}
+		surface := s.root.Surfaces[binding.SurfaceSessionID]
+		if surface == nil {
+			delete(s.pendingRemote, instanceID)
+			return nil
+		}
+		item := surface.QueueItems[binding.QueueItemID]
+		if item == nil || (item.Status != state.QueueItemDispatching && item.Status != state.QueueItemRunning) {
+			delete(s.pendingRemote, instanceID)
+			return nil
+		}
+		if binding.SurfaceSessionID == initiator.SurfaceSessionID {
+			return binding
+		}
+	}
+	return s.pendingRemoteBinding(instanceID, threadID)
 }
 
 func (s *Service) activeRemoteBinding(instanceID, turnID string) *remoteTurnBinding {
@@ -2306,6 +2414,104 @@ func (s *Service) blockThreadSwitch(surface *state.SurfaceConsoleRecord) []contr
 	return nil
 }
 
+func (s *Service) blockNewThreadPreparation(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	if surface == nil {
+		return nil
+	}
+	if item := s.preparedNewThreadActiveItem(surface); item != nil {
+		switch item.Status {
+		case state.QueueItemDispatching:
+			return notice(surface, "new_thread_dispatching", "当前新会话的首条消息正在派发，暂时不能再次 /new。")
+		case state.QueueItemRunning:
+			return notice(surface, "new_thread_running", "当前新会话的首条消息正在执行，暂时不能再次 /new。")
+		}
+	}
+	if surface.ActiveQueueItemID != "" {
+		if item := surface.QueueItems[surface.ActiveQueueItemID]; item != nil {
+			switch item.Status {
+			case state.QueueItemDispatching:
+				return notice(surface, "new_thread_blocked_dispatching", "当前请求正在派发，暂时不能新建会话。")
+			case state.QueueItemRunning:
+				return notice(surface, "new_thread_blocked_running", "当前请求正在执行，暂时不能新建会话。")
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) blockPreparedNewThreadRouteExit(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady {
+		return nil
+	}
+	if item := s.preparedNewThreadActiveItem(surface); item != nil {
+		switch item.Status {
+		case state.QueueItemDispatching:
+			return notice(surface, "new_thread_switch_dispatching", "当前新会话的首条消息正在派发，暂时不能切换目标。请等待它落地，或直接 /detach。")
+		case state.QueueItemRunning:
+			return notice(surface, "new_thread_switch_running", "当前新会话的首条消息正在执行，暂时不能切换目标。请等待它完成，或直接 /detach。")
+		}
+	}
+	return nil
+}
+
+func (s *Service) blockPreparedNewThreadReprepare(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady {
+		return nil
+	}
+	if item := s.preparedNewThreadActiveItem(surface); item != nil {
+		switch item.Status {
+		case state.QueueItemDispatching:
+			return notice(surface, "new_thread_dispatching", "当前新会话的首条消息正在派发，暂时不能再次 /new。")
+		case state.QueueItemRunning:
+			return notice(surface, "new_thread_running", "当前新会话的首条消息正在执行，暂时不能再次 /new。")
+		}
+	}
+	return nil
+}
+
+func (s *Service) preparedNewThreadActiveItem(surface *state.SurfaceConsoleRecord) *state.QueueItemRecord {
+	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady || surface.ActiveQueueItemID == "" {
+		return nil
+	}
+	item := surface.QueueItems[surface.ActiveQueueItemID]
+	if item == nil || item.RouteModeAtEnqueue != state.RouteModeNewThreadReady {
+		return nil
+	}
+	switch item.Status {
+	case state.QueueItemDispatching, state.QueueItemRunning:
+		return item
+	default:
+		return nil
+	}
+}
+
+func (s *Service) preparedNewThreadQueuedItem(surface *state.SurfaceConsoleRecord) *state.QueueItemRecord {
+	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady {
+		return nil
+	}
+	for _, queueID := range surface.QueuedQueueItemIDs {
+		item := surface.QueueItems[queueID]
+		if item == nil || item.RouteModeAtEnqueue != state.RouteModeNewThreadReady || item.Status != state.QueueItemQueued {
+			continue
+		}
+		return item
+	}
+	return nil
+}
+
+func (s *Service) preparedNewThreadHasPendingCreate(surface *state.SurfaceConsoleRecord) bool {
+	return s.preparedNewThreadActiveItem(surface) != nil || s.preparedNewThreadQueuedItem(surface) != nil
+}
+
+func (s *Service) clearPreparedNewThread(surface *state.SurfaceConsoleRecord) {
+	if surface == nil {
+		return
+	}
+	surface.PreparedThreadCWD = ""
+	surface.PreparedFromThreadID = ""
+	surface.PreparedAt = time.Time{}
+}
+
 func (s *Service) unboundInputBlocked(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return nil
@@ -2316,6 +2522,11 @@ func (s *Service) unboundInputBlocked(surface *state.SurfaceConsoleRecord) []con
 			return nil
 		}
 		return notice(surface, "follow_waiting", "当前已进入跟随模式，但还没有可接管的 VS Code 会话。请等待本地切到空闲会话，或通过 /use 手动选择。")
+	case state.RouteModeNewThreadReady:
+		if strings.TrimSpace(surface.PreparedThreadCWD) != "" {
+			return nil
+		}
+		return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 	default:
 		if surface.SelectedThreadID != "" && s.surfaceOwnsThread(surface, surface.SelectedThreadID) {
 			return nil
@@ -2407,6 +2618,7 @@ func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) [
 	s.clearRemoteOwnership(surface)
 	s.releaseSurfaceThreadClaim(surface)
 	s.releaseSurfaceInstanceClaim(surface)
+	s.clearPreparedNewThread(surface)
 	surface.AttachedInstanceID = ""
 	surface.RouteMode = state.RouteModeUnbound
 	surface.Abandoning = false
@@ -2449,12 +2661,19 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")
 	}
-	if blocked := s.blockThreadSwitch(surface); blocked != nil {
+	events := []control.UIEvent{}
+	if surface.RouteMode == state.RouteModeNewThreadReady {
+		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
+			return blocked
+		}
+		events = append(events, s.discardDrafts(surface)...)
+	} else if blocked := s.blockThreadSwitch(surface); blocked != nil {
 		return blocked
 	}
 	prevThreadID := surface.SelectedThreadID
 	prevRouteMode := surface.RouteMode
-	events := s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)
+	events = append(events, s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)...)
+	s.clearPreparedNewThread(surface)
 	surface.RouteMode = state.RouteModeFollowLocal
 	reevaluated := s.reevaluateFollowSurface(surface)
 	events = append(events, reevaluated...)
@@ -2561,29 +2780,35 @@ func (s *Service) confirmKickThread(surface *state.SurfaceConsoleRecord, threadI
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")
 	}
-	if blocked := s.blockThreadSwitch(surface); blocked != nil {
+	events := []control.UIEvent{}
+	if surface.RouteMode == state.RouteModeNewThreadReady {
+		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
+			return blocked
+		}
+		events = append(events, s.discardDrafts(surface)...)
+	} else if blocked := s.blockThreadSwitch(surface); blocked != nil {
 		return blocked
 	}
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
-		return notice(surface, "selection_invalid", "缺少目标会话，无法执行强踢。")
+		return append(events, notice(surface, "selection_invalid", "缺少目标会话，无法执行强踢。")...)
 	}
 	owner := s.threadClaimSurface(threadID)
 	if owner == nil {
-		return s.useThread(surface, threadID)
+		return append(events, s.useThread(surface, threadID)...)
 	}
 	if owner.SurfaceSessionID == surface.SurfaceSessionID {
-		return s.useThread(surface, threadID)
+		return append(events, s.useThread(surface, threadID)...)
 	}
 	switch s.threadKickStatus(inst, owner, threadID) {
 	case threadKickIdle:
-		return s.kickThreadOwner(surface, inst, threadID, owner)
+		return append(events, s.kickThreadOwner(surface, inst, threadID, owner)...)
 	case threadKickQueued:
-		return notice(surface, "thread_busy_queued", "目标会话当前还有排队任务，暂时不能强踢。")
+		return append(events, notice(surface, "thread_busy_queued", "目标会话当前还有排队任务，暂时不能强踢。")...)
 	case threadKickRunning:
-		return notice(surface, "thread_busy_running", "目标会话当前正在执行，暂时不能强踢。")
+		return append(events, notice(surface, "thread_busy_running", "目标会话当前正在执行，暂时不能强踢。")...)
 	default:
-		return notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")
+		return append(events, notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")...)
 	}
 }
 
@@ -2752,6 +2977,15 @@ func (s *Service) turnSurface(instanceID, threadID, turnID string) *state.Surfac
 		}
 	}
 	return s.threadClaimSurface(threadID)
+}
+
+func (s *Service) surfaceForInitiator(instanceID string, event agentproto.Event) *state.SurfaceConsoleRecord {
+	if event.Initiator.Kind == agentproto.InitiatorRemoteSurface && strings.TrimSpace(event.Initiator.SurfaceSessionID) != "" {
+		if surface := s.root.Surfaces[event.Initiator.SurfaceSessionID]; surface != nil {
+			return surface
+		}
+	}
+	return s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 }
 
 func (s *Service) pauseForLocal(instanceID string) []control.UIEvent {
@@ -3588,6 +3822,7 @@ func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, i
 	}
 	events := s.discardStagedImagesForRouteChange(surface, prevThreadID, prevRouteMode, threadID, routeMode)
 	surface.SelectedThreadID = threadID
+	s.clearPreparedNewThread(surface)
 	surface.RouteMode = routeMode
 	events = append(events, s.threadSelectionEvents(
 		surface,

@@ -163,6 +163,61 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 	}
 }
 
+func TestDaemonNewThreadProjectsReadyState(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-1",
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+		},
+	})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:    agentproto.EventThreadsSnapshot,
+		Threads: []agentproto.ThreadSnapshotRecord{{ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true}},
+	}})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:        agentproto.EventThreadFocused,
+		ThreadID:    "thread-1",
+		CWD:         "/data/dl/droid",
+		FocusSource: "local_ui",
+	}})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionNewThread,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	snapshot := app.service.SurfaceSnapshot("feishu:chat:1")
+	if snapshot == nil || snapshot.Attachment.RouteMode != string(state.RouteModeNewThreadReady) || !snapshot.NextPrompt.CreateThread || snapshot.NextPrompt.CWD != "/data/dl/droid" {
+		t.Fatalf("expected new-thread-ready snapshot, got %#v", snapshot)
+	}
+
+	var sawReadyCard bool
+	for _, operation := range gateway.operations {
+		if operation.Kind == feishu.OperationSendCard && strings.Contains(operation.CardBody, "新建会话（等待首条消息）") {
+			sawReadyCard = true
+			break
+		}
+	}
+	if !sawReadyCard {
+		t.Fatalf("expected gateway projection to include new-thread-ready state, got %#v", gateway.operations)
+	}
+}
+
 func TestDaemonDecouplesGatewayApplyFromCanceledParentContext(t *testing.T) {
 	gateway := &ctxCheckingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})

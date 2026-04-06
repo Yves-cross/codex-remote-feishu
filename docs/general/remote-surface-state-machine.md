@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-06`
-> Summary: 记录当前已实现的 remote surface 状态机、全局仲裁规则、命令矩阵、watchdog 与死状态审计结论，作为后续改动的提交前复审基线。
+> Summary: 记录当前已实现的 remote surface 状态机，包括多 app 全局仲裁、`/new` 的 `new_thread_ready`、空 thread 归属、watchdog 与死状态审计结论，作为提交前复审基线。
 
 ## 1. 文档定位
 
@@ -36,7 +36,7 @@
 
 这个假设必须保留在文档里，避免以后误改成“按 instance 局部唯一”。
 
-### 2.2 surface 是分 gateway/chat 的，但 claim 是 relay 全局的
+### 2.2 surface 按 gateway/chat 区分，但 claim 是 relay 全局的
 
 surface 本身仍按 `gatewayID + chat/user` 区分，不同飞书 app 会形成不同 surface。
 
@@ -58,6 +58,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 | `R2 AttachedPinned` | `AttachedInstanceID != ""`，`RouteMode=pinned`，`SelectedThreadID != ""`，且持有 thread claim | 当前输入固定发到该 thread |
 | `R3 FollowWaiting` | `AttachedInstanceID != ""`，`RouteMode=follow_local`，`SelectedThreadID == ""` | 已进入 follow，但当前没有可接管 thread |
 | `R4 FollowBound` | `AttachedInstanceID != ""`，`RouteMode=follow_local`，`SelectedThreadID != ""`，且持有 thread claim | 已跟随到一个 thread |
+| `R5 NewThreadReady` | `AttachedInstanceID != ""`，`RouteMode=new_thread_ready`，`SelectedThreadID == ""`，`PreparedThreadCWD != ""` | 已释放旧 thread；下一条普通文本会创建新 thread |
 
 ### 3.2 执行状态
 
@@ -88,12 +89,14 @@ surface 不是单一枚举，而是四层正交状态叠加。
 | --- | --- | --- |
 | `D0 NoDraft` | 无 staged image，无 queued draft | 没有待绑定输入 |
 | `D1 StagedImages` | `StagedImages` 中存在 `ImageStaged` | 图片已上传，但尚未冻结到 queue item |
-| `D2 QueuedDrafts` | `QueuedQueueItemIDs` 非空 | 已冻结 thread/cwd/override，等待派发 |
+| `D2 QueuedDrafts` | `QueuedQueueItemIDs` 非空 | 已冻结 route/cwd/override，等待派发 |
+| `D3 NewThreadFirstInput` | `RouteMode=new_thread_ready` 且已存在 queued/dispatching/running 的首条消息 | 新 thread 尚未落地，但本轮创建已占用 |
 
 关键区别：
 
 1. `D2` 已冻结路由。
 2. `D1` 还没有冻结路由，所以 route change 时必须显式处理。
+3. `D3` 不是独立 route state，而是 `R5` 上的附加约束。
 
 ## 4. 当前已实现的不变量
 
@@ -107,11 +110,11 @@ surface 不是单一枚举，而是四层正交状态叠加。
 2. 第二个 surface attach 同一 instance 会直接收到 `instance_busy`。
 3. 不会进入“instance attach 成功但 thread attach 失败且用户不知道下一步”的半 attach 状态。
 
-例外只剩一种显式可恢复状态：
+唯一保留的显式可恢复状态是 `R1 AttachedUnbound`：
 
 1. attach instance 成功。
 2. 默认 thread 当前拿不到 claim 或没有默认 thread。
-3. surface 进入 `R1 AttachedUnbound`。
+3. surface 进入 `R1`。
 4. 服务端会主动发 thread 选择卡片。
 
 这不是死状态，因为用户仍然只有一条明确下一步：`/use` 或点 thread 卡片。
@@ -127,7 +130,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
    1. 对方 idle 才会弹强踢确认。
    2. 对方 queued/running 会直接拒绝。
 
-### 4.3 `PendingHeadless` 现在是 dominant gate
+### 4.3 `PendingHeadless` 仍是 dominant gate
 
 只要 `PendingHeadless != nil`：
 
@@ -136,11 +139,11 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 这意味着：
 
-1. `starting` 时不能旁路 attach/use/follow。
-2. `selecting` 时也不能通过 `/use`、`/follow`、普通文本去改路由。
+1. `starting` 时不能旁路 attach/use/follow/new。
+2. `selecting` 时也不能通过 `/use`、`/follow`、`/new`、普通文本去改路由。
 3. headless 选择的唯一正常逃生口是“恢复某个 thread”或“/killinstance”。
 
-### 4.4 选择卡片不再是服务端持久状态
+### 4.4 选择卡片不再是服务端持久 modal 状态
 
 当前服务端已经不再保存 `SelectionPrompt` 状态，也不再把“纯数字文本”解释成选择。
 
@@ -156,30 +159,46 @@ surface 不是单一枚举，而是四层正交状态叠加。
 3. 旧 `prompt_select` 只保留兼容解析，服务端统一返回 `selection_expired`。
 4. `"1"`、`"2"` 这类纯数字文本现在就是普通文本。
 
-注意：
+### 4.5 route change 与 `/new` 都会显式处理未发送草稿
 
-1. `control.UIEventSelectionPrompt` 仍然存在。
-2. 它现在只是“卡片渲染 helper”，不是 surface 状态机的一部分。
+当前有两类固定规则：
 
-### 4.5 route change 时会丢弃未冻结图片草稿
+1. 普通 route change，例如 `/use`、`/follow`、follow 自动切换、claim 丢失回退：
+   1. 只丢 staged image。
+   2. 不会静默把未冻结图片串到新 thread。
+2. clear 语义，例如 `/stop`、`/detach`、`/new`、`R5` 下的 `/use` `/follow`：
+   1. staged image 和 queued draft 都会被显式丢弃。
+   2. 会发 discard reaction / notice。
 
-当前这些动作都会调用 `discardStagedImagesForRouteChange()`：
+当前实现不允许未发送草稿在 route change 时 silently retarget。
 
-1. `/use`
-2. `/follow`
-3. follow 自动跟随到新 thread
-4. thread claim 被别人强踢后退回 waiting/unbound
-5. 其他所有通过 `bindSurfaceToThreadMode()` 发生的 route change
+### 4.6 `R5 NewThreadReady` 是稳定态，不是半成品
 
-行为固定为：
+当前 `/new` 已实现为 clear-and-prepare：
 
-1. 所有 `ImageStaged` 被标记为 `discarded`。
-2. 发 `thumbs down` / `queue off` 反应。
-3. 发 `staged_images_discarded_on_route_change` notice。
+1. 只在 surface 已 attach、已真实持有一个可见 thread、且该 thread `CWD` 非空时允许进入。
+2. 不允许 fallback 到 `Instance.WorkspaceRoot` 或 home。
+3. 进入时会释放旧 thread claim，但保留 instance attachment 与 `PromptOverride`。
+4. `PreparedThreadCWD`、`PreparedFromThreadID`、`PreparedAt` 会显式保存。
 
-当前实现不允许未冻结图片静默串到新 thread。
+这带来三个关键性质：
 
-### 4.6 `PausedForLocal` 和 `Abandoning` 都有 watchdog
+1. `R5` 没有“attach 成功但用户无路可走”的问题。
+2. `R5` 下第一条普通文本合法，且会创建新 thread。
+3. `R5` 下如果只有 staged/queued draft，用户仍然能 `/use`、`/follow`、`/detach`、`/stop` 或重复 `/new`。
+
+### 4.7 空 thread turn 不再靠 `ActiveThreadID` 猜归属
+
+当前 empty-thread 首条消息的 turn 归属已经改成显式相关性：
+
+1. queue item 仍以 `FrozenThreadID == ""` 派发。
+2. translator 在 `turn.started` 时提供 `InitiatorRemoteSurface + SurfaceSessionID`。
+3. orchestrator 优先用 `Initiator.SurfaceSessionID` 命中 pending remote item。
+4. 命中后回填真实 `threadID`，并把 surface 从 `R5` 切回 `R2 AttachedPinned`。
+
+当前不再用“`FrozenThreadID == ""` 时退化匹配 `inst.ActiveThreadID`”来猜归属。
+
+### 4.8 `PausedForLocal` 和 `Abandoning` 都有 watchdog
 
 当前 `Tick()` 已经提供两类恢复：
 
@@ -195,7 +214,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 ## 5. 主要状态迁移
 
-### 5.1 attach / list / use / follow
+### 5.1 attach / use / follow / new
 
 ```text
 R0 Detached
@@ -212,6 +231,7 @@ R1 AttachedUnbound
 R2 AttachedPinned
   -- /use(other thread) --> R2 AttachedPinned
   -- /follow --> R4 FollowBound 或 R3 FollowWaiting
+  -- /new(无 live remote work，当前 thread 有 cwd) --> R5 NewThreadReady
   -- selected thread claim 丢失 --> R1 AttachedUnbound 或 R3 FollowWaiting
   -- /detach(no live work) --> R0 Detached
   -- /detach(live work) --> E6 Abandoning -> R0 Detached
@@ -227,15 +247,27 @@ R4 FollowBound
   -- VS Code focus 切到其他可接管 thread --> R4 FollowBound
   -- VS Code focus 消失或被别人占用 --> R3 FollowWaiting
   -- /use(thread) --> R2 AttachedPinned
+  -- /new(无 live remote work，当前 thread 有 cwd) --> R5 NewThreadReady
   -- /detach(no live work) --> R0 Detached
   -- /detach(live work) --> E6 Abandoning -> R0 Detached
   -- instance offline --> R0 Detached
+
+R5 NewThreadReady
+  -- 第一条普通文本 --> R5 + E1/E2，等待新 thread 落地
+  -- turn.started(remote_surface，新 thread) --> R2 AttachedPinned
+  -- /use(thread) 且仅有 staged/queued draft --> discard drafts + R2 AttachedPinned
+  -- /follow 且仅有 staged/queued draft --> discard drafts + R4 FollowBound 或 R3 FollowWaiting
+  -- 重复 /new 且无 draft --> 保持 R5，仅回 already_new_thread_ready
+  -- 重复 /new 且仅有 staged/queued draft --> discard drafts，保持 R5
+  -- thread/start/dispatch 失败 --> 保持 R5
+  -- /detach(no live work 或仅 unsent draft) --> R0 Detached
+  -- /detach(dispatching/running 首条消息) --> E6 Abandoning -> R0 Detached
 ```
 
 补充说明：
 
-1. `/follow` 从 `pinned` 切到 `follow_local` 时，即使 thread 没变，也会发 route-mode 变更投影。
-2. `/list` 的 instance 卡片会把已被他人 attach 的 instance 标成 disabled。
+1. `R5` 下首条文本 queued 后，第二条文本与新图片都会被拒绝，直到该新 thread 真正落地。
+2. `R5` 下 `/use`、`/follow` 只会在首条消息已 `dispatching/running` 时被拒绝；若只是 staged/queued draft，会先丢弃再切走。
 
 ### 5.2 远端队列生命周期
 
@@ -256,7 +288,8 @@ E3 Running
 
 1. `pendingRemote` 先按 instance 保留“哪个 queue item 正在等 turn”。
 2. turn 建立后再提升到 `activeRemote`。
-3. 这样 turn 归属不靠“同 thread 的下一个事件”猜，而靠显式 binding。
+3. 对空 thread 首条消息，promote 会优先按 `Initiator.SurfaceSessionID` 命中。
+4. 若 queue item 来自 `R5`，turn.started 后 surface 必须切回 `pinned`，不会继续停在 `new_thread_ready`。
 
 ### 5.3 本地 VS Code 仲裁
 
@@ -272,6 +305,11 @@ E4 PausedForLocal
 E5 HandoffWait
   -- Tick 到期 --> E0 Idle 并继续 dispatchNext
 ```
+
+补充说明：
+
+1. `/new` 本身不会绕过 instance 级本地仲裁。
+2. `R5` 下首条消息如果碰到本地活动，仍可能先在 `PausedForLocal/HandoffWait` 中排队。
 
 ### 5.4 headless 生命周期
 
@@ -312,28 +350,29 @@ detach 时额外保证：
 
 ### 6.1 基础路由态
 
-| 命令 | `R0 Detached` | `R1 AttachedUnbound` | `R2 AttachedPinned` | `R3 FollowWaiting` | `R4 FollowBound` |
-| --- | --- | --- | --- | --- | --- |
-| `/list` | 允许 | 允许 | 允许 | 允许 | 允许 |
-| `/newinstance` | 允许 | 拒绝 | 拒绝 | 拒绝 | 拒绝 |
-| `/killinstance` | 仅 pending headless 时有效 | 仅 headless attach/launch 时有效 | 同左 | 同左 | 同左 |
-| `/use` `/useall` | 拒绝 | 允许 | 允许 | 允许 | 允许 |
-| `/follow` | 拒绝 | 允许 | 允许 | 允许 | 允许 |
-| 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 |
-| 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 |
-| 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 |
-| `/stop` | 通常无效果 | 通常无效果 | 允许 | 允许 | 允许 |
-| `/status` | 允许 | 允许 | 允许 | 允许 | 允许 |
-| `/detach` | 允许但通常只提示已 detached | 允许 | 允许 | 允许 | 允许 |
-| `/model` `/reasoning` `/access` | 拒绝 | 允许 | 允许 | 允许 | 允许 |
+| 命令 | `R0 Detached` | `R1 AttachedUnbound` | `R2 AttachedPinned` | `R3 FollowWaiting` | `R4 FollowBound` | `R5 NewThreadReady` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `/list` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| `/newinstance` | 允许 | 拒绝 | 拒绝 | 拒绝 | 拒绝 | 拒绝 |
+| `/new` | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许；若首条消息已 dispatching/running 则拒绝 |
+| `/killinstance` | 仅 pending headless 时有效 | 仅 headless attach/launch 时有效 | 同左 | 同左 | 同左 | 同左 |
+| `/use` `/useall` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/follow` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
+| 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
+| 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
+| 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 理论上通常不会出现；若出现仍按 attached surface 处理 |
+| `/stop` | 通常无效果 | 通常无效果 | 允许 | 允许 | 允许 | 允许；可清掉 staged/queued draft |
+| `/status` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| `/detach` | 允许但通常只提示已 detached | 允许 | 允许 | 允许 | 允许 | 允许；dispatching/running 时走 abandoning |
+| `/model` `/reasoning` `/access` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许 |
 
 ### 6.2 覆盖门禁
 
 | 覆盖状态 | 当前行为 |
 | --- | --- |
 | `G1/G2 PendingHeadless` | 只允许 `/status`、`/killinstance`、`resume_headless_thread`、revoke/reaction；其余动作统一被 headless notice 挡住 |
-| `G3 PendingRequest` | 普通文本、图片被挡；用户必须先处理请求卡片 |
-| `G4 RequestCapture` | 下一条文本优先被当成反馈；数字文本不再被 selection 抢走 |
+| `G3 PendingRequest` | 普通文本、图片、`/new` 被挡；用户必须先处理请求卡片 |
+| `G4 RequestCapture` | 下一条文本优先被当成反馈；`/new` 也会被 request-capture gate 拒绝 |
 | `E6 Abandoning` | 只允许 `/status`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
 
 ## 7. UI 动作协议
@@ -349,10 +388,12 @@ detach 时额外保证：
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
 | `prompt_select` | `ActionSelectPrompt` | 旧兼容入口，统一回 `selection_expired` |
 
-这层协议意味着：
+菜单与文本命令里新增：
 
-1. 卡片可以过期。
-2. 但过期卡片不会再篡改 surface 状态，只会给明确反馈。
+1. `/new`
+2. 菜单 `new`
+
+二者都直接映射到 `ActionNewThread`。
 
 ## 8. 当前死状态审计结论
 
@@ -360,31 +401,30 @@ detach 时额外保证：
 
 1. **instance 半 attach**：已修复。第二个 surface attach 同一 instance 会直接失败。
 2. **数字文本误切换 thread**：已修复。数字文本现在是普通消息。
-3. **headless 选择期还能旁路 `/use` `/follow`**：已修复。`PendingHeadless` 现为顶层 gate。
-4. **staged image 跟着 route change 串 thread**：已修复。route change 会显式丢图并告知用户。
+3. **headless 选择期还能旁路 `/use` `/follow` `/new`**：已修复。`PendingHeadless` 仍是顶层 gate。
+4. **staged image 跟着 route change 串 thread**：已修复。route change 或 clear 会显式丢图并告知用户。
 5. **`PausedForLocal` 永久卡住**：已修复。现在有 watchdog。
 6. **`Abandoning` 永久锁死**：已修复。现在有 watchdog。
 7. **`/follow` 切模式但 thread 不变时 UI 不知道 route mode 已变**：已修复。现在会补发 route-mode selection 投影。
+8. **`/new` 的空 thread 归属靠 `ActiveThreadID` 猜**：已修复。现在改成显式 `remote_surface + SurfaceSessionID` 相关性。
+9. **`R5 NewThreadReady` 在 queued draft 时没有出口**：已修复。现在 `/use`、`/follow`、`/detach`、`/stop`、重复 `/new` 都有明确语义。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 
-## 9. 与 `/new` 的关系
+## 9. `/new` 相关补充文档
 
-本轮文档只覆盖**现有 remote surface 状态机**。
+`/new` 已经是当前实现的一部分。
 
-`/new` 仍然是后续 feature，不在本文实现范围里。当前仍需记住一个前提：
+功能级实现说明见：
 
-1. 现有状态机已经能稳定处理“已有 thread 的 attach/use/follow/headless 恢复”。
-2. 但“空 thread 建立后如何稳定归属回 surface”仍是 `/new` 方案必须单独处理的问题。
-
-所以后续做 `/new` 时，应该在这份文档之上新增状态，而不是回退当前这些 guardrail。
+1. [new-thread-command-design.md](../implemented/new-thread-command-design.md)
 
 ## 10. 提交前复审基线
 
 凡是修改以下任一行为，都应该在提交前回看本文并同步更新：
 
 1. instance/thread attach/detach
-2. `/use`、`/follow`
+2. `/use`、`/follow`、`/new`
 3. `PendingHeadless`
 4. queue/dispatch/turn ownership
 5. staged image / draft 命运
@@ -398,6 +438,7 @@ detach 时额外保证：
 2. 有没有新增只靠异步事件才能退出、但没有 watchdog 或手动逃生口的 blocked state。
 3. 有没有让未冻结草稿在 route change 时静默改投目标。
 4. 有没有把 UI helper 状态重新变回服务端持久 modal state。
+5. 有没有让 `R5 NewThreadReady` 在首条消息失败后落回无恢复路径的状态。
 
 ## 11. 待讨论取舍
 

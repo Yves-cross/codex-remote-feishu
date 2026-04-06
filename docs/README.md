@@ -122,6 +122,7 @@
 
 - [feishu-md-preview-design.md](./implemented/feishu-md-preview-design.md)
 - [feishu-request-approval-design.md](./implemented/feishu-request-approval-design.md)
+- [new-thread-command-design.md](./implemented/new-thread-command-design.md)
 
 ### 6.3 `inprogress`
 
@@ -134,7 +135,6 @@
 - [acp-claude-integration-design.md](./draft/acp-claude-integration-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
-- [new-thread-command-design.md](./draft/new-thread-command-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-install-admin-ui-design.md](./draft/web-install-admin-ui-design.md)
 - [web-setup-wizard-redesign.md](./draft/web-setup-wizard-redesign.md)

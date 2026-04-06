@@ -485,6 +485,8 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			}
 		case snapshot.Attachment.SelectedThreadID != "":
 			lines = append(lines, snapshotField("当前输入目标", snapshot.Attachment.SelectedThreadID))
+		case snapshot.Attachment.RouteMode == "new_thread_ready":
+			lines = append(lines, snapshotField("当前输入目标", "新建会话（等待首条消息）"))
 		case snapshot.Attachment.RouteMode == "follow_local":
 			lines = append(lines, snapshotField("当前输入目标", "跟随当前 VS Code（等待中）"))
 		default:
@@ -505,6 +507,8 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		case snapshot.NextPrompt.ThreadID != "":
 			target = snapshot.NextPrompt.ThreadID
 		case snapshot.NextPrompt.CreateThread:
+			target = "新建会话"
+		case snapshot.Attachment.RouteMode == "new_thread_ready":
 			target = "新建会话"
 		case snapshot.Attachment.RouteMode == "follow_local":
 			target = "跟随当前 VS Code（等待中）"

@@ -295,6 +295,37 @@ func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
 	}
 }
 
+func TestProjectSnapshotShowsNewThreadReadyTarget(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:  "inst-1",
+				DisplayName: "droid",
+				RouteMode:   "new_thread_ready",
+			},
+			NextPrompt: control.PromptRouteSummary{
+				RouteMode:                      "new_thread_ready",
+				CWD:                            "/data/dl/droid",
+				CreateThread:                   true,
+				EffectiveModel:                 "gpt-5.4",
+				EffectiveReasoningEffort:       "xhigh",
+				EffectiveAccessMode:            "full_access",
+				EffectiveModelSource:           "surface_default",
+				EffectiveReasoningEffortSource: "surface_default",
+				EffectiveAccessModeSource:      "surface_default",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody, "新建会话（等待首条消息）", "**目标：** 新建会话", "**工作目录：** `/data/dl/droid`") {
+		t.Fatalf("expected snapshot body to show new-thread-ready target, got %#v", ops[0].CardBody)
+	}
+}
+
 func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

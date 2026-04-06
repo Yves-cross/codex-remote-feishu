@@ -13,6 +13,8 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 		"list":           control.ActionListInstances,
 		"status":         control.ActionStatus,
 		"stop":           control.ActionStop,
+		"new":            control.ActionNewThread,
+		"new_thread":     control.ActionNewThread,
 		"newinstance":    control.ActionNewInstance,
 		"new_instance":   control.ActionNewInstance,
 		"killinstance":   control.ActionKillInstance,
@@ -205,6 +207,7 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 		"/sessions":     control.ActionShowThreads,
 		"/useall":       control.ActionShowAllThreads,
 		"/sessionsall":  control.ActionShowAllThreads,
+		"/new":          control.ActionNewThread,
 		"/newinstance":  control.ActionNewInstance,
 		"/killinstance": control.ActionKillInstance,
 	}

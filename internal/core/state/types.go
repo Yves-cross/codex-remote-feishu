@@ -9,9 +9,10 @@ import (
 type RouteMode string
 
 const (
-	RouteModePinned      RouteMode = "pinned"
-	RouteModeFollowLocal RouteMode = "follow_local"
-	RouteModeUnbound     RouteMode = "unbound"
+	RouteModePinned         RouteMode = "pinned"
+	RouteModeFollowLocal    RouteMode = "follow_local"
+	RouteModeNewThreadReady RouteMode = "new_thread_ready"
+	RouteModeUnbound        RouteMode = "unbound"
 )
 
 type DispatchMode string
@@ -101,6 +102,9 @@ type SurfaceConsoleRecord struct {
 	QueuedQueueItemIDs   []string
 	StagedImages         map[string]*StagedImageRecord
 	QueueItems           map[string]*QueueItemRecord
+	PreparedThreadCWD    string
+	PreparedFromThreadID string
+	PreparedAt           time.Time
 	PromptOverride       ModelConfigRecord
 	PendingHeadless      *HeadlessLaunchRecord
 	PendingRequests      map[string]*RequestPromptRecord

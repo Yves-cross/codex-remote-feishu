@@ -3393,3 +3393,282 @@ func TestKillInstanceRejectsNormalInstance(t *testing.T) {
 		t.Fatalf("expected headless_kill_forbidden notice, got %#v", events)
 	}
 }
+
+func TestNewThreadReadyDiscardsDraftsAndPreparesCreate(t *testing.T) {
+	now := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionImageMessage, SurfaceSessionID: "surface-1", MessageID: "msg-img", LocalPath: "/tmp/img.png", MIMEType: "image/png"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewThread,
+		SurfaceSessionID: "surface-1",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.RouteMode != state.RouteModeNewThreadReady || surface.SelectedThreadID != "" {
+		t.Fatalf("expected new_thread_ready without selected thread, got route=%q selected=%q", surface.RouteMode, surface.SelectedThreadID)
+	}
+	if surface.PreparedThreadCWD != "/data/dl/droid" || surface.PreparedFromThreadID != "thread-1" {
+		t.Fatalf("expected prepared cwd/thread to be captured, got %#v", surface)
+	}
+	if claim := svc.threadClaims["thread-1"]; claim != nil {
+		t.Fatalf("expected prior thread claim to be released, got %#v", claim)
+	}
+	if len(surface.StagedImages) != 0 {
+		t.Fatalf("expected staged images to be discarded, got %#v", surface.StagedImages)
+	}
+	var sawSelection, sawNotice bool
+	for _, event := range events {
+		if event.ThreadSelection != nil && event.ThreadSelection.RouteMode == string(state.RouteModeNewThreadReady) && event.ThreadSelection.Title == preparedNewThreadSelectionTitle() {
+			sawSelection = true
+		}
+		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
+			sawNotice = true
+		}
+	}
+	if !sawSelection || !sawNotice {
+		t.Fatalf("expected new-thread selection change plus notice, got %#v", events)
+	}
+}
+
+func TestNewThreadReadyFirstTextQueuesCreateAndBlocksSecondInput(t *testing.T) {
+	now := time.Date(2026, 4, 6, 10, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewThread, SurfaceSessionID: "surface-1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "开一个新会话",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ActiveQueueItemID == "" {
+		t.Fatalf("expected active queue item after first /new text, got %#v", surface)
+	}
+	item := surface.QueueItems[surface.ActiveQueueItemID]
+	if item == nil {
+		t.Fatal("expected active queue item record")
+	}
+	if item.FrozenThreadID != "" || item.FrozenCWD != "/data/dl/droid" || item.RouteModeAtEnqueue != state.RouteModeNewThreadReady {
+		t.Fatalf("expected create-thread queue item, got %#v", item)
+	}
+	var sawCreateThread bool
+	for _, event := range events {
+		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend && event.Command.Target.CreateThreadIfMissing {
+			sawCreateThread = true
+		}
+	}
+	if !sawCreateThread {
+		t.Fatalf("expected prompt send with CreateThreadIfMissing, got %#v", events)
+	}
+
+	blocked := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-2",
+		Text:             "第二条不该进来",
+	})
+	if len(blocked) != 1 || blocked[0].Notice == nil || blocked[0].Notice.Code != "new_thread_first_input_pending" {
+		t.Fatalf("expected second input to be blocked, got %#v", blocked)
+	}
+}
+
+func TestNewThreadTurnStartedBindsSurfaceBackToPinnedThread(t *testing.T) {
+	now := time.Date(2026, 4, 6, 11, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewThread, SurfaceSessionID: "surface-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionTextMessage, SurfaceSessionID: "surface-1", MessageID: "msg-1", Text: "开新会话"})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-created",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.RouteMode != state.RouteModePinned || surface.SelectedThreadID != "thread-created" {
+		t.Fatalf("expected surface to rebind to created thread, got route=%q selected=%q", surface.RouteMode, surface.SelectedThreadID)
+	}
+	if surface.PreparedThreadCWD != "" || surface.PreparedFromThreadID != "" {
+		t.Fatalf("expected prepared new-thread state to clear, got %#v", surface)
+	}
+	if claim := svc.threadClaims["thread-created"]; claim == nil || claim.SurfaceSessionID != "surface-1" {
+		t.Fatalf("expected created thread claim to belong to surface, got %#v", claim)
+	}
+	var sawPinnedSelection bool
+	for _, event := range events {
+		if event.ThreadSelection != nil && event.ThreadSelection.ThreadID == "thread-created" && event.ThreadSelection.RouteMode == string(state.RouteModePinned) {
+			sawPinnedSelection = true
+		}
+	}
+	if !sawPinnedSelection {
+		t.Fatalf("expected pinned selection change after turn started, got %#v", events)
+	}
+}
+
+func TestUseThreadFromNewThreadReadyDiscardsQueuedDraft(t *testing.T) {
+	now := time.Date(2026, 4, 6, 11, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+			"thread-2": {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewThread, SurfaceSessionID: "surface-1"})
+	surface := svc.root.Surfaces["surface-1"]
+	surface.DispatchMode = state.DispatchModePausedForLocal
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionTextMessage, SurfaceSessionID: "surface-1", MessageID: "msg-1", Text: "先排队一个新会话"})
+
+	var queued *state.QueueItemRecord
+	for _, item := range surface.QueueItems {
+		if item.Status == state.QueueItemQueued {
+			queued = item
+			break
+		}
+	}
+	if queued == nil {
+		t.Fatalf("expected queued create-thread item, got %#v", surface.QueueItems)
+	}
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ThreadID:         "thread-2",
+	})
+
+	if surface.RouteMode != state.RouteModePinned || surface.SelectedThreadID != "thread-2" {
+		t.Fatalf("expected surface to switch to thread-2, got route=%q selected=%q", surface.RouteMode, surface.SelectedThreadID)
+	}
+	if queued.Status != state.QueueItemDiscarded {
+		t.Fatalf("expected queued create-thread item to be discarded, got %#v", queued)
+	}
+}
+
+func TestRepeatNewThreadReadyDiscardsQueuedDraft(t *testing.T) {
+	now := time.Date(2026, 4, 6, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionNewThread, SurfaceSessionID: "surface-1"})
+	surface := svc.root.Surfaces["surface-1"]
+	surface.DispatchMode = state.DispatchModePausedForLocal
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionTextMessage, SurfaceSessionID: "surface-1", MessageID: "msg-1", Text: "先排队"})
+
+	var queued *state.QueueItemRecord
+	for _, item := range surface.QueueItems {
+		if item.Status == state.QueueItemQueued {
+			queued = item
+			break
+		}
+	}
+	if queued == nil {
+		t.Fatalf("expected queued create-thread item, got %#v", surface.QueueItems)
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewThread,
+		SurfaceSessionID: "surface-1",
+	})
+
+	if surface.RouteMode != state.RouteModeNewThreadReady || surface.PreparedThreadCWD != "/data/dl/droid" {
+		t.Fatalf("expected surface to stay new_thread_ready, got %#v", surface)
+	}
+	if queued.Status != state.QueueItemDiscarded {
+		t.Fatalf("expected queued draft to be discarded, got %#v", queued)
+	}
+	if len(events) == 0 || events[len(events)-1].Notice == nil || events[len(events)-1].Notice.Code != "new_thread_ready_reset" {
+		t.Fatalf("expected reset notice, got %#v", events)
+	}
+}
+
+func TestNewThreadRejectedDuringRequestCapture(t *testing.T) {
+	now := time.Date(2026, 4, 6, 12, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.root.Surfaces["surface-1"].ActiveRequestCapture = &state.RequestCaptureRecord{
+		RequestID: "req-1",
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewThread,
+		SurfaceSessionID: "surface-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_capture_waiting_text" {
+		t.Fatalf("expected request capture gate to reject /new, got %#v", events)
+	}
+}

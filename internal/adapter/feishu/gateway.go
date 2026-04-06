@@ -597,6 +597,8 @@ func parseTextAction(text string) (control.Action, bool) {
 		return control.Action{Kind: control.ActionStatus}, true
 	case "/stop":
 		return control.Action{Kind: control.ActionStop}, true
+	case "/new":
+		return control.Action{Kind: control.ActionNewThread}, true
 	case "/newinstance":
 		return control.Action{Kind: control.ActionNewInstance}, true
 	case "/killinstance":
@@ -625,6 +627,8 @@ func menuAction(eventKey string) (control.Action, bool) {
 		return control.Action{Kind: control.ActionStatus}, true
 	case "stop":
 		return control.Action{Kind: control.ActionStop}, true
+	case "new", "newthread":
+		return control.Action{Kind: control.ActionNewThread}, true
 	case "newinstance":
 		return control.Action{Kind: control.ActionNewInstance}, true
 	case "killinstance":

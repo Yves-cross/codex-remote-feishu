@@ -13,6 +13,7 @@ const (
 	ActionListInstances     ActionKind = "surface.menu.list_instances"
 	ActionStatus            ActionKind = "surface.menu.status"
 	ActionStop              ActionKind = "surface.menu.stop"
+	ActionNewThread         ActionKind = "surface.menu.new_thread"
 	ActionNewInstance       ActionKind = "surface.menu.new_instance"
 	ActionKillInstance      ActionKind = "surface.menu.kill_instance"
 	ActionModelCommand      ActionKind = "surface.command.model"
