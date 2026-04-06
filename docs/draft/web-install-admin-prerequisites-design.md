@@ -543,12 +543,15 @@ type GatewayController interface {
 
 #### 5.6.1 当前问题
 
-图片下载当前落在：
+当前 runtime 已经把图片下载目录固定到：
 
-- `os.TempDir()`
-- 文件名 `codex-remote-image-*`
+- `~/.local/state/codex-remote/image-staging/<gatewayID>/`
 
-这样没法稳定统计，也没法安全清理。
+但仍缺少：
+
+- admin 侧占用统计
+- 基于 orchestrator 活跃引用的安全清理
+- 对旧遗留文件的回收入口
 
 #### 5.6.2 推荐目录
 
@@ -772,11 +775,12 @@ scopes JSON 以当前已确认样例为基线：
   - `GET /api/admin/vscode/detect`
   - `POST /api/admin/vscode/apply`
   - `POST /api/admin/vscode/reinstall-shim`
+  - `GET /api/admin/storage/image-staging`
+  - `POST /api/admin/storage/image-staging/cleanup`
   - `GET /setup`
   - `GET /`
 - 已注册但暂时返回结构化 `501 not_implemented`：
-  - `instances`
-  - `storage/*`
+  - `preview-drive/*`
   - `PUT /api/admin/config`
 
 这样后续阶段可以在不改路径 contract 的前提下逐步把能力填实。
