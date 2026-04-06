@@ -43,6 +43,16 @@
         "key": "reasonxhigh",
         "name": "推理 XHigh",
         "description": "把之后飞书发出的消息推理强度切到 xhigh。"
+      },
+      {
+        "key": "access_full",
+        "name": "执行权限 Full",
+        "description": "把之后飞书发出的消息执行权限切到 full access，不再要求飞书确认卡片。"
+      },
+      {
+        "key": "access_confirm",
+        "name": "执行权限 Confirm",
+        "description": "把之后飞书发出的消息执行权限切到 confirm，需要时在飞书里弹确认卡片。"
       }
     ]
   },
@@ -61,11 +71,11 @@
     },
     {
       "event": "application.bot.menu_v6",
-      "purpose": "处理机器人菜单里的 list/status/threads/stop 以及推理强度快捷键。"
+      "purpose": "处理机器人菜单里的 list/status/threads/stop、推理强度快捷键和执行权限快捷键。"
     },
     {
       "event": "card.action.trigger",
-      "purpose": "处理消息卡片里的 attach / 切换会话按钮。"
+      "purpose": "处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
     }
   ],
   "permissions_checklist": [
@@ -93,10 +103,19 @@
       "items": [
         "如果需要和机器人单聊，额外开通 P2P 消息只读权限。"
       ]
+    },
+    {
+      "area": "Markdown 预览权限",
+      "items": [
+        "如果要启用 assistant 最终回复里的本地 .md 预览，推荐直接开通 drive:drive。",
+        "当前实现会实际创建云空间目录、上传文件、查询文件链接，并给目录和文件增加协作者权限。",
+        "如果不开通这部分权限，机器人主功能仍可用，但 .md 链接不会变成飞书预览链接。"
+      ]
     }
   ],
   "notes": [
     "此文件是项目模板，不保证可直接导入飞书控制台。",
-    "请按 deploy/feishu/README.md 的说明，把这里的菜单、事件和权限逐项配置到你的自建应用。"
+    "请按 deploy/feishu/README.md 的说明，把这里的菜单、事件和权限逐项配置到你的自建应用。",
+    "当前 .md 预览默认上传到应用云空间目录 Codex Remote Previews/，并按会话给用户或群授权。"
   ]
 }

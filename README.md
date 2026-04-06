@@ -31,6 +31,7 @@
 - 支持暂存图片，并在下一条文本里一起发给 Codex
 - 查看当前生效的模型和推理强度，并做飞书侧临时覆盖
 - 区分系统提示、过程消息和最终回复
+- 最终回复中的本地 `.md` Markdown 链接可自动替换成飞书云空间预览链接
 
 ## 安装前准备
 
@@ -48,7 +49,10 @@
 
 - `App ID`
 - `App Secret`
-- 消息接收、reaction、机器人菜单相关权限和事件
+- 基础交互所需的消息接收、reaction、机器人菜单相关权限和事件
+- 如果要启用 `.md` 预览，推荐额外开通 `drive:drive`
+
+`.md` 预览当前实现会在发送最终回复前自动创建目录、上传文件、查询访问链接，并给当前对话用户或群补协作者权限。不开这部分权限时，主对话功能仍可使用，但 `.md` 链接不会被替换成飞书预览链接。
 
 ## 一条命令安装
 
@@ -125,10 +129,19 @@ Windows PowerShell:
 
 ```bash
 ./install.sh start
+./install.sh restart
+./install.sh refresh
 ./install.sh status
 ./install.sh logs
 ./install.sh stop
 ```
+
+建议区分两种场景：
+
+- 只想重启当前 relay 服务链路，或回收“pid 文件丢了但 daemon 还活着”的残留状态：`./install.sh restart`
+- 刚改过 Go 代码，且启用了 `managed_shim`，需要把 `~/.local/bin` 和 VS Code 扩展 bundle 一起刷新到新版本：`./install.sh refresh`
+
+`restart` 和 `refresh` 都会尝试停止当前安装链路上的 wrapper/app-server/daemon 进程再拉起；如果 VS Code 里正开着 Codex，会话可能被中断，这是预期行为。区别是 `refresh` 还会把 `~/.local/bin` 和 managed shim bundle 入口重新刷新到最新构建。
 
 默认会写入：
 
@@ -177,6 +190,8 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 - `/detach`：断开当前实例接管
 - `/model`：查看或设置飞书侧模型覆盖
 - `/reasoning`：查看或设置飞书侧推理强度覆盖
+- `/access`：查看或设置飞书侧执行权限覆盖，支持 `full`、`confirm`、`clear`
+- `/approval`：`/access` 的别名
 
 机器人菜单：
 
@@ -184,6 +199,15 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 - `status`
 - `threads`
 - `stop`
+- `access_full`
+- `access_confirm`
+
+关于 `.md` 预览：
+
+- 当前只处理 assistant 最终回复里的 Markdown 链接，例如 `[README](docs/README.md)`
+- 不会改写普通纯文本路径、代码块里的路径或用户输入里的路径
+- 预览文件默认上传到应用云空间目录 `Codex Remote Previews/`
+- 单聊会给当前用户授权；群聊会同时给当前用户和当前群授权
 
 ## 排障
 

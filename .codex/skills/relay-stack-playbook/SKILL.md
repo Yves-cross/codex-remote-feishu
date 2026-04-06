@@ -1,6 +1,6 @@
 ---
 name: relay-stack-playbook
-description: Use when working on this repository's relay stack: Codex app-server protocol translation, relayd, relay-wrapper, Feishu bot integration, VS Code remote integration, or real-stack debugging around /list, /attach, /use, thread routing, helper/internal traffic, and missing Feishu replies. Summarizes the correct execution order, validation steps, and common failure modes specific to this project.
+description: "Use when working on this repository's relay stack: Codex app-server protocol translation, relayd, relay-wrapper, Feishu bot integration, VS Code remote integration, or real-stack debugging around /list, /attach, /use, thread routing, helper/internal traffic, and missing Feishu replies. Summarizes the correct execution order, validation steps, and common failure modes specific to this project."
 ---
 
 # relay-stack-playbook

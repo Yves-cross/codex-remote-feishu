@@ -45,8 +45,28 @@ Start the relay service on Linux with:
 ./install.sh start
 ```
 
+If you only need to restart the current relay chain, or recover from a stale daemon that is still alive without a PID file:
+
+```bash
+./install.sh restart
+```
+
+If you changed Go code and use `managed_shim`, refresh the installed wrapper binary and VS Code bundle entrypoint before testing:
+
+```bash
+./install.sh refresh
+```
+
+`restart` and `refresh` may interrupt an active VS Code Codex session because they proactively stop the current managed wrapper/app-server/daemon chain before starting again.
+
+Before you test in Feishu:
+
+- make sure the app has the bot message/event permissions from `deploy/feishu/README.md`
+- if you want local `.md` links to become Feishu preview links, also grant `drive:drive`
+
 Then in Feishu:
 
 - send `/list`
 - reply with the instance number to attach
 - use `/threads` to switch thread if needed
+- remote execution defaults to full access; if you need confirmation mode temporarily, send `/access confirm`
