@@ -110,6 +110,9 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if ops[0].CardTitle != "需要确认" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
+	if ops[0].CardThemeKey != cardThemeApproval {
+		t.Fatalf("unexpected request prompt theme: %#v", ops[0])
+	}
 	if !containsAll(ops[0].CardBody, "当前会话：droid · 修复登录流程", "git push") {
 		t.Fatalf("unexpected card body: %#v", ops[0])
 	}
@@ -166,6 +169,35 @@ func TestProjectNewInstanceSelectionPromptUsesRecoverAction(t *testing.T) {
 	}
 }
 
+func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind:     control.SelectionPromptKickThread,
+			PromptID: "prompt-kick",
+			Options: []control.SelectionOption{
+				{Index: 1, OptionID: "cancel", Label: "保留当前状态，不执行强踢。", ButtonLabel: "取消"},
+				{Index: 2, OptionID: "confirm", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardTitle != "强踢当前会话？" {
+		t.Fatalf("unexpected card title: %#v", ops[0])
+	}
+	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
+	if len(actionRow) != 1 {
+		t.Fatalf("expected one action button for confirm row, got %#v", ops[0].CardElements[3])
+	}
+	textValue, _ := actionRow[0]["text"].(map[string]any)
+	if textValue["content"] != "强踢并占用" {
+		t.Fatalf("expected custom button label, got %#v", actionRow[0])
+	}
+}
+
 func TestProjectQueueTypingAndThumbsDownReactions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -202,7 +234,7 @@ func TestProjectNoticeAsSystemCard(t *testing.T) {
 	if ops[0].CardTitle != "系统提示" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if ops[0].CardThemeKey != "system" {
+	if ops[0].CardThemeKey != cardThemeSuccess {
 		t.Fatalf("unexpected card theme: %#v", ops[0])
 	}
 }
@@ -221,8 +253,41 @@ func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "链路错误 · wrapper.observe_codex_stdout" || ops[0].CardThemeKey != "relay-error" {
+	if ops[0].CardTitle != "链路错误 · wrapper.observe_codex_stdout" || ops[0].CardThemeKey != cardThemeError {
 		t.Fatalf("expected custom notice projection, got %#v", ops[0])
+	}
+}
+
+func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:  "inst-1",
+				DisplayName: "droid",
+				RouteMode:   "follow_local",
+				Abandoning:  true,
+			},
+			NextPrompt: control.PromptRouteSummary{
+				RouteMode:                      "follow_local",
+				CWD:                            "/data/dl/droid",
+				EffectiveModel:                 "gpt-5.4",
+				EffectiveReasoningEffort:       "high",
+				EffectiveAccessMode:            "full_access",
+				EffectiveModelSource:           "surface_default",
+				EffectiveReasoningEffortSource: "surface_default",
+				EffectiveAccessModeSource:      "surface_default",
+				BaseModelSource:                "unknown",
+				BaseReasoningEffortSource:      "unknown",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody, "正在断开，等待当前 turn 收尾", "跟随当前 VS Code（等待中）") {
+		t.Fatalf("expected snapshot body to show follow waiting and abandoning, got %#v", ops[0].CardBody)
 	}
 }
 
@@ -245,7 +310,7 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	if ops[0].CardTitle != "最终回复 · droid · 修复登录流程" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if ops[0].CardThemeKey != "thread-1" {
+	if ops[0].CardThemeKey != cardThemeFinal {
 		t.Fatalf("unexpected theme key: %#v", ops[0])
 	}
 	if ops[0].CardBody != "已收到：\n\n```text\nREADME.md\nsrc\n```" {
@@ -310,12 +375,15 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	}
 	if !containsAll(ops[0].CardBody,
 		"如果现在从飞书发送一条消息：",
-		"模型：`gpt-5.4`（飞书临时覆盖）",
-		"推理强度：`medium`（会话配置）",
-		"执行权限：`confirm`（飞书临时覆盖）",
-		"飞书临时覆盖：模型 `gpt-5.4`，权限 `confirm`",
+		"**模型：** `gpt-5.4`（飞书临时覆盖）",
+		"**推理强度：** `medium`（会话配置）",
+		"**执行权限：** `confirm`（飞书临时覆盖）",
+		"**飞书临时覆盖：** 模型 `gpt-5.4`，权限 `confirm`",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0])
+	}
+	if strings.Contains(ops[0].CardBody, "已知会话：") || strings.Contains(ops[0].CardBody, "在线实例：") {
+		t.Fatalf("status card should not include list sections, got %#v", ops[0].CardBody)
 	}
 }
 
@@ -347,7 +415,7 @@ func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if !strings.Contains(ops[0].CardBody, "执行权限：`full`（飞书默认）") {
+	if !strings.Contains(ops[0].CardBody, "**执行权限：** `full`（飞书默认）") {
 		t.Fatalf("expected compact full access token in snapshot body, got %#v", ops[0].CardBody)
 	}
 }
@@ -381,9 +449,9 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
-		"模型：`gpt-5.4`（飞书默认）",
-		"推理强度：`xhigh`（飞书默认）",
-		"执行权限：`full`（飞书默认）",
+		"**模型：** `gpt-5.4`（飞书默认）",
+		"**推理强度：** `xhigh`（飞书默认）",
+		"**执行权限：** `full`（飞书默认）",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
 	}
@@ -431,13 +499,15 @@ func TestProjectSnapshotIncludesHeadlessAttachmentAndPendingLaunch(t *testing.T)
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
-		"已接管：droid (Headless)",
-		"实例 PID：`4321`",
+		"**已接管：** droid (Headless)",
+		"**实例 PID：** `4321`",
 		"Headless 创建中：",
-		"进程 PID：`5678`",
-		"droid (Headless) - 工作目录 `/data/dl/droid` · PID `4321`",
+		"**进程 PID：** `5678`",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
+	}
+	if strings.Contains(ops[0].CardBody, "在线实例：") {
+		t.Fatalf("status card should not include online instance list, got %#v", ops[0].CardBody)
 	}
 }
 

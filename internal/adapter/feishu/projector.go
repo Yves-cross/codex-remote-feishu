@@ -40,6 +40,14 @@ const (
 	emojiDiscarded    = "ThumbsDown"
 )
 
+const (
+	cardThemeInfo     = "info"
+	cardThemeSuccess  = "success"
+	cardThemeError    = "error"
+	cardThemeFinal    = "final"
+	cardThemeApproval = "approval"
+)
+
 type Projector struct{}
 
 func NewProjector() *Projector {
@@ -59,7 +67,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        "当前状态",
 			CardBody:         formatSnapshot(*event.Snapshot),
-			CardThemeKey:     "system",
+			CardThemeKey:     cardThemeInfo,
 		}}
 	case control.UIEventNotice:
 		if event.Notice == nil {
@@ -69,10 +77,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if title == "" {
 			title = "系统提示"
 		}
-		themeKey := strings.TrimSpace(event.Notice.ThemeKey)
-		if themeKey == "" {
-			themeKey = "system"
-		}
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
@@ -80,7 +84,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         event.Notice.Text,
-			CardThemeKey:     themeKey,
+			CardThemeKey:     noticeThemeKey(*event.Notice),
 		}}
 	case control.UIEventSelectionPrompt:
 		if event.SelectionPrompt == nil {
@@ -96,6 +100,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 				title = "会话列表"
 			case control.SelectionPromptNewInstance:
 				title = "选择要恢复的会话"
+			case control.SelectionPromptKickThread:
+				title = "强踢当前会话？"
 			}
 		}
 		return []Operation{{
@@ -105,7 +111,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
-			CardThemeKey:     "system",
+			CardThemeKey:     cardThemeInfo,
 			CardElements:     selectionPromptElements(*event.SelectionPrompt),
 		}}
 	case control.UIEventRequestPrompt:
@@ -123,7 +129,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         requestPromptBody(*event.RequestPrompt),
-			CardThemeKey:     chooseThemeKey(event.RequestPrompt.ThreadID, "approval"),
+			CardThemeKey:     cardThemeApproval,
 			CardElements:     requestPromptElements(*event.RequestPrompt),
 		}}
 	case control.UIEventPendingInput:
@@ -205,7 +211,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        "系统提示",
 			CardBody:         body,
-			CardThemeKey:     chooseThemeKey(event.ThreadSelection.ThreadID, "system"),
+			CardThemeKey:     cardThemeInfo,
 		}}
 	default:
 		return nil
@@ -241,7 +247,7 @@ func projectBlock(gatewayID, surfaceSessionID, chatID string, block render.Block
 		ChatID:           chatID,
 		CardTitle:        title,
 		CardBody:         body,
-		CardThemeKey:     chooseThemeKey(block.ThemeKey, block.ThreadID),
+		CardThemeKey:     cardThemeFinal,
 	}}
 }
 
@@ -287,25 +293,47 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 	switch kind {
 	case control.SelectionPromptAttachInstance:
 		if option.Subtitle != "" {
-			return fmt.Sprintf("%d. %s - 工作目录 `%s`%s", option.Index, option.Label, option.Subtitle, current)
+			parts := strings.Split(option.Subtitle, "\n")
+			line := fmt.Sprintf("%d. %s - 工作目录 `%s`%s", option.Index, option.Label, parts[0], current)
+			if len(parts) > 1 {
+				line += "\n" + strings.Join(parts[1:], "\n")
+			}
+			return line
 		}
 	default:
 		if option.Subtitle != "" {
-			return fmt.Sprintf("%d. %s%s\n`%s`", option.Index, option.Label, current, option.Subtitle)
+			parts := strings.Split(option.Subtitle, "\n")
+			line := fmt.Sprintf("%d. %s%s", option.Index, option.Label, current)
+			if len(parts) > 0 && parts[0] != "" {
+				line += "\n`" + parts[0] + "`"
+			}
+			if len(parts) > 1 {
+				line += "\n" + strings.Join(parts[1:], "\n")
+			}
+			return line
 		}
 	}
 	return fmt.Sprintf("%d. %s%s", option.Index, option.Label, current)
 }
 
 func selectionOptionButton(prompt control.SelectionPrompt, option control.SelectionOption) map[string]any {
-	text := "选择"
+	text := strings.TrimSpace(option.ButtonLabel)
+	if text == "" {
+		text = "选择"
+	}
 	switch prompt.Kind {
 	case control.SelectionPromptAttachInstance:
-		text = "接管"
+		if text == "选择" {
+			text = "接管"
+		}
 	case control.SelectionPromptUseThread:
-		text = "切换"
+		if text == "选择" {
+			text = "切换"
+		}
 	case control.SelectionPromptNewInstance:
-		text = "恢复"
+		if text == "选择" {
+			text = "恢复"
+		}
 	}
 	disabled := option.Disabled
 	buttonType := "default"
@@ -419,43 +447,51 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 func formatSnapshot(snapshot control.Snapshot) string {
 	lines := []string{}
 	if snapshot.Attachment.InstanceID == "" {
-		lines = append(lines, "当前未接管任何实例。")
+		lines = append(lines, snapshotField("已接管", "无"))
 	} else {
-		lines = append(lines, fmt.Sprintf("已接管：%s", formatInstanceLabel(snapshot.Attachment.DisplayName, snapshot.Attachment.Source, snapshot.Attachment.Managed)))
+		lines = append(lines, snapshotField("已接管", formatInstanceLabel(snapshot.Attachment.DisplayName, snapshot.Attachment.Source, snapshot.Attachment.Managed)))
+		if snapshot.Attachment.Abandoning {
+			lines = append(lines, snapshotField("状态", "正在断开，等待当前 turn 收尾"))
+		}
 		switch {
 		case snapshot.Attachment.SelectedThreadTitle != "":
-			lines = append(lines, fmt.Sprintf("当前输入目标：%s", snapshot.Attachment.SelectedThreadTitle))
+			lines = append(lines, snapshotField("当前输入目标", snapshot.Attachment.SelectedThreadTitle))
 			if short := shortenThreadID(snapshot.Attachment.SelectedThreadID); short != "" {
-				lines = append(lines, fmt.Sprintf("会话 ID：%s", short))
+				lines = append(lines, snapshotField("会话 ID", short))
 			}
 		case snapshot.Attachment.SelectedThreadID != "":
-			lines = append(lines, fmt.Sprintf("当前输入目标：%s", snapshot.Attachment.SelectedThreadID))
+			lines = append(lines, snapshotField("当前输入目标", snapshot.Attachment.SelectedThreadID))
+		case snapshot.Attachment.RouteMode == "follow_local":
+			lines = append(lines, snapshotField("当前输入目标", "跟随当前 VS Code（等待中）"))
 		default:
-			lines = append(lines, "当前输入目标：未绑定会话")
+			lines = append(lines, snapshotField("当前输入目标", "未绑定会话"))
 		}
 		if preview := strings.TrimSpace(snapshot.Attachment.SelectedThreadPreview); preview != "" {
-			lines = append(lines, fmt.Sprintf("最近信息：%s", preview))
+			lines = append(lines, snapshotField("最近信息", preview))
 		}
 		if snapshot.Attachment.PID > 0 {
-			lines = append(lines, fmt.Sprintf("实例 PID：`%d`", snapshot.Attachment.PID))
+			lines = append(lines, snapshotField("实例 PID", fmt.Sprintf("`%d`", snapshot.Attachment.PID)))
 		}
-		lines = append(lines, fmt.Sprintf("路由模式：%s", snapshot.Attachment.RouteMode))
 		lines = append(lines, "")
-		lines = append(lines, "如果现在从飞书发送一条消息：")
-		target := "新建会话"
+		lines = append(lines, "**如果现在从飞书发送一条消息：**")
+		target := "未就绪"
 		switch {
 		case snapshot.NextPrompt.ThreadTitle != "":
 			target = snapshot.NextPrompt.ThreadTitle
 		case snapshot.NextPrompt.ThreadID != "":
 			target = snapshot.NextPrompt.ThreadID
+		case snapshot.NextPrompt.CreateThread:
+			target = "新建会话"
+		case snapshot.Attachment.RouteMode == "follow_local":
+			target = "跟随当前 VS Code（等待中）"
 		}
-		lines = append(lines, fmt.Sprintf("目标：%s", target))
+		lines = append(lines, snapshotField("目标", target))
 		if snapshot.NextPrompt.CWD != "" {
-			lines = append(lines, fmt.Sprintf("工作目录：`%s`", snapshot.NextPrompt.CWD))
+			lines = append(lines, snapshotField("工作目录", fmt.Sprintf("`%s`", snapshot.NextPrompt.CWD)))
 		}
-		lines = append(lines, fmt.Sprintf("模型：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource)))
-		lines = append(lines, fmt.Sprintf("推理强度：`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource)))
-		lines = append(lines, fmt.Sprintf("执行权限：`%s`（%s）", agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource)))
+		lines = append(lines, snapshotField("模型", fmt.Sprintf("`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource))))
+		lines = append(lines, snapshotField("推理强度", fmt.Sprintf("`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource))))
+		lines = append(lines, snapshotField("执行权限", fmt.Sprintf("`%s`（%s）", agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource))))
 		overrideParts := []string{}
 		if snapshot.NextPrompt.OverrideModel != "" {
 			overrideParts = append(overrideParts, "模型 `"+snapshot.NextPrompt.OverrideModel+"`")
@@ -467,80 +503,38 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			overrideParts = append(overrideParts, "权限 `"+agentproto.DisplayAccessModeShort(snapshot.NextPrompt.OverrideAccessMode)+"`")
 		}
 		if len(overrideParts) == 0 {
-			lines = append(lines, "飞书临时覆盖：无")
+			lines = append(lines, snapshotField("飞书临时覆盖", "无"))
 		} else {
-			lines = append(lines, "飞书临时覆盖："+strings.Join(overrideParts, "，"))
+			lines = append(lines, snapshotField("飞书临时覆盖", strings.Join(overrideParts, "，")))
 		}
-		lines = append(lines, fmt.Sprintf("底层真实配置：模型 `%s`（%s）；推理 `%s`（%s）",
+		lines = append(lines, snapshotField("底层真实配置", fmt.Sprintf("模型 `%s`（%s）；推理 `%s`（%s）",
 			displaySnapshotValue(snapshot.NextPrompt.BaseModel, snapshot.NextPrompt.BaseModelSource),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseModelSource),
 			displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort, snapshot.NextPrompt.BaseReasoningEffortSource),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
-		))
+		)))
 	}
 	if snapshot.PendingHeadless.InstanceID != "" {
 		lines = append(lines, "")
-		lines = append(lines, "Headless 创建中：")
+		lines = append(lines, "**Headless 创建中：**")
 		if snapshot.PendingHeadless.ThreadTitle != "" {
-			lines = append(lines, fmt.Sprintf("- 目标会话：%s", snapshot.PendingHeadless.ThreadTitle))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("目标会话", snapshot.PendingHeadless.ThreadTitle)))
 		}
 		if snapshot.PendingHeadless.ThreadCWD != "" {
-			lines = append(lines, fmt.Sprintf("- 启动目录：`%s`", snapshot.PendingHeadless.ThreadCWD))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动目录", fmt.Sprintf("`%s`", snapshot.PendingHeadless.ThreadCWD))))
 		}
 		if snapshot.PendingHeadless.PID > 0 {
-			lines = append(lines, fmt.Sprintf("- 进程 PID：`%d`", snapshot.PendingHeadless.PID))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("进程 PID", fmt.Sprintf("`%d`", snapshot.PendingHeadless.PID))))
 		}
 		if !snapshot.PendingHeadless.ExpiresAt.IsZero() {
-			lines = append(lines, fmt.Sprintf("- 启动超时：`%s`", snapshot.PendingHeadless.ExpiresAt.Format("2006-01-02 15:04:05 MST")))
-		}
-	}
-	if len(snapshot.Instances) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "在线实例：")
-		for _, instance := range snapshot.Instances {
-			if !instance.Online {
-				continue
-			}
-			line := fmt.Sprintf("- %s - 工作目录 `%s`", formatInstanceLabel(instance.DisplayName, instance.Source, instance.Managed), instance.WorkspaceRoot)
-			if instance.PID > 0 {
-				line += fmt.Sprintf(" · PID `%d`", instance.PID)
-			}
-			lines = append(lines, line)
-		}
-	}
-	if len(snapshot.Threads) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "已知会话：")
-		for _, thread := range snapshot.Threads {
-			flags := []string{}
-			if thread.IsSelected {
-				flags = append(flags, "当前")
-			}
-			if thread.IsObservedFocused {
-				flags = append(flags, "VS Code")
-			}
-			suffix := ""
-			if len(flags) > 0 {
-				suffix = " [" + strings.Join(flags, ", ") + "]"
-			}
-			title := thread.DisplayTitle
-			if title == "" {
-				title = thread.Name
-			}
-			if title == "" {
-				title = thread.ThreadID
-			}
-			line := fmt.Sprintf("- %s%s", title, suffix)
-			if short := shortenThreadID(thread.ThreadID); short != "" && !strings.Contains(title, short) {
-				line += fmt.Sprintf(" (ID %s)", short)
-			}
-			if preview := strings.TrimSpace(thread.Preview); preview != "" {
-				line += fmt.Sprintf("\n  %s", preview)
-			}
-			lines = append(lines, line)
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动超时", fmt.Sprintf("`%s`", snapshot.PendingHeadless.ExpiresAt.Format("2006-01-02 15:04:05 MST")))))
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func snapshotField(label, value string) string {
+	return fmt.Sprintf("**%s：** %s", label, value)
 }
 
 func displaySnapshotValue(value, source string) string {
@@ -579,13 +573,43 @@ func formatInstanceLabel(displayName, source string, managed bool) string {
 	return label
 }
 
-func chooseThemeKey(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
+func noticeThemeKey(notice control.Notice) string {
+	key := strings.ToLower(strings.TrimSpace(notice.ThemeKey))
+	switch {
+	case key == cardThemeError || strings.Contains(key, "error") || strings.Contains(key, "fail"):
+		return cardThemeError
+	case key == cardThemeSuccess || key == "normal" || key == "ok":
+		return cardThemeSuccess
+	case key == cardThemeApproval || strings.Contains(key, "approval"):
+		return cardThemeApproval
+	case key == cardThemeFinal:
+		return cardThemeFinal
+	}
+
+	title := strings.TrimSpace(notice.Title)
+	code := strings.ToLower(strings.TrimSpace(notice.Code))
+	text := strings.TrimSpace(notice.Text)
+	if containsAny(title, "错误", "失败", "无法", "拒绝", "离线", "过期", "失效") ||
+		containsAny(code, "error", "failed", "rejected", "offline", "expired", "invalid") ||
+		containsAny(text, "链路错误", "创建失败", "连接失败") {
+		return cardThemeError
+	}
+	if strings.HasPrefix(title, "已") ||
+		containsAny(title, "成功", "就绪", "完成") ||
+		containsAny(code, "attached", "detached", "follow", "cleared", "requested") ||
+		strings.HasPrefix(text, "已") {
+		return cardThemeSuccess
+	}
+	return cardThemeInfo
+}
+
+func containsAny(value string, parts ...string) bool {
+	for _, part := range parts {
+		if strings.Contains(value, part) {
+			return true
 		}
 	}
-	return "system"
+	return false
 }
 
 func shortenThreadID(threadID string) string {

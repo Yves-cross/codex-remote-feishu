@@ -94,6 +94,7 @@ type SurfaceConsoleRecord struct {
 	AttachedInstanceID   string
 	SelectedThreadID     string
 	RouteMode            RouteMode
+	Abandoning           bool
 	DispatchMode         DispatchMode
 	ActiveTurnOrigin     agentproto.InitiatorKind
 	ActiveQueueItemID    string
@@ -151,10 +152,12 @@ type SelectionOptionRecord struct {
 	OptionID         string
 	Label            string
 	Subtitle         string
+	ButtonLabel      string
 	Current          bool
 	Disabled         bool
 	TargetInstanceID string
 	TargetThreadID   string
+	TargetSurfaceID  string
 	TargetThreadCWD  string
 	TargetThreadName string
 	TargetPreview    string

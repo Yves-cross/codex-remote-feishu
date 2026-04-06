@@ -32,13 +32,16 @@ func TestImageStagingStatusAndCleanupSkipsActiveReferences(t *testing.T) {
 	}
 
 	app.service.UpsertInstance(&state.InstanceRecord{
-		InstanceID:    "inst-1",
-		DisplayName:   "Droid",
-		WorkspaceRoot: t.TempDir(),
-		WorkspaceKey:  t.TempDir(),
-		Source:        "vscode",
-		Online:        true,
-		Threads:       map[string]*state.ThreadRecord{},
+		InstanceID:              "inst-1",
+		DisplayName:             "Droid",
+		WorkspaceRoot:           t.TempDir(),
+		WorkspaceKey:            t.TempDir(),
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修图", CWD: t.TempDir()},
+		},
 	})
 	app.service.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,

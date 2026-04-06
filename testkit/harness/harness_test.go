@@ -8,7 +8,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/testkit/mockcodex"
 )
 
-func TestRemotePromptWithoutSelectedThreadCreatesThreadAndProjectsReply(t *testing.T) {
+func TestRemotePromptWithExplicitThreadProjectsReply(t *testing.T) {
 	h := New()
 	inst := h.Service.Instance(h.InstanceID)
 	inst.ObservedFocusedThreadID = ""
@@ -23,6 +23,15 @@ func TestRemotePromptWithoutSelectedThreadCreatesThreadAndProjectsReply(t *testi
 		InstanceID:       h.InstanceID,
 	}); err != nil {
 		t.Fatalf("attach instance: %v", err)
+	}
+	if err := h.ApplyAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ThreadID:         "thread-1",
+	}); err != nil {
+		t.Fatalf("use thread: %v", err)
 	}
 
 	h.Codex.Responder = func(turn mockcodex.TurnStart) string {
@@ -44,8 +53,8 @@ func TestRemotePromptWithoutSelectedThreadCreatesThreadAndProjectsReply(t *testi
 	if snapshot == nil {
 		t.Fatal("expected surface snapshot to exist")
 	}
-	if snapshot.Attachment.SelectedThreadID == "" {
-		t.Fatal("expected new thread to be selected after remote turn starts")
+	if snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected thread-1 to stay selected, got %#v", snapshot.Attachment)
 	}
 
 	var foundReply bool

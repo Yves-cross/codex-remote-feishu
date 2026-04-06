@@ -385,6 +385,13 @@ func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T)
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ThreadID:         "thread-1",
+	})
 
 	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
 		Kind:     agentproto.EventLocalInteractionObserved,
@@ -444,6 +451,13 @@ func TestDaemonProjectsQueuedAndDiscardedReactionsForRecalledMessage(t *testing.
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ThreadID:         "thread-1",
+	})
 
 	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
 		Kind:     agentproto.EventLocalInteractionObserved,
@@ -491,12 +505,16 @@ func TestDaemonStatusExportsSurfacesAndRemoteTurnState(t *testing.T) {
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 
 	app.service.UpsertInstance(&state.InstanceRecord{
-		InstanceID:    "inst-1",
-		DisplayName:   "droid",
-		WorkspaceRoot: "/data/dl/droid",
-		WorkspaceKey:  "/data/dl/droid",
-		ShortName:     "droid",
-		Online:        true,
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
 	})
 	app.service.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,

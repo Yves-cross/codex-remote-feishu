@@ -59,15 +59,17 @@ const (
 	SelectionPromptAttachInstance SelectionPromptKind = "attach_instance"
 	SelectionPromptUseThread      SelectionPromptKind = "use_thread"
 	SelectionPromptNewInstance    SelectionPromptKind = "new_instance_thread"
+	SelectionPromptKickThread     SelectionPromptKind = "kick_thread"
 )
 
 type SelectionOption struct {
-	Index     int
-	OptionID  string
-	Label     string
-	Subtitle  string
-	IsCurrent bool
-	Disabled  bool
+	Index       int
+	OptionID    string
+	Label       string
+	Subtitle    string
+	ButtonLabel string
+	IsCurrent   bool
+	Disabled    bool
 }
 
 type SelectionPrompt struct {
@@ -100,6 +102,7 @@ type AttachmentSummary struct {
 	SelectedThreadTitle   string
 	SelectedThreadPreview string
 	RouteMode             string
+	Abandoning            bool
 }
 
 type PendingHeadlessSummary struct {
