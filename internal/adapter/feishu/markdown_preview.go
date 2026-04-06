@@ -11,8 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkdrive "github.com/larksuite/oapi-sdk-go/v3/service/drive/v1"
@@ -33,6 +35,11 @@ var markdownLineSuffixPattern = regexp.MustCompile(`^(.*\.md)(:\d+(?::\d+)?)$`)
 
 type MarkdownPreviewService interface {
 	RewriteFinalBlock(context.Context, MarkdownPreviewRequest) (render.Block, error)
+}
+
+type PreviewDriveAdminService interface {
+	Summary() (PreviewDriveSummary, error)
+	CleanupBefore(context.Context, time.Time) (PreviewDriveCleanupResult, error)
 }
 
 type MarkdownPreviewRequest struct {
@@ -66,6 +73,7 @@ type previewDriveAPI interface {
 	UploadFile(context.Context, string, string, []byte) (string, error)
 	QueryMetaURL(context.Context, string, string) (string, error)
 	GrantPermission(context.Context, string, string, previewPrincipal) error
+	DeleteFile(context.Context, string, string) error
 }
 
 type previewRemoteNode struct {
@@ -87,21 +95,46 @@ type previewState struct {
 }
 
 type previewScopeRecord struct {
-	Folder *previewFolderRecord `json:"folder,omitempty"`
+	Folder     *previewFolderRecord `json:"folder,omitempty"`
+	LastUsedAt time.Time            `json:"lastUsedAt,omitempty"`
 }
 
 type previewFolderRecord struct {
-	Token  string          `json:"token,omitempty"`
-	URL    string          `json:"url,omitempty"`
-	Shared map[string]bool `json:"shared,omitempty"`
+	Token            string          `json:"token,omitempty"`
+	URL              string          `json:"url,omitempty"`
+	Shared           map[string]bool `json:"shared,omitempty"`
+	LastReconciledAt time.Time       `json:"lastReconciledAt,omitempty"`
 }
 
 type previewFileRecord struct {
-	Path   string          `json:"path,omitempty"`
-	SHA256 string          `json:"sha256,omitempty"`
-	Token  string          `json:"token,omitempty"`
-	URL    string          `json:"url,omitempty"`
-	Shared map[string]bool `json:"shared,omitempty"`
+	Path       string          `json:"path,omitempty"`
+	SHA256     string          `json:"sha256,omitempty"`
+	Token      string          `json:"token,omitempty"`
+	URL        string          `json:"url,omitempty"`
+	Shared     map[string]bool `json:"shared,omitempty"`
+	ScopeKey   string          `json:"scopeKey,omitempty"`
+	SizeBytes  int64           `json:"sizeBytes,omitempty"`
+	CreatedAt  time.Time       `json:"createdAt,omitempty"`
+	LastUsedAt time.Time       `json:"lastUsedAt,omitempty"`
+}
+
+type PreviewDriveSummary struct {
+	StatePath            string     `json:"statePath,omitempty"`
+	RootToken            string     `json:"rootToken,omitempty"`
+	RootURL              string     `json:"rootURL,omitempty"`
+	FileCount            int        `json:"fileCount"`
+	ScopeCount           int        `json:"scopeCount"`
+	EstimatedBytes       int64      `json:"estimatedBytes"`
+	UnknownSizeFileCount int        `json:"unknownSizeFileCount"`
+	OldestLastUsedAt     *time.Time `json:"oldestLastUsedAt,omitempty"`
+	NewestLastUsedAt     *time.Time `json:"newestLastUsedAt,omitempty"`
+}
+
+type PreviewDriveCleanupResult struct {
+	DeletedFileCount            int                 `json:"deletedFileCount"`
+	DeletedEstimatedBytes       int64               `json:"deletedEstimatedBytes"`
+	SkippedUnknownLastUsedCount int                 `json:"skippedUnknownLastUsedCount"`
+	Summary                     PreviewDriveSummary `json:"summary"`
 }
 
 type driveAPIError struct {
@@ -248,10 +281,27 @@ func (p *DriveMarkdownPreviewer) materializeMarkdownTargetLocked(ctx context.Con
 	record := state.Files[fileKey]
 	if record == nil {
 		record = &previewFileRecord{
-			Path:   resolvedPath,
-			SHA256: contentSHA,
+			Path:      resolvedPath,
+			SHA256:    contentSHA,
+			ScopeKey:  scopeKey,
+			SizeBytes: int64(len(content)),
 		}
 		state.Files[fileKey] = record
+	}
+	if record.ScopeKey == "" {
+		record.ScopeKey = scopeKey
+	}
+	if record.SizeBytes <= 0 {
+		record.SizeBytes = int64(len(content))
+	}
+	now := time.Now().UTC()
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = now
+	}
+	record.LastUsedAt = now
+	scope := state.Scopes[scopeKey]
+	if scope != nil {
+		scope.LastUsedAt = now
 	}
 
 	if record.Token == "" {
@@ -488,15 +538,139 @@ func normalizePreviewState(state *previewState) *previewState {
 			scope.Folder.Shared = map[string]bool{}
 		}
 	}
-	for _, file := range state.Files {
+	for key, file := range state.Files {
 		if file == nil {
 			continue
 		}
 		if file.Shared == nil {
 			file.Shared = map[string]bool{}
 		}
+		if file.ScopeKey == "" {
+			file.ScopeKey = previewRecordScopeKey(key)
+		}
 	}
 	return state
+}
+
+func (p *DriveMarkdownPreviewer) Summary() (PreviewDriveSummary, error) {
+	if p == nil {
+		return PreviewDriveSummary{}, nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return summarizePreviewState(p.loadStateLocked(), strings.TrimSpace(p.config.StatePath)), nil
+}
+
+func (p *DriveMarkdownPreviewer) CleanupBefore(ctx context.Context, cutoff time.Time) (PreviewDriveCleanupResult, error) {
+	if p == nil {
+		return PreviewDriveCleanupResult{}, nil
+	}
+	if p.api == nil {
+		return PreviewDriveCleanupResult{}, fmt.Errorf("preview drive api is not available")
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	state := p.loadStateLocked()
+	result := PreviewDriveCleanupResult{}
+	keys := make([]string, 0, len(state.Files))
+	for key := range state.Files {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		record := state.Files[key]
+		if record == nil {
+			delete(state.Files, key)
+			continue
+		}
+		lastUsedAt, ok := previewRecordLastUsedAt(record)
+		if !ok {
+			result.SkippedUnknownLastUsedCount++
+			continue
+		}
+		if lastUsedAt.After(cutoff) {
+			continue
+		}
+		if strings.TrimSpace(record.Token) != "" {
+			err := p.api.DeleteFile(ctx, record.Token, previewFileType)
+			if err != nil && !isPreviewResourceMissingError(err) {
+				return PreviewDriveCleanupResult{}, err
+			}
+		}
+		result.DeletedFileCount++
+		if record.SizeBytes > 0 {
+			result.DeletedEstimatedBytes += record.SizeBytes
+		}
+		delete(state.Files, key)
+	}
+	if err := p.saveStateLocked(); err != nil {
+		return PreviewDriveCleanupResult{}, err
+	}
+	result.Summary = summarizePreviewState(state, strings.TrimSpace(p.config.StatePath))
+	return result, nil
+}
+
+func summarizePreviewState(state *previewState, statePath string) PreviewDriveSummary {
+	state = normalizePreviewState(state)
+	summary := PreviewDriveSummary{
+		StatePath:  statePath,
+		FileCount:  len(state.Files),
+		ScopeCount: len(state.Scopes),
+	}
+	if state.Root != nil {
+		summary.RootToken = state.Root.Token
+		summary.RootURL = state.Root.URL
+	}
+	for _, record := range state.Files {
+		if record == nil {
+			continue
+		}
+		if record.SizeBytes > 0 {
+			summary.EstimatedBytes += record.SizeBytes
+		} else {
+			summary.UnknownSizeFileCount++
+		}
+		if lastUsedAt, ok := previewRecordLastUsedAt(record); ok {
+			value := lastUsedAt.UTC()
+			if summary.OldestLastUsedAt == nil || value.Before(*summary.OldestLastUsedAt) {
+				copyValue := value
+				summary.OldestLastUsedAt = &copyValue
+			}
+			if summary.NewestLastUsedAt == nil || value.After(*summary.NewestLastUsedAt) {
+				copyValue := value
+				summary.NewestLastUsedAt = &copyValue
+			}
+		}
+	}
+	return summary
+}
+
+func previewRecordLastUsedAt(record *previewFileRecord) (time.Time, bool) {
+	if record == nil {
+		return time.Time{}, false
+	}
+	switch {
+	case !record.LastUsedAt.IsZero():
+		return record.LastUsedAt.UTC(), true
+	case !record.CreatedAt.IsZero():
+		return record.CreatedAt.UTC(), true
+	default:
+		return time.Time{}, false
+	}
+}
+
+func previewRecordScopeKey(fileKey string) string {
+	fileKey = strings.TrimSpace(fileKey)
+	if fileKey == "" {
+		return ""
+	}
+	parts := strings.SplitN(fileKey, "|", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parts[0])
 }
 
 func clearPreviewScope(state *previewState, scopeKey string) {
@@ -870,6 +1044,20 @@ func (a *larkDrivePreviewAPI) GrantPermission(ctx context.Context, token, docTyp
 			Perm(previewPermissionView).
 			Type(principal.Type).
 			Build()).
+		Build())
+	if err != nil {
+		return err
+	}
+	if !resp.Success() {
+		return &driveAPIError{Code: resp.Code, Msg: resp.Msg}
+	}
+	return nil
+}
+
+func (a *larkDrivePreviewAPI) DeleteFile(ctx context.Context, token, docType string) error {
+	resp, err := a.client.Drive.V1.File.Delete(ctx, larkdrive.NewDeleteFileReqBuilder().
+		FileToken(token).
+		Type(docType).
 		Build())
 	if err != nil {
 		return err

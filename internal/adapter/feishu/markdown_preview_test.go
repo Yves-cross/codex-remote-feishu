@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
@@ -33,16 +34,23 @@ type fakeGrantPermissionCall struct {
 	Principal previewPrincipal
 }
 
+type fakeDeleteFileCall struct {
+	Token   string
+	DocType string
+}
+
 type fakePreviewAPI struct {
 	createFolderCalls    []fakeCreateFolderCall
 	uploadFileCalls      []fakeUploadFileCall
 	queryMetaURLCalls    []fakeQueryMetaCall
 	grantPermissionCalls []fakeGrantPermissionCall
+	deleteFileCalls      []fakeDeleteFileCall
 
 	createFolderFunc    func(context.Context, string, string) (previewRemoteNode, error)
 	uploadFileFunc      func(context.Context, string, string, []byte) (string, error)
 	queryMetaURLFunc    func(context.Context, string, string) (string, error)
 	grantPermissionFunc func(context.Context, string, string, previewPrincipal) error
+	deleteFileFunc      func(context.Context, string, string) error
 
 	nextFolder int
 	nextFile   int
@@ -94,6 +102,14 @@ func (f *fakePreviewAPI) GrantPermission(ctx context.Context, token, docType str
 	})
 	if f.grantPermissionFunc != nil {
 		return f.grantPermissionFunc(ctx, token, docType, principal)
+	}
+	return nil
+}
+
+func (f *fakePreviewAPI) DeleteFile(ctx context.Context, token, docType string) error {
+	f.deleteFileCalls = append(f.deleteFileCalls, fakeDeleteFileCall{Token: token, DocType: docType})
+	if f.deleteFileFunc != nil {
+		return f.deleteFileFunc(ctx, token, docType)
 	}
 	return nil
 }
@@ -268,6 +284,79 @@ func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 	}
 	if len(wantKeys) != 0 {
 		t.Fatalf("missing grant calls: %#v", wantKeys)
+	}
+}
+
+func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
+	now := time.Date(2026, 4, 6, 12, 0, 0, 0, time.UTC)
+	state := &previewState{
+		Root: &previewFolderRecord{
+			Token: "fld-root",
+			URL:   "https://preview/fld-root",
+		},
+		Scopes: map[string]*previewScopeRecord{
+			"feishu:app-1:chat:oc_chat": {
+				Folder: &previewFolderRecord{Token: "fld-scope", URL: "https://preview/fld-scope"},
+			},
+		},
+		Files: map[string]*previewFileRecord{
+			"feishu:app-1:chat:oc_chat|/repo/docs/old.md|sha-old": {
+				Path:       "/repo/docs/old.md",
+				SHA256:     "sha-old",
+				Token:      "file-old",
+				URL:        "https://preview/file-old",
+				ScopeKey:   "feishu:app-1:chat:oc_chat",
+				SizeBytes:  10,
+				CreatedAt:  now.Add(-72 * time.Hour),
+				LastUsedAt: now.Add(-48 * time.Hour),
+			},
+			"feishu:app-1:chat:oc_chat|/repo/docs/recent.md|sha-recent": {
+				Path:       "/repo/docs/recent.md",
+				SHA256:     "sha-recent",
+				Token:      "file-recent",
+				URL:        "https://preview/file-recent",
+				ScopeKey:   "feishu:app-1:chat:oc_chat",
+				SizeBytes:  5,
+				CreatedAt:  now.Add(-24 * time.Hour),
+				LastUsedAt: now.Add(-2 * time.Hour),
+			},
+			"feishu:app-1:chat:oc_chat|/repo/docs/unknown.md|sha-unknown": {
+				Path:   "/repo/docs/unknown.md",
+				SHA256: "sha-unknown",
+				Token:  "file-unknown",
+				URL:    "https://preview/file-unknown",
+			},
+		},
+	}
+
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
+	previewer.loaded = true
+	previewer.state = normalizePreviewState(state)
+
+	summary, err := previewer.Summary()
+	if err != nil {
+		t.Fatalf("Summary returned error: %v", err)
+	}
+	if summary.FileCount != 3 || summary.ScopeCount != 1 || summary.EstimatedBytes != 15 || summary.UnknownSizeFileCount != 1 {
+		t.Fatalf("unexpected summary: %#v", summary)
+	}
+
+	result, err := previewer.CleanupBefore(context.Background(), now.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("CleanupBefore returned error: %v", err)
+	}
+	if result.DeletedFileCount != 1 || result.DeletedEstimatedBytes != 10 || result.SkippedUnknownLastUsedCount != 1 {
+		t.Fatalf("unexpected cleanup result: %#v", result)
+	}
+	if len(api.deleteFileCalls) != 1 || api.deleteFileCalls[0].Token != "file-old" || api.deleteFileCalls[0].DocType != previewFileType {
+		t.Fatalf("unexpected delete calls: %#v", api.deleteFileCalls)
+	}
+	if result.Summary.FileCount != 2 || result.Summary.EstimatedBytes != 5 || result.Summary.UnknownSizeFileCount != 1 {
+		t.Fatalf("unexpected post-cleanup summary: %#v", result.Summary)
+	}
+	if _, ok := previewer.state.Files["feishu:app-1:chat:oc_chat|/repo/docs/old.md|sha-old"]; ok {
+		t.Fatalf("expected old preview file to be removed from state")
 	}
 }
 

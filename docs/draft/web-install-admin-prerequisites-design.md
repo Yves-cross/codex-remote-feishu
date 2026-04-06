@@ -427,13 +427,16 @@ type GatewayController interface {
 - 查询 URL
 - 加权限
 
-没有：
+当前阶段已经补到：
 
-- App 维度隔离
+- 本地 state 摘要
+- 基于 `lastUsedAt` / `createdAt` 的已知 preview file cleanup
+
+仍然没有：
+
 - 远端 list
-- delete
 - reconcile
-- cleanup policy
+- permission drift 检测
 
 #### 5.5.2 推荐状态文件
 
@@ -777,10 +780,12 @@ scopes JSON 以当前已确认样例为基线：
   - `POST /api/admin/vscode/reinstall-shim`
   - `GET /api/admin/storage/image-staging`
   - `POST /api/admin/storage/image-staging/cleanup`
+  - `GET /api/admin/storage/preview-drive/:appId`
+  - `POST /api/admin/storage/preview-drive/:appId/cleanup`
   - `GET /setup`
   - `GET /`
 - 已注册但暂时返回结构化 `501 not_implemented`：
-  - `preview-drive/*`
+  - `POST /api/admin/storage/preview-drive/:appId/reconcile`
   - `PUT /api/admin/config`
 
 这样后续阶段可以在不改路径 contract 的前提下逐步把能力填实。
