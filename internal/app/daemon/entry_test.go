@@ -1,0 +1,66 @@
+package daemon
+
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/kxn/codex-remote-feishu/internal/config"
+	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+)
+
+func TestRuntimeGatewayAppsUsesConfigApps(t *testing.T) {
+	enabled := true
+	disabled := false
+	appConfig := config.DefaultAppConfig()
+	appConfig.Storage.PreviewRootFolderName = "Codex Remote Tests"
+	appConfig.Feishu.Apps = []config.FeishuAppConfig{
+		{
+			ID:        "app-1",
+			Name:      "App 1",
+			AppID:     "cli_app_1",
+			AppSecret: "secret_app_1",
+			Enabled:   &enabled,
+		},
+		{
+			ID:        "app-2",
+			Name:      "App 2",
+			AppID:     "cli_app_2",
+			AppSecret: "secret_app_2",
+			Enabled:   &disabled,
+		},
+	}
+	services := config.ServicesConfig{FeishuUseSystemProxy: true}
+	paths := relayruntime.Paths{StateDir: "/tmp/state"}
+
+	apps := runtimeGatewayApps(appConfig, services, paths)
+	if len(apps) != 2 {
+		t.Fatalf("expected two runtime apps, got %#v", apps)
+	}
+	if apps[0].GatewayID != "app-1" || !apps[0].Enabled || apps[0].PreviewRootFolderName != "Codex Remote Tests" {
+		t.Fatalf("unexpected first runtime app: %#v", apps[0])
+	}
+	if apps[1].GatewayID != "app-2" || apps[1].Enabled {
+		t.Fatalf("unexpected second runtime app: %#v", apps[1])
+	}
+	if apps[0].PreviewStatePath != filepath.Join(paths.StateDir, "feishu-md-preview-app-1.json") {
+		t.Fatalf("unexpected preview state path: %s", apps[0].PreviewStatePath)
+	}
+}
+
+func TestRuntimeGatewayAppsAppliesRuntimeOverrideCredentials(t *testing.T) {
+	appConfig := config.DefaultAppConfig()
+	services := config.ServicesConfig{
+		FeishuGatewayID: "legacy-default",
+		FeishuAppID:     "cli_env",
+		FeishuAppSecret: "secret_env",
+	}
+	paths := relayruntime.Paths{StateDir: "/tmp/state"}
+
+	apps := runtimeGatewayApps(appConfig, services, paths)
+	if len(apps) != 1 {
+		t.Fatalf("expected one runtime app, got %#v", apps)
+	}
+	if apps[0].GatewayID != "legacy-default" || apps[0].AppID != "cli_env" || apps[0].AppSecret != "secret_env" || !apps[0].Enabled {
+		t.Fatalf("unexpected runtime override app: %#v", apps[0])
+	}
+}

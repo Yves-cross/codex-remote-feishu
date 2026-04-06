@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
@@ -16,6 +17,10 @@ import (
 )
 
 func RunMain(ctx context.Context, version string) error {
+	loadedConfig, err := config.LoadAppConfig()
+	if err != nil {
+		return err
+	}
 	cfg, err := config.LoadServicesConfig()
 	if err != nil {
 		return err
@@ -30,24 +35,14 @@ func RunMain(ctx context.Context, version string) error {
 		return err
 	}
 
-	var gateway feishu.Gateway = feishu.NopGateway{}
-	var markdownPreviewer feishu.MarkdownPreviewService
-	if cfg.FeishuAppID != "" && cfg.FeishuAppSecret != "" {
-		liveGateway := feishu.NewLiveGateway(feishu.LiveGatewayConfig{
-			GatewayID:      cfg.FeishuGatewayID,
-			AppID:          cfg.FeishuAppID,
-			AppSecret:      cfg.FeishuAppSecret,
-			TempDir:        os.TempDir(),
-			UseSystemProxy: cfg.FeishuUseSystemProxy,
-		})
-		gateway = liveGateway
-		markdownPreviewer = feishu.NewDriveMarkdownPreviewer(
-			feishu.NewLarkDrivePreviewAPI(liveGateway.Client()),
-			feishu.MarkdownPreviewConfig{
-				StatePath: filepath.Join(paths.StateDir, "feishu-md-preview.json"),
-			},
-		)
+	controller := feishu.NewMultiGatewayController()
+	for _, app := range runtimeGatewayApps(loadedConfig.Config, cfg, paths) {
+		if err := controller.UpsertApp(ctx, app); err != nil {
+			return err
+		}
 	}
+	var gateway feishu.Gateway = controller
+	var markdownPreviewer feishu.MarkdownPreviewService = controller
 	lock, err := relayruntime.AcquireLock(ctx, paths.DaemonLockFile, false)
 	if err != nil {
 		return fmt.Errorf("acquire daemon runtime lock: %w", err)
@@ -96,4 +91,75 @@ func RunMain(ctx context.Context, version string) error {
 		return fmt.Errorf("run daemon: %w", err)
 	}
 	return nil
+}
+
+func runtimeGatewayApps(appConfig config.AppConfig, services config.ServicesConfig, paths relayruntime.Paths) []feishu.GatewayAppConfig {
+	runtimeApps := make([]config.FeishuAppConfig, 0, len(appConfig.Feishu.Apps))
+	for _, app := range appConfig.Feishu.Apps {
+		runtimeApps = append(runtimeApps, app)
+	}
+
+	if strings.TrimSpace(services.FeishuAppID) != "" || strings.TrimSpace(services.FeishuAppSecret) != "" {
+		gatewayID := strings.TrimSpace(services.FeishuGatewayID)
+		if gatewayID == "" {
+			gatewayID = "legacy-default"
+		}
+		found := false
+		for i := range runtimeApps {
+			currentID := strings.TrimSpace(runtimeApps[i].ID)
+			if currentID == "" {
+				currentID = "legacy-default"
+			}
+			if currentID != gatewayID {
+				continue
+			}
+			runtimeApps[i].ID = gatewayID
+			runtimeApps[i].AppID = services.FeishuAppID
+			runtimeApps[i].AppSecret = services.FeishuAppSecret
+			enabled := true
+			runtimeApps[i].Enabled = &enabled
+			found = true
+			break
+		}
+		if !found {
+			enabled := true
+			runtimeApps = append(runtimeApps, config.FeishuAppConfig{
+				ID:        gatewayID,
+				Name:      "Runtime Override",
+				AppID:     services.FeishuAppID,
+				AppSecret: services.FeishuAppSecret,
+				Enabled:   &enabled,
+			})
+		}
+	}
+
+	values := make([]feishu.GatewayAppConfig, 0, len(runtimeApps))
+	for _, app := range runtimeApps {
+		gatewayID := strings.TrimSpace(app.ID)
+		if gatewayID == "" {
+			gatewayID = "legacy-default"
+		}
+		enabled := app.Enabled == nil || *app.Enabled
+		values = append(values, feishu.GatewayAppConfig{
+			GatewayID:             gatewayID,
+			Name:                  strings.TrimSpace(app.Name),
+			AppID:                 strings.TrimSpace(app.AppID),
+			AppSecret:             strings.TrimSpace(app.AppSecret),
+			Enabled:               enabled,
+			UseSystemProxy:        services.FeishuUseSystemProxy,
+			ImageTempDir:          filepath.Join(paths.StateDir, "image-staging", sanitizeGatewayPath(gatewayID)),
+			PreviewStatePath:      filepath.Join(paths.StateDir, "feishu-md-preview-"+sanitizeGatewayPath(gatewayID)+".json"),
+			PreviewRootFolderName: strings.TrimSpace(appConfig.Storage.PreviewRootFolderName),
+		})
+	}
+	return values
+}
+
+func sanitizeGatewayPath(gatewayID string) string {
+	value := strings.NewReplacer(":", "-", "/", "-", "\\", "-", " ", "-").Replace(strings.TrimSpace(gatewayID))
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "legacy-default"
+	}
+	return value
 }

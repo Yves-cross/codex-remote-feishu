@@ -1,0 +1,316 @@
+package feishu
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
+)
+
+func TestMultiGatewayControllerRoutesApplyByGatewayID(t *testing.T) {
+	controller := NewMultiGatewayController()
+	runtimes := map[string]*fakeGatewayRuntime{}
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		runtimes[cfg.GatewayID] = runtime
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, gatewayID := range []string{"app-1", "app-2"} {
+		if err := controller.UpsertApp(ctx, GatewayAppConfig{
+			GatewayID: gatewayID,
+			AppID:     "cli_" + gatewayID,
+			AppSecret: "secret_" + gatewayID,
+			Enabled:   true,
+		}); err != nil {
+			t.Fatalf("UpsertApp(%s): %v", gatewayID, err)
+		}
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- controller.Start(ctx, func(context.Context, control.Action) {})
+	}()
+
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
+
+	err := controller.Apply(context.Background(), []Operation{
+		{GatewayID: "app-1", Kind: OperationSendText, Text: "one"},
+		{GatewayID: "app-2", Kind: OperationSendText, Text: "two"},
+	})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(runtimes["app-1"].applyCalls) != 1 || runtimes["app-1"].applyCalls[0][0].Text != "one" {
+		t.Fatalf("unexpected app-1 apply calls: %#v", runtimes["app-1"].applyCalls)
+	}
+	if len(runtimes["app-2"].applyCalls) != 1 || runtimes["app-2"].applyCalls[0][0].Text != "two" {
+		t.Fatalf("unexpected app-2 apply calls: %#v", runtimes["app-2"].applyCalls)
+	}
+
+	statuses := controller.Status()
+	if len(statuses) != 2 {
+		t.Fatalf("expected two statuses, got %#v", statuses)
+	}
+	for _, status := range statuses {
+		if status.State != GatewayStateConnected {
+			t.Fatalf("unexpected status: %#v", status)
+		}
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Start returned error: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for controller stop")
+	}
+}
+
+func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
+	controller := NewMultiGatewayController()
+	runtimes := map[string]*fakeGatewayRuntime{}
+	previewers := map[string]*fakePreviewer{}
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		runtimes[cfg.GatewayID] = runtime
+		return runtime
+	}
+	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) MarkdownPreviewService {
+		previewer := &fakePreviewer{gatewayID: cfg.GatewayID}
+		previewers[cfg.GatewayID] = previewer
+		return previewer
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, gatewayID := range []string{"app-1", "app-2"} {
+		if err := controller.UpsertApp(ctx, GatewayAppConfig{
+			GatewayID: gatewayID,
+			AppID:     "cli_" + gatewayID,
+			AppSecret: "secret_" + gatewayID,
+			Enabled:   true,
+		}); err != nil {
+			t.Fatalf("UpsertApp(%s): %v", gatewayID, err)
+		}
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) {})
+	}()
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
+
+	block, err := controller.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		GatewayID: "app-2",
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RewriteFinalBlock: %v", err)
+	}
+	if block.Text != "app-2:hello" {
+		t.Fatalf("unexpected rewritten block: %#v", block)
+	}
+	if previewers["app-1"].calls != 0 || previewers["app-2"].calls != 1 {
+		t.Fatalf("unexpected previewer calls: app-1=%d app-2=%d", previewers["app-1"].calls, previewers["app-2"].calls)
+	}
+}
+
+func TestMultiGatewayControllerUpsertRestartsWorker(t *testing.T) {
+	controller := NewMultiGatewayController()
+	var (
+		mu      sync.Mutex
+		created []*fakeGatewayRuntime
+	)
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		mu.Lock()
+		created = append(created, runtime)
+		mu.Unlock()
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_old",
+		AppSecret: "secret_old",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("initial UpsertApp: %v", err)
+	}
+
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) {})
+	}()
+
+	first := waitForCreatedRuntime(t, &mu, &created, 0)
+	waitFakeGatewayStarted(t, first)
+
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_new",
+		AppSecret: "secret_new",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("second UpsertApp: %v", err)
+	}
+
+	second := waitForCreatedRuntime(t, &mu, &created, 1)
+	waitFakeGatewayStarted(t, second)
+	waitFakeGatewayStopped(t, first)
+}
+
+func TestMultiGatewayControllerStatusShowsDisabledApps(t *testing.T) {
+	controller := NewMultiGatewayController()
+	if err := controller.UpsertApp(context.Background(), GatewayAppConfig{
+		GatewayID: "app-1",
+		Name:      "App 1",
+		Enabled:   false,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+	statuses := controller.Status()
+	if len(statuses) != 1 || !statuses[0].Disabled || statuses[0].State != GatewayStateDisabled {
+		t.Fatalf("unexpected disabled status: %#v", statuses)
+	}
+}
+
+type fakeGatewayRuntime struct {
+	gatewayID string
+	startedCh chan struct{}
+	stoppedCh chan struct{}
+
+	mu         sync.Mutex
+	stateHook  func(GatewayState, error)
+	applyCalls [][]Operation
+}
+
+func newFakeGatewayRuntime(gatewayID string) *fakeGatewayRuntime {
+	return &fakeGatewayRuntime{
+		gatewayID: gatewayID,
+		startedCh: make(chan struct{}, 1),
+		stoppedCh: make(chan struct{}, 1),
+	}
+}
+
+func (f *fakeGatewayRuntime) Start(ctx context.Context, _ ActionHandler) error {
+	f.emitState(GatewayStateConnected, nil)
+	select {
+	case f.startedCh <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	select {
+	case f.stoppedCh <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (f *fakeGatewayRuntime) Apply(_ context.Context, operations []Operation) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.applyCalls = append(f.applyCalls, append([]Operation(nil), operations...))
+	return nil
+}
+
+func (f *fakeGatewayRuntime) Client() *lark.Client { return nil }
+
+func (f *fakeGatewayRuntime) SetStateHook(hook func(GatewayState, error)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stateHook = hook
+}
+
+func (f *fakeGatewayRuntime) emitState(state GatewayState, err error) {
+	f.mu.Lock()
+	hook := f.stateHook
+	f.mu.Unlock()
+	if hook != nil {
+		hook(state, err)
+	}
+}
+
+type fakePreviewer struct {
+	gatewayID string
+	calls     int
+}
+
+func (f *fakePreviewer) RewriteFinalBlock(_ context.Context, req MarkdownPreviewRequest) (render.Block, error) {
+	f.calls++
+	block := req.Block
+	block.Text = f.gatewayID + ":" + block.Text
+	return block, nil
+}
+
+func waitFakeGatewayStarted(t *testing.T, runtime *fakeGatewayRuntime) {
+	t.Helper()
+	select {
+	case <-runtime.startedCh:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for gateway %s to start", runtime.gatewayID)
+	}
+}
+
+func waitFakeGatewayStopped(t *testing.T, runtime *fakeGatewayRuntime) {
+	t.Helper()
+	select {
+	case <-runtime.stoppedCh:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for gateway %s to stop", runtime.gatewayID)
+	}
+}
+
+func waitForFakeRuntime(t *testing.T, runtimes map[string]*fakeGatewayRuntime, gatewayID string) *fakeGatewayRuntime {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		if runtime := runtimes[gatewayID]; runtime != nil {
+			return runtime
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for runtime %s to be created", gatewayID)
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}
+
+func waitForCreatedRuntime(t *testing.T, mu *sync.Mutex, created *[]*fakeGatewayRuntime, index int) *fakeGatewayRuntime {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		mu.Lock()
+		if len(*created) > index {
+			runtime := (*created)[index]
+			mu.Unlock()
+			return runtime
+		}
+		mu.Unlock()
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for created runtime index %d", index)
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+}

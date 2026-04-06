@@ -738,6 +738,7 @@ func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	payload := struct {
 		Instances          []*state.InstanceRecord         `json:"instances"`
 		Surfaces           []*state.SurfaceConsoleRecord   `json:"surfaces"`
+		Gateways           []feishu.GatewayStatus          `json:"gateways,omitempty"`
 		PendingRemoteTurns []orchestrator.RemoteTurnStatus `json:"pendingRemoteTurns"`
 		ActiveRemoteTurns  []orchestrator.RemoteTurnStatus `json:"activeRemoteTurns"`
 	}{
@@ -745,6 +746,9 @@ func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		Surfaces:           a.service.Surfaces(),
 		PendingRemoteTurns: a.service.PendingRemoteTurns(),
 		ActiveRemoteTurns:  a.service.ActiveRemoteTurns(),
+	}
+	if statusSource, ok := a.gateway.(interface{ Status() []feishu.GatewayStatus }); ok {
+		payload.Gateways = statusSource.Status()
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(payload)
