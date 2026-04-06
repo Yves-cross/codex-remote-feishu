@@ -7,3 +7,6 @@ coverage.out
 *.exe
 *.out
 .DS_Store
+.tools/
+web/node_modules/
+web/.vite/

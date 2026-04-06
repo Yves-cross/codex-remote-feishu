@@ -12,6 +12,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/adminauth"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/adminui"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -151,6 +152,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
+	mux.Handle("GET /assets/", http.FileServerFS(adminui.FS()))
 	mux.HandleFunc("GET /", a.handleRootPage)
 	mux.HandleFunc("GET /setup", a.handleSetupPage)
 	mux.HandleFunc("GET /api/setup/bootstrap-state", a.requireSetup(a.handleBootstrapState))
@@ -248,7 +250,7 @@ func (a *App) handleRootPage(w http.ResponseWriter, r *http.Request) {
 		writePageUnauthorized(w, "admin access is limited to localhost in this stage")
 		return
 	}
-	writePlaceholderPage(w, "Codex Remote Admin", "管理页骨架已就位，后续阶段会逐步接入完整 SPA。", "/api/admin/bootstrap-state", "/api/admin/runtime-status")
+	writeAdminAppShell(w)
 }
 
 func (a *App) handleSetupPage(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +280,7 @@ func (a *App) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	writePlaceholderPage(w, "Codex Remote Setup", "setup token、状态接口和认证链路已经接通，前端向导会在后续阶段接入。", "/api/setup/bootstrap-state", "")
+	writeAdminAppShell(w)
 }
 
 func (a *App) handleBootstrapState(w http.ResponseWriter, r *http.Request) {
@@ -553,37 +555,13 @@ func writePageError(w http.ResponseWriter, status int, title string, err error) 
 	_, _ = fmt.Fprintf(w, "<!doctype html><html><body style=\"font-family: sans-serif; padding: 32px;\"><h1>%s</h1><p>%s</p></body></html>", html.EscapeString(title), html.EscapeString(err.Error()))
 }
 
-func writePlaceholderPage(w http.ResponseWriter, title, subtitle, bootstrapEndpoint, runtimeEndpoint string) {
+func writeAdminAppShell(w http.ResponseWriter) {
+	indexHTML, err := adminui.IndexHTML()
+	if err != nil {
+		writePageError(w, http.StatusInternalServerError, "admin ui unavailable", err)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>%s</title><style>body{margin:0;background:#f3f5f7;color:#17202a;font-family:system-ui,sans-serif}main{max-width:920px;margin:48px auto;padding:32px;background:#fff;border-radius:20px;box-shadow:0 18px 48px rgba(23,32,42,.08)}h1{margin:0 0 12px;font-size:32px}p{margin:0 0 20px;line-height:1.6}code{background:#eef2f5;padding:2px 6px;border-radius:6px}pre{padding:18px;background:#0f1720;color:#d6e2f0;border-radius:16px;overflow:auto;min-height:120px}</style></head><body><main><h1>%s</h1><p>%s</p><p>Bootstrap: <code>%s</code></p>%s<pre id=\"bootstrap\">loading...</pre>%s</main><script>(function(){function load(id,url){fetch(url,{credentials:'same-origin'}).then(async function(res){var text=await res.text();document.getElementById(id).textContent=text;}).catch(function(err){document.getElementById(id).textContent=String(err);});}load('bootstrap',%q);%s})();</script></body></html>",
-		html.EscapeString(title),
-		html.EscapeString(title),
-		html.EscapeString(subtitle),
-		html.EscapeString(bootstrapEndpoint),
-		runtimeEndpointMarkup(runtimeEndpoint),
-		runtimeEndpointPre(runtimeEndpoint),
-		bootstrapEndpoint,
-		runtimeEndpointScript(runtimeEndpoint),
-	)
-}
-
-func runtimeEndpointMarkup(runtimeEndpoint string) string {
-	if runtimeEndpoint == "" {
-		return ""
-	}
-	return fmt.Sprintf("<p>Runtime: <code>%s</code></p>", html.EscapeString(runtimeEndpoint))
-}
-
-func runtimeEndpointPre(runtimeEndpoint string) string {
-	if runtimeEndpoint == "" {
-		return ""
-	}
-	return "<pre id=\"runtime\">loading...</pre>"
-}
-
-func runtimeEndpointScript(runtimeEndpoint string) string {
-	if runtimeEndpoint == "" {
-		return ""
-	}
-	return fmt.Sprintf("load('runtime',%q);", runtimeEndpoint)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(indexHTML)
 }

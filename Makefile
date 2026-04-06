@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: check test build fmt release-artifacts smoke-release-install start stop status
+.PHONY: check test build fmt release-artifacts smoke-release-install start stop status web-build
 
 check:
 	bash scripts/check/no-local-paths.sh
@@ -16,6 +16,9 @@ build:
 	$(GO) build ./cmd/relayd
 	$(GO) build ./cmd/relay-wrapper
 	$(GO) build ./cmd/relay-install
+
+web-build:
+	bash scripts/web/build-admin-ui.sh
 
 fmt:
 	gofmt -w $$(find cmd internal testkit -name '*.go' | sort)
