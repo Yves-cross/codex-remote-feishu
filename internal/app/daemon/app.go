@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
+	"github.com/kxn/codex-remote-feishu/internal/app/adminauth"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
@@ -62,11 +62,18 @@ type App struct {
 	managedHeadless       map[string]*managedHeadlessProcess
 	startHeadless         func(relayruntime.HeadlessLaunchOptions) (int, error)
 	stopProcess           func(int, time.Duration) error
+
+	adminAuth *adminauth.Manager
+	admin     adminRuntimeState
 }
 
 func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agentproto.ServerIdentity) *App {
 	if gateway == nil {
 		gateway = feishu.NopGateway{}
+	}
+	authManager, err := adminauth.NewManager(adminauth.ManagerOptions{})
+	if err != nil {
+		panic(err)
 	}
 	app := &App{
 		service:               orchestrator.NewService(time.Now, orchestrator.Config{TurnHandoffWait: 800 * time.Millisecond}, renderer.NewPlanner()),
@@ -76,6 +83,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		managedHeadless:       map[string]*managedHeadlessProcess{},
 		startHeadless:         relayruntime.StartDetachedWrapper,
 		stopProcess:           relayruntime.TerminateProcess,
+		adminAuth:             authManager,
 	}
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{
 		OnHello:      app.onHello,
@@ -86,19 +94,15 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 	app.relay.SetServerIdentity(serverIdentity)
 
 	relayMux := http.NewServeMux()
-	relayMux.Handle("/ws/agent", app.relay)
-	relayMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	relayMux.Handle("GET /ws/agent", app.relay)
+	relayMux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	app.relayServer = &http.Server{Addr: relayAddr, Handler: relayMux}
 
 	apiMux := http.NewServeMux()
-	apiMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	})
-	apiMux.HandleFunc("/v1/status", app.handleStatus)
+	app.registerAPIRoutes(apiMux)
 	app.apiServer = &http.Server{Addr: apiAddr, Handler: apiMux}
 	return app
 }
@@ -733,25 +737,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (a *App) handleStatus(w http.ResponseWriter, _ *http.Request) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	payload := struct {
-		Instances          []*state.InstanceRecord         `json:"instances"`
-		Surfaces           []*state.SurfaceConsoleRecord   `json:"surfaces"`
-		Gateways           []feishu.GatewayStatus          `json:"gateways,omitempty"`
-		PendingRemoteTurns []orchestrator.RemoteTurnStatus `json:"pendingRemoteTurns"`
-		ActiveRemoteTurns  []orchestrator.RemoteTurnStatus `json:"activeRemoteTurns"`
-	}{
-		Instances:          a.service.Instances(),
-		Surfaces:           a.service.Surfaces(),
-		PendingRemoteTurns: a.service.PendingRemoteTurns(),
-		ActiveRemoteTurns:  a.service.ActiveRemoteTurns(),
-	}
-	if statusSource, ok := a.gateway.(interface{ Status() []feishu.GatewayStatus }); ok {
-		payload.Gateways = statusSource.Status()
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(payload)
+	writeJSON(w, http.StatusOK, a.runtimeStatusPayload())
 }
 
 func summarizeRemoteStatuses(values []orchestrator.RemoteTurnStatus) string {

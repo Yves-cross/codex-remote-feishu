@@ -231,6 +231,12 @@
 
 管理页则采用普通 session/cookie。
 
+当前阶段进一步固定为：
+
+- loopback 直接信任本机访问
+- 非 loopback 先通过 `/setup?token=...` 换取 setup session cookie
+- 这一步只开放 setup 远程访问，正式 admin 远程 session 留到后续阶段
+
 ### 6.3 多 App 同时在线
 
 V1 就按“多飞书 App 同时在线”设计，不再保留“唯一 active app”假设。

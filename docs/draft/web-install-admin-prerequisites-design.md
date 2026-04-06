@@ -252,6 +252,24 @@ daemon 现在是：
 - [internal/app/launcher/launcher.go](../../internal/app/launcher/launcher.go)
 - [internal/app/launcher/role.go](../../internal/app/launcher/role.go)
 
+#### 5.2.6 当前阶段拍板
+
+本轮实现进一步固定为：
+
+- `setup required` 的判断口径是：
+  - runtime 生效的飞书 App 中，没有任何一个同时具备 `appId + appSecret`
+  - 这里包含 legacy env/runtime override，不只看 `config.json`
+- loopback 请求在当前阶段默认视为 trusted local session：
+  - 可直接访问 `/setup`
+  - 可直接访问 `/api/setup/*`
+  - 可直接访问 `/api/admin/*`
+- 非 loopback 请求在当前阶段只开放 setup 会话：
+  - 通过 startup 打印的 `/setup?token=...` 链接换取 session cookie
+  - 配置完成后的正式 admin 远程 session 仍留到后续阶段
+- 兼容状态接口 `/v1/status` 也跟随 admin 鉴权：
+  - loopback 继续可直接访问
+  - setup 暴露到 `0.0.0.0` 时不会把状态接口匿名暴露出去
+
 ### 5.3 Surface 与 Gateway 身份模型
 
 #### 5.3.1 当前问题
@@ -716,6 +734,26 @@ scopes JSON 以当前已确认样例为基线：
 - `POST /api/admin/vscode/apply`
 - `POST /api/admin/vscode/reinstall-shim`
 
+#### 5.9.1 当前阶段落地约束
+
+当前阶段先把访问模型和 contract 骨架打通，实际落地分成两类：
+
+- 已实现：
+  - `GET /api/setup/bootstrap-state`
+  - `GET /api/admin/bootstrap-state`
+  - `GET /api/admin/runtime-status`
+  - `GET /api/admin/config`
+  - `GET /setup`
+  - `GET /`
+- 已注册但暂时返回结构化 `501 not_implemented`：
+  - 其余 `feishu/apps`
+  - `instances`
+  - `storage/*`
+  - `vscode/*`
+  - `PUT /api/admin/config`
+
+这样后续阶段可以在不改路径 contract 的前提下逐步把能力填实。
+
 #### 5.9.2 返回值要求
 
 这些接口应尽量满足：
@@ -827,9 +865,8 @@ scopes JSON 以当前已确认样例为基线：
 只剩这些实现级细节还需要最后决定：
 
 1. `config.json` 中 `relay.serverURL` 是显式存储，还是由 bind host/port 推导
-2. 管理页 session 在 loopback 场景下是否允许“无登录直接信任本机”
-3. preview purge 是否默认逐文件删除，还是提供“删文件夹 + task_check”的高级选项
-4. SPA 首期是否只支持 Linux 开发环境
+2. preview purge 是否默认逐文件删除，还是提供“删文件夹 + task_check”的高级选项
+3. SPA 首期是否只支持 Linux 开发环境
 
 ## 9. 参考资料
 

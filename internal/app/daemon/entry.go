@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,9 +64,12 @@ func RunMain(ctx context.Context, version string) error {
 	}
 	defer os.Remove(paths.IdentityFile)
 
+	env := envMap(os.Environ())
+	startup := buildStartupAccessPlan(loadedConfig.Config, cfg, env)
+
 	app := New(
 		net.JoinHostPort(cfg.RelayHost, cfg.RelayPort),
-		net.JoinHostPort(cfg.RelayAPIHost, cfg.RelayAPIPort),
+		net.JoinHostPort(startup.AdminBindHost, cfg.RelayAPIPort),
 		gateway,
 		identity,
 	)
@@ -79,12 +83,39 @@ func RunMain(ctx context.Context, version string) error {
 	})
 	app.SetMarkdownPreviewer(markdownPreviewer)
 	app.SetDebugRelayFlow(cfg.DebugRelayFlow)
+	app.ConfigureAdmin(AdminRuntimeOptions{
+		ConfigPath:      loadedConfig.Path,
+		Services:        cfg,
+		AdminListenHost: startup.AdminBindHost,
+		AdminListenPort: cfg.RelayAPIPort,
+		AdminURL:        startup.AdminURL,
+		SetupURL:        startup.SetupURL,
+		SSHSession:      startup.SSHSession,
+		SetupRequired:   startup.SetupRequired,
+	})
 	if cfg.DebugRelayRaw {
 		rawLogger, err := debuglog.OpenRaw(paths.DaemonRawLogFile, "daemon", "", os.Getpid())
 		if err != nil {
 			log.Printf("relay raw daemon log disabled: %v", err)
 		} else {
 			app.SetRawLogger(rawLogger)
+		}
+	}
+	if startup.SetupRequired {
+		token, expiresAt, err := app.EnableSetupAccess(20 * time.Minute)
+		if err != nil {
+			return err
+		}
+		startup.SetupToken = token
+		startup.SetupTokenExpiry = expiresAt
+	}
+	logStartupState(startup, cfg)
+	if err := maybeOpenSetupBrowser(startup, env); err != nil {
+		switch {
+		case err == errBrowserUnavailable:
+			log.Printf("setup browser auto-open skipped: no local desktop opener available")
+		default:
+			log.Printf("setup browser auto-open failed: %v", err)
 		}
 	}
 	if err := app.Run(ctx); err != nil && err != context.Canceled {
@@ -162,4 +193,28 @@ func sanitizeGatewayPath(gatewayID string) string {
 		return "legacy-default"
 	}
 	return value
+}
+
+func logStartupState(startup startupAccessPlan, services config.ServicesConfig) {
+	relayEndpoint := net.JoinHostPort(strings.TrimSpace(services.RelayHost), strings.TrimSpace(services.RelayPort))
+	log.Printf("relay daemon listening: relay=%s admin=%s", relayEndpoint, startup.AdminURL)
+	if startup.SetupRequired {
+		setupURL := startup.SetupURL
+		if startup.SSHSession && strings.TrimSpace(startup.SetupToken) != "" {
+			setupURL += "?token=" + url.QueryEscape(startup.SetupToken)
+		}
+		log.Printf("startup state: setup required; configured_feishu_apps=%d ssh=%t", startup.ConfiguredAppCount, startup.SSHSession)
+		log.Printf("web setup: %s", setupURL)
+		if !startup.SetupTokenExpiry.IsZero() {
+			log.Printf("setup token expires at: %s", startup.SetupTokenExpiry.Format(time.RFC3339))
+		}
+		return
+	}
+
+	phase := "ready"
+	if startup.ConfiguredAppCount == 0 {
+		phase = "ready_degraded"
+	}
+	log.Printf("startup state: %s; configured_feishu_apps=%d admin=%s", phase, startup.ConfiguredAppCount, startup.AdminURL)
+	log.Printf("web admin: %s", startup.AdminURL)
 }
