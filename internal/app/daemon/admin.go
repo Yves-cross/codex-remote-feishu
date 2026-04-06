@@ -109,6 +109,12 @@ type bootstrapFeishuPayload struct {
 	RuntimeConfiguredApps int `json:"runtimeConfiguredApps"`
 }
 
+type setupCompleteResponse struct {
+	SetupRequired bool   `json:"setupRequired"`
+	AdminURL      string `json:"adminURL"`
+	Message       string `json:"message"`
+}
+
 type adminConfigResponse struct {
 	Path   string          `json:"path"`
 	Config adminConfigView `json:"config"`
@@ -156,6 +162,20 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", a.handleRootPage)
 	mux.HandleFunc("GET /setup", a.handleSetupPage)
 	mux.HandleFunc("GET /api/setup/bootstrap-state", a.requireSetup(a.handleBootstrapState))
+	mux.HandleFunc("POST /api/setup/complete", a.requireSetup(a.handleSetupComplete))
+	mux.HandleFunc("GET /api/setup/feishu/manifest", a.requireSetup(a.handleFeishuManifest))
+	mux.HandleFunc("GET /api/setup/feishu/apps", a.requireSetup(a.handleFeishuAppsList))
+	mux.HandleFunc("POST /api/setup/feishu/apps", a.requireSetup(a.handleFeishuAppCreate))
+	mux.HandleFunc("PUT /api/setup/feishu/apps/{id}", a.requireSetup(a.handleFeishuAppUpdate))
+	mux.HandleFunc("DELETE /api/setup/feishu/apps/{id}", a.requireSetup(a.handleFeishuAppDelete))
+	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/verify", a.requireSetup(a.handleFeishuAppVerify))
+	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/reconnect", a.requireSetup(a.handleFeishuAppReconnect))
+	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/enable", a.requireSetup(a.handleFeishuAppEnable))
+	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/disable", a.requireSetup(a.handleFeishuAppDisable))
+	mux.HandleFunc("GET /api/setup/feishu/apps/{id}/scopes-json", a.requireSetup(a.handleFeishuAppScopesJSON))
+	mux.HandleFunc("GET /api/setup/vscode/detect", a.requireSetup(a.handleVSCodeDetect))
+	mux.HandleFunc("POST /api/setup/vscode/apply", a.requireSetup(a.handleVSCodeApply))
+	mux.HandleFunc("POST /api/setup/vscode/reinstall-shim", a.requireSetup(a.handleVSCodeReinstallShim))
 
 	mux.HandleFunc("GET /api/admin/bootstrap-state", a.requireAdmin(a.handleBootstrapState))
 	mux.HandleFunc("GET /api/admin/runtime-status", a.requireAdmin(a.handleRuntimeStatus))
@@ -271,13 +291,8 @@ func (a *App) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 		writePageUnauthorized(w, "setup access requires the startup token link or localhost access")
 		return
 	}
-	state, err := a.bootstrapState(auth)
-	if err != nil {
+	if _, err := a.bootstrapState(auth); err != nil {
 		writePageError(w, http.StatusInternalServerError, "load bootstrap state", err)
-		return
-	}
-	if !state.SetupRequired {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	writeAdminAppShell(w)
@@ -294,6 +309,38 @@ func (a *App) handleBootstrapState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, payload)
+}
+
+func (a *App) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
+	state, err := a.bootstrapState(a.requestAuth(r))
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "bootstrap_state_unavailable",
+			Message: "failed to load bootstrap state",
+			Details: err.Error(),
+		})
+		return
+	}
+	if state.SetupRequired {
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    "setup_incomplete",
+			Message: "setup cannot be completed before at least one runtime feishu app is configured",
+		})
+		return
+	}
+
+	a.DisableSetupAccess()
+	http.SetCookie(w, adminauth.ExpiredSessionCookie())
+
+	message := "setup access disabled; continue in the local admin page"
+	if state.SSHSession {
+		message = "setup access disabled; remote admin remains limited to localhost in this stage"
+	}
+	writeJSON(w, http.StatusOK, setupCompleteResponse{
+		SetupRequired: false,
+		AdminURL:      state.Admin.URL,
+		Message:       message,
+	})
 }
 
 func (a *App) handleRuntimeStatus(w http.ResponseWriter, _ *http.Request) {

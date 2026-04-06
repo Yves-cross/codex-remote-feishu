@@ -10,8 +10,9 @@ import (
 func TestSetupTokenExchangeProducesValidSetupSession(t *testing.T) {
 	now := time.Date(2026, 4, 6, 9, 0, 0, 0, time.UTC)
 	manager, err := NewManager(ManagerOptions{
-		Now:        func() time.Time { return now },
-		SessionKey: []byte("01234567890123456789012345678901"),
+		Now:             func() time.Time { return now },
+		SessionKey:      []byte("01234567890123456789012345678901"),
+		SetupSessionTTL: 2 * time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
@@ -25,8 +26,11 @@ func TestSetupTokenExchangeProducesValidSetupSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExchangeSetupToken: %v", err)
 	}
-	if !sessionExpiresAt.Equal(expiresAt) {
-		t.Fatalf("session expiry = %v, want %v", sessionExpiresAt, expiresAt)
+	if !expiresAt.Equal(now.Add(15 * time.Minute)) {
+		t.Fatalf("token expiry = %v, want %v", expiresAt, now.Add(15*time.Minute))
+	}
+	if !sessionExpiresAt.Equal(now.Add(2 * time.Hour)) {
+		t.Fatalf("session expiry = %v, want %v", sessionExpiresAt, now.Add(2*time.Hour))
 	}
 
 	session, err := manager.ParseSession(value)
@@ -36,8 +40,16 @@ func TestSetupTokenExchangeProducesValidSetupSession(t *testing.T) {
 	if session.Scope != ScopeSetup {
 		t.Fatalf("session scope = %q, want %q", session.Scope, ScopeSetup)
 	}
-	if !session.ExpiresAt.Equal(expiresAt) {
-		t.Fatalf("session expiry = %v, want %v", session.ExpiresAt, expiresAt)
+	if !session.ExpiresAt.Equal(sessionExpiresAt) {
+		t.Fatalf("session expiry = %v, want %v", session.ExpiresAt, sessionExpiresAt)
+	}
+
+	now = now.Add(30 * time.Minute)
+	if err := manager.ValidateSetupToken(token); !errors.Is(err, ErrExpired) {
+		t.Fatalf("ValidateSetupToken(expired) err = %v, want %v", err, ErrExpired)
+	}
+	if _, err := manager.ParseSession(value); err != nil {
+		t.Fatalf("ParseSession(session still valid): %v", err)
 	}
 }
 
@@ -62,6 +74,32 @@ func TestSetupTokenValidationRejectsWrongAndExpiredTokens(t *testing.T) {
 	now = now.Add(2 * time.Minute)
 	if err := manager.ValidateSetupToken(token); !errors.Is(err, ErrExpired) {
 		t.Fatalf("ValidateSetupToken(expired) err = %v, want %v", err, ErrExpired)
+	}
+}
+
+func TestDisableSetupTokenRevokesSetupSessions(t *testing.T) {
+	now := time.Date(2026, 4, 6, 9, 0, 0, 0, time.UTC)
+	manager, err := NewManager(ManagerOptions{
+		Now:             func() time.Time { return now },
+		SessionKey:      []byte("01234567890123456789012345678901"),
+		SetupSessionTTL: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+
+	token, _, err := manager.EnableSetupToken(10 * time.Minute)
+	if err != nil {
+		t.Fatalf("EnableSetupToken: %v", err)
+	}
+	value, _, err := manager.ExchangeSetupToken(token)
+	if err != nil {
+		t.Fatalf("ExchangeSetupToken: %v", err)
+	}
+
+	manager.DisableSetupToken()
+	if _, err := manager.ParseSession(value); !errors.Is(err, ErrSetupDisabled) {
+		t.Fatalf("ParseSession(disabled) err = %v, want %v", err, ErrSetupDisabled)
 	}
 }
 

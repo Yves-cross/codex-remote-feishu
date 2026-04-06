@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	CookieName            = "codex_remote_admin_session"
-	DefaultSetupTokenTTL  = 20 * time.Minute
-	defaultSessionKeySize = 32
+	CookieName             = "codex_remote_admin_session"
+	DefaultSetupTokenTTL   = 20 * time.Minute
+	DefaultSetupSessionTTL = 8 * time.Hour
+	defaultSessionKeySize  = 32
 )
 
 type Scope string
@@ -37,20 +38,25 @@ var (
 )
 
 type ManagerOptions struct {
-	Now        func() time.Time
-	SessionKey []byte
+	Now             func() time.Time
+	SessionKey      []byte
+	SetupSessionTTL time.Duration
 }
 
 type Manager struct {
 	now func() time.Time
 
-	sessionKey []byte
+	sessionKey      []byte
+	setupSessionTTL time.Duration
 
 	mu sync.RWMutex
 
-	setupEnabled bool
-	setupHash    [32]byte
-	setupExpiry  time.Time
+	setupTokenEnabled bool
+	setupTokenHash    [32]byte
+	setupTokenExpiry  time.Time
+
+	setupSessionEnabled bool
+	setupSessionExpiry  time.Time
 }
 
 type Session struct {
@@ -75,9 +81,14 @@ func NewManager(opts ManagerOptions) (*Manager, error) {
 			return nil, err
 		}
 	}
+	setupSessionTTL := opts.SetupSessionTTL
+	if setupSessionTTL <= 0 {
+		setupSessionTTL = DefaultSetupSessionTTL
+	}
 	return &Manager{
-		now:        now,
-		sessionKey: sessionKey,
+		now:             now,
+		sessionKey:      sessionKey,
+		setupSessionTTL: setupSessionTTL,
 	}, nil
 }
 
@@ -92,11 +103,18 @@ func (m *Manager) EnableSetupToken(ttl time.Duration) (string, time.Time, error)
 	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
 	hash := sha256.Sum256([]byte(token))
 	expiresAt := m.now().Add(ttl).UTC()
+	sessionTTL := m.setupSessionTTL
+	if sessionTTL < ttl {
+		sessionTTL = ttl
+	}
+	sessionExpiresAt := m.now().Add(sessionTTL).UTC()
 
 	m.mu.Lock()
-	m.setupEnabled = true
-	m.setupHash = hash
-	m.setupExpiry = expiresAt
+	m.setupTokenEnabled = true
+	m.setupTokenHash = hash
+	m.setupTokenExpiry = expiresAt
+	m.setupSessionEnabled = true
+	m.setupSessionExpiry = sessionExpiresAt
 	m.mu.Unlock()
 
 	return token, expiresAt, nil
@@ -104,16 +122,18 @@ func (m *Manager) EnableSetupToken(ttl time.Duration) (string, time.Time, error)
 
 func (m *Manager) DisableSetupToken() {
 	m.mu.Lock()
-	m.setupEnabled = false
-	m.setupHash = [32]byte{}
-	m.setupExpiry = time.Time{}
+	m.setupTokenEnabled = false
+	m.setupTokenHash = [32]byte{}
+	m.setupTokenExpiry = time.Time{}
+	m.setupSessionEnabled = false
+	m.setupSessionExpiry = time.Time{}
 	m.mu.Unlock()
 }
 
 func (m *Manager) SetupStatus() (bool, time.Time) {
 	m.mu.RLock()
-	enabled := m.setupEnabled
-	expiresAt := m.setupExpiry
+	enabled := m.setupTokenEnabled
+	expiresAt := m.setupTokenExpiry
 	m.mu.RUnlock()
 
 	if !enabled {
@@ -132,9 +152,9 @@ func (m *Manager) ValidateSetupToken(token string) error {
 	}
 
 	m.mu.RLock()
-	enabled := m.setupEnabled
-	expected := m.setupHash
-	expiresAt := m.setupExpiry
+	enabled := m.setupTokenEnabled
+	expected := m.setupTokenHash
+	expiresAt := m.setupTokenExpiry
 	m.mu.RUnlock()
 
 	if !enabled {
@@ -155,7 +175,9 @@ func (m *Manager) ExchangeSetupToken(token string) (string, time.Time, error) {
 	if err := m.ValidateSetupToken(token); err != nil {
 		return "", time.Time{}, err
 	}
-	_, expiresAt := m.SetupStatus()
+	m.mu.RLock()
+	expiresAt := m.setupSessionExpiry
+	m.mu.RUnlock()
 	value, err := m.NewSession(ScopeSetup, expiresAt)
 	if err != nil {
 		return "", time.Time{}, err
@@ -213,6 +235,18 @@ func (m *Manager) ParseSession(value string) (Session, error) {
 	}
 	if decoded.Scope == "" {
 		return Session{}, ErrInvalidSession
+	}
+	if decoded.Scope == ScopeSetup {
+		m.mu.RLock()
+		sessionEnabled := m.setupSessionEnabled
+		sessionExpiry := m.setupSessionExpiry
+		m.mu.RUnlock()
+		if !sessionEnabled {
+			return Session{}, ErrSetupDisabled
+		}
+		if !sessionExpiry.After(m.now()) {
+			return Session{}, ErrExpired
+		}
 	}
 	return Session{
 		Scope:     decoded.Scope,
