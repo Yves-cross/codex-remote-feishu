@@ -171,12 +171,67 @@ button {
   cursor: pointer;
 }
 
+.primary-button,
+.ghost-button,
+.danger-button {
+  padding: 0.82rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease;
+}
+
+.primary-button {
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  background: linear-gradient(135deg, #0f766e, #115e59);
+  color: #ffffff;
+}
+
+.ghost-button {
+  border: 1px solid rgba(18, 34, 48, 0.12);
+  background: transparent;
+  color: var(--text-strong);
+}
+
+.danger-button {
+  border: 1px solid rgba(192, 57, 43, 0.16);
+  background: rgba(192, 57, 43, 0.08);
+  color: var(--danger);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.ghost-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.ghost-button:disabled,
+.danger-button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .panel {
   padding: 1.4rem;
   border: 1px solid var(--border);
   border-radius: 1.75rem;
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
 .panel-head h3 {
@@ -358,6 +413,228 @@ button {
   color: var(--text-soft);
 }
 
+.notice-banner {
+  margin-top: 1.2rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(18, 34, 48, 0.08);
+  background: var(--surface-strong);
+  color: var(--text-soft);
+}
+
+.notice-banner.good {
+  border-color: rgba(15, 118, 110, 0.16);
+  color: var(--accent-strong);
+  background: rgba(15, 118, 110, 0.08);
+}
+
+.notice-banner.warn {
+  border-color: rgba(183, 121, 31, 0.16);
+  color: var(--warn);
+  background: rgba(183, 121, 31, 0.08);
+}
+
+.notice-banner.danger {
+  border-color: rgba(192, 57, 43, 0.18);
+  color: var(--danger);
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.setup-two-column,
+.checklist-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.app-list-grid,
+.wizard-editor,
+.checklist-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.app-card {
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid rgba(18, 34, 48, 0.08);
+  border-radius: 1.25rem;
+  background: var(--surface-strong);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-card.selected {
+  border-color: rgba(15, 118, 110, 0.36);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.15);
+}
+
+.app-card-create {
+  border-style: dashed;
+}
+
+.app-card-head,
+.app-card-flags,
+.button-row,
+.wizard-step,
+.checkbox-row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+}
+
+.app-card-head {
+  justify-content: space-between;
+}
+
+.app-card p {
+  margin: 0.45rem 0;
+  color: var(--text-soft);
+}
+
+.app-card-flags {
+  flex-wrap: wrap;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field span,
+.checkbox-row span,
+.form-hint {
+  color: var(--text-soft);
+}
+
+.field input,
+.code-textarea {
+  width: 100%;
+  padding: 0.82rem 0.95rem;
+  border: 1px solid rgba(18, 34, 48, 0.12);
+  border-radius: 0.95rem;
+  background: #fff;
+  color: var(--text-strong);
+}
+
+.field input:disabled {
+  background: rgba(18, 34, 48, 0.04);
+}
+
+.button-row {
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.checkbox-row {
+  margin-top: 0.2rem;
+}
+
+.wizard-progress {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.wizard-step {
+  padding: 0.9rem 0.95rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(18, 34, 48, 0.08);
+  background: var(--surface-strong);
+  align-items: flex-start;
+}
+
+.wizard-step p,
+.wizard-step strong {
+  margin: 0;
+}
+
+.wizard-step p {
+  color: var(--text-soft);
+}
+
+.manifest-block {
+  padding: 1rem;
+  border-radius: 1.1rem;
+  background: var(--surface-strong);
+  border: 1px solid rgba(18, 34, 48, 0.08);
+}
+
+.manifest-block h4,
+.checklist-column h4 {
+  margin: 0 0 0.75rem;
+}
+
+.token-list,
+.ordered-checklist {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.token-list li,
+.ordered-checklist li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 0.95rem;
+  background: rgba(18, 34, 48, 0.03);
+}
+
+.token-list code {
+  color: #0b4a6f;
+}
+
+.token-list span,
+.ordered-checklist span {
+  color: var(--text-soft);
+}
+
+.checkbox-card-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.checkbox-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  padding: 0.95rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(18, 34, 48, 0.08);
+  background: var(--surface-strong);
+}
+
+.checkbox-card strong,
+.checkbox-card p {
+  margin: 0;
+}
+
+.checkbox-card p {
+  color: var(--text-soft);
+}
+
+.code-textarea {
+  min-height: 12rem;
+  resize: vertical;
+  font-family: "IBM Plex Mono", "SFMono-Regular", "Consolas", monospace;
+  line-height: 1.45;
+}
+
+.form-hint {
+  margin: 0;
+}
+
 .empty-state {
   flex-direction: column;
   align-items: flex-start;
@@ -402,7 +679,10 @@ button {
   }
 
   .stat-grid,
-  .definition-list {
+  .definition-list,
+  .setup-two-column,
+  .checklist-grid,
+  .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -414,17 +694,22 @@ button {
 
   .page-hero,
   .gateway-card,
-  .data-row {
+  .data-row,
+  .panel-head {
     flex-direction: column;
   }
 
   .hero-actions,
-  .data-meta {
+  .data-meta,
+  .panel-actions {
     align-items: flex-start;
   }
 
   .stat-grid,
-  .definition-list {
+  .definition-list,
+  .setup-two-column,
+  .checklist-grid,
+  .form-grid {
     grid-template-columns: 1fr;
   }
 }

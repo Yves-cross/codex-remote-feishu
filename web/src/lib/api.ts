@@ -6,6 +6,12 @@ export interface APIErrorShape {
   };
 }
 
+export interface JSONResult<T> {
+  ok: boolean;
+  status: number;
+  data: T;
+}
+
 export class APIRequestError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -21,6 +27,21 @@ export class APIRequestError extends Error {
 }
 
 export async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const result = await requestJSONAllowHTTPError<T | APIErrorShape>(path, init);
+  if (!result.ok) {
+    const payload = result.data as APIErrorShape;
+    const apiError = payload.error;
+    throw new APIRequestError(
+      result.status,
+      apiError?.message?.trim() || `request failed with status ${result.status}`,
+      apiError?.code?.trim(),
+      apiError?.details,
+    );
+  }
+  return result.data as T;
+}
+
+export async function requestJSONAllowHTTPError<T>(path: string, init?: RequestInit): Promise<JSONResult<T>> {
   const response = await fetch(path, {
     credentials: "same-origin",
     ...init,
@@ -34,24 +55,52 @@ export async function requestJSON<T>(path: string, init?: RequestInit): Promise<
   const contentType = response.headers.get("content-type") ?? "";
   const isJSON = contentType.includes("application/json");
 
-  if (!response.ok) {
-    if (isJSON && text) {
-      const payload = JSON.parse(text) as APIErrorShape;
-      const apiError = payload.error;
-      throw new APIRequestError(
-        response.status,
-        apiError?.message?.trim() || response.statusText,
-        apiError?.code?.trim(),
-        apiError?.details,
-      );
-    }
-    throw new APIRequestError(response.status, text.trim() || response.statusText);
-  }
-
   if (!isJSON) {
     throw new APIRequestError(response.status, `unexpected response content-type: ${contentType || "unknown"}`);
   }
-  return JSON.parse(text) as T;
+  return {
+    ok: response.ok,
+    status: response.status,
+    data: JSON.parse(text) as T,
+  };
+}
+
+export async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (response.ok) {
+    return;
+  }
+
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json") && text) {
+    const payload = JSON.parse(text) as APIErrorShape;
+    const apiError = payload.error;
+    throw new APIRequestError(
+      response.status,
+      apiError?.message?.trim() || response.statusText,
+      apiError?.code?.trim(),
+      apiError?.details,
+    );
+  }
+  throw new APIRequestError(response.status, text.trim() || response.statusText);
+}
+
+export async function sendJSON<TResponse>(path: string, method: string, body?: unknown): Promise<TResponse> {
+  const headers: Record<string, string> = {};
+  const init: RequestInit = { method, headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  return requestJSON<TResponse>(path, init);
 }
 
 export function formatError(error: unknown): string {

@@ -42,8 +42,8 @@ export function ShellFrame(props: {
   );
 }
 
-export function Panel(props: PropsWithChildren<{ id?: string; title: string; description?: string; className?: string }>) {
-  const { id, title, description, className, children } = props;
+export function Panel(props: PropsWithChildren<{ id?: string; title: string; description?: string; className?: string; actions?: ReactNode }>) {
+  const { id, title, description, className, actions, children } = props;
   return (
     <section id={id} className={`panel${className ? ` ${className}` : ""}`}>
       <div className="panel-head">
@@ -51,6 +51,7 @@ export function Panel(props: PropsWithChildren<{ id?: string; title: string; des
           <h3>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
+        {actions ? <div className="panel-actions">{actions}</div> : null}
       </div>
       {children}
     </section>
