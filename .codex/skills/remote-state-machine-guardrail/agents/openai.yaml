@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remote 状态机守卫"
+  short_description: "Pre-commit remote state-machine doc sync and dead-state audit"
+  default_prompt: "Use $remote-state-machine-guardrail after implementing remote surface routing or state-machine changes in this repository before committing."

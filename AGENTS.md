@@ -12,6 +12,16 @@ Trigger it for:
 - Codex app-server protocol changes
 - `/list`, `/attach`, `/use`, queue, thread routing, missing reply, helper/internal traffic issues
 
+For remote surface state-machine changes, also use `.codex/skills/remote-state-machine-guardrail/`.
+
+Trigger it for:
+
+- `attach` / `detach` / `/use` / `/follow`
+- headless launch, resume, cancel, timeout
+- queue routing, dispatch mode, local pause/handoff
+- request capture, prompt/card routing, selection flow
+- `/new` or any change that adds or removes remote surface states
+
 ## Documentation Convention
 
 For lifecycle design/reference docs under `docs/`:
@@ -24,6 +34,21 @@ For lifecycle design/reference docs under `docs/`:
 - `Type` must match the directory name.
 - If a document becomes obsolete, move it to `docs/obsoleted/` instead of leaving stale copies in place.
 - When moving docs, update relative links and the index in `docs/README.md` in the same change.
+
+## Core State Machine Document
+
+The canonical remote surface state machine document is:
+
+- `docs/general/remote-surface-state-machine.md`
+
+For any change that modifies remote surface behavior or state transitions:
+
+1. Implement and test first.
+2. After the implementation stabilizes and before committing, reopen the canonical state machine document and update it to match the new behavior.
+3. In that same pre-commit pass, explicitly audit for dead states, half-dead states, stale modal/UI states, silent route retargeting, and any transition that leaves the user without a clear next action.
+4. If that audit reveals a bug-level issue, fix it and re-run the audit once more before committing.
+5. Do not run this loop after every tiny edit; run it once near commit unless a major assumption changed mid-implementation.
+6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/remote-surface-state-machine.md` under `待讨论取舍` before discussing it.
 
 ## Git Push Rule
 

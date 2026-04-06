@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-06`
-> Summary: 将多飞书 App 草稿收敛为功能设计文档，并更新文档索引。
+> Summary: 将 remote surface 状态机提升为长期核心文档，并同步更新索引。
 
 ## 1. 适用范围
 
@@ -114,6 +114,7 @@
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [go-test-strategy.md](./general/go-test-strategy.md)
 - [install-deploy-design.md](./general/install-deploy-design.md)
+- [remote-surface-state-machine.md](./general/remote-surface-state-machine.md)
 - [relay-error-reporting-protocol.md](./general/relay-error-reporting-protocol.md)
 - [relay-protocol-spec.md](./general/relay-protocol-spec.md)
 
@@ -133,6 +134,7 @@
 - [acp-claude-integration-design.md](./draft/acp-claude-integration-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
+- [new-thread-command-design.md](./draft/new-thread-command-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-install-admin-ui-design.md](./draft/web-install-admin-ui-design.md)
 - [web-setup-wizard-redesign.md](./draft/web-setup-wizard-redesign.md)
