@@ -51,12 +51,22 @@ func TestLoadWrapperConfigMigratesLegacyUnifiedEnvToJSON(t *testing.T) {
 	if !strings.Contains(string(raw), "\"serverURL\": \"ws://127.0.0.1:9600/ws/agent\"") {
 		t.Fatalf("unexpected migrated config: %s", raw)
 	}
+	if !strings.Contains(string(raw), "\"previewRootFolderName\": \"Codex Remote Previews\"") {
+		t.Fatalf("expected preview root folder default in migrated config: %s", raw)
+	}
 	backups, err := filepath.Glob(legacyPath + ".migrated-*.bak")
 	if err != nil {
 		t.Fatalf("glob backups: %v", err)
 	}
 	if len(backups) != 1 {
 		t.Fatalf("expected one migrated backup, got %v", backups)
+	}
+}
+
+func TestDefaultAppConfigIncludesPreviewRootFolderName(t *testing.T) {
+	cfg := DefaultAppConfig()
+	if cfg.Storage.PreviewRootFolderName != "Codex Remote Previews" {
+		t.Fatalf("PreviewRootFolderName = %q, want %q", cfg.Storage.PreviewRootFolderName, "Codex Remote Previews")
 	}
 }
 
@@ -258,5 +268,34 @@ func TestLoadersMigrateLegacySplitFilesAndUpdateInstallState(t *testing.T) {
 		if len(backups) != 1 {
 			t.Fatalf("expected one backup for %s, got %v", legacyPath, backups)
 		}
+	}
+}
+
+func TestLoadersIgnoreWorkingDirectoryDotEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	t.Chdir(projectDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), ".config"))
+
+	dotEnvPath := filepath.Join(projectDir, ".env")
+	if err := os.WriteFile(dotEnvPath, []byte("FEISHU_APP_ID=cli_dotenv\nFEISHU_APP_SECRET=secret_dotenv\n"), 0o600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	cfg, err := LoadServicesConfig()
+	if err != nil {
+		t.Fatalf("LoadServicesConfig: %v", err)
+	}
+	if cfg.FeishuAppID != "" || cfg.FeishuAppSecret != "" {
+		t.Fatalf("working directory .env should not be treated as legacy config, got %q/%q", cfg.FeishuAppID, cfg.FeishuAppSecret)
+	}
+	if _, err := os.Stat(dotEnvPath); err != nil {
+		t.Fatalf("expected .env to remain untouched: %v", err)
+	}
+	backups, err := filepath.Glob(dotEnvPath + ".migrated-*.bak")
+	if err != nil {
+		t.Fatalf("glob backups: %v", err)
+	}
+	if len(backups) != 0 {
+		t.Fatalf("did not expect migration backup for .env, got %v", backups)
 	}
 }

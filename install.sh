@@ -23,6 +23,7 @@ LOG_FILE="${LOG_DIR}/codex-remote-relayd.log"
 mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${STATE_DIR}" "${RUN_DIR}" "${LOG_DIR}"
 
 build_bins() {
+  bash "${ROOT_DIR}/scripts/web/build-admin-ui.sh"
   "${GO_BIN}" build -o "${BIN_DIR}/codex-remote" "${ROOT_DIR}/cmd/codex-remote"
 }
 

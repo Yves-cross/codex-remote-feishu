@@ -17,6 +17,7 @@ const (
 	defaultRelayListenPort = 9500
 	defaultAdminListenHost = "127.0.0.1"
 	defaultAdminListenPort = 9501
+	defaultPreviewRootName = "Codex Remote Previews"
 )
 
 type LoadedAppConfig struct {
@@ -112,6 +113,9 @@ func DefaultAppConfig() AppConfig {
 			CodexRealBinary: "codex",
 			NameMode:        "workspace_basename",
 			IntegrationMode: "editor_settings",
+		},
+		Storage: StorageSettings{
+			PreviewRootFolderName: defaultPreviewRootName,
 		},
 	}
 }
@@ -247,7 +251,6 @@ func defaultLegacyCandidates(targetPath string) []string {
 		xdgConfigPath("codex-remote", "config.env"),
 		xdgConfigPath("codex-remote", "wrapper.env"),
 		xdgConfigPath("codex-remote", "services.env"),
-		filepath.Join(mustGetwd(), ".env"),
 	)
 	return dedupePaths(candidates)
 }
@@ -551,6 +554,10 @@ func (cfg AppConfig) normalized() AppConfig {
 	}
 	if strings.TrimSpace(cfg.Wrapper.IntegrationMode) == "" {
 		cfg.Wrapper.IntegrationMode = defaults.Wrapper.IntegrationMode
+	}
+
+	if strings.TrimSpace(cfg.Storage.PreviewRootFolderName) == "" {
+		cfg.Storage.PreviewRootFolderName = defaults.Storage.PreviewRootFolderName
 	}
 
 	return cfg

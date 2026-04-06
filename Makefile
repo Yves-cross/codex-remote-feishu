@@ -3,6 +3,7 @@ GO ?= go
 .PHONY: check test build fmt release-artifacts smoke-release-install start stop status web-build
 
 check:
+	bash scripts/web/build-admin-ui.sh
 	bash scripts/check/no-local-paths.sh
 	bash scripts/check/no-legacy-names.sh
 	files="$$(find cmd internal testkit -name '*.go' | sort)"; output="$$(gofmt -l $$files)"; test -z "$$output" || (echo "$$output" >&2; exit 1)
@@ -13,6 +14,8 @@ test:
 	$(GO) test ./...
 
 build:
+	bash scripts/web/build-admin-ui.sh
+	$(GO) build ./cmd/codex-remote
 	$(GO) build ./cmd/relayd
 	$(GO) build ./cmd/relay-wrapper
 	$(GO) build ./cmd/relay-install

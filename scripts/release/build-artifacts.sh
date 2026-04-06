@@ -12,6 +12,8 @@ if [[ -z "${version}" ]]; then
   exit 1
 fi
 
+bash "${ROOT_DIR}/scripts/web/build-admin-ui.sh"
+
 rm -rf "${output_dir}"
 mkdir -p "${output_dir}"
 

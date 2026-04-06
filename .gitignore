@@ -2,6 +2,8 @@
 *.log
 bin/
 dist/
+!internal/app/daemon/adminui/dist/
+!internal/app/daemon/adminui/dist/**
 coverage.out
 *.test
 *.exe
