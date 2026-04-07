@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-07`
-> Summary: 管理页重设计已移入 implemented，并同步更新了文档索引与当前状态说明。
+> Summary: 新增用户向使用说明书，并同步维护了管理页设计文档的索引状态。
 
 ## 1. 适用范围
 
@@ -117,6 +117,7 @@
 - [remote-surface-state-machine.md](./general/remote-surface-state-machine.md)
 - [relay-error-reporting-protocol.md](./general/relay-error-reporting-protocol.md)
 - [relay-protocol-spec.md](./general/relay-protocol-spec.md)
+- [user-guide.md](./general/user-guide.md)
 
 ### 6.2 `implemented`
 

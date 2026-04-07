@@ -254,6 +254,7 @@ unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 
 ## 文档
 
+- [用户使用说明书](./docs/general/user-guide.md)
 - [文档索引](./docs/README.md)
 - [架构说明](./docs/general/architecture.md)
 - [协议说明](./docs/general/relay-protocol-spec.md)
