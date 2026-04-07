@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -493,7 +494,7 @@ func finalBlockExtraElements(summary *control.FileChangeSummary) []map[string]an
 		elements = append(elements, map[string]any{
 			"tag": "markdown",
 			"content": fmt.Sprintf(
-				"%d. %s\n%s",
+				"%d. %s  %s",
 				index+1,
 				formatFileChangePath(summary.Files[index], labels),
 				formatFileChangeCountsMarkdown(summary.Files[index].AddedLines, summary.Files[index].RemovedLines),
@@ -514,14 +515,18 @@ func formatFileChangePath(file control.FileChangeSummaryEntry, labels map[string
 	movePath := strings.TrimSpace(file.MovePath)
 	switch {
 	case path != "" && movePath != "":
-		return fmt.Sprintf("`%s` -> `%s`", fileChangeDisplayLabel(path, labels), fileChangeDisplayLabel(movePath, labels))
+		return fmt.Sprintf("%s → %s", formatNeutralTextTag(fileChangeDisplayLabel(path, labels)), formatNeutralTextTag(fileChangeDisplayLabel(movePath, labels)))
 	case path != "":
-		return fmt.Sprintf("`%s`", fileChangeDisplayLabel(path, labels))
+		return formatNeutralTextTag(fileChangeDisplayLabel(path, labels))
 	case movePath != "":
-		return fmt.Sprintf("`%s`", fileChangeDisplayLabel(movePath, labels))
+		return formatNeutralTextTag(fileChangeDisplayLabel(movePath, labels))
 	default:
-		return "`(unknown)`"
+		return formatNeutralTextTag("(unknown)")
 	}
+}
+
+func formatNeutralTextTag(text string) string {
+	return "<text_tag color='neutral'>" + html.EscapeString(strings.TrimSpace(text)) + "</text_tag>"
 }
 
 func fileChangeDisplayLabels(files []control.FileChangeSummaryEntry) map[string]string {

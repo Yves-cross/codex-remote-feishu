@@ -458,13 +458,13 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	if ops[0].CardElements[0]["content"] != "**本次修改** 3 个文件  <font color='green'>+8</font> <font color='red'>-3</font>" {
 		t.Fatalf("unexpected summary header: %#v", ops[0].CardElements[0])
 	}
-	if ops[0].CardElements[1]["content"] != "1. `orchestrator/service.go`\n<font color='green'>+3</font> <font color='red'>-1</font>" {
+	if ops[0].CardElements[1]["content"] != "1. <text_tag color='neutral'>orchestrator/service.go</text_tag>  <font color='green'>+3</font> <font color='red'>-1</font>" {
 		t.Fatalf("unexpected unique-suffix element: %#v", ops[0].CardElements[1])
 	}
-	if ops[0].CardElements[2]["content"] != "2. `feishu/service.go`\n<font color='green'>+2</font> <font color='red'>-1</font>" {
+	if ops[0].CardElements[2]["content"] != "2. <text_tag color='neutral'>feishu/service.go</text_tag>  <font color='green'>+2</font> <font color='red'>-1</font>" {
 		t.Fatalf("unexpected second unique-suffix element: %#v", ops[0].CardElements[2])
 	}
-	if ops[0].CardElements[3]["content"] != "3. `old/guide.md` -> `new/guide.md`\n<font color='green'>+3</font> <font color='red'>-1</font>" {
+	if ops[0].CardElements[3]["content"] != "3. <text_tag color='neutral'>old/guide.md</text_tag> → <text_tag color='neutral'>new/guide.md</text_tag>  <font color='green'>+3</font> <font color='red'>-1</font>" {
 		t.Fatalf("unexpected rename summary element: %#v", ops[0].CardElements[3])
 	}
 }
