@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-07`
-> Summary: 将 relay 回压治理文档迁移到 implemented，并同步刷新索引。
+> Summary: 将 Feishu IM 消息研究迁移到 `docs/general` 并同步刷新索引。
 
 ## 1. 适用范围
 
@@ -112,6 +112,7 @@
 
 - [architecture.md](./general/architecture.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
+- [feishu-im-message-research.md](./general/feishu-im-message-research.md)
 - [go-test-strategy.md](./general/go-test-strategy.md)
 - [install-deploy-design.md](./general/install-deploy-design.md)
 - [remote-surface-state-machine.md](./general/remote-surface-state-machine.md)
