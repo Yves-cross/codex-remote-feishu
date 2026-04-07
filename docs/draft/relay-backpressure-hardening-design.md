@@ -48,7 +48,7 @@
 
 ### 阶段 2：wrapper transport 分级与连接代次隔离
 
-状态：下一阶段
+状态：已完成
 
 目标：
 
@@ -62,7 +62,7 @@
 
 ### 阶段 3：daemon ingress pump 解耦
 
-状态：待开始
+状态：下一阶段
 
 目标：
 
@@ -94,6 +94,8 @@
 1. 本轮默认覆盖阶段 1 到阶段 4。
 2. `gateway.Apply` 慢路径是否继续拆分，不作为当前默认完成条件；阶段 4 结束后再根据实测决定是否另起 issue。
 3. `2026-04-07` 首次阶段复评结论：阶段 1 已按原计划完成；阶段 2 顺序保持不变，继续先做 wrapper transport 分级与连接代次隔离，再进入 daemon ingress pump。
+4. `2026-04-07` 阶段 2 开始前复评结论：本阶段仍可先收敛在 `internal/adapter/relayws/client.go` 内完成，不需要提前改 `server.go` 或 daemon ingress pump；当前最佳切面仍是先做 client 内部 control/data 双队列和连接代次隔离。
+5. `2026-04-07` 阶段 2 结束后复评结论：当前阶段切分依然成立；下一阶段继续按原计划进入 daemon ingress pump，把 websocket read path 和 daemon 同步慢处理解耦。
 
 ## 2. 事故摘要
 

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -30,23 +31,47 @@ type Client struct {
 
 	mu      sync.RWMutex
 	conn    *websocket.Conn
-	outbox  chan agentproto.Envelope
+	epoch   uint64
 	closed  chan struct{}
 	closeMu sync.Once
+
+	controlOutbox chan queuedEnvelope
+	dataOutbox    chan queuedEnvelope
 
 	rawLogger *debuglog.RawLogger
 }
 
+type queuedEnvelope struct {
+	envelope agentproto.Envelope
+	epoch    uint64
+}
+
+const (
+	defaultControlOutboxCapacity = 64
+	defaultDataOutboxCapacity    = 512
+)
+
 func NewClient(url string, hello agentproto.Hello, callbacks ClientCallbacks) *Client {
+	return newClientWithQueueSizes(url, hello, callbacks, defaultControlOutboxCapacity, defaultDataOutboxCapacity)
+}
+
+func newClientWithQueueSizes(url string, hello agentproto.Hello, callbacks ClientCallbacks, controlCapacity, dataCapacity int) *Client {
 	if hello.Protocol == "" {
 		hello.Protocol = agentproto.WireProtocol
 	}
+	if controlCapacity <= 0 {
+		controlCapacity = defaultControlOutboxCapacity
+	}
+	if dataCapacity <= 0 {
+		dataCapacity = defaultDataOutboxCapacity
+	}
 	return &Client{
-		url:       normalizeRelayURL(url),
-		hello:     hello,
-		callbacks: callbacks,
-		outbox:    make(chan agentproto.Envelope, 512),
-		closed:    make(chan struct{}),
+		url:           normalizeRelayURL(url),
+		hello:         hello,
+		callbacks:     callbacks,
+		closed:        make(chan struct{}),
+		controlOutbox: make(chan queuedEnvelope, controlCapacity),
+		dataOutbox:    make(chan queuedEnvelope, dataCapacity),
 	}
 }
 
@@ -119,40 +144,47 @@ func (c *Client) SendEvents(events []agentproto.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
-	return c.enqueue(agentproto.Envelope{
-		Type: agentproto.EnvelopeEventBatch,
-		EventBatch: &agentproto.EventBatch{
-			InstanceID: c.hello.Instance.InstanceID,
-			Events:     events,
+	return c.enqueue(c.dataOutbox, queuedEnvelope{
+		epoch: atomic.LoadUint64(&c.epoch),
+		envelope: agentproto.Envelope{
+			Type: agentproto.EnvelopeEventBatch,
+			EventBatch: &agentproto.EventBatch{
+				InstanceID: c.hello.Instance.InstanceID,
+				Events:     events,
+			},
 		},
-	})
+	}, errors.New("relay client outbox full"))
 }
 
 func (c *Client) SendCommandAck(ack agentproto.CommandAck) error {
 	if ack.InstanceID == "" {
 		ack.InstanceID = c.hello.Instance.InstanceID
 	}
-	return c.enqueue(agentproto.Envelope{
-		Type:       agentproto.EnvelopeCommandAck,
-		CommandAck: &ack,
-	})
+	return c.enqueue(c.controlOutbox, queuedEnvelope{
+		epoch: atomic.LoadUint64(&c.epoch),
+		envelope: agentproto.Envelope{
+			Type:       agentproto.EnvelopeCommandAck,
+			CommandAck: &ack,
+		},
+	}, errors.New("relay client control outbox full"))
 }
 
-func (c *Client) enqueue(envelope agentproto.Envelope) error {
+func (c *Client) enqueue(outbox chan queuedEnvelope, item queuedEnvelope, fullErr error) error {
 	select {
 	case <-c.closed:
 		return context.Canceled
 	default:
 	}
 	select {
-	case c.outbox <- envelope:
+	case outbox <- item:
 		return nil
 	default:
-		return errors.New("relay client outbox full")
+		return fullErr
 	}
 }
 
 func (c *Client) RunOnce(ctx context.Context) error {
+	connectionEpoch := atomic.AddUint64(&c.epoch, 1)
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, c.url, http.Header{})
 	if err != nil {
 		return err
@@ -185,25 +217,26 @@ func (c *Client) RunOnce(ctx context.Context) error {
 	writeErr := make(chan error, 1)
 	welcomed := false
 	go func() {
+		var pendingData *queuedEnvelope
 		for {
-			select {
-			case <-ctx.Done():
-				writeErr <- ctx.Err()
+			item, nextPendingData, err := c.nextOutbound(ctx, pendingData)
+			pendingData = nextPendingData
+			if err != nil {
+				writeErr <- err
 				return
-			case <-c.closed:
-				writeErr <- context.Canceled
+			}
+			if !matchesConnectionEpoch(item.epoch, connectionEpoch) {
+				continue
+			}
+			payload, err := agentproto.MarshalEnvelope(item.envelope)
+			if err != nil {
+				writeErr <- err
 				return
-			case envelope := <-c.outbox:
-				payload, err := agentproto.MarshalEnvelope(envelope)
-				if err != nil {
-					writeErr <- err
-					return
-				}
-				c.logRaw("out", payload, envelope.Type, envelopeInstanceID(envelope, c.hello.Instance.InstanceID), envelopeCommandID(envelope))
-				if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-					writeErr <- err
-					return
-				}
+			}
+			c.logRaw("out", payload, item.envelope.Type, envelopeInstanceID(item.envelope, c.hello.Instance.InstanceID), envelopeCommandID(item.envelope))
+			if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+				writeErr <- err
+				return
 			}
 		}
 	}()
@@ -305,6 +338,49 @@ func (c *Client) RunOnce(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Client) nextOutbound(ctx context.Context, pendingData *queuedEnvelope) (queuedEnvelope, *queuedEnvelope, error) {
+	if pendingData != nil {
+		select {
+		case <-ctx.Done():
+			return queuedEnvelope{}, pendingData, ctx.Err()
+		case <-c.closed:
+			return queuedEnvelope{}, pendingData, context.Canceled
+		case item := <-c.controlOutbox:
+			return item, pendingData, nil
+		default:
+			return *pendingData, nil, nil
+		}
+	}
+	select {
+	case <-ctx.Done():
+		return queuedEnvelope{}, nil, ctx.Err()
+	case <-c.closed:
+		return queuedEnvelope{}, nil, context.Canceled
+	case item := <-c.controlOutbox:
+		return item, nil, nil
+	default:
+	}
+	select {
+	case <-ctx.Done():
+		return queuedEnvelope{}, nil, ctx.Err()
+	case <-c.closed:
+		return queuedEnvelope{}, nil, context.Canceled
+	case item := <-c.controlOutbox:
+		return item, nil, nil
+	case data := <-c.dataOutbox:
+		select {
+		case item := <-c.controlOutbox:
+			return item, &data, nil
+		default:
+			return data, nil, nil
+		}
+	}
+}
+
+func matchesConnectionEpoch(enqueuedEpoch, connectionEpoch uint64) bool {
+	return enqueuedEpoch == 0 || enqueuedEpoch == connectionEpoch
 }
 
 func relayEnvelopeProblem(envelope *agentproto.ErrorEnvelope) agentproto.ErrorInfo {

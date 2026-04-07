@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,6 +96,149 @@ func TestClientServerCommandAndEventFlow(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for events")
+	}
+}
+
+func TestClientNextOutboundPrioritizesControlQueue(t *testing.T) {
+	client := newClientWithQueueSizes("ws://relay.test/ws/agent", agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{InstanceID: "inst-1"},
+	}, ClientCallbacks{}, 4, 4)
+
+	data := queuedEnvelope{
+		epoch: 1,
+		envelope: agentproto.Envelope{
+			Type: agentproto.EnvelopeEventBatch,
+			EventBatch: &agentproto.EventBatch{
+				InstanceID: "inst-1",
+				Events:     []agentproto.Event{{Kind: agentproto.EventItemDelta, ItemID: "item-1", Delta: "data"}},
+			},
+		},
+	}
+	control := queuedEnvelope{
+		epoch: 1,
+		envelope: agentproto.Envelope{
+			Type: agentproto.EnvelopeCommandAck,
+			CommandAck: &agentproto.CommandAck{
+				InstanceID: "inst-1",
+				CommandID:  "cmd-1",
+				Accepted:   true,
+			},
+		},
+	}
+	client.dataOutbox <- data
+	client.controlOutbox <- control
+
+	item, pendingData, err := client.nextOutbound(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("nextOutbound: %v", err)
+	}
+	if pendingData != nil {
+		t.Fatalf("expected no buffered data when control already queued, got %#v", pendingData)
+	}
+	if item.envelope.Type != agentproto.EnvelopeCommandAck {
+		t.Fatalf("expected control item first, got %#v", item)
+	}
+	next, pendingData, err := client.nextOutbound(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("nextOutbound second: %v", err)
+	}
+	if pendingData != nil {
+		t.Fatalf("expected no buffered data after consuming queue, got %#v", pendingData)
+	}
+	if next.envelope.Type != agentproto.EnvelopeEventBatch {
+		t.Fatalf("expected queued data after control, got %#v", next)
+	}
+}
+
+func TestClientNextOutboundPrefersControlOverBufferedData(t *testing.T) {
+	client := newClientWithQueueSizes("ws://relay.test/ws/agent", agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{InstanceID: "inst-1"},
+	}, ClientCallbacks{}, 4, 4)
+
+	pendingData := &queuedEnvelope{
+		epoch: 1,
+		envelope: agentproto.Envelope{
+			Type: agentproto.EnvelopeEventBatch,
+			EventBatch: &agentproto.EventBatch{
+				InstanceID: "inst-1",
+				Events:     []agentproto.Event{{Kind: agentproto.EventItemDelta, ItemID: "item-1", Delta: "data"}},
+			},
+		},
+	}
+	client.controlOutbox <- queuedEnvelope{
+		epoch: 1,
+		envelope: agentproto.Envelope{
+			Type:       agentproto.EnvelopeCommandAck,
+			CommandAck: &agentproto.CommandAck{InstanceID: "inst-1", CommandID: "cmd-1", Accepted: true},
+		},
+	}
+
+	item, nextPending, err := client.nextOutbound(context.Background(), pendingData)
+	if err != nil {
+		t.Fatalf("nextOutbound: %v", err)
+	}
+	if item.envelope.Type != agentproto.EnvelopeCommandAck {
+		t.Fatalf("expected control item to preempt buffered data, got %#v", item)
+	}
+	if nextPending == nil || nextPending.envelope.Type != agentproto.EnvelopeEventBatch {
+		t.Fatalf("expected buffered data to stay pending, got %#v", nextPending)
+	}
+
+	item, nextPending, err = client.nextOutbound(context.Background(), nextPending)
+	if err != nil {
+		t.Fatalf("nextOutbound buffered data: %v", err)
+	}
+	if nextPending != nil {
+		t.Fatalf("expected buffered data to drain, got %#v", nextPending)
+	}
+	if item.envelope.Type != agentproto.EnvelopeEventBatch {
+		t.Fatalf("expected buffered data after control, got %#v", item)
+	}
+}
+
+func TestClientSendersTagCurrentEpochAndAllowUnboundWork(t *testing.T) {
+	client := newClientWithQueueSizes("ws://relay.test/ws/agent", agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{InstanceID: "inst-1"},
+	}, ClientCallbacks{}, 4, 4)
+
+	if err := client.SendEvents([]agentproto.Event{{Kind: agentproto.EventThreadFocused, ThreadID: "thread-1"}}); err != nil {
+		t.Fatalf("SendEvents pre-connect: %v", err)
+	}
+	first := <-client.dataOutbox
+	if first.epoch != 0 {
+		t.Fatalf("expected pre-connect event batch to stay unbound, got %#v", first)
+	}
+
+	atomic.StoreUint64(&client.epoch, 3)
+	if err := client.SendCommandAck(agentproto.CommandAck{CommandID: "cmd-1", Accepted: true}); err != nil {
+		t.Fatalf("SendCommandAck: %v", err)
+	}
+	ack := <-client.controlOutbox
+	if ack.epoch != 3 {
+		t.Fatalf("expected command ack to inherit current epoch, got %#v", ack)
+	}
+}
+
+func TestMatchesConnectionEpoch(t *testing.T) {
+	cases := []struct {
+		name            string
+		enqueuedEpoch   uint64
+		connectionEpoch uint64
+		want            bool
+	}{
+		{name: "unbound work allowed", enqueuedEpoch: 0, connectionEpoch: 2, want: true},
+		{name: "current epoch allowed", enqueuedEpoch: 2, connectionEpoch: 2, want: true},
+		{name: "stale epoch rejected", enqueuedEpoch: 1, connectionEpoch: 2, want: false},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesConnectionEpoch(tt.enqueuedEpoch, tt.connectionEpoch); got != tt.want {
+				t.Fatalf("matchesConnectionEpoch(%d, %d) = %t, want %t", tt.enqueuedEpoch, tt.connectionEpoch, got, tt.want)
+			}
+		})
 	}
 }
 
