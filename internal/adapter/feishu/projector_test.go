@@ -262,6 +262,24 @@ func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
 	}
 }
 
+func TestProjectTurnFailedNoticeUsesErrorTheme(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventNotice,
+		Notice: &control.Notice{
+			Code:  "turn_failed",
+			Title: "链路错误 · codex.runtime_error",
+			Text:  "摘要：stream disconnected before completion",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardThemeKey != cardThemeError {
+		t.Fatalf("expected turn failure notice to project as error card, got %#v", ops[0])
+	}
+}
+
 func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

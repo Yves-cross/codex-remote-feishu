@@ -250,3 +250,86 @@ func TestInternalHelperThreadMarkerDoesNotPoisonLaterRemoteTurnOnSameThread(t *t
 		t.Fatalf("expected remote primary turn completed event, got %#v", completed.Events[0])
 	}
 }
+
+func TestObserveServerCodexProblemAttachesToInterruptedTurn(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{Surface: "surface-1", ChatID: "chat-1"},
+		Target: agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	})
+	if err != nil {
+		t.Fatalf("translate remote command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one remote turn/start command, got %d", len(commands))
+	}
+
+	var remoteTurnStart map[string]any
+	if err := json.Unmarshal(commands[0], &remoteTurnStart); err != nil {
+		t.Fatalf("unmarshal remote turn/start: %v", err)
+	}
+	remoteRequestID, _ := remoteTurnStart["id"].(string)
+	if remoteRequestID == "" {
+		t.Fatalf("expected remote request id, got %#v", remoteTurnStart)
+	}
+
+	response, err := tr.ObserveServer([]byte(fmt.Sprintf(`{"id":%q,"result":{"turn":{"id":"turn-remote"}}}`, remoteRequestID)))
+	if err != nil {
+		t.Fatalf("observe remote turn response: %v", err)
+	}
+	if !response.Suppress {
+		t.Fatalf("expected relay-owned remote turn/start response to stay suppressed, got %#v", response)
+	}
+
+	if _, err := tr.ObserveServer([]byte(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-remote"}}}`)); err != nil {
+		t.Fatalf("observe remote turn started: %v", err)
+	}
+
+	problem, err := tr.ObserveServer([]byte(`{"method":"error","params":{"error":{"message":"Reconnecting... 1/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":null}},"additionalDetails":"stream disconnected before completion: stream closed before response.completed"},"willRetry":true,"threadId":"thread-1","turnId":"turn-remote"}}`))
+	if err != nil {
+		t.Fatalf("observe codex problem event: %v", err)
+	}
+	if len(problem.Events) != 0 {
+		t.Fatalf("expected turn-bound codex problem to wait for terminal turn event, got %#v", problem.Events)
+	}
+
+	completed, err := tr.ObserveServer([]byte(`{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-remote","status":"interrupted","error":null}}}`))
+	if err != nil {
+		t.Fatalf("observe remote turn completed: %v", err)
+	}
+	if len(completed.Events) != 1 {
+		t.Fatalf("expected one remote turn completed event, got %#v", completed.Events)
+	}
+	event := completed.Events[0]
+	if event.Kind != agentproto.EventTurnCompleted || event.Initiator.Kind != agentproto.InitiatorRemoteSurface {
+		t.Fatalf("expected remote turn completed event, got %#v", event)
+	}
+	if event.ErrorMessage != "stream disconnected before completion: stream closed before response.completed" {
+		t.Fatalf("expected precise error message from codex problem, got %#v", event)
+	}
+	if event.Problem == nil || event.Problem.Code != "responseStreamDisconnected" || !event.Problem.Retryable {
+		t.Fatalf("expected attached codex problem metadata, got %#v", event.Problem)
+	}
+}
+
+func TestObserveServerCodexProblemWithoutTurnEmitsSystemError(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"error","params":{"error":{"message":"unexpected status 503 Service Unavailable","codexErrorInfo":"other","additionalDetails":"request id: abc"},"willRetry":false,"threadId":"thread-1"}}`))
+	if err != nil {
+		t.Fatalf("observe codex problem event: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one system error event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventSystemError || event.Problem == nil {
+		t.Fatalf("expected system error event with problem payload, got %#v", event)
+	}
+	if event.Problem.Code != "other" || event.Problem.ThreadID != "thread-1" || event.Problem.Retryable {
+		t.Fatalf("unexpected problem payload: %#v", event.Problem)
+	}
+}

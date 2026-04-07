@@ -347,7 +347,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			}
 			return events
 		}
-		return append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage)...)
+		return append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem)...)
 	case agentproto.EventItemStarted:
 		s.trackItemStart(instanceID, event)
 		return preface

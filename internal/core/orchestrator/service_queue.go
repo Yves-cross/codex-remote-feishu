@@ -196,7 +196,7 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	return events
 }
 
-func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string) []control.UIEvent {
+func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo) []control.UIEvent {
 	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
 	if binding == nil {
 		return nil
@@ -211,7 +211,7 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 		s.clearRemoteTurn(instanceID, turnID)
 		return nil
 	}
-	if status == "failed" {
+	if status == "failed" || (status != "completed" && strings.TrimSpace(errorMessage) != "") {
 		item.Status = state.QueueItemFailed
 	} else {
 		item.Status = state.QueueItemCompleted
@@ -223,13 +223,19 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 		QueueOff:    true,
 	}, queueItemSourceMessageIDs(item)), item.SourceMessageID, false)
 	if errorMessage != "" {
+		notice := &control.Notice{
+			Code: "turn_failed",
+			Text: errorMessage,
+		}
+		if problem != nil {
+			problemNotice := NoticeForProblem(*problem)
+			problemNotice.Code = "turn_failed"
+			notice = &problemNotice
+		}
 		events = append(events, control.UIEvent{
 			Kind:             control.UIEventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
-			Notice: &control.Notice{
-				Code: "turn_failed",
-				Text: errorMessage,
-			},
+			Notice:           notice,
 		})
 	}
 	events = append(events, s.dispatchNext(surface)...)

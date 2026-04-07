@@ -222,6 +222,27 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 
 	method, _ := message["method"].(string)
 	switch method {
+	case "error":
+		problem := parseCodexProblemEvent(message)
+		if problem == nil {
+			return Result{}, nil
+		}
+		if problem.TurnID != "" {
+			t.pendingTurnProblems[problem.TurnID] = *problem
+			t.debugf(
+				"observe server error: thread=%s turn=%s code=%s retryable=%t message=%s",
+				problem.ThreadID,
+				problem.TurnID,
+				problem.Code,
+				problem.Retryable,
+				problem.Message,
+			)
+			// Turn-bound runtime errors are attached to the terminal turn event so
+			// Feishu receives one precise failure card instead of duplicate alerts.
+			return Result{}, nil
+		}
+		t.debugf("observe server error without turn: code=%s message=%s", problem.Code, problem.Message)
+		return Result{Events: []agentproto.Event{agentproto.NewSystemErrorEvent(*problem)}}, nil
 	case "thread/started":
 		threadID := lookupString(message, "params", "thread", "id")
 		if threadID == "" {
@@ -338,6 +359,14 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			status = "completed"
 		}
 		errMsg := lookupString(message, "params", "turn", "error", "message")
+		problem, hasProblem := t.pendingTurnProblems[turnID]
+		delete(t.pendingTurnProblems, turnID)
+		if status == "completed" {
+			hasProblem = false
+		}
+		if errMsg == "" && hasProblem {
+			errMsg = problem.Message
+		}
 		initiator := t.turnInitiators[turnID]
 		if initiator.Kind == "" {
 			initiator = t.resolveTurnInitiator(threadID, turnID, trafficClass)
@@ -345,7 +374,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		delete(t.turnInitiators, turnID)
 		delete(t.internalTurnIDs, turnID)
 		t.debugf("observe server turn/completed: thread=%s turn=%s status=%s initiator=%s", threadID, turnID, status, initiator.Kind)
-		return Result{Events: []agentproto.Event{{
+		event := agentproto.Event{
 			Kind:         agentproto.EventTurnCompleted,
 			ThreadID:     threadID,
 			TurnID:       turnID,
@@ -353,7 +382,18 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			ErrorMessage: errMsg,
 			TrafficClass: trafficClass,
 			Initiator:    initiator,
-		}}}, nil
+		}
+		if hasProblem {
+			problemCopy := problem
+			if problemCopy.ThreadID == "" {
+				problemCopy.ThreadID = threadID
+			}
+			if problemCopy.TurnID == "" {
+				problemCopy.TurnID = turnID
+			}
+			event.Problem = &problemCopy
+		}
+		return Result{Events: []agentproto.Event{event}}, nil
 	case "serverRequest/started", "request/started":
 		params := lookupMap(message, "params")
 		request := extractRequestPayload(message)
@@ -527,4 +567,61 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 	default:
 		return Result{}, nil
 	}
+}
+
+func parseCodexProblemEvent(message map[string]any) *agentproto.ErrorInfo {
+	errPayload := lookupMap(message, "params", "error")
+	if len(errPayload) == 0 {
+		return nil
+	}
+	messageText := strings.TrimSpace(lookupStringFromAny(errPayload["message"]))
+	detailsText := strings.TrimSpace(lookupStringFromAny(errPayload["additionalDetails"]))
+	retryable := lookupBool(message, "params", "willRetry")
+	if retryable && detailsText != "" && strings.HasPrefix(strings.ToLower(messageText), "reconnecting") {
+		messageText = detailsText
+	}
+	problem := agentproto.ErrorInfo{
+		Code:      firstNonEmptyString(codexErrorCode(errPayload["codexErrorInfo"]), "codex_runtime_error"),
+		Layer:     "codex",
+		Stage:     "runtime_error",
+		Message:   firstNonEmptyString(messageText, detailsText),
+		Details:   firstNonEmptyString(detailsText, messageText),
+		ThreadID:  lookupString(message, "params", "threadId"),
+		TurnID:    lookupString(message, "params", "turnId"),
+		Retryable: retryable,
+	}
+	normalized := problem.Normalize()
+	return &normalized
+}
+
+func codexErrorCode(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		if len(typed) != 1 {
+			return ""
+		}
+		for key := range typed {
+			return strings.TrimSpace(key)
+		}
+	}
+	return ""
+}
+
+func lookupBool(message map[string]any, path ...string) bool {
+	current := any(message)
+	for _, segment := range path {
+		m, ok := current.(map[string]any)
+		if !ok {
+			return false
+		}
+		next, exists := m[segment]
+		if !exists {
+			return false
+		}
+		current = next
+	}
+	value, ok := current.(bool)
+	return ok && value
 }

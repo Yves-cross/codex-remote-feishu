@@ -2886,6 +2886,83 @@ func TestApplyAgentSystemErrorTargetsAttachedSurface(t *testing.T) {
 	}
 }
 
+func TestRemoteTurnInterruptedWithProblemFailsQueueAndEmitsStructuredNotice(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:         agentproto.EventTurnCompleted,
+		ThreadID:     "thread-1",
+		TurnID:       "turn-1",
+		Status:       "interrupted",
+		ErrorMessage: "stream disconnected before completion: stream closed before response.completed",
+		Initiator:    agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+		Problem: &agentproto.ErrorInfo{
+			Code:      "responseStreamDisconnected",
+			Layer:     "codex",
+			Stage:     "runtime_error",
+			Message:   "stream disconnected before completion: stream closed before response.completed",
+			Details:   "stream disconnected before completion: stream closed before response.completed",
+			ThreadID:  "thread-1",
+			TurnID:    "turn-1",
+			Retryable: true,
+		},
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	item := surface.QueueItems["queue-1"]
+	if item == nil || item.Status != state.QueueItemFailed {
+		t.Fatalf("expected interrupted remote turn with problem to fail queue item, got %#v", item)
+	}
+
+	var sawFailedPending, sawNotice bool
+	for _, event := range events {
+		if event.PendingInput != nil && event.PendingInput.QueueItemID == "queue-1" && event.PendingInput.Status == string(state.QueueItemFailed) {
+			sawFailedPending = true
+		}
+		if event.Notice != nil && event.Notice.Code == "turn_failed" {
+			sawNotice = true
+			if !strings.Contains(event.Notice.Title, "codex.runtime_error") || !strings.Contains(event.Notice.Text, "responseStreamDisconnected") {
+				t.Fatalf("expected structured turn failure notice, got %#v", event.Notice)
+			}
+		}
+	}
+	if !sawFailedPending || !sawNotice {
+		t.Fatalf("expected failed queue state and structured notice, got %#v", events)
+	}
+}
+
 func TestApplyInstanceDisconnectedFailsActiveRemoteItem(t *testing.T) {
 	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

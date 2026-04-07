@@ -11,6 +11,7 @@ type Translator struct {
 	pendingRemoteTurnByThread map[string]string
 	pendingLocalTurnByThread  map[string]bool
 	pendingLocalNewThreadTurn bool
+	pendingTurnProblems       map[string]agentproto.ErrorInfo
 	pendingThreadCreate       map[string]pendingThreadCreate
 	pendingThreadResume       map[string]pendingThreadResume
 	pendingThreadNameSet      map[string]pendingThreadNameSet
@@ -63,6 +64,7 @@ func NewTranslator(instanceID string) *Translator {
 		knownThreadCWD:            map[string]string{},
 		pendingRemoteTurnByThread: map[string]string{},
 		pendingLocalTurnByThread:  map[string]bool{},
+		pendingTurnProblems:       map[string]agentproto.ErrorInfo{},
 		pendingThreadCreate:       map[string]pendingThreadCreate{},
 		pendingThreadResume:       map[string]pendingThreadResume{},
 		pendingThreadNameSet:      map[string]pendingThreadNameSet{},
