@@ -22,6 +22,16 @@ Trigger it for:
 - request capture, prompt/card routing, selection flow
 - `/new` or any change that adds or removes remote surface states
 
+For GitHub issue pickup, triage, refinement, implementation, or closure, also use `.codex/skills/issue-workflow-guardrail/`.
+
+Trigger it for:
+
+- a GitHub issue number or URL
+- requests to "handle", "complete", "triage", "refresh", or "close" an issue
+- deciding whether an issue can be started immediately
+- issue label/comment/body refinement
+- blocked issue handling and clarification follow-up
+
 ## Documentation Convention
 
 For lifecycle design/reference docs under `docs/`:
@@ -63,6 +73,19 @@ For medium or large follow-up work in this repository:
   4. close the issue after the requested acceptance criteria are satisfied
 - Do not do a full open-issue sweep before every commit. Issue review happens when creating, picking up, or closing an issue, not as a mandatory pre-commit loop.
 
+For existing issues created before the standard, do not run a one-time bulk cleanup pass.
+Instead, normalize them when they become active:
+
+1. When picking up an issue, first check whether it has enough information to implement safely.
+2. The minimum implementable issue must clearly state:
+   - `背景`
+   - `目标`
+   - `完成标准`
+3. If those sections are missing or too vague, update the issue before coding.
+4. If `相关文档` or `涉及文件` can be identified cheaply from the current repo context, add them during that refinement pass.
+5. If some information is still unknown, mark it as `待补充` or leave an explicit assumption comment; do not guess hidden requirements and present them as fact.
+6. If the issue is still too broad after refinement, narrow it or split follow-up work into additional issues before implementation.
+
 When creating or refreshing an issue, use this structure:
 
 - Required sections:
@@ -70,10 +93,13 @@ When creating or refreshing an issue, use this structure:
   - `目标`
   - `完成标准`
 - Preferred sections when already known:
+  - `范围`
+  - `非目标`
   - `相关文档`
   - `涉及文件`
   - `建议范围`
 - If `相关文档` or `涉及文件` are not known yet, they may be omitted temporarily rather than guessed.
+- If `范围` or `非目标` are already clear, record them early to reduce later product ambiguity.
 
 Issue labeling rule:
 
@@ -92,6 +118,27 @@ Issue labeling rule:
   - `area:wrapper`
 
 If implementation reveals another medium or large follow-up task, open a new issue for it instead of leaving a local TODO note behind.
+
+When closing an issue, leave a short completion note that includes:
+
+- what was implemented
+- what was intentionally not changed, if that matters for future readers
+- how it was validated
+- the commit or PR reference
+- any follow-up issue if remaining work was intentionally deferred
+
+Status-label rule for issues that cannot be started immediately:
+
+- Use at most one of these labels at a time:
+  - `status:needs-investigation`
+  - `status:needs-clarification`
+  - `status:blocked`
+- Clear any stale status label when the issue becomes implementable again or moves to a different blocking state.
+- Before implementation starts, keep comments focused on live collaboration only:
+  - blocking questions
+  - decision points
+  - evidence that explains why work cannot safely start yet
+- Do not use pre-implementation comments as a long-term archive dump; durable structure belongs in the issue body.
 
 ## Git Push Rule
 

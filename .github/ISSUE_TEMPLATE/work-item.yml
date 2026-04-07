@@ -1,0 +1,134 @@
+name: Work Item
+description: 功能、重构、测试、文档或状态机相关的开发工作项
+title: "[Work] "
+body:
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: 类型
+      description: 选择这次工作的主要性质
+      options:
+        - enhancement
+        - bug
+        - maintainability
+        - testing
+        - documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: 为什么要做这件事，当前存在什么问题或机会；如果原始动机无法还原，至少写“当前可确认背景”
+      placeholder: |
+        例如：
+        - 当前 translator.go 已经超过 1600 行，定位和回归成本高
+        - 某个状态机迁移存在死状态，用户会卡住
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 这次希望达成的结果
+      placeholder: |
+        例如：
+        - 按职责拆分 translator，保持行为不变
+        - 修复 attach 互斥缺失，避免进入无解状态
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 这次准备覆盖哪些内容；如果暂时不清楚，可以写“待补充”
+      placeholder: |
+        例如：
+        - 只处理 codex translator 和对应测试
+        - 不改 orchestrator 产品行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: 非目标
+      description: 明确这次不做什么，避免后续误解；如果没有可写“无”
+      placeholder: |
+        例如：
+        - 不调整用户可见交互
+        - 不在本 issue 内重写整个状态机
+    validations:
+      required: true
+
+  - type: textarea
+    id: related_docs
+    attributes:
+      label: 相关文档
+      description: 已知的设计文档、协议文档、状态机文档；未知可写“待补充”
+      placeholder: |
+        例如：
+        - docs/general/relay-protocol-spec.md
+        - docs/general/remote-surface-state-machine.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: related_files
+    attributes:
+      label: 涉及文件
+      description: 已知的代码路径、模块或目录；未知可写“待补充”
+      placeholder: |
+        例如：
+        - internal/adapter/codex/translator.go
+        - internal/core/orchestrator
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完成标准
+      description: 用来判断这个 issue 是否可以关闭的标准
+      placeholder: |
+        例如：
+        - 行为保持不变，现有测试继续通过
+        - 用户不再能进入 attach 成功但无法继续操作的状态
+    validations:
+      required: true
+
+  - type: textarea
+    id: validation_hint
+    attributes:
+      label: 验证建议
+      description: 如果已经知道应该怎么验证，可以先写下来；未知可写“待补充”
+      placeholder: |
+        例如：
+        - go test ./internal/adapter/codex
+        - go test ./...
+        - 手工验证 Feishu / VS Code 链路
+    validations:
+      required: true
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: 待澄清 / 阻塞项
+      description: 当前已经知道但尚未解决的问题、缺失信息或外部依赖；没有可写“无”
+      placeholder: |
+        例如：
+        - 原始产品意图待补充
+        - 需要确认 attach 失败时的用户交互
+        - 依赖上游协议字段稳定后再继续
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 补充说明
+      description: 其他上下文、假设、风险或拆分建议
+      placeholder: |
+        例如：
+        - 如果实施中发现另一个中等以上 follow-up，请新开 issue
