@@ -60,33 +60,24 @@ For any change that modifies remote surface behavior or state transitions:
 5. Do not run this loop after every tiny edit; run it once near commit unless a major assumption changed mid-implementation.
 6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/remote-surface-state-machine.md` under `待讨论取舍` before discussing it.
 
-## Issue Tracking Rule
+## GitHub Issue Workflow
 
 For medium or large follow-up work in this repository:
 
 - Track it in GitHub Issues instead of a local `TODO.md` or similar scratch file.
 - Tiny fixes that can be completed immediately in the same task do not need an issue; just implement them directly.
+- This workflow applies whether the active issue was opened by the user, the repository owner, or any other contributor.
 - Default lifecycle is:
-  1. create or refine the issue
-  2. implement against the issue
-  3. validate the result
-  4. close the issue after the requested acceptance criteria are satisfied
+  1. sync local tracked files to the latest safe state
+  2. reassess the issue against the latest code and current issue state
+  3. refresh the issue body, labels, and status if needed
+  4. only when the issue remains implementable, execute staged delivery
+  5. validate every stage
+  6. close the issue after the requested acceptance criteria are satisfied
 - If the implementation plan changes materially after new code evidence, runtime evidence, or maintainer comments, update the active issue body before continuing.
 - Do not leave an outdated staged plan only in comments when the issue body can be refreshed cheaply and accurately.
 - Do not do a full open-issue sweep before every commit. Issue review happens when creating, picking up, or closing an issue, not as a mandatory pre-commit loop.
-
-For existing issues created before the standard, do not run a one-time bulk cleanup pass.
-Instead, normalize them when they become active:
-
-1. When picking up an issue, first check whether it has enough information to implement safely.
-2. The minimum implementable issue must clearly state:
-   - `背景`
-   - `目标`
-   - `完成标准`
-3. If those sections are missing or too vague, update the issue before coding.
-4. If `相关文档` or `涉及文件` can be identified cheaply from the current repo context, add them during that refinement pass.
-5. If some information is still unknown, mark it as `待补充` or leave an explicit assumption comment; do not guess hidden requirements and present them as fact.
-6. If the issue is still too broad after refinement, narrow it or split follow-up work into additional issues before implementation.
+- For existing issues created before the standard, do not run a one-time bulk cleanup pass. Normalize them only when they become active.
 
 When creating or refreshing an issue, use this structure:
 
@@ -102,6 +93,35 @@ When creating or refreshing an issue, use this structure:
   - `建议范围`
 - If `相关文档` or `涉及文件` are not known yet, they may be omitted temporarily rather than guessed.
 - If `范围` or `非目标` are already clear, record them early to reduce later product ambiguity.
+
+When picking up or re-assessing an active issue, follow this order:
+
+1. First sync local tracked files to the latest safe state of the working branch.
+   - Do not assess or code against stale local code.
+   - If local changes prevent a safe sync, resolve that first or explicitly treat it as a blocker.
+2. Read the current issue body, current labels, the latest comments, and the current code.
+3. Check whether `背景`, `目标`, and `完成标准` are present and specific enough.
+   - An issue is not implementable yet if these minimum sections are still missing or too vague.
+4. If `相关文档` or `涉及文件` can be identified cheaply from repo context, add them during that refinement pass.
+5. If `范围` or `非目标` are already clear, add them.
+6. If some information is still unknown, mark it as `待补充` or leave an explicit assumption comment; do not guess hidden requirements and present them as fact.
+7. If original history or motivation cannot be reconstructed, do not invent it.
+   - Record only the current confirmed background.
+8. If the issue is still too broad after refinement, narrow it or split follow-up work into additional issues before implementation.
+
+After reassessment, classify the issue into one of these states:
+
+- `implementable now`
+- `status:needs-investigation`
+- `status:needs-clarification`
+- `status:blocked`
+
+State-transition rule:
+
+- Compare the reassessed state with the issue's previously recorded actionable state.
+- If the state changed in either direction, update the issue body and labels, leave the necessary concise evidence if applicable, and stop there for this turn.
+- If the state did not change but the issue is still not implementable, update the issue with any newly confirmed evidence and stop there for this turn.
+- Only when the issue was already implementable and remains implementable after reassessment may implementation start immediately.
 
 Issue labeling rule:
 
@@ -119,6 +139,36 @@ Issue labeling rule:
   - `area:runtime`
   - `area:wrapper`
 
+Status-label rule for issues that cannot be started immediately:
+
+- Use at most one of these labels at a time:
+  - `status:needs-investigation`
+  - `status:needs-clarification`
+  - `status:blocked`
+- Clear any stale status label when the issue moves to a different blocked state or becomes implementable again.
+- Before implementation starts, keep comments focused on live collaboration only:
+  - blocking questions
+  - decision points
+  - evidence that explains why work cannot safely start yet
+- Do not use pre-implementation comments as a long-term archive dump; durable structure belongs in the issue body.
+
+For staged delivery against an implementable issue:
+
+1. Prefer staged delivery for medium or large work.
+2. Before starting the first stage, write down the current staged plan in the active issue or a linked design doc referenced by the issue.
+3. Before starting each later stage, re-read the relevant issue, design doc, and current code state, then re-evaluate whether the remaining plan is still correct.
+4. Before each stage, re-run the repository skills that match the work in that stage, including the issue skill and any domain skill already required by the task.
+5. If the plan, stage split, or best next step changes at any point, update the staged plan back to the issue before coding the next stage.
+6. Unless a major assumption collapsed and the remaining execution direction would materially diverge, continue through all planned stages in the same task without pausing for confirmation.
+7. Each stage must end with:
+   - implementation
+   - validation scoped to that stage
+   - a local commit
+8. Every stage requires sufficient testing.
+   - Prefer tests and validation that exercise the changed behavior and runtime path, not only compilation or superficial smoke checks.
+9. After each stage-end commit, immediately reassess how that completed work affects the next stage before continuing.
+10. If implementation discovers a better stage split, update the plan first, then continue under the revised stages.
+
 If implementation reveals another medium or large follow-up task, open a new issue for it instead of leaving a local TODO note behind.
 
 When closing an issue, leave a short completion note that includes:
@@ -129,43 +179,12 @@ When closing an issue, leave a short completion note that includes:
 - the commit or PR reference
 - any follow-up issue if remaining work was intentionally deferred
 
-Status-label rule for issues that cannot be started immediately:
-
-- Use at most one of these labels at a time:
-  - `status:needs-investigation`
-  - `status:needs-clarification`
-  - `status:blocked`
-- Clear any stale status label when the issue becomes implementable again or moves to a different blocking state.
-- Before implementation starts, keep comments focused on live collaboration only:
-  - blocking questions
-  - decision points
-  - evidence that explains why work cannot safely start yet
-- Do not use pre-implementation comments as a long-term archive dump; durable structure belongs in the issue body.
-
-## Staged Delivery Workflow
-
-For medium or large work that is intentionally split into multiple implementation stages:
-
-1. Before starting the first stage, write down the current staged plan in the active issue or design doc.
-2. Before starting each later stage, re-read the relevant issue, design doc, and current code state, then re-evaluate whether the remaining plan is still correct.
-3. Before each stage, re-run the repository skills that match the work in that stage, including the issue skill and any domain skill already required by the task.
-4. If the best next step changed, update the staged plan in the relevant issue or design doc before coding that stage.
-5. If the plan change is material, update the active GitHub issue body rather than leaving the new plan only in comments.
-6. Each stage must end with:
-   - implementation
-   - validation scoped to that stage
-   - a local commit
-7. Stage-end commits must not be pushed yet unless the user explicitly asks to push mid-rollout.
-8. After each stage-end commit, immediately reassess how that completed work affects the next stage before continuing.
-9. Continue through all planned stages in the same task without pausing for confirmation unless a major assumption collapsed and the remaining plan would likely be invalid.
-10. If implementation discovers a better stage split, update the plan first, then continue under the revised stages.
-
 ## Git Push Rule
 
 When a change is intentionally committed during task work:
 
 - Push it to GitHub in the same turn by default.
-- Exception: when the user explicitly requests staged local-only commits between phases, follow `Staged Delivery Workflow` and do not push until the staged rollout is complete or the user asks for a push.
+- Exception: when the user explicitly requests staged local-only commits between phases, follow `GitHub Issue Workflow` and do not push until the staged rollout is complete or the user asks for a push.
 - Do not leave a local-only commit behind unless the user explicitly asks not to push yet.
 
 ## Proxy Environment
