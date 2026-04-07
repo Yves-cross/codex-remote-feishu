@@ -62,7 +62,7 @@
 
 ### 阶段 3：daemon ingress pump 解耦
 
-状态：下一阶段
+状态：已完成
 
 目标：
 
@@ -71,7 +71,7 @@
 交付：
 
 - relay server / daemon 引入 ingress queue + pump
-- 覆盖慢消费、FIFO、stale epoch work item 等测试
+- 覆盖慢消费、单实例 FIFO 与 callback 异步化路径测试
 
 ### 阶段 4：退化语义、错误抑制与可观测性收口
 
@@ -96,6 +96,8 @@
 3. `2026-04-07` 首次阶段复评结论：阶段 1 已按原计划完成；阶段 2 顺序保持不变，继续先做 wrapper transport 分级与连接代次隔离，再进入 daemon ingress pump。
 4. `2026-04-07` 阶段 2 开始前复评结论：本阶段仍可先收敛在 `internal/adapter/relayws/client.go` 内完成，不需要提前改 `server.go` 或 daemon ingress pump；当前最佳切面仍是先做 client 内部 control/data 双队列和连接代次隔离。
 5. `2026-04-07` 阶段 2 结束后复评结论：当前阶段切分依然成立；下一阶段继续按原计划进入 daemon ingress pump，把 websocket read path 和 daemon 同步慢处理解耦。
+6. `2026-04-07` 阶段 3 开始前复评结论：当前最佳切面仍然是先在 `internal/app/daemon` 内引入本地 ingress pump，把 relay websocket callback 收窄成轻量入队，不提前改 overload 语义。`stale epoch work item` 与 inbound overload 处置依赖连接代次和 transport degraded 语义，应继续放在阶段 4 与退化收口一起落地。
+7. `2026-04-07` 阶段 3 结束后复评结论：当前切分仍然成立。已通过 daemon 本地 ingress pump 完成 websocket callback 与同步慢处理解耦，并保持现有 `onHello/onEvents/onCommandAck/onDisconnect` 业务逻辑不变；下一阶段继续聚焦 transport degraded、同类错误抑制和必要可观测性，不在阶段 4 之外额外扩散 `gateway.Apply` 慢路径重构。
 
 ## 2. 事故摘要
 

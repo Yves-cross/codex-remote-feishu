@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -64,12 +65,17 @@ type App struct {
 	mu            sync.Mutex
 	adminConfigMu sync.Mutex
 	listenMu      sync.Mutex
+	ingressRunMu  sync.Mutex
 
 	pendingGatewayNotices map[string][]control.UIEvent
 	headlessRuntime       HeadlessRuntimeConfig
 	managedHeadless       map[string]*managedHeadlessProcess
 	startHeadless         func(relayruntime.HeadlessLaunchOptions) (int, error)
 	stopProcess           func(int, time.Duration) error
+	ingress               *ingressPump
+	ingressCancel         context.CancelFunc
+	ingressStarted        bool
+	ingressWG             sync.WaitGroup
 
 	adminAuth *adminauth.Manager
 	admin     adminRuntimeState
@@ -94,13 +100,14 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		managedHeadless:       map[string]*managedHeadlessProcess{},
 		startHeadless:         relayruntime.StartDetachedWrapper,
 		stopProcess:           relayruntime.TerminateProcess,
+		ingress:               newIngressPump(),
 		adminAuth:             authManager,
 	}
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{
-		OnHello:      app.onHello,
-		OnEvents:     app.onEvents,
-		OnCommandAck: app.onCommandAck,
-		OnDisconnect: app.onDisconnect,
+		OnHello:      app.enqueueHello,
+		OnEvents:     app.enqueueEvents,
+		OnCommandAck: app.enqueueCommandAck,
+		OnDisconnect: app.enqueueDisconnect,
 	})
 	app.relay.SetServerIdentity(serverIdentity)
 
@@ -183,6 +190,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.listenMu.Unlock()
 
 	errCh := make(chan error, 3)
+	a.startIngressPump(ctx, errCh)
 
 	go func() {
 		if err := a.relayServer.Serve(relayListener); err != nil && err != http.ErrServerClosed {
@@ -224,6 +232,7 @@ func (a *App) Run(ctx context.Context) error {
 
 func (a *App) Shutdown(ctx context.Context) error {
 	_ = a.relay.Close()
+	a.stopIngressPump()
 	_ = a.relayServer.Shutdown(ctx)
 	_ = a.apiServer.Shutdown(ctx)
 	a.listenMu.Lock()
@@ -240,6 +249,112 @@ func (a *App) Shutdown(ctx context.Context) error {
 		_ = a.rawLogger.Close()
 	}
 	return nil
+}
+
+func (a *App) startIngressPump(parent context.Context, errCh chan<- error) {
+	a.ingressRunMu.Lock()
+	defer a.ingressRunMu.Unlock()
+	if a.ingressCancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(parent)
+	a.ingressCancel = cancel
+	a.ingressStarted = true
+	a.ingressWG.Add(1)
+	go func() {
+		defer a.ingressWG.Done()
+		if err := a.ingress.Run(ctx, a.processIngressWork); err != nil && err != context.Canceled {
+			if errCh == nil {
+				log.Printf("daemon ingress pump failed: %v", err)
+				return
+			}
+			select {
+			case errCh <- err:
+			default:
+				log.Printf("daemon ingress pump failed after shutdown: %v", err)
+			}
+		}
+	}()
+}
+
+func (a *App) stopIngressPump() {
+	a.ingressRunMu.Lock()
+	cancel := a.ingressCancel
+	started := a.ingressStarted
+	a.ingressCancel = nil
+	a.ingressStarted = false
+	a.ingressRunMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if a.ingress != nil {
+		a.ingress.Close()
+	}
+	if started {
+		a.ingress.Wait()
+	}
+}
+
+func (a *App) enqueueHello(_ context.Context, hello agentproto.Hello) {
+	item := ingressWorkItem{
+		instanceID: hello.Instance.InstanceID,
+		kind:       ingressWorkHello,
+		hello:      &hello,
+	}
+	if err := a.ingress.Enqueue(item); err != nil && !errors.Is(err, errIngressPumpClosed) {
+		log.Printf("daemon ingress enqueue hello failed: instance=%s err=%v", hello.Instance.InstanceID, err)
+	}
+}
+
+func (a *App) enqueueEvents(_ context.Context, instanceID string, events []agentproto.Event) {
+	item := ingressWorkItem{
+		instanceID: instanceID,
+		kind:       ingressWorkEvents,
+		events:     append([]agentproto.Event(nil), events...),
+	}
+	if err := a.ingress.Enqueue(item); err != nil && !errors.Is(err, errIngressPumpClosed) {
+		log.Printf("daemon ingress enqueue events failed: instance=%s err=%v", instanceID, err)
+	}
+}
+
+func (a *App) enqueueCommandAck(_ context.Context, instanceID string, ack agentproto.CommandAck) {
+	item := ingressWorkItem{
+		instanceID: instanceID,
+		kind:       ingressWorkCommandAck,
+		ack:        &ack,
+	}
+	if err := a.ingress.Enqueue(item); err != nil && !errors.Is(err, errIngressPumpClosed) {
+		log.Printf("daemon ingress enqueue command ack failed: instance=%s command=%s err=%v", instanceID, ack.CommandID, err)
+	}
+}
+
+func (a *App) enqueueDisconnect(_ context.Context, instanceID string) {
+	item := ingressWorkItem{
+		instanceID: instanceID,
+		kind:       ingressWorkDisconnect,
+	}
+	if err := a.ingress.Enqueue(item); err != nil && !errors.Is(err, errIngressPumpClosed) {
+		log.Printf("daemon ingress enqueue disconnect failed: instance=%s err=%v", instanceID, err)
+	}
+}
+
+func (a *App) processIngressWork(item ingressWorkItem) {
+	switch item.kind {
+	case ingressWorkHello:
+		if item.hello != nil {
+			a.onHello(context.Background(), *item.hello)
+		}
+	case ingressWorkEvents:
+		if len(item.events) != 0 {
+			a.onEvents(context.Background(), item.instanceID, item.events)
+		}
+	case ingressWorkCommandAck:
+		if item.ack != nil {
+			a.onCommandAck(context.Background(), item.instanceID, *item.ack)
+		}
+	case ingressWorkDisconnect:
+		a.onDisconnect(context.Background(), item.instanceID)
+	}
 }
 
 func (a *App) HandleAction(ctx context.Context, action control.Action) {
