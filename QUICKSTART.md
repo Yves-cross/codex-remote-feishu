@@ -69,7 +69,7 @@ These repo helpers are not part of the released product package.
 
 Then in Feishu:
 
-- send `/list`
-- reply with the instance number to attach
-- use `/threads` to switch thread if needed
+- send `/list` if you want to explicitly attach one of the online VS Code instances
+- send `/use` or `/threads` if you want to jump straight into a recent visible session; use `/useall` for the full list
+- prefer the card buttons when they appear; number replies remain as a compatibility fallback
 - remote execution defaults to full access; if you need confirmation mode temporarily, send `/access confirm`

@@ -35,8 +35,8 @@
 
 ## 功能
 
-- 在飞书里列出在线实例并 attach
-- 列出 thread 并切换当前输入目标
+- 在飞书里列出在线 VS Code 实例并显式接管
+- 直接从最近或全部会话列表继续已有对话
 - 文本消息排队、typing reaction、stop 中断
 - 支持暂存图片，并在下一条文本里一起发给 Codex
 - 查看当前生效的模型和推理强度，并做飞书侧临时覆盖
@@ -201,10 +201,11 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 
 命令：
 
-- `/list`：列出在线实例
-- 回复序号：attach 到对应实例
-- `/threads` 或 `/use`：列出当前实例可见 thread
-- 回复序号：切换输入目标 thread
+- `/list`：列出当前可手工接管的在线 VS Code 实例
+- 选择方式：优先点击卡片里的按钮；也兼容回复序号
+- `/threads` 或 `/use`：列出最近可见会话；即使当前还没显式 attach，也可以直接从这里继续已有对话
+- `/useall`：列出全部可见会话
+- 会话选择后：系统会切到目标会话；必要时会自动接管在线实例，或复用/启动后台 headless 实例
 - `/status`：查看当前接管状态、队列和模型配置
 - `/follow`：切回跟随当前 VS Code thread
 - `/stop`：中断当前 turn，并清空尚未发出的飞书队列
