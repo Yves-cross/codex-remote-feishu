@@ -798,7 +798,7 @@ func deleteMatchingItemBuffers(buffers map[string]*itemBuffer, instanceID, threa
 
 func tracksTextItem(itemKind string) bool {
 	switch itemKind {
-	case "agent_message", "plan", "reasoning", "reasoning_summary", "reasoning_content", "command_execution_output", "file_change_output":
+	case "agent_message", "plan", "reasoning", "reasoning_summary", "reasoning_content", "command_execution_output":
 		return true
 	default:
 		return false

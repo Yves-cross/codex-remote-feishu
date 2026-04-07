@@ -215,6 +215,52 @@ func TestObserveServerCompletedLegacyAssistantMessageMapsToAgentMessage(t *testi
 	}
 }
 
+func TestObserveServerFileChangeLifecyclePreservesStructuredChanges(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"file-1","type":"fileChange","status":"inProgress","changes":[{"path":"old.txt","kind":{"type":"update","move_path":"new.txt"},"diff":"@@ -1 +1 @@\n-old\n+new"},{"path":"added.txt","kind":{"type":"add"},"diff":"line 1\nline 2"}]}}}`))
+	if err != nil {
+		t.Fatalf("observe file change started: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one file change started event, got %#v", started.Events)
+	}
+	startedEvent := started.Events[0]
+	if startedEvent.Kind != agentproto.EventItemStarted || startedEvent.ItemKind != "file_change" || startedEvent.Status != "inProgress" {
+		t.Fatalf("unexpected file change started event: %#v", startedEvent)
+	}
+	if len(startedEvent.FileChanges) != 2 {
+		t.Fatalf("expected structured file changes on start, got %#v", startedEvent.FileChanges)
+	}
+	if startedEvent.FileChanges[0].Kind != agentproto.FileChangeUpdate || startedEvent.FileChanges[0].MovePath != "new.txt" {
+		t.Fatalf("expected rename update payload to be preserved, got %#v", startedEvent.FileChanges[0])
+	}
+	if startedEvent.FileChanges[1].Kind != agentproto.FileChangeAdd {
+		t.Fatalf("expected add payload to be preserved, got %#v", startedEvent.FileChanges[1])
+	}
+
+	completed, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"file-1","type":"fileChange","status":"completed","changes":[{"path":"old.txt","kind":{"type":"update","move_path":"new.txt"},"diff":"@@ -1 +1 @@\n-old\n+new"},{"path":"removed.txt","kind":{"type":"delete"},"diff":"line 1\nline 2"}]}}}`))
+	if err != nil {
+		t.Fatalf("observe file change completed: %v", err)
+	}
+	if len(completed.Events) != 1 {
+		t.Fatalf("expected one file change completed event, got %#v", completed.Events)
+	}
+	completedEvent := completed.Events[0]
+	if completedEvent.Kind != agentproto.EventItemCompleted || completedEvent.ItemKind != "file_change" || completedEvent.Status != "completed" {
+		t.Fatalf("unexpected file change completed event: %#v", completedEvent)
+	}
+	if len(completedEvent.FileChanges) != 2 {
+		t.Fatalf("expected structured file changes on completion, got %#v", completedEvent.FileChanges)
+	}
+	if completedEvent.FileChanges[0].Kind != agentproto.FileChangeUpdate || completedEvent.FileChanges[0].MovePath != "new.txt" {
+		t.Fatalf("expected rename update payload on completion, got %#v", completedEvent.FileChanges[0])
+	}
+	if completedEvent.FileChanges[1].Kind != agentproto.FileChangeDelete {
+		t.Fatalf("expected delete payload on completion, got %#v", completedEvent.FileChanges[1])
+	}
+}
+
 func TestTranslateThreadsRefreshUsesThreadListAndBuildsSnapshot(t *testing.T) {
 	tr := NewTranslator("inst-1")
 

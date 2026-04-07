@@ -3104,6 +3104,246 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 	}
 }
 
+func TestTurnCompletedAppendsFileChangeSummaryAfterFinalAssistantBlock(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "处理一下",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "file-1",
+		ItemKind: "file_change",
+		Status:   "completed",
+		FileChanges: []agentproto.FileChangeRecord{{
+			Path: "pkg/app.go",
+			Kind: agentproto.FileChangeUpdate,
+			Diff: "@@ -1 +1,2 @@\n-old\n+new\n+more",
+		}},
+	}); len(events) != 0 {
+		t.Fatalf("expected file change completion to stay buffered until turn completion, got %#v", events)
+	}
+	if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "msg-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"text": "已完成修改。"},
+	}); len(events) != 0 {
+		t.Fatalf("expected assistant final text to stay buffered until turn completion, got %#v", events)
+	}
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	finalIndex := -1
+	summaryIndex := -1
+	for i, event := range finished {
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成修改。" {
+			finalIndex = i
+		}
+		if event.FileChangeSummary != nil {
+			summaryIndex = i
+			if event.FileChangeSummary.FileCount != 1 || event.FileChangeSummary.AddedLines != 2 || event.FileChangeSummary.RemovedLines != 1 {
+				t.Fatalf("unexpected file change summary payload: %#v", event.FileChangeSummary)
+			}
+		}
+	}
+	if finalIndex == -1 || summaryIndex == -1 {
+		t.Fatalf("expected final assistant block and file summary, got %#v", finished)
+	}
+	if summaryIndex <= finalIndex {
+		t.Fatalf("expected file summary after final assistant block, got %#v", finished)
+	}
+}
+
+func TestTurnCompletedAggregatesMultipleCompletedFileChangeItemsIntoOneSummary(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "处理一下",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "file-1",
+		ItemKind: "file_change",
+		Status:   "completed",
+		FileChanges: []agentproto.FileChangeRecord{{
+			Path: "pkg/app.go",
+			Kind: agentproto.FileChangeUpdate,
+			Diff: "@@ -1 +1 @@\n-old\n+new",
+		}},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "file-2",
+		ItemKind: "file_change",
+		Status:   "completed",
+		FileChanges: []agentproto.FileChangeRecord{{
+			Path: "docs/guide.md",
+			Kind: agentproto.FileChangeAdd,
+			Diff: "line 1\nline 2",
+		}},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "msg-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"text": "已完成修改。"},
+	})
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	var summaries []*control.FileChangeSummary
+	for _, event := range finished {
+		if event.FileChangeSummary != nil {
+			summaries = append(summaries, event.FileChangeSummary)
+		}
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected one aggregated file change summary, got %#v", summaries)
+	}
+	summary := summaries[0]
+	if summary.FileCount != 2 || summary.AddedLines != 3 || summary.RemovedLines != 1 {
+		t.Fatalf("unexpected aggregated summary totals: %#v", summary)
+	}
+	if len(summary.Files) != 2 {
+		t.Fatalf("expected two file entries, got %#v", summary.Files)
+	}
+	if summary.Files[0].Path != "docs/guide.md" || summary.Files[1].Path != "pkg/app.go" {
+		t.Fatalf("expected summary files to be sorted by path, got %#v", summary.Files)
+	}
+}
+
+func TestDeclinedFileChangeDoesNotProduceFinalSummary(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "处理一下",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "file-1",
+		ItemKind: "file_change",
+		Status:   "declined",
+		FileChanges: []agentproto.FileChangeRecord{{
+			Path: "pkg/app.go",
+			Kind: agentproto.FileChangeUpdate,
+			Diff: "@@ -1 +1 @@\n-old\n+new",
+		}},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "msg-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"text": "未执行文件改动。"},
+	})
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	for _, event := range finished {
+		if event.FileChangeSummary != nil {
+			t.Fatalf("expected declined file change not to produce final summary, got %#v", finished)
+		}
+	}
+}
+
 func TestHandleCommandDispatchFailureClearsPendingRemoteState(t *testing.T) {
 	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

@@ -41,6 +41,21 @@ const (
 	EventSystemError              EventKind = "system.error"
 )
 
+type FileChangeKind string
+
+const (
+	FileChangeAdd    FileChangeKind = "add"
+	FileChangeDelete FileChangeKind = "delete"
+	FileChangeUpdate FileChangeKind = "update"
+)
+
+type FileChangeRecord struct {
+	Path     string         `json:"path,omitempty"`
+	Kind     FileChangeKind `json:"kind,omitempty"`
+	MovePath string         `json:"movePath,omitempty"`
+	Diff     string         `json:"diff,omitempty"`
+}
+
 type Event struct {
 	Seq             uint64                 `json:"seq,omitempty"`
 	Kind            EventKind              `json:"kind"`
@@ -67,6 +82,7 @@ type Event struct {
 	Problem         *ErrorInfo             `json:"problem,omitempty"`
 	Metadata        map[string]any         `json:"metadata,omitempty"`
 	Threads         []ThreadSnapshotRecord `json:"threads,omitempty"`
+	FileChanges     []FileChangeRecord     `json:"fileChanges,omitempty"`
 }
 
 type ThreadSnapshotRecord struct {

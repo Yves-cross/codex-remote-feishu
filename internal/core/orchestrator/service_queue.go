@@ -337,6 +337,11 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 		return nil
 	}
 	key := itemBufferKey(instanceID, event.ThreadID, event.TurnID, event.ItemID)
+	if event.ItemKind == "file_change" {
+		delete(s.itemBuffers, key)
+		s.recordTurnFileChanges(instanceID, event)
+		return nil
+	}
 	buf := s.itemBuffers[key]
 	if buf == nil {
 		buf = s.ensureItemBuffer(instanceID, event.ThreadID, event.TurnID, event.ItemID, event.ItemKind)

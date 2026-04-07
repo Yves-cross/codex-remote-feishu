@@ -1,6 +1,10 @@
 package codex
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+)
 
 func chooseAny(values ...any) any {
 	for _, value := range values {
@@ -170,6 +174,104 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 		}
 	}
 	return metadata
+}
+
+func extractItemStatus(item map[string]any) string {
+	if item == nil {
+		return ""
+	}
+	return firstNonEmptyString(
+		lookupStringFromAny(item["status"]),
+		lookupString(item, "item", "status"),
+	)
+}
+
+func extractFileChangeRecords(itemKind string, item map[string]any) []agentproto.FileChangeRecord {
+	if itemKind != "file_change" || item == nil {
+		return nil
+	}
+	source := item["changes"]
+	if source == nil {
+		source = item["fileChanges"]
+	}
+	if source == nil {
+		source = lookupAny(item, "fileChange", "changes")
+	}
+	if source == nil {
+		return nil
+	}
+	var rawChanges []any
+	switch typed := source.(type) {
+	case []any:
+		rawChanges = typed
+	case []map[string]any:
+		rawChanges = make([]any, 0, len(typed))
+		for _, current := range typed {
+			rawChanges = append(rawChanges, current)
+		}
+	default:
+		return nil
+	}
+	records := make([]agentproto.FileChangeRecord, 0, len(rawChanges))
+	for _, raw := range rawChanges {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		path := firstNonEmptyString(
+			lookupStringFromAny(record["path"]),
+			lookupString(record, "file", "path"),
+			lookupStringFromAny(record["new_path"]),
+		)
+		kind, movePath := extractPatchChangeKind(record["kind"])
+		if movePath == "" {
+			movePath = firstNonEmptyString(
+				lookupStringFromAny(record["move_path"]),
+				lookupStringFromAny(record["movePath"]),
+			)
+		}
+		diff := firstNonEmptyString(
+			lookupStringFromAny(record["diff"]),
+			lookupStringFromAny(record["patch"]),
+		)
+		if path == "" && movePath == "" && diff == "" && kind == "" {
+			continue
+		}
+		records = append(records, agentproto.FileChangeRecord{
+			Path:     path,
+			Kind:     kind,
+			MovePath: movePath,
+			Diff:     diff,
+		})
+	}
+	if len(records) == 0 {
+		return nil
+	}
+	return records
+}
+
+func extractPatchChangeKind(value any) (agentproto.FileChangeKind, string) {
+	switch typed := value.(type) {
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "add":
+			return agentproto.FileChangeAdd, ""
+		case "delete":
+			return agentproto.FileChangeDelete, ""
+		case "update":
+			return agentproto.FileChangeUpdate, ""
+		}
+	case map[string]any:
+		kind, movePath := extractPatchChangeKind(typed["type"])
+		if movePath == "" {
+			movePath = firstNonEmptyString(
+				lookupStringFromAny(typed["move_path"]),
+				lookupStringFromAny(typed["movePath"]),
+			)
+		}
+		return kind, movePath
+	}
+	return "", ""
 }
 
 func extractItemText(item map[string]any) string {

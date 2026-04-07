@@ -211,6 +211,22 @@ type RequestPrompt struct {
 	Options     []RequestPromptOption
 }
 
+type FileChangeSummaryEntry struct {
+	Path         string
+	MovePath     string
+	AddedLines   int
+	RemovedLines int
+}
+
+type FileChangeSummary struct {
+	ThreadID     string
+	ThreadTitle  string
+	FileCount    int
+	AddedLines   int
+	RemovedLines int
+	Files        []FileChangeSummaryEntry
+}
+
 type UIEventKind string
 
 const (
@@ -221,6 +237,7 @@ const (
 	UIEventNotice                UIEventKind = "notice"
 	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
 	UIEventBlockCommitted        UIEventKind = "block.committed"
+	UIEventFileChangeSummary     UIEventKind = "file_change.summary"
 	UIEventAgentCommand          UIEventKind = "agent.command"
 	UIEventDaemonCommand         UIEventKind = "daemon.command"
 )
@@ -243,16 +260,17 @@ type DaemonCommand struct {
 }
 
 type UIEvent struct {
-	Kind             UIEventKind
-	GatewayID        string
-	SurfaceSessionID string
-	Snapshot         *Snapshot
-	SelectionPrompt  *SelectionPrompt
-	RequestPrompt    *RequestPrompt
-	PendingInput     *PendingInputState
-	Notice           *Notice
-	ThreadSelection  *ThreadSelectionChanged
-	Block            *render.Block
-	Command          *agentproto.Command
-	DaemonCommand    *DaemonCommand
+	Kind              UIEventKind
+	GatewayID         string
+	SurfaceSessionID  string
+	Snapshot          *Snapshot
+	SelectionPrompt   *SelectionPrompt
+	RequestPrompt     *RequestPrompt
+	PendingInput      *PendingInputState
+	Notice            *Notice
+	ThreadSelection   *ThreadSelectionChanged
+	Block             *render.Block
+	FileChangeSummary *FileChangeSummary
+	Command           *agentproto.Command
+	DaemonCommand     *DaemonCommand
 }

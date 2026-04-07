@@ -458,9 +458,11 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			TurnID:       turnID,
 			ItemID:       itemID,
 			ItemKind:     itemKind,
+			Status:       extractItemStatus(item),
 			TrafficClass: t.trafficClassForTurn(threadID, turnID),
 			Initiator:    t.initiatorForTurn(threadID, turnID),
 			Metadata:     metadata,
+			FileChanges:  extractFileChangeRecords(itemKind, item),
 		}}}, nil
 	case "item/started":
 		threadID := lookupString(message, "params", "threadId")
@@ -480,9 +482,11 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			TurnID:       turnID,
 			ItemID:       itemID,
 			ItemKind:     itemKind,
+			Status:       extractItemStatus(item),
 			TrafficClass: t.trafficClassForTurn(threadID, turnID),
 			Initiator:    t.initiatorForTurn(threadID, turnID),
 			Metadata:     extractItemMetadata(itemKind, item),
+			FileChanges:  extractFileChangeRecords(itemKind, item),
 		}}}, nil
 	case "item/agentMessage/delta":
 		threadID := lookupString(message, "params", "threadId")

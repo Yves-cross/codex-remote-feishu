@@ -193,6 +193,11 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			return nil
 		}
 		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, *event.Block)
+	case control.UIEventFileChangeSummary:
+		if event.FileChangeSummary == nil {
+			return nil
+		}
+		return []Operation{projectFileChangeSummary(event.GatewayID, event.SurfaceSessionID, chatID, *event.FileChangeSummary)}
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil
@@ -249,6 +254,35 @@ func projectBlock(gatewayID, surfaceSessionID, chatID string, block render.Block
 		CardBody:         body,
 		CardThemeKey:     cardThemeFinal,
 	}}
+}
+
+func projectFileChangeSummary(gatewayID, surfaceSessionID, chatID string, summary control.FileChangeSummary) Operation {
+	title := "文件修改摘要"
+	if threadTitle := strings.TrimSpace(summary.ThreadTitle); threadTitle != "" {
+		title += " · " + threadTitle
+	}
+	body := fmt.Sprintf(
+		"本次 turn 共修改 %d 个文件\n%s",
+		summary.FileCount,
+		formatFileChangeCountsMarkdown(summary.AddedLines, summary.RemovedLines),
+	)
+	elements := make([]map[string]any, 0, len(summary.Files))
+	for index, file := range summary.Files {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": fmt.Sprintf("%d. %s\n%s", index+1, formatFileChangePath(file), formatFileChangeCountsMarkdown(file.AddedLines, file.RemovedLines)),
+		})
+	}
+	return Operation{
+		Kind:             OperationSendCard,
+		GatewayID:        gatewayID,
+		SurfaceSessionID: surfaceSessionID,
+		ChatID:           chatID,
+		CardTitle:        title,
+		CardBody:         body,
+		CardThemeKey:     cardThemeInfo,
+		CardElements:     elements,
+	}
 }
 
 func fenced(language, text string) string {
@@ -466,6 +500,25 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 		}
 	}
 	return false
+}
+
+func formatFileChangePath(file control.FileChangeSummaryEntry) string {
+	path := strings.TrimSpace(file.Path)
+	movePath := strings.TrimSpace(file.MovePath)
+	switch {
+	case path != "" && movePath != "":
+		return fmt.Sprintf("`%s` -> `%s`", path, movePath)
+	case path != "":
+		return fmt.Sprintf("`%s`", path)
+	case movePath != "":
+		return fmt.Sprintf("`%s`", movePath)
+	default:
+		return "`(unknown)`"
+	}
+}
+
+func formatFileChangeCountsMarkdown(added, removed int) string {
+	return fmt.Sprintf("<font color='green'>+%d</font> <font color='red'>-%d</font>", added, removed)
 }
 
 func formatSnapshot(snapshot control.Snapshot) string {

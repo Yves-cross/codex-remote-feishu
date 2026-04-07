@@ -30,6 +30,7 @@ type Service struct {
 	itemBuffers     map[string]*itemBuffer
 	threadRefreshes map[string]bool
 	pendingTurnText map[string]*completedTextItem
+	turnFileChanges map[string]*turnFileChangeSummary
 	pendingRemote   map[string]*remoteTurnBinding
 	activeRemote    map[string]*remoteTurnBinding
 	instanceClaims  map[string]*instanceClaimRecord
@@ -63,6 +64,17 @@ type completedTextItem struct {
 	ItemID     string
 	ItemKind   string
 	Text       string
+}
+
+type turnFileChangeSummary struct {
+	Files map[string]*turnFileChangeEntry
+}
+
+type turnFileChangeEntry struct {
+	Path         string
+	MovePath     string
+	AddedLines   int
+	RemovedLines int
 }
 
 type instanceClaimRecord struct {
@@ -112,6 +124,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		itemBuffers:     map[string]*itemBuffer{},
 		threadRefreshes: map[string]bool{},
 		pendingTurnText: map[string]*completedTextItem{},
+		turnFileChanges: map[string]*turnFileChangeSummary{},
 		pendingRemote:   map[string]*remoteTurnBinding{},
 		activeRemote:    map[string]*remoteTurnBinding{},
 		instanceClaims:  map[string]*instanceClaimRecord{},
@@ -340,6 +353,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		}
 		deleteMatchingItemBuffers(s.itemBuffers, instanceID, event.ThreadID, event.TurnID)
 		events := s.flushPendingTurnText(instanceID, event.ThreadID, event.TurnID, true)
+		events = append(events, s.completeTurnFileChangeSummary(instanceID, event.ThreadID, event.TurnID)...)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
 			if surface != nil {
