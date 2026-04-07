@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
@@ -124,7 +125,11 @@ func TestVSCodeApplyEditorSettings(t *testing.T) {
 		t.Fatalf("apply status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 
-	settingsPath := filepath.Join(home, ".config", "Code", "User", "settings.json")
+	defaults, err := install.DetectPlatformDefaults()
+	if err != nil {
+		t.Fatalf("DetectPlatformDefaults: %v", err)
+	}
+	settingsPath := defaults.VSCodeSettingsPath
 	if readFileString(t, settingsPath) == "" {
 		t.Fatal("expected settings.json to be created")
 	}
@@ -209,7 +214,11 @@ func TestVSCodeDetectSupportsJSONCSettings(t *testing.T) {
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	settingsPath := filepath.Join(home, ".config", "Code", "User", "settings.json")
+	defaults, err := install.DetectPlatformDefaults()
+	if err != nil {
+		t.Fatalf("DetectPlatformDefaults: %v", err)
+	}
+	settingsPath := defaults.VSCodeSettingsPath
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(settings dir): %v", err)
 	}

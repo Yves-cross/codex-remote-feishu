@@ -236,6 +236,9 @@ func previewAllowedRoots(values ...string) []string {
 		if err != nil {
 			continue
 		}
+		if real, err := filepath.EvalSymlinks(resolved); err == nil {
+			resolved = real
+		}
 		resolved = filepath.Clean(resolved)
 		if seen[resolved] {
 			continue
