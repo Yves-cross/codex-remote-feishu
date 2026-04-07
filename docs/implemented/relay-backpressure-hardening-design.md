@@ -121,7 +121,7 @@
 2. 直接触发命令是：
 
 ```text
-/bin/bash -lc "unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy; rg -n -S 'tool_call_mcp_elicitation|mcp|approval|confirm' /home/dl/.local/share/codex-remote/logs/codex-remote-wrapper-*-raw.ndjson"
+/bin/bash -lc "unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy; rg -n -S 'tool_call_mcp_elicitation|mcp|approval|confirm' \"$HOME/.local/share/codex-remote/logs/codex-remote-wrapper-*-raw.ndjson\""
 ```
 
 3. 该命令命中了大量 wrapper 原始日志，输出包含整行 JSON、历史 diff、配置块，导致 `call_5FEb2aEt6Ho7vtqPTzoDcQdo` 产生大量 `item/commandExecution/outputDelta`。
@@ -136,20 +136,20 @@ relay send server events failed: relay client outbox full
 ### 2.3 关键代码路径
 
 - wrapper 读取 Codex stdout 并直接 `client.SendEvents(result.Events)`：
-  - [internal/app/wrapper/app.go](/data/dl/fschannel/internal/app/wrapper/app.go#L520)
+  - [internal/app/wrapper/app.go](../../internal/app/wrapper/app.go#L520)
 - relayws client 的 outbox 固定为 `512`，满了直接返回 `relay client outbox full`：
-  - [internal/adapter/relayws/client.go](/data/dl/fschannel/internal/adapter/relayws/client.go#L48)
-  - [internal/adapter/relayws/client.go](/data/dl/fschannel/internal/adapter/relayws/client.go#L141)
+  - [internal/adapter/relayws/client.go](../../internal/adapter/relayws/client.go#L48)
+  - [internal/adapter/relayws/client.go](../../internal/adapter/relayws/client.go#L141)
 - relayws server 在 websocket 读循环中同步调用 `OnEvents`：
-  - [internal/adapter/relayws/server.go](/data/dl/fschannel/internal/adapter/relayws/server.go#L202)
+  - [internal/adapter/relayws/server.go](../../internal/adapter/relayws/server.go#L202)
 - daemon 在 `OnEvents` 中同步执行业务处理与 UI 投递：
-  - [internal/app/daemon/app.go](/data/dl/fschannel/internal/app/daemon/app.go#L317)
-  - [internal/app/daemon/app.go](/data/dl/fschannel/internal/app/daemon/app.go#L385)
+  - [internal/app/daemon/app.go](../../internal/app/daemon/app.go#L317)
+  - [internal/app/daemon/app.go](../../internal/app/daemon/app.go#L385)
 - orchestrator 对 `item.delta` 的实际语义是把同一 item 文本追加到 buffer：
-  - [internal/core/orchestrator/service.go](/data/dl/fschannel/internal/core/orchestrator/service.go#L354)
-  - [internal/core/orchestrator/service_queue.go](/data/dl/fschannel/internal/core/orchestrator/service_queue.go#L302)
+  - [internal/core/orchestrator/service.go](../../internal/core/orchestrator/service.go#L354)
+  - [internal/core/orchestrator/service_queue.go](../../internal/core/orchestrator/service_queue.go#L302)
 - wrapper 的 `problemReporter` 会把同类错误继续转成新的 `system.error`：
-  - [internal/app/wrapper/app.go](/data/dl/fschannel/internal/app/wrapper/app.go#L59)
+  - [internal/app/wrapper/app.go](../../internal/app/wrapper/app.go#L59)
 
 ## 3. 当前链路与瓶颈
 
