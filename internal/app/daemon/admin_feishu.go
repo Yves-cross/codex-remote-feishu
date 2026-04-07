@@ -16,7 +16,8 @@ type feishuAppsResponse struct {
 }
 
 type feishuAppResponse struct {
-	App adminFeishuAppSummary `json:"app"`
+	App      adminFeishuAppSummary  `json:"app"`
+	Mutation *feishuAppMutationView `json:"mutation,omitempty"`
 }
 
 type feishuAppVerifyResponse struct {
@@ -70,4 +71,11 @@ type adminFeishuAppSummary struct {
 	ReadOnly        bool                      `json:"readOnly,omitempty"`
 	ReadOnlyReason  string                    `json:"readOnlyReason,omitempty"`
 	Status          *feishu.GatewayStatus     `json:"status,omitempty"`
+}
+
+type feishuAppMutationView struct {
+	Kind               string `json:"kind,omitempty"`
+	Message            string `json:"message,omitempty"`
+	ReconnectRequested bool   `json:"reconnectRequested,omitempty"`
+	RequiresNewChat    bool   `json:"requiresNewChat,omitempty"`
 }

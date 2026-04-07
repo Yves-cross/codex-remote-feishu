@@ -124,3 +124,33 @@ func canonicalGatewayID(gatewayID string) string {
 func daemonBoolPtr(value bool) *bool {
 	return &value
 }
+
+func buildFeishuAppMutation(appIDChanged, secretChanged bool) *feishuAppMutationView {
+	switch {
+	case appIDChanged:
+		return &feishuAppMutationView{
+			Kind:               "identity_changed",
+			Message:            "已切换到另一个飞书 App。旧会话不会自动迁移，请在飞书里打开新机器人的会话重新开始；测试连接只验证新凭证。",
+			ReconnectRequested: true,
+			RequiresNewChat:    true,
+		}
+	case secretChanged:
+		return &feishuAppMutationView{
+			Kind:               "credentials_changed",
+			Message:            "飞书凭证已更新，运行时已请求重新连接。请确认连接状态恢复后再继续使用。",
+			ReconnectRequested: true,
+		}
+	default:
+		return &feishuAppMutationView{
+			Kind:    "updated",
+			Message: "飞书机器人配置已更新。",
+		}
+	}
+}
+
+func buildCreatedFeishuAppMutation() *feishuAppMutationView {
+	return &feishuAppMutationView{
+		Kind:    "created",
+		Message: "飞书机器人已创建。接下来请先测试连接，并完成首次配置。",
+	}
+}

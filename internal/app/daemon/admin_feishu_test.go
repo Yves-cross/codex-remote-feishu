@@ -113,6 +113,13 @@ func TestFeishuAppsCreateUpdateVerifyAndDisable(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
 	}
+	var createResp feishuAppResponse
+	if err := json.NewDecoder(rec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if createResp.Mutation == nil || createResp.Mutation.Kind != "created" {
+		t.Fatalf("unexpected create mutation: %#v", createResp.Mutation)
+	}
 	if len(gateway.upserted) != 1 || gateway.upserted[0].GatewayID != "main" {
 		t.Fatalf("unexpected upserted configs: %#v", gateway.upserted)
 	}
@@ -131,6 +138,13 @@ func TestFeishuAppsCreateUpdateVerifyAndDisable(t *testing.T) {
 	rec = performAdminRequest(t, app, http.MethodPut, "/api/admin/feishu/apps/main", `{"name":"Main Bot 2","appSecret":""}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var updateResp feishuAppResponse
+	if err := json.NewDecoder(rec.Body).Decode(&updateResp); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updateResp.Mutation == nil || updateResp.Mutation.Kind != "updated" {
+		t.Fatalf("unexpected update mutation: %#v", updateResp.Mutation)
 	}
 	loaded, err = config.LoadAppConfigAtPath(configPath)
 	if err != nil {
@@ -199,6 +213,13 @@ func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update appId status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
+	var updateResp feishuAppResponse
+	if err := json.NewDecoder(rec.Body).Decode(&updateResp); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updateResp.Mutation == nil || updateResp.Mutation.Kind != "identity_changed" || !updateResp.Mutation.RequiresNewChat {
+		t.Fatalf("unexpected identity-change mutation: %#v", updateResp.Mutation)
+	}
 	loaded, err = config.LoadAppConfigAtPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath(reset): %v", err)
@@ -209,6 +230,29 @@ func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
 	}
 	if wizard.ConnectionVerifiedAt != nil || wizard.ScopesExportedAt != nil || wizard.EventsConfirmedAt != nil || wizard.CallbacksConfirmedAt != nil || wizard.MenusConfirmedAt != nil || wizard.PublishedAt != nil {
 		t.Fatalf("expected app id change to reset verification/manual wizard steps, got %#v", wizard)
+	}
+}
+
+func TestFeishuAppSecretChangeReturnsCredentialsMutation(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPut, "/api/admin/feishu/apps/main", `{"appSecret":"secret_new"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update secret status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var updateResp feishuAppResponse
+	if err := json.NewDecoder(rec.Body).Decode(&updateResp); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updateResp.Mutation == nil || updateResp.Mutation.Kind != "credentials_changed" || !updateResp.Mutation.ReconnectRequested {
+		t.Fatalf("unexpected credentials-change mutation: %#v", updateResp.Mutation)
 	}
 }
 

@@ -78,12 +78,20 @@ export interface FeishuAppSummary {
   status?: GatewayStatus;
 }
 
+export interface FeishuAppMutation {
+  kind?: string;
+  message?: string;
+  reconnectRequested?: boolean;
+  requiresNewChat?: boolean;
+}
+
 export interface FeishuAppsResponse {
   apps: FeishuAppSummary[];
 }
 
 export interface FeishuAppResponse {
   app: FeishuAppSummary;
+  mutation?: FeishuAppMutation;
 }
 
 export interface VerifyResult {

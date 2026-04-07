@@ -136,7 +136,10 @@ func (a *App) handleFeishuAppCreate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusCreated, feishuAppResponse{App: summary})
+	writeJSON(w, http.StatusCreated, feishuAppResponse{
+		App:      summary,
+		Mutation: buildCreatedFeishuAppMutation(),
+	})
 }
 
 func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
@@ -239,7 +242,10 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, feishuAppResponse{App: summary})
+	writeJSON(w, http.StatusOK, feishuAppResponse{
+		App:      summary,
+		Mutation: buildFeishuAppMutation(appIDChanged, secretChanged),
+	})
 }
 
 func (a *App) handleFeishuAppWizardUpdate(w http.ResponseWriter, r *http.Request) {

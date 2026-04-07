@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatError, requestJSON, requestJSONAllowHTTPError, sendJSON } from "../lib/api";
 import type {
   BootstrapState,
+  FeishuAppMutation,
   FeishuAppPublishCheckResponse,
   FeishuAppResponse,
   FeishuAppSummary,
@@ -237,11 +238,11 @@ export function SetupRoute() {
       const response = draft.isNew
         ? await sendJSON<FeishuAppResponse>("/api/setup/feishu/apps", "POST", payload)
         : await sendJSON<FeishuAppResponse>(`/api/setup/feishu/apps/${encodeURIComponent(selectedID)}`, "PUT", payload);
-      await verifyExistingAppAndAdvance(response.app.id);
+      await verifyExistingAppAndAdvance(response.app.id, response.mutation);
     });
   }
 
-  async function verifyExistingAppAndAdvance(appID: string) {
+  async function verifyExistingAppAndAdvance(appID: string, mutation?: FeishuAppMutation) {
     await runAction("verify-app", async () => {
       const response = await requestJSONAllowHTTPError<FeishuAppVerifyResponse>(`/api/setup/feishu/apps/${encodeURIComponent(appID)}/verify`, {
         method: "POST",
@@ -252,7 +253,10 @@ export function SetupRoute() {
         showBlockingError("这一步还没有完成", "飞书应用连接测试失败，请检查 App ID、App Secret，以及飞书平台里是否已经添加机器人能力。", detail);
         return;
       }
-      setNotice({ tone: "good", message: "飞书应用连接成功，已进入下一步。" });
+      setNotice({
+        tone: mutation?.kind === "identity_changed" || response.data.app.status?.state !== "connected" ? "warn" : "good",
+        message: buildSetupVerifySuccessMessage(response.data.app, mutation),
+      });
       setSetupStarted(true);
       setCurrentStepHint("permissions");
     });
@@ -417,6 +421,7 @@ export function SetupRoute() {
                 <span>App ID</span>
                 <input value={draft.appId} placeholder="cli_xxx" disabled={Boolean(activeApp?.readOnly)} onChange={(event) => setDraft((current) => ({ ...current, appId: event.target.value }))} />
               </label>
+              <p className="form-hint">改成另一个 App ID 等于切换到另一个机器人身份，旧飞书会话不会自动迁移。</p>
               <label className="field">
                 <span>App Secret</span>
                 <input
@@ -874,6 +879,22 @@ export function SetupRoute() {
       <BlockingModal open={Boolean(blockingError)} title={blockingError?.title || ""} message={blockingError?.message || ""} detail={blockingError?.detail} onConfirm={() => setBlockingError(null)} />
     </>
   );
+}
+
+function buildSetupVerifySuccessMessage(app: FeishuAppSummary, mutation?: FeishuAppMutation): string {
+  const parts: string[] = [];
+  if (mutation?.message) {
+    parts.push(mutation.message);
+  }
+  parts.push("飞书应用连接成功，已进入下一步。");
+  parts.push("这一步只验证当前凭证可连接。");
+  if (app.status?.state !== "connected") {
+    parts.push("运行态仍在重连，后续实际使用请以连接状态恢复为准。");
+  }
+  if (mutation?.requiresNewChat) {
+    parts.push("请到新机器人侧重新开始会话，再继续后面的联调。");
+  }
+  return parts.join("");
 }
 
 function chooseAppID(apps: FeishuAppSummary[], preferredID: string): string {

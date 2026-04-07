@@ -4,6 +4,7 @@ import type {
   AdminInstanceSummary,
   AdminInstancesResponse,
   BootstrapState,
+  FeishuAppMutation,
   FeishuAppResponse,
   FeishuAppSummary,
   FeishuAppVerifyResponse,
@@ -156,7 +157,10 @@ export function AdminRoute() {
       const method = draft.isNew ? "POST" : "PUT";
       const response = await sendJSON<FeishuAppResponse>(path, method, payload);
       await loadAdminData(response.app.id);
-      setNotice({ tone: "good", message: draft.isNew ? "飞书机器人已创建。" : "飞书机器人配置已更新。" });
+      setNotice({
+        tone: feishuMutationTone(response.mutation),
+        message: response.mutation?.message || (draft.isNew ? "飞书机器人已创建。" : "飞书机器人配置已更新。"),
+      });
     });
   }
 
@@ -170,7 +174,10 @@ export function AdminRoute() {
       });
       await loadAdminData(activeApp.id);
       if (response.ok) {
-        setNotice({ tone: "good", message: `连接测试成功，用时 ${(response.data.result.duration / 1_000_000_000).toFixed(1)}s。` });
+        setNotice({
+          tone: response.data.app.status?.state === "connected" ? "good" : "warn",
+          message: buildVerifySuccessMessage(response.data.app, response.data.result.duration),
+        });
         return;
       }
       setNotice({
@@ -394,6 +401,26 @@ export function AdminRoute() {
       ) : null}
     </ShellFrame>
   );
+}
+
+function feishuMutationTone(mutation?: FeishuAppMutation): Notice["tone"] {
+  switch (mutation?.kind) {
+    case "identity_changed":
+    case "credentials_changed":
+      return "warn";
+    default:
+      return "good";
+  }
+}
+
+function buildVerifySuccessMessage(app: FeishuAppSummary, duration: number): string {
+  const parts = [`连接测试成功，用时 ${(duration / 1_000_000_000).toFixed(1)}s。`];
+  parts.push("这一步只验证当前凭证可连接。");
+  if (app.status?.state !== "connected") {
+    parts.push("运行态仍在重连，实际使用请以连接状态恢复为准。");
+  }
+  parts.push("如果刚切到另一个飞书 App，旧会话不会自动迁移，请到新机器人侧重新开始会话。");
+  return parts.join("");
 }
 
 function buildAppSetupURL(baseURL: string, appID: string): string {

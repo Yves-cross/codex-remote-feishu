@@ -273,6 +273,7 @@ export function AdminFeishuPanel({
               <span>App ID</span>
               <input value={draft.appId} placeholder="cli_xxx" disabled={readOnly} onChange={(event) => onDraftChange((current) => ({ ...current, appId: event.target.value }))} />
             </label>
+            <p className="form-hint form-grid-span-2">改成另一个 App ID 等于切换到另一个机器人身份，旧飞书会话不会自动迁移。</p>
             <label className="field form-grid-span-2">
               <span>App Secret</span>
               <input
