@@ -1,0 +1,295 @@
+package codex
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+)
+
+func TestObserveServerRequestStartedProducesApprovalEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe client thread resume: %v", err)
+	}
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{Surface: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if _, err := tr.ObserveServer([]byte(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}`)); err != nil {
+		t.Fatalf("observe turn started: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"method":"serverRequest/started","params":{"thread":{"id":"thread-1"},"turn":{"id":"turn-1"},"request":{"id":"req-1","type":"approval","title":"Run command?","message":"Need approval before continuing.","command":"git push","acceptLabel":"Allow","declineLabel":"Block"}}}`))
+	if err != nil {
+		t.Fatalf("observe request started: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-1" {
+		t.Fatalf("unexpected request started event: %#v", event)
+	}
+	if event.Initiator.Kind != agentproto.InitiatorRemoteSurface {
+		t.Fatalf("expected remote initiator, got %#v", event)
+	}
+	if event.Metadata["requestType"] != "approval" || event.Metadata["title"] != "Run command?" {
+		t.Fatalf("unexpected request metadata: %#v", event.Metadata)
+	}
+	body, _ := event.Metadata["body"].(string)
+	if !strings.Contains(body, "Need approval before continuing.") || !strings.Contains(body, "git push") {
+		t.Fatalf("expected message and command in body, got %#v", event.Metadata)
+	}
+	if event.Metadata["acceptLabel"] != "Allow" || event.Metadata["declineLabel"] != "Block" {
+		t.Fatalf("unexpected approval labels: %#v", event.Metadata)
+	}
+}
+
+func TestObserveServerRequestStartedNormalizesApprovalKindAndExtractsOptions(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"serverRequest/started","params":{"thread":{"id":"thread-1"},"turn":{"id":"turn-1"},"request":{"id":"req-2","type":"approval_command","title":"Run command?","options":[{"id":"accept","label":"Allow"},{"id":"acceptForSession","label":"Allow this session"},{"id":"decline","label":"Decline"}]}}}`))
+	if err != nil {
+		t.Fatalf("observe request started: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Metadata["requestType"] != "approval" || event.Metadata["requestKind"] != "approval_command" {
+		t.Fatalf("unexpected normalized request metadata: %#v", event.Metadata)
+	}
+	options, ok := event.Metadata["options"].([]map[string]any)
+	if !ok || len(options) != 3 {
+		t.Fatalf("expected extracted options, got %#v", event.Metadata["options"])
+	}
+	if options[1]["id"] != "acceptForSession" {
+		t.Fatalf("unexpected extracted options payload: %#v", options)
+	}
+}
+
+func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe client thread resume: %v", err)
+	}
+	if _, err := tr.TranslateCommand(agentproto.Command{
+		Kind:   agentproto.CommandPromptSend,
+		Origin: agentproto.Origin{Surface: "surface-1"},
+		Target: agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt: agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+	}); err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if _, err := tr.ObserveServer([]byte(`{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}`)); err != nil {
+		t.Fatalf("observe turn started: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"method":"request/resolved","params":{"threadId":"thread-1","turnId":"turn-1","requestId":"req-1","result":{"decision":"decline"}}}`))
+	if err != nil {
+		t.Fatalf("observe request resolved: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request resolved event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestResolved || event.RequestID != "req-1" {
+		t.Fatalf("unexpected request resolved event: %#v", event)
+	}
+	if event.Metadata["decision"] != "decline" {
+		t.Fatalf("unexpected resolved request metadata: %#v", event.Metadata)
+	}
+}
+
+func TestTranslateRequestRespondApproval(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: "req-1",
+			Response: map[string]any{
+				"type":     "approval",
+				"decision": "acceptForSession",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate request respond: %v", err)
+	}
+	if len(payloads) != 1 {
+		t.Fatalf("expected one payload, got %d", len(payloads))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal request respond payload: %v", err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	if payload["id"] != "req-1" || result["decision"] != "acceptForSession" {
+		t.Fatalf("unexpected request respond payload: %#v", payload)
+	}
+}
+
+func TestTranslateRequestRespondApprovalFallsBackToApprovedBool(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: "req-legacy",
+			Response: map[string]any{
+				"type":     "approval",
+				"approved": true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate request respond: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal request respond payload: %v", err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	if payload["id"] != "req-legacy" || result["decision"] != "accept" {
+		t.Fatalf("unexpected legacy request respond payload: %#v", payload)
+	}
+}
+
+func TestObserveServerItemLifecycleAndDelta(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"item-1","type":"agentMessage"}}}`))
+	if err != nil {
+		t.Fatalf("observe item started: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one item started event, got %#v", started.Events)
+	}
+	if started.Events[0].Kind != agentproto.EventItemStarted || started.Events[0].ItemKind != "agent_message" {
+		t.Fatalf("unexpected item started event: %#v", started.Events[0])
+	}
+
+	delta, err := tr.ObserveServer([]byte(`{"method":"item/agentMessage/delta","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","delta":"您好"}}`))
+	if err != nil {
+		t.Fatalf("observe item delta: %v", err)
+	}
+	if len(delta.Events) != 1 {
+		t.Fatalf("expected one item delta event, got %#v", delta.Events)
+	}
+	if delta.Events[0].Kind != agentproto.EventItemDelta || delta.Events[0].Delta != "您好" {
+		t.Fatalf("unexpected item delta event: %#v", delta.Events[0])
+	}
+
+	completed, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"item-1","type":"agentMessage"}}}`))
+	if err != nil {
+		t.Fatalf("observe item completed: %v", err)
+	}
+	if len(completed.Events) != 1 {
+		t.Fatalf("expected one item completed event, got %#v", completed.Events)
+	}
+	if completed.Events[0].Kind != agentproto.EventItemCompleted || completed.Events[0].ItemKind != "agent_message" {
+		t.Fatalf("unexpected item completed event: %#v", completed.Events[0])
+	}
+}
+
+func TestObserveServerCompletedLegacyAssistantMessageMapsToAgentMessage(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"item-1","type":"assistant_message","text":"hello"}}}`))
+	if err != nil {
+		t.Fatalf("observe item completed: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	if result.Events[0].ItemKind != "agent_message" {
+		t.Fatalf("expected normalized agent_message kind, got %#v", result.Events[0])
+	}
+	text, _ := result.Events[0].Metadata["text"].(string)
+	if text != "hello" {
+		t.Fatalf("expected completed text to be preserved, got %#v", result.Events[0].Metadata)
+	}
+}
+
+func TestTranslateThreadsRefreshUsesThreadListAndBuildsSnapshot(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	commands, err := tr.TranslateCommand(agentproto.Command{Kind: agentproto.CommandThreadsRefresh})
+	if err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one native command, got %d", len(commands))
+	}
+
+	var list map[string]any
+	if err := json.Unmarshal(commands[0], &list); err != nil {
+		t.Fatalf("unmarshal thread/list: %v", err)
+	}
+	if list["method"] != "thread/list" {
+		t.Fatalf("expected thread/list refresh, got %#v", list)
+	}
+	params, _ := list["params"].(map[string]any)
+	if params["sortKey"] != "created_at" {
+		t.Fatalf("expected created_at sort key, got %#v", params)
+	}
+
+	refreshed, err := tr.ObserveServer([]byte(`{"id":"relay-threads-refresh-0","result":{"data":[{"id":"thread-2","preview":"整理日志"},{"id":"thread-1","name":"修复登录流程","preview":"修登录","state":"idle"}]}}`))
+	if err != nil {
+		t.Fatalf("observe thread/list response: %v", err)
+	}
+	if !refreshed.Suppress || len(refreshed.OutboundToCodex) != 2 {
+		t.Fatalf("expected suppressed thread/read followups, got %#v", refreshed)
+	}
+
+	firstRead, err := tr.ObserveServer([]byte(`{"id":"relay-thread-read-1","result":{"thread":{"id":"thread-2","cwd":"/data/dl/droid","state":"running"}}}`))
+	if err != nil {
+		t.Fatalf("observe first thread/read: %v", err)
+	}
+	if !firstRead.Suppress || len(firstRead.Events) != 0 {
+		t.Fatalf("expected intermediate thread/read to stay suppressed, got %#v", firstRead)
+	}
+
+	secondRead, err := tr.ObserveServer([]byte(`{"id":"relay-thread-read-2","result":{"thread":{"id":"thread-1","cwd":"/data/dl/droid","name":"修复登录流程","preview":"修登录"}}}`))
+	if err != nil {
+		t.Fatalf("observe second thread/read: %v", err)
+	}
+	if !secondRead.Suppress || len(secondRead.Events) != 1 {
+		t.Fatalf("expected final snapshot event, got %#v", secondRead)
+	}
+	if secondRead.Events[0].Kind != agentproto.EventThreadsSnapshot || len(secondRead.Events[0].Threads) != 2 {
+		t.Fatalf("unexpected snapshot payload: %#v", secondRead.Events[0])
+	}
+	if secondRead.Events[0].Threads[0].ThreadID != "thread-2" || secondRead.Events[0].Threads[0].CWD != "/data/dl/droid" {
+		t.Fatalf("expected snapshot to preserve thread/list order, got %#v", secondRead.Events[0].Threads)
+	}
+	if secondRead.Events[0].Threads[1].ThreadID != "thread-1" || secondRead.Events[0].Threads[1].Name != "修复登录流程" {
+		t.Fatalf("expected thread/read patch to populate title and preserve ordering, got %#v", secondRead.Events[0].Threads)
+	}
+	if secondRead.Events[0].Threads[0].ListOrder != 1 || secondRead.Events[0].Threads[1].ListOrder != 2 {
+		t.Fatalf("expected snapshot records to retain list order metadata, got %#v", secondRead.Events[0].Threads)
+	}
+}
+
+func TestObserveClientThreadNameSetResponseEmitsThreadDiscovered(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	if _, err := tr.ObserveClient([]byte(`{"id":"ThreadTitleBackfill:1","method":"thread/name/set","params":{"threadId":"thread-1","name":"修复登录流程"}}`)); err != nil {
+		t.Fatalf("observe client thread/name/set: %v", err)
+	}
+
+	result, err := tr.ObserveServer([]byte(`{"id":"ThreadTitleBackfill:1","result":{"ok":true}}`))
+	if err != nil {
+		t.Fatalf("observe thread/name/set response: %v", err)
+	}
+	if len(result.Events) != 1 || result.Events[0].Kind != agentproto.EventThreadDiscovered {
+		t.Fatalf("expected thread discovered update from successful name set, got %#v", result)
+	}
+	if result.Events[0].ThreadID != "thread-1" || result.Events[0].Name != "修复登录流程" {
+		t.Fatalf("unexpected thread name update event: %#v", result.Events[0])
+	}
+}
