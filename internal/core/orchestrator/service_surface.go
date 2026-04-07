@@ -727,11 +727,14 @@ func (s *Service) handleAccessCommand(surface *state.SurfaceConsoleRecord, actio
 
 func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	text := strings.TrimSpace(action.Text)
-	if text == "" {
+	if text == "" && len(action.Inputs) == 0 {
 		return nil
 	}
 
 	if surface.ActiveRequestCapture != nil {
+		if text == "" {
+			return notice(surface, "request_capture_waiting_text", "当前反馈模式只接受文本，请发送一条文字处理意见。")
+		}
 		return s.consumeCapturedRequestFeedback(surface, action, text)
 	}
 	if pending := activePendingRequest(surface); pending != nil {
@@ -751,7 +754,11 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 
 	threadID, cwd, routeMode, createThread := freezeRoute(inst, surface)
 	inputs, stagedMessageIDs := s.consumeStagedInputs(surface)
-	inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: text})
+	messageInputs := append([]agentproto.Input{}, action.Inputs...)
+	if len(messageInputs) == 0 {
+		messageInputs = []agentproto.Input{{Type: agentproto.InputText, Text: text}}
+	}
+	inputs = append(inputs, messageInputs...)
 	if !createThread && threadID == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
 		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use，或执行 /follow 进入跟随模式。")

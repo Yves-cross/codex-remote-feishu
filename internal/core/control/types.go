@@ -44,6 +44,7 @@ type Action struct {
 	ActorUserID      string
 	MessageID        string
 	Text             string
+	Inputs           []agentproto.Input
 	PromptID         string
 	OptionID         string
 	RequestID        string

@@ -1,8 +1,11 @@
 package feishu
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -572,6 +575,200 @@ func TestParseMessageRecalledEventIgnoresUnknownMessage(t *testing.T) {
 
 	if action, ok := gateway.parseMessageRecalledEvent(event); ok || action.Kind != "" {
 		t.Fatalf("expected unknown recalled message to be ignored, got %#v", action)
+	}
+}
+
+func TestParseMessageEventBuildsMixedInputsForPost(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.downloadImageFn = func(_ context.Context, messageID, imageKey string) (string, string, error) {
+		if messageID != "om-post-1" || imageKey != "img-post-1" {
+			t.Fatalf("unexpected post image download request: message=%s image=%s", messageID, imageKey)
+		}
+		return "/tmp/post-1.png", "image/png", nil
+	}
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-post-1"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("post"),
+				Content:     stringRef(`{"title":"","content":[[{"tag":"img","image_key":"img-post-1"}],[{"tag":"text","text":"这是图文混合消息"}]]}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok || action.Kind != control.ActionTextMessage {
+		t.Fatalf("expected post message to become text action, got ok=%v action=%#v", ok, action)
+	}
+	if action.Text != "这是图文混合消息" {
+		t.Fatalf("unexpected post text summary: %#v", action)
+	}
+	if len(action.Inputs) != 2 {
+		t.Fatalf("expected image + text inputs, got %#v", action.Inputs)
+	}
+	if action.Inputs[0].Type != agentproto.InputLocalImage || action.Inputs[0].Path != "/tmp/post-1.png" {
+		t.Fatalf("unexpected first post input: %#v", action.Inputs[0])
+	}
+	if action.Inputs[1].Type != agentproto.InputText || action.Inputs[1].Text != "这是图文混合消息" {
+		t.Fatalf("unexpected second post input: %#v", action.Inputs[1])
+	}
+}
+
+func TestParseMessageEventEnrichesReplyWithQuotedText(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.fetchMessageFn = func(_ context.Context, messageID string) (*gatewayMessage, error) {
+		if messageID != "om-parent-1" {
+			t.Fatalf("unexpected parent message lookup: %s", messageID)
+		}
+		return &gatewayMessage{
+			MessageID:   messageID,
+			MessageType: "text",
+			Content:     `{"text":"原始消息"}`,
+		}, nil
+	}
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-reply-1"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("text"),
+				ParentId:    stringRef("om-parent-1"),
+				Content:     stringRef(`{"text":"这是回复内容"}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok || action.Kind != control.ActionTextMessage {
+		t.Fatalf("expected reply text to be handled, got ok=%v action=%#v", ok, action)
+	}
+	if len(action.Inputs) != 2 {
+		t.Fatalf("expected quoted text + current text inputs, got %#v", action.Inputs)
+	}
+	if action.Inputs[0].Type != agentproto.InputText || action.Inputs[0].Text != "<被引用内容>\n原始消息\n</被引用内容>" {
+		t.Fatalf("unexpected quoted input: %#v", action.Inputs[0])
+	}
+	if action.Inputs[1].Type != agentproto.InputText || action.Inputs[1].Text != "这是回复内容" {
+		t.Fatalf("unexpected current text input: %#v", action.Inputs[1])
+	}
+}
+
+func TestParseMessageEventEnrichesReplyWithQuotedPost(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.fetchMessageFn = func(_ context.Context, messageID string) (*gatewayMessage, error) {
+		if messageID != "om-parent-post-1" {
+			t.Fatalf("unexpected parent post lookup: %s", messageID)
+		}
+		return &gatewayMessage{
+			MessageID:   messageID,
+			MessageType: "post",
+			Content:     `{"title":"","content":[[{"tag":"img","image_key":"img-quoted-1"}],[{"tag":"text","text":"被引用的图文"}]]}`,
+		}, nil
+	}
+	gateway.downloadImageFn = func(_ context.Context, messageID, imageKey string) (string, string, error) {
+		if messageID != "om-parent-post-1" || imageKey != "img-quoted-1" {
+			t.Fatalf("unexpected quoted post image download request: message=%s image=%s", messageID, imageKey)
+		}
+		return "/tmp/quoted-1.png", "image/png", nil
+	}
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-reply-2"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("text"),
+				ParentId:    stringRef("om-parent-post-1"),
+				Content:     stringRef(`{"text":"请继续处理"}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok || action.Kind != control.ActionTextMessage {
+		t.Fatalf("expected reply text to be handled, got ok=%v action=%#v", ok, action)
+	}
+	if len(action.Inputs) != 3 {
+		t.Fatalf("expected quoted text + quoted image + current text, got %#v", action.Inputs)
+	}
+	if action.Inputs[0].Type != agentproto.InputText || action.Inputs[0].Text != "<被引用内容>\n被引用的图文\n</被引用内容>" {
+		t.Fatalf("unexpected quoted text input: %#v", action.Inputs[0])
+	}
+	if action.Inputs[1].Type != agentproto.InputLocalImage || action.Inputs[1].Path != "/tmp/quoted-1.png" {
+		t.Fatalf("unexpected quoted image input: %#v", action.Inputs[1])
+	}
+	if action.Inputs[2].Type != agentproto.InputText || action.Inputs[2].Text != "请继续处理" {
+		t.Fatalf("unexpected current text input: %#v", action.Inputs[2])
+	}
+}
+
+func TestParseMessageEventIgnoresQuoteFetchFailure(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.fetchMessageFn = func(_ context.Context, _ string) (*gatewayMessage, error) {
+		return nil, errors.New("lark temporary error")
+	}
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-reply-3"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("text"),
+				ParentId:    stringRef("om-parent-err"),
+				Content:     stringRef(`{"text":"只保留当前消息"}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok || len(action.Inputs) != 1 || action.Inputs[0].Text != "只保留当前消息" {
+		t.Fatalf("expected current text to survive quote fetch failure, got ok=%v action=%#v", ok, action)
+	}
+}
+
+func TestIgnoredMissingReactionError(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{name: "english missing message", msg: "message not found", want: true},
+		{name: "english recalled message", msg: "target message has been recalled", want: true},
+		{name: "chinese missing message", msg: "目标消息不存在", want: true},
+		{name: "reaction id not found", msg: "reaction not found", want: false},
+		{name: "empty", msg: "", want: false},
+	}
+	for _, tt := range tests {
+		if got := ignoredMissingReactionError(0, tt.msg); got != tt.want {
+			t.Fatalf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 

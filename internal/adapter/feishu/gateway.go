@@ -17,6 +17,7 @@ import (
 	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
@@ -46,22 +47,55 @@ type LiveGateway struct {
 	client    *lark.Client
 	projector *Projector
 
+	downloadImageFn func(context.Context, string, string) (string, string, error)
+	fetchMessageFn  func(context.Context, string) (*gatewayMessage, error)
+
 	mu        sync.Mutex
 	stateHook func(GatewayState, error)
 	reactions map[string]string
 	messages  map[string]string
 }
 
+type gatewayMessage struct {
+	MessageID   string
+	MessageType string
+	Content     string
+	Deleted     bool
+}
+
+type feishuTextContent struct {
+	Text string `json:"text"`
+}
+
+type feishuPostContent struct {
+	Title   string             `json:"title"`
+	Content [][]feishuPostNode `json:"content"`
+}
+
+type feishuPostNode struct {
+	Tag       string `json:"tag"`
+	Text      string `json:"text"`
+	Href      string `json:"href"`
+	UserID    string `json:"user_id"`
+	UserName  string `json:"user_name"`
+	ImageKey  string `json:"image_key"`
+	EmojiType string `json:"emoji_type"`
+	Language  string `json:"language"`
+}
+
 func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	config.GatewayID = normalizeGatewayID(config.GatewayID)
 	client := lark.NewClient(config.AppID, config.AppSecret)
-	return &LiveGateway{
+	gateway := &LiveGateway{
 		config:    config,
 		client:    client,
 		projector: NewProjector(),
 		reactions: map[string]string{},
 		messages:  map[string]string{},
 	}
+	gateway.downloadImageFn = gateway.downloadImage
+	gateway.fetchMessageFn = gateway.fetchMessage
+	return gateway
 }
 
 func (g *LiveGateway) Client() *lark.Client {
@@ -217,6 +251,9 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			return err
 		}
 		if !resp.Success() {
+			if ignoredMissingReactionError(resp.Code, resp.Msg) {
+				return nil
+			}
 			return fmt.Errorf("add reaction failed: code=%d msg=%s", resp.Code, resp.Msg)
 		}
 		g.mu.Lock()
@@ -240,6 +277,12 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			return err
 		}
 		if !resp.Success() {
+			if ignoredMissingReactionError(resp.Code, resp.Msg) {
+				g.mu.Lock()
+				delete(g.reactions, reactionKey(operation.MessageID, operation.EmojiType))
+				g.mu.Unlock()
+				return nil
+			}
 			return fmt.Errorf("remove reaction failed: code=%d msg=%s", resp.Code, resp.Msg)
 		}
 		g.mu.Lock()
@@ -270,13 +313,11 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 
 	switch strings.ToLower(stringPtr(message.MessageType)) {
 	case "text":
-		var content struct {
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal([]byte(stringPtr(message.Content)), &content); err != nil {
+		text, err := parseTextContent(stringPtr(message.Content))
+		if err != nil {
 			return control.Action{}, false, err
 		}
-		commandAction, handled := parseTextAction(content.Text)
+		commandAction, handled := parseTextAction(text)
 		if handled {
 			commandAction.GatewayID = g.config.GatewayID
 			commandAction.SurfaceSessionID = surfaceSessionID
@@ -285,12 +326,32 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 			commandAction.MessageID = action.MessageID
 			return commandAction, true, nil
 		}
+		inputs := []agentproto.Input{{Type: agentproto.InputText, Text: text}}
+		inputs = append(g.quotedInputs(ctx, message), inputs...)
 		action.Kind = control.ActionTextMessage
-		action.Text = content.Text
+		action.Text = text
+		action.Inputs = inputs
+		g.recordSurfaceMessage(action.MessageID, surfaceSessionID)
+		return action, true, nil
+	case "post":
+		inputs, text, err := g.parsePostInputs(ctx, action.MessageID, stringPtr(message.Content))
+		if err != nil {
+			return control.Action{}, false, err
+		}
+		if len(inputs) == 0 {
+			return control.Action{}, false, nil
+		}
+		action.Kind = control.ActionTextMessage
+		action.Text = text
+		action.Inputs = append(g.quotedInputs(ctx, message), inputs...)
 		g.recordSurfaceMessage(action.MessageID, surfaceSessionID)
 		return action, true, nil
 	case "image":
-		path, mimeType, err := g.downloadImage(ctx, stringPtr(message.MessageId), stringPtr(message.Content))
+		imageKey, err := parseImageKey(stringPtr(message.Content))
+		if err != nil {
+			return control.Action{}, false, err
+		}
+		path, mimeType, err := g.downloadImageFn(ctx, stringPtr(message.MessageId), imageKey)
 		if err != nil {
 			return control.Action{}, false, err
 		}
@@ -327,19 +388,238 @@ func (g *LiveGateway) parseMessageRecalledEvent(event *larkim.P2MessageRecalledV
 	}, true
 }
 
-func (g *LiveGateway) downloadImage(ctx context.Context, messageID, rawContent string) (string, string, error) {
+func ignoredMissingReactionError(_ int, msg string) bool {
+	msg = strings.ToLower(strings.TrimSpace(msg))
+	if msg == "" {
+		return false
+	}
+	missingHints := []string{
+		"message not found",
+		"target message not found",
+		"message has been recalled",
+		"message recalled",
+		"message has been deleted",
+		"message deleted",
+		"目标消息不存在",
+		"消息不存在",
+		"消息已撤回",
+		"消息已删除",
+	}
+	for _, hint := range missingHints {
+		if strings.Contains(msg, strings.ToLower(hint)) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseTextContent(rawContent string) (string, error) {
+	var content feishuTextContent
+	if err := json.Unmarshal([]byte(rawContent), &content); err != nil {
+		return "", err
+	}
+	return content.Text, nil
+}
+
+func parseImageKey(rawContent string) (string, error) {
 	var content struct {
 		ImageKey string `json:"image_key"`
 	}
 	if err := json.Unmarshal([]byte(rawContent), &content); err != nil {
-		return "", "", err
+		return "", err
 	}
-	if content.ImageKey == "" {
-		return "", "", fmt.Errorf("missing image_key")
+	if strings.TrimSpace(content.ImageKey) == "" {
+		return "", fmt.Errorf("missing image_key")
 	}
+	return strings.TrimSpace(content.ImageKey), nil
+}
+
+func (g *LiveGateway) quotedInputs(ctx context.Context, message *larkim.EventMessage) []agentproto.Input {
+	if message == nil || g.fetchMessageFn == nil {
+		return nil
+	}
+	targetMessageID := strings.TrimSpace(stringPtr(message.ParentId))
+	if targetMessageID == "" {
+		targetMessageID = strings.TrimSpace(stringPtr(message.RootId))
+	}
+	if targetMessageID == "" {
+		return nil
+	}
+	referenced, err := g.fetchMessageFn(ctx, targetMessageID)
+	if err != nil {
+		log.Printf("feishu quote fetch ignored: message=%s err=%v", targetMessageID, err)
+		return nil
+	}
+	return g.inputsFromReferencedMessage(ctx, referenced)
+}
+
+func (g *LiveGateway) inputsFromReferencedMessage(ctx context.Context, referenced *gatewayMessage) []agentproto.Input {
+	if referenced == nil || referenced.Deleted {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(referenced.MessageType)) {
+	case "text":
+		text, err := parseTextContent(referenced.Content)
+		if err != nil {
+			log.Printf("feishu quote text parse ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		if wrapped := quotedTextInput(text); wrapped.Text != "" {
+			return []agentproto.Input{wrapped}
+		}
+		return nil
+	case "post":
+		inputs, text, err := g.parsePostInputs(ctx, referenced.MessageID, referenced.Content)
+		if err != nil {
+			log.Printf("feishu quote post parse ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		quoted := make([]agentproto.Input, 0, len(inputs)+1)
+		if wrapped := quotedTextInput(text); wrapped.Text != "" {
+			quoted = append(quoted, wrapped)
+		}
+		for _, input := range inputs {
+			if input.Type == agentproto.InputLocalImage || input.Type == agentproto.InputRemoteImage {
+				quoted = append(quoted, input)
+			}
+		}
+		return quoted
+	case "image":
+		imageKey, err := parseImageKey(referenced.Content)
+		if err != nil {
+			log.Printf("feishu quote image parse ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		path, mimeType, err := g.downloadImageFn(ctx, referenced.MessageID, imageKey)
+		if err != nil {
+			log.Printf("feishu quote image download ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		return []agentproto.Input{{Type: agentproto.InputLocalImage, Path: path, MIMEType: mimeType}}
+	default:
+		return nil
+	}
+}
+
+func quotedTextInput(text string) agentproto.Input {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return agentproto.Input{}
+	}
+	return agentproto.Input{
+		Type: agentproto.InputText,
+		Text: "<被引用内容>\n" + text + "\n</被引用内容>",
+	}
+}
+
+func (g *LiveGateway) parsePostInputs(ctx context.Context, messageID, rawContent string) ([]agentproto.Input, string, error) {
+	var content feishuPostContent
+	if err := json.Unmarshal([]byte(rawContent), &content); err != nil {
+		return nil, "", err
+	}
+	inputs := make([]agentproto.Input, 0, len(content.Content)+1)
+	textParts := make([]string, 0, len(content.Content)+1)
+	if title := strings.TrimSpace(content.Title); title != "" {
+		inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: title})
+		textParts = append(textParts, title)
+	}
+	for _, paragraph := range content.Content {
+		var segment strings.Builder
+		flushText := func() {
+			text := strings.TrimSpace(segment.String())
+			segment.Reset()
+			if text == "" {
+				return
+			}
+			inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: text})
+			textParts = append(textParts, text)
+		}
+		for _, node := range paragraph {
+			switch strings.ToLower(strings.TrimSpace(node.Tag)) {
+			case "text":
+				segment.WriteString(node.Text)
+			case "a":
+				switch {
+				case strings.TrimSpace(node.Text) != "" && strings.TrimSpace(node.Href) != "":
+					segment.WriteString(strings.TrimSpace(node.Text) + " (" + strings.TrimSpace(node.Href) + ")")
+				case strings.TrimSpace(node.Text) != "":
+					segment.WriteString(node.Text)
+				case strings.TrimSpace(node.Href) != "":
+					segment.WriteString(strings.TrimSpace(node.Href))
+				}
+			case "at":
+				switch {
+				case strings.TrimSpace(node.Text) != "":
+					segment.WriteString(node.Text)
+				case strings.TrimSpace(node.UserName) != "":
+					segment.WriteString("@" + strings.TrimSpace(node.UserName))
+				case strings.TrimSpace(node.UserID) != "":
+					segment.WriteString("@" + strings.TrimSpace(node.UserID))
+				}
+			case "emotion":
+				if emoji := strings.TrimSpace(node.EmojiType); emoji != "" {
+					segment.WriteString(":" + emoji + ":")
+				}
+			case "code_block":
+				code := strings.TrimSpace(node.Text)
+				if code == "" {
+					continue
+				}
+				if segment.Len() > 0 {
+					segment.WriteString("\n")
+				}
+				if language := strings.TrimSpace(node.Language); language != "" {
+					segment.WriteString("```" + language + "\n" + code + "\n```")
+				} else {
+					segment.WriteString("```\n" + code + "\n```")
+				}
+			case "img", "media":
+				if strings.TrimSpace(node.ImageKey) == "" {
+					continue
+				}
+				flushText()
+				path, mimeType, err := g.downloadImageFn(ctx, messageID, strings.TrimSpace(node.ImageKey))
+				if err != nil {
+					return nil, "", err
+				}
+				inputs = append(inputs, agentproto.Input{Type: agentproto.InputLocalImage, Path: path, MIMEType: mimeType})
+			}
+		}
+		flushText()
+	}
+	return inputs, strings.Join(textParts, "\n\n"), nil
+}
+
+func (g *LiveGateway) fetchMessage(ctx context.Context, messageID string) (*gatewayMessage, error) {
+	resp, err := g.client.Im.V1.Message.Get(ctx, larkim.NewGetMessageReqBuilder().
+		MessageId(messageID).
+		Build())
+	if err != nil {
+		return nil, err
+	}
+	if !resp.Success() {
+		return nil, fmt.Errorf("get message failed: code=%d msg=%s", resp.Code, resp.Msg)
+	}
+	if resp.Data == nil || len(resp.Data.Items) == 0 || resp.Data.Items[0] == nil {
+		return nil, fmt.Errorf("get message failed: empty response")
+	}
+	item := resp.Data.Items[0]
+	content := ""
+	if item.Body != nil {
+		content = stringPtr(item.Body.Content)
+	}
+	return &gatewayMessage{
+		MessageID:   stringPtr(item.MessageId),
+		MessageType: stringPtr(item.MsgType),
+		Content:     content,
+		Deleted:     boolPtr(item.Deleted),
+	}, nil
+}
+
+func (g *LiveGateway) downloadImage(ctx context.Context, messageID, imageKey string) (string, string, error) {
 	resp, err := g.client.Im.V1.MessageResource.Get(ctx, larkim.NewGetMessageResourceReqBuilder().
 		MessageId(messageID).
-		FileKey(content.ImageKey).
+		FileKey(imageKey).
 		Type("image").
 		Build())
 	if err != nil {
@@ -379,6 +659,13 @@ func (g *LiveGateway) downloadImage(ctx context.Context, messageID, rawContent s
 		}
 	}
 	return target, mimeType, nil
+}
+
+func boolPtr(value *bool) bool {
+	if value == nil {
+		return false
+	}
+	return *value
 }
 
 func buildCard(title, body, themeKey string, extraElements []map[string]any) map[string]any {
