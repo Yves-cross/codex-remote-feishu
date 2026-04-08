@@ -106,6 +106,7 @@ const (
 	CommandTurnInterrupt  CommandKind = "turn.interrupt"
 	CommandRequestRespond CommandKind = "request.respond"
 	CommandThreadsRefresh CommandKind = "threads.refresh"
+	CommandProcessExit    CommandKind = "process.exit"
 )
 
 type InputKind string

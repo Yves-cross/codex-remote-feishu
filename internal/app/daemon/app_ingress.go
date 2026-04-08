@@ -59,7 +59,7 @@ func (a *App) stopIngressPump() {
 }
 
 func (a *App) enqueueHello(_ context.Context, meta relayws.ConnectionMeta, hello agentproto.Hello) {
-	a.rememberRelayConnection(hello.Instance.InstanceID, meta.ConnectionID)
+	a.rememberRelayConnectionWithPID(hello.Instance.InstanceID, meta.ConnectionID, hello.Instance.PID)
 	item := ingressWorkItem{
 		instanceID:   hello.Instance.InstanceID,
 		connectionID: meta.ConnectionID,

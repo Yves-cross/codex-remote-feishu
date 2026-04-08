@@ -1,8 +1,8 @@
 # Relay Protocol Spec
 
 > Type: `general`
-> Updated: `2026-04-08`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer` 与 Feishu reaction steering 的实现状态。
+> Updated: `2026-04-09`
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering 与 daemon 驱动的 wrapper 退出命令。
 
 ## 1. 文档定位
 
@@ -202,15 +202,16 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 ## 4. Canonical Command
 
-当前只实现五个公共 command：
+当前只实现六个公共 command：
 
 - `prompt.send`
 - `turn.steer`
 - `turn.interrupt`
 - `request.respond`
 - `threads.refresh`
+- `process.exit`
 
-这四个 command 的真实定义在 [types.go](../../internal/core/agentproto/types.go)。
+这些 command 的真实定义在 [types.go](../../internal/core/agentproto/types.go)。
 
 ### 4.1 `prompt.send`
 
@@ -296,6 +297,16 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 ### 4.5 `threads.refresh`
 
 触发 wrapper 走 `thread/list + thread/read`，再返回标准化的 `threads.snapshot`。
+
+### 4.6 `process.exit`
+
+由 daemon 在 shutdown / upgrade 窗口下发，要求 wrapper 自行退出并结束其 child `codex app-server`。
+
+约束：
+
+- wrapper 收到后仍返回正常 `command_ack.accepted=true`
+- wrapper 不应等待新的 surface / queue 调度
+- wrapper 应在断开 relay 前完成 child 收敛，避免 daemon 误以为 stable entry 已释放
 
 ## 5. Canonical Event
 

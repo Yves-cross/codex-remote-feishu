@@ -228,7 +228,7 @@ type managedHeadlessShutdownTarget struct {
 	PID        int
 }
 
-func (a *App) shutdownManagedHeadless() error {
+func (a *App) shutdownManagedHeadless(skipStop map[string]struct{}) error {
 	a.mu.Lock()
 	targets := a.collectManagedHeadlessShutdownTargetsLocked()
 	a.mu.Unlock()
@@ -239,7 +239,9 @@ func (a *App) shutdownManagedHeadless() error {
 
 	var errs []error
 	for _, target := range targets {
-		if target.PID > 0 {
+		if _, handled := skipStop[target.InstanceID]; handled {
+			log.Printf("managed headless shutdown cleanup: instance=%s handled by relay drain", target.InstanceID)
+		} else if target.PID > 0 {
 			if err := a.stopProcess(target.PID, a.headlessRuntime.KillGrace); err != nil {
 				log.Printf("managed headless shutdown cleanup failed: instance=%s pid=%d err=%v", target.InstanceID, target.PID, err)
 				errs = append(errs, fmt.Errorf("stop managed headless %s (pid %d): %w", target.InstanceID, target.PID, err))

@@ -24,7 +24,15 @@ type App struct {
 	translator *codex.Translator
 }
 
-const steerCommandResponseTimeout = 5 * time.Second
+const (
+	steerCommandResponseTimeout = 5 * time.Second
+	wrapperChildStopGrace       = 2 * time.Second
+	wrapperChildWaitTimeout     = 5 * time.Second
+)
+
+type shutdownRequest struct {
+	CommandID string
+}
 
 type Config struct {
 	RelayServerURL  string
@@ -187,6 +195,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	errCh := make(chan error, 8)
 	problems := &problemReporter{}
 	commandResponses := newCommandResponseTracker()
+	shutdownCh := make(chan shutdownRequest, 1)
 
 	if err := a.bootstrapHeadlessCodex(childStdin, rawLogger, problems.Emit); err != nil {
 		childCancel()
@@ -234,6 +243,14 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			return nil
 		},
 		OnCommand: func(ctx context.Context, command agentproto.Command) error {
+			if command.Kind == agentproto.CommandProcessExit {
+				a.debugf("relay shutdown command received: command=%s", command.CommandID)
+				select {
+				case shutdownCh <- shutdownRequest{CommandID: command.CommandID}:
+				default:
+				}
+				return nil
+			}
 			a.debugf(
 				"relay command received: command=%s kind=%s thread=%s turn=%s cwd=%s surface=%s inputs=%d",
 				command.CommandID,
@@ -341,10 +358,15 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	}()
 
 	stopChild := func() {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			if err := relayruntime.TerminateProcess(cmd.Process.Pid, wrapperChildStopGrace); err != nil {
+				a.debugf("child stop failed: pid=%d err=%v", cmd.Process.Pid, err)
+			}
+		}
 		childCancel()
 		select {
 		case <-waitErr:
-		case <-time.After(2 * time.Second):
+		case <-time.After(wrapperChildWaitTimeout):
 		}
 	}
 
@@ -365,6 +387,11 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			return 0, nil
 		}
 		return 1, err
+	case request := <-shutdownCh:
+		a.debugf("wrapper shutdown requested by daemon: command=%s", request.CommandID)
+		stopChild()
+		client.Close()
+		return 0, nil
 	case <-ctx.Done():
 		client.Close()
 		stopChild()

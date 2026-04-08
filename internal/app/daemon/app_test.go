@@ -1554,6 +1554,116 @@ func TestDaemonShutdownStopsManagedHeadlessAndRemovesRuntimeState(t *testing.T) 
 	}
 }
 
+func TestDaemonShutdownRequestsConnectedWrapperExitAndSkipsSecondKill(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.shutdownDrainTimeout = 150 * time.Millisecond
+	app.shutdownDrainPoll = 5 * time.Millisecond
+
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-headless-live",
+		DisplayName:   "headless",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "headless",
+		Managed:       true,
+		PID:           3456,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.managedHeadless["inst-headless-live"] = &managedHeadlessProcess{
+		InstanceID: "inst-headless-live",
+		PID:        3456,
+		Status:     managedHeadlessStatusBusy,
+	}
+	app.rememberRelayConnectionWithPID("inst-headless-live", 7, 3456)
+
+	var commands []agentproto.Command
+	var stopped []int
+	app.sendAgentCommand = func(instanceID string, command agentproto.Command) error {
+		if instanceID != "inst-headless-live" {
+			t.Fatalf("unexpected command target: %s", instanceID)
+		}
+		commands = append(commands, command)
+		if command.Kind == agentproto.CommandProcessExit {
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				app.markRelayConnectionDropped("inst-headless-live", 7)
+			}()
+		}
+		return nil
+	}
+	app.stopProcess = func(pid int, _ time.Duration) error {
+		stopped = append(stopped, pid)
+		return nil
+	}
+
+	if err := app.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if len(commands) != 1 || commands[0].Kind != agentproto.CommandProcessExit {
+		t.Fatalf("expected one process.exit command, got %#v", commands)
+	}
+	if len(stopped) != 0 {
+		t.Fatalf("expected relay drain to avoid second stopProcess call, got %#v", stopped)
+	}
+	if len(app.managedHeadless) != 0 {
+		t.Fatalf("expected managed headless map cleared, got %#v", app.managedHeadless)
+	}
+	if app.service.Instance("inst-headless-live") != nil {
+		t.Fatalf("expected managed headless service state removed, got %#v", app.service.Instance("inst-headless-live"))
+	}
+}
+
+func TestDaemonShutdownForceKillsConnectedWrapperAfterTimeout(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.shutdownDrainTimeout = 25 * time.Millisecond
+	app.shutdownDrainPoll = 5 * time.Millisecond
+
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-vscode-live",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Source:        "vscode",
+		Managed:       false,
+		PID:           4567,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.rememberRelayConnectionWithPID("inst-vscode-live", 9, 4567)
+
+	var commands []agentproto.Command
+	stoppedPID := 0
+	stoppedGrace := time.Second
+	app.sendAgentCommand = func(instanceID string, command agentproto.Command) error {
+		if instanceID != "inst-vscode-live" {
+			t.Fatalf("unexpected command target: %s", instanceID)
+		}
+		commands = append(commands, command)
+		return nil
+	}
+	app.stopProcess = func(pid int, grace time.Duration) error {
+		stoppedPID = pid
+		stoppedGrace = grace
+		return nil
+	}
+
+	if err := app.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if len(commands) != 1 || commands[0].Kind != agentproto.CommandProcessExit {
+		t.Fatalf("expected one process.exit command, got %#v", commands)
+	}
+	if stoppedPID != 4567 {
+		t.Fatalf("expected force kill pid 4567, got %d", stoppedPID)
+	}
+	if stoppedGrace != 0 {
+		t.Fatalf("expected force kill grace 0, got %s", stoppedGrace)
+	}
+}
+
 func TestDaemonShutdownContinuesManagedHeadlessCleanupAfterStopError(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})

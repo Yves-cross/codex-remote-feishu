@@ -10,9 +10,19 @@ type relayConnectionState struct {
 	currentConnectionID  uint64
 	degradedConnectionID uint64
 	lastOverloadNoticeAt time.Time
+	pid                  int
+}
+
+type relayConnectionSnapshot struct {
+	CurrentConnectionID uint64
+	PID                 int
 }
 
 func (a *App) rememberRelayConnection(instanceID string, connectionID uint64) {
+	a.rememberRelayConnectionWithPID(instanceID, connectionID, 0)
+}
+
+func (a *App) rememberRelayConnectionWithPID(instanceID string, connectionID uint64, pid int) {
 	if instanceID == "" || connectionID == 0 {
 		return
 	}
@@ -20,6 +30,9 @@ func (a *App) rememberRelayConnection(instanceID string, connectionID uint64) {
 	defer a.relayConnMu.Unlock()
 	state := a.ensureRelayConnectionState(instanceID)
 	state.currentConnectionID = connectionID
+	if pid > 0 {
+		state.pid = pid
+	}
 }
 
 func (a *App) currentRelayConnection(instanceID string) uint64 {
@@ -86,4 +99,21 @@ func (a *App) ensureRelayConnectionState(instanceID string) *relayConnectionStat
 		a.relayConnections[instanceID] = state
 	}
 	return state
+}
+
+func (a *App) snapshotRelayConnections() map[string]relayConnectionSnapshot {
+	a.relayConnMu.Lock()
+	defer a.relayConnMu.Unlock()
+
+	snapshot := make(map[string]relayConnectionSnapshot, len(a.relayConnections))
+	for instanceID, state := range a.relayConnections {
+		if state == nil {
+			continue
+		}
+		snapshot[instanceID] = relayConnectionSnapshot{
+			CurrentConnectionID: state.currentConnectionID,
+			PID:                 state.pid,
+		}
+	}
+	return snapshot
 }

@@ -20,7 +20,7 @@ import (
 
 const (
 	upgradeHelperStopDelay      = 1200 * time.Millisecond
-	upgradeHelperStopGrace      = 5 * time.Second
+	upgradeHelperStopGrace      = 15 * time.Second
 	upgradeHelperStartupTimeout = 45 * time.Second
 	upgradeHelperPollInterval   = 500 * time.Millisecond
 	upgradeGatewayGraceWindow   = 10 * time.Second

@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 统一记录 WebSetup-first 发布模型，并补充 production / beta / alpha release track 的安装与发布语义。
+> Summary: 统一记录 WebSetup-first 发布模型，并补充 production / beta / alpha release track 与升级停机收敛语义。
 
 ## 1. 范围
 
@@ -170,6 +170,8 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 - 运行期自动升级由隐藏 `upgrade-helper` 角色执行：
   - daemon 只负责检查、提示、落 journal 和启动 helper
   - helper 负责停当前 daemon、切换稳定入口、观察健康并在失败时自动回滚
+  - daemon 在停机窗口里会先进入 shutdown gate，停止自动补拉 headless / wrapper
+  - daemon 会向当前在线 wrapper 广播 `process.exit`，最多等待约 3 秒；仍未退出的实例按 PID 强制结束，避免升级切 stable entry 时命中 `ETXTBSY`
 
 ## 5. VS Code 接管模型
 
