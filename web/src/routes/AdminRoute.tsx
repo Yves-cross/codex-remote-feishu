@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatError, requestJSON, requestJSONAllowHTTPError, requestVoid, sendJSON } from "../lib/api";
+import { APIRequestError, formatError, requestJSON, requestJSONAllowHTTPError, requestVoid, sendJSON } from "../lib/api";
 import type {
   AdminInstanceSummary,
   AdminInstancesResponse,
   BootstrapState,
   FeishuAppMutation,
+  FeishuRuntimeApplyFailureDetails,
   FeishuAppResponse,
   FeishuAppSummary,
   FeishuAppVerifyResponse,
@@ -120,12 +121,15 @@ export function AdminRoute() {
   const setupURL = bootstrap?.admin.setupURL || "/setup";
   const setupURLForApp = (appID: string) => buildAppSetupURL(setupURL, appID);
 
-  async function runAction(label: string, work: () => Promise<void>) {
+  async function runAction(label: string, work: () => Promise<void>, onError?: (err: unknown) => Promise<boolean>) {
     setBusyAction(label);
     setNotice(null);
     try {
       await work();
     } catch (err: unknown) {
+      if (onError && (await onError(err))) {
+        return;
+      }
       setNotice({ tone: "danger", message: formatError(err) });
     } finally {
       setBusyAction("");
@@ -144,14 +148,38 @@ export function AdminRoute() {
     setNotice(null);
   }
 
+  async function handleFeishuRuntimeApplyFailure(err: unknown, fallbackAppID: string): Promise<boolean> {
+    if (!(err instanceof APIRequestError) || err.code !== "gateway_apply_failed") {
+      return false;
+    }
+    const details = parseFeishuRuntimeApplyFailureDetails(err.details);
+    const preferredAppID = details?.app?.id || details?.gatewayId || fallbackAppID || newAppID;
+    try {
+      await loadAdminData(preferredAppID);
+    } catch (reloadErr: unknown) {
+      setNotice({ tone: "danger", message: formatError(reloadErr) });
+      return true;
+    }
+    setNotice({
+      tone: "warn",
+      message:
+        details?.app?.runtimeApply?.action === "remove" && !details.app.persisted
+          ? "删除已保存，但运行时移除还没成功。页面已刷新为“待移除”状态，请重试移除。"
+          : "更改已保存到本地配置，但运行时还没应用成功。页面已刷新为“未生效”状态，请重试应用。",
+    });
+    return true;
+  }
+
   async function saveApp() {
     if (activeApp?.readOnly && !draft.isNew) {
       return;
     }
-    await runAction(draft.isNew ? "create-app" : "save-app", async () => {
-      const payload = {
-        id: draft.isNew ? blankToUndefined(draft.id) : undefined,
-        name: blankToUndefined(draft.name),
+    await runAction(
+      draft.isNew ? "create-app" : "save-app",
+      async () => {
+        const payload = {
+          id: draft.isNew ? blankToUndefined(draft.id) : undefined,
+          name: blankToUndefined(draft.name),
         appId: blankToUndefined(draft.appId),
         appSecret: blankToUndefined(draft.appSecret),
         enabled: draft.enabled,
@@ -159,12 +187,14 @@ export function AdminRoute() {
       const path = draft.isNew ? "/api/admin/feishu/apps" : `/api/admin/feishu/apps/${encodeURIComponent(selectedAppID)}`;
       const method = draft.isNew ? "POST" : "PUT";
       const response = await sendJSON<FeishuAppResponse>(path, method, payload);
-      await loadAdminData(response.app.id);
-      setNotice({
-        tone: feishuMutationTone(response.mutation),
-        message: response.mutation?.message || (draft.isNew ? "飞书机器人已创建。" : "飞书机器人配置已更新。"),
-      });
-    });
+        await loadAdminData(response.app.id);
+        setNotice({
+          tone: feishuMutationTone(response.mutation),
+          message: response.mutation?.message || (draft.isNew ? "飞书机器人已创建。" : "飞书机器人配置已更新。"),
+        });
+      },
+      async (err) => handleFeishuRuntimeApplyFailure(err, draft.isNew ? blankToUndefined(draft.id) || selectedAppID : selectedAppID),
+    );
   }
 
   async function verifyApp() {
@@ -210,7 +240,7 @@ export function AdminRoute() {
       await sendJSON<FeishuAppResponse>(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/${endpoint}`, "POST");
       await loadAdminData(activeApp.id);
       setNotice({ tone: enabled ? "good" : "warn", message: enabled ? "机器人已启用。" : "机器人已停用。" });
-    });
+    }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
   }
 
   async function deleteApp() {
@@ -224,7 +254,22 @@ export function AdminRoute() {
       await requestVoid(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}`, { method: "DELETE" });
       await loadAdminData(newAppID);
       setNotice({ tone: "good", message: "机器人已删除。" });
-    });
+    }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
+  }
+
+  async function retryRuntimeApply() {
+    if (!activeApp?.runtimeApply?.pending) {
+      return;
+    }
+    const pendingRemoval = activeApp.runtimeApply.action === "remove" && !activeApp.persisted;
+    await runAction("retry-runtime-apply", async () => {
+      await requestVoid(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/retry-apply`, { method: "POST" });
+      await loadAdminData(pendingRemoval ? newAppID : activeApp.id);
+      setNotice({
+        tone: "good",
+        message: pendingRemoval ? "运行时移除已重试成功。" : "保存的运行时配置已重新应用。",
+      });
+    }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
   }
 
   async function createInstance() {
@@ -369,6 +414,7 @@ export function AdminRoute() {
             onSaveApp={() => void saveApp()}
             onVerifyApp={() => void verifyApp()}
             onReconnectApp={() => void reconnectApp()}
+            onRetryRuntimeApply={() => void retryRuntimeApply()}
             onToggleAppEnabled={(enabled) => void toggleAppEnabled(enabled)}
             onDeleteApp={() => void deleteApp()}
           />
@@ -420,4 +466,11 @@ function buildAppSetupURL(baseURL: string, appID: string): string {
   const url = new URL(baseURL, window.location.origin);
   url.searchParams.set("app", appID);
   return url.toString();
+}
+
+function parseFeishuRuntimeApplyFailureDetails(value: unknown): FeishuRuntimeApplyFailureDetails | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  return value as FeishuRuntimeApplyFailureDetails;
 }

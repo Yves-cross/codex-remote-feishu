@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
@@ -111,11 +112,18 @@ func (a *App) handleFeishuAppCreate(w http.ResponseWriter, r *http.Request) {
 	a.adminConfigMu.Unlock()
 
 	if err := a.applyRuntimeFeishuConfig(updated, gatewayID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "gateway_apply_failed",
-			Message: "feishu config saved but runtime apply failed",
-			Details: err.Error(),
-		})
+		summary, _, summaryErr := a.adminFeishuAppSummary(config.LoadedAppConfig{Path: loaded.Path, Config: updated}, gatewayID)
+		if summaryErr != nil {
+			summary = adminFeishuAppSummary{
+				ID:        gatewayID,
+				Name:      firstNonEmpty(strings.TrimSpace(app.Name), gatewayID),
+				AppID:     strings.TrimSpace(app.AppID),
+				HasSecret: strings.TrimSpace(app.AppSecret) != "",
+				Enabled:   app.Enabled == nil || *app.Enabled,
+				Persisted: true,
+			}
+		}
+		a.writeFeishuRuntimeApplyError(w, gatewayID, summary, feishuRuntimeApplyActionUpsert, "feishu config saved but runtime apply failed", err)
 		return
 	}
 
@@ -225,11 +233,18 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 	a.adminConfigMu.Unlock()
 
 	if err := a.applyRuntimeFeishuConfig(updated, gatewayID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "gateway_apply_failed",
-			Message: "feishu config saved but runtime apply failed",
-			Details: err.Error(),
-		})
+		summary, _, summaryErr := a.adminFeishuAppSummary(config.LoadedAppConfig{Path: loaded.Path, Config: updated}, gatewayID)
+		if summaryErr != nil {
+			summary = adminFeishuAppSummary{
+				ID:        gatewayID,
+				Name:      firstNonEmpty(strings.TrimSpace(current.Name), gatewayID),
+				AppID:     strings.TrimSpace(current.AppID),
+				HasSecret: strings.TrimSpace(current.AppSecret) != "",
+				Enabled:   current.Enabled == nil || *current.Enabled,
+				Persisted: true,
+			}
+		}
+		a.writeFeishuRuntimeApplyError(w, gatewayID, summary, feishuRuntimeApplyActionUpsert, "feishu config saved but runtime apply failed", err)
 		return
 	}
 
@@ -312,6 +327,17 @@ func (a *App) handleFeishuAppDelete(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	deletedSummary, _, summaryErr := a.adminFeishuAppSummary(loaded, gatewayID)
+	if summaryErr != nil {
+		deletedSummary = adminFeishuAppSummary{
+			ID:        gatewayID,
+			Name:      firstNonEmpty(strings.TrimSpace(updated.Feishu.Apps[index].Name), gatewayID),
+			AppID:     strings.TrimSpace(updated.Feishu.Apps[index].AppID),
+			HasSecret: strings.TrimSpace(updated.Feishu.Apps[index].AppSecret) != "",
+			Enabled:   updated.Feishu.Apps[index].Enabled == nil || *updated.Feishu.Apps[index].Enabled,
+			Persisted: true,
+		}
+	}
 	updated.Feishu.Apps = append(updated.Feishu.Apps[:index], updated.Feishu.Apps[index+1:]...)
 	if err := config.WriteAppConfig(loaded.Path, updated); err != nil {
 		a.adminConfigMu.Unlock()
@@ -325,11 +351,9 @@ func (a *App) handleFeishuAppDelete(w http.ResponseWriter, r *http.Request) {
 	a.adminConfigMu.Unlock()
 
 	if err := a.applyRuntimeFeishuConfig(updated, gatewayID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "gateway_apply_failed",
-			Message: "feishu config saved but runtime apply failed",
-			Details: err.Error(),
-		})
+		deletedSummary.Persisted = false
+		deletedSummary.RuntimeOnly = false
+		a.writeFeishuRuntimeApplyError(w, gatewayID, deletedSummary, feishuRuntimeApplyActionRemove, "feishu config saved but runtime apply failed", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -452,6 +476,37 @@ func (a *App) handleFeishuAppReconnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, feishuAppResponse{App: summary})
 }
 
+func (a *App) handleFeishuAppRetryApply(w http.ResponseWriter, r *http.Request) {
+	gatewayID := canonicalGatewayID(r.PathValue("id"))
+	pending, ok := a.feishuRuntimeApplyPendingState(gatewayID)
+	if !ok {
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    "feishu_runtime_apply_not_pending",
+			Message: "feishu app does not have a saved-but-not-applied runtime change",
+			Details: gatewayID,
+		})
+		return
+	}
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "config_unavailable",
+			Message: "failed to load config",
+			Details: err.Error(),
+		})
+		return
+	}
+	if err := a.applyRuntimeFeishuConfig(loaded.Config, gatewayID); err != nil {
+		summary, ok, summaryErr := a.adminFeishuAppSummary(loaded, gatewayID)
+		if summaryErr != nil || !ok {
+			summary = pending.Summary
+		}
+		a.writeFeishuRuntimeApplyError(w, gatewayID, summary, pending.Action, "failed to retry feishu runtime apply", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (a *App) handleFeishuAppPublishCheck(w http.ResponseWriter, r *http.Request) {
 	gatewayID := canonicalGatewayID(r.PathValue("id"))
 	summary, issues, err := a.checkFeishuAppPublishReady(r.Context(), gatewayID)
@@ -503,11 +558,15 @@ func (a *App) handleFeishuAppRuntimeAction(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := a.applyRuntimeFeishuConfig(updated.Config, gatewayID); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "gateway_apply_failed",
-			Message: "failed to apply feishu runtime config",
-			Details: err.Error(),
-		})
+		summary, _, summaryErr := a.adminFeishuAppSummary(updated, gatewayID)
+		if summaryErr != nil {
+			summary = adminFeishuAppSummary{
+				ID:        gatewayID,
+				Persisted: true,
+				Enabled:   enabled != nil && *enabled,
+			}
+		}
+		a.writeFeishuRuntimeApplyError(w, gatewayID, summary, feishuRuntimeApplyActionUpsert, "feishu config saved but runtime apply failed", err)
 		return
 	}
 	summary, _, err := a.adminFeishuAppSummary(updated, gatewayID)

@@ -82,6 +82,7 @@ type App struct {
 	mu            sync.Mutex
 	shutdownMu    sync.Mutex
 	adminConfigMu sync.Mutex
+	adminFeishuMu sync.RWMutex
 	listenMu      sync.Mutex
 	ingressRunMu  sync.Mutex
 	relayConnMu   sync.Mutex
@@ -103,6 +104,7 @@ type App struct {
 	gatewayRunCancel      context.CancelFunc
 	gatewayRunDone        chan struct{}
 	relayConnections      map[string]*relayConnectionState
+	feishuRuntimeApply    map[string]feishuRuntimeApplyPendingState
 
 	adminAuth *adminauth.Manager
 	admin     adminRuntimeState
@@ -141,6 +143,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		stopProcess:           relayruntime.TerminateProcess,
 		ingress:               newIngressPump(),
 		relayConnections:      map[string]*relayConnectionState{},
+		feishuRuntimeApply:    map[string]feishuRuntimeApplyPendingState{},
 		adminAuth:             authManager,
 		shutdownGracePeriod:   5 * time.Second,
 		shutdownNoticeTimeout: 2 * time.Second,

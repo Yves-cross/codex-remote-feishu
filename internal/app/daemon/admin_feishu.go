@@ -25,6 +25,11 @@ type feishuAppVerifyResponse struct {
 	Result feishu.VerifyResult   `json:"result"`
 }
 
+type feishuRuntimeApplyErrorDetails struct {
+	GatewayID string                 `json:"gatewayId,omitempty"`
+	App       *adminFeishuAppSummary `json:"app,omitempty"`
+}
+
 type feishuAppPublishCheckResponse struct {
 	App    adminFeishuAppSummary `json:"app"`
 	Ready  bool                  `json:"ready"`
@@ -57,20 +62,29 @@ type adminFeishuAppWizardView struct {
 	PublishedAt          *time.Time `json:"publishedAt,omitempty"`
 }
 
+type adminFeishuRuntimeApplyView struct {
+	Pending        bool       `json:"pending"`
+	Action         string     `json:"action,omitempty"`
+	Error          string     `json:"error,omitempty"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+	RetryAvailable bool       `json:"retryAvailable,omitempty"`
+}
+
 type adminFeishuAppSummary struct {
-	ID              string                    `json:"id"`
-	Name            string                    `json:"name,omitempty"`
-	AppID           string                    `json:"appId,omitempty"`
-	HasSecret       bool                      `json:"hasSecret"`
-	Enabled         bool                      `json:"enabled"`
-	VerifiedAt      *time.Time                `json:"verifiedAt,omitempty"`
-	Wizard          *adminFeishuAppWizardView `json:"wizard,omitempty"`
-	Persisted       bool                      `json:"persisted"`
-	RuntimeOnly     bool                      `json:"runtimeOnly,omitempty"`
-	RuntimeOverride bool                      `json:"runtimeOverride,omitempty"`
-	ReadOnly        bool                      `json:"readOnly,omitempty"`
-	ReadOnlyReason  string                    `json:"readOnlyReason,omitempty"`
-	Status          *feishu.GatewayStatus     `json:"status,omitempty"`
+	ID              string                       `json:"id"`
+	Name            string                       `json:"name,omitempty"`
+	AppID           string                       `json:"appId,omitempty"`
+	HasSecret       bool                         `json:"hasSecret"`
+	Enabled         bool                         `json:"enabled"`
+	VerifiedAt      *time.Time                   `json:"verifiedAt,omitempty"`
+	Wizard          *adminFeishuAppWizardView    `json:"wizard,omitempty"`
+	Persisted       bool                         `json:"persisted"`
+	RuntimeOnly     bool                         `json:"runtimeOnly,omitempty"`
+	RuntimeOverride bool                         `json:"runtimeOverride,omitempty"`
+	ReadOnly        bool                         `json:"readOnly,omitempty"`
+	ReadOnlyReason  string                       `json:"readOnlyReason,omitempty"`
+	Status          *feishu.GatewayStatus        `json:"status,omitempty"`
+	RuntimeApply    *adminFeishuRuntimeApplyView `json:"runtimeApply,omitempty"`
 }
 
 type feishuAppMutationView struct {

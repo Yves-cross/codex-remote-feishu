@@ -53,6 +53,7 @@ type AdminFeishuPanelProps = {
   onSaveApp: () => void;
   onVerifyApp: () => void;
   onReconnectApp: () => void;
+  onRetryRuntimeApply: () => void;
   onToggleAppEnabled: (enabled: boolean) => void;
   onDeleteApp: () => void;
 };
@@ -192,13 +193,15 @@ export function AdminFeishuPanel({
   onSaveApp,
   onVerifyApp,
   onReconnectApp,
+  onRetryRuntimeApply,
   onToggleAppEnabled,
   onDeleteApp,
 }: AdminFeishuPanelProps) {
-  const readOnly = Boolean(activeApp?.readOnly && !draft.isNew);
+  const pendingRuntimeRemoval = Boolean(activeApp?.runtimeApply?.pending && activeApp.runtimeApply.action === "remove" && !activeApp.persisted);
+  const readOnly = Boolean((activeApp?.readOnly || pendingRuntimeRemoval) && !draft.isNew);
   const setupProgress = activeApp ? appSetupProgress(activeApp) : null;
   const needsSetup = Boolean(activeApp && setupProgress && !setupProgress.complete);
-  const canToggleEnabled = Boolean(activeApp && !activeApp.readOnly);
+  const canToggleEnabled = Boolean(activeApp && !activeApp.readOnly && !pendingRuntimeRemoval);
 
   return (
     <Panel
@@ -225,6 +228,7 @@ export function AdminFeishuPanel({
                 <div className="app-card-flags">
                   <StatusBadge value={app.enabled ? "已启用" : "已停用"} tone={app.enabled ? "good" : "neutral"} />
                   <StatusBadge value={progress.complete ? "已完成首次配置" : "需继续配置"} tone={progress.complete ? "good" : "warn"} />
+                  {app.runtimeApply?.pending ? <StatusBadge value={app.runtimeApply.action === "remove" ? "待移除" : "待重试"} tone="warn" /> : null}
                   {app.readOnly ? <StatusBadge value="只读" tone="warn" /> : null}
                 </div>
                 <p>{buildAppCardDetail(app, progress.remaining)}</p>
@@ -243,7 +247,7 @@ export function AdminFeishuPanel({
               <StatCard label="连接状态" value={appConnectionLabel(activeApp)} tone={appConnectionTone(activeApp) === "good" ? "accent" : "warn"} detail={activeApp.status?.lastConnectedAt ? `最近连接 ${formatDateTime(activeApp.status.lastConnectedAt)}` : "还没有连接记录"} />
               <StatCard label="最近验证" value={activeApp.verifiedAt ? formatDateTime(activeApp.verifiedAt) : "尚未验证"} detail={activeApp.wizard?.connectionVerifiedAt ? "已通过连接测试" : "建议先测试连接"} />
               <StatCard label="首次配置" value={setupProgress?.complete ? "已完成" : "未完成"} tone={setupProgress?.complete ? "accent" : "warn"} detail={setupProgress ? `已完成 ${setupProgress.completed} / ${setupProgress.total}` : "创建后会显示"} />
-              <StatCard label="编辑权限" value={readOnly ? "只读" : "可编辑"} detail={readOnly ? "当前由启动参数接管" : "可在这里直接修改"} />
+              <StatCard label="编辑权限" value={readOnly ? "只读" : "可编辑"} detail={pendingRuntimeRemoval ? "本地配置已删除，等待运行时移除" : readOnly ? "当前由启动参数接管" : "可在这里直接修改"} />
             </StatGrid>
           ) : (
             <div className="wizard-callout">
@@ -253,6 +257,19 @@ export function AdminFeishuPanel({
           )}
 
           {activeApp?.readOnly ? <div className="notice-banner warn">{activeApp.readOnlyReason || "这个机器人由当前启动参数接管，只能查看状态，不能在管理页修改。"}</div> : null}
+          {activeApp?.runtimeApply?.pending ? (
+            <div className="notice-banner warn">
+              {activeApp.runtimeApply.action === "remove" && !activeApp.persisted
+                ? "这个机器人已经从本地配置删除，但运行时移除还没成功。请重试应用，直到它从列表里消失。"
+                : "最近一次保存已经写入本地配置，但运行时应用失败。请重试应用，直到状态恢复。"}
+              {activeApp.runtimeApply.error ? <div>最近错误：{activeApp.runtimeApply.error}</div> : null}
+              <div className="button-row">
+                <button className="secondary-button" type="button" onClick={onRetryRuntimeApply} disabled={busyAction !== ""}>
+                  {activeApp.runtimeApply.action === "remove" ? "重试移除" : "重试应用"}
+                </button>
+              </div>
+            </div>
+          ) : null}
           {activeApp && needsSetup ? (
             <div className="notice-banner warn">
               这个机器人还没完成首次配置。完成后才能稳定接收消息、菜单和文档预览。
@@ -290,16 +307,16 @@ export function AdminFeishuPanel({
             <button className="primary-button" type="button" onClick={onSaveApp} disabled={busyAction !== "" || readOnly}>
               {draft.isNew ? "保存机器人" : "保存更改"}
             </button>
-            <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== ""}>
+            <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
               测试连接
             </button>
-            <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== ""}>
+            <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
               重新连接
             </button>
             <button className="ghost-button" type="button" onClick={() => onToggleAppEnabled(!activeApp?.enabled)} disabled={!activeApp || !canToggleEnabled || busyAction !== ""}>
               {activeApp?.enabled ? "停用机器人" : "启用机器人"}
             </button>
-            <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || busyAction !== ""}>
+            <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || pendingRuntimeRemoval || busyAction !== ""}>
               删除机器人
             </button>
           </div>
@@ -759,6 +776,12 @@ function buildAttentionItems(
 }
 
 function buildAppCardDetail(app: FeishuAppSummary, remainingSetupSteps: number): string {
+  if (app.runtimeApply?.pending && app.runtimeApply.error) {
+    if (app.runtimeApply.action === "remove" && !app.persisted) {
+      return `已从本地配置删除，运行时移除失败：${app.runtimeApply.error}`;
+    }
+    return `已保存到本地配置，但运行时应用失败：${app.runtimeApply.error}`;
+  }
   if (app.status?.lastError) {
     return app.status.lastError;
   }
@@ -819,6 +842,9 @@ function buildPreviewDetail(summary: PreviewDriveStatusResponse["summary"] | und
 }
 
 function describeAppStorage(app: FeishuAppSummary): string {
+  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
+    return "本地已删除，待运行时移除";
+  }
   if (app.runtimeOverride) {
     return "启动参数覆盖";
   }

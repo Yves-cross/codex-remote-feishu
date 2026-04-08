@@ -73,6 +73,9 @@ export function statusTone(state?: string): "neutral" | "good" | "warn" | "dange
 }
 
 export function appConnectionTone(app: FeishuAppSummary): "neutral" | "good" | "warn" | "danger" {
+  if (app.runtimeApply?.pending) {
+    return "warn";
+  }
   if (!app.enabled) {
     return "neutral";
   }
@@ -95,6 +98,12 @@ export function appConnectionTone(app: FeishuAppSummary): "neutral" | "good" | "
 }
 
 export function appConnectionLabel(app: FeishuAppSummary): string {
+  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove") {
+    return "待移除";
+  }
+  if (app.runtimeApply?.pending) {
+    return "未生效";
+  }
   if (!app.enabled) {
     return "已停用";
   }

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { AdminRoute } from "./AdminRoute";
 import {
@@ -60,5 +61,71 @@ describe("AdminRoute", () => {
     expect(await screen.findAllByText("当前由启动参数接管，只能查看状态，不能在管理页修改。")).not.toHaveLength(0);
     expect(screen.getByLabelText("机器人名称")).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存更改" })).toBeDisabled();
+  });
+
+  it("reloads and shows pending runtime apply state after saved-but-not-applied error", async () => {
+    let appListCalls = 0;
+    const user = userEvent.setup();
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": () => {
+        appListCalls += 1;
+        if (appListCalls === 1) {
+          return { body: { apps: [makeApp()] } };
+        }
+        return {
+          body: {
+            apps: [
+              makeApp({
+                runtimeApply: {
+                  pending: true,
+                  action: "upsert",
+                  error: "dial tcp 127.0.0.1:443: connect refused",
+                  retryAvailable: true,
+                },
+              }),
+            ],
+          },
+        };
+      },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+      "/api/admin/feishu/apps/bot-1": {
+        status: 500,
+        body: {
+          error: {
+            code: "gateway_apply_failed",
+            message: "feishu config saved but runtime apply failed",
+            retryable: true,
+            details: {
+              gatewayId: "bot-1",
+              app: makeApp({
+                runtimeApply: {
+                  pending: true,
+                  action: "upsert",
+                  error: "dial tcp 127.0.0.1:443: connect refused",
+                  retryAvailable: true,
+                },
+              }),
+            },
+          },
+        },
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByRole("button", { name: "保存更改" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "保存更改" }));
+
+    expect(await screen.findByText("更改已保存到本地配置，但运行时还没应用成功。页面已刷新为“未生效”状态，请重试应用。")).toBeInTheDocument();
+    expect(screen.getAllByText("未生效").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "重试应用" })).toBeInTheDocument();
   });
 });

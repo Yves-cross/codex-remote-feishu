@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -24,6 +25,8 @@ type fakeAdminGatewayController struct {
 	verifyConfigs []feishu.GatewayAppConfig
 	verifyResult  feishu.VerifyResult
 	verifyErr     error
+	upsertErrs    []error
+	removeErrs    []error
 }
 
 func (f *fakeAdminGatewayController) Start(context.Context, feishu.ActionHandler) error { return nil }
@@ -33,10 +36,24 @@ func (f *fakeAdminGatewayController) RewriteFinalBlock(_ context.Context, req fe
 }
 func (f *fakeAdminGatewayController) UpsertApp(_ context.Context, cfg feishu.GatewayAppConfig) error {
 	f.upserted = append(f.upserted, cfg)
+	if len(f.upsertErrs) > 0 {
+		err := f.upsertErrs[0]
+		f.upsertErrs = f.upsertErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (f *fakeAdminGatewayController) RemoveApp(_ context.Context, gatewayID string) error {
 	f.removed = append(f.removed, gatewayID)
+	if len(f.removeErrs) > 0 {
+		err := f.removeErrs[0]
+		f.removeErrs = f.removeErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (f *fakeAdminGatewayController) Verify(_ context.Context, cfg feishu.GatewayAppConfig) (feishu.VerifyResult, error) {
@@ -252,6 +269,111 @@ func TestFeishuAppSecretChangeReturnsCredentialsMutation(t *testing.T) {
 	}
 	if updateResp.Mutation == nil || updateResp.Mutation.Kind != "credentials_changed" || !updateResp.Mutation.ReconnectRequested {
 		t.Fatalf("unexpected credentials-change mutation: %#v", updateResp.Mutation)
+	}
+}
+
+func TestFeishuCreateFailureSurfacesSavedButNotAppliedStateAndRetry(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{
+		upsertErrs: []error{errors.New("dial tcp 127.0.0.1:443: connect refused")},
+	}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("create status = %d, want 500 body=%s", rec.Code, rec.Body.String())
+	}
+	var apiErr apiErrorPayload
+	if err := json.NewDecoder(rec.Body).Decode(&apiErr); err != nil {
+		t.Fatalf("decode api error: %v", err)
+	}
+	if apiErr.Error.Code != "gateway_apply_failed" || !apiErr.Error.Retryable {
+		t.Fatalf("unexpected api error: %#v", apiErr.Error)
+	}
+
+	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/feishu/apps", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var apps feishuAppsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps: %v", err)
+	}
+	if len(apps.Apps) != 1 || apps.Apps[0].RuntimeApply == nil || !apps.Apps[0].RuntimeApply.Pending || apps.Apps[0].RuntimeApply.Action != feishuRuntimeApplyActionUpsert {
+		t.Fatalf("expected pending upsert state after failed apply, got %#v", apps.Apps)
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/retry-apply", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retry status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/feishu/apps", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list-after-retry status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	apps = feishuAppsResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps after retry: %v", err)
+	}
+	if len(apps.Apps) != 1 || apps.Apps[0].RuntimeApply != nil {
+		t.Fatalf("expected retry to clear pending runtime apply state, got %#v", apps.Apps)
+	}
+}
+
+func TestFeishuDeleteFailureKeepsPendingRemovalVisibleUntilRetry(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	cfg.Feishu.Apps = []config.FeishuAppConfig{{
+		ID:        "main",
+		Name:      "Main Bot",
+		AppID:     "cli_xxx",
+		AppSecret: "secret_xxx",
+	}}
+	gateway := &fakeAdminGatewayController{
+		statuses: []feishu.GatewayStatus{{
+			GatewayID: "main",
+			Name:      "Main Bot",
+			State:     feishu.GatewayStateConnected,
+		}},
+		removeErrs: []error{errors.New("remove worker failed")},
+	}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+
+	rec := performAdminRequest(t, app, http.MethodDelete, "/api/admin/feishu/apps/main", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("delete status = %d, want 500 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/feishu/apps", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var apps feishuAppsResponse
+	if err := json.NewDecoder(rec.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps: %v", err)
+	}
+	if len(apps.Apps) != 1 {
+		t.Fatalf("expected pending deleted app to remain visible, got %#v", apps.Apps)
+	}
+	if apps.Apps[0].Persisted || apps.Apps[0].RuntimeApply == nil || apps.Apps[0].RuntimeApply.Action != feishuRuntimeApplyActionRemove {
+		t.Fatalf("expected pending removal state, got %#v", apps.Apps[0])
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/retry-apply", "")
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retry-delete status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/feishu/apps", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list-after-retry status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	apps = feishuAppsResponse{}
+	if err := json.NewDecoder(rec.Body).Decode(&apps); err != nil {
+		t.Fatalf("decode apps after retry: %v", err)
+	}
+	if len(apps.Apps) != 0 {
+		t.Fatalf("expected retry delete to clear pending entry, got %#v", apps.Apps)
 	}
 }
 

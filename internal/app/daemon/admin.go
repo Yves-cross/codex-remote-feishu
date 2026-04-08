@@ -191,6 +191,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/verify", a.requireAdmin(a.handleFeishuAppVerify))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/publish-check", a.requireAdmin(a.handleFeishuAppPublishCheck))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/reconnect", a.requireAdmin(a.handleFeishuAppReconnect))
+	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/retry-apply", a.requireAdmin(a.handleFeishuAppRetryApply))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/enable", a.requireAdmin(a.handleFeishuAppEnable))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/disable", a.requireAdmin(a.handleFeishuAppDisable))
 	mux.HandleFunc("PATCH /api/admin/feishu/apps/{id}/wizard", a.requireAdmin(a.handleFeishuAppWizardUpdate))

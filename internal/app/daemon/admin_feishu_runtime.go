@@ -82,6 +82,7 @@ func (a *App) checkFeishuAppPublishReady(ctx context.Context, gatewayID string) 
 func (a *App) adminFeishuApps(loaded config.LoadedAppConfig) ([]adminFeishuAppSummary, error) {
 	admin := a.snapshotAdminRuntime()
 	runtimeApps := effectiveFeishuApps(loaded.Config, admin.services)
+	pendingApply := a.snapshotFeishuRuntimeApplyPending()
 	runtimeMap := make(map[string]config.FeishuAppConfig, len(runtimeApps))
 	for _, app := range runtimeApps {
 		runtimeMap[canonicalGatewayID(app.ID)] = app
@@ -101,6 +102,9 @@ func (a *App) adminFeishuApps(loaded config.LoadedAppConfig) ([]adminFeishuAppSu
 		}
 		readOnly, reason := feishuAppReadOnly(admin, gatewayID)
 		summary := buildFeishuAppSummary(gatewayID, app, runtimeApp, statuses[gatewayID], true, false, readOnly, reason)
+		if pending, ok := pendingApply[gatewayID]; ok {
+			summary = applyFeishuRuntimePending(summary, pending)
+		}
 		summaries = append(summaries, summary)
 		seen[gatewayID] = true
 	}
@@ -110,9 +114,26 @@ func (a *App) adminFeishuApps(loaded config.LoadedAppConfig) ([]adminFeishuAppSu
 		if !seen[gatewayID] {
 			if runtimeApp, ok := runtimeMap[gatewayID]; ok {
 				readOnly, reason := feishuAppReadOnly(admin, gatewayID)
-				summaries = append(summaries, buildFeishuAppSummary(gatewayID, config.FeishuAppConfig{}, runtimeApp, statuses[gatewayID], false, true, readOnly, reason))
+				summary := buildFeishuAppSummary(gatewayID, config.FeishuAppConfig{}, runtimeApp, statuses[gatewayID], false, true, readOnly, reason)
+				if pending, ok := pendingApply[gatewayID]; ok {
+					summary = applyFeishuRuntimePending(summary, pending)
+				}
+				summaries = append(summaries, summary)
+				seen[gatewayID] = true
 			}
 		}
+	}
+
+	for gatewayID, pending := range pendingApply {
+		if seen[gatewayID] {
+			continue
+		}
+		summary := pending.Summary
+		if status, ok := statuses[gatewayID]; ok && status.GatewayID != "" {
+			statusCopy := status
+			summary.Status = &statusCopy
+		}
+		summaries = append(summaries, applyFeishuRuntimePending(summary, pending))
 	}
 	return summaries, nil
 }
@@ -220,9 +241,17 @@ func (a *App) applyRuntimeFeishuConfig(cfg config.AppConfig, gatewayID string) e
 		return err
 	}
 	if runtimeCfg, ok := a.runtimeGatewayConfigFor(cfg, gatewayID); ok {
-		return controller.UpsertApp(context.Background(), runtimeCfg)
+		if err := controller.UpsertApp(context.Background(), runtimeCfg); err != nil {
+			return err
+		}
+		a.clearFeishuRuntimeApplyPending(gatewayID)
+		return nil
 	}
-	return controller.RemoveApp(context.Background(), gatewayID)
+	if err := controller.RemoveApp(context.Background(), gatewayID); err != nil {
+		return err
+	}
+	a.clearFeishuRuntimeApplyPending(gatewayID)
+	return nil
 }
 
 func (a *App) markFeishuAppVerified(path, gatewayID string, verifiedAt time.Time) error {

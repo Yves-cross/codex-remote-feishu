@@ -76,6 +76,15 @@ export interface FeishuAppSummary {
   readOnly?: boolean;
   readOnlyReason?: string;
   status?: GatewayStatus;
+  runtimeApply?: FeishuRuntimeApplyState;
+}
+
+export interface FeishuRuntimeApplyState {
+  pending: boolean;
+  action?: string;
+  error?: string;
+  updatedAt?: string;
+  retryAvailable?: boolean;
 }
 
 export interface FeishuAppMutation {
@@ -92,6 +101,11 @@ export interface FeishuAppsResponse {
 export interface FeishuAppResponse {
   app: FeishuAppSummary;
   mutation?: FeishuAppMutation;
+}
+
+export interface FeishuRuntimeApplyFailureDetails {
+  gatewayId?: string;
+  app?: FeishuAppSummary;
 }
 
 export interface VerifyResult {
