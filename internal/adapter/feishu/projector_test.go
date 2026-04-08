@@ -32,7 +32,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if len(ops[0].CardElements) != 2 {
 		t.Fatalf("expected markdown + action button elements, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[0]["content"] != "1. droid - 工作目录 `/data/dl/droid` [当前]" {
+	if ops[0].CardElements[0]["content"] != "1. droid - 工作目录 <text_tag color='neutral'>/data/dl/droid</text_tag> [当前]" {
 		t.Fatalf("unexpected first element: %#v", ops[0].CardElements[0])
 	}
 	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
@@ -67,7 +67,7 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 	if len(ops[0].CardElements) != 3 {
 		t.Fatalf("expected markdown + action + hint elements, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[0]["content"] != "1. droid · 修复登录流程\n`/data/dl/droid`" {
+	if ops[0].CardElements[0]["content"] != "1. droid · 修复登录流程\n<text_tag color='neutral'>/data/dl/droid</text_tag>" {
 		t.Fatalf("unexpected option element: %#v", ops[0].CardElements[0])
 	}
 	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
@@ -78,7 +78,7 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 	if value["kind"] != "use_thread" || value["thread_id"] != "thread-1" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
-	if ops[0].CardElements[2]["content"] != "发送 `/useall` 查看全部会话。" {
+	if ops[0].CardElements[2]["content"] != "发送 <text_tag color='neutral'>/useall</text_tag> 查看全部会话。" {
 		t.Fatalf("unexpected hint element: %#v", ops[0].CardElements[2])
 	}
 }
@@ -262,6 +262,48 @@ func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
 	}
 }
 
+func TestProjectDebugErrorNoticeRendersInlineTagsAndPreservesFence(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventNotice,
+		Notice: &control.Notice{
+			Code: "debug_error",
+			Text: "位置：`gateway_apply`\n错误码：`send_card_failed`\n\n调试信息：\n```text\nraw `payload`\n```",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"位置：<text_tag color='neutral'>gateway_apply</text_tag>",
+		"错误码：<text_tag color='neutral'>send_card_failed</text_tag>",
+		"```text\nraw `payload`\n```",
+	) {
+		t.Fatalf("unexpected debug error body: %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectUsageNoticeRendersInlineTags(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventNotice,
+		Notice: &control.Notice{
+			Code: "surface_override_usage",
+			Text: "用法：`/model` 查看当前配置；`/model <模型>`；`/model <模型> <推理强度>`；`/model clear`。",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"用法：<text_tag color='neutral'>/model</text_tag> 查看当前配置；",
+		"<text_tag color='neutral'>/model &lt;模型&gt;</text_tag>",
+		"<text_tag color='neutral'>/model clear</text_tag>",
+	) {
+		t.Fatalf("unexpected usage notice body: %#v", ops[0].CardBody)
+	}
+}
+
 func TestProjectTurnFailedNoticeUsesErrorTheme(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -339,7 +381,7 @@ func TestProjectSnapshotShowsNewThreadReadyTarget(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if !containsAll(ops[0].CardBody, "新建会话（等待首条消息）", "**目标：** 新建会话", "**工作目录：** `/data/dl/droid`") {
+	if !containsAll(ops[0].CardBody, "新建会话（等待首条消息）", "**目标：** 新建会话", "**工作目录：** <text_tag color='neutral'>/data/dl/droid</text_tag>") {
 		t.Fatalf("expected snapshot body to show new-thread-ready target, got %#v", ops[0].CardBody)
 	}
 }
@@ -534,10 +576,10 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	}
 	if !containsAll(ops[0].CardBody,
 		"如果现在从飞书发送一条消息：",
-		"**模型：** `gpt-5.4`（飞书临时覆盖）",
-		"**推理强度：** `medium`（会话配置）",
-		"**执行权限：** `confirm`（飞书临时覆盖）",
-		"**飞书临时覆盖：** 模型 `gpt-5.4`，权限 `confirm`",
+		"**模型：** <text_tag color='neutral'>gpt-5.4</text_tag>（飞书临时覆盖）",
+		"**推理强度：** <text_tag color='neutral'>medium</text_tag>（会话配置）",
+		"**执行权限：** <text_tag color='neutral'>confirm</text_tag>（飞书临时覆盖）",
+		"**飞书临时覆盖：** 模型 <text_tag color='neutral'>gpt-5.4</text_tag>，权限 <text_tag color='neutral'>confirm</text_tag>",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0])
 	}
@@ -574,7 +616,7 @@ func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if !strings.Contains(ops[0].CardBody, "**执行权限：** `full`（飞书默认）") {
+	if !strings.Contains(ops[0].CardBody, "**执行权限：** <text_tag color='neutral'>full</text_tag>（飞书默认）") {
 		t.Fatalf("expected compact full access token in snapshot body, got %#v", ops[0].CardBody)
 	}
 }
@@ -608,9 +650,9 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
-		"**模型：** `gpt-5.4`（飞书默认）",
-		"**推理强度：** `xhigh`（飞书默认）",
-		"**执行权限：** `full`（飞书默认）",
+		"**模型：** <text_tag color='neutral'>gpt-5.4</text_tag>（飞书默认）",
+		"**推理强度：** <text_tag color='neutral'>xhigh</text_tag>（飞书默认）",
+		"**执行权限：** <text_tag color='neutral'>full</text_tag>（飞书默认）",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
 	}
@@ -659,9 +701,9 @@ func TestProjectSnapshotIncludesHeadlessAttachmentAndPendingLaunch(t *testing.T)
 	}
 	if !containsAll(ops[0].CardBody,
 		"**已接管：** droid (Headless)",
-		"**实例 PID：** `4321`",
+		"**实例 PID：** <text_tag color='neutral'>4321</text_tag>",
 		"Headless 创建中：",
-		"**进程 PID：** `5678`",
+		"**进程 PID：** <text_tag color='neutral'>5678</text_tag>",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
 	}

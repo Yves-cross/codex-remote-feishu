@@ -87,7 +87,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
-			CardBody:         event.Notice.Text,
+			CardBody:         projectNoticeBody(*event.Notice),
 			CardThemeKey:     noticeThemeKey(*event.Notice),
 		}}
 	case control.UIEventSelectionPrompt:
@@ -278,7 +278,7 @@ func selectionPromptElements(prompt control.SelectionPrompt) []map[string]any {
 	if hint := strings.TrimSpace(prompt.Hint); hint != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
-			"content": hint,
+			"content": renderSystemInlineTags(hint),
 		})
 	}
 	return elements
@@ -293,7 +293,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 	case control.SelectionPromptAttachInstance:
 		if option.Subtitle != "" {
 			parts := strings.Split(option.Subtitle, "\n")
-			line := fmt.Sprintf("%d. %s - 工作目录 `%s`%s", option.Index, option.Label, parts[0], current)
+			line := fmt.Sprintf("%d. %s - 工作目录 %s%s", option.Index, option.Label, formatNeutralTextTag(parts[0]), current)
 			if len(parts) > 1 {
 				line += "\n" + strings.Join(parts[1:], "\n")
 			}
@@ -304,7 +304,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 			parts := strings.Split(option.Subtitle, "\n")
 			line := fmt.Sprintf("%d. %s%s", option.Index, option.Label, current)
 			if len(parts) > 0 && parts[0] != "" {
-				line += "\n`" + parts[0] + "`"
+				line += "\n" + formatNeutralTextTag(parts[0])
 			}
 			if len(parts) > 1 {
 				line += "\n" + strings.Join(parts[1:], "\n")
@@ -523,6 +523,65 @@ func formatNeutralTextTag(text string) string {
 	return "<text_tag color='neutral'>" + html.EscapeString(strings.TrimSpace(text)) + "</text_tag>"
 }
 
+func projectNoticeBody(notice control.Notice) string {
+	if strings.HasPrefix(strings.TrimSpace(notice.Title), "链路错误") {
+		return renderSystemInlineTags(notice.Text)
+	}
+	switch notice.Code {
+	case "debug_error", "surface_override_usage", "surface_access_usage", "message_recall_too_late":
+		return renderSystemInlineTags(notice.Text)
+	default:
+		return notice.Text
+	}
+}
+
+func renderSystemInlineTags(text string) string {
+	if !strings.Contains(text, "`") {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	inFence := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || !strings.Contains(line, "`") {
+			continue
+		}
+		lines[i] = renderInlineTagsInLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderInlineTagsInLine(line string) string {
+	var out strings.Builder
+	for len(line) > 0 {
+		start := strings.IndexByte(line, '`')
+		if start < 0 {
+			out.WriteString(line)
+			break
+		}
+		out.WriteString(line[:start])
+		line = line[start+1:]
+		end := strings.IndexByte(line, '`')
+		if end < 0 {
+			out.WriteByte('`')
+			out.WriteString(line)
+			break
+		}
+		token := strings.TrimSpace(line[:end])
+		if token == "" {
+			out.WriteString("``")
+		} else {
+			out.WriteString(formatNeutralTextTag(token))
+		}
+		line = line[end+1:]
+	}
+	return out.String()
+}
+
 func fileChangeDisplayLabels(files []control.FileChangeSummaryEntry) map[string]string {
 	paths := make([]string, 0, len(files)*2)
 	for _, file := range files {
@@ -672,7 +731,7 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			lines = append(lines, snapshotField("输入门禁", gate))
 		}
 		if snapshot.Attachment.PID > 0 {
-			lines = append(lines, snapshotField("实例 PID", fmt.Sprintf("`%d`", snapshot.Attachment.PID)))
+			lines = append(lines, snapshotField("实例 PID", formatNeutralTextTag(fmt.Sprintf("%d", snapshot.Attachment.PID))))
 		}
 		lines = append(lines, "")
 		lines = append(lines, "**如果现在从飞书发送一条消息：**")
@@ -691,30 +750,30 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		}
 		lines = append(lines, snapshotField("目标", target))
 		if snapshot.NextPrompt.CWD != "" {
-			lines = append(lines, snapshotField("工作目录", fmt.Sprintf("`%s`", snapshot.NextPrompt.CWD)))
+			lines = append(lines, snapshotField("工作目录", formatNeutralTextTag(snapshot.NextPrompt.CWD)))
 		}
-		lines = append(lines, snapshotField("模型", fmt.Sprintf("`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource))))
-		lines = append(lines, snapshotField("推理强度", fmt.Sprintf("`%s`（%s）", displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource))))
-		lines = append(lines, snapshotField("执行权限", fmt.Sprintf("`%s`（%s）", agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource))))
+		lines = append(lines, snapshotField("模型", fmt.Sprintf("%s（%s）", formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource))))
+		lines = append(lines, snapshotField("推理强度", fmt.Sprintf("%s（%s）", formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource))))
+		lines = append(lines, snapshotField("执行权限", fmt.Sprintf("%s（%s）", formatNeutralTextTag(agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource))))
 		overrideParts := []string{}
 		if snapshot.NextPrompt.OverrideModel != "" {
-			overrideParts = append(overrideParts, "模型 `"+snapshot.NextPrompt.OverrideModel+"`")
+			overrideParts = append(overrideParts, "模型 "+formatNeutralTextTag(snapshot.NextPrompt.OverrideModel))
 		}
 		if snapshot.NextPrompt.OverrideReasoningEffort != "" {
-			overrideParts = append(overrideParts, "推理 `"+snapshot.NextPrompt.OverrideReasoningEffort+"`")
+			overrideParts = append(overrideParts, "推理 "+formatNeutralTextTag(snapshot.NextPrompt.OverrideReasoningEffort))
 		}
 		if snapshot.NextPrompt.OverrideAccessMode != "" {
-			overrideParts = append(overrideParts, "权限 `"+agentproto.DisplayAccessModeShort(snapshot.NextPrompt.OverrideAccessMode)+"`")
+			overrideParts = append(overrideParts, "权限 "+formatNeutralTextTag(agentproto.DisplayAccessModeShort(snapshot.NextPrompt.OverrideAccessMode)))
 		}
 		if len(overrideParts) == 0 {
 			lines = append(lines, snapshotField("飞书临时覆盖", "无"))
 		} else {
 			lines = append(lines, snapshotField("飞书临时覆盖", strings.Join(overrideParts, "，")))
 		}
-		lines = append(lines, snapshotField("底层真实配置", fmt.Sprintf("模型 `%s`（%s）；推理 `%s`（%s）",
-			displaySnapshotValue(snapshot.NextPrompt.BaseModel, snapshot.NextPrompt.BaseModelSource),
+		lines = append(lines, snapshotField("底层真实配置", fmt.Sprintf("模型 %s（%s）；推理 %s（%s）",
+			formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.BaseModel, snapshot.NextPrompt.BaseModelSource)),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseModelSource),
-			displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort, snapshot.NextPrompt.BaseReasoningEffortSource),
+			formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort, snapshot.NextPrompt.BaseReasoningEffortSource)),
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
 		)))
 	}
@@ -725,13 +784,13 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			lines = append(lines, fmt.Sprintf("- %s", snapshotField("目标会话", snapshot.PendingHeadless.ThreadTitle)))
 		}
 		if snapshot.PendingHeadless.ThreadCWD != "" {
-			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动目录", fmt.Sprintf("`%s`", snapshot.PendingHeadless.ThreadCWD))))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动目录", formatNeutralTextTag(snapshot.PendingHeadless.ThreadCWD))))
 		}
 		if snapshot.PendingHeadless.PID > 0 {
-			lines = append(lines, fmt.Sprintf("- %s", snapshotField("进程 PID", fmt.Sprintf("`%d`", snapshot.PendingHeadless.PID))))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("进程 PID", formatNeutralTextTag(fmt.Sprintf("%d", snapshot.PendingHeadless.PID)))))
 		}
 		if !snapshot.PendingHeadless.ExpiresAt.IsZero() {
-			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动超时", fmt.Sprintf("`%s`", snapshot.PendingHeadless.ExpiresAt.Format("2006-01-02 15:04:05 MST")))))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动超时", formatNeutralTextTag(snapshot.PendingHeadless.ExpiresAt.Format("2006-01-02 15:04:05 MST")))))
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))

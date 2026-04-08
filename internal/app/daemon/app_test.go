@@ -641,7 +641,7 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 	if len(gateway.operations) < 2 {
 		t.Fatalf("expected queued error notice and current card after recovery, got %#v", gateway.operations)
 	}
-	if !strings.Contains(gateway.operations[0].CardTitle, "链路错误") || !strings.Contains(gateway.operations[0].CardBody, "位置：`gateway_apply`") {
+	if !strings.Contains(gateway.operations[0].CardTitle, "链路错误") || !strings.Contains(gateway.operations[0].CardBody, "位置：<text_tag color='neutral'>gateway_apply</text_tag>") {
 		t.Fatalf("expected queued gateway failure notice first, got %#v", gateway.operations[0])
 	}
 	if gateway.operations[1].CardTitle == "" || !strings.Contains(gateway.operations[1].CardBody, "当前没有在线 VS Code 实例") {
