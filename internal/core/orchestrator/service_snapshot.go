@@ -15,6 +15,7 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 	snapshot := &control.Snapshot{
 		SurfaceSessionID: surface.SurfaceSessionID,
 		ActorUserID:      surface.ActorUserID,
+		AutoContinue:     snapshotAutoContinueSummary(surface),
 	}
 	snapshot.Gate = snapshotGateSummary(surface)
 	if pending := surface.PendingHeadless; pending != nil {
@@ -92,6 +93,19 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 		return snapshot.Instances[i].WorkspaceKey < snapshot.Instances[j].WorkspaceKey
 	})
 	return snapshot
+}
+
+func snapshotAutoContinueSummary(surface *state.SurfaceConsoleRecord) control.AutoContinueSummary {
+	if surface == nil {
+		return control.AutoContinueSummary{}
+	}
+	return control.AutoContinueSummary{
+		Enabled:             surface.AutoContinue.Enabled,
+		PendingReason:       string(surface.AutoContinue.PendingReason),
+		PendingDueAt:        surface.AutoContinue.PendingDueAt,
+		ConsecutiveCount:    surface.AutoContinue.ConsecutiveCount,
+		LastTriggeredTurnID: surface.AutoContinue.LastTriggeredTurnID,
+	}
 }
 
 func snapshotGateSummary(surface *state.SurfaceConsoleRecord) control.GateSummary {

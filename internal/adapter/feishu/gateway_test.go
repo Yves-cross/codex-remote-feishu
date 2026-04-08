@@ -319,13 +319,15 @@ func TestParseSurfaceRefSupportsLegacyAndGatewayAwareFormats(t *testing.T) {
 
 func TestParseTextActionRecognizesModelAndReasoningCommands(t *testing.T) {
 	tests := map[string]control.ActionKind{
-		"/model":          control.ActionModelCommand,
-		"/model gpt-5.4":  control.ActionModelCommand,
-		"/reasoning high": control.ActionReasoningCommand,
-		"/effort medium":  control.ActionReasoningCommand,
-		"/access":         control.ActionAccessCommand,
-		"/access full":    control.ActionAccessCommand,
-		"/approval":       control.ActionAccessCommand,
+		"/model":           control.ActionModelCommand,
+		"/model gpt-5.4":   control.ActionModelCommand,
+		"/reasoning high":  control.ActionReasoningCommand,
+		"/effort medium":   control.ActionReasoningCommand,
+		"/access":          control.ActionAccessCommand,
+		"/access full":     control.ActionAccessCommand,
+		"/approval":        control.ActionAccessCommand,
+		"/autocontinue":    control.ActionAutoContinueCommand,
+		"/autocontinue on": control.ActionAutoContinueCommand,
 	}
 	for input, want := range tests {
 		action, handled := parseTextAction(input)

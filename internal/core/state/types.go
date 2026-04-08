@@ -45,6 +45,13 @@ const (
 	ImageDiscarded ImageState = "discarded"
 )
 
+type AutoContinueReason string
+
+const (
+	AutoContinueReasonIncompleteStop   AutoContinueReason = "incomplete_stop"
+	AutoContinueReasonRetryableFailure AutoContinueReason = "retryable_failure"
+)
+
 type Root struct {
 	Instances map[string]*InstanceRecord
 	Surfaces  map[string]*SurfaceConsoleRecord
@@ -132,6 +139,15 @@ type SurfaceConsoleRecord struct {
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
 	LastSelection        *SelectionAnnouncementRecord
+	AutoContinue         AutoContinueRuntimeRecord
+}
+
+type AutoContinueRuntimeRecord struct {
+	Enabled             bool
+	PendingReason       AutoContinueReason
+	PendingDueAt        time.Time
+	ConsecutiveCount    int
+	LastTriggeredTurnID string
 }
 
 type HeadlessLaunchStatus string

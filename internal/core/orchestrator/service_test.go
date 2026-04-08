@@ -771,6 +771,73 @@ func TestAccessCommandUpdatesSnapshotAndQueueFreeze(t *testing.T) {
 	}
 }
 
+func TestAutoContinueCommandUpdatesSnapshotWithoutAttach(t *testing.T) {
+	now := time.Date(2026, 4, 9, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	enabled := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAutoContinueCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/autocontinue on",
+	})
+	if len(enabled) != 1 || enabled[0].Notice == nil || enabled[0].Notice.Code != "auto_continue_enabled" {
+		t.Fatalf("expected enable notice, got %#v", enabled)
+	}
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected snapshot after enable")
+	}
+	if !snapshot.AutoContinue.Enabled {
+		t.Fatalf("expected auto-continue enabled in snapshot, got %#v", snapshot.AutoContinue)
+	}
+
+	disabled := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAutoContinueCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/autocontinue off",
+	})
+	if len(disabled) != 1 || disabled[0].Notice == nil || disabled[0].Notice.Code != "auto_continue_disabled" {
+		t.Fatalf("expected disable notice, got %#v", disabled)
+	}
+	if snapshot := svc.SurfaceSnapshot("surface-1"); snapshot == nil || snapshot.AutoContinue.Enabled {
+		t.Fatalf("expected auto-continue disabled in snapshot, got %#v", snapshot)
+	}
+}
+
+func TestSurfaceSnapshotIncludesAutoContinueSummary(t *testing.T) {
+	now := time.Date(2026, 4, 9, 11, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.root.Surfaces["surface-1"] = &state.SurfaceConsoleRecord{
+		SurfaceSessionID: "surface-1",
+		DispatchMode:     state.DispatchModeNormal,
+		QueueItems:       map[string]*state.QueueItemRecord{},
+		StagedImages:     map[string]*state.StagedImageRecord{},
+		PendingRequests:  map[string]*state.RequestPromptRecord{},
+		AutoContinue: state.AutoContinueRuntimeRecord{
+			Enabled:             true,
+			PendingReason:       state.AutoContinueReasonRetryableFailure,
+			PendingDueAt:        now.Add(30 * time.Second),
+			ConsecutiveCount:    2,
+			LastTriggeredTurnID: "turn-1",
+		},
+	}
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected snapshot")
+	}
+	if !snapshot.AutoContinue.Enabled ||
+		snapshot.AutoContinue.PendingReason != string(state.AutoContinueReasonRetryableFailure) ||
+		!snapshot.AutoContinue.PendingDueAt.Equal(now.Add(30*time.Second)) ||
+		snapshot.AutoContinue.ConsecutiveCount != 2 ||
+		snapshot.AutoContinue.LastTriggeredTurnID != "turn-1" {
+		t.Fatalf("unexpected auto-continue snapshot: %#v", snapshot.AutoContinue)
+	}
+}
+
 func TestSurfaceSnapshotIncludesGateAndDispatchSummary(t *testing.T) {
 	now := time.Date(2026, 4, 7, 19, 20, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

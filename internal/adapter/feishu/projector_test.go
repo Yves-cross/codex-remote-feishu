@@ -839,6 +839,31 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	}
 }
 
+func TestProjectSnapshotDisplaysAutoContinueSummary(t *testing.T) {
+	projector := NewProjector()
+	dueAt := time.Date(2026, 4, 9, 12, 0, 30, 0, time.FixedZone("CST", 8*3600))
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			AutoContinue: control.AutoContinueSummary{
+				Enabled:          true,
+				PendingReason:    "retryable_failure",
+				PendingDueAt:     dueAt,
+				ConsecutiveCount: 2,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"**自动继续：** 开启，连续 2 次，等待重试可恢复失败",
+		"计划于 <text_tag color='neutral'>2026-04-09 12:00:30 CST</text_tag>",
+	) {
+		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
+	}
+}
+
 func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

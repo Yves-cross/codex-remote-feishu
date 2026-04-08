@@ -1048,6 +1048,9 @@ func formatSnapshot(snapshot control.Snapshot) string {
 			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
 		)))
 	}
+	if autoContinue := snapshotAutoContinueText(snapshot.AutoContinue); autoContinue != "" {
+		lines = append(lines, snapshotField("自动继续", autoContinue))
+	}
 	if snapshot.PendingHeadless.InstanceID != "" {
 		lines = append(lines, "")
 		lines = append(lines, "**后台恢复中：**")
@@ -1090,6 +1093,31 @@ func snapshotGateText(summary control.GateSummary) string {
 	default:
 		return ""
 	}
+}
+
+func snapshotAutoContinueText(summary control.AutoContinueSummary) string {
+	stateText := "关闭"
+	if summary.Enabled {
+		stateText = "开启"
+	}
+	parts := []string{stateText}
+	if summary.ConsecutiveCount > 0 {
+		parts = append(parts, fmt.Sprintf("连续 %d 次", summary.ConsecutiveCount))
+	}
+	if summary.PendingReason != "" {
+		label := summary.PendingReason
+		switch summary.PendingReason {
+		case "incomplete_stop":
+			label = "等待继续未完成任务"
+		case "retryable_failure":
+			label = "等待重试可恢复失败"
+		}
+		parts = append(parts, label)
+	}
+	if !summary.PendingDueAt.IsZero() {
+		parts = append(parts, "计划于 "+formatNeutralTextTag(summary.PendingDueAt.Format("2006-01-02 15:04:05 MST")))
+	}
+	return strings.Join(parts, "，")
 }
 
 func snapshotDispatchText(summary control.DispatchSummary) string {

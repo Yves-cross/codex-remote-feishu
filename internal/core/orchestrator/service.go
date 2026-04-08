@@ -162,6 +162,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		switch action.Kind {
 		case control.ActionStatus:
 			return []control.UIEvent{{Kind: control.UIEventSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
+		case control.ActionAutoContinueCommand:
+			return s.handleAutoContinueCommand(surface, action)
 		case control.ActionDetach:
 			return notice(surface, "detach_pending", "当前仍在等待已发出的 turn 收尾，请稍后再试。")
 		default:
@@ -206,6 +208,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.handleReasoningCommand(surface, action)
 	case control.ActionAccessCommand:
 		return s.handleAccessCommand(surface, action)
+	case control.ActionAutoContinueCommand:
+		return s.handleAutoContinueCommand(surface, action)
 	case control.ActionRespondRequest:
 		return s.respondRequest(surface, action)
 	case control.ActionShowThreads:

@@ -10,32 +10,33 @@ import (
 type ActionKind string
 
 const (
-	ActionListInstances     ActionKind = "surface.menu.list_instances"
-	ActionStatus            ActionKind = "surface.menu.status"
-	ActionStop              ActionKind = "surface.menu.stop"
-	ActionNewThread         ActionKind = "surface.menu.new_thread"
-	ActionKillInstance      ActionKind = "surface.menu.kill_instance"
-	ActionRemovedCommand    ActionKind = "surface.command.removed"
-	ActionShowCommandHelp   ActionKind = "surface.command.help"
-	ActionShowCommandMenu   ActionKind = "surface.command.menu"
-	ActionDebugCommand      ActionKind = "surface.command.debug"
-	ActionModelCommand      ActionKind = "surface.command.model"
-	ActionReasoningCommand  ActionKind = "surface.command.reasoning"
-	ActionAccessCommand     ActionKind = "surface.command.access"
-	ActionRespondRequest    ActionKind = "surface.request.respond"
-	ActionTextMessage       ActionKind = "surface.message.text"
-	ActionImageMessage      ActionKind = "surface.message.image"
-	ActionReactionCreated   ActionKind = "surface.message.reaction.created"
-	ActionMessageRecalled   ActionKind = "surface.message.recalled"
-	ActionSelectPrompt      ActionKind = "surface.selection.prompt"
-	ActionAttachInstance    ActionKind = "surface.button.attach_instance"
-	ActionShowThreads       ActionKind = "surface.button.show_threads"
-	ActionShowAllThreads    ActionKind = "surface.button.show_all_threads"
-	ActionUseThread         ActionKind = "surface.button.use_thread"
-	ActionConfirmKickThread ActionKind = "surface.button.confirm_kick_thread"
-	ActionCancelKickThread  ActionKind = "surface.button.cancel_kick_thread"
-	ActionFollowLocal       ActionKind = "surface.button.follow_local"
-	ActionDetach            ActionKind = "surface.button.detach"
+	ActionListInstances       ActionKind = "surface.menu.list_instances"
+	ActionStatus              ActionKind = "surface.menu.status"
+	ActionStop                ActionKind = "surface.menu.stop"
+	ActionNewThread           ActionKind = "surface.menu.new_thread"
+	ActionKillInstance        ActionKind = "surface.menu.kill_instance"
+	ActionRemovedCommand      ActionKind = "surface.command.removed"
+	ActionShowCommandHelp     ActionKind = "surface.command.help"
+	ActionShowCommandMenu     ActionKind = "surface.command.menu"
+	ActionDebugCommand        ActionKind = "surface.command.debug"
+	ActionModelCommand        ActionKind = "surface.command.model"
+	ActionReasoningCommand    ActionKind = "surface.command.reasoning"
+	ActionAccessCommand       ActionKind = "surface.command.access"
+	ActionAutoContinueCommand ActionKind = "surface.command.auto_continue"
+	ActionRespondRequest      ActionKind = "surface.request.respond"
+	ActionTextMessage         ActionKind = "surface.message.text"
+	ActionImageMessage        ActionKind = "surface.message.image"
+	ActionReactionCreated     ActionKind = "surface.message.reaction.created"
+	ActionMessageRecalled     ActionKind = "surface.message.recalled"
+	ActionSelectPrompt        ActionKind = "surface.selection.prompt"
+	ActionAttachInstance      ActionKind = "surface.button.attach_instance"
+	ActionShowThreads         ActionKind = "surface.button.show_threads"
+	ActionShowAllThreads      ActionKind = "surface.button.show_all_threads"
+	ActionUseThread           ActionKind = "surface.button.use_thread"
+	ActionConfirmKickThread   ActionKind = "surface.button.confirm_kick_thread"
+	ActionCancelKickThread    ActionKind = "surface.button.cancel_kick_thread"
+	ActionFollowLocal         ActionKind = "surface.button.follow_local"
+	ActionDetach              ActionKind = "surface.button.detach"
 )
 
 type InboundLifecycleVerdict string
@@ -119,6 +120,7 @@ type Snapshot struct {
 	NextPrompt       PromptRouteSummary
 	Gate             GateSummary
 	Dispatch         DispatchSummary
+	AutoContinue     AutoContinueSummary
 	Instances        []InstanceSummary
 	Threads          []ThreadSummary
 }
@@ -178,6 +180,14 @@ type DispatchSummary struct {
 	DispatchMode     string
 	ActiveItemStatus string
 	QueuedCount      int
+}
+
+type AutoContinueSummary struct {
+	Enabled             bool
+	PendingReason       string
+	PendingDueAt        time.Time
+	ConsecutiveCount    int
+	LastTriggeredTurnID string
 }
 
 type InstanceSummary struct {

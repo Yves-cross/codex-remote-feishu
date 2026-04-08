@@ -86,6 +86,17 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	},
 	{
 		section:      "实例与会话",
+		helpCommands: []string{"/autocontinue", "/autocontinue on", "/autocontinue off"},
+		description:  "查看或切换当前飞书会话的 auto-continue 状态。",
+		examples:     []string{"/autocontinue on", "/autocontinue off"},
+		showInHelp:   true,
+		showInMenu:   true,
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/autocontinue", kind: ActionAutoContinueCommand},
+		},
+	},
+	{
+		section:      "实例与会话",
 		helpCommands: []string{"/new"},
 		description:  "准备一个新的远端会话，下一条消息会作为新会话首条输入。",
 		buttons: []CommandCatalogButton{

@@ -87,6 +87,7 @@ func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleReco
 	}
 	switch action.Kind {
 	case control.ActionStatus,
+		control.ActionAutoContinueCommand,
 		control.ActionDebugCommand,
 		control.ActionDetach,
 		control.ActionKillInstance,
@@ -894,6 +895,42 @@ func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []contro
 
 func preparedNewThreadSelectionTitle() string {
 	return "新建会话（等待首条消息）"
+}
+
+func clearAutoContinueRuntime(surface *state.SurfaceConsoleRecord) {
+	if surface == nil {
+		return
+	}
+	surface.AutoContinue = state.AutoContinueRuntimeRecord{}
+}
+
+func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{{
+			Kind:             control.UIEventSnapshot,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Snapshot:         s.buildSnapshot(surface),
+		}}
+	}
+	if len(parts) != 2 {
+		return notice(surface, "auto_continue_usage", "用法：`/autocontinue` 查看当前状态；`/autocontinue on`；`/autocontinue off`。")
+	}
+
+	switch strings.ToLower(parts[1]) {
+	case "on", "enable", "enabled", "true":
+		if surface.AutoContinue.Enabled {
+			return notice(surface, "auto_continue_enabled", "当前飞书会话的 auto-continue 已开启。")
+		}
+		clearAutoContinueRuntime(surface)
+		surface.AutoContinue.Enabled = true
+		return notice(surface, "auto_continue_enabled", "已开启当前飞书会话的 auto-continue。daemon 重启后会恢复为关闭。")
+	case "off", "disable", "disabled", "false":
+		clearAutoContinueRuntime(surface)
+		return notice(surface, "auto_continue_disabled", "已关闭当前飞书会话的 auto-continue。")
+	default:
+		return notice(surface, "auto_continue_usage", "用法：`/autocontinue` 查看当前状态；`/autocontinue on`；`/autocontinue off`。")
+	}
 }
 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
