@@ -16,6 +16,7 @@ const (
 	ActionNewThread         ActionKind = "surface.menu.new_thread"
 	ActionNewInstance       ActionKind = "surface.menu.new_instance"
 	ActionKillInstance      ActionKind = "surface.menu.kill_instance"
+	ActionRemovedCommand    ActionKind = "surface.command.removed"
 	ActionModelCommand      ActionKind = "surface.command.model"
 	ActionReasoningCommand  ActionKind = "surface.command.reasoning"
 	ActionAccessCommand     ActionKind = "surface.command.access"

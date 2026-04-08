@@ -188,7 +188,7 @@ func parseTextAction(text string) (control.Action, bool) {
 	case "/new":
 		return control.Action{Kind: control.ActionNewThread}, true
 	case "/newinstance":
-		return control.Action{Kind: control.ActionNewInstance}, true
+		return control.Action{Kind: control.ActionRemovedCommand, Text: "/newinstance"}, true
 	case "/killinstance":
 		return control.Action{Kind: control.ActionKillInstance}, true
 	case "/threads", "/use", "/sessions":
@@ -218,7 +218,7 @@ func menuAction(eventKey string) (control.Action, bool) {
 	case "new", "newthread":
 		return control.Action{Kind: control.ActionNewThread}, true
 	case "newinstance":
-		return control.Action{Kind: control.ActionNewInstance}, true
+		return control.Action{Kind: control.ActionRemovedCommand, Text: "new_instance"}, true
 	case "killinstance":
 		return control.Action{Kind: control.ActionKillInstance}, true
 	case "threads", "use", "sessions", "showthreads", "showsessions":

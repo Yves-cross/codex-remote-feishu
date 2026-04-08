@@ -106,6 +106,16 @@ func (s *Service) ensureThread(inst *state.InstanceRecord, threadID string) *sta
 	return thread
 }
 
+func (s *Service) handleRemovedCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	command := strings.TrimSpace(action.Text)
+	switch command {
+	case "/newinstance", "new_instance":
+		return notice(surface, "command_removed_newinstance", "`/newinstance` 已移除。请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
+	default:
+		return notice(surface, "command_removed", "这个旧命令已移除。")
+	}
+}
+
 func (s *Service) presentInstanceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	instances := make([]*state.InstanceRecord, 0, len(s.root.Instances))
 	for _, inst := range s.root.Instances {

@@ -4149,6 +4149,26 @@ func TestNewInstanceRequiresDetachedSurface(t *testing.T) {
 	}
 }
 
+func TestRemovedNewInstanceCommandShowsMigrationNotice(t *testing.T) {
+	now := time.Date(2026, 4, 8, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRemovedCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/newinstance",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "command_removed_newinstance" {
+		t.Fatalf("expected removed command notice, got %#v", events)
+	}
+	if !strings.Contains(events[0].Notice.Text, "/use") || !strings.Contains(events[0].Notice.Text, "/useall") {
+		t.Fatalf("expected migration guidance in removed command notice, got %#v", events[0].Notice)
+	}
+}
+
 func TestNewInstanceStartsHeadlessAndBlocksNormalInput(t *testing.T) {
 	now := time.Date(2026, 4, 5, 9, 30, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

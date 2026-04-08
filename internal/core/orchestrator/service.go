@@ -166,6 +166,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.startHeadlessInstance(surface)
 	case control.ActionKillInstance:
 		return s.killHeadlessInstance(surface)
+	case control.ActionRemovedCommand:
+		return s.handleRemovedCommand(surface, action)
 	case control.ActionAttachInstance:
 		return s.attachInstance(surface, action.InstanceID)
 	case control.ActionModelCommand:

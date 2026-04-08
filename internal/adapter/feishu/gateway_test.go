@@ -153,8 +153,8 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 		"stop":           control.ActionStop,
 		"new":            control.ActionNewThread,
 		"new_thread":     control.ActionNewThread,
-		"newinstance":    control.ActionNewInstance,
-		"new_instance":   control.ActionNewInstance,
+		"newinstance":    control.ActionRemovedCommand,
+		"new_instance":   control.ActionRemovedCommand,
 		"killinstance":   control.ActionKillInstance,
 		"kill_instance":  control.ActionKillInstance,
 		"threads":        control.ActionShowThreads,
@@ -346,7 +346,7 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 		"/useall":       control.ActionShowAllThreads,
 		"/sessionsall":  control.ActionShowAllThreads,
 		"/new":          control.ActionNewThread,
-		"/newinstance":  control.ActionNewInstance,
+		"/newinstance":  control.ActionRemovedCommand,
 		"/killinstance": control.ActionKillInstance,
 	}
 	for input, want := range tests {
@@ -357,6 +357,24 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 		if action.Kind != want {
 			t.Fatalf("input %q => kind %q, want %q", input, action.Kind, want)
 		}
+	}
+}
+
+func TestRemovedNewInstanceCommandPreservesCommandText(t *testing.T) {
+	action, handled := parseTextAction("/newinstance")
+	if !handled {
+		t.Fatalf("expected /newinstance to be handled as removed command")
+	}
+	if action.Kind != control.ActionRemovedCommand || action.Text != "/newinstance" {
+		t.Fatalf("unexpected removed command action: %#v", action)
+	}
+
+	menu, ok := menuAction("new_instance")
+	if !ok {
+		t.Fatalf("expected legacy new_instance menu to resolve to removed command")
+	}
+	if menu.Kind != control.ActionRemovedCommand || menu.Text != "new_instance" {
+		t.Fatalf("unexpected removed menu action: %#v", menu)
 	}
 }
 
