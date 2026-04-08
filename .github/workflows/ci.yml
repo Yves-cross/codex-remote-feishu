@@ -25,10 +25,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
 
       - name: Check public docs for machine-local paths
         run: bash scripts/check/no-local-paths.sh
@@ -44,6 +55,14 @@ jobs:
             echo "${output}"
             exit 1
           fi
+
+      - name: Test web
+        working-directory: web
+        run: npm run test:run
+
+      - name: Build web
+        working-directory: web
+        run: npm run build
 
       - name: Build
         run: |
