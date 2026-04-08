@@ -38,10 +38,14 @@ release-track-version:
 	bash scripts/check/release-track-version.sh
 
 start:
-	./install.sh start
+	./setup.sh
 
 stop:
-	./install.sh stop
+	@echo "install.sh has been removed." >&2
+	@echo "No repo-local stop helper is provided. Stop the codex-remote daemon process manually." >&2
+	@exit 1
 
 status:
-	./install.sh status
+	@echo "install.sh has been removed." >&2
+	@echo "Query the local admin/setup endpoints or inspect the daemon process directly instead." >&2
+	@exit 1
