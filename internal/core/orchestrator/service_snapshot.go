@@ -408,16 +408,11 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 	}
 	s.clearRemoteOwnership(surface)
 
-	events := []control.UIEvent{{
-		Kind:             control.UIEventPendingInput,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		PendingInput: &control.PendingInputState{
-			QueueItemID:     item.ID,
-			SourceMessageID: item.SourceMessageID,
-			Status:          string(item.Status),
-			TypingOff:       true,
-		},
-	}}
+	events := s.pendingInputEvents(surface, control.PendingInputState{
+		QueueItemID: item.ID,
+		Status:      string(item.Status),
+		TypingOff:   true,
+	}, queueItemSourceMessageIDs(item))
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
 		events = append(events, control.UIEvent{
 			Kind:             control.UIEventNotice,

@@ -36,6 +36,13 @@ const (
 	QueueItemDiscarded   QueueItemStatus = "discarded"
 )
 
+type QueueItemSourceKind string
+
+const (
+	QueueItemSourceUser         QueueItemSourceKind = "user"
+	QueueItemSourceAutoContinue QueueItemSourceKind = "auto_continue"
+)
+
 type ImageState string
 
 const (
@@ -143,11 +150,16 @@ type SurfaceConsoleRecord struct {
 }
 
 type AutoContinueRuntimeRecord struct {
-	Enabled             bool
-	PendingReason       AutoContinueReason
-	PendingDueAt        time.Time
-	ConsecutiveCount    int
-	LastTriggeredTurnID string
+	Enabled                      bool
+	PendingReason                AutoContinueReason
+	PendingDueAt                 time.Time
+	ConsecutiveCount             int
+	LastTriggeredTurnID          string
+	PendingReplyToMessageID      string
+	PendingReplyToMessagePreview string
+	IncompleteStopCount          int
+	RetryableFailureCount        int
+	SuppressOnce                 bool
 }
 
 type HeadlessLaunchStatus string
@@ -208,17 +220,20 @@ type RequestCaptureRecord struct {
 }
 
 type QueueItemRecord struct {
-	ID                   string
-	SurfaceSessionID     string
-	SourceMessageID      string
-	SourceMessagePreview string
-	SourceMessageIDs     []string
-	Inputs               []agentproto.Input
-	FrozenThreadID       string
-	FrozenCWD            string
-	FrozenOverride       ModelConfigRecord
-	RouteModeAtEnqueue   RouteMode
-	Status               QueueItemStatus
+	ID                    string
+	SurfaceSessionID      string
+	SourceKind            QueueItemSourceKind
+	SourceMessageID       string
+	SourceMessagePreview  string
+	SourceMessageIDs      []string
+	ReplyToMessageID      string
+	ReplyToMessagePreview string
+	Inputs                []agentproto.Input
+	FrozenThreadID        string
+	FrozenCWD             string
+	FrozenOverride        ModelConfigRecord
+	RouteModeAtEnqueue    RouteMode
+	Status                QueueItemStatus
 }
 
 type StagedImageRecord struct {

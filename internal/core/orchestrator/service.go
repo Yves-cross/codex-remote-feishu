@@ -1,11 +1,12 @@
 package orchestrator
 
 import (
+	"time"
+
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
-	"time"
 )
 
 type Config struct {
@@ -48,15 +49,17 @@ type itemBuffer struct {
 }
 
 type remoteTurnBinding struct {
-	InstanceID           string
-	SurfaceSessionID     string
-	QueueItemID          string
-	SourceMessageID      string
-	SourceMessagePreview string
-	CommandID            string
-	ThreadID             string
-	TurnID               string
-	Status               string
+	InstanceID            string
+	SurfaceSessionID      string
+	QueueItemID           string
+	SourceMessageID       string
+	SourceMessagePreview  string
+	ReplyToMessageID      string
+	ReplyToMessagePreview string
+	CommandID             string
+	ThreadID              string
+	TurnID                string
+	Status                string
 }
 
 type pendingSteerBinding struct {
@@ -173,6 +176,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	if blocked := s.pendingHeadlessActionBlocked(surface, action); blocked != nil {
 		return blocked
 	}
+	s.noteAutoContinueAction(surface, action)
 	switch action.Kind {
 	case control.ActionListInstances:
 		return s.presentInstanceSelection(surface)
@@ -386,6 +390,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		}
 		deleteMatchingItemBuffers(s.itemBuffers, instanceID, event.ThreadID, event.TurnID)
 		summary := s.takeTurnFileChangeSummary(instanceID, event.ThreadID, event.TurnID)
+		finalText := pendingTurnTextValue(s.pendingTurnText, instanceID, event.ThreadID, event.TurnID)
 		events := s.flushPendingTurnTextWithSummary(instanceID, event.ThreadID, event.TurnID, true, summary)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
@@ -394,7 +399,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			}
 			return events
 		}
-		return append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem)...)
+		return append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem, finalText, summary)...)
 	case agentproto.EventItemStarted:
 		s.trackItemStart(instanceID, event)
 		return preface
@@ -488,18 +493,18 @@ func (s *Service) Tick(now time.Time) []control.UIEvent {
 		if pending := surface.PendingHeadless; pending != nil && !pending.ExpiresAt.IsZero() && !now.Before(pending.ExpiresAt) {
 			events = append(events, s.expirePendingHeadless(surface, pending)...)
 		}
-		if !requestCaptureExpired(now, surface.ActiveRequestCapture) {
-			continue
+		if requestCaptureExpired(now, surface.ActiveRequestCapture) {
+			clearSurfaceRequestCapture(surface)
+			events = append(events, control.UIEvent{
+				Kind:             control.UIEventNotice,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				Notice: &control.Notice{
+					Code: "request_capture_expired",
+					Text: "上一条确认反馈已过期，请重新点击卡片按钮后再发送处理意见。",
+				},
+			})
 		}
-		clearSurfaceRequestCapture(surface)
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			Notice: &control.Notice{
-				Code: "request_capture_expired",
-				Text: "上一条确认反馈已过期，请重新点击卡片按钮后再发送处理意见。",
-			},
-		})
+		events = append(events, s.maybeDispatchPendingAutoContinue(surface, now)...)
 	}
 	return events
 }

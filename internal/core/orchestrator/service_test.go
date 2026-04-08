@@ -46,6 +46,88 @@ func recordLocalFinalText(t *testing.T, svc *Service, instanceID, threadID, turn
 	})
 }
 
+func setupAutoContinueSurface(t *testing.T, svc *Service) *state.SurfaceConsoleRecord {
+	t.Helper()
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	surface := svc.root.Surfaces["surface-1"]
+	if surface == nil {
+		t.Fatal("expected attached surface")
+	}
+	surface.AutoContinue.Enabled = true
+	return surface
+}
+
+func startRemoteTurnForAutoContinueTest(t *testing.T, svc *Service, messageID, text, turnID string) {
+	t.Helper()
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        messageID,
+		Text:             text,
+	})
+	if len(events) == 0 {
+		t.Fatal("expected enqueue events")
+	}
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    turnID,
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+}
+
+func completeRemoteTurnWithFinalText(t *testing.T, svc *Service, turnID, status, errorMessage, finalText string, problem *agentproto.ErrorInfo) []control.UIEvent {
+	t.Helper()
+	if strings.TrimSpace(finalText) != "" {
+		if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+			Kind:     agentproto.EventItemDelta,
+			ThreadID: "thread-1",
+			TurnID:   turnID,
+			ItemID:   "item-" + turnID,
+			ItemKind: "agent_message",
+			Delta:    finalText,
+		}); len(events) != 0 {
+			t.Fatalf("expected no UI events while collecting remote final text, got %#v", events)
+		}
+		if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+			Kind:     agentproto.EventItemCompleted,
+			ThreadID: "thread-1",
+			TurnID:   turnID,
+			ItemID:   "item-" + turnID,
+			ItemKind: "agent_message",
+		}); len(events) != 0 {
+			t.Fatalf("expected no UI events before remote turn completion, got %#v", events)
+		}
+	}
+	return svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:         agentproto.EventTurnCompleted,
+		ThreadID:     "thread-1",
+		TurnID:       turnID,
+		Status:       status,
+		ErrorMessage: errorMessage,
+		Initiator:    agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+		Problem:      problem,
+	})
+}
+
 func TestAttachPinsObservedFocusedThread(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -835,6 +917,147 @@ func TestSurfaceSnapshotIncludesAutoContinueSummary(t *testing.T) {
 		snapshot.AutoContinue.ConsecutiveCount != 2 ||
 		snapshot.AutoContinue.LastTriggeredTurnID != "turn-1" {
 		t.Fatalf("unexpected auto-continue snapshot: %#v", snapshot.AutoContinue)
+	}
+}
+
+func TestAutoContinueSchedulesIncompleteStopAfterRemoteTurn(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
+	completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "还需要继续处理剩余 TODO。下一步我继续收尾。", nil)
+
+	if surface.AutoContinue.PendingReason != state.AutoContinueReasonIncompleteStop {
+		t.Fatalf("expected incomplete-stop schedule, got %#v", surface.AutoContinue)
+	}
+	if !surface.AutoContinue.PendingDueAt.Equal(now.Add(3 * time.Second)) {
+		t.Fatalf("expected first incomplete-stop backoff at +3s, got %#v", surface.AutoContinue.PendingDueAt)
+	}
+	if surface.AutoContinue.IncompleteStopCount != 1 || surface.AutoContinue.ConsecutiveCount != 1 {
+		t.Fatalf("expected first incomplete-stop counters, got %#v", surface.AutoContinue)
+	}
+	if surface.AutoContinue.PendingReplyToMessageID != "msg-1" {
+		t.Fatalf("expected pending reply anchor to stick to original message, got %#v", surface.AutoContinue)
+	}
+}
+
+func TestAutoContinueSchedulesRetryableFailureBackoff(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
+	events := completeRemoteTurnWithFinalText(t, svc, "turn-1", "interrupted", "upstream stream closed", "", &agentproto.ErrorInfo{
+		Code:      "responseStreamDisconnected",
+		Layer:     "codex",
+		Stage:     "runtime_error",
+		Message:   "upstream stream closed",
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Retryable: true,
+	})
+
+	if surface.AutoContinue.PendingReason != state.AutoContinueReasonRetryableFailure {
+		t.Fatalf("expected retryable-failure schedule, got %#v", surface.AutoContinue)
+	}
+	if !surface.AutoContinue.PendingDueAt.Equal(now.Add(10 * time.Second)) {
+		t.Fatalf("expected first retryable-failure backoff at +10s, got %#v", surface.AutoContinue.PendingDueAt)
+	}
+	if surface.AutoContinue.RetryableFailureCount != 1 || surface.AutoContinue.ConsecutiveCount != 1 {
+		t.Fatalf("expected first retryable-failure counters, got %#v", surface.AutoContinue)
+	}
+	var sawTurnFailedNotice bool
+	for _, event := range events {
+		if event.Notice != nil && event.Notice.Code == "turn_failed" {
+			sawTurnFailedNotice = true
+		}
+	}
+	if !sawTurnFailedNotice {
+		t.Fatalf("expected turn failure notice, got %#v", events)
+	}
+}
+
+func TestAutoContinueDispatchSkipsPendingProjectionButKeepsReplyAnchor(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
+	completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "还需要继续处理剩余 TODO。下一步我继续收尾。", nil)
+
+	now = now.Add(3 * time.Second)
+	tickEvents := svc.Tick(now)
+	if surface.ActiveQueueItemID == "" {
+		t.Fatal("expected auto-continue item to dispatch after backoff")
+	}
+	autoItem := surface.QueueItems[surface.ActiveQueueItemID]
+	if autoItem == nil {
+		t.Fatal("expected auto-continue queue item")
+	}
+	if autoItem.SourceKind != state.QueueItemSourceAutoContinue || autoItem.SourceMessageID != "" || autoItem.ReplyToMessageID != "msg-1" {
+		t.Fatalf("unexpected auto-continue queue item: %#v", autoItem)
+	}
+	var prompt *agentproto.Command
+	for _, event := range tickEvents {
+		if event.PendingInput != nil {
+			t.Fatalf("expected auto-continue enqueue/dispatch to skip pending projection, got %#v", tickEvents)
+		}
+		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+			prompt = event.Command
+		}
+	}
+	if prompt == nil || len(prompt.Prompt.Inputs) != 1 || prompt.Prompt.Inputs[0].Text != autoContinuePromptText {
+		t.Fatalf("expected auto-continue prompt send, got %#v", tickEvents)
+	}
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-2",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	for _, event := range started {
+		if event.PendingInput != nil {
+			t.Fatalf("expected auto-continue running state to skip pending projection, got %#v", started)
+		}
+	}
+
+	finished := completeRemoteTurnWithFinalText(t, svc, "turn-2", "completed", "", "已完成并验证。", nil)
+	var sawReplyBlock bool
+	for _, event := range finished {
+		if event.PendingInput != nil {
+			t.Fatalf("expected auto-continue completion to skip pending projection, got %#v", finished)
+		}
+		if event.Block != nil && event.SourceMessageID == "msg-1" {
+			sawReplyBlock = true
+		}
+	}
+	if !sawReplyBlock {
+		t.Fatalf("expected final auto-continue reply to stay anchored under original message, got %#v", finished)
+	}
+	if !surface.AutoContinue.Enabled || surface.AutoContinue.PendingReason != "" || surface.AutoContinue.ConsecutiveCount != 0 {
+		t.Fatalf("expected successful auto-continue completion to reset runtime state, got %#v", surface.AutoContinue)
+	}
+}
+
+func TestStopSuppressesNextAutoContinueSchedule(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 15, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionStop,
+		SurfaceSessionID: "surface-1",
+	})
+	if !surface.AutoContinue.SuppressOnce {
+		t.Fatalf("expected /stop to suppress the next auto-continue scheduling attempt, got %#v", surface.AutoContinue)
+	}
+
+	completeRemoteTurnWithFinalText(t, svc, "turn-1", "interrupted", "", "还需要继续处理剩余 TODO。下一步我继续收尾。", nil)
+	if surface.AutoContinue.PendingReason != "" || !surface.AutoContinue.Enabled || surface.AutoContinue.SuppressOnce {
+		t.Fatalf("expected suppressed turn completion to leave auto-continue enabled but idle, got %#v", surface.AutoContinue)
 	}
 }
 

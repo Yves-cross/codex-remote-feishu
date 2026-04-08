@@ -11,22 +11,57 @@ import (
 )
 
 func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	item := &state.QueueItemRecord{
+		SurfaceSessionID:      surface.SurfaceSessionID,
+		SourceKind:            state.QueueItemSourceUser,
+		SourceMessageID:       sourceMessageID,
+		SourceMessagePreview:  normalizeSourceMessagePreview(sourceMessagePreview),
+		SourceMessageIDs:      uniqueStrings(append([]string{sourceMessageID}, relatedMessageIDs...)),
+		ReplyToMessageID:      sourceMessageID,
+		ReplyToMessagePreview: normalizeSourceMessagePreview(sourceMessagePreview),
+		Inputs:                inputs,
+		FrozenThreadID:        threadID,
+		FrozenCWD:             cwd,
+		FrozenOverride:        s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		RouteModeAtEnqueue:    routeMode,
+		Status:                state.QueueItemQueued,
+	}
+	return s.enqueuePreparedQueueItem(surface, item, front)
+}
+
+func (s *Service) enqueueAutoContinueQueueItem(surface *state.SurfaceConsoleRecord, replyToMessageID, replyToMessagePreview string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	item := &state.QueueItemRecord{
+		SurfaceSessionID:      surface.SurfaceSessionID,
+		SourceKind:            state.QueueItemSourceAutoContinue,
+		ReplyToMessageID:      strings.TrimSpace(replyToMessageID),
+		ReplyToMessagePreview: normalizeSourceMessagePreview(replyToMessagePreview),
+		Inputs:                inputs,
+		FrozenThreadID:        threadID,
+		FrozenCWD:             cwd,
+		FrozenOverride:        s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		RouteModeAtEnqueue:    routeMode,
+		Status:                state.QueueItemQueued,
+	}
+	return s.enqueuePreparedQueueItem(surface, item, front)
+}
+
+func (s *Service) enqueuePreparedQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, front bool) []control.UIEvent {
+	if item == nil || surface == nil {
+		return nil
+	}
 	s.nextQueueItemID++
 	itemID := fmt.Sprintf("queue-%d", s.nextQueueItemID)
-	inst := s.root.Instances[surface.AttachedInstanceID]
-	sourceMessageIDs := uniqueStrings(append([]string{sourceMessageID}, relatedMessageIDs...))
-	item := &state.QueueItemRecord{
-		ID:                   itemID,
-		SurfaceSessionID:     surface.SurfaceSessionID,
-		SourceMessageID:      sourceMessageID,
-		SourceMessagePreview: normalizeSourceMessagePreview(sourceMessagePreview),
-		SourceMessageIDs:     sourceMessageIDs,
-		Inputs:               inputs,
-		FrozenThreadID:       threadID,
-		FrozenCWD:            cwd,
-		FrozenOverride:       s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
-		RouteModeAtEnqueue:   routeMode,
-		Status:               state.QueueItemQueued,
+	item.ID = itemID
+	if item.SourceKind == "" {
+		item.SourceKind = state.QueueItemSourceUser
+	}
+	if item.ReplyToMessageID == "" {
+		item.ReplyToMessageID = item.SourceMessageID
+	}
+	if item.ReplyToMessagePreview == "" {
+		item.ReplyToMessagePreview = item.SourceMessagePreview
 	}
 	surface.QueueItems[item.ID] = item
 	if front {
@@ -38,17 +73,13 @@ func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMe
 	if front {
 		position = 1
 	}
-	events := []control.UIEvent{{
-		Kind:             control.UIEventPendingInput,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		PendingInput: &control.PendingInputState{
-			QueueItemID:     item.ID,
-			SourceMessageID: item.SourceMessageID,
-			Status:          string(item.Status),
-			QueuePosition:   position,
-			QueueOn:         true,
-		},
-	}}
+	var events []control.UIEvent
+	events = append(events, s.pendingInputEvents(surface, control.PendingInputState{
+		QueueItemID:   item.ID,
+		Status:        string(item.Status),
+		QueuePosition: position,
+		QueueOn:       true,
+	}, queueItemSourceMessageIDs(item))...)
 	return append(events, s.dispatchNext(surface)...)
 }
 
@@ -115,14 +146,17 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	item.Status = state.QueueItemDispatching
 	surface.ActiveQueueItemID = item.ID
 	s.pendingRemote[inst.InstanceID] = &remoteTurnBinding{
-		InstanceID:           inst.InstanceID,
-		SurfaceSessionID:     surface.SurfaceSessionID,
-		QueueItemID:          item.ID,
-		SourceMessageID:      item.SourceMessageID,
-		SourceMessagePreview: item.SourceMessagePreview,
-		ThreadID:             item.FrozenThreadID,
-		Status:               string(item.Status),
+		InstanceID:            inst.InstanceID,
+		SurfaceSessionID:      surface.SurfaceSessionID,
+		QueueItemID:           item.ID,
+		SourceMessageID:       item.SourceMessageID,
+		SourceMessagePreview:  item.SourceMessagePreview,
+		ReplyToMessageID:      firstNonEmpty(item.ReplyToMessageID, item.SourceMessageID),
+		ReplyToMessagePreview: firstNonEmpty(item.ReplyToMessagePreview, item.SourceMessagePreview),
+		ThreadID:              item.FrozenThreadID,
+		Status:                string(item.Status),
 	}
+	originMessageID := firstNonEmpty(item.SourceMessageID, item.ReplyToMessageID)
 
 	command := &agentproto.Command{
 		Kind: agentproto.CommandPromptSend,
@@ -130,7 +164,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 			Surface:   surface.SurfaceSessionID,
 			UserID:    surface.ActorUserID,
 			ChatID:    surface.ChatID,
-			MessageID: item.SourceMessageID,
+			MessageID: originMessageID,
 		},
 		Target: agentproto.Target{
 			ThreadID:              item.FrozenThreadID,
@@ -179,15 +213,10 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 		item.FrozenThreadID = threadID
 	}
 	item.Status = state.QueueItemRunning
-	events := []control.UIEvent{{
-		Kind:             control.UIEventPendingInput,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		PendingInput: &control.PendingInputState{
-			QueueItemID:     item.ID,
-			SourceMessageID: item.SourceMessageID,
-			Status:          string(item.Status),
-		},
-	}}
+	events := s.pendingInputEvents(surface, control.PendingInputState{
+		QueueItemID: item.ID,
+		Status:      string(item.Status),
+	}, queueItemSourceMessageIDs(item))
 	if item.FrozenThreadID != "" {
 		inst := s.root.Instances[instanceID]
 		routeMode := item.RouteModeAtEnqueue
@@ -199,7 +228,7 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	return events
 }
 
-func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo) []control.UIEvent {
+func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {
 	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
 	if binding == nil {
 		return nil
@@ -247,6 +276,7 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 	events = append(events, s.dispatchNext(surface)...)
 	s.clearRemoteTurn(instanceID, turnID)
 	events = append(events, s.finishSurfaceAfterWork(surface)...)
+	events = append(events, s.maybeScheduleAutoContinueAfterRemoteTurn(surface, item, turnID, status, problem, finalText, summary)...)
 	return events
 }
 
@@ -277,8 +307,8 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 	replySourceMessagePreview := ""
 	if final && inst != nil {
 		if binding := s.lookupRemoteTurn(inst.InstanceID, threadID, turnID); binding != nil {
-			replySourceMessageID = strings.TrimSpace(binding.SourceMessageID)
-			replySourceMessagePreview = strings.TrimSpace(binding.SourceMessagePreview)
+			replySourceMessageID = strings.TrimSpace(binding.ReplyToMessageID)
+			replySourceMessagePreview = strings.TrimSpace(binding.ReplyToMessagePreview)
 		}
 	}
 	events := []control.UIEvent{}
