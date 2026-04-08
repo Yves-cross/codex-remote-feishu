@@ -5,9 +5,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 )
+
+var executablePath = os.Executable
+var sourceBinaryValidator = validateSourceBinary
 
 func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version string) error {
 	defaults, err := DetectPlatformDefaults()
@@ -15,7 +22,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		return err
 	}
 
-	defaultBinary := filepath.Join(".", "bin", executableName(runtime.GOOS))
+	defaultBinary := defaultBinaryPath(runtime.GOOS)
 	flagSet := flag.NewFlagSet("install", flag.ContinueOnError)
 	flagSet.SetOutput(stdout)
 
@@ -90,6 +97,15 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		}
 	}
 
+	sourceBinary, err := resolveBinaryPath(opts)
+	if err != nil {
+		return err
+	}
+	if err := sourceBinaryValidator(sourceBinary); err != nil {
+		return fmt.Errorf("validate binary source %q: %w", sourceBinary, err)
+	}
+	opts.BinaryPath = sourceBinary
+
 	state, err := service.Bootstrap(opts)
 	if err != nil {
 		return err
@@ -129,6 +145,42 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		_, err = fmt.Fprintf(stdout, "logs: %s\n", status.LogPath)
 	}
 	return err
+}
+
+func defaultBinaryPath(goos string) string {
+	name := executableName(goos)
+	path, err := executablePath()
+	if err == nil {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path != "" && strings.EqualFold(filepath.Base(path), name) {
+			return path
+		}
+	}
+	return filepath.Join(".", "bin", name)
+}
+
+func validateSourceBinary(path string) error {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" {
+		return fmt.Errorf("binary path is empty")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "version")
+	output, err := cmd.CombinedOutput()
+	trimmed := strings.TrimSpace(string(output))
+	if err != nil {
+		if trimmed == "" {
+			return err
+		}
+		return fmt.Errorf("%w: %s", err, trimmed)
+	}
+	if trimmed == "" {
+		return fmt.Errorf("empty version output")
+	}
+	return nil
 }
 
 func executableName(goos string) string {
