@@ -271,6 +271,12 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 	if surface == nil {
 		return nil
 	}
+	replySourceMessageID := ""
+	if final && inst != nil {
+		if binding := s.lookupRemoteTurn(inst.InstanceID, threadID, turnID); binding != nil {
+			replySourceMessageID = strings.TrimSpace(binding.SourceMessageID)
+		}
+	}
 	events := []control.UIEvent{}
 	if surface.ActiveTurnOrigin != agentproto.InitiatorLocalUI {
 		routeMode := surface.RouteMode
@@ -319,6 +325,7 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 		event := control.UIEvent{
 			Kind:             control.UIEventBlockCommitted,
 			SurfaceSessionID: surface.SurfaceSessionID,
+			SourceMessageID:  replySourceMessageID,
 			Block:            &block,
 		}
 		if final && summary != nil && i == lastBlockIndex {

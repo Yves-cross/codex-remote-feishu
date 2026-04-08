@@ -391,7 +391,8 @@ func TestProjectSnapshotShowsGateAndRetainedOfflineAttachment(t *testing.T) {
 func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventBlockCommitted,
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-1",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
 			Text:        "已收到：\n\n```text\nREADME.md\nsrc\n```",
@@ -404,8 +405,11 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最终回复 · droid · 修复登录流程" {
+	if ops[0].CardTitle != "最后回复" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
+	}
+	if ops[0].ReplyToMessageID != "msg-1" {
+		t.Fatalf("unexpected reply target: %#v", ops[0])
 	}
 	if ops[0].CardThemeKey != cardThemeFinal {
 		t.Fatalf("unexpected theme key: %#v", ops[0])
@@ -418,7 +422,8 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventBlockCommitted,
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-2",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
 			Text:        "已完成修改。",
@@ -443,8 +448,11 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最终回复 · droid · 修复登录流程" {
+	if ops[0].CardTitle != "最后回复" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
+	}
+	if ops[0].ReplyToMessageID != "msg-2" {
+		t.Fatalf("unexpected reply target: %#v", ops[0])
 	}
 	if ops[0].CardThemeKey != cardThemeFinal {
 		t.Fatalf("unexpected theme key: %#v", ops[0])

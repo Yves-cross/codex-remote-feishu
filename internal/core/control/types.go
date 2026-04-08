@@ -276,6 +276,7 @@ type UIEvent struct {
 	Kind              UIEventKind
 	GatewayID         string
 	SurfaceSessionID  string
+	SourceMessageID   string
 	Snapshot          *Snapshot
 	SelectionPrompt   *SelectionPrompt
 	RequestPrompt     *RequestPrompt

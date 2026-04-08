@@ -27,6 +27,7 @@ type Operation struct {
 	ReceiveIDType    string
 	ChatID           string
 	MessageID        string
+	ReplyToMessageID string
 	EmojiType        string
 	Text             string
 	CardTitle        string
@@ -195,7 +196,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Block == nil {
 			return nil
 		}
-		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, *event.Block, event.FileChangeSummary)
+		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, *event.Block, event.FileChangeSummary)
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil
@@ -221,7 +222,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 	}
 }
 
-func projectBlock(gatewayID, surfaceSessionID, chatID string, block render.Block, summary *control.FileChangeSummary) []Operation {
+func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID string, block render.Block, summary *control.FileChangeSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
 			Kind:             OperationSendText,
@@ -230,14 +231,6 @@ func projectBlock(gatewayID, surfaceSessionID, chatID string, block render.Block
 			ChatID:           chatID,
 			Text:             block.Text,
 		}}
-	}
-	titlePrefix := "过程信息"
-	if block.Final {
-		titlePrefix = "最终回复"
-	}
-	title := titlePrefix
-	if block.ThreadTitle != "" {
-		title += " · " + block.ThreadTitle
 	}
 	body := block.Text
 	if block.Kind == render.BlockAssistantCode {
@@ -249,7 +242,8 @@ func projectBlock(gatewayID, surfaceSessionID, chatID string, block render.Block
 		GatewayID:        gatewayID,
 		SurfaceSessionID: surfaceSessionID,
 		ChatID:           chatID,
-		CardTitle:        title,
+		ReplyToMessageID: sourceMessageID,
+		CardTitle:        "最后回复",
 		CardBody:         body,
 		CardThemeKey:     cardThemeFinal,
 		CardElements:     elements,
