@@ -14,18 +14,18 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
-func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req MarkdownPreviewRequest) (render.Block, error) {
-	block := req.Block
-	if p == nil || p.api == nil {
-		return block, nil
+func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req FinalBlockPreviewRequest) (FinalBlockPreviewResult, error) {
+	result := FinalBlockPreviewResult{Block: req.Block}
+	if p == nil {
+		return result, nil
 	}
-	if !block.Final || block.Kind != render.BlockAssistantMarkdown || strings.TrimSpace(block.Text) == "" {
-		return block, nil
+	if !result.Block.Final || result.Block.Kind != render.BlockAssistantMarkdown || strings.TrimSpace(result.Block.Text) == "" {
+		return result, nil
 	}
 
 	principals := previewPrincipals(req.SurfaceSessionID, req.ChatID, req.ActorUserID)
 	if len(principals) == 0 {
-		return block, nil
+		return result, nil
 	}
 
 	p.mu.Lock()
@@ -33,28 +33,30 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Mark
 
 	state := p.loadStateLocked()
 	runtime := &previewRewriteRuntime{}
-	rewritten, changed, dirty, rewriteErr := p.rewriteMarkdownLinksLocked(ctx, state, req, principals, runtime)
+	rewritten, supplements, changed, dirty, rewriteErr := p.rewriteMarkdownLinksLocked(ctx, state, req, principals, runtime)
 	if changed {
-		block.Text = rewritten
+		result.Block.Text = rewritten
 	}
+	result.Supplements = append(result.Supplements, supplements...)
 	if changed || dirty {
 		if err := p.saveStateLocked(); err != nil && rewriteErr == nil {
 			rewriteErr = err
 		}
 	}
-	return block, rewriteErr
+	return result, rewriteErr
 }
 
-func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context, state *previewState, req MarkdownPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, bool, bool, error) {
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context, state *previewState, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, []PreviewSupplement, bool, bool, error) {
 	text := req.Block.Text
 	matches := markdownLinkPattern.FindAllStringSubmatchIndex(text, -1)
 	if len(matches) == 0 {
-		return text, false, false, nil
+		return text, nil, false, false, nil
 	}
 
 	scopeKey := previewScopeKey(req.GatewayID, req.SurfaceSessionID, req.ChatID, req.ActorUserID)
 	rewrittenTargets := map[string]string{}
 	var errs []string
+	var supplements []PreviewSupplement
 
 	var builder strings.Builder
 	last := 0
@@ -75,14 +77,26 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context,
 				changed = true
 			}
 		} else {
-			url, ok, err := p.materializeMarkdownTargetLocked(ctx, state, rawTarget, req, scopeKey, principals, runtime)
+			ref := PreviewReference{
+				RawTarget:   rawTarget,
+				TargetStart: targetStart,
+				TargetEnd:   targetEnd,
+			}
+			published, ok, err := p.materializePreviewTargetLocked(ctx, state, ref, req, scopeKey, principals, runtime)
 			switch {
 			case err != nil:
 				errs = append(errs, err.Error())
-			case ok && url != "":
-				replacement = url
-				rewrittenTargets[rawTarget] = url
-				changed = true
+			case ok && published != nil:
+				if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
+					replacement = published.URL
+					rewrittenTargets[rawTarget] = published.URL
+					changed = true
+				} else {
+					rewrittenTargets[rawTarget] = rawTarget
+				}
+				if len(published.Supplements) > 0 {
+					supplements = append(supplements, published.Supplements...)
+				}
 			default:
 				rewrittenTargets[rawTarget] = rawTarget
 			}
@@ -96,80 +110,209 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context,
 	if len(errs) > 0 {
 		rewriteErr = errors.New(strings.Join(errs, "; "))
 	}
-	return builder.String(), changed, runtime != nil && runtime.dirty, rewriteErr
+	return builder.String(), supplements, changed, runtime != nil && runtime.dirty, rewriteErr
 }
 
-func (p *DriveMarkdownPreviewer) materializeMarkdownTargetLocked(ctx context.Context, state *previewState, rawTarget string, req MarkdownPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, bool, error) {
-	resolvedPath, ok, err := p.resolveMarkdownPath(rawTarget, req)
+func (p *DriveMarkdownPreviewer) materializePreviewTargetLocked(ctx context.Context, state *previewState, ref PreviewReference, req FinalBlockPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
+	var errs []string
+	for _, handler := range p.handlers {
+		if handler == nil || !handler.Match(req, ref) {
+			continue
+		}
+		plan, ok, err := handler.Plan(ctx, req, ref)
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		if !ok || plan == nil {
+			continue
+		}
+		result, published, publishErr := p.publishPreviewPlanLocked(ctx, state, req, *plan, scopeKey, principals, runtime)
+		if publishErr != nil {
+			errs = append(errs, publishErr.Error())
+			continue
+		}
+		if published {
+			return result, true, nil
+		}
+	}
+	if len(errs) > 0 {
+		return nil, true, errors.New(strings.Join(errs, "; "))
+	}
+	return nil, false, nil
+}
+
+func (p *DriveMarkdownPreviewer) publishPreviewPlanLocked(ctx context.Context, state *previewState, req FinalBlockPreviewRequest, plan PreviewPlan, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
+	var errs []string
+	for _, delivery := range plan.Deliveries {
+		for _, publisher := range p.publishers {
+			if publisher == nil || !publisher.Supports(delivery, plan.Artifact) {
+				continue
+			}
+			result, ok, err := publisher.Publish(ctx, PreviewPublishRequest{
+				Request:    req,
+				Plan:       plan,
+				Delivery:   delivery,
+				State:      state,
+				ScopeKey:   scopeKey,
+				Principals: principals,
+				Runtime:    runtime,
+			})
+			if err != nil {
+				errs = append(errs, err.Error())
+				continue
+			}
+			if ok && result != nil {
+				return result, true, nil
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return nil, false, errors.New(strings.Join(errs, "; "))
+	}
+	return nil, false, nil
+}
+
+type markdownFilePreviewHandler struct {
+	previewer *DriveMarkdownPreviewer
+}
+
+func (h markdownFilePreviewHandler) ID() string { return "markdown_file" }
+
+func (h markdownFilePreviewHandler) Match(_ FinalBlockPreviewRequest, ref PreviewReference) bool {
+	target := strings.TrimSpace(ref.RawTarget)
+	if target == "" {
+		return false
+	}
+	if strings.HasPrefix(target, "<") && strings.HasSuffix(target, ">") {
+		target = strings.TrimPrefix(strings.TrimSuffix(target, ">"), "<")
+	}
+	if idx := strings.IndexAny(target, " \t\n"); idx >= 0 {
+		target = target[:idx]
+	}
+	if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "#") {
+		return false
+	}
+	cleanTarget, _ := stripMarkdownLocationSuffix(target)
+	return strings.EqualFold(filepath.Ext(cleanTarget), ".md")
+}
+
+func (h markdownFilePreviewHandler) Plan(_ context.Context, req FinalBlockPreviewRequest, ref PreviewReference) (*PreviewPlan, bool, error) {
+	if h.previewer == nil {
+		return nil, false, nil
+	}
+	resolvedPath, ok, err := h.previewer.resolveMarkdownPath(ref.RawTarget, req)
 	if err != nil || !ok {
-		return "", ok, err
+		return nil, ok, err
 	}
 
 	content, err := os.ReadFile(resolvedPath)
 	if err != nil {
-		return "", true, fmt.Errorf("read markdown preview source %s: %w", resolvedPath, err)
+		return nil, true, fmt.Errorf("read markdown preview source %s: %w", resolvedPath, err)
 	}
 	if len(content) == 0 {
-		return "", true, fmt.Errorf("skip empty markdown preview source %s", resolvedPath)
+		return nil, true, fmt.Errorf("skip empty markdown preview source %s", resolvedPath)
 	}
-	if int64(len(content)) > p.config.MaxFileBytes {
-		return "", true, fmt.Errorf("markdown preview source exceeds %d bytes: %s", p.config.MaxFileBytes, resolvedPath)
+	if int64(len(content)) > h.previewer.config.MaxFileBytes {
+		return nil, true, fmt.Errorf("markdown preview source exceeds %d bytes: %s", h.previewer.config.MaxFileBytes, resolvedPath)
 	}
 
 	sum := sha256.Sum256(content)
 	contentSHA := hex.EncodeToString(sum[:])
-	fileKey := previewFileKey(scopeKey, resolvedPath, contentSHA)
+	return &PreviewPlan{
+		HandlerID: h.ID(),
+		Artifact: PreparedPreviewArtifact{
+			SourcePath:   resolvedPath,
+			DisplayName:  filepath.Base(resolvedPath),
+			ContentHash:  contentSHA,
+			ArtifactKind: "markdown",
+			MIMEType:     "text/markdown",
+			Text:         string(content),
+			Bytes:        append([]byte(nil), content...),
+		},
+		Deliveries: []PreviewDeliveryPlan{{
+			Kind: PreviewDeliveryDriveFileLink,
+		}},
+	}, true, nil
+}
 
-	scopeFolder, err := p.ensureScopeFolderLocked(ctx, state, scopeKey, principals)
-	if err != nil {
-		return "", true, err
+type driveMarkdownLinkPublisher struct {
+	previewer *DriveMarkdownPreviewer
+}
+
+func (p driveMarkdownLinkPublisher) ID() string { return "drive_markdown_link" }
+
+func (p driveMarkdownLinkPublisher) Supports(delivery PreviewDeliveryPlan, artifact PreparedPreviewArtifact) bool {
+	return p.previewer != nil &&
+		p.previewer.api != nil &&
+		delivery.Kind == PreviewDeliveryDriveFileLink &&
+		strings.EqualFold(strings.TrimSpace(artifact.ArtifactKind), "markdown")
+}
+
+func (p driveMarkdownLinkPublisher) Publish(ctx context.Context, req PreviewPublishRequest) (*PreviewPublishResult, bool, error) {
+	if p.previewer == nil {
+		return nil, false, nil
+	}
+	return p.previewer.publishDriveMarkdownLinkLocked(ctx, req)
+}
+
+func (p *DriveMarkdownPreviewer) publishDriveMarkdownLinkLocked(ctx context.Context, req PreviewPublishRequest) (*PreviewPublishResult, bool, error) {
+	artifact := req.Plan.Artifact
+	if strings.TrimSpace(artifact.SourcePath) == "" || len(artifact.Bytes) == 0 {
+		return nil, false, nil
 	}
 
-	record := state.Files[fileKey]
+	scopeFolder, err := p.ensureScopeFolderLocked(ctx, req.State, req.ScopeKey, req.Principals)
+	if err != nil {
+		return nil, true, err
+	}
+
+	fileKey := previewFileKey(req.ScopeKey, artifact.SourcePath, artifact.ContentHash)
+	record := req.State.Files[fileKey]
 	if record == nil {
 		record = &previewFileRecord{
-			Path:      resolvedPath,
-			SHA256:    contentSHA,
-			ScopeKey:  scopeKey,
-			SizeBytes: int64(len(content)),
+			Path:      artifact.SourcePath,
+			SHA256:    artifact.ContentHash,
+			ScopeKey:  req.ScopeKey,
+			SizeBytes: int64(len(artifact.Bytes)),
 		}
-		state.Files[fileKey] = record
+		req.State.Files[fileKey] = record
 	}
 	if record.ScopeKey == "" {
-		record.ScopeKey = scopeKey
+		record.ScopeKey = req.ScopeKey
 	}
 	if record.SizeBytes <= 0 {
-		record.SizeBytes = int64(len(content))
+		record.SizeBytes = int64(len(artifact.Bytes))
 	}
 	now := time.Now().UTC()
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = now
 	}
 	record.LastUsedAt = now
-	scope := state.Scopes[scopeKey]
+	scope := req.State.Scopes[req.ScopeKey]
 	if scope != nil {
 		scope.LastUsedAt = now
 	}
 
 	if record.Token == "" {
-		if err := p.maybeLazyCleanupBeforeUploadLocked(ctx, state, runtime); err != nil {
-			return "", true, err
+		if err := p.maybeLazyCleanupBeforeUploadLocked(ctx, req.State, req.Runtime); err != nil {
+			return nil, true, err
 		}
-		if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, resolvedPath, content, contentSHA); err != nil {
+		if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
 			if isPreviewParentMissingError(err) {
-				clearPreviewScope(state, scopeKey)
-				scopeFolder, err = p.ensureScopeFolderLocked(ctx, state, scopeKey, principals)
+				clearPreviewScope(req.State, req.ScopeKey)
+				scopeFolder, err = p.ensureScopeFolderLocked(ctx, req.State, req.ScopeKey, req.Principals)
 				if err != nil {
-					return "", true, err
+					return nil, true, err
 				}
 				record.Token = ""
 				record.URL = ""
 				record.Shared = nil
-				if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, resolvedPath, content, contentSHA); err != nil {
-					return "", true, err
+				if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
+					return nil, true, err
 				}
 			} else {
-				return "", true, err
+				return nil, true, err
 			}
 		}
 	}
@@ -177,31 +320,39 @@ func (p *DriveMarkdownPreviewer) materializeMarkdownTargetLocked(ctx context.Con
 	if record.URL == "" {
 		url, err := p.api.QueryMetaURL(ctx, record.Token, previewFileType)
 		if err != nil {
-			return "", true, fmt.Errorf("query markdown preview url for %s: %w", resolvedPath, err)
+			return nil, true, fmt.Errorf("query markdown preview url for %s: %w", artifact.SourcePath, err)
 		}
 		record.URL = url
 	}
 
-	if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, principals); err != nil {
+	if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, req.Principals); err != nil {
 		if isPreviewResourceMissingError(err) {
 			record.Token = ""
 			record.URL = ""
 			record.Shared = nil
-			if err := p.maybeLazyCleanupBeforeUploadLocked(ctx, state, runtime); err != nil {
-				return "", true, err
+			if err := p.maybeLazyCleanupBeforeUploadLocked(ctx, req.State, req.Runtime); err != nil {
+				return nil, true, err
 			}
-			if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, resolvedPath, content, contentSHA); err != nil {
-				return "", true, err
+			if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
+				return nil, true, err
 			}
-			if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, principals); err != nil {
-				return "", true, err
+			if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, req.Principals); err != nil {
+				return nil, true, err
 			}
 		} else {
-			return "", true, err
+			return nil, true, err
 		}
 	}
 
-	return record.URL, true, nil
+	return &PreviewPublishResult{
+		PublisherID: p.driveMarkdownPublisherID(),
+		Mode:        PreviewPublishModeInlineLink,
+		URL:         record.URL,
+	}, true, nil
+}
+
+func (p *DriveMarkdownPreviewer) driveMarkdownPublisherID() string {
+	return driveMarkdownLinkPublisher{previewer: p}.ID()
 }
 
 func (p *DriveMarkdownPreviewer) uploadPreviewFileLocked(ctx context.Context, record *previewFileRecord, parentToken, resolvedPath string, content []byte, contentSHA string) error {

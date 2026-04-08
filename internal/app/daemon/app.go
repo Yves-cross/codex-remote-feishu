@@ -62,13 +62,13 @@ type headlessRestoreRecoveryState struct {
 }
 
 type App struct {
-	service           *orchestrator.Service
-	projector         *feishu.Projector
-	gateway           feishu.Gateway
-	markdownPreviewer feishu.MarkdownPreviewService
-	relay             *relayws.Server
-	debugRelayFlow    bool
-	rawLogger         *debuglog.RawLogger
+	service             *orchestrator.Service
+	projector           *feishu.Projector
+	gateway             feishu.Gateway
+	finalBlockPreviewer feishu.FinalBlockPreviewService
+	relay               *relayws.Server
+	debugRelayFlow      bool
+	rawLogger           *debuglog.RawLogger
 
 	relayServer *http.Server
 	apiServer   *http.Server
@@ -196,8 +196,8 @@ func (a *App) SetHeadlessRuntime(cfg HeadlessRuntimeConfig) {
 	a.configureHeadlessRestoreHintsLocked(cfg.Paths.StateDir)
 }
 
-func (a *App) SetMarkdownPreviewer(previewer feishu.MarkdownPreviewService) {
-	a.markdownPreviewer = previewer
+func (a *App) SetFinalBlockPreviewer(previewer feishu.FinalBlockPreviewService) {
+	a.finalBlockPreviewer = previewer
 }
 
 func (a *App) SetDebugRelayFlow(enabled bool) {

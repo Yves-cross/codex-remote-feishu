@@ -10,13 +10,11 @@ import (
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
-
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 type GatewayController interface {
 	Gateway
-	MarkdownPreviewService
+	FinalBlockPreviewService
 	UpsertApp(context.Context, GatewayAppConfig) error
 	RemoveApp(context.Context, string) error
 	Verify(context.Context, GatewayAppConfig) (VerifyResult, error)
@@ -56,7 +54,7 @@ type gatewayWorker struct {
 	config     GatewayAppConfig
 	status     GatewayStatus
 	runtime    gatewayRuntime
-	previewer  MarkdownPreviewService
+	previewer  FinalBlockPreviewService
 	cancel     context.CancelFunc
 	generation uint64
 }
@@ -69,7 +67,7 @@ type MultiGatewayController struct {
 	actionHandler ActionHandler
 
 	newGateway   func(GatewayAppConfig) gatewayRuntime
-	newPreviewer func(gatewayRuntime, GatewayAppConfig) MarkdownPreviewService
+	newPreviewer func(gatewayRuntime, GatewayAppConfig) FinalBlockPreviewService
 }
 
 func NewMultiGatewayController() *MultiGatewayController {
@@ -86,7 +84,7 @@ func NewMultiGatewayController() *MultiGatewayController {
 			UseSystemProxy: cfg.UseSystemProxy,
 		})
 	}
-	controller.newPreviewer = func(runtime gatewayRuntime, cfg GatewayAppConfig) MarkdownPreviewService {
+	controller.newPreviewer = func(runtime gatewayRuntime, cfg GatewayAppConfig) FinalBlockPreviewService {
 		if runtime == nil || runtime.Client() == nil || strings.TrimSpace(cfg.PreviewStatePath) == "" {
 			return nil
 		}
@@ -169,14 +167,14 @@ func (c *MultiGatewayController) Apply(ctx context.Context, operations []Operati
 	return nil
 }
 
-func (c *MultiGatewayController) RewriteFinalBlock(ctx context.Context, req MarkdownPreviewRequest) (renderedBlock render.Block, err error) {
-	renderedBlock = req.Block
+func (c *MultiGatewayController) RewriteFinalBlock(ctx context.Context, req FinalBlockPreviewRequest) (result FinalBlockPreviewResult, err error) {
+	result = FinalBlockPreviewResult{Block: req.Block}
 	gatewayID := normalizeGatewayID(firstNonEmpty(req.GatewayID, gatewayIDFromSurface(req.SurfaceSessionID)))
 	c.mu.RLock()
 	worker := c.workers[gatewayID]
 	c.mu.RUnlock()
 	if worker == nil || worker.previewer == nil {
-		return renderedBlock, nil
+		return result, nil
 	}
 	return worker.previewer.RewriteFinalBlock(ctx, req)
 }

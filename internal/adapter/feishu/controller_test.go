@@ -87,8 +87,14 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 		runtimes[cfg.GatewayID] = runtime
 		return runtime
 	}
-	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) MarkdownPreviewService {
-		previewer := &fakePreviewer{gatewayID: cfg.GatewayID}
+	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) FinalBlockPreviewService {
+		previewer := &fakePreviewer{
+			gatewayID: cfg.GatewayID,
+			supplements: []PreviewSupplement{{
+				Kind: "test",
+				Data: map[string]any{"gateway_id": cfg.GatewayID},
+			}},
+		}
 		previewers[cfg.GatewayID] = previewer
 		return previewer
 	}
@@ -112,7 +118,7 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
 	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
 
-	block, err := controller.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+	result, err := controller.RewriteFinalBlock(context.Background(), FinalBlockPreviewRequest{
 		GatewayID: "app-2",
 		Block: render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -123,8 +129,11 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RewriteFinalBlock: %v", err)
 	}
-	if block.Text != "app-2:hello" {
-		t.Fatalf("unexpected rewritten block: %#v", block)
+	if result.Block.Text != "app-2:hello" {
+		t.Fatalf("unexpected rewritten block: %#v", result.Block)
+	}
+	if len(result.Supplements) != 1 || result.Supplements[0].Data["gateway_id"] != "app-2" {
+		t.Fatalf("unexpected preview supplements: %#v", result.Supplements)
 	}
 	if previewers["app-1"].calls != 0 || previewers["app-2"].calls != 1 {
 		t.Fatalf("unexpected previewer calls: app-1=%d app-2=%d", previewers["app-1"].calls, previewers["app-2"].calls)
@@ -250,15 +259,19 @@ func (f *fakeGatewayRuntime) emitState(state GatewayState, err error) {
 }
 
 type fakePreviewer struct {
-	gatewayID string
-	calls     int
+	gatewayID   string
+	calls       int
+	supplements []PreviewSupplement
 }
 
-func (f *fakePreviewer) RewriteFinalBlock(_ context.Context, req MarkdownPreviewRequest) (render.Block, error) {
+func (f *fakePreviewer) RewriteFinalBlock(_ context.Context, req FinalBlockPreviewRequest) (FinalBlockPreviewResult, error) {
 	f.calls++
 	block := req.Block
 	block.Text = f.gatewayID + ":" + block.Text
-	return block, nil
+	return FinalBlockPreviewResult{
+		Block:       block,
+		Supplements: append([]PreviewSupplement(nil), f.supplements...),
+	}, nil
 }
 
 func waitFakeGatewayStarted(t *testing.T, runtime *fakeGatewayRuntime) {

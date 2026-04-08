@@ -167,12 +167,12 @@ func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
 		StatePath:  statePath,
 		ProcessCWD: root,
 	})
-	block1, err := previewer1.RewriteFinalBlock(context.Background(), req)
+	result1, err := previewer1.RewriteFinalBlock(context.Background(), req)
 	if err != nil {
 		t.Fatalf("first rewrite returned error: %v", err)
 	}
-	if want := "See [design](https://preview/file-1)."; block1.Text != want {
-		t.Fatalf("unexpected rewritten text: %q", block1.Text)
+	if want := "See [design](https://preview/file-1)."; result1.Block.Text != want {
+		t.Fatalf("unexpected rewritten text: %q", result1.Block.Text)
 	}
 	if len(api1.createFolderCalls) != 3 {
 		t.Fatalf("expected root + marker + scope folder creation, got %#v", api1.createFolderCalls)
@@ -204,12 +204,12 @@ func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
 		StatePath:  statePath,
 		ProcessCWD: root,
 	})
-	block2, err := previewer2.RewriteFinalBlock(context.Background(), req)
+	result2, err := previewer2.RewriteFinalBlock(context.Background(), req)
 	if err != nil {
 		t.Fatalf("cached rewrite returned error: %v", err)
 	}
-	if block2.Text != block1.Text {
-		t.Fatalf("expected same rewritten text from persisted cache, got %q vs %q", block2.Text, block1.Text)
+	if result2.Block.Text != result1.Block.Text {
+		t.Fatalf("expected same rewritten text from persisted cache, got %q vs %q", result2.Block.Text, result1.Block.Text)
 	}
 	if len(api2.createFolderCalls) != 0 || len(api2.uploadFileCalls) != 0 || len(api2.queryMetaURLCalls) != 0 || len(api2.grantPermissionCalls) != 0 {
 		t.Fatalf("expected persisted cache to avoid remote calls, got create=%#v upload=%#v meta=%#v grant=%#v",
@@ -246,21 +246,21 @@ func TestDriveMarkdownPreviewerUploadsNewVersionWhenMarkdownChanges(t *testing.T
 		},
 	}
 
-	first, err := previewer.RewriteFinalBlock(context.Background(), req)
+	firstResult, err := previewer.RewriteFinalBlock(context.Background(), req)
 	if err != nil {
 		t.Fatalf("first rewrite returned error: %v", err)
 	}
-	if first.Text != "Read [design](https://preview/file-1)." {
-		t.Fatalf("unexpected first rewrite: %q", first.Text)
+	if firstResult.Block.Text != "Read [design](https://preview/file-1)." {
+		t.Fatalf("unexpected first rewrite: %q", firstResult.Block.Text)
 	}
 
 	writeMarkdownFile(t, docPath, "# v2\n")
-	second, err := previewer.RewriteFinalBlock(context.Background(), req)
+	secondResult, err := previewer.RewriteFinalBlock(context.Background(), req)
 	if err != nil {
 		t.Fatalf("second rewrite returned error: %v", err)
 	}
-	if second.Text != "Read [design](https://preview/file-2)." {
-		t.Fatalf("expected a new uploaded preview url after content change, got %q", second.Text)
+	if secondResult.Block.Text != "Read [design](https://preview/file-2)." {
+		t.Fatalf("expected a new uploaded preview url after content change, got %q", secondResult.Block.Text)
 	}
 	if len(api.uploadFileCalls) != 2 {
 		t.Fatalf("expected two uploads for two content hashes, got %#v", api.uploadFileCalls)
@@ -278,7 +278,7 @@ func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 		ProcessCWD: root,
 	})
 
-	block, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
 		SurfaceSessionID: "feishu:chat:oc_chat",
 		ChatID:           "oc_chat",
 		ActorUserID:      "ou_user",
@@ -293,8 +293,8 @@ func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rewrite returned error: %v", err)
 	}
-	if block.Text != "Open [plan](https://preview/file-1)." {
-		t.Fatalf("unexpected rewritten text: %q", block.Text)
+	if result.Block.Text != "Open [plan](https://preview/file-1)." {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
 	}
 
 	wantKeys := map[string]bool{
@@ -518,7 +518,7 @@ func TestDriveMarkdownPreviewerRecreatesMissingScopeFolder(t *testing.T) {
 		StatePath:  statePath,
 		ProcessCWD: root,
 	})
-	block, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
 		SurfaceSessionID: "feishu:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
@@ -532,8 +532,8 @@ func TestDriveMarkdownPreviewerRecreatesMissingScopeFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rewrite returned error: %v", err)
 	}
-	if block.Text != "Open [plan](https://preview/file-1)." {
-		t.Fatalf("unexpected rewritten text: %q", block.Text)
+	if result.Block.Text != "Open [plan](https://preview/file-1)." {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
 	}
 	if len(api.createFolderCalls) != 1 {
 		t.Fatalf("expected only scope folder recreation, got %#v", api.createFolderCalls)
@@ -659,12 +659,12 @@ func TestDriveMarkdownPreviewerLazyCleanupRunsAtMostOncePerInterval(t *testing.T
 			Text:  "Open [one](docs/one.md).",
 		},
 	}
-	block, err := previewer.RewriteFinalBlock(context.Background(), req1)
+	result, err := previewer.RewriteFinalBlock(context.Background(), req1)
 	if err != nil {
 		t.Fatalf("first rewrite returned error: %v", err)
 	}
-	if block.Text != "Open [one](https://preview/file-1)." {
-		t.Fatalf("unexpected first rewrite: %q", block.Text)
+	if result.Block.Text != "Open [one](https://preview/file-1)." {
+		t.Fatalf("unexpected first rewrite: %q", result.Block.Text)
 	}
 	if len(api.deleteFileCalls) != 1 || api.deleteFileCalls[0].Token != "file-old" {
 		t.Fatalf("expected first upload to cleanup one old managed file, got %#v", api.deleteFileCalls)
@@ -684,12 +684,12 @@ func TestDriveMarkdownPreviewerLazyCleanupRunsAtMostOncePerInterval(t *testing.T
 			Text:  "Open [two](docs/two.md).",
 		},
 	}
-	block, err = previewer.RewriteFinalBlock(context.Background(), req2)
+	result, err = previewer.RewriteFinalBlock(context.Background(), req2)
 	if err != nil {
 		t.Fatalf("second rewrite returned error: %v", err)
 	}
-	if block.Text != "Open [two](https://preview/file-2)." {
-		t.Fatalf("unexpected second rewrite: %q", block.Text)
+	if result.Block.Text != "Open [two](https://preview/file-2)." {
+		t.Fatalf("unexpected second rewrite: %q", result.Block.Text)
 	}
 	if len(api.deleteFileCalls) != 1 {
 		t.Fatalf("expected lazy cleanup throttle to suppress a second cleanup run, got %#v", api.deleteFileCalls)
@@ -708,7 +708,7 @@ func TestDriveMarkdownPreviewerSkipsMarkdownOutsideAllowedRoots(t *testing.T) {
 	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
 		ProcessCWD: root,
 	})
-	block, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
 		SurfaceSessionID: "feishu:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
@@ -722,12 +722,85 @@ func TestDriveMarkdownPreviewerSkipsMarkdownOutsideAllowedRoots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rewrite returned error: %v", err)
 	}
-	if block.Text != "Ignore [secret]("+secretPath+")." {
-		t.Fatalf("expected path outside roots to stay untouched, got %q", block.Text)
+	if result.Block.Text != "Ignore [secret]("+secretPath+")." {
+		t.Fatalf("expected path outside roots to stay untouched, got %q", result.Block.Text)
 	}
 	if len(api.createFolderCalls) != 0 || len(api.uploadFileCalls) != 0 || len(api.grantPermissionCalls) != 0 || len(api.queryMetaURLCalls) != 0 {
 		t.Fatalf("expected no remote calls for outside path, got create=%#v upload=%#v meta=%#v grant=%#v",
 			api.createFolderCalls, api.uploadFileCalls, api.queryMetaURLCalls, api.grantPermissionCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerLeavesUnhandledFileLinksUntouched(t *testing.T) {
+	root := t.TempDir()
+	writeMarkdownFile(t, filepath.Join(root, "docs", "note.txt"), "plain text\n")
+
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		ProcessCWD: root,
+	})
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "Keep [note](docs/note.txt).",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	if result.Block.Text != "Keep [note](docs/note.txt)." {
+		t.Fatalf("expected unhandled file link to stay untouched, got %q", result.Block.Text)
+	}
+	if len(api.createFolderCalls) != 0 || len(api.uploadFileCalls) != 0 || len(api.grantPermissionCalls) != 0 || len(api.queryMetaURLCalls) != 0 {
+		t.Fatalf("expected no remote calls for unhandled link, got create=%#v upload=%#v meta=%#v grant=%#v",
+			api.createFolderCalls, api.uploadFileCalls, api.queryMetaURLCalls, api.grantPermissionCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerSupportsRegisteredHandlerPublisherChain(t *testing.T) {
+	previewer := NewDriveMarkdownPreviewer(nil, MarkdownPreviewConfig{})
+	previewer.handlers = nil
+	previewer.publishers = nil
+	previewer.RegisterHandler(testPreviewHandler{
+		matchTarget: "docs/demo.custom",
+		plan: &PreviewPlan{
+			HandlerID: "custom_handler",
+			Artifact: PreparedPreviewArtifact{
+				ArtifactKind: "custom",
+			},
+			Deliveries: []PreviewDeliveryPlan{{
+				Kind: PreviewDeliveryDriveFileLink,
+			}},
+		},
+	})
+	previewer.RegisterPublisher(testPreviewPublisher{
+		supportedKind: "custom",
+		result: &PreviewPublishResult{
+			PublisherID: "custom_publisher",
+			Mode:        PreviewPublishModeInlineLink,
+			URL:         "https://preview/custom-link",
+		},
+	})
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "Open [demo](docs/demo.custom).",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RewriteFinalBlock returned error: %v", err)
+	}
+	if result.Block.Text != "Open [demo](https://preview/custom-link)." {
+		t.Fatalf("expected registered handler/publisher to rewrite link, got %q", result.Block.Text)
 	}
 }
 
@@ -740,6 +813,42 @@ func TestPreviewPathCandidatesTreatWindowsDrivePathAsAbsolute(t *testing.T) {
 	if len(candidates) != 1 || candidates[0] != target {
 		t.Fatalf("expected absolute windows path to bypass root join, got %#v", candidates)
 	}
+}
+
+type testPreviewHandler struct {
+	matchTarget string
+	plan        *PreviewPlan
+}
+
+func (h testPreviewHandler) ID() string { return "test_handler" }
+
+func (h testPreviewHandler) Match(_ FinalBlockPreviewRequest, ref PreviewReference) bool {
+	return ref.RawTarget == h.matchTarget
+}
+
+func (h testPreviewHandler) Plan(_ context.Context, _ FinalBlockPreviewRequest, _ PreviewReference) (*PreviewPlan, bool, error) {
+	if h.plan == nil {
+		return nil, false, nil
+	}
+	return h.plan, true, nil
+}
+
+type testPreviewPublisher struct {
+	supportedKind string
+	result        *PreviewPublishResult
+}
+
+func (p testPreviewPublisher) ID() string { return "test_publisher" }
+
+func (p testPreviewPublisher) Supports(_ PreviewDeliveryPlan, artifact PreparedPreviewArtifact) bool {
+	return artifact.ArtifactKind == p.supportedKind
+}
+
+func (p testPreviewPublisher) Publish(_ context.Context, _ PreviewPublishRequest) (*PreviewPublishResult, bool, error) {
+	if p.result == nil {
+		return nil, false, nil
+	}
+	return p.result, true, nil
 }
 
 func TestPreviewPathCandidatesTreatSlashPrefixedWindowsDrivePathAsAbsolute(t *testing.T) {

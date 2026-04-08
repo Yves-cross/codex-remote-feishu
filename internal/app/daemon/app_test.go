@@ -13,7 +13,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
@@ -59,18 +58,22 @@ func (g *flakyGateway) Apply(_ context.Context, operations []feishu.Operation) e
 }
 
 type stubMarkdownPreviewer struct {
-	requests []feishu.MarkdownPreviewRequest
-	text     string
-	err      error
+	requests    []feishu.FinalBlockPreviewRequest
+	text        string
+	supplements []feishu.PreviewSupplement
+	err         error
 }
 
-func (s *stubMarkdownPreviewer) RewriteFinalBlock(_ context.Context, req feishu.MarkdownPreviewRequest) (render.Block, error) {
+func (s *stubMarkdownPreviewer) RewriteFinalBlock(_ context.Context, req feishu.FinalBlockPreviewRequest) (feishu.FinalBlockPreviewResult, error) {
 	s.requests = append(s.requests, req)
 	block := req.Block
 	if s.text != "" {
 		block.Text = s.text
 	}
-	return block, s.err
+	return feishu.FinalBlockPreviewResult{
+		Block:       block,
+		Supplements: append([]feishu.PreviewSupplement(nil), s.supplements...),
+	}, s.err
 }
 
 type lifecycleGateway struct {
@@ -442,7 +445,7 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 	gateway := &recordingGateway{}
 	previewer := &stubMarkdownPreviewer{text: "查看 [设计文档](https://preview/file-1)"}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
-	app.SetMarkdownPreviewer(previewer)
+	app.SetFinalBlockPreviewer(previewer)
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -515,6 +518,100 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 	}
 	if finalBody != "查看 [设计文档](https://preview/file-1)" {
 		t.Fatalf("expected rewritten final reply body, got %#v", gateway.operations)
+	}
+}
+
+func TestDaemonProjectsPreviewSupplementsAfterFinalReply(t *testing.T) {
+	gateway := &recordingGateway{}
+	previewer := &stubMarkdownPreviewer{
+		text: "查看 [设计文档](https://preview/file-1)",
+		supplements: []feishu.PreviewSupplement{{
+			Kind: "card",
+			Data: map[string]any{
+				"title": "补充预览",
+				"body":  "这里预留后续的下载按钮或内嵌内容。",
+			},
+		}},
+	}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetFinalBlockPreviewer(previewer)
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-1",
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+		},
+	})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:    agentproto.EventThreadsSnapshot,
+		Threads: []agentproto.ThreadSnapshotRecord{{ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true}},
+	}})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:        agentproto.EventThreadFocused,
+		ThreadID:    "thread-1",
+		CWD:         "/data/dl/droid",
+		FocusSource: "local_ui",
+	}})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "ou_user",
+		InstanceID:       "inst-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "ou_user",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+	}})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		Metadata: map[string]any{"text": "查看 [设计文档](/data/dl/droid/docs/design.md)"},
+	}})
+	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+	}})
+
+	var (
+		finalBody      string
+		supplementBody string
+	)
+	for _, operation := range gateway.operations {
+		if operation.Kind != feishu.OperationSendCard {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(operation.CardTitle, "最后答复"):
+			finalBody = operation.CardBody
+		case operation.CardTitle == "补充预览":
+			supplementBody = operation.CardBody
+		}
+	}
+	if finalBody != "查看 [设计文档](https://preview/file-1)" {
+		t.Fatalf("expected rewritten final reply body, got %#v", gateway.operations)
+	}
+	if supplementBody != "这里预留后续的下载按钮或内嵌内容。" {
+		t.Fatalf("expected preview supplement card to be projected, got %#v", gateway.operations)
 	}
 }
 

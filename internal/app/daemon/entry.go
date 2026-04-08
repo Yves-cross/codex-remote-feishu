@@ -48,7 +48,7 @@ func RunMain(ctx context.Context, version string) error {
 		}
 	}
 	var gateway feishu.Gateway = controller
-	var markdownPreviewer feishu.MarkdownPreviewService = controller
+	var finalBlockPreviewer feishu.FinalBlockPreviewService = controller
 	lock, err := relayruntime.AcquireLock(ctx, paths.DaemonLockFile, false)
 	if err != nil {
 		return fmt.Errorf("acquire daemon runtime lock: %w", err)
@@ -88,7 +88,7 @@ func RunMain(ctx context.Context, version string) error {
 		Paths:      paths,
 		MinIdle:    1,
 	})
-	app.SetMarkdownPreviewer(markdownPreviewer)
+	app.SetFinalBlockPreviewer(finalBlockPreviewer)
 	app.SetDebugRelayFlow(cfg.DebugRelayFlow)
 	app.ConfigureAdmin(AdminRuntimeOptions{
 		ConfigPath:           loadedConfig.Path,

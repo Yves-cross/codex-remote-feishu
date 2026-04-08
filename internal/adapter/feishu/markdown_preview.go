@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 const (
@@ -27,24 +25,10 @@ const (
 var markdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 var markdownLineSuffixPattern = regexp.MustCompile(`^(.*\.md)(:\d+(?::\d+)?)$`)
 
-type MarkdownPreviewService interface {
-	RewriteFinalBlock(context.Context, MarkdownPreviewRequest) (render.Block, error)
-}
-
 type PreviewDriveAdminService interface {
 	Summary() (PreviewDriveSummary, error)
 	CleanupBefore(context.Context, time.Time) (PreviewDriveCleanupResult, error)
 	Reconcile(context.Context) (PreviewDriveReconcileResult, error)
-}
-
-type MarkdownPreviewRequest struct {
-	GatewayID        string
-	SurfaceSessionID string
-	ChatID           string
-	ActorUserID      string
-	WorkspaceRoot    string
-	ThreadCWD        string
-	Block            render.Block
 }
 
 type MarkdownPreviewConfig struct {
@@ -59,10 +43,12 @@ type DriveMarkdownPreviewer struct {
 	api    previewDriveAPI
 	config MarkdownPreviewConfig
 
-	mu     sync.Mutex
-	loaded bool
-	state  *previewState
-	nowFn  func() time.Time
+	handlers   []FinalBlockPreviewHandler
+	publishers []FinalBlockPreviewPublisher
+	mu         sync.Mutex
+	loaded     bool
+	state      *previewState
+	nowFn      func() time.Time
 }
 
 type previewDriveAPI interface {
@@ -180,9 +166,26 @@ func NewDriveMarkdownPreviewer(api previewDriveAPI, cfg MarkdownPreviewConfig) *
 			cfg.ProcessCWD = cwd
 		}
 	}
-	return &DriveMarkdownPreviewer{
+	previewer := &DriveMarkdownPreviewer{
 		api:    api,
 		config: cfg,
 		nowFn:  time.Now,
 	}
+	previewer.RegisterHandler(markdownFilePreviewHandler{previewer: previewer})
+	previewer.RegisterPublisher(driveMarkdownLinkPublisher{previewer: previewer})
+	return previewer
+}
+
+func (p *DriveMarkdownPreviewer) RegisterHandler(handler FinalBlockPreviewHandler) {
+	if p == nil || handler == nil {
+		return
+	}
+	p.handlers = append(p.handlers, handler)
+}
+
+func (p *DriveMarkdownPreviewer) RegisterPublisher(publisher FinalBlockPreviewPublisher) {
+	if p == nil || publisher == nil {
+		return
+	}
+	p.publishers = append(p.publishers, publisher)
 }

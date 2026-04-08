@@ -13,7 +13,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/feishuapp"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
@@ -29,8 +28,8 @@ type fakeAdminGatewayController struct {
 
 func (f *fakeAdminGatewayController) Start(context.Context, feishu.ActionHandler) error { return nil }
 func (f *fakeAdminGatewayController) Apply(context.Context, []feishu.Operation) error   { return nil }
-func (f *fakeAdminGatewayController) RewriteFinalBlock(_ context.Context, req feishu.MarkdownPreviewRequest) (render.Block, error) {
-	return req.Block, nil
+func (f *fakeAdminGatewayController) RewriteFinalBlock(_ context.Context, req feishu.FinalBlockPreviewRequest) (feishu.FinalBlockPreviewResult, error) {
+	return feishu.FinalBlockPreviewResult{Block: req.Block}, nil
 }
 func (f *fakeAdminGatewayController) UpsertApp(_ context.Context, cfg feishu.GatewayAppConfig) error {
 	f.upserted = append(f.upserted, cfg)

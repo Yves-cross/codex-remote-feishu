@@ -122,8 +122,9 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEve
 		return nil
 	}
 	log.Printf("ui event: surface=%s chat=%s actor=%s kind=%s", event.SurfaceSessionID, chatID, actorUserID, event.Kind)
-	if a.markdownPreviewer != nil && event.Kind == control.UIEventBlockCommitted && event.Block != nil {
-		rewrittenBlock, err := a.markdownPreviewer.RewriteFinalBlock(ctx, feishu.MarkdownPreviewRequest{
+	var previewSupplementOps []feishu.Operation
+	if a.finalBlockPreviewer != nil && event.Kind == control.UIEventBlockCommitted && event.Block != nil {
+		previewResult, err := a.finalBlockPreviewer.RewriteFinalBlock(ctx, feishu.FinalBlockPreviewRequest{
 			GatewayID:        gatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
@@ -132,20 +133,22 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEve
 			ThreadCWD:        a.previewThreadCWD(event.SurfaceSessionID, *event.Block),
 			Block:            *event.Block,
 		})
-		event.Block = &rewrittenBlock
+		event.Block = &previewResult.Block
+		previewSupplementOps = a.projector.ProjectPreviewSupplements(gatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, previewResult.Supplements)
 		if err != nil {
 			log.Printf(
-				"markdown preview rewrite failed: surface=%s instance=%s thread=%s item=%s err=%v",
+				"final block preview rewrite failed: surface=%s instance=%s thread=%s item=%s err=%v",
 				event.SurfaceSessionID,
-				rewrittenBlock.InstanceID,
-				rewrittenBlock.ThreadID,
-				rewrittenBlock.ItemID,
+				previewResult.Block.InstanceID,
+				previewResult.Block.ThreadID,
+				previewResult.Block.ItemID,
 				err,
 			)
 		}
 	}
 	event.DaemonLifecycleID = a.daemonLifecycleID
 	operations := a.projector.Project(chatID, event)
+	operations = append(operations, previewSupplementOps...)
 	for i := range operations {
 		if operations[i].GatewayID == "" {
 			operations[i].GatewayID = gatewayID
