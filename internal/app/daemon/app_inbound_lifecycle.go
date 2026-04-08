@@ -154,9 +154,7 @@ func explicitActionCommand(action control.Action) string {
 	case control.ActionTextMessage, control.ActionImageMessage, control.ActionReactionCreated, control.ActionMessageRecalled:
 		return ""
 	case control.ActionRemovedCommand:
-		if strings.EqualFold(text, "new_instance") {
-			return "/newinstance"
-		}
+		return control.LegacyActionCommand(text)
 	}
 	return text
 }
@@ -174,7 +172,7 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 	case control.ActionKillInstance:
 		return "结束 headless", "/killinstance"
 	case control.ActionRemovedCommand:
-		return "已移除命令", "/newinstance"
+		return "已移除命令", control.LegacyActionCommand(action.Text)
 	case control.ActionShowCommandHelp:
 		return "查看帮助", "/help"
 	case control.ActionShowCommandMenu:

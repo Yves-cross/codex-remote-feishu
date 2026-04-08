@@ -156,14 +156,17 @@ func (s *Service) ensureThread(inst *state.InstanceRecord, threadID string) *sta
 }
 
 func (s *Service) handleRemovedCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
-	command := strings.TrimSpace(action.Text)
-	switch command {
-	case "/newinstance", "new_instance":
+	command := control.LegacyActionCommand(action.Text)
+	switch control.LegacyActionKey(action.Text) {
+	case "newinstance":
 		return notice(surface, "command_removed_newinstance", "`/newinstance` 已移除。请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
 	case "resume_headless_thread":
-		return notice(surface, "selection_expired", "这个旧恢复卡片已失效，请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
+		return notice(surface, "selection_expired", "这个旧恢复卡片（来自已移除的 `/newinstance` 流程）已失效，请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
 	default:
-		return notice(surface, "command_removed", "这个旧命令已移除。")
+		if command == "" {
+			return notice(surface, "command_removed", "这个旧命令已移除。请发送 `/help` 查看当前可用命令。")
+		}
+		return notice(surface, "command_removed", fmt.Sprintf("旧命令 `%s` 已移除。请发送 `/help` 查看当前可用命令。", command))
 	}
 }
 
