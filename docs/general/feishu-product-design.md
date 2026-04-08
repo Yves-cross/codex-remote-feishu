@@ -1,8 +1,8 @@
 # Feishu 产品设计
 
 > Type: `general`
-> Updated: `2026-04-08`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括文本命令、菜单事件、卡片交互、queued 点赞 steering 和状态提示。
+> Updated: `2026-04-09`
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括文本命令、auto-continue、菜单事件、卡片交互、queued 点赞 steering 和状态提示。
 
 ## 1. 文档定位
 
@@ -37,6 +37,7 @@
 
 - `/list`
 - `/status`
+- `/autocontinue`
 - `/new`
 - `/stop`
 - `/threads` / `/use` / `/sessions`
@@ -239,6 +240,13 @@ attach 成功后：
 - wrapper 对 `turn.steer` 返回 `accepted=true` 后，该 item 记为 `steered`
 - 若 dispatch 失败或 wrapper reject，则恢复到原 queue 位置
 
+另外，auto-continue 实际补发时也复用同一条 queue，但它和普通用户输入不是同一种来源：
+
+- 普通用户输入 queue item 记录 `SourceKind=user`
+- auto-continue queue item 记录 `SourceKind=auto_continue`
+- auto-continue item 仍会保留“最终回复挂回哪条原用户消息”的 reply anchor
+- 但不会把 queue / typing / reaction 再投影回原用户消息，避免把系统自动续推伪装成新的用户输入状态
+
 ### 5.2 Typing reaction
 
 当前规则：
@@ -248,6 +256,12 @@ attach 成功后：
 - 只有当前活动 queue item 有 Typing
 - steering 成功后，会移除 `OneSecond`，并给该 item 的主文本和已绑定图片统一补 `ThumbsUp`
 - 被显式丢弃的 queued/staged 输入仍补 `ThumbsDown`
+
+例外：
+
+- auto-continue queue item 不会给原用户消息加/减 `THINKING`
+- auto-continue queue item 失败或完成时，也不会额外给原用户消息补 `ThumbsUp` / `ThumbsDown`
+- 但 auto-continue 产出的最终回复卡片，仍会 reply 到最初那条用户消息下面
 
 ### 5.3 本地优先
 
@@ -269,8 +283,38 @@ attach 成功后：
 2. 丢弃飞书侧尚未发送的 queue item
 3. 丢弃未绑定到文本的 staged image
 4. 对被丢弃项加 `THUMBSDOWN`
+5. 若当前 surface 已开启 auto-continue，且 `/stop` 命中了 live remote work，则本轮 turn 收尾时会 suppress 一次 auto-continue，避免“用户刚停下，系统又自己续跑”
 
-### 5.5 待确认请求优先级
+### 5.5 `autocontinue`
+
+`/autocontinue` 当前是 surface 维度、daemon 内存态的开关：
+
+- `/autocontinue`：查看当前状态
+- `/autocontinue on`：开启
+- `/autocontinue off`：关闭
+- 不持久化；daemon 重启后恢复默认关闭
+
+当前固定补发文案：
+
+- `任务都完成了吗？如果没有就继续干，都完成了就可以停下来`
+
+当前有两条触发通道：
+
+1. `turn.completed` 后，当前 surface queue 已空，且 final assistant 文本命中“疑似未完成就停下”的 deterministic heuristics。
+2. `turn.completed` 携带 `problem.Retryable=true`，认为是 retryable upstream / API failure。
+
+当前 backoff：
+
+- `incomplete_stop`: `3s -> 10s -> 30s`，最多 3 次
+- `retryable_failure`: `10s -> 30s -> 90s -> 300s`，最多 4 次
+
+当前调度方式：
+
+- `turn.completed` 只负责在 surface 上记录 pending auto-continue runtime
+- 真正 enqueue 发生在后续 `Tick()`
+- enqueue 前会再次检查 surface 是否仍可发送：attached、非 abandoning、无 request gate、`DispatchMode=normal`、无 live remote work
+
+### 5.6 待确认请求优先级
 
 当前 surface 上只要存在 pending approval request：
 
@@ -279,7 +323,7 @@ attach 成功后：
 - `/use`、`/useall`、`/follow`、`/new` 这类会改路由的动作也会被冻结
 - 用户需要先处理 request card；request response 按钮仍可用
 
-### 5.6 `captureFeedback`
+### 5.7 `captureFeedback`
 
 当用户在 approval card 上点击“告诉 Codex 怎么改”后：
 
@@ -292,7 +336,7 @@ attach 成功后：
 
 - 返回提示，要求先发文字或重新处理卡片
 
-### 5.7 飞书侧执行权限覆盖
+### 5.8 飞书侧执行权限覆盖
 
 飞书侧 prompt override 包含 `accessMode`。
 
@@ -377,7 +421,8 @@ attach 成功后：
 final `block.committed`：
 
 - 发卡片
-- 标题为 `最终回复 · <thread title>`
+- 标题固定前缀为 `最后答复`
+- 若能拿到 reply anchor 对应的原用户消息预览，则标题会变成 `最后答复：<原消息预览>`
 - 若正文里存在可识别的本地 `.md` Markdown 链接，发送前会先尝试重写成飞书云空间预览链接
 - 预览物化失败时不会阻塞主回复，正文保持原样
 

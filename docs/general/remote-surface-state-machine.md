@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-08`
-> Summary: 同步 transport degraded 恢复语义：保留 in-flight remote turn 与 retained-offline attachment，reconnect 后不抢跑 queued work，离线时 `/detach` 立即可用，`/stop` 改为恢复中提示。
+> Updated: `2026-04-09`
+> Summary: 同步 auto-continue surface runtime：补充 `/autocontinue` 的门禁与状态投影、remote turn 完成后的 backoff 调度，以及 auto-continue queue item 的 reply-anchor / pending-projection 拆分。
 
 ## 1. 文档定位
 
@@ -21,12 +21,13 @@
 4. [internal/core/orchestrator/service_test.go](../../internal/core/orchestrator/service_test.go)
 5. [internal/core/state/types.go](../../internal/core/state/types.go)
 6. [internal/core/control/types.go](../../internal/core/control/types.go)
-7. [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
-8. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
-9. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
-10. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
-11. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
-12. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
+7. [internal/core/orchestrator/service_autocontinue.go](../../internal/core/orchestrator/service_autocontinue.go)
+8. [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
+9. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
+10. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
+11. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
+12. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
+13. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
 
 ## 2. 审计前提
 
@@ -50,7 +51,7 @@ surface 本身仍按 `gatewayID + chat/user` 区分，不同飞书 app 会形成
 1. 不同飞书 app 之间会竞争同一套 instance/thread 资源。
 2. instance attach 互斥、thread attach 互斥都是**跨 app 的全局规则**。
 
-## 3. 当前状态机的四层结构
+## 3. 当前状态机的四层结构与运行时 overlay
 
 surface 不是单一枚举，而是四层正交状态叠加。
 
@@ -103,7 +104,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 | `G1 PendingHeadlessStarting` | `PendingHeadless.Status=starting` | headless 仍在启动 |
 | `G2 PendingRequest` | `PendingRequests` 非空 | 普通文本/图片会被确认卡片门禁挡住 |
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
-| `G4 AbandoningGate` | `Abandoning=true` | 只有 `/status` 继续正常，其余动作被挡 |
+| `G4 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autocontinue` 继续正常，其余动作被挡 |
 
 ### 3.4 草稿状态
 
@@ -119,6 +120,29 @@ surface 不是单一枚举，而是四层正交状态叠加。
 1. `D2` 已冻结路由。
 2. `D1` 还没有冻结路由，所以 route change 时必须显式处理。
 3. `D3` 不是独立 route state，而是 `R5` 上的附加约束。
+
+### 3.5 auto-continue overlay
+
+`AutoContinueRuntimeRecord` 当前不是新的 route state，而是 surface 上附加的一层运行时 overlay：
+
+| 代号 | 条件 | 含义 |
+| --- | --- | --- |
+| `A0 Disabled` | `AutoContinue.Enabled=false` | 当前 surface 不做自动续跑 |
+| `A1 EnabledIdle` | `AutoContinue.Enabled=true`，`PendingReason==""` | 已开启，但当前没有待触发的 auto-continue |
+| `A2 Scheduled` | `AutoContinue.Enabled=true`，`PendingReason!= ""`，`PendingDueAt` 非空 | 已记录一次待触发 auto-continue，等待 backoff 到期并再次过门禁 |
+
+补充说明：
+
+1. `A2 Scheduled` 不会直接占用 `ActiveQueueItemID`。
+2. 真正 enqueue auto-continue item 发生在 `Tick()`，而不是 `turn.completed` 同步路径里。
+3. `A2 Scheduled` 只有在下列条件同时满足时才会真正发出：
+   1. surface 仍 attached
+   2. `DispatchMode=normal`
+   3. 没有 `PendingHeadless` / `PendingRequest` / `RequestCapture` / `Abandoning`
+   4. 当前没有 live remote work
+4. auto-continue queue item 的 reply anchor 与 pending projection 当前已显式拆开：
+   1. 最终回复仍挂回原用户消息
+   2. queue / typing / reaction 不再回写到原用户消息
 
 ## 4. 当前已实现的不变量
 
@@ -158,7 +182,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 只要 `PendingHeadless != nil`：
 
-1. 允许：`/status`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 的兼容提示、消息撤回、reaction。
+1. 允许：`/status`、`/autocontinue`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 的兼容提示、消息撤回、reaction。
 2. 其余 surface action 全部在 `ApplySurfaceAction()` 顶层被拦截。
 
 这意味着：
@@ -293,13 +317,45 @@ surface 不是单一枚举，而是四层正交状态叠加。
    3. `PausedForLocal`
    4. `HandoffWait`
    5. queued count
-3. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
+3. auto-continue runtime：
+   1. enabled / disabled
+   2. pending reason
+   3. pending due time
+   4. consecutive count
+4. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
 
 它仍然不是完整调试面板，但已经能回答最关键的问题：
 
 1. 下一条文本是不是会先被 request gate 吃掉。
 2. 现在是执行中、排队中，还是被本地 VS Code 暂停。
-3. attachment 还在不在，以及当前是不是在等实例恢复。
+3. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
+4. attachment 还在不在，以及当前是不是在等实例恢复。
+
+### 4.12 `/autocontinue` 是 surface 级、内存态、跨 route 可查询的 overlay 开关
+
+当前 `/autocontinue` 不要求 surface 已 attach：
+
+1. detached surface 也可以直接 `/autocontinue` 查询、开启、关闭。
+2. `PendingHeadless` 期间 `/autocontinue` 仍然允许，不会被顶层 gate 挡住。
+3. `Abandoning` 期间 `/autocontinue` 也仍然允许，用户可以查看或关闭当前 surface 的 auto-continue。
+4. daemon 重启后不恢复该开关；当前已接受这是内存态语义。
+
+### 4.13 auto-continue 调度只允许走显式 reply-anchor，不再伪造用户消息 pending/typing
+
+当前 auto-continue queue item 增加了显式来源类型：
+
+1. `SourceKind=user`
+2. `SourceKind=auto_continue`
+
+当前行为已经固定为：
+
+1. 普通用户输入 item：
+   1. `SourceMessageID` / `SourceMessageIDs` 用于 pending、typing、revoke、reaction 投影。
+   2. 最终回复默认 reply 到同一条原用户消息。
+2. auto-continue item：
+   1. `SourceMessageID` 为空，不再触发 pending / typing / thumbs projection。
+   2. `ReplyToMessageID` 单独保留原用户消息锚点。
+   3. 最终回复继续 reply 到原用户消息。
 
 ## 5. 主要状态迁移
 
@@ -411,6 +467,19 @@ E3 Running
 3. 对空 thread 首条消息，promote 会优先按 `Initiator.SurfaceSessionID` 命中。
 4. 若 queue item 来自 `R5`，turn.started 后 surface 必须切回 `pinned`，不会继续停在 `new_thread_ready`。
 5. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
+6. remote turn 在 `turn.completed` 时，若当前 item 满足 auto-continue 触发条件：
+   1. surface 不会立刻同步 enqueue 新 item
+   2. 只会把 surface 置入 `A2 Scheduled`
+   3. 后续等 `Tick()` 到期后再真正 enqueue
+7. auto-continue 当前有两条独立触发通道：
+   1. `problem.Retryable=true` 的 retryable failure
+   2. final assistant 文本命中 incomplete-stop heuristics
+8. `/stop` 命中 live remote work 时，会给当前 surface 打一次 `SuppressOnce`：
+   1. 本轮 turn 收尾时不会触发 auto-continue
+   2. suppress 只消费一次，之后 auto-continue 恢复正常评估
+9. 当前 backoff 固定为：
+   1. `incomplete_stop`: `3s -> 10s -> 30s`，最多 3 次
+   2. `retryable_failure`: `10s -> 30s -> 90s -> 300s`，最多 4 次
 
 ### 5.3 本地 VS Code 仲裁
 
@@ -551,6 +620,7 @@ transport degraded retained attachment
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/use` `/useall` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
 | `/follow` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
 | 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
 | 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 理论上通常不会出现；若出现仍按 attached surface 处理 |
@@ -563,10 +633,10 @@ transport degraded retained attachment
 
 | 覆盖状态 | 当前行为 |
 | --- | --- |
-| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
+| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autocontinue`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；用户必须先处理请求卡片 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住 |
-| `E6 Abandoning` | 只允许 `/status`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
+| `E6 Abandoning` | 只允许 `/status`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
 
 retained-offline overlay 额外规则：
 
