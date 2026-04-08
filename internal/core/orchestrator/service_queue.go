@@ -590,3 +590,20 @@ func (s *Service) remoteBindingForSurface(surface *state.SurfaceConsoleRecord) *
 	}
 	return nil
 }
+
+func (s *Service) surfaceHasPendingSteer(surface *state.SurfaceConsoleRecord) bool {
+	if surface == nil {
+		return false
+	}
+	for _, binding := range s.pendingSteers {
+		if binding == nil || binding.SurfaceSessionID != surface.SurfaceSessionID {
+			continue
+		}
+		item := surface.QueueItems[binding.QueueItemID]
+		if item == nil || item.Status != state.QueueItemSteering {
+			continue
+		}
+		return true
+	}
+	return false
+}

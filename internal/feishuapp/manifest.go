@@ -58,7 +58,7 @@ func DefaultManifest() Manifest {
 		Events: []EventRequirement{
 			{Event: "im.message.receive_v1", Purpose: "接收飞书中的文本和图片消息。"},
 			{Event: "im.message.recalled_v1", Purpose: "用户撤回尚未执行的输入时，取消排队消息或 staged image。"},
-			{Event: "im.message.reaction.created_v1", Purpose: "用户对待发送图片或排队消息加 reaction 时，表示取消。"},
+			{Event: "im.message.reaction.created_v1", Purpose: "用户给排队中的文本消息点赞时，把该 queue item 升级为对当前 running turn 的 steering。"},
 			{Event: "application.bot.menu_v6", Purpose: "处理机器人菜单里的实例、状态、推理强度和执行权限快捷键。"},
 		},
 		Callbacks: []CallbackRequirement{

@@ -224,10 +224,17 @@ func userIDFromMessage(sender *larkim.EventSender) string {
 	if sender == nil || sender.SenderId == nil {
 		return ""
 	}
+	return userIDFromLarkUserID(sender.SenderId)
+}
+
+func userIDFromLarkUserID(userID *larkim.UserId) string {
+	if userID == nil {
+		return ""
+	}
 	return chooseFirst(
-		stringPtr(sender.SenderId.UserId),
-		stringPtr(sender.SenderId.OpenId),
-		stringPtr(sender.SenderId.UnionId),
+		stringPtr(userID.UserId),
+		stringPtr(userID.OpenId),
+		stringPtr(userID.UnionId),
 	)
 }
 

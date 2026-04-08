@@ -346,17 +346,26 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 		return
 	}
 	surface := s.root.Surfaces[surfaceID]
-	if surface == nil || surface.AttachedInstanceID == "" {
+	if surface == nil {
 		return
 	}
-	binding := s.pendingRemote[surface.AttachedInstanceID]
-	if binding == nil || binding.SurfaceSessionID != surfaceID {
+	if surface.AttachedInstanceID != "" {
+		binding := s.pendingRemote[surface.AttachedInstanceID]
+		if binding != nil && binding.SurfaceSessionID == surfaceID {
+			if surface.ActiveQueueItemID != "" && binding.QueueItemID != surface.ActiveQueueItemID {
+				return
+			}
+			binding.CommandID = commandID
+			return
+		}
+	}
+	for _, binding := range s.pendingSteers {
+		if binding == nil || binding.SurfaceSessionID != surfaceID || binding.CommandID != "" {
+			continue
+		}
+		binding.CommandID = commandID
 		return
 	}
-	if surface.ActiveQueueItemID != "" && binding.QueueItemID != surface.ActiveQueueItemID {
-		return
-	}
-	binding.CommandID = commandID
 }
 
 func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, notice *control.Notice, tryDispatchNext bool) []control.UIEvent {
@@ -396,15 +405,8 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 	return events
 }
 
-func (s *Service) HandleCommandDispatchFailure(surfaceID string, err error) []control.UIEvent {
+func (s *Service) HandleCommandDispatchFailure(surfaceID, commandID string, err error) []control.UIEvent {
 	surface := s.root.Surfaces[surfaceID]
-	if surface == nil || surface.ActiveQueueItemID == "" {
-		return nil
-	}
-	item := surface.QueueItems[surface.ActiveQueueItemID]
-	if item == nil || item.Status != state.QueueItemDispatching {
-		return nil
-	}
 	problem := agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 		Code:             "dispatch_failed",
 		Layer:            "daemon",
@@ -414,12 +416,59 @@ func (s *Service) HandleCommandDispatchFailure(surfaceID string, err error) []co
 	})
 	notice := NoticeForProblem(problem)
 	notice.Code = "dispatch_failed"
+	if key, binding := s.pendingSteerForCommand("", commandID); binding != nil {
+		_ = binding
+		notice.Code = "steer_failed"
+		notice.Text = appendSteerRestoreHint(notice.Text)
+		return s.restorePendingSteer(key, &notice)
+	}
+	if surface == nil || surface.ActiveQueueItemID == "" {
+		return nil
+	}
+	item := surface.QueueItems[surface.ActiveQueueItemID]
+	if item == nil || item.Status != state.QueueItemDispatching {
+		return nil
+	}
 	return s.failSurfaceActiveQueueItem(surface, item, &notice, true)
+}
+
+func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
+	if ack.CommandID == "" {
+		return nil
+	}
+	key, binding := s.pendingSteerForCommand(instanceID, ack.CommandID)
+	if binding == nil {
+		return nil
+	}
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil {
+		delete(s.pendingSteers, key)
+		return nil
+	}
+	item := surface.QueueItems[binding.QueueItemID]
+	if item == nil || item.Status != state.QueueItemSteering {
+		delete(s.pendingSteers, key)
+		return nil
+	}
+	item.Status = state.QueueItemSteered
+	delete(s.pendingSteers, key)
+	return s.pendingInputEvents(surface, control.PendingInputState{
+		QueueItemID: item.ID,
+		Status:      string(item.Status),
+		QueueOff:    true,
+		ThumbsUp:    true,
+	}, queueItemSourceMessageIDs(item))
 }
 
 func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
 	if ack.CommandID == "" {
 		return nil
+	}
+	if key, binding := s.pendingSteerForCommand(instanceID, ack.CommandID); binding != nil {
+		notice := NoticeForProblem(commandAckProblem(binding.SurfaceSessionID, ack))
+		notice.Code = "steer_failed"
+		notice.Text = appendSteerRestoreHint(notice.Text)
+		return s.restorePendingSteer(key, &notice)
 	}
 	binding := s.pendingRemote[instanceID]
 	if binding == nil || binding.CommandID != ack.CommandID {
@@ -438,6 +487,82 @@ func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.Comman
 	notice := NoticeForProblem(commandAckProblem(surface.SurfaceSessionID, ack))
 	notice.Code = "command_rejected"
 	return s.failSurfaceActiveQueueItem(surface, item, &notice, true)
+}
+
+func (s *Service) pendingSteerForCommand(instanceID, commandID string) (string, *pendingSteerBinding) {
+	if strings.TrimSpace(commandID) == "" {
+		return "", nil
+	}
+	for key, binding := range s.pendingSteers {
+		if binding == nil || binding.CommandID != commandID {
+			continue
+		}
+		if strings.TrimSpace(instanceID) != "" && binding.InstanceID != instanceID {
+			continue
+		}
+		return key, binding
+	}
+	return "", nil
+}
+
+func (s *Service) restorePendingSteer(key string, notice *control.Notice) []control.UIEvent {
+	binding := s.pendingSteers[key]
+	if binding == nil {
+		return nil
+	}
+	delete(s.pendingSteers, key)
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil {
+		return nil
+	}
+	item := surface.QueueItems[binding.QueueItemID]
+	if item == nil {
+		return nil
+	}
+	if item.Status == state.QueueItemSteered {
+		return nil
+	}
+	item.Status = state.QueueItemQueued
+	surface.QueuedQueueItemIDs = removeString(surface.QueuedQueueItemIDs, item.ID)
+	surface.QueuedQueueItemIDs = insertString(surface.QueuedQueueItemIDs, binding.QueueIndex, item.ID)
+	var events []control.UIEvent
+	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice:           notice,
+		})
+	}
+	events = append(events, s.dispatchNext(surface)...)
+	events = append(events, s.finishSurfaceAfterWork(surface)...)
+	return events
+}
+
+func (s *Service) restorePendingSteersForInstance(instanceID string) []control.UIEvent {
+	var events []control.UIEvent
+	keys := make([]string, 0, len(s.pendingSteers))
+	for key, binding := range s.pendingSteers {
+		if binding == nil || binding.InstanceID != instanceID {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		events = append(events, s.restorePendingSteer(key, nil)...)
+	}
+	return events
+}
+
+func appendSteerRestoreHint(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "追加输入失败，已恢复原排队位置。"
+	}
+	if strings.Contains(text, "恢复") {
+		return text
+	}
+	return text + " 已恢复原排队位置。"
 }
 
 func (s *Service) HandleHeadlessLaunchStarted(surfaceID, instanceID string, pid int) []control.UIEvent {
@@ -576,6 +701,7 @@ func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
 	inst.Online = true
 
 	var events []control.UIEvent
+	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	for _, surface := range s.root.Surfaces {
 		pending := surface.PendingHeadless
 		if pending == nil || pending.InstanceID != instanceID {
@@ -674,6 +800,7 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 	}
 
 	var events []control.UIEvent
+	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	noticeText := fmt.Sprintf("当前接管实例链路过载，已中断当前执行：%s。已保留接管关系，等待实例恢复。", inst.DisplayName)
 	for _, surface := range surfaces {
 		surface.PromptOverride = state.ModelConfigRecord{}
@@ -727,6 +854,11 @@ func (s *Service) RemoveInstance(instanceID string) {
 	if strings.TrimSpace(instanceID) == "" {
 		return
 	}
+	if inst := s.root.Instances[instanceID]; inst != nil {
+		inst.Online = false
+		inst.ActiveTurnID = ""
+	}
+	s.restorePendingSteersForInstance(instanceID)
 	for _, surface := range s.root.Surfaces {
 		if surface == nil {
 			continue

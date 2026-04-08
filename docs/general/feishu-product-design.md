@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-08`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括文本命令、菜单事件、卡片交互和状态提示。
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括文本命令、菜单事件、卡片交互、queued 点赞 steering 和状态提示。
 
 ## 1. 文档定位
 
@@ -88,6 +88,24 @@
 - `surface.message.reaction.created`
 
 当前**不处理** reaction deleted 事件。
+
+当前实现只把下列 reaction 当作产品动作：
+
+- 用户对 **queued 主文本消息** 加 `ThumbsUp`
+
+触发条件：
+
+- 目标消息必须命中当前 surface 某个 `queued` queue item 的 `SourceMessageID`
+- 当前 attached instance 必须已有 `ActiveTurnID`
+- queue item 的 `FrozenThreadID` 必须和当前 active turn thread 一致
+
+当前不会触发 steering 的情况：
+
+- 给图片消息点赞
+- 给已 dispatching/running/completed 的消息点赞
+- 当前没有 active running turn
+- queued item 属于别的 frozen thread
+- bot 自己补上的 reaction 回流事件
 
 ### 3.5 消息撤回
 
@@ -199,6 +217,8 @@ attach 成功后：
 每个 surface 有一条独立 queue：
 
 - `queued`
+- `steering`
+- `steered`
 - `dispatching`
 - `running`
 - `completed`
@@ -214,6 +234,12 @@ attach 成功后：
 
 所以 thread 切换只影响**后续**消息，不会改写已入队项。
 
+另外有一个专门的 steering 升级路径：
+
+- queued 文本被点赞后，目标 item 会先离开普通 queue，进入 `steering`
+- wrapper 对 `turn.steer` 返回 `accepted=true` 后，该 item 记为 `steered`
+- 若 dispatch 失败或 wrapper reject，则恢复到原 queue 位置
+
 ### 5.2 Typing reaction
 
 当前规则：
@@ -221,6 +247,8 @@ attach 成功后：
 - queue item 进入 `dispatching` 时，给原始用户消息加 `THINKING`
 - 远端 turn 完成时，移除 `THINKING`
 - 只有当前活动 queue item 有 Typing
+- steering 成功后，会移除 `OneSecond`，并给该 item 的主文本和已绑定图片统一补 `ThumbsUp`
+- 被显式丢弃的 queued/staged 输入仍补 `ThumbsDown`
 
 ### 5.3 本地优先
 
@@ -284,8 +312,10 @@ attach 成功后：
 
 - 图片先进入 `staged`
 - 下一条文本入队时，按接收顺序一起绑定到该 queue item
-- 若图片在绑定前被 reaction 取消，则标记为 `cancelled`
+- 图片单独点赞没有产品语义，不会触发 steering 或取消
+- 若图片消息被撤回，则未绑定图片标记为 `cancelled`
 - 若被 `stop` 或 `detach` 丢弃，则标记为 `discarded`
+- 若所属 queue item 被 queued 文本点赞升级为 steering，绑定图片会跟着主文本一起 steer，并在成功后收到 bot `ThumbsUp`
 
 ## 7. 飞书输出投影
 
@@ -362,6 +392,7 @@ final `block.committed`：
 - attach/use 当前已经收敛到按钮直达交互；普通数字文本会按普通消息处理
 - reaction deleted 事件未接入
 - Feishu 输出不是流式更新卡片，而是 append-only 文本/卡片
+- queued 点赞 steering 当前只认 `ThumbsUp`，也只认主文本消息，不支持其他 emoji 和图片独立 steering
 - 当前主要按 P2P 场景测试，group chat 虽有 surface id 规则，但不是主要联调路径
 
 ## 9. 与旧设计文档的关系

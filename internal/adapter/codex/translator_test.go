@@ -59,6 +59,44 @@ func TestObserveClientTurnSteerProducesLocalInteraction(t *testing.T) {
 	}
 }
 
+func TestTranslateTurnSteer(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandTurnSteer,
+		Target: agentproto.Target{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+		},
+		Prompt: agentproto.Prompt{
+			Inputs: []agentproto.Input{
+				{Type: agentproto.InputText, Text: "补充信息"},
+				{Type: agentproto.InputLocalImage, Path: "/tmp/queued.png", MIMEType: "image/png"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one steer command, got %#v", commands)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(commands[0], &payload); err != nil {
+		t.Fatalf("unmarshal turn/steer: %v", err)
+	}
+	if payload["method"] != "turn/steer" {
+		t.Fatalf("expected turn/steer payload, got %#v", payload)
+	}
+	params, _ := payload["params"].(map[string]any)
+	if params["threadId"] != "thread-1" || params["turnId"] != "turn-1" {
+		t.Fatalf("unexpected steer params: %#v", params)
+	}
+	inputs, _ := params["input"].([]any)
+	if len(inputs) != 2 {
+		t.Fatalf("expected text + image steer inputs, got %#v", params["input"])
+	}
+}
+
 func TestTranslatePromptSendToNewThreadAndFollowupTurnStart(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	commands, err := tr.TranslateCommand(agentproto.Command{

@@ -110,6 +110,38 @@ func (g *LiveGateway) parseMessageRecalledEvent(event *larkim.P2MessageRecalledV
 	}, true
 }
 
+func (g *LiveGateway) parseMessageReactionCreatedEvent(event *larkim.P2MessageReactionCreatedV1) (control.Action, bool) {
+	if event == nil || event.Event == nil || event.Event.MessageId == nil || event.Event.ReactionType == nil {
+		return control.Action{}, false
+	}
+	messageID := strings.TrimSpace(*event.Event.MessageId)
+	if messageID == "" {
+		return control.Action{}, false
+	}
+	reactionType := strings.TrimSpace(stringPtr(event.Event.ReactionType.EmojiType))
+	if reactionType == "" {
+		return control.Action{}, false
+	}
+	actorUserID := userIDFromLarkUserID(event.Event.UserId)
+	if actorUserID == "" {
+		return control.Action{}, false
+	}
+	g.mu.Lock()
+	surfaceSessionID := g.messages[messageID]
+	g.mu.Unlock()
+	if surfaceSessionID == "" {
+		return control.Action{}, false
+	}
+	return control.Action{
+		Kind:             control.ActionReactionCreated,
+		GatewayID:        g.config.GatewayID,
+		SurfaceSessionID: surfaceSessionID,
+		ActorUserID:      actorUserID,
+		ReactionType:     reactionType,
+		TargetMessageID:  messageID,
+	}, true
+}
+
 func parseTextContent(rawContent string) (string, error) {
 	var content feishuTextContent
 	if err := json.Unmarshal([]byte(rawContent), &content); err != nil {

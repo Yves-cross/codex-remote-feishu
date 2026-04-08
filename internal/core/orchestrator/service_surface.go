@@ -848,6 +848,61 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	}}
 }
 
+func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	if surface == nil || !isThumbsUpReaction(action.ReactionType) {
+		return nil
+	}
+	targetMessageID := strings.TrimSpace(action.TargetMessageID)
+	if targetMessageID == "" {
+		return nil
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil || inst.ActiveTurnID == "" || inst.ActiveThreadID == "" {
+		return nil
+	}
+	for index, queueID := range surface.QueuedQueueItemIDs {
+		item := surface.QueueItems[queueID]
+		if item == nil || item.Status != state.QueueItemQueued || item.SourceMessageID != targetMessageID {
+			continue
+		}
+		if item.FrozenThreadID == "" || item.FrozenThreadID != inst.ActiveThreadID {
+			return nil
+		}
+		item.Status = state.QueueItemSteering
+		surface.QueuedQueueItemIDs = removeString(surface.QueuedQueueItemIDs, item.ID)
+		s.pendingSteers[item.ID] = &pendingSteerBinding{
+			InstanceID:       inst.InstanceID,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			QueueItemID:      item.ID,
+			SourceMessageID:  item.SourceMessageID,
+			ThreadID:         inst.ActiveThreadID,
+			TurnID:           inst.ActiveTurnID,
+			QueueIndex:       index,
+		}
+		return []control.UIEvent{{
+			Kind:             control.UIEventAgentCommand,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Command: &agentproto.Command{
+				Kind: agentproto.CommandTurnSteer,
+				Origin: agentproto.Origin{
+					Surface:   surface.SurfaceSessionID,
+					UserID:    surface.ActorUserID,
+					ChatID:    surface.ChatID,
+					MessageID: item.SourceMessageID,
+				},
+				Target: agentproto.Target{
+					ThreadID: inst.ActiveThreadID,
+					TurnID:   inst.ActiveTurnID,
+				},
+				Prompt: agentproto.Prompt{
+					Inputs: item.Inputs,
+				},
+			},
+		}}
+	}
+	return nil
+}
+
 func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, targetMessageID string) []control.UIEvent {
 	targetMessageID = strings.TrimSpace(targetMessageID)
 	if surface == nil || targetMessageID == "" {
@@ -897,6 +952,13 @@ func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, tar
 		}
 	}
 	return nil
+}
+
+func isThumbsUpReaction(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	return normalized == "thumbsup"
 }
 
 func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIEvent {

@@ -155,6 +155,9 @@ func (s *Service) surfaceHasLiveRemoteWork(surface *state.SurfaceConsoleRecord) 
 	if surface == nil {
 		return false
 	}
+	if s.surfaceHasPendingSteer(surface) {
+		return true
+	}
 	if surface.ActiveQueueItemID != "" {
 		if item := surface.QueueItems[surface.ActiveQueueItemID]; item != nil {
 			switch item.Status {
@@ -458,6 +461,9 @@ func (s *Service) restoreStagedInputs(surface *state.SurfaceConsoleRecord, sourc
 func (s *Service) surfaceNeedsDelayedDetach(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) bool {
 	if surface == nil {
 		return false
+	}
+	if s.surfaceHasPendingSteer(surface) {
+		return true
 	}
 	if binding := s.remoteBindingForSurface(surface); binding != nil {
 		return true

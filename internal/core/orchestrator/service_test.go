@@ -1318,6 +1318,229 @@ func TestMessageRecallCancelsStagedImage(t *testing.T) {
 	}
 }
 
+func TestReactionCreatedSteersQueuedItemAndAcknowledgesWholeInputSet(t *testing.T) {
+	now := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-active",
+		Text:             "先开始",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionImageMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-img",
+		LocalPath:        "/tmp/queued.png",
+		MIMEType:         "image/png",
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-queued",
+		Text:             "补充信息",
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReactionCreated,
+		SurfaceSessionID: "surface-1",
+		TargetMessageID:  "msg-queued",
+		ReactionType:     "ThumbsUp",
+	})
+	if len(events) != 1 || events[0].Command == nil || events[0].Command.Kind != agentproto.CommandTurnSteer {
+		t.Fatalf("expected single steer command, got %#v", events)
+	}
+	if events[0].Command.Target.ThreadID != "thread-1" || events[0].Command.Target.TurnID != "turn-1" {
+		t.Fatalf("unexpected steer target: %#v", events[0].Command.Target)
+	}
+	if len(events[0].Command.Prompt.Inputs) != 2 || events[0].Command.Prompt.Inputs[0].Type != agentproto.InputLocalImage || events[0].Command.Prompt.Inputs[1].Text != "补充信息" {
+		t.Fatalf("expected bound image + text inputs in steer command, got %#v", events[0].Command.Prompt.Inputs)
+	}
+
+	surface := svc.root.Surfaces["surface-1"]
+	if len(surface.QueuedQueueItemIDs) != 0 {
+		t.Fatalf("expected queued item to leave normal queue while steering, got %#v", surface.QueuedQueueItemIDs)
+	}
+	item := surface.QueueItems["queue-2"]
+	if item == nil || item.Status != state.QueueItemSteering {
+		t.Fatalf("expected second queue item to enter steering pending, got %#v", item)
+	}
+	if binding := svc.pendingSteers["queue-2"]; binding == nil || binding.ThreadID != "thread-1" || binding.TurnID != "turn-1" {
+		t.Fatalf("expected pending steer binding for queue-2, got %#v", svc.pendingSteers)
+	}
+
+	svc.BindPendingRemoteCommand("surface-1", "cmd-steer-1")
+	accepted := svc.HandleCommandAccepted("inst-1", agentproto.CommandAck{CommandID: "cmd-steer-1", Accepted: true})
+	if svc.pendingSteers["queue-2"] != nil {
+		t.Fatalf("expected pending steer binding to clear after accepted ack")
+	}
+	if item.Status != state.QueueItemSteered {
+		t.Fatalf("expected queue item to be marked steered, got %#v", item)
+	}
+	if len(accepted) != 2 {
+		t.Fatalf("expected queue-off + thumbs-up for text and image sources, got %#v", accepted)
+	}
+	for _, event := range accepted {
+		if event.PendingInput == nil || !event.PendingInput.QueueOff || !event.PendingInput.ThumbsUp || event.PendingInput.Status != string(state.QueueItemSteered) {
+			t.Fatalf("unexpected steer acknowledgement projection: %#v", accepted)
+		}
+	}
+}
+
+func TestReactionCreatedIgnoresImageSourceAndThreadMismatch(t *testing.T) {
+	now := time.Date(2026, 4, 6, 10, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		ActiveThreadID:          "thread-2",
+		ActiveTurnID:            "turn-2",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+			"thread-2": {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+
+	surface := svc.root.Surfaces["surface-1"]
+	surface.QueuedQueueItemIDs = []string{"queue-1"}
+	surface.QueueItems["queue-1"] = &state.QueueItemRecord{
+		ID:               "queue-1",
+		SourceMessageID:  "msg-text",
+		SourceMessageIDs: []string{"msg-text", "msg-img"},
+		Inputs: []agentproto.Input{
+			{Type: agentproto.InputLocalImage, Path: "/tmp/queued.png", MIMEType: "image/png"},
+			{Type: agentproto.InputText, Text: "补充信息"},
+		},
+		FrozenThreadID: "thread-1",
+		Status:         state.QueueItemQueued,
+	}
+
+	if events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReactionCreated,
+		SurfaceSessionID: "surface-1",
+		TargetMessageID:  "msg-img",
+		ReactionType:     "ThumbsUp",
+	}); len(events) != 0 {
+		t.Fatalf("expected image reaction to be ignored, got %#v", events)
+	}
+	if events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReactionCreated,
+		SurfaceSessionID: "surface-1",
+		TargetMessageID:  "msg-text",
+		ReactionType:     "ThumbsUp",
+	}); len(events) != 0 {
+		t.Fatalf("expected mismatched active thread to be ignored, got %#v", events)
+	}
+	if surface.QueueItems["queue-1"].Status != state.QueueItemQueued || len(surface.QueuedQueueItemIDs) != 1 {
+		t.Fatalf("expected queued item to remain untouched, got item=%#v queue=%#v", surface.QueueItems["queue-1"], surface.QueuedQueueItemIDs)
+	}
+}
+
+func TestReactionCreatedSteerRejectedRestoresOriginalQueueOrder(t *testing.T) {
+	now := time.Date(2026, 4, 6, 10, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-active",
+		Text:             "先开始",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-queued-1",
+		Text:             "第二条",
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-queued-2",
+		Text:             "第三条",
+	})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReactionCreated,
+		SurfaceSessionID: "surface-1",
+		TargetMessageID:  "msg-queued-1",
+		ReactionType:     "ThumbsUp",
+	})
+	svc.BindPendingRemoteCommand("surface-1", "cmd-steer-2")
+	events := svc.HandleCommandRejected("inst-1", agentproto.CommandAck{
+		CommandID: "cmd-steer-2",
+		Accepted:  false,
+		Error:     "steer rejected",
+		Problem: &agentproto.ErrorInfo{
+			Code:      "translate_command_failed",
+			Layer:     "wrapper",
+			Stage:     "translate_command",
+			Message:   "wrapper 无法把 steer 命令转换成 Codex 请求。",
+			Details:   "steer rejected",
+			CommandID: "cmd-steer-2",
+		},
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if got := surface.QueuedQueueItemIDs; len(got) != 2 || got[0] != "queue-2" || got[1] != "queue-3" {
+		t.Fatalf("expected queue order to be restored, got %#v", got)
+	}
+	if item := surface.QueueItems["queue-2"]; item == nil || item.Status != state.QueueItemQueued {
+		t.Fatalf("expected rejected steer item to return to queued, got %#v", item)
+	}
+	if svc.pendingSteers["queue-2"] != nil {
+		t.Fatalf("expected pending steer binding to clear after rejection")
+	}
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "steer_failed" || !strings.Contains(events[0].Notice.Text, "恢复原排队位置") {
+		t.Fatalf("expected steer_failed notice with restore hint, got %#v", events)
+	}
+}
+
 func TestUseThreadDiscardsStagedImagesOnRouteChange(t *testing.T) {
 	now := time.Date(2026, 4, 6, 9, 45, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -3740,7 +3963,8 @@ func TestHandleCommandDispatchFailureClearsPendingRemoteState(t *testing.T) {
 		Text:             "你好",
 	})
 
-	events := svc.HandleCommandDispatchFailure("surface-1", errors.New("relay unavailable"))
+	svc.BindPendingRemoteCommand("surface-1", "cmd-1")
+	events := svc.HandleCommandDispatchFailure("surface-1", "cmd-1", errors.New("relay unavailable"))
 	if svc.pendingRemote["inst-1"] != nil {
 		t.Fatalf("expected pending remote binding to clear after dispatch failure")
 	}

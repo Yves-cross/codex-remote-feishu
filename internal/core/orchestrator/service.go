@@ -33,6 +33,7 @@ type Service struct {
 	turnFileChanges map[string]*turnFileChangeSummary
 	pendingRemote   map[string]*remoteTurnBinding
 	activeRemote    map[string]*remoteTurnBinding
+	pendingSteers   map[string]*pendingSteerBinding
 	instanceClaims  map[string]*instanceClaimRecord
 	threadClaims    map[string]*threadClaimRecord
 }
@@ -55,6 +56,17 @@ type remoteTurnBinding struct {
 	ThreadID         string
 	TurnID           string
 	Status           string
+}
+
+type pendingSteerBinding struct {
+	InstanceID       string
+	SurfaceSessionID string
+	QueueItemID      string
+	SourceMessageID  string
+	CommandID        string
+	ThreadID         string
+	TurnID           string
+	QueueIndex       int
 }
 
 type completedTextItem struct {
@@ -127,6 +139,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		turnFileChanges: map[string]*turnFileChangeSummary{},
 		pendingRemote:   map[string]*remoteTurnBinding{},
 		activeRemote:    map[string]*remoteTurnBinding{},
+		pendingSteers:   map[string]*pendingSteerBinding{},
 		instanceClaims:  map[string]*instanceClaimRecord{},
 		threadClaims:    map[string]*threadClaimRecord{},
 	}
@@ -197,7 +210,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionImageMessage:
 		return s.stageImage(surface, action)
 	case control.ActionReactionCreated:
-		return nil
+		return s.handleReactionCreated(surface, action)
 	case control.ActionMessageRecalled:
 		return s.handleMessageRecalled(surface, action.TargetMessageID)
 	case control.ActionSelectPrompt:

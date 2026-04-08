@@ -102,6 +102,7 @@ type CommandKind string
 
 const (
 	CommandPromptSend     CommandKind = "prompt.send"
+	CommandTurnSteer      CommandKind = "turn.steer"
 	CommandTurnInterrupt  CommandKind = "turn.interrupt"
 	CommandRequestRespond CommandKind = "request.respond"
 	CommandThreadsRefresh CommandKind = "threads.refresh"

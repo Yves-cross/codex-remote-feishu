@@ -1,8 +1,8 @@
 # Relay Protocol Spec
 
 > Type: `general`
-> Updated: `2026-04-06`
-> Summary: 迁移到 `docs/general` 并统一文档元信息头，继续作为当前 canonical 协议文档。
+> Updated: `2026-04-08`
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer` 与 Feishu reaction steering 的实现状态。
 
 ## 1. 文档定位
 
@@ -202,9 +202,10 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 ## 4. Canonical Command
 
-当前只实现四个公共 command：
+当前只实现五个公共 command：
 
 - `prompt.send`
+- `turn.steer`
 - `turn.interrupt`
 - `request.respond`
 - `threads.refresh`
@@ -233,14 +234,34 @@ wrapper 收到 `command` 后总是回传 accept/reject：
   - `reasoningEffort`
   - `accessMode`
 
-### 4.2 `turn.interrupt`
+### 4.2 `turn.steer`
+
+用于把一个已经在 surface queue 中冻结好的 `queue item` 升级成对当前 running turn 的 steering。
+
+关键字段：
+
+- `target.threadId`
+- `target.turnId`
+- `prompt.inputs[]`
+  - `text`
+  - `local_image`
+  - `remote_image`
+
+当前 server 侧语义：
+
+- 只有 Feishu `queued` 文本上的点赞会触发；
+- steering 的单位是整个 `queue item`，不是裸文本；
+- 若该 item 已绑定图片，则 `inputs[]` 会把主文本和同 item 图片一起带上；
+- 成功信号当前定义为 wrapper 返回 `command_ack.accepted=true`。
+
+### 4.3 `turn.interrupt`
 
 关键字段：
 
 - `target.threadId`
 - `target.turnId`
 
-### 4.3 `request.respond`
+### 4.4 `request.respond`
 
 用于将 approval / structured response 回写给 native request id。
 
@@ -272,7 +293,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
   - 对当前 request 发送 `decision=decline`
   - 再把用户下一条文字作为 follow-up prompt 入队
 
-### 4.4 `threads.refresh`
+### 4.5 `threads.refresh`
 
 触发 wrapper 走 `thread/list + thread/read`，再返回标准化的 `threads.snapshot`。
 
@@ -398,6 +419,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 - `requestOptionId` 是主路径，来自飞书卡片按钮值
 - `approved` 只是旧卡片兼容字段
+- `reactionType + targetMessageId` 当前用于 queued 文本点赞 steering
 
 ### 6.2 Outbound UI events
 
@@ -428,13 +450,17 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - server 合成的 `acceptForSession`
 - Feishu 专用的 `captureFeedback`
 
+`pending.input.state` 当前除 queue/typing/discard 外，还会投影：
+
+- steering 成功后的 `QueueOff + ThumbsUp`
+- 对同一 queue item 主文本和已绑定图片的统一反馈
+
 ## 7. 当前不暴露的能力
 
 下面这些在当前仓库里**没有作为公共协议暴露**：
 
 - 公开的 attach/detach/use-thread HTTP API
 - 公开的 render event 拉流 API
-- 远端 `turn.steer`
 - block update / replace
 - native frame debug/replay export
 

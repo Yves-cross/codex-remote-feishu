@@ -56,6 +56,7 @@ type Action struct {
 	ThreadID         string
 	LocalPath        string
 	MIMEType         string
+	ReactionType     string
 	TargetMessageID  string
 }
 
@@ -192,6 +193,7 @@ type PendingInputState struct {
 	QueueOff        bool
 	TypingOn        bool
 	TypingOff       bool
+	ThumbsUp        bool
 	ThumbsDown      bool
 }
 

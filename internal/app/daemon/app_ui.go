@@ -60,7 +60,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 			)
 			if instanceID == "" {
 				log.Printf("ui command skipped: surface=%s kind=%s err=no attached instance", event.SurfaceSessionID, event.Command.Kind)
-				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, agentproto.ErrorInfo{
+				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, event.Command.CommandID, agentproto.ErrorInfo{
 					Code:             "no_attached_instance",
 					Layer:            "daemon",
 					Stage:            "dispatch_prepare",
@@ -74,7 +74,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 			}
 			if err := a.sendAgentCommand(instanceID, *event.Command); err != nil {
 				log.Printf("relay send command failed: instance=%s kind=%s err=%v", instanceID, event.Command.Kind, err)
-				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
+				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, event.Command.CommandID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 					Code:             "relay_send_command_failed",
 					Layer:            "daemon",
 					Stage:            "relay_send_command",

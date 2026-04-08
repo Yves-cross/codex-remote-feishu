@@ -31,6 +31,14 @@ func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 		handler(ctx, action)
 		return nil
 	})
+	dispatch.OnP2MessageReactionCreatedV1(func(ctx context.Context, event *larkim.P2MessageReactionCreatedV1) error {
+		action, ok := g.parseMessageReactionCreatedEvent(event)
+		if !ok {
+			return nil
+		}
+		handler(ctx, action)
+		return nil
+	})
 	dispatch.OnP2CardActionTrigger(func(ctx context.Context, event *larkcallback.CardActionTriggerEvent) (*larkcallback.CardActionTriggerResponse, error) {
 		action, ok := g.parseCardActionTriggerEvent(event)
 		if ok {

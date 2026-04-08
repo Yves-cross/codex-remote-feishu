@@ -29,6 +29,8 @@ const (
 	QueueItemQueued      QueueItemStatus = "queued"
 	QueueItemDispatching QueueItemStatus = "dispatching"
 	QueueItemRunning     QueueItemStatus = "running"
+	QueueItemSteering    QueueItemStatus = "steering"
+	QueueItemSteered     QueueItemStatus = "steered"
 	QueueItemCompleted   QueueItemStatus = "completed"
 	QueueItemFailed      QueueItemStatus = "failed"
 	QueueItemDiscarded   QueueItemStatus = "discarded"

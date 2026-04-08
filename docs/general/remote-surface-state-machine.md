@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-08`
-> Summary: 去掉 `/newinstance` 手工 headless 恢复分支，收敛 `PendingHeadless` 只剩 thread-first `/use` 的预选启动流，并同步兼容入口说明。
+> Summary: 同步 queued 文本点赞 steering：新增 `turn.steer` 升级流、成功/失败回写规则，以及对应的 queue/reaction 状态说明。
 
 ## 1. 文档定位
 
@@ -74,6 +74,15 @@ surface 不是单一枚举，而是四层正交状态叠加。
 | `E4 PausedForLocal` | `DispatchMode=paused_for_local` | 观察到本地 VS Code 活动，远端暂停出队 |
 | `E5 HandoffWait` | `DispatchMode=handoff_wait` | 本地刚结束，等待短窗口后恢复远端队列 |
 | `E6 Abandoning` | `Abandoning=true` | surface 已放弃接管，等待已有 turn 收尾后最终 detach |
+
+补充说明：
+
+1. 当前还存在一个**可叠加**的 steering overlay：
+   1. 某个 queued item 被点赞升级后，会离开 `QueuedQueueItemIDs`
+   2. 该 item 进入 `QueueItemStatus=steering`
+   3. 相关命令记录在 `pendingSteers`
+2. 这个 overlay 不占用 `ActiveQueueItemID`，所以可以与 `E3 Running` 并存。
+3. steering ack 成功后，item 进入 `steered`；失败时恢复回原 queue 位置。
 
 ### 3.3 输入门禁状态
 
@@ -177,7 +186,18 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 当前实现不允许未发送草稿在 route change 时 silently retarget。
 
-### 4.6 `R5 NewThreadReady` 是稳定态，不是半成品
+### 4.6 queued 点赞 steering 只升级当前 item，不做隐式重排
+
+当前 `surface.message.reaction.created` 的产品语义已经固定：
+
+1. 只有 `ThumbsUp` 才会触发。
+2. 只有 queued item 的主文本 `SourceMessageID` 能触发。
+3. 图片消息上的点赞不会单独触发任何状态迁移。
+4. 目标 item 必须和当前 active running turn 属于同一 `FrozenThreadID`。
+5. 命中后不会改写其他 queued item 的相对顺序，也不会跨 thread 偷偷 retarget。
+6. steering 失败时，目标 item 必须恢复回原 queue 位置，不能 silently 消失。
+
+### 4.7 `R5 NewThreadReady` 是稳定态，不是半成品
 
 当前 `/new` 已实现为 clear-and-prepare：
 
@@ -192,7 +212,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 2. `R5` 下第一条普通文本合法，且会创建新 thread。
 3. `R5` 下如果只有 staged/queued draft，用户仍然能 `/use`、`/follow`、`/detach`、`/stop` 或重复 `/new`。
 
-### 4.7 空 thread turn 不再靠 `ActiveThreadID` 猜归属
+### 4.8 空 thread turn 不再靠 `ActiveThreadID` 猜归属
 
 当前 empty-thread 首条消息的 turn 归属已经改成显式相关性：
 
@@ -203,7 +223,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 当前不再用“`FrozenThreadID == ""` 时退化匹配 `inst.ActiveThreadID`”来猜归属。
 
-### 4.8 `PausedForLocal` 和 `Abandoning` 都有 watchdog
+### 4.9 `PausedForLocal` 和 `Abandoning` 都有 watchdog
 
 当前 `Tick()` 已经提供两类恢复：
 
@@ -217,7 +237,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 
 所以这两个状态不再依赖单一异步事件才能退出。
 
-### 4.9 thread 级未投递回放是 thread-global 单槽、内存态、一次性
+### 4.10 thread 级未投递回放是 thread-global 单槽、内存态、一次性
 
 当前 `ThreadRecord` 增加了 `UndeliveredReplay`，但它不是完整历史，只是 thread 级的单槽候选。
 
@@ -239,7 +259,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 6. 回放成功后立即清空，因此同一条内容只会补发一次。
 7. 该状态仅保存在 relay 内存里；`relayd` 重启后丢失是当前已接受语义。
 
-### 4.10 `/status` 当前至少会显式投影 gate / dispatch / retained-offline
+### 4.11 `/status` 当前至少会显式投影 gate / dispatch / retained-offline
 
 当前 `Snapshot` 不再只展示 attachment 和 next prompt。
 
@@ -345,12 +365,20 @@ E0 Idle
   -- enqueue --> E1 Queued
   -- dispatchNext --> E2 Dispatching
 
+E1 Queued
+  -- queued 主文本被 `ThumbsUp`，且当前有同 thread active turn --> `SteerPending` overlay
+
 E2 Dispatching
   -- turn.started(remote_surface) --> E3 Running
   -- command rejected / dispatch failure --> E0 Idle
 
 E3 Running
   -- turn.completed(remote_surface) --> E0 Idle
+
+`SteerPending` overlay
+  -- `turn.steer` command ack accepted --> item `steered`，移除 queue pending reaction，并给主文本 + 已绑定图片补 `ThumbsUp`
+  -- `turn.steer` dispatch failure / command rejected --> 恢复到原 queue 位置
+  -- transport degraded / disconnect / remove instance --> 恢复到原 queue 位置
 ```
 
 补充说明：
@@ -359,6 +387,7 @@ E3 Running
 2. turn 建立后再提升到 `activeRemote`。
 3. 对空 thread 首条消息，promote 会优先按 `Initiator.SurfaceSessionID` 命中。
 4. 若 queue item 来自 `R5`，turn.started 后 surface 必须切回 `pinned`，不会继续停在 `new_thread_ready`。
+5. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
 
 ### 5.3 本地 VS Code 仲裁
 
@@ -462,7 +491,7 @@ transport degraded retained attachment
 
 | 覆盖状态 | 当前行为 |
 | --- | --- |
-| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/killinstance`、旧 `/newinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其余动作统一被 headless notice 挡住 |
+| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/killinstance`、旧 `/newinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；用户必须先处理请求卡片 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住 |
 | `E6 Abandoning` | 只允许 `/status`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
@@ -507,6 +536,7 @@ transport degraded retained attachment
 14. **same-instance `/use` / `/follow` / auto-follow 会在旧 request gate 还活着时静默改路由**：已修复。现在只要 request gate 仍在，所有会改路由的动作都会被冻结。
 15. **cross-instance attach 到复用/新建 headless 时会丢 thread replay**：已修复。当前 replay 会先按 `threadID` 全局迁移，再在目标 attach 上一次性补发。
 16. **transport degraded 后 attachment 仍保留，但文档和 `/status` 看起来像已 detached**：已修复。canonical 文档和 `/status` 现在都显式区分 retained-offline 与真正 detach。
+17. **queued 点赞升级成 steering 后 item 会脱离普通 queue，若 ack 失败则可能丢失**：已修复。当前已强制恢复原 queue 位置，并补失败 notice。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 

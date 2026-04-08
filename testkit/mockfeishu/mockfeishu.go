@@ -11,6 +11,7 @@ type Recorder struct {
 	Blocks           []render.Block
 	TypingOnFor      []string
 	TypingOffFor     []string
+	ThumbsUpFor      []string
 	ThumbsDownFor    []string
 	SelectionPrompts []control.SelectionPrompt
 }
@@ -40,6 +41,9 @@ func (r *Recorder) Apply(events []control.UIEvent) {
 			}
 			if event.PendingInput.TypingOff {
 				r.TypingOffFor = append(r.TypingOffFor, event.PendingInput.SourceMessageID)
+			}
+			if event.PendingInput.ThumbsUp {
+				r.ThumbsUpFor = append(r.ThumbsUpFor, event.PendingInput.SourceMessageID)
 			}
 			if event.PendingInput.ThumbsDown {
 				r.ThumbsDownFor = append(r.ThumbsDownFor, event.PendingInput.SourceMessageID)

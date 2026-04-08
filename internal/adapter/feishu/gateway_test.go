@@ -780,6 +780,57 @@ func TestParseMessageRecalledEventIgnoresUnknownMessage(t *testing.T) {
 	}
 }
 
+func TestParseMessageReactionCreatedEventBuildsReactionAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-msg-1", "feishu:app-1:user:user-1")
+	event := &larkim.P2MessageReactionCreatedV1{
+		Event: &larkim.P2MessageReactionCreatedV1Data{
+			MessageId:    stringRef("om-msg-1"),
+			ReactionType: &larkim.Emoji{EmojiType: stringRef("ThumbsUp")},
+			UserId:       &larkim.UserId{OpenId: stringRef("ou_user")},
+		},
+	}
+
+	action, ok := gateway.parseMessageReactionCreatedEvent(event)
+	if !ok {
+		t.Fatal("expected reaction event to be parsed")
+	}
+	if action.Kind != control.ActionReactionCreated {
+		t.Fatalf("unexpected action kind: %#v", action)
+	}
+	if action.GatewayID != "app-1" || action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ActorUserID != "ou_user" {
+		t.Fatalf("unexpected reaction routing payload: %#v", action)
+	}
+	if action.TargetMessageID != "om-msg-1" || action.ReactionType != "ThumbsUp" {
+		t.Fatalf("unexpected reaction payload: %#v", action)
+	}
+}
+
+func TestParseMessageReactionCreatedEventIgnoresBotReactionAndUnknownMessage(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+
+	botEvent := &larkim.P2MessageReactionCreatedV1{
+		Event: &larkim.P2MessageReactionCreatedV1Data{
+			MessageId:    stringRef("om-msg-1"),
+			ReactionType: &larkim.Emoji{EmojiType: stringRef("OneSecond")},
+		},
+	}
+	if action, ok := gateway.parseMessageReactionCreatedEvent(botEvent); ok || action.Kind != "" {
+		t.Fatalf("expected bot reaction without user id to be ignored, got %#v", action)
+	}
+
+	unknownEvent := &larkim.P2MessageReactionCreatedV1{
+		Event: &larkim.P2MessageReactionCreatedV1Data{
+			MessageId:    stringRef("om-missing"),
+			ReactionType: &larkim.Emoji{EmojiType: stringRef("ThumbsUp")},
+			UserId:       &larkim.UserId{OpenId: stringRef("ou_user")},
+		},
+	}
+	if action, ok := gateway.parseMessageReactionCreatedEvent(unknownEvent); ok || action.Kind != "" {
+		t.Fatalf("expected unknown reaction target to be ignored, got %#v", action)
+	}
+}
+
 func TestParseMessageEventBuildsMixedInputsForPost(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.downloadImageFn = func(_ context.Context, messageID, imageKey string) (string, string, error) {

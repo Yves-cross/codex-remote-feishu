@@ -98,6 +98,21 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			return nil, err
 		}
 		return [][]byte{append(bytes, '\n')}, nil
+	case agentproto.CommandTurnSteer:
+		payload := map[string]any{
+			"id":     t.nextRequest("turn-steer"),
+			"method": "turn/steer",
+			"params": map[string]any{
+				"threadId": command.Target.ThreadID,
+				"turnId":   command.Target.TurnID,
+				"input":    t.buildInputs(command.Prompt.Inputs),
+			},
+		}
+		bytes, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		return [][]byte{append(bytes, '\n')}, nil
 	case agentproto.CommandThreadsRefresh:
 		requestID := t.nextRequest("threads-refresh")
 		t.pendingThreadListRequestID = requestID

@@ -293,6 +293,7 @@ func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentprot
 		return
 	}
 	if ack.Accepted {
+		a.handleUIEvents(ctx, a.service.HandleCommandAccepted(instanceID, ack))
 		return
 	}
 	a.handleUIEvents(ctx, a.service.HandleCommandRejected(instanceID, ack))

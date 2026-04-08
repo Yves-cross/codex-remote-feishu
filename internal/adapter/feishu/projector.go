@@ -39,6 +39,7 @@ type Operation struct {
 const (
 	emojiQueuePending = "OneSecond"
 	emojiThinking     = "THINKING"
+	emojiSteered      = "ThumbsUp"
 	emojiDiscarded    = "ThumbsDown"
 )
 
@@ -195,6 +196,16 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 				ChatID:           chatID,
 				MessageID:        event.PendingInput.SourceMessageID,
 				EmojiType:        emojiThinking,
+			})
+		}
+		if event.PendingInput.ThumbsUp {
+			ops = append(ops, Operation{
+				Kind:             OperationAddReaction,
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				MessageID:        event.PendingInput.SourceMessageID,
+				EmojiType:        emojiSteered,
 			})
 		}
 		if event.PendingInput.ThumbsDown {

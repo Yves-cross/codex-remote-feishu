@@ -432,6 +432,22 @@ func removeString(values []string, target string) []string {
 	return out
 }
 
+func insertString(values []string, index int, value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return values
+	}
+	if index < 0 {
+		index = 0
+	}
+	if index > len(values) {
+		index = len(values)
+	}
+	values = append(values, "")
+	copy(values[index+1:], values[index:])
+	values[index] = value
+	return values
+}
+
 func uniqueStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
