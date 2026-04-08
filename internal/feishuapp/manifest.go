@@ -1,10 +1,11 @@
 package feishuapp
 
 type Manifest struct {
-	Scopes    ScopesImport       `json:"scopesImport"`
-	Events    []EventRequirement `json:"events"`
-	Menus     []MenuRequirement  `json:"menus"`
-	Checklist []ChecklistSection `json:"checklist"`
+	Scopes    ScopesImport          `json:"scopesImport"`
+	Events    []EventRequirement    `json:"events"`
+	Callbacks []CallbackRequirement `json:"callbacks"`
+	Menus     []MenuRequirement     `json:"menus"`
+	Checklist []ChecklistSection    `json:"checklist"`
 }
 
 type ScopesImport struct {
@@ -19,6 +20,11 @@ type PermissionScopes struct {
 type EventRequirement struct {
 	Event   string `json:"event"`
 	Purpose string `json:"purpose,omitempty"`
+}
+
+type CallbackRequirement struct {
+	Callback string `json:"callback"`
+	Purpose  string `json:"purpose,omitempty"`
 }
 
 type MenuRequirement struct {
@@ -40,7 +46,6 @@ func DefaultManifest() Manifest {
 					"drive:drive",
 					"im:message",
 					"im:message.group_at_msg:readonly",
-					"im:message.group_msg",
 					"im:message.p2p_msg:readonly",
 					"im:message.reactions:read",
 					"im:message.reactions:write_only",
@@ -55,7 +60,9 @@ func DefaultManifest() Manifest {
 			{Event: "im.message.recalled_v1", Purpose: "用户撤回尚未执行的输入时，取消排队消息或 staged image。"},
 			{Event: "im.message.reaction.created_v1", Purpose: "用户对待发送图片或排队消息加 reaction 时，表示取消。"},
 			{Event: "application.bot.menu_v6", Purpose: "处理机器人菜单里的实例、状态、推理强度和执行权限快捷键。"},
-			{Event: "card.action.trigger", Purpose: "通过飞书长连接处理选择卡片、approval request 卡片和其他交互点击。"},
+		},
+		Callbacks: []CallbackRequirement{
+			{Callback: "card.action.trigger", Purpose: "通过飞书回调长连接处理选择卡片、approval request 卡片和其他交互点击。"},
 		},
 		Menus: []MenuRequirement{
 			{Key: "list", Name: "列出实例", Description: "列出当前在线的 Codex 实例，并等待回复序号进行 attach。"},
@@ -89,13 +96,14 @@ func DefaultManifest() Manifest {
 				Area: "事件订阅",
 				Items: []string{
 					"打开“事件与回调”页，在“订阅方式”里确认长连接并保存。",
-					"手工订阅 manifest 里的全部事件。",
+					"手工订阅 manifest 里的消息事件和菜单事件。",
 				},
 			},
 			{
 				Area: "回调配置",
 				Items: []string{
 					"在“事件与回调”页的“回调配置”里，将“回调订阅方式”设为长连接。",
+					"确认 manifest 里的卡片回调项已经配置完成。",
 					"当前版本不需要填写 HTTP 回调 URL。",
 				},
 			},

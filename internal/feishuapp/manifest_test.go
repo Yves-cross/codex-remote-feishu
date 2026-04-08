@@ -27,6 +27,9 @@ func TestDeployTemplateStaysInSyncWithManifest(t *testing.T) {
 		EventSubscriptions []struct {
 			Event string `json:"event"`
 		} `json:"event_subscriptions"`
+		CallbackSubscriptions []struct {
+			Callback string `json:"callback"`
+		} `json:"callback_subscriptions"`
 		Bot struct {
 			Menus []struct {
 				Key string `json:"key"`
@@ -51,6 +54,18 @@ func TestDeployTemplateStaysInSyncWithManifest(t *testing.T) {
 	}
 	if !reflect.DeepEqual(gotEvents, wantEvents) {
 		t.Fatalf("events mismatch: %#v vs %#v", gotEvents, wantEvents)
+	}
+
+	gotCallbacks := make([]string, 0, len(parsed.CallbackSubscriptions))
+	for _, item := range parsed.CallbackSubscriptions {
+		gotCallbacks = append(gotCallbacks, item.Callback)
+	}
+	wantCallbacks := make([]string, 0, len(manifest.Callbacks))
+	for _, item := range manifest.Callbacks {
+		wantCallbacks = append(wantCallbacks, item.Callback)
+	}
+	if !reflect.DeepEqual(gotCallbacks, wantCallbacks) {
+		t.Fatalf("callbacks mismatch: %#v vs %#v", gotCallbacks, wantCallbacks)
 	}
 
 	gotMenus := make([]string, 0, len(parsed.Bot.Menus))

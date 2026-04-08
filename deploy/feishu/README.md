@@ -12,10 +12,10 @@
    - `im.message.recalled_v1`
    - `im.message.reaction.created_v1`
    - `application.bot.menu_v6`
-   - `card.action.trigger`
 4. 在同一个“事件与回调”页面，继续完成回调配置：
    - 点击“回调订阅方式”
    - 选择“长连接”，点击保存
+   - 配置 `card.action.trigger`
    - 当前版本不需要额外填写 HTTP 回调地址
 5. 打开“权限管理”，补齐模板里列出的消息、P2P 和 reaction 相关权限。
    - 点击“批量导入/导出权限”
@@ -33,7 +33,7 @@
    - `access_full`
    - `access_confirm`
 
-`card.action.trigger` 现在不仅用于 attach / 切换会话，也用于 approval request 卡片按钮交互；如果这个事件没配，飞书里的确认卡片会点了没反应。
+`card.action.trigger` 现在不仅用于 attach / 切换会话，也用于 approval request 卡片按钮交互；如果这个回调没配，飞书里的确认卡片会点了没反应。
 
 文本命令不需要在飞书控制台单独注册，直接给机器人发消息即可。当前建议保留这些命令：
 
@@ -62,7 +62,6 @@
 - `drive:drive`
 - `im:message`
 - `im:message.group_at_msg:readonly`
-- `im:message.group_msg`
 - `im:message.p2p_msg:readonly`
 - `im:message.reactions:read`
 - `im:message.reactions:write_only`
@@ -81,13 +80,12 @@
 
 ### 2. 事件订阅
 
-当前实现依赖这 5 个事件：
+当前实现依赖这 4 个事件：
 
 - `im.message.receive_v1`
 - `im.message.recalled_v1`
 - `im.message.reaction.created_v1`
 - `application.bot.menu_v6`
-- `card.action.trigger`
 
 进入事件列表前，先点击“订阅方式”，默认就是“长连接”，点击保存。
 
@@ -95,7 +93,6 @@
 
 - `im.message.recalled_v1` 负责撤回尚未发送的排队输入，或取消 staged image
 - `application.bot.menu_v6` 负责实例列表、状态、推理强度和执行权限快捷菜单
-- `card.action.trigger` 负责 selection prompt 和 approval request 两类卡片交互
 
 ### 3. 回调配置
 
@@ -104,7 +101,12 @@
 - 点击“回调订阅方式”
 - 选择“长连接”
 - 点击保存
+- 配置 `card.action.trigger`
 - 不需要填写 HTTP 回调 URL
+
+其中：
+
+- `card.action.trigger` 负责 selection prompt 和 approval request 两类卡片交互
 
 ### 4. 单聊额外权限
 

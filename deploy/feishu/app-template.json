@@ -66,7 +66,6 @@
         "drive:drive",
         "im:message",
         "im:message.group_at_msg:readonly",
-        "im:message.group_msg",
         "im:message.p2p_msg:readonly",
         "im:message.reactions:read",
         "im:message.reactions:write_only",
@@ -92,10 +91,12 @@
     {
       "event": "application.bot.menu_v6",
       "purpose": "处理机器人菜单里的 list/status/threads/stop、推理强度快捷键和执行权限快捷键。"
-    },
+    }
+  ],
+  "callback_subscriptions": [
     {
-      "event": "card.action.trigger",
-      "purpose": "通过飞书长连接处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
+      "callback": "card.action.trigger",
+      "purpose": "通过飞书回调长连接处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
     }
   ],
   "permissions_checklist": [
@@ -116,14 +117,14 @@
         "开启 P2P 消息接收事件",
         "开启消息撤回事件",
         "开启消息 reaction 创建事件",
-        "开启机器人菜单点击事件",
-        "开启 card.action.trigger 事件并保存"
+        "开启机器人菜单点击事件"
       ]
     },
     {
       "area": "回调配置",
       "items": [
         "点击“回调订阅方式”，选择“长连接”，点击保存。",
+        "确认 card.action.trigger 回调已经配置完成。",
         "当前版本不需要填写 HTTP 回调 URL。"
       ]
     },
