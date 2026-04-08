@@ -4302,33 +4302,33 @@ func TestApplyInstanceTransportDegradedKeepsAttachmentAndQueuedWork(t *testing.T
 	})
 
 	events := svc.ApplyInstanceTransportDegraded("inst-1", true)
-	if svc.activeRemote["inst-1"] != nil || svc.pendingRemote["inst-1"] != nil {
-		t.Fatalf("expected remote ownership to clear on transport degrade")
+	if svc.activeRemote["inst-1"] == nil {
+		t.Fatalf("expected active remote ownership to stay during transport degrade")
 	}
 	if svc.root.Instances["inst-1"].Online || svc.root.Instances["inst-1"].ActiveTurnID != "" {
 		t.Fatalf("expected instance to become offline without active turn, got %#v", svc.root.Instances["inst-1"])
 	}
-	if len(svc.itemBuffers) != 0 {
-		t.Fatalf("expected turn buffers to clear on transport degrade, got %#v", svc.itemBuffers)
+	if len(svc.itemBuffers) == 0 {
+		t.Fatalf("expected turn buffers to remain available while waiting for recovery")
 	}
 
 	surface := svc.root.Surfaces["surface-1"]
-	if surface.ActiveQueueItemID != "" {
-		t.Fatalf("expected active queue to clear on transport degrade")
+	if surface.ActiveQueueItemID != "queue-1" {
+		t.Fatalf("expected active queue item to stay attached on transport degrade, got %s", surface.ActiveQueueItemID)
 	}
 	if surface.AttachedInstanceID != "inst-1" || surface.SelectedThreadID != "thread-1" {
 		t.Fatalf("expected attachment and selected thread to stay, got %+v", surface)
 	}
 	active := surface.QueueItems["queue-1"]
-	if active == nil || active.Status != state.QueueItemFailed {
-		t.Fatalf("expected active queue item to fail on transport degrade, got %#v", active)
+	if active == nil || active.Status != state.QueueItemRunning {
+		t.Fatalf("expected active queue item to stay running on transport degrade, got %#v", active)
 	}
 	queued := surface.QueueItems["queue-2"]
 	if queued == nil || queued.Status != state.QueueItemQueued {
 		t.Fatalf("expected queued item to remain queued on transport degrade, got %#v", queued)
 	}
 	snapshot := svc.SurfaceSnapshot("surface-1")
-	if snapshot == nil || snapshot.Attachment.InstanceID != "inst-1" || snapshot.Dispatch.InstanceOnline || snapshot.Dispatch.QueuedCount != 1 {
+	if snapshot == nil || snapshot.Attachment.InstanceID != "inst-1" || snapshot.Dispatch.InstanceOnline || snapshot.Dispatch.QueuedCount != 1 || snapshot.Dispatch.ActiveItemStatus != string(state.QueueItemRunning) {
 		t.Fatalf("expected snapshot to retain offline attachment and queued work, got %#v", snapshot)
 	}
 
@@ -4346,21 +4346,136 @@ func TestApplyInstanceTransportDegradedKeepsAttachmentAndQueuedWork(t *testing.T
 	}
 
 	recovery := svc.ApplyInstanceConnected("inst-1")
+	if surface.ActiveQueueItemID != "queue-1" {
+		t.Fatalf("expected original active work to stay bound after reconnect, got active=%s", surface.ActiveQueueItemID)
+	}
+	if len(recovery) != 0 {
+		t.Fatalf("expected reconnect to wait for the in-flight turn before dispatching queued work, got %#v", recovery)
+	}
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
 	if surface.ActiveQueueItemID != "queue-2" {
-		t.Fatalf("expected queued work to resume after reconnect, got active=%s", surface.ActiveQueueItemID)
+		t.Fatalf("expected queued work to resume after preserved turn completed, got active=%s", surface.ActiveQueueItemID)
 	}
 	resumed := surface.QueueItems["queue-2"]
 	if resumed == nil || resumed.Status != state.QueueItemDispatching {
-		t.Fatalf("expected queued item to re-dispatch after reconnect, got %#v", resumed)
+		t.Fatalf("expected queued item to re-dispatch after preserved turn completed, got %#v", resumed)
 	}
 	var sawCommand bool
-	for _, event := range recovery {
+	for _, event := range finished {
 		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
 			sawCommand = true
 		}
 	}
 	if !sawCommand {
-		t.Fatalf("expected reconnect to resume queued work, got %#v", recovery)
+		t.Fatalf("expected preserved turn completion to dispatch queued work, got %#v", finished)
+	}
+}
+
+func TestDetachAfterTransportDegradedDetachesImmediately(t *testing.T) {
+	now := time.Date(2026, 4, 4, 12, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplyInstanceTransportDegraded("inst-1", true)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionDetach,
+		SurfaceSessionID: "surface-1",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.AttachedInstanceID != "" || surface.Abandoning {
+		t.Fatalf("expected degraded offline detach to finalize immediately, got %#v", surface)
+	}
+	if claim := svc.instanceClaims["inst-1"]; claim != nil {
+		t.Fatalf("expected detach to release instance claim, got %#v", claim)
+	}
+	var sawDetached, sawInterrupt bool
+	for _, event := range events {
+		if event.Notice != nil && event.Notice.Code == "detached" {
+			sawDetached = true
+		}
+		if event.Command != nil && event.Command.Kind == agentproto.CommandTurnInterrupt {
+			sawInterrupt = true
+		}
+	}
+	if !sawDetached || sawInterrupt {
+		t.Fatalf("expected immediate detach notice without interrupt, got %#v", events)
+	}
+}
+
+func TestStopWhileTransportDegradedReportsInstanceOffline(t *testing.T) {
+	now := time.Date(2026, 4, 4, 13, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	svc.ApplyInstanceTransportDegraded("inst-1", true)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionStop,
+		SurfaceSessionID: "surface-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "stop_instance_offline" {
+		t.Fatalf("expected stop_instance_offline notice, got %#v", events)
+	}
+	if strings.Contains(events[0].Notice.Text, "已发送停止请求") {
+		t.Fatalf("expected offline stop notice instead of sent interrupt, got %#v", events[0].Notice)
 	}
 }
 

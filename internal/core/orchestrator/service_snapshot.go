@@ -808,13 +808,6 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 	inst.ActiveTurnID = ""
 
 	delete(s.threadRefreshes, instanceID)
-	deleteMatchingItemBuffers(s.itemBuffers, instanceID, "", "")
-	for key, item := range s.pendingTurnText {
-		if item == nil || item.InstanceID != instanceID {
-			continue
-		}
-		delete(s.pendingTurnText, key)
-	}
 
 	surfaces := s.findAttachedSurfaces(instanceID)
 	if len(surfaces) == 0 {
@@ -825,26 +818,47 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 
 	var events []control.UIEvent
 	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
-	noticeText := fmt.Sprintf("当前接管实例链路过载，已中断当前执行：%s。已保留接管关系，等待实例恢复。", inst.DisplayName)
+	noticeText := fmt.Sprintf("当前接管实例链路过载，正在等待实例恢复：%s。当前 turn 可能继续执行，但实时输出可能延迟或丢失；如需放弃请 /detach。", inst.DisplayName)
+	preserveRemoteOwnership := false
 	for _, surface := range surfaces {
 		surface.PromptOverride = state.ModelConfigRecord{}
 		surface.ActiveTurnOrigin = ""
 		surface.DispatchMode = state.DispatchModeNormal
 		surface.Abandoning = false
 		delete(s.handoffUntil, surface.SurfaceSessionID)
-		clearSurfaceRequests(surface)
 
 		binding := s.remoteBindingForSurface(surface)
+		if binding != nil && surface.ActiveQueueItemID != "" {
+			item := surface.QueueItems[surface.ActiveQueueItemID]
+			if item != nil && (item.Status == state.QueueItemDispatching || item.Status == state.QueueItemRunning) {
+				preserveRemoteOwnership = true
+				events = append(events, appendPendingInputTyping(s.pendingInputEvents(surface, control.PendingInputState{
+					QueueItemID: item.ID,
+					Status:      string(item.Status),
+				}, queueItemSourceMessageIDs(item)), item.SourceMessageID, false)...)
+				if emitNotice {
+					events = append(events, control.UIEvent{
+						Kind:             control.UIEventNotice,
+						SurfaceSessionID: surface.SurfaceSessionID,
+						Notice: &control.Notice{
+							Code: "attached_instance_transport_degraded",
+							Text: noticeText,
+						},
+					})
+				}
+				continue
+			}
+		}
+		clearSurfaceRequests(surface)
 		if binding != nil {
 			s.clearTurnArtifacts(binding.InstanceID, binding.ThreadID, binding.TurnID)
 		}
 
-		emitSurfaceNotice := emitNotice
 		if surface.ActiveQueueItemID != "" {
 			item := surface.QueueItems[surface.ActiveQueueItemID]
 			if item != nil && (item.Status == state.QueueItemDispatching || item.Status == state.QueueItemRunning) {
 				var noticePtr *control.Notice
-				if emitSurfaceNotice {
+				if emitNotice {
 					noticePtr = &control.Notice{
 						Code: "attached_instance_transport_degraded",
 						Text: noticeText,
@@ -858,7 +872,7 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 
 		s.clearRemoteOwnership(surface)
 		events = append(events, s.finishSurfaceAfterWork(surface)...)
-		if emitSurfaceNotice {
+		if emitNotice {
 			events = append(events, control.UIEvent{
 				Kind:             control.UIEventNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
@@ -869,8 +883,10 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 			})
 		}
 	}
-	delete(s.pendingRemote, instanceID)
-	delete(s.activeRemote, instanceID)
+	if !preserveRemoteOwnership {
+		delete(s.pendingRemote, instanceID)
+		delete(s.activeRemote, instanceID)
+	}
 	return events
 }
 

@@ -462,6 +462,9 @@ func (s *Service) surfaceNeedsDelayedDetach(surface *state.SurfaceConsoleRecord,
 	if surface == nil {
 		return false
 	}
+	if inst != nil && !inst.Online {
+		return false
+	}
 	if s.surfaceHasPendingSteer(surface) {
 		return true
 	}

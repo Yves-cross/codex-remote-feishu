@@ -359,7 +359,7 @@ func TestAppProcessIngressDropsStaleConnectionItems(t *testing.T) {
 	}
 }
 
-func TestAppHandleIngressOverloadKeepsAttachmentAfterDisconnect(t *testing.T) {
+func TestAppHandleIngressOverloadKeepsAttachmentUntilPreservedTurnCompletes(t *testing.T) {
 	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:              "inst-1",
@@ -397,9 +397,34 @@ func TestAppHandleIngressOverloadKeepsAttachmentAfterDisconnect(t *testing.T) {
 		t.Fatalf("expected transport degrade to keep attachment and selected thread, got %#v", surface)
 	}
 
-	app.service.ApplyInstanceConnected("inst-1")
+	recovery := app.service.ApplyInstanceConnected("inst-1")
+	if len(recovery) != 0 {
+		t.Fatalf("expected reconnect to wait for preserved turn completion, got %#v", recovery)
+	}
+	active := app.service.ActiveRemoteTurns()
+	if len(active) != 1 || active[0].SourceMessageID != "msg-1" || active[0].TurnID != "turn-1" {
+		t.Fatalf("expected in-flight turn to stay active across reconnect, got %#v", active)
+	}
+
+	resumed := app.service.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	var sawPromptSend bool
+	for _, event := range resumed {
+		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+			sawPromptSend = true
+		}
+	}
+	if !sawPromptSend {
+		t.Fatalf("expected preserved turn completion to re-dispatch queued work, got %#v", resumed)
+	}
+
 	pending := app.service.PendingRemoteTurns()
 	if len(pending) != 1 || pending[0].SourceMessageID != "msg-2" {
-		t.Fatalf("expected queued work to resume after reconnect, got %#v", pending)
+		t.Fatalf("expected queued work to resume after preserved turn completion, got %#v", pending)
 	}
 }

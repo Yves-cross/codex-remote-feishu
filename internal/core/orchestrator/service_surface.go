@@ -1215,11 +1215,20 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 			ThemeKey: "system",
 		}
 	} else if surface.ActiveQueueItemID != "" {
-		notice = control.Notice{
-			Code:     "stop_not_interruptible",
-			Title:    "当前还不能停止",
-			Text:     "当前请求正在派发，尚未进入可中断状态。",
-			ThemeKey: "system",
+		if inst != nil && !inst.Online {
+			notice = control.Notice{
+				Code:     "stop_instance_offline",
+				Title:    "实例暂时离线",
+				Text:     "当前实例链路正在恢复，暂时无法发送停止请求。你可以等待实例恢复后再 `/stop`，或直接 `/detach` 放弃接管。",
+				ThemeKey: "system",
+			}
+		} else {
+			notice = control.Notice{
+				Code:     "stop_not_interruptible",
+				Title:    "当前还不能停止",
+				Text:     "当前请求正在派发，尚未进入可中断状态。",
+				ThemeKey: "system",
+			}
 		}
 	}
 

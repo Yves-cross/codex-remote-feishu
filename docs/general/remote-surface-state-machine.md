@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-08`
-> Summary: 同步 headless 自动恢复：daemon 现在会 materialize latent surface，并在首轮 thread 视图就绪后延迟恢复；恢复成功/失败改为单条明确提示，且不会重放旧 replay。
+> Summary: 同步 transport degraded 恢复语义：保留 in-flight remote turn 与 retained-offline attachment，reconnect 后不抢跑 queued work，离线时 `/detach` 立即可用，`/stop` 改为恢复中提示。
 
 ## 1. 文档定位
 
@@ -508,9 +508,13 @@ R1/R2/R3/R4/R5 + inst.Online=true
   -- ApplyInstanceTransportDegraded --> 保持当前 route state + inst.Online=false
 
 transport degraded retained attachment
-  -- 当前 active item 若在 dispatching/running --> fail 当前 active item
+  -- 当前 active item 若在 dispatching/running 且已有 remote binding --> 保留 active item 与 remote ownership
+  -- 当前 active item 若尚未绑定可恢复 turn --> fail 当前 active item
   -- queued items --> 保留 queued
-  -- reconnect(ApplyInstanceConnected) --> 继续当前 route state，并重新 dispatchNext / reevaluateFollow
+  -- /stop --> 仅提示实例离线，暂时无法发送 interrupt
+  -- /detach --> 立即 finalize 到 R0 Detached
+  -- reconnect(ApplyInstanceConnected) --> 继续当前 route state，但不会抢先 dispatch queued work
+  -- preserved turn.completed --> 再继续 dispatchNext / reevaluateFollow
   -- hard disconnect(ApplyInstanceDisconnected / RemoveInstance) --> R0 Detached
 ```
 
@@ -521,13 +525,19 @@ transport degraded retained attachment
    1. `AttachedInstanceID`
    2. `SelectedThreadID`
    3. queued work
+   4. 已进入 `dispatching/running` 且有真实 remote binding 的 active queue item
+   5. 该 preserved turn 对应的 remote ownership 与 turn artifacts
 3. degraded 会清掉：
    1. 当前 active turn 归属
    2. request prompt / request capture
    3. surface-level prompt override
-4. 因为 attachment 仍在，所以 `/status` 必须明确显示“实例离线但接管关系保留”，否则用户会误以为已经 detach。
-5. 如果该 surface 同时还保留 headless restore hint，hard disconnect 回到 `R0 Detached` 后会重新进入上面的后台 auto-restore 判定。
-6. daemon graceful shutdown 也不是 `transport_degraded`。当前实现会在真正停掉 Feishu gateway 前，对内存里已知的 surface best-effort 广播单条 `daemon_shutting_down` notice；如果某个 surface 或 gateway 发送失败，只记录日志，不阻塞最终退出。
+4. degraded 不再把“链路过载/等待恢复”直接翻译成“当前执行已中断”。若 active turn 已经发出且可相关到 remote binding，当前 turn 仍可能继续执行，只是实时输出可能延迟或丢失。
+5. 因为 attachment 仍在，所以 `/status` 必须明确显示“实例离线但接管关系保留”；同时 retained-offline 状态下必须保留显式逃生口：
+   1. `/detach` 立即生效，不进入 `Abandoning`
+   2. `/stop` 只返回 `stop_instance_offline` 提示，不伪造已发送 interrupt
+6. reconnect 只恢复实例在线和 follow 评估，不会因为 queued item 还在就抢先重派；必须等 preserved turn 自己 `completed/failed` 后，后续 queued work 才会继续出队。
+7. 如果该 surface 同时还保留 headless restore hint，hard disconnect 回到 `R0 Detached` 后会重新进入上面的后台 auto-restore 判定。
+8. daemon graceful shutdown 也不是 `transport_degraded`。当前实现会在真正停掉 Feishu gateway 前，对内存里已知的 surface best-effort 广播单条 `daemon_shutting_down` notice；如果某个 surface 或 gateway 发送失败，只记录日志，不阻塞最终退出。
 
 ## 6. 命令矩阵
 
@@ -557,6 +567,13 @@ transport degraded retained attachment
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；用户必须先处理请求卡片 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住 |
 | `E6 Abandoning` | 只允许 `/status`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
+
+retained-offline overlay 额外规则：
+
+1. 条件：`Attachment.InstanceID != ""` 且 `Dispatch.InstanceOnline=false`。
+2. 当前若保留了 active running/dispatching item，`/stop` 只返回恢复中提示，不会发送 interrupt。
+3. `/detach` 直接 finalize，不进入 `E6 Abandoning`。
+4. `/status` 必须把“attachment 仍保留”和“实例当前离线”同时投影出来。
 
 ## 7. UI 动作协议
 
@@ -597,7 +614,7 @@ transport degraded retained attachment
 13. **旧 `/newinstance` 手工 headless 选择分支仍能把用户带进过时状态**：已修复。当前只保留 thread-first `/use` 的 preselected headless；旧命令和旧 `resume_headless_thread` 卡片统一回迁移提示。
 14. **same-instance `/use` / `/follow` / auto-follow 会在旧 request gate 还活着时静默改路由**：已修复。现在只要 request gate 仍在，所有会改路由的动作都会被冻结。
 15. **cross-instance attach 到复用/新建 headless 时会丢 thread replay**：已修复。当前 replay 会先按 `threadID` 全局迁移，再在目标 attach 上一次性补发。
-16. **transport degraded 后 attachment 仍保留，但文档和 `/status` 看起来像已 detached**：已修复。canonical 文档和 `/status` 现在都显式区分 retained-offline 与真正 detach。
+16. **transport degraded 后既误报“已中断当前执行”，又缺少 retained-offline 逃生口**：已修复。当前会保留可相关的 in-flight turn，不再伪造“已中断”；同时 `/status`、`/stop`、`/detach` 都已显式区分 retained-offline 与真正 detach。
 17. **queued 点赞升级成 steering 后 item 会脱离普通 queue，若 ack 失败则可能丢失**：已修复。当前已强制恢复原 queue 位置，并补失败 notice。
 18. **headless 自动恢复在首轮 refresh 前过早报失败，或恢复成功后重放旧 replay / 额外补 attached 噪音**：已修复。当前会先静默等待首轮 refresh，恢复成功只发单条成功 notice，且会清空旧 replay 而不是补发。
 
