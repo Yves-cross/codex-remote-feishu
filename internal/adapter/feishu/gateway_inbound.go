@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -31,6 +32,7 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 		ChatID:           chatID,
 		ActorUserID:      senderUserID,
 		MessageID:        stringPtr(message.MessageId),
+		Inbound:          inboundMetaFromMessageEvent(event),
 	}
 
 	switch strings.ToLower(stringPtr(message.MessageType)) {
@@ -46,6 +48,7 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 			commandAction.ChatID = chatID
 			commandAction.ActorUserID = action.ActorUserID
 			commandAction.MessageID = action.MessageID
+			commandAction.Inbound = action.Inbound
 			return commandAction, true, nil
 		}
 		inputs := []agentproto.Input{{Type: agentproto.InputText, Text: text}}
@@ -107,6 +110,7 @@ func (g *LiveGateway) parseMessageRecalledEvent(event *larkim.P2MessageRecalledV
 		SurfaceSessionID: surfaceSessionID,
 		ChatID:           strings.TrimSpace(stringPtr(event.Event.ChatId)),
 		TargetMessageID:  messageID,
+		Inbound:          inboundMetaFromMessageRecalledEvent(event),
 	}, true
 }
 
@@ -139,7 +143,27 @@ func (g *LiveGateway) parseMessageReactionCreatedEvent(event *larkim.P2MessageRe
 		ActorUserID:      actorUserID,
 		ReactionType:     reactionType,
 		TargetMessageID:  messageID,
+		Inbound:          inboundMetaFromMessageReactionCreatedEvent(event),
 	}, true
+}
+
+func (g *LiveGateway) parseMenuEvent(event *larkapplication.P2BotMenuV6) (control.Action, bool) {
+	if event == nil || event.Event == nil || event.Event.EventKey == nil {
+		return control.Action{}, false
+	}
+	rawKey := *event.Event.EventKey
+	action, ok := menuAction(rawKey)
+	if !ok {
+		log.Printf("feishu bot menu ignored: raw_key=%q normalized=%q", rawKey, normalizeMenuEventKey(rawKey))
+		return control.Action{}, false
+	}
+	log.Printf("feishu bot menu handled: raw_key=%q normalized=%q action=%s", rawKey, normalizeMenuEventKey(rawKey), action.Kind)
+	operatorID := operatorUserID(event.Event.Operator)
+	action.GatewayID = g.config.GatewayID
+	action.SurfaceSessionID = surfaceIDForInbound(g.config.GatewayID, "", "p2p", operatorID)
+	action.ActorUserID = operatorID
+	action.Inbound = inboundMetaFromMenuEvent(event)
+	return action, true
 }
 
 func parseTextContent(rawContent string) (string, error) {

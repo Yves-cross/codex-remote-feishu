@@ -47,20 +47,10 @@ func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 		return &larkcallback.CardActionTriggerResponse{}, nil
 	})
 	dispatch.OnP2BotMenuV6(func(ctx context.Context, event *larkapplication.P2BotMenuV6) error {
-		if event == nil || event.Event == nil || event.Event.EventKey == nil {
-			return nil
-		}
-		rawKey := *event.Event.EventKey
-		action, ok := menuAction(rawKey)
+		action, ok := g.parseMenuEvent(event)
 		if !ok {
-			log.Printf("feishu bot menu ignored: raw_key=%q normalized=%q", rawKey, normalizeMenuEventKey(rawKey))
 			return nil
 		}
-		log.Printf("feishu bot menu handled: raw_key=%q normalized=%q action=%s", rawKey, normalizeMenuEventKey(rawKey), action.Kind)
-		operatorID := operatorUserID(event.Event.Operator)
-		action.GatewayID = g.config.GatewayID
-		action.SurfaceSessionID = surfaceIDForInbound(g.config.GatewayID, "", "p2p", operatorID)
-		action.ActorUserID = operatorID
 		handler(ctx, action)
 		return nil
 	})

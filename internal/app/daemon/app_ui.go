@@ -140,6 +140,7 @@ func (a *App) deliverUIEvent(event control.UIEvent) error {
 			)
 		}
 	}
+	event.DaemonLifecycleID = a.daemonLifecycleID
 	operations := a.projector.Project(chatID, event)
 	for i := range operations {
 		if operations[i].GatewayID == "" {

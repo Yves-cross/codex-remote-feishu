@@ -179,9 +179,10 @@ func (a *App) handleIngressOverload(instanceID string, connectionID uint64) {
 func (a *App) HandleAction(ctx context.Context, action control.Action) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	action = a.classifyInboundAction(action)
 	before := a.service.SurfaceSnapshot(action.SurfaceSessionID)
 	log.Printf(
-		"surface action: surface=%s chat=%s actor=%s kind=%s message=%s instance=%s thread=%s text=%q",
+		"surface action: surface=%s chat=%s actor=%s kind=%s message=%s instance=%s thread=%s verdict=%s reason=%s event=%s request=%s message_time=%s menu_time=%s card_lifecycle=%s text=%q",
 		action.SurfaceSessionID,
 		action.ChatID,
 		action.ActorUserID,
@@ -189,6 +190,13 @@ func (a *App) HandleAction(ctx context.Context, action control.Action) {
 		action.MessageID,
 		action.InstanceID,
 		action.ThreadID,
+		inboundVerdict(action),
+		inboundReason(action),
+		strings.TrimSpace(action.Inbound.EventID),
+		strings.TrimSpace(action.Inbound.RequestID),
+		inboundTimeValue(action.Inbound.MessageCreateTime),
+		inboundTimeValue(action.Inbound.MenuClickTime),
+		strings.TrimSpace(action.Inbound.CardDaemonLifecycleID),
 		actionTextPreview(action.Text),
 	)
 	events := a.service.ApplySurfaceAction(action)

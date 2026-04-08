@@ -115,7 +115,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        title,
 			CardBody:         "",
 			CardThemeKey:     cardThemeInfo,
-			CardElements:     selectionPromptElements(*event.SelectionPrompt),
+			CardElements:     selectionPromptElements(*event.SelectionPrompt, event.DaemonLifecycleID),
 		}}
 	case control.UIEventCommandCatalog:
 		if event.CommandCatalog == nil {
@@ -133,7 +133,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        title,
 			CardBody:         commandCatalogBody(*event.CommandCatalog),
 			CardThemeKey:     cardThemeInfo,
-			CardElements:     commandCatalogElements(*event.CommandCatalog),
+			CardElements:     commandCatalogElements(*event.CommandCatalog, event.DaemonLifecycleID),
 		}}
 	case control.UIEventRequestPrompt:
 		if event.RequestPrompt == nil {
@@ -151,7 +151,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        title,
 			CardBody:         requestPromptBody(*event.RequestPrompt),
 			CardThemeKey:     cardThemeApproval,
-			CardElements:     requestPromptElements(*event.RequestPrompt),
+			CardElements:     requestPromptElements(*event.RequestPrompt, event.DaemonLifecycleID),
 		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
@@ -284,7 +284,7 @@ func fenced(language, text string) string {
 	return "```" + language + "\n" + text + "\n```"
 }
 
-func selectionPromptElements(prompt control.SelectionPrompt) []map[string]any {
+func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID string) []map[string]any {
 	if len(prompt.Options) == 0 {
 		return nil
 	}
@@ -298,7 +298,7 @@ func selectionPromptElements(prompt control.SelectionPrompt) []map[string]any {
 		elements = append(elements, map[string]any{
 			"tag": "action",
 			"actions": []map[string]any{
-				selectionOptionButton(prompt, option),
+				selectionOptionButton(prompt, option, daemonLifecycleID),
 			},
 		})
 	}
@@ -342,7 +342,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 	return fmt.Sprintf("%d. %s%s", option.Index, option.Label, current)
 }
 
-func selectionOptionButton(prompt control.SelectionPrompt, option control.SelectionOption) map[string]any {
+func selectionOptionButton(prompt control.SelectionPrompt, option control.SelectionOption, daemonLifecycleID string) map[string]any {
 	text := strings.TrimSpace(option.ButtonLabel)
 	if text == "" {
 		text = "选择"
@@ -381,6 +381,7 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 			"thread_id": strings.TrimSpace(option.OptionID),
 		}
 	}
+	stampActionValue(value, daemonLifecycleID)
 	disabled := option.Disabled
 	buttonType := "default"
 	if option.IsCurrent {
@@ -405,7 +406,7 @@ func commandCatalogBody(catalog control.CommandCatalog) string {
 	return renderSystemInlineTags(strings.TrimSpace(catalog.Summary))
 }
 
-func commandCatalogElements(catalog control.CommandCatalog) []map[string]any {
+func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID string) []map[string]any {
 	elements := make([]map[string]any, 0, len(catalog.Sections)*2)
 	for _, section := range catalog.Sections {
 		title := strings.TrimSpace(section.Title)
@@ -423,7 +424,7 @@ func commandCatalogElements(catalog control.CommandCatalog) []map[string]any {
 			if catalog.Interactive && len(entry.Buttons) > 0 {
 				elements = append(elements, map[string]any{
 					"tag":     "action",
-					"actions": commandCatalogButtons(entry.Buttons),
+					"actions": commandCatalogButtons(entry.Buttons, daemonLifecycleID),
 				})
 			}
 		}
@@ -473,7 +474,7 @@ func formatCommandExamples(examples []string) string {
 	return strings.Join(tags, "，")
 }
 
-func commandCatalogButtons(buttons []control.CommandCatalogButton) []map[string]any {
+func commandCatalogButtons(buttons []control.CommandCatalogButton, daemonLifecycleID string) []map[string]any {
 	actions := make([]map[string]any, 0, len(buttons))
 	buttonType := "default"
 	if len(buttons) == 1 {
@@ -495,10 +496,10 @@ func commandCatalogButtons(buttons []control.CommandCatalogButton) []map[string]
 				"tag":     "plain_text",
 				"content": label,
 			},
-			"value": map[string]any{
+			"value": stampActionValue(map[string]any{
 				"kind":         "run_command",
 				"command_text": commandText,
-			},
+			}, daemonLifecycleID),
 		})
 	}
 	return actions
@@ -522,7 +523,7 @@ func requestPromptBody(prompt control.RequestPrompt) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-func requestPromptElements(prompt control.RequestPrompt) []map[string]any {
+func requestPromptElements(prompt control.RequestPrompt, daemonLifecycleID string) []map[string]any {
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -533,7 +534,7 @@ func requestPromptElements(prompt control.RequestPrompt) []map[string]any {
 	}
 	actions := make([]map[string]any, 0, len(options))
 	for _, option := range options {
-		button := requestPromptButton(prompt, option)
+		button := requestPromptButton(prompt, option, daemonLifecycleID)
 		if len(button) == 0 {
 			continue
 		}
@@ -555,7 +556,7 @@ func requestPromptElements(prompt control.RequestPrompt) []map[string]any {
 	}
 }
 
-func requestPromptButton(prompt control.RequestPrompt, option control.RequestPromptOption) map[string]any {
+func requestPromptButton(prompt control.RequestPrompt, option control.RequestPromptOption, daemonLifecycleID string) map[string]any {
 	label := strings.TrimSpace(option.Label)
 	if label == "" {
 		return nil
@@ -571,13 +572,24 @@ func requestPromptButton(prompt control.RequestPrompt, option control.RequestPro
 			"tag":     "plain_text",
 			"content": label,
 		},
-		"value": map[string]any{
+		"value": stampActionValue(map[string]any{
 			"kind":              "request_respond",
 			"request_id":        prompt.RequestID,
 			"request_type":      strings.TrimSpace(prompt.RequestType),
 			"request_option_id": strings.TrimSpace(option.OptionID),
-		},
+		}, daemonLifecycleID),
 	}
+}
+
+func stampActionValue(value map[string]any, daemonLifecycleID string) map[string]any {
+	if len(value) == 0 {
+		return value
+	}
+	if strings.TrimSpace(daemonLifecycleID) == "" {
+		return value
+	}
+	value["daemon_lifecycle_id"] = strings.TrimSpace(daemonLifecycleID)
+	return value
 }
 
 func requestPromptContainsOption(options []control.RequestPromptOption, optionID string) bool {

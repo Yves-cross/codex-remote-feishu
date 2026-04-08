@@ -37,6 +37,27 @@ const (
 	ActionDetach            ActionKind = "surface.button.detach"
 )
 
+type InboundLifecycleVerdict string
+
+const (
+	InboundLifecycleCurrent InboundLifecycleVerdict = "current"
+	InboundLifecycleOld     InboundLifecycleVerdict = "old"
+	InboundLifecycleOldCard InboundLifecycleVerdict = "old_card"
+)
+
+type ActionInboundMeta struct {
+	EventID               string
+	EventType             string
+	EventCreateTime       time.Time
+	RequestID             string
+	MessageCreateTime     time.Time
+	MenuClickTime         time.Time
+	OpenMessageID         string
+	CardDaemonLifecycleID string
+	LifecycleVerdict      InboundLifecycleVerdict
+	LifecycleReason       string
+}
+
 type Action struct {
 	Kind             ActionKind
 	GatewayID        string
@@ -58,6 +79,7 @@ type Action struct {
 	MIMEType         string
 	ReactionType     string
 	TargetMessageID  string
+	Inbound          *ActionInboundMeta
 }
 
 type SelectionPromptKind string
@@ -303,6 +325,7 @@ type UIEvent struct {
 	Kind              UIEventKind
 	GatewayID         string
 	SurfaceSessionID  string
+	DaemonLifecycleID string
 	SourceMessageID   string
 	Snapshot          *Snapshot
 	SelectionPrompt   *SelectionPrompt

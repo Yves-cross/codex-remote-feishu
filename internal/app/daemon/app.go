@@ -66,6 +66,9 @@ type App struct {
 	relayServer *http.Server
 	apiServer   *http.Server
 
+	daemonStartedAt   time.Time
+	daemonLifecycleID string
+
 	commandSeq    uint64
 	mu            sync.Mutex
 	adminConfigMu sync.Mutex
@@ -97,6 +100,10 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 	if gateway == nil {
 		gateway = feishu.NopGateway{}
 	}
+	daemonStartedAt := serverIdentity.StartedAt.UTC()
+	if daemonStartedAt.IsZero() {
+		daemonStartedAt = time.Now().UTC()
+	}
 	authManager, err := adminauth.NewManager(adminauth.ManagerOptions{})
 	if err != nil {
 		panic(err)
@@ -105,6 +112,8 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		service:               orchestrator.NewService(time.Now, orchestrator.Config{TurnHandoffWait: 800 * time.Millisecond}, renderer.NewPlanner()),
 		projector:             feishu.NewProjector(),
 		gateway:               gateway,
+		daemonStartedAt:       daemonStartedAt,
+		daemonLifecycleID:     daemonLifecycleID(serverIdentity, daemonStartedAt),
 		pendingGatewayNotices: map[string][]control.UIEvent{},
 		managedHeadless:       map[string]*managedHeadlessProcess{},
 		startHeadless:         relayruntime.StartDetachedWrapper,

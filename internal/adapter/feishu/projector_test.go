@@ -83,6 +83,25 @@ func TestProjectSessionSelectionPromptIncludesHint(t *testing.T) {
 	}
 }
 
+func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventSelectionPrompt,
+		DaemonLifecycleID: "life-1",
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind: control.SelectionPromptUseThread,
+			Options: []control.SelectionOption{
+				{Index: 1, OptionID: "thread-1", Label: "droid · 修复登录流程"},
+			},
+		},
+	})
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	value, _ := actionRow[0]["value"].(map[string]any)
+	if value["daemon_lifecycle_id"] != "life-1" {
+		t.Fatalf("expected selection prompt action to carry daemon lifecycle id, got %#v", value)
+	}
+}
+
 func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -161,6 +180,27 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	}
 }
 
+func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventCommandCatalog,
+		DaemonLifecycleID: "life-1",
+		CommandCatalog: &control.CommandCatalog{
+			Interactive: true,
+			Sections: []control.CommandCatalogSection{{
+				Entries: []control.CommandCatalogEntry{{
+					Buttons: []control.CommandCatalogButton{{Label: "查看实例", CommandText: "/list"}},
+				}},
+			}},
+		},
+	})
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	value, _ := actionRow[0]["value"].(map[string]any)
+	if value["daemon_lifecycle_id"] != "life-1" {
+		t.Fatalf("expected command catalog action to carry daemon lifecycle id, got %#v", value)
+	}
+}
+
 func TestProjectRequestPromptAsCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -214,6 +254,26 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	}
 	if feedbackValue["request_option_id"] != "captureFeedback" {
 		t.Fatalf("unexpected feedback payload: %#v", feedbackValue)
+	}
+}
+
+func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventRequestPrompt,
+		DaemonLifecycleID: "life-1",
+		RequestPrompt: &control.RequestPrompt{
+			RequestID:   "req-1",
+			RequestType: "approval",
+			Options: []control.RequestPromptOption{
+				{OptionID: "accept", Label: "允许执行", Style: "primary"},
+			},
+		},
+	})
+	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
+	value, _ := actionRow[0]["value"].(map[string]any)
+	if value["daemon_lifecycle_id"] != "life-1" {
+		t.Fatalf("expected request prompt action to carry daemon lifecycle id, got %#v", value)
 	}
 }
 

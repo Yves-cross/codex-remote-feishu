@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
+	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
@@ -489,6 +492,57 @@ func TestParseCardActionTriggerEventBuildsPromptSelectionAction(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventCarriesInboundMeta(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-meta", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		EventV2Base: &larkevent.EventV2Base{
+			Header: &larkevent.EventHeader{
+				EventID:    "evt-card-1",
+				EventType:  "card.action.trigger",
+				CreateTime: "1710000000000",
+			},
+		},
+		EventReq: &larkevent.EventReq{
+			Header: map[string][]string{
+				larkcore.HttpHeaderKeyRequestId: {"req-card-1"},
+			},
+		},
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":                "use_thread",
+					"thread_id":           "thread-1",
+					"daemon_lifecycle_id": "life-1",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-meta",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Inbound == nil {
+		t.Fatalf("expected inbound meta, got %#v", action)
+	}
+	if action.Inbound.EventID != "evt-card-1" || action.Inbound.EventType != "card.action.trigger" || action.Inbound.RequestID != "req-card-1" {
+		t.Fatalf("unexpected card inbound meta: %#v", action.Inbound)
+	}
+	if action.Inbound.OpenMessageID != "om-card-meta" || action.Inbound.CardDaemonLifecycleID != "life-1" {
+		t.Fatalf("unexpected card inbound payload: %#v", action.Inbound)
+	}
+	if !action.Inbound.EventCreateTime.Equal(time.UnixMilli(1710000000000).UTC()) {
+		t.Fatalf("unexpected event create time: %#v", action.Inbound)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsDirectUseThreadAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-3", "feishu:app-1:user:user-1")
@@ -831,6 +885,98 @@ func TestParseMessageReactionCreatedEventIgnoresBotReactionAndUnknownMessage(t *
 	}
 }
 
+func TestParseMessageEventCarriesInboundMeta(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	event := &larkim.P2MessageReceiveV1{
+		EventV2Base: &larkevent.EventV2Base{
+			Header: &larkevent.EventHeader{
+				EventID:    "evt-msg-1",
+				EventType:  "im.message.receive_v1",
+				CreateTime: "1710000000000",
+			},
+		},
+		EventReq: &larkevent.EventReq{
+			Header: map[string][]string{
+				larkcore.HttpHeaderKeyRequestId: {"req-msg-1"},
+			},
+		},
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-msg-1"),
+				MessageType: stringRef("text"),
+				Content:     stringRef(`{"text":"你好"}`),
+				ChatType:    stringRef("p2p"),
+				CreateTime:  stringRef("1710000001000"),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected message event to be parsed")
+	}
+	if action.Inbound == nil {
+		t.Fatalf("expected inbound meta, got %#v", action)
+	}
+	if action.Inbound.EventID != "evt-msg-1" || action.Inbound.EventType != "im.message.receive_v1" || action.Inbound.RequestID != "req-msg-1" {
+		t.Fatalf("unexpected message inbound meta: %#v", action.Inbound)
+	}
+	if action.Inbound.OpenMessageID != "om-msg-1" {
+		t.Fatalf("unexpected open message id: %#v", action.Inbound)
+	}
+	if !action.Inbound.EventCreateTime.Equal(time.UnixMilli(1710000000000).UTC()) || !action.Inbound.MessageCreateTime.Equal(time.UnixMilli(1710000001000).UTC()) {
+		t.Fatalf("unexpected inbound times: %#v", action.Inbound)
+	}
+}
+
+func TestParseMenuEventCarriesInboundMeta(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	event := &larkapplication.P2BotMenuV6{
+		EventV2Base: &larkevent.EventV2Base{
+			Header: &larkevent.EventHeader{
+				EventID:    "evt-menu-1",
+				EventType:  "application.bot.menu_v6",
+				CreateTime: "1710000000000",
+			},
+		},
+		EventReq: &larkevent.EventReq{
+			Header: map[string][]string{
+				larkcore.HttpHeaderKeyRequestId: {"req-menu-1"},
+			},
+		},
+		Event: &larkapplication.P2BotMenuV6Data{
+			Operator: &larkapplication.Operator{
+				OperatorId: &larkapplication.UserId{UserId: stringRef("user-1")},
+			},
+			EventKey:  stringRef("list"),
+			Timestamp: int64Ref(1710000002000),
+		},
+	}
+
+	action, ok := gateway.parseMenuEvent(event)
+	if !ok {
+		t.Fatal("expected menu event to be parsed")
+	}
+	if action.Kind != control.ActionListInstances {
+		t.Fatalf("unexpected menu action: %#v", action)
+	}
+	if action.Inbound == nil {
+		t.Fatalf("expected inbound meta, got %#v", action)
+	}
+	if action.Inbound.EventID != "evt-menu-1" || action.Inbound.RequestID != "req-menu-1" {
+		t.Fatalf("unexpected menu inbound meta: %#v", action.Inbound)
+	}
+	if !action.Inbound.MenuClickTime.Equal(time.UnixMilli(1710000002000).UTC()) {
+		t.Fatalf("unexpected menu click time: %#v", action.Inbound)
+	}
+}
+
 func TestParseMessageEventBuildsMixedInputsForPost(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.downloadImageFn = func(_ context.Context, messageID, imageKey string) (string, string, error) {
@@ -1026,5 +1172,9 @@ func TestIgnoredMissingReactionError(t *testing.T) {
 }
 
 func stringRef(value string) *string {
+	return &value
+}
+
+func int64Ref(value int64) *int64 {
 	return &value
 }

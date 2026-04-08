@@ -15,6 +15,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 	if event == nil || event.Event == nil || event.Event.Action == nil {
 		return control.Action{}, false
 	}
+	meta := inboundMetaFromCardActionEvent(event)
 	value := event.Event.Action.Value
 	kind := strings.TrimSpace(stringMapValue(value, "kind"))
 	if kind == "" {
@@ -47,6 +48,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
 			InstanceID:       instanceID,
+			Inbound:          meta,
 		}, true
 	case "use_thread":
 		threadID := strings.TrimSpace(stringMapValue(value, "thread_id"))
@@ -61,6 +63,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
 			ThreadID:         threadID,
+			Inbound:          meta,
 		}, true
 	case "resume_headless_thread":
 		return control.Action{
@@ -71,6 +74,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
 			Text:             "resume_headless_thread",
+			Inbound:          meta,
 		}, true
 	case "kick_thread_confirm":
 		threadID := strings.TrimSpace(stringMapValue(value, "thread_id"))
@@ -85,6 +89,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
 			ThreadID:         threadID,
+			Inbound:          meta,
 		}, true
 	case "kick_thread_cancel":
 		return control.Action{
@@ -94,6 +99,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ChatID:           chatID,
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
+			Inbound:          meta,
 		}, true
 	case "prompt_select":
 		promptID := strings.TrimSpace(stringMapValue(value, "prompt_id"))
@@ -110,6 +116,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			MessageID:        messageID,
 			PromptID:         promptID,
 			OptionID:         optionID,
+			Inbound:          meta,
 		}, true
 	case "request_respond":
 		requestID := strings.TrimSpace(stringMapValue(value, "request_id"))
@@ -137,6 +144,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			RequestType:      strings.TrimSpace(stringMapValue(value, "request_type")),
 			RequestOptionID:  optionID,
 			Approved:         boolMapValue(value, "approved"),
+			Inbound:          meta,
 		}, true
 	case "run_command":
 		commandText := strings.TrimSpace(stringMapValue(value, "command_text"))
@@ -152,6 +160,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		action.ChatID = chatID
 		action.ActorUserID = operatorID
 		action.MessageID = messageID
+		action.Inbound = meta
 		return action, true
 	default:
 		return control.Action{}, false
