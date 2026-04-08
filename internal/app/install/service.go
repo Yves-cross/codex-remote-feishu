@@ -1,12 +1,12 @@
 package install
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
 	"github.com/kxn/codex-remote-feishu/internal/config"
@@ -16,6 +16,11 @@ type Options struct {
 	BaseDir            string
 	InstallBinDir      string
 	BinaryPath         string
+	CurrentVersion     string
+	InstallSource      InstallSource
+	CurrentTrack       ReleaseTrack
+	VersionsRoot       string
+	CurrentSlot        string
 	WrapperBinary      string
 	RelaydBinary       string
 	RelayServerURL     string
@@ -35,6 +40,16 @@ type InstallState struct {
 	WrapperConfigPath      string                   `json:"wrapperConfigPath"`
 	ServicesConfigPath     string                   `json:"servicesConfigPath"`
 	StatePath              string                   `json:"statePath"`
+	InstallSource          InstallSource            `json:"installSource,omitempty"`
+	CurrentTrack           ReleaseTrack             `json:"currentTrack,omitempty"`
+	CurrentVersion         string                   `json:"currentVersion,omitempty"`
+	CurrentBinaryPath      string                   `json:"currentBinaryPath,omitempty"`
+	VersionsRoot           string                   `json:"versionsRoot,omitempty"`
+	CurrentSlot            string                   `json:"currentSlot,omitempty"`
+	RollbackCandidate      *RollbackCandidate       `json:"rollbackCandidate,omitempty"`
+	LastCheckAt            *time.Time               `json:"lastCheckAt,omitempty"`
+	LastKnownLatestVersion string                   `json:"lastKnownLatestVersion,omitempty"`
+	PendingUpgrade         *PendingUpgrade          `json:"pendingUpgrade,omitempty"`
 	InstalledBinary        string                   `json:"installedBinary,omitempty"`
 	InstalledWrapperBinary string                   `json:"installedWrapperBinary,omitempty"`
 	InstalledRelaydBinary  string                   `json:"installedRelaydBinary,omitempty"`
@@ -131,12 +146,17 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 		VSCodeSettingsPath:     opts.VSCodeSettingsPath,
 		BundleEntrypoint:       opts.BundleEntrypoint,
 	}
-	raw, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return InstallState{}, err
-	}
-	raw = append(raw, '\n')
-	if err := os.WriteFile(statePath, raw, 0o644); err != nil {
+	ApplyStateMetadata(&state, StateMetadataOptions{
+		StatePath:       statePath,
+		SourceBinary:    sourceBinary,
+		InstalledBinary: installedBinary,
+		CurrentVersion:  opts.CurrentVersion,
+		InstallSource:   opts.InstallSource,
+		CurrentTrack:    opts.CurrentTrack,
+		VersionsRoot:    opts.VersionsRoot,
+		CurrentSlot:     opts.CurrentSlot,
+	})
+	if err := WriteState(statePath, state); err != nil {
 		return InstallState{}, err
 	}
 

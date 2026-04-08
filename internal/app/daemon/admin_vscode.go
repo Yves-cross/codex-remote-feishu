@@ -129,6 +129,15 @@ func (a *App) buildVSCodeDetectResponse() (vscodeDetectResponse, error) {
 	if err != nil {
 		return vscodeDetectResponse{}, err
 	}
+	if installState != nil {
+		normalized := *installState
+		install.ApplyStateMetadata(&normalized, install.StateMetadataOptions{
+			StatePath:       installStatePath,
+			InstalledBinary: currentBinary,
+			CurrentVersion:  a.currentBinaryVersion(),
+		})
+		installState = &normalized
+	}
 
 	settingsPath := defaults.VSCodeSettingsPath
 	if installState != nil && strings.TrimSpace(installState.VSCodeSettingsPath) != "" {
@@ -236,10 +245,16 @@ func (a *App) applyVSCodeIntegration(req vscodeApplyRequest) error {
 		return err
 	}
 
+	install.ApplyStateMetadata(state, install.StateMetadataOptions{
+		StatePath:       statePath,
+		InstalledBinary: currentBinary,
+		CurrentVersion:  a.currentBinaryVersion(),
+	})
 	state.ConfigPath = loadedConfigPath(a)
 	state.InstalledBinary = currentBinary
 	state.InstalledWrapperBinary = currentBinary
 	state.InstalledRelaydBinary = currentBinary
+	state.CurrentBinaryPath = currentBinary
 	state.StatePath = statePath
 	state.Integrations = integrationModesFor(mode)
 	if err := install.WriteState(statePath, *state); err != nil {
@@ -278,10 +293,16 @@ func (a *App) reinstallVSCodeShim(bundleEntrypoint string) error {
 	if err := editor.PatchBundleEntrypoint(target, currentBinary); err != nil {
 		return err
 	}
+	install.ApplyStateMetadata(state, install.StateMetadataOptions{
+		StatePath:       statePath,
+		InstalledBinary: currentBinary,
+		CurrentVersion:  a.currentBinaryVersion(),
+	})
 	state.BundleEntrypoint = target
 	state.InstalledBinary = currentBinary
 	state.InstalledWrapperBinary = currentBinary
 	state.InstalledRelaydBinary = currentBinary
+	state.CurrentBinaryPath = currentBinary
 	state.StatePath = statePath
 	if err := install.WriteState(statePath, *state); err != nil {
 		return err
@@ -433,4 +454,8 @@ func loadedConfigPath(a *App) string {
 		return ""
 	}
 	return loaded.Path
+}
+
+func (a *App) currentBinaryVersion() string {
+	return strings.TrimSpace(a.serverIdentity.Version)
 }

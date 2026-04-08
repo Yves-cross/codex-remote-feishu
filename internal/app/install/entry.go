@@ -25,6 +25,11 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	baseDir := flagSet.String("base-dir", defaults.BaseDir, "base directory for config and install state")
 	installBinDir := flagSet.String("install-bin-dir", defaults.InstallBinDir, "target directory for installed binary; empty keeps source path")
 	binaryPath := flagSet.String("binary", defaultBinary, "codex-remote binary source path")
+	installSource := flagSet.String("install-source", "", "install source metadata: release or repo")
+	currentTrack := flagSet.String("current-track", "", "current upgrade track metadata: production, beta, or alpha")
+	currentVersion := flagSet.String("current-version", version, "current binary version metadata")
+	versionsRoot := flagSet.String("versions-root", "", "version cache root metadata")
+	currentSlot := flagSet.String("current-slot", "", "current version slot metadata")
 	relayURL := flagSet.String("relay-url", "", "relay websocket url; empty preserves existing or default config")
 	codexBinary := flagSet.String("codex-binary", "", "real codex binary path; empty keeps wrapper default and lets managed_shim auto-resolve codex.real")
 	integrationMode := flagSet.String("integration", "auto", "integration mode: auto, editor_settings, managed_shim, both, or comma list")
@@ -61,6 +66,11 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		BaseDir:            *baseDir,
 		InstallBinDir:      *installBinDir,
 		BinaryPath:         *binaryPath,
+		CurrentVersion:     *currentVersion,
+		InstallSource:      InstallSource(*installSource),
+		CurrentTrack:       ReleaseTrack(*currentTrack),
+		VersionsRoot:       *versionsRoot,
+		CurrentSlot:        *currentSlot,
 		WrapperBinary:      *legacyWrapperBinary,
 		RelaydBinary:       *legacyRelaydBinary,
 		RelayServerURL:     *relayURL,

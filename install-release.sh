@@ -295,4 +295,13 @@ if [[ ! -x "${binary_path}" ]]; then
   exit 1
 fi
 
-exec "${binary_path}" install -binary "${binary_path}" -bootstrap-only -start-daemon ${install_args[@]+"${install_args[@]}"}
+exec "${binary_path}" install \
+  -binary "${binary_path}" \
+  -install-source release \
+  -current-track "${TRACK}" \
+  -current-version "${VERSION}" \
+  -versions-root "${INSTALL_ROOT}" \
+  -current-slot "${VERSION}" \
+  -bootstrap-only \
+  -start-daemon \
+  ${install_args[@]+"${install_args[@]}"}

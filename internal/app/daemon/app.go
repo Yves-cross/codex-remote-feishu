@@ -67,6 +67,7 @@ type App struct {
 	gateway             feishu.Gateway
 	finalBlockPreviewer feishu.FinalBlockPreviewService
 	relay               *relayws.Server
+	serverIdentity      agentproto.ServerIdentity
 	debugRelayFlow      bool
 	rawLogger           *debuglog.RawLogger
 
@@ -133,6 +134,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		service:               orchestrator.NewService(time.Now, orchestrator.Config{TurnHandoffWait: 800 * time.Millisecond}, renderer.NewPlanner()),
 		projector:             feishu.NewProjector(),
 		gateway:               gateway,
+		serverIdentity:        serverIdentity,
 		daemonStartedAt:       daemonStartedAt,
 		daemonLifecycleID:     daemonLifecycleID(serverIdentity, daemonStartedAt),
 		pendingGatewayNotices: map[string][]control.UIEvent{},

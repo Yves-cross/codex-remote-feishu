@@ -147,6 +147,15 @@ func TestVSCodeApplyEditorSettings(t *testing.T) {
 	if !strings.Contains(string(rawState), settingsPath) {
 		t.Fatalf("expected install-state to record settings path, got %s", string(rawState))
 	}
+	if !strings.Contains(string(rawState), `"installSource": "repo"`) {
+		t.Fatalf("expected install-state to mark repo source, got %s", string(rawState))
+	}
+	if !strings.Contains(string(rawState), `"currentTrack": "alpha"`) {
+		t.Fatalf("expected install-state to default repo installs to alpha, got %s", string(rawState))
+	}
+	if !strings.Contains(string(rawState), `"currentBinaryPath": "`+binaryPath+`"`) {
+		t.Fatalf("expected install-state to record current binary path, got %s", string(rawState))
+	}
 
 	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
 	if rec.Code != http.StatusOK {
@@ -256,7 +265,9 @@ func newVSCodeAdminTestApp(t *testing.T, home, binaryPath string, sshSession boo
 	dataDir := filepath.Join(home, ".local", "share", "codex-remote")
 	installStatePath := filepath.Join(dataDir, "install-state.json")
 
-	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{Version: "dev"},
+	})
 	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
 		BinaryPath: binaryPath,
 		Paths: relayruntime.Paths{

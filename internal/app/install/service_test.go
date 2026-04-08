@@ -22,6 +22,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 		BaseDir:            baseDir,
 		InstallBinDir:      installBinDir,
 		BinaryPath:         binaryPath,
+		CurrentVersion:     "dev",
 		RelayServerURL:     "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary:    "/usr/local/bin/codex",
 		Integrations:       []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -70,6 +71,24 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if state.InstalledRelaydBinary != wantBinary {
 		t.Fatalf("unexpected installed relayd alias path: %s", state.InstalledRelaydBinary)
 	}
+	if state.InstallSource != InstallSourceRepo {
+		t.Fatalf("install source = %q, want repo", state.InstallSource)
+	}
+	if state.CurrentTrack != ReleaseTrackAlpha {
+		t.Fatalf("current track = %q, want alpha", state.CurrentTrack)
+	}
+	if state.CurrentVersion != "dev" {
+		t.Fatalf("current version = %q, want dev", state.CurrentVersion)
+	}
+	if state.CurrentBinaryPath != wantBinary {
+		t.Fatalf("current binary path = %q, want %q", state.CurrentBinaryPath, wantBinary)
+	}
+	if state.VersionsRoot != filepath.Join(baseDir, ".local", "share", "codex-remote", "releases") {
+		t.Fatalf("versions root = %q", state.VersionsRoot)
+	}
+	if state.CurrentSlot != "" {
+		t.Fatalf("current slot = %q, want empty for repo bootstrap", state.CurrentSlot)
+	}
 }
 
 func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {
@@ -85,6 +104,7 @@ func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {
 		BaseDir:          baseDir,
 		InstallBinDir:    installBinDir,
 		BinaryPath:       binaryPath,
+		CurrentVersion:   "dev",
 		RelayServerURL:   "ws://127.0.0.1:9500/ws/agent",
 		Integrations:     []WrapperIntegrationMode{IntegrationManagedShim},
 		BundleEntrypoint: entrypoint,
@@ -131,6 +151,7 @@ func TestBootstrapOnlyWritesConfigWithoutTouchingVSCode(t *testing.T) {
 		BaseDir:            baseDir,
 		InstallBinDir:      filepath.Join(baseDir, "installed-bin"),
 		BinaryPath:         sourceBinary,
+		CurrentVersion:     "dev",
 		RelayServerURL:     "ws://127.0.0.1:9500/ws/agent",
 		VSCodeSettingsPath: settingsPath,
 		BundleEntrypoint:   entrypoint,
@@ -174,6 +195,7 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
 		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		CurrentVersion:  "dev",
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -210,6 +232,7 @@ func TestBootstrapPreservesExistingDebugRelayFlowFlag(t *testing.T) {
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
 		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		CurrentVersion:  "dev",
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -241,6 +264,7 @@ func TestBootstrapPreservesExistingDebugRelayRawFlag(t *testing.T) {
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
 		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		CurrentVersion:  "dev",
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -264,6 +288,7 @@ func TestBootstrapAcceptsMatchingDeprecatedBinaryFlags(t *testing.T) {
 		BaseDir:        baseDir,
 		WrapperBinary:  sourceBinary,
 		RelaydBinary:   sourceBinary,
+		CurrentVersion: "dev",
 		RelayServerURL: "ws://127.0.0.1:9500/ws/agent",
 	})
 	if err != nil {
@@ -307,6 +332,7 @@ func TestBootstrapMergesLegacySplitConfigFiles(t *testing.T) {
 	state, err := service.Bootstrap(Options{
 		BaseDir:         baseDir,
 		BinaryPath:      seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin"),
+		CurrentVersion:  "dev",
 		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
@@ -352,5 +378,50 @@ func assertMigratedBackupExists(t *testing.T, legacyPath string) {
 	}
 	if len(backups) != 1 {
 		t.Fatalf("expected one migrated backup for %s, got %v", legacyPath, backups)
+	}
+}
+
+func TestBootstrapPreservesReleaseInstallMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	releasesRoot := filepath.Join(baseDir, ".local", "share", "codex-remote", "releases")
+	sourceBinary := seedBinary(t, filepath.Join(releasesRoot, "v1.2.3-beta.4", "codex-remote"), "release-bin")
+	installBinDir := filepath.Join(baseDir, "installed-bin")
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:         baseDir,
+		InstallBinDir:   installBinDir,
+		BinaryPath:      sourceBinary,
+		CurrentVersion:  "v1.2.3-beta.4",
+		InstallSource:   InstallSourceRelease,
+		CurrentTrack:    ReleaseTrackBeta,
+		VersionsRoot:    releasesRoot,
+		CurrentSlot:     "v1.2.3-beta.4",
+		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
+		CodexRealBinary: "/usr/local/bin/codex",
+		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
+	})
+	if err != nil {
+		t.Fatalf("bootstrap release metadata: %v", err)
+	}
+
+	wantBinary := filepath.Join(installBinDir, "codex-remote")
+	if state.InstallSource != InstallSourceRelease {
+		t.Fatalf("install source = %q, want release", state.InstallSource)
+	}
+	if state.CurrentTrack != ReleaseTrackBeta {
+		t.Fatalf("current track = %q, want beta", state.CurrentTrack)
+	}
+	if state.CurrentVersion != "v1.2.3-beta.4" {
+		t.Fatalf("current version = %q, want v1.2.3-beta.4", state.CurrentVersion)
+	}
+	if state.CurrentBinaryPath != wantBinary {
+		t.Fatalf("current binary path = %q, want %q", state.CurrentBinaryPath, wantBinary)
+	}
+	if state.VersionsRoot != releasesRoot {
+		t.Fatalf("versions root = %q, want %q", state.VersionsRoot, releasesRoot)
+	}
+	if state.CurrentSlot != "v1.2.3-beta.4" {
+		t.Fatalf("current slot = %q, want v1.2.3-beta.4", state.CurrentSlot)
 	}
 }

@@ -109,6 +109,7 @@ Windows PowerShell:
 - 写 `config.json`
 - 保留旧配置迁移与已有凭证
 - 写 `install-state.json`
+- 写当前安装来源、track、version、稳定入口路径和版本缓存根目录
 - 不直接改 VS Code
 - 启动 daemon 并输出 WebSetup / Admin URL
 
@@ -132,6 +133,7 @@ Windows PowerShell:
 ```text
 <baseDir>/.config/codex-remote/config.json
 <baseDir>/.local/share/codex-remote/install-state.json
+<baseDir>/.local/share/codex-remote/releases/
 <baseDir>/.local/share/codex-remote/logs/codex-remote-relayd.log
 <baseDir>/.local/state/codex-remote/codex-remote-relayd.pid
 ```
@@ -147,6 +149,21 @@ Windows PowerShell:
 - Windows: `%LOCALAPPDATA%\\codex-remote\\bin`
 
 release 包中的归档目录只是版本缓存位置，不是长期运行路径。
+
+当前 `install-state.json` 还会记录升级所需的最小基线：
+
+- `installSource`
+- `currentTrack`
+- `currentVersion`
+- `currentBinaryPath`
+- `versionsRoot`
+- `currentSlot`
+
+其中：
+
+- release 安装默认把 `installSource` 记为 `release`
+- 源码仓库 / 本地构建路径默认把 `installSource` 记为 `repo`
+- repo 来源默认按 `alpha` track 语义记录
 
 ## 5. VS Code 接管模型
 

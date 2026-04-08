@@ -27,5 +27,9 @@ func WriteState(path string, state InstallState) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	return os.WriteFile(path, raw, 0o644)
+	tempPath := path + ".tmp"
+	if err := os.WriteFile(tempPath, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
