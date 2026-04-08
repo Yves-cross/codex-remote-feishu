@@ -602,7 +602,7 @@ func headlessPendingNoticeCode(pending *state.HeadlessLaunchRecord) string {
 
 func headlessPendingNoticeText(pending *state.HeadlessLaunchRecord) string {
 	_ = pending
-	return "headless 实例仍在创建中，请等待完成或执行 /killinstance 取消。"
+	return "恢复流程仍在进行中，请等待完成，或执行 /detach 取消。"
 }
 
 func isInternalHelperEvent(event agentproto.Event) bool {

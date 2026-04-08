@@ -179,17 +179,14 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	{
 		section:      "实例与会话",
 		helpCommands: []string{"/killinstance"},
-		description:  "结束当前接管的 managed headless 实例；对普通 VS Code 实例不会生效。",
-		buttons: []CommandCatalogButton{
-			{Label: "结束 headless", CommandText: "/killinstance"},
-		},
-		showInHelp: false,
-		showInMenu: false,
+		description:  "历史兼容入口，提示改用 /detach。",
+		showInHelp:   false,
+		showInMenu:   false,
 		textExact: []feishuCommandMatch{
-			{alias: "/killinstance", action: Action{Kind: ActionKillInstance}},
+			{alias: "/killinstance", action: Action{Kind: ActionRemovedCommand, Text: "/killinstance"}},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "killinstance", action: Action{Kind: ActionKillInstance}},
+			{alias: "killinstance", action: Action{Kind: ActionRemovedCommand, Text: "kill_instance"}},
 		},
 	},
 	{

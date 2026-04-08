@@ -38,7 +38,6 @@
 - `/list`
 - `/status`
 - `/new`
-- `/killinstance`
 - `/stop`
 - `/threads` / `/use` / `/sessions`
 - `/useall` / `/sessionsall` / `/sessions/all`
@@ -341,6 +340,7 @@ attach 成功后：
 - `kick_thread_cancel`
 
 旧 `resume_headless_thread` 只保留为历史兼容入口，统一回迁移提示。
+旧 `/killinstance` 只保留为历史兼容入口，统一提示改用 `/detach`。
 旧 `prompt_select` 只保留为兼容入口，统一回 `selection_expired`。
 
 ### 7.1.1 Approval Request 卡片

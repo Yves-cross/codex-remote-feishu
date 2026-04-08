@@ -88,6 +88,7 @@ func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleReco
 	switch action.Kind {
 	case control.ActionStatus,
 		control.ActionDebugCommand,
+		control.ActionDetach,
 		control.ActionKillInstance,
 		control.ActionRemovedCommand,
 		control.ActionReactionCreated,
@@ -160,6 +161,8 @@ func (s *Service) handleRemovedCommand(surface *state.SurfaceConsoleRecord, acti
 	switch control.LegacyActionKey(action.Text) {
 	case "newinstance":
 		return notice(surface, "command_removed_newinstance", "`/newinstance` 已移除。请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
+	case "killinstance":
+		return notice(surface, "command_removed_killinstance", "`/killinstance` 已移除。请改用 `/detach` 取消当前恢复流程，或断开当前接管。")
 	case "resume_headless_thread":
 		return notice(surface, "selection_expired", "这个旧恢复卡片（来自已移除的 `/newinstance` 流程）已失效，请改用 `/use` 或 `/useall` 选择要恢复的会话；系统会按 thread-first 路径自动复用或启动 headless。")
 	default:
@@ -1248,40 +1251,45 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	return events
 }
 
+func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecord, notice *control.Notice) []control.UIEvent {
+	if surface == nil || surface.PendingHeadless == nil {
+		return nil
+	}
+	pending := surface.PendingHeadless
+	events := s.discardDrafts(surface)
+	events = append(events, s.finalizeDetachedSurface(surface)...)
+	events = append(events, control.UIEvent{
+		Kind:             control.UIEventDaemonCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		DaemonCommand: &control.DaemonCommand{
+			Kind:             control.DaemonCommandKillHeadless,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			InstanceID:       pending.InstanceID,
+			ThreadID:         pending.ThreadID,
+			ThreadTitle:      pending.ThreadTitle,
+			ThreadCWD:        pending.ThreadCWD,
+		},
+	})
+	if notice != nil {
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice:           notice,
+		})
+	}
+	return events
+}
+
 func (s *Service) killHeadlessInstance(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
 	if surface.PendingHeadless != nil {
-		pending := surface.PendingHeadless
-		events := s.discardDrafts(surface)
-		if surface.AttachedInstanceID == pending.InstanceID {
-			events = append(events, s.finalizeDetachedSurface(surface)...)
-		}
-		surface.PendingHeadless = nil
-		return append(events,
-			control.UIEvent{
-				Kind:             control.UIEventDaemonCommand,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				DaemonCommand: &control.DaemonCommand{
-					Kind:             control.DaemonCommandKillHeadless,
-					SurfaceSessionID: surface.SurfaceSessionID,
-					InstanceID:       pending.InstanceID,
-					ThreadID:         pending.ThreadID,
-					ThreadTitle:      pending.ThreadTitle,
-					ThreadCWD:        pending.ThreadCWD,
-				},
-			},
-			control.UIEvent{
-				Kind:             control.UIEventNotice,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				Notice: &control.Notice{
-					Code:  "headless_cancelled",
-					Title: "取消 Headless 实例",
-					Text:  "已取消当前 headless 实例创建流程。",
-				},
-			},
-		)
+		return s.cancelPendingHeadlessLaunch(surface, &control.Notice{
+			Code:  "headless_cancelled",
+			Title: "取消恢复流程",
+			Text:  "已取消当前恢复流程。",
+		})
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
@@ -1328,7 +1336,11 @@ func (s *Service) killHeadlessInstance(surface *state.SurfaceConsoleRecord) []co
 
 func (s *Service) detach(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	if surface.PendingHeadless != nil {
-		return notice(surface, "headless_pending", "当前 headless 创建流程尚未完成；如需取消，请执行 /killinstance。")
+		return s.cancelPendingHeadlessLaunch(surface, &control.Notice{
+			Code:  "detached",
+			Title: "已取消恢复流程",
+			Text:  "已取消当前恢复流程。当前没有接管中的实例。",
+		})
 	}
 	if surface.AttachedInstanceID == "" {
 		return notice(surface, "detached", "当前没有接管中的实例。")

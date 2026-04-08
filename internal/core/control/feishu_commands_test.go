@@ -43,3 +43,21 @@ func TestFeishuCommandCatalogsHideKillInstanceFromVisibleEntries(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFeishuLegacyKillInstanceCommandsAsRemoved(t *testing.T) {
+	action, ok := ParseFeishuTextAction("/killinstance")
+	if !ok {
+		t.Fatal("expected /killinstance to be parsed")
+	}
+	if action.Kind != ActionRemovedCommand || action.Text != "/killinstance" {
+		t.Fatalf("unexpected text action for /killinstance: %#v", action)
+	}
+
+	menu, ok := ParseFeishuMenuAction("kill_instance")
+	if !ok {
+		t.Fatal("expected kill_instance menu action to be parsed")
+	}
+	if menu.Kind != ActionRemovedCommand || menu.Text != "kill_instance" {
+		t.Fatalf("unexpected menu action for kill_instance: %#v", menu)
+	}
+}

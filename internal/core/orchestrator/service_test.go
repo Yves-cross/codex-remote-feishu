@@ -4555,6 +4555,25 @@ func TestRemovedResumeHeadlessCardShowsMigrationNotice(t *testing.T) {
 	}
 }
 
+func TestRemovedKillInstanceCommandShowsDetachMigrationNotice(t *testing.T) {
+	now := time.Date(2026, 4, 8, 10, 5, 30, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRemovedCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/killinstance",
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "command_removed_killinstance" {
+		t.Fatalf("expected killinstance migration notice, got %#v", events)
+	}
+	if !strings.Contains(events[0].Notice.Text, "/detach") {
+		t.Fatalf("expected killinstance migration to mention /detach, got %#v", events[0].Notice)
+	}
+}
+
 func TestRemovedUnknownCommandShowsConcreteCommand(t *testing.T) {
 	now := time.Date(2026, 4, 8, 10, 6, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -4615,6 +4634,53 @@ func TestPreselectedHeadlessLaunchBlocksNormalInput(t *testing.T) {
 	})
 	if len(blocked) != 1 || blocked[0].Notice == nil || blocked[0].Notice.Code != "headless_starting" {
 		t.Fatalf("expected headless_starting notice while preselected launch pending, got %#v", blocked)
+	}
+}
+
+func TestDetachCancelsPendingHeadlessLaunch(t *testing.T) {
+	now := time.Date(2026, 4, 8, 10, 12, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-offline",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        false,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+
+	start := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ThreadID:         "thread-1",
+	})
+	if len(start) != 2 || start[1].DaemonCommand == nil || start[1].DaemonCommand.Kind != control.DaemonCommandStartHeadless {
+		t.Fatalf("expected detached /use to start headless launch, got %#v", start)
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionDetach,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 2 || events[0].DaemonCommand == nil || events[0].DaemonCommand.Kind != control.DaemonCommandKillHeadless || events[1].Notice == nil || events[1].Notice.Code != "detached" {
+		t.Fatalf("expected detach to cancel pending launch and reset surface, got %#v", events)
+	}
+	if !strings.Contains(events[1].Notice.Text, "取消当前恢复流程") {
+		t.Fatalf("expected detach cancellation notice, got %#v", events[1].Notice)
+	}
+	if snapshot := svc.SurfaceSnapshot("surface-1"); snapshot == nil || snapshot.Attachment.InstanceID != "" || snapshot.PendingHeadless.InstanceID != "" {
+		t.Fatalf("expected detach to restore detached snapshot, got %#v", snapshot)
+	}
+	if surface := svc.root.Surfaces["surface-1"]; surface == nil || surface.RouteMode != state.RouteModeUnbound || surface.AttachedInstanceID != "" || surface.PendingHeadless != nil {
+		t.Fatalf("expected detach to restore detached surface state, got %#v", surface)
 	}
 }
 
