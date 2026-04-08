@@ -35,8 +35,12 @@ type Client struct {
 	closed  chan struct{}
 	closeMu sync.Once
 
-	controlOutbox chan queuedEnvelope
-	dataOutbox    chan queuedEnvelope
+	outboxMu      sync.Mutex
+	controlMax    int
+	dataMax       int
+	controlOutbox []queuedEnvelope
+	dataOutbox    []queuedEnvelope
+	outboundReady chan struct{}
 
 	rawLogger *debuglog.RawLogger
 }
@@ -47,8 +51,8 @@ type queuedEnvelope struct {
 }
 
 const (
-	defaultControlOutboxCapacity = 64
-	defaultDataOutboxCapacity    = 512
+	defaultControlOutboxCapacity = 512
+	defaultDataOutboxCapacity    = 16 * 1024
 )
 
 func NewClient(url string, hello agentproto.Hello, callbacks ClientCallbacks) *Client {
@@ -70,8 +74,9 @@ func newClientWithQueueSizes(url string, hello agentproto.Hello, callbacks Clien
 		hello:         hello,
 		callbacks:     callbacks,
 		closed:        make(chan struct{}),
-		controlOutbox: make(chan queuedEnvelope, controlCapacity),
-		dataOutbox:    make(chan queuedEnvelope, dataCapacity),
+		controlMax:    controlCapacity,
+		dataMax:       dataCapacity,
+		outboundReady: make(chan struct{}, 1),
 	}
 }
 
@@ -144,7 +149,7 @@ func (c *Client) SendEvents(events []agentproto.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
-	return c.enqueue(c.dataOutbox, queuedEnvelope{
+	return c.enqueue(&c.dataOutbox, c.dataMax, queuedEnvelope{
 		epoch: atomic.LoadUint64(&c.epoch),
 		envelope: agentproto.Envelope{
 			Type: agentproto.EnvelopeEventBatch,
@@ -160,7 +165,7 @@ func (c *Client) SendCommandAck(ack agentproto.CommandAck) error {
 	if ack.InstanceID == "" {
 		ack.InstanceID = c.hello.Instance.InstanceID
 	}
-	return c.enqueue(c.controlOutbox, queuedEnvelope{
+	return c.enqueue(&c.controlOutbox, c.controlMax, queuedEnvelope{
 		epoch: atomic.LoadUint64(&c.epoch),
 		envelope: agentproto.Envelope{
 			Type:       agentproto.EnvelopeCommandAck,
@@ -169,18 +174,24 @@ func (c *Client) SendCommandAck(ack agentproto.CommandAck) error {
 	}, errors.New("relay client control outbox full"))
 }
 
-func (c *Client) enqueue(outbox chan queuedEnvelope, item queuedEnvelope, fullErr error) error {
+func (c *Client) enqueue(outbox *[]queuedEnvelope, max int, item queuedEnvelope, fullErr error) error {
+	c.outboxMu.Lock()
+	defer c.outboxMu.Unlock()
+
 	select {
 	case <-c.closed:
 		return context.Canceled
 	default:
 	}
-	select {
-	case outbox <- item:
-		return nil
-	default:
+	if max > 0 && len(*outbox) >= max {
 		return fullErr
 	}
+	*outbox = append(*outbox, item)
+	select {
+	case c.outboundReady <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 func (c *Client) RunOnce(ctx context.Context) error {
@@ -341,42 +352,55 @@ func (c *Client) RunOnce(ctx context.Context) error {
 }
 
 func (c *Client) nextOutbound(ctx context.Context, pendingData *queuedEnvelope) (queuedEnvelope, *queuedEnvelope, error) {
-	if pendingData != nil {
-		select {
-		case <-ctx.Done():
-			return queuedEnvelope{}, pendingData, ctx.Err()
-		case <-c.closed:
-			return queuedEnvelope{}, pendingData, context.Canceled
-		case item := <-c.controlOutbox:
-			return item, pendingData, nil
-		default:
+	for {
+		if pendingData != nil {
+			if item, ok := c.dequeueControl(); ok {
+				return item, pendingData, nil
+			}
 			return *pendingData, nil, nil
 		}
-	}
-	select {
-	case <-ctx.Done():
-		return queuedEnvelope{}, nil, ctx.Err()
-	case <-c.closed:
-		return queuedEnvelope{}, nil, context.Canceled
-	case item := <-c.controlOutbox:
-		return item, nil, nil
-	default:
-	}
-	select {
-	case <-ctx.Done():
-		return queuedEnvelope{}, nil, ctx.Err()
-	case <-c.closed:
-		return queuedEnvelope{}, nil, context.Canceled
-	case item := <-c.controlOutbox:
-		return item, nil, nil
-	case data := <-c.dataOutbox:
-		select {
-		case item := <-c.controlOutbox:
-			return item, &data, nil
-		default:
+		if item, ok := c.dequeueControl(); ok {
+			return item, nil, nil
+		}
+		if data, ok := c.dequeueData(); ok {
+			if item, ok := c.dequeueControl(); ok {
+				return item, &data, nil
+			}
 			return data, nil, nil
 		}
+		select {
+		case <-ctx.Done():
+			return queuedEnvelope{}, nil, ctx.Err()
+		case <-c.closed:
+			return queuedEnvelope{}, nil, context.Canceled
+		case <-c.outboundReady:
+		}
 	}
+}
+
+func (c *Client) dequeueControl() (queuedEnvelope, bool) {
+	c.outboxMu.Lock()
+	defer c.outboxMu.Unlock()
+	return dequeueQueuedEnvelopeLocked(&c.controlOutbox)
+}
+
+func (c *Client) dequeueData() (queuedEnvelope, bool) {
+	c.outboxMu.Lock()
+	defer c.outboxMu.Unlock()
+	return dequeueQueuedEnvelopeLocked(&c.dataOutbox)
+}
+
+func dequeueQueuedEnvelopeLocked(queue *[]queuedEnvelope) (queuedEnvelope, bool) {
+	if len(*queue) == 0 {
+		return queuedEnvelope{}, false
+	}
+	item := (*queue)[0]
+	(*queue)[0] = queuedEnvelope{}
+	*queue = (*queue)[1:]
+	if len(*queue) == 0 {
+		*queue = nil
+	}
+	return item, true
 }
 
 func matchesConnectionEpoch(enqueuedEpoch, connectionEpoch uint64) bool {

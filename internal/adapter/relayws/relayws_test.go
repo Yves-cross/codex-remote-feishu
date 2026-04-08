@@ -126,8 +126,12 @@ func TestClientNextOutboundPrioritizesControlQueue(t *testing.T) {
 			},
 		},
 	}
-	client.dataOutbox <- data
-	client.controlOutbox <- control
+	if err := client.enqueue(&client.dataOutbox, client.dataMax, data, errors.New("test data queue full")); err != nil {
+		t.Fatalf("enqueue data: %v", err)
+	}
+	if err := client.enqueue(&client.controlOutbox, client.controlMax, control, errors.New("test control queue full")); err != nil {
+		t.Fatalf("enqueue control: %v", err)
+	}
 
 	item, pendingData, err := client.nextOutbound(context.Background(), nil)
 	if err != nil {
@@ -167,12 +171,14 @@ func TestClientNextOutboundPrefersControlOverBufferedData(t *testing.T) {
 			},
 		},
 	}
-	client.controlOutbox <- queuedEnvelope{
+	if err := client.enqueue(&client.controlOutbox, client.controlMax, queuedEnvelope{
 		epoch: 1,
 		envelope: agentproto.Envelope{
 			Type:       agentproto.EnvelopeCommandAck,
 			CommandAck: &agentproto.CommandAck{InstanceID: "inst-1", CommandID: "cmd-1", Accepted: true},
 		},
+	}, errors.New("test control queue full")); err != nil {
+		t.Fatalf("enqueue control: %v", err)
 	}
 
 	item, nextPending, err := client.nextOutbound(context.Background(), pendingData)
@@ -207,7 +213,13 @@ func TestClientSendersTagCurrentEpochAndAllowUnboundWork(t *testing.T) {
 	if err := client.SendEvents([]agentproto.Event{{Kind: agentproto.EventThreadFocused, ThreadID: "thread-1"}}); err != nil {
 		t.Fatalf("SendEvents pre-connect: %v", err)
 	}
-	first := <-client.dataOutbox
+	first, pending, err := client.nextOutbound(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("nextOutbound pre-connect data: %v", err)
+	}
+	if pending != nil {
+		t.Fatalf("expected no pending data after first dequeue, got %#v", pending)
+	}
 	if first.epoch != 0 {
 		t.Fatalf("expected pre-connect event batch to stay unbound, got %#v", first)
 	}
@@ -216,9 +228,35 @@ func TestClientSendersTagCurrentEpochAndAllowUnboundWork(t *testing.T) {
 	if err := client.SendCommandAck(agentproto.CommandAck{CommandID: "cmd-1", Accepted: true}); err != nil {
 		t.Fatalf("SendCommandAck: %v", err)
 	}
-	ack := <-client.controlOutbox
+	ack, pending, err := client.nextOutbound(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("nextOutbound command ack: %v", err)
+	}
+	if pending != nil {
+		t.Fatalf("expected no pending data after ack dequeue, got %#v", pending)
+	}
 	if ack.epoch != 3 {
 		t.Fatalf("expected command ack to inherit current epoch, got %#v", ack)
+	}
+}
+
+func TestClientSendersRejectWhenDynamicQueueLimitReached(t *testing.T) {
+	client := newClientWithQueueSizes("ws://relay.test/ws/agent", agentproto.Hello{
+		Protocol: agentproto.WireProtocol,
+		Instance: agentproto.InstanceHello{InstanceID: "inst-1"},
+	}, ClientCallbacks{}, 1, 1)
+
+	if err := client.SendEvents([]agentproto.Event{{Kind: agentproto.EventThreadFocused, ThreadID: "thread-1"}}); err != nil {
+		t.Fatalf("SendEvents first: %v", err)
+	}
+	if err := client.SendEvents([]agentproto.Event{{Kind: agentproto.EventThreadFocused, ThreadID: "thread-2"}}); err == nil || err.Error() != "relay client outbox full" {
+		t.Fatalf("expected data queue full error, got %v", err)
+	}
+	if err := client.SendCommandAck(agentproto.CommandAck{CommandID: "cmd-1", Accepted: true}); err != nil {
+		t.Fatalf("SendCommandAck first: %v", err)
+	}
+	if err := client.SendCommandAck(agentproto.CommandAck{CommandID: "cmd-2", Accepted: true}); err == nil || err.Error() != "relay client control outbox full" {
+		t.Fatalf("expected control queue full error, got %v", err)
 	}
 }
 

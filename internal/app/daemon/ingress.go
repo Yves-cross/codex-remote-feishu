@@ -12,7 +12,7 @@ import (
 var errIngressPumpClosed = errors.New("daemon ingress pump closed")
 var errIngressQueueFull = errors.New("daemon ingress queue full")
 
-const defaultIngressMaxPerInstance = 256
+const defaultIngressMaxPerInstance = 8 * 1024
 
 type ingressWorkKind string
 
