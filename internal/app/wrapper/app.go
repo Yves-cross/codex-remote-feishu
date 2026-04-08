@@ -24,6 +24,8 @@ type App struct {
 	translator *codex.Translator
 }
 
+const steerCommandResponseTimeout = 5 * time.Second
+
 type Config struct {
 	RelayServerURL  string
 	CodexRealBinary string
@@ -184,6 +186,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	writeCh := make(chan []byte, 128)
 	errCh := make(chan error, 8)
 	problems := &problemReporter{}
+	commandResponses := newCommandResponseTracker()
 
 	if err := a.bootstrapHeadlessCodex(childStdin, rawLogger, problems.Emit); err != nil {
 		childCancel()
@@ -258,13 +261,62 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 				}
 			}
 			a.debugf("relay command translated: command=%s outbound=%d frames=%s", command.CommandID, len(outbound), summarizeFrames(outbound))
+			var waitCh <-chan *agentproto.ErrorInfo
+			requestID := ""
+			if command.Kind == agentproto.CommandTurnSteer && len(outbound) > 0 {
+				requestID = lookupStringFromRawFrame(outbound[0], "id")
+				if strings.TrimSpace(requestID) == "" {
+					return agentproto.ErrorInfo{
+						Code:             "missing_command_request_id",
+						Layer:            "wrapper",
+						Stage:            "translate_command",
+						Operation:        string(command.Kind),
+						Message:          "wrapper 生成追加输入请求时缺少 request id。",
+						SurfaceSessionID: command.Origin.Surface,
+						CommandID:        command.CommandID,
+						ThreadID:         command.Target.ThreadID,
+						TurnID:           command.Target.TurnID,
+					}
+				}
+				waitCh = commandResponses.Register(requestID, agentproto.ErrorInfo{
+					Code:             "steer_rejected",
+					Layer:            "wrapper",
+					Stage:            "command_response",
+					Operation:        string(command.Kind),
+					Message:          "本地 Codex 拒绝了这次追加输入。",
+					SurfaceSessionID: command.Origin.Surface,
+					CommandID:        command.CommandID,
+					ThreadID:         command.Target.ThreadID,
+					TurnID:           command.Target.TurnID,
+				}, true)
+			}
 			for _, line := range outbound {
 				select {
 				case writeCh <- line:
 					a.debugf("relay command queued for codex: command=%s frame=%s", command.CommandID, summarizeFrame(line))
 				case <-ctx.Done():
+					commandResponses.Cancel(requestID)
 					return ctx.Err()
 				}
+			}
+			if command.Kind == agentproto.CommandTurnSteer {
+				err := waitCommandResponse(ctx, waitCh, steerCommandResponseTimeout, agentproto.ErrorInfo{
+					Code:             "steer_response_timeout",
+					Layer:            "wrapper",
+					Stage:            "command_response",
+					Operation:        string(command.Kind),
+					Message:          "等待本地 Codex 确认追加输入时超时。",
+					SurfaceSessionID: command.Origin.Surface,
+					CommandID:        command.CommandID,
+					ThreadID:         command.Target.ThreadID,
+					TurnID:           command.Target.TurnID,
+				})
+				if err != nil {
+					commandResponses.Cancel(requestID)
+					a.debugf("relay command response failed: command=%s request=%s err=%v", command.CommandID, requestID, err)
+					return err
+				}
+				a.debugf("relay command response accepted: command=%s request=%s", command.CommandID, requestID)
 			}
 			return nil
 		},
@@ -280,7 +332,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 
 	go writeLoop(ctx, childStdin, writeCh, errCh, a.debugf, rawLogger, problems.Emit)
 	go stdinLoop(ctx, stdin, writeCh, a.translator, client, errCh, a.debugf, rawLogger, problems.Emit)
-	go stdoutLoop(ctx, childStdout, stdout, writeCh, a.translator, client, errCh, a.debugf, rawLogger, problems.Emit)
+	go stdoutLoop(ctx, childStdout, stdout, writeCh, a.translator, client, commandResponses, errCh, a.debugf, rawLogger, problems.Emit)
 	go streamCopy(childStderr, stderr, errCh)
 
 	waitErr := make(chan error, 1)

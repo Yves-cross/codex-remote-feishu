@@ -991,8 +991,8 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 		t.Fatalf("expected queue-off + thumbs-up for text and image sources, got %#v", ops)
 	}
 	want := map[string]map[string]bool{
-		"msg-queued": {"remove:OneSecond": false, "add:ThumbsUp": false},
-		"msg-img":    {"remove:OneSecond": false, "add:ThumbsUp": false},
+		"msg-queued": {"remove:OneSecond": false, "add:THUMBSUP": false},
+		"msg-img":    {"remove:OneSecond": false, "add:THUMBSUP": false},
 	}
 	for _, op := range ops {
 		switch op.Kind {
@@ -1001,8 +1001,8 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 				want[op.MessageID]["remove:OneSecond"] = true
 			}
 		case feishu.OperationAddReaction:
-			if op.EmojiType == "ThumbsUp" {
-				want[op.MessageID]["add:ThumbsUp"] = true
+			if op.EmojiType == "THUMBSUP" {
+				want[op.MessageID]["add:THUMBSUP"] = true
 			}
 		}
 	}

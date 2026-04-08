@@ -61,6 +61,7 @@ func summarizeFrame(line []byte) string {
 	}
 	if turnID := firstNonEmpty(
 		lookupNestedString(message, "params", "turnId"),
+		lookupNestedString(message, "params", "expectedTurnId"),
 		lookupNestedString(message, "params", "turn", "id"),
 		lookupNestedString(message, "result", "turn", "id"),
 	); turnID != "" {

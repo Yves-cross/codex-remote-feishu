@@ -224,6 +224,117 @@ func TestWrapperHeadlessBootstrapsInitializeBeforeRelayCommands(t *testing.T) {
 	}
 }
 
+func TestWrapperRejectsSteerWhenCodexRejectsExpectedTurn(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", "..", ".."))
+
+	helloCh := make(chan agentproto.Hello, 1)
+	eventsCh := make(chan []agentproto.Event, 8)
+	ackCh := make(chan agentproto.CommandAck, 8)
+	server := relayws.NewServer(relayws.ServerCallbacks{
+		OnHello: func(_ context.Context, _ relayws.ConnectionMeta, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+		OnEvents: func(_ context.Context, _ relayws.ConnectionMeta, _ string, events []agentproto.Event) {
+			eventsCh <- events
+		},
+		OnCommandAck: func(_ context.Context, _ relayws.ConnectionMeta, _ string, ack agentproto.CommandAck) {
+			ackCh <- ack
+		},
+	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "test",
+			BuildFingerprint: "fp-test",
+			BinaryPath:       "/test/codex-remote",
+		},
+		PID: 1,
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cfg := Config{
+		RelayServerURL:   wsURL,
+		CodexRealBinary:  "go",
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex", "--no-auto-complete"},
+		InstanceID:       "inst-wrapper",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    repoRoot,
+		WorkspaceKey:     repoRoot,
+		ShortName:        filepath.Base(repoRoot),
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: "/test/codex-remote",
+	}
+	app := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := app.Run(ctx, strings.NewReader(""), &stdout, &stderr)
+		done <- err
+	}()
+
+	waitForHello(t, helloCh, "inst-wrapper")
+
+	if err := server.SendCommand("inst-wrapper", agentproto.Command{
+		CommandID: "cmd-prompt",
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/data/dl/droid"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "列一下文件"}}},
+	}); err != nil {
+		t.Fatalf("send prompt: %v", err)
+	}
+
+	waitForObservedEvents(t, eventsCh, 15*time.Second, &stdout, &stderr, done,
+		func(event agentproto.Event) bool {
+			return event.Kind == agentproto.EventTurnStarted && event.TurnID == "turn-1"
+		},
+	)
+	waitForAck(t, ackCh, 5*time.Second, func(ack agentproto.CommandAck) bool {
+		return ack.CommandID == "cmd-prompt" && ack.Accepted
+	}, &stdout, &stderr, done)
+
+	if err := server.SendCommand("inst-wrapper", agentproto.Command{
+		CommandID: "cmd-steer",
+		Kind:      agentproto.CommandTurnSteer,
+		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Target:    agentproto.Target{ThreadID: "thread-1", TurnID: "turn-wrong"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "补充一下"}}},
+	}); err != nil {
+		t.Fatalf("send steer: %v", err)
+	}
+
+	waitForAck(t, ackCh, 5*time.Second, func(ack agentproto.CommandAck) bool {
+		return ack.CommandID == "cmd-steer" && !ack.Accepted && ack.Problem != nil &&
+			strings.Contains(ack.Problem.Details, "expected active turn id")
+	}, &stdout, &stderr, done)
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("wrapper run failed: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for wrapper shutdown")
+	}
+}
+
 func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.T) {
 	repoRoot, err := os.Getwd()
 	if err != nil {
@@ -515,6 +626,23 @@ func waitForObservedEvents(t *testing.T, eventsCh <-chan []agentproto.Event, tim
 			t.Fatalf("wrapper exited early: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 		case <-deadline:
 			t.Fatalf("timed out waiting for observed events\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+		}
+	}
+}
+
+func waitForAck(t *testing.T, ackCh <-chan agentproto.CommandAck, timeout time.Duration, match func(agentproto.CommandAck) bool, stdout, stderr *bytes.Buffer, done <-chan error) {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case ack := <-ackCh:
+			if match(ack) {
+				return
+			}
+		case err := <-done:
+			t.Fatalf("wrapper exited early: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+		case <-deadline:
+			t.Fatalf("timed out waiting for matching ack\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 		}
 	}
 }

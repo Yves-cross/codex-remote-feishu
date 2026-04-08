@@ -103,9 +103,9 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			"id":     t.nextRequest("turn-steer"),
 			"method": "turn/steer",
 			"params": map[string]any{
-				"threadId": command.Target.ThreadID,
-				"turnId":   command.Target.TurnID,
-				"input":    t.buildInputs(command.Prompt.Inputs),
+				"threadId":       command.Target.ThreadID,
+				"expectedTurnId": command.Target.TurnID,
+				"input":          t.buildInputs(command.Prompt.Inputs),
 			},
 		}
 		bytes, err := json.Marshal(payload)

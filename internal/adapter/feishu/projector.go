@@ -40,7 +40,7 @@ type Operation struct {
 const (
 	emojiQueuePending = "OneSecond"
 	emojiThinking     = "THINKING"
-	emojiSteered      = "ThumbsUp"
+	emojiSteered      = "THUMBSUP"
 	emojiDiscarded    = "ThumbsDown"
 )
 

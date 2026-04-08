@@ -88,8 +88,11 @@ func TestTranslateTurnSteer(t *testing.T) {
 		t.Fatalf("expected turn/steer payload, got %#v", payload)
 	}
 	params, _ := payload["params"].(map[string]any)
-	if params["threadId"] != "thread-1" || params["turnId"] != "turn-1" {
+	if params["threadId"] != "thread-1" || params["expectedTurnId"] != "turn-1" {
 		t.Fatalf("unexpected steer params: %#v", params)
+	}
+	if _, exists := params["turnId"]; exists {
+		t.Fatalf("unexpected legacy turnId in steer params: %#v", params)
 	}
 	inputs, _ := params["input"].([]any)
 	if len(inputs) != 2 {

@@ -75,7 +75,7 @@ func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, tran
 	}
 }
 
-func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writer, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, errCh chan<- error, debugf func(string, ...any), rawLogger *debuglog.RawLogger, reportProblem func(agentproto.ErrorInfo)) {
+func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writer, writeCh chan<- []byte, translator *codex.Translator, client *relayws.Client, commandResponses *commandResponseTracker, errCh chan<- error, debugf func(string, ...any), rawLogger *debuglog.RawLogger, reportProblem func(agentproto.ErrorInfo)) {
 	reader := bufio.NewReader(childStdout)
 	coalescer := newRelayEventCoalescer(nil, 0, 0)
 	sendRelayEvents := func(events []agentproto.Event) {
@@ -104,6 +104,7 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 			if debugf != nil {
 				debugf("stdout from codex: %s", summarizeFrame(line))
 			}
+			_, suppressCommandResponse := commandResponses.Resolve(line)
 			result, parseErr := translator.ObserveServer(line)
 			if parseErr == nil {
 				if debugf != nil {
@@ -126,7 +127,7 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 						return
 					}
 				}
-				if !result.Suppress {
+				if !result.Suppress && !suppressCommandResponse {
 					if _, writeErr := parentStdout.Write(line); writeErr != nil {
 						if reportProblem != nil {
 							reportProblem(agentproto.ErrorInfoFromError(writeErr, agentproto.ErrorInfo{
@@ -154,6 +155,9 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 						Message:   "wrapper 无法解析 Codex 子进程输出的 JSON-RPC 帧。",
 						Details:   fmt.Sprintf("%v; frame=%q", parseErr, previewRawLine(line)),
 					})
+				}
+				if suppressCommandResponse {
+					continue
 				}
 				if _, writeErr := parentStdout.Write(line); writeErr != nil {
 					if reportProblem != nil {

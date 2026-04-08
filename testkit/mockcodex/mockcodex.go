@@ -228,6 +228,63 @@ func (m *MockCodex) HandleRemoteCommand(raw []byte) ([][]byte, error) {
 				"turn":     map[string]any{"id": turn.ID, "status": "interrupted", "error": nil},
 			}}),
 		}, nil
+	case "turn/steer":
+		if outputs := m.requireInitialized(id); outputs != nil {
+			return outputs, nil
+		}
+		if m.ActiveTurn == nil {
+			return [][]byte{
+				mustJSON(map[string]any{"id": id, "error": map[string]any{
+					"code":    -32600,
+					"message": "No active turn",
+				}}),
+			}, nil
+		}
+		expectedTurnID, _ := params["expectedTurnId"].(string)
+		if expectedTurnID == "" {
+			return [][]byte{
+				mustJSON(map[string]any{"id": id, "error": map[string]any{
+					"code":    -32600,
+					"message": "Invalid request: missing field `expectedTurnId`",
+				}}),
+			}, nil
+		}
+		if expectedTurnID != m.ActiveTurn.ID {
+			return [][]byte{
+				mustJSON(map[string]any{"id": id, "error": map[string]any{
+					"code":    -32600,
+					"message": fmt.Sprintf("expected active turn id `%s` but found `%s`", expectedTurnID, m.ActiveTurn.ID),
+				}}),
+			}, nil
+		}
+		inputs, _ := params["input"].([]any)
+		text := ""
+		for _, input := range inputs {
+			object, _ := input.(map[string]any)
+			if current, _ := object["text"].(string); current != "" {
+				text = current
+			}
+		}
+		m.nextItemID++
+		return [][]byte{
+			mustJSON(map[string]any{"id": id, "result": map[string]any{}}),
+			mustJSON(map[string]any{"method": "item/started", "params": map[string]any{
+				"threadId": m.ActiveTurn.ThreadID,
+				"turnId":   m.ActiveTurn.ID,
+				"item":     map[string]any{"id": fmt.Sprintf("item-%d", m.nextItemID), "type": "agentMessage"},
+			}}),
+			mustJSON(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{
+				"threadId": m.ActiveTurn.ThreadID,
+				"turnId":   m.ActiveTurn.ID,
+				"itemId":   fmt.Sprintf("item-%d", m.nextItemID),
+				"delta":    "追加输入：" + strings.TrimSpace(text),
+			}}),
+			mustJSON(map[string]any{"method": "item/completed", "params": map[string]any{
+				"threadId": m.ActiveTurn.ThreadID,
+				"turnId":   m.ActiveTurn.ID,
+				"item":     map[string]any{"id": fmt.Sprintf("item-%d", m.nextItemID), "type": "agentMessage", "text": "追加输入：" + strings.TrimSpace(text)},
+			}}),
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported remote method: %s", method)
 	}
@@ -267,7 +324,29 @@ func (m *MockCodex) HandleLocalClientMessage(raw []byte) ([][]byte, error) {
 		return m.handleLocalTurn(fmt.Sprint(message["id"]), params)
 	case "turn/steer":
 		if m.ActiveTurn == nil {
-			return nil, nil
+			return [][]byte{
+				mustJSON(map[string]any{"id": fmt.Sprint(message["id"]), "error": map[string]any{
+					"code":    -32600,
+					"message": "No active turn",
+				}}),
+			}, nil
+		}
+		expectedTurnID, _ := params["expectedTurnId"].(string)
+		if expectedTurnID == "" {
+			return [][]byte{
+				mustJSON(map[string]any{"id": fmt.Sprint(message["id"]), "error": map[string]any{
+					"code":    -32600,
+					"message": "Invalid request: missing field `expectedTurnId`",
+				}}),
+			}, nil
+		}
+		if expectedTurnID != m.ActiveTurn.ID {
+			return [][]byte{
+				mustJSON(map[string]any{"id": fmt.Sprint(message["id"]), "error": map[string]any{
+					"code":    -32600,
+					"message": fmt.Sprintf("expected active turn id `%s` but found `%s`", expectedTurnID, m.ActiveTurn.ID),
+				}}),
+			}, nil
 		}
 		inputs, _ := params["input"].([]any)
 		text := ""
@@ -279,6 +358,7 @@ func (m *MockCodex) HandleLocalClientMessage(raw []byte) ([][]byte, error) {
 		}
 		m.nextItemID++
 		return [][]byte{
+			mustJSON(map[string]any{"id": fmt.Sprint(message["id"]), "result": map[string]any{}}),
 			mustJSON(map[string]any{"method": "item/started", "params": map[string]any{
 				"threadId": m.ActiveTurn.ThreadID,
 				"turnId":   m.ActiveTurn.ID,

@@ -11,10 +11,12 @@ import (
 
 func main() {
 	requireInitialize := flag.Bool("require-initialize", false, "require initialize before other requests")
+	noAutoComplete := flag.Bool("no-auto-complete", false, "keep turns active until interrupted or completed manually")
 	flag.Parse()
 
 	engine := mockcodex.New()
 	engine.RequireInitialize = *requireInitialize
+	engine.AutoComplete = !*noAutoComplete
 	engine.SeedThread("thread-1", "/data/dl/droid", "修复登录流程")
 
 	scanner := bufio.NewScanner(os.Stdin)
