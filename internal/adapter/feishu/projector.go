@@ -263,6 +263,8 @@ func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMe
 	body := block.Text
 	if block.Kind == render.BlockAssistantCode {
 		body = fenced(block.Language, block.Text)
+	} else if block.Kind == render.BlockAssistantMarkdown {
+		body = renderSystemInlineTags(block.Text)
 	}
 	elements := finalBlockExtraElements(summary)
 	return []Operation{{
