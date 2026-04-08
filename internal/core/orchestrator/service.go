@@ -48,14 +48,15 @@ type itemBuffer struct {
 }
 
 type remoteTurnBinding struct {
-	InstanceID       string
-	SurfaceSessionID string
-	QueueItemID      string
-	SourceMessageID  string
-	CommandID        string
-	ThreadID         string
-	TurnID           string
-	Status           string
+	InstanceID           string
+	SurfaceSessionID     string
+	QueueItemID          string
+	SourceMessageID      string
+	SourceMessagePreview string
+	CommandID            string
+	ThreadID             string
+	TurnID               string
+	Status               string
 }
 
 type pendingSteerBinding struct {

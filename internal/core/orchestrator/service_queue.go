@@ -10,22 +10,23 @@ import (
 	"strings"
 )
 
-func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
 	s.nextQueueItemID++
 	itemID := fmt.Sprintf("queue-%d", s.nextQueueItemID)
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	sourceMessageIDs := uniqueStrings(append([]string{sourceMessageID}, relatedMessageIDs...))
 	item := &state.QueueItemRecord{
-		ID:                 itemID,
-		SurfaceSessionID:   surface.SurfaceSessionID,
-		SourceMessageID:    sourceMessageID,
-		SourceMessageIDs:   sourceMessageIDs,
-		Inputs:             inputs,
-		FrozenThreadID:     threadID,
-		FrozenCWD:          cwd,
-		FrozenOverride:     s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
-		RouteModeAtEnqueue: routeMode,
-		Status:             state.QueueItemQueued,
+		ID:                   itemID,
+		SurfaceSessionID:     surface.SurfaceSessionID,
+		SourceMessageID:      sourceMessageID,
+		SourceMessagePreview: normalizeSourceMessagePreview(sourceMessagePreview),
+		SourceMessageIDs:     sourceMessageIDs,
+		Inputs:               inputs,
+		FrozenThreadID:       threadID,
+		FrozenCWD:            cwd,
+		FrozenOverride:       s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		RouteModeAtEnqueue:   routeMode,
+		Status:               state.QueueItemQueued,
 	}
 	surface.QueueItems[item.ID] = item
 	if front {
@@ -114,12 +115,13 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	item.Status = state.QueueItemDispatching
 	surface.ActiveQueueItemID = item.ID
 	s.pendingRemote[inst.InstanceID] = &remoteTurnBinding{
-		InstanceID:       inst.InstanceID,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		QueueItemID:      item.ID,
-		SourceMessageID:  item.SourceMessageID,
-		ThreadID:         item.FrozenThreadID,
-		Status:           string(item.Status),
+		InstanceID:           inst.InstanceID,
+		SurfaceSessionID:     surface.SurfaceSessionID,
+		QueueItemID:          item.ID,
+		SourceMessageID:      item.SourceMessageID,
+		SourceMessagePreview: item.SourceMessagePreview,
+		ThreadID:             item.FrozenThreadID,
+		Status:               string(item.Status),
 	}
 
 	command := &agentproto.Command{
@@ -272,9 +274,11 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 		return nil
 	}
 	replySourceMessageID := ""
+	replySourceMessagePreview := ""
 	if final && inst != nil {
 		if binding := s.lookupRemoteTurn(inst.InstanceID, threadID, turnID); binding != nil {
 			replySourceMessageID = strings.TrimSpace(binding.SourceMessageID)
+			replySourceMessagePreview = strings.TrimSpace(binding.SourceMessagePreview)
 		}
 	}
 	events := []control.UIEvent{}
@@ -323,10 +327,11 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 		block.ThemeKey = themeKey
 		block.Final = final
 		event := control.UIEvent{
-			Kind:             control.UIEventBlockCommitted,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			SourceMessageID:  replySourceMessageID,
-			Block:            &block,
+			Kind:                 control.UIEventBlockCommitted,
+			SurfaceSessionID:     surface.SurfaceSessionID,
+			SourceMessageID:      replySourceMessageID,
+			SourceMessagePreview: replySourceMessagePreview,
+			Block:                &block,
 		}
 		if final && summary != nil && i == lastBlockIndex {
 			event.FileChangeSummary = summary

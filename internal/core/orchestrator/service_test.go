@@ -3711,6 +3711,9 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 	if finalBlockEvent.SourceMessageID != "msg-1" {
 		t.Fatalf("expected final assistant block to retain source message id, got %#v", finalBlockEvent)
 	}
+	if finalBlockEvent.SourceMessagePreview != "处理一下" {
+		t.Fatalf("expected final assistant block to retain source message preview, got %#v", finalBlockEvent)
+	}
 	if finalBlockEvent.FileChangeSummary.FileCount != 1 || finalBlockEvent.FileChangeSummary.AddedLines != 2 || finalBlockEvent.FileChangeSummary.RemovedLines != 1 {
 		t.Fatalf("unexpected embedded file change summary payload: %#v", finalBlockEvent.FileChangeSummary)
 	}

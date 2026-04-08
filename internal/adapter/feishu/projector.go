@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"unicode"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -223,7 +224,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Block == nil {
 			return nil
 		}
-		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, *event.Block, event.FileChangeSummary)
+		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, event.SourceMessagePreview, *event.Block, event.FileChangeSummary)
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil
@@ -249,7 +250,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 	}
 }
 
-func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID string, block render.Block, summary *control.FileChangeSummary) []Operation {
+func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
 			Kind:             OperationSendText,
@@ -270,11 +271,92 @@ func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID string, b
 		SurfaceSessionID: surfaceSessionID,
 		ChatID:           chatID,
 		ReplyToMessageID: sourceMessageID,
-		CardTitle:        "最后回复",
+		CardTitle:        finalCardTitle(sourceMessagePreview),
 		CardBody:         body,
 		CardThemeKey:     cardThemeFinal,
 		CardElements:     elements,
 	}}
+}
+
+func finalCardTitle(sourceMessagePreview string) string {
+	const baseTitle = "最后答复"
+	preview := truncateFinalTitlePreview(sourceMessagePreview)
+	if preview == "" {
+		return baseTitle
+	}
+	return baseTitle + "：" + preview
+}
+
+func truncateFinalTitlePreview(text string) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	if text == "" {
+		return ""
+	}
+	if shouldUseWordBasedTitlePreview(text) {
+		return truncateFinalTitleWords(text, 10)
+	}
+	return truncateFinalTitleCharacters(text, 10)
+}
+
+func shouldUseWordBasedTitlePreview(text string) bool {
+	hasHan := false
+	hasLatin := false
+	for _, r := range text {
+		switch {
+		case unicode.Is(unicode.Han, r):
+			hasHan = true
+		case unicode.In(r, unicode.Latin):
+			hasLatin = true
+		}
+		if hasHan {
+			return false
+		}
+	}
+	return hasLatin
+}
+
+func truncateFinalTitleWords(text string, limit int) string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) <= limit {
+		return strings.Join(words, " ")
+	}
+	return strings.Join(words[:limit], " ") + "..."
+}
+
+func truncateFinalTitleCharacters(text string, limit int) string {
+	var out strings.Builder
+	count := 0
+	truncated := false
+	for _, r := range text {
+		if unicode.IsSpace(r) {
+			if out.Len() == 0 {
+				continue
+			}
+			last := []rune(out.String())
+			if len(last) > 0 && unicode.IsSpace(last[len(last)-1]) {
+				continue
+			}
+			out.WriteRune(' ')
+			continue
+		}
+		if count >= limit {
+			truncated = true
+			break
+		}
+		out.WriteRune(r)
+		count++
+	}
+	preview := strings.TrimSpace(out.String())
+	if preview == "" {
+		return ""
+	}
+	if truncated {
+		return preview + "..."
+	}
+	return preview
 }
 
 func fenced(language, text string) string {

@@ -1022,7 +1022,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		s.restoreStagedInputs(surface, stagedMessageIDs)
 		return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 	}
-	return s.enqueueQueueItem(surface, action.MessageID, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)
+	return s.enqueueQueueItem(surface, action.MessageID, action.Text, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)
 }
 
 func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

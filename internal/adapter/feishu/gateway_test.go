@@ -51,7 +51,7 @@ func TestApplySendCardRepliesToSourceMessage(t *testing.T) {
 		ReceiveID:        "oc_1",
 		ReceiveIDType:    "chat_id",
 		ReplyToMessageID: "om-source-1",
-		CardTitle:        "最后回复",
+		CardTitle:        "最后答复：处理一下",
 		CardBody:         "已完成修改。",
 		CardThemeKey:     cardThemeFinal,
 	}})
@@ -70,7 +70,7 @@ func TestApplySendCardRepliesToSourceMessage(t *testing.T) {
 	}
 	header := payload["header"].(map[string]any)
 	title := header["title"].(map[string]any)
-	if title["content"] != "最后回复" {
+	if title["content"] != "最后答复：处理一下" {
 		t.Fatalf("unexpected reply card title payload: %#v", payload)
 	}
 	if gateway.messages["om-final-1"] != "surface-1" {
@@ -122,7 +122,7 @@ func TestApplySendCardFallsBackToCreateWhenReplyFails(t *testing.T) {
 		ReceiveID:        "oc_1",
 		ReceiveIDType:    "chat_id",
 		ReplyToMessageID: "om-source-1",
-		CardTitle:        "最后回复",
+		CardTitle:        "最后答复",
 		CardBody:         "已完成修改。",
 		CardThemeKey:     cardThemeFinal,
 	}})
@@ -141,7 +141,7 @@ func TestApplySendCardFallsBackToCreateWhenReplyFails(t *testing.T) {
 	}
 	header := payload["header"].(map[string]any)
 	title := header["title"].(map[string]any)
-	if title["content"] != "最后回复" {
+	if title["content"] != "最后答复" {
 		t.Fatalf("unexpected fallback card payload: %#v", payload)
 	}
 	if gateway.messages["om-final-2"] != "surface-1" {

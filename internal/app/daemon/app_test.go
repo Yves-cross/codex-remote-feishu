@@ -228,7 +228,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 			hasListCard = true
 		case operation.Kind == feishu.OperationAddReaction && operation.MessageID == "msg-1":
 			hasTyping = true
-		case operation.Kind == feishu.OperationSendCard && operation.CardTitle == "最后回复":
+		case operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "最后答复"):
 			hasFinalReplyCard = operation.CardBody == "已收到：\n\n```text\nREADME.md\n```"
 		}
 	}
@@ -509,7 +509,7 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 
 	var finalBody string
 	for _, operation := range gateway.operations {
-		if operation.Kind == feishu.OperationSendCard && operation.CardTitle == "最后回复" {
+		if operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "最后答复") {
 			finalBody = operation.CardBody
 		}
 	}

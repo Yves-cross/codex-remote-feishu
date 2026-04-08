@@ -760,6 +760,15 @@ func previewOfText(text string) string {
 	return text
 }
 
+func normalizeSourceMessagePreview(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(text), " ")
+}
+
 func turnRenderKey(instanceID, threadID, turnID string) string {
 	return instanceID + "\x00" + threadID + "\x00" + turnID
 }

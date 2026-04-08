@@ -561,8 +561,9 @@ func TestProjectSnapshotShowsGateAndRetainedOfflineAttachment(t *testing.T) {
 func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
-		SourceMessageID: "msg-1",
+		Kind:                 control.UIEventBlockCommitted,
+		SourceMessageID:      "msg-1",
+		SourceMessagePreview: "请帮我处理这个问题",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
 			Text:        "已收到：\n\n```text\nREADME.md\nsrc\n```",
@@ -575,7 +576,7 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后回复" {
+	if ops[0].CardTitle != "最后答复：请帮我处理这个问题" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
 	if ops[0].ReplyToMessageID != "msg-1" {
@@ -618,7 +619,7 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后回复" {
+	if ops[0].CardTitle != "最后答复" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
 	if ops[0].ReplyToMessageID != "msg-2" {
@@ -644,6 +645,46 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	}
 	if ops[0].CardElements[3]["content"] != "3. <text_tag color='neutral'>old/guide.md</text_tag> → <text_tag color='neutral'>new/guide.md</text_tag>  <font color='green'>+3</font> <font color='red'>-1</font>" {
 		t.Fatalf("unexpected rename summary element: %#v", ops[0].CardElements[3])
+	}
+}
+
+func TestProjectFinalAssistantBlockTruncatesChineseTitlePreview(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:                 control.UIEventBlockCommitted,
+		SourceMessageID:      "msg-3",
+		SourceMessagePreview: "一二三四五六七八九十十一十二",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已处理。",
+			Final: true,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardTitle != "最后答复：一二三四五六七八九十..." {
+		t.Fatalf("unexpected chinese preview title: %#v", ops[0])
+	}
+}
+
+func TestProjectFinalAssistantBlockTruncatesEnglishTitlePreview(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:                 control.UIEventBlockCommitted,
+		SourceMessageID:      "msg-4",
+		SourceMessagePreview: "please help me align the return format for this API response payload",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已处理。",
+			Final: true,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardTitle != "最后答复：please help me align the return format for this API..." {
+		t.Fatalf("unexpected english preview title: %#v", ops[0])
 	}
 }
 

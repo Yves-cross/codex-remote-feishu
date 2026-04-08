@@ -191,16 +191,17 @@ type RequestCaptureRecord struct {
 }
 
 type QueueItemRecord struct {
-	ID                 string
-	SurfaceSessionID   string
-	SourceMessageID    string
-	SourceMessageIDs   []string
-	Inputs             []agentproto.Input
-	FrozenThreadID     string
-	FrozenCWD          string
-	FrozenOverride     ModelConfigRecord
-	RouteModeAtEnqueue RouteMode
-	Status             QueueItemStatus
+	ID                   string
+	SurfaceSessionID     string
+	SourceMessageID      string
+	SourceMessagePreview string
+	SourceMessageIDs     []string
+	Inputs               []agentproto.Input
+	FrozenThreadID       string
+	FrozenCWD            string
+	FrozenOverride       ModelConfigRecord
+	RouteModeAtEnqueue   RouteMode
+	Status               QueueItemStatus
 }
 
 type StagedImageRecord struct {

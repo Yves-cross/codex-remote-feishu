@@ -214,6 +214,6 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 		},
 	}}
 	events = append(events, notice(surface, "request_feedback_queued", "已记录处理意见。当前确认会先被拒绝，随后继续处理你的下一步要求。")...)
-	events = append(events, s.enqueueQueueItem(surface, action.MessageID, nil, []agentproto.Input{{Type: agentproto.InputText, Text: text}}, threadID, cwd, routeMode, surface.PromptOverride, true)...)
+	events = append(events, s.enqueueQueueItem(surface, action.MessageID, text, nil, []agentproto.Input{{Type: agentproto.InputText, Text: text}}, threadID, cwd, routeMode, surface.PromptOverride, true)...)
 	return events
 }
