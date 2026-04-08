@@ -121,9 +121,12 @@ type App struct {
 	upgradeCheckInterval   time.Duration
 	upgradeStartupDelay    time.Duration
 	upgradePromptScanEvery time.Duration
+	upgradeResultScanEvery time.Duration
 	upgradeCheckInFlight   bool
+	upgradeStartInFlight   bool
 	upgradeNextCheckAt     time.Time
 	upgradeNextPromptScan  time.Time
+	upgradeNextResultScan  time.Time
 }
 
 func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agentproto.ServerIdentity) *App {
@@ -161,6 +164,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		upgradeCheckInterval:   3 * time.Hour,
 		upgradeStartupDelay:    1 * time.Minute,
 		upgradePromptScanEvery: 5 * time.Second,
+		upgradeResultScanEvery: 5 * time.Second,
 	}
 	app.upgradeLookup = app.defaultReleaseLookup
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{

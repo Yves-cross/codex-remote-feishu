@@ -409,6 +409,7 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 		return
 	}
 	uiEvents := a.service.Tick(now)
+	uiEvents = append(uiEvents, a.maybeFlushUpgradeResultLocked(now)...)
 	uiEvents = append(uiEvents, a.maybePromptPendingUpgradeLocked(now)...)
 	a.recordHeadlessRestoreOutcomeEventsLocked(uiEvents, now)
 	a.handleUIEvents(ctx, uiEvents)

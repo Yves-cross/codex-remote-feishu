@@ -164,6 +164,9 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 - release 安装默认把 `installSource` 记为 `release`
 - 源码仓库 / 本地构建路径默认把 `installSource` 记为 `repo`
 - repo 来源默认按 `alpha` track 语义记录
+- 运行期自动升级由隐藏 `upgrade-helper` 角色执行：
+  - daemon 只负责检查、提示、落 journal 和启动 helper
+  - helper 负责停当前 daemon、切换稳定入口、观察健康并在失败时自动回滚
 
 ## 5. VS Code 接管模型
 

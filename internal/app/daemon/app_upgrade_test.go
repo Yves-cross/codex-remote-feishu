@@ -137,6 +137,48 @@ func TestAutoUpgradeCheckPromptsMostRecentIdleSurface(t *testing.T) {
 	}
 }
 
+func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, statePath := newUpgradeTestApp(t, gateway)
+
+	stateValue, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	stateValue.CurrentVersion = "v1.1.0"
+	stateValue.PendingUpgrade = &install.PendingUpgrade{
+		Phase:            install.PendingUpgradePhaseCommitted,
+		TargetTrack:      install.ReleaseTrackProduction,
+		TargetVersion:    "v1.1.0",
+		GatewayID:        "main",
+		SurfaceSessionID: "feishu:chat:9",
+		ChatID:           "chat-9",
+		ActorUserID:      "user-9",
+	}
+	if err := install.WriteState(statePath, stateValue); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+
+	app.onTick(context.Background(), time.Now().UTC())
+
+	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
+		for _, op := range ops {
+			if op.CardTitle == "Debug" && op.SurfaceSessionID == "feishu:chat:9" {
+				return true
+			}
+		}
+		return false
+	})
+
+	updated, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState updated: %v", err)
+	}
+	if updated.PendingUpgrade != nil {
+		t.Fatalf("expected pending upgrade result to be cleared, got %#v", updated.PendingUpgrade)
+	}
+}
+
 type feishuOperationView struct {
 	SurfaceSessionID string
 	CardTitle        string

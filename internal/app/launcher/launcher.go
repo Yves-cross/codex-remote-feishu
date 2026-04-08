@@ -22,9 +22,10 @@ type Options struct {
 }
 
 type RunnerSet struct {
-	RunDaemon  func(context.Context, string) error
-	RunInstall func([]string, io.Reader, io.Writer, io.Writer, string) error
-	RunWrapper func(context.Context, []string, io.Reader, io.Writer, io.Writer, string) (int, error)
+	RunDaemon        func(context.Context, string) error
+	RunInstall       func([]string, io.Reader, io.Writer, io.Writer, string) error
+	RunUpgradeHelper func([]string, io.Reader, io.Writer, io.Writer, string) error
+	RunWrapper       func(context.Context, []string, io.Reader, io.Writer, io.Writer, string) (int, error)
 }
 
 func Main(opts Options) int {
@@ -65,6 +66,12 @@ func Main(opts Options) int {
 			return 1
 		}
 		return 0
+	case RoleUpgradeHelper:
+		if err := opts.Runners.RunUpgradeHelper(decision.Args, opts.Stdin, opts.Stdout, opts.Stderr, opts.Version); err != nil {
+			_, _ = fmt.Fprintf(opts.Stderr, "upgrade helper error: %v\n", err)
+			return 1
+		}
+		return 0
 	case RoleWrapper:
 		exitCode, err := opts.Runners.RunWrapper(ctx, decision.Args, opts.Stdin, opts.Stdout, opts.Stderr, opts.Version)
 		if err != nil && err != context.Canceled {
@@ -99,6 +106,9 @@ func withDefaults(opts Options) Options {
 	}
 	if opts.Runners.RunInstall == nil {
 		opts.Runners.RunInstall = install.RunMain
+	}
+	if opts.Runners.RunUpgradeHelper == nil {
+		opts.Runners.RunUpgradeHelper = install.RunUpgradeHelper
 	}
 	if opts.Runners.RunWrapper == nil {
 		opts.Runners.RunWrapper = wrapper.RunMain

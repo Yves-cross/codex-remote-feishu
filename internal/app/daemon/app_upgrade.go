@@ -91,6 +91,12 @@ func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.
 		if a.upgradeCheckInFlight {
 			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
 		}
+		if a.upgradeStartInFlight {
+			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
+		}
+		if stateValue.PendingUpgrade != nil && pendingUpgradeCandidate(stateValue.PendingUpgrade) {
+			return a.beginPendingUpgradeLocked(command, stateValue)
+		}
 		if pendingUpgradeBusy(stateValue.PendingUpgrade) {
 			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
 		}
@@ -216,7 +222,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 }
 
 func (a *App) maybeStartAutoUpgradeCheckLocked(now time.Time) {
-	if a.upgradeCheckInFlight || a.upgradeCheckInterval <= 0 {
+	if a.upgradeCheckInFlight || a.upgradeStartInFlight || a.upgradeCheckInterval <= 0 {
 		return
 	}
 	if a.upgradeNextCheckAt.IsZero() {
