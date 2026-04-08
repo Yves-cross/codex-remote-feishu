@@ -6,12 +6,20 @@ unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
+install_bin_dir() {
+  local h="$1"
+  case "$(uname -s)" in
+    Darwin) printf '%s\n' "${h}/Library/Application Support/codex-remote/bin" ;;
+    *)      printf '%s\n' "${h}/.local/bin" ;;
+  esac
+}
+
 work_dir="$(mktemp -d)"
 server_pid=""
 daemon_pid=""
 cleanup() {
   if [[ -z "${daemon_pid}" && -n "${home_dir:-}" ]]; then
-    daemon_pid="$(ps -eo pid=,args= | awk -v target="${home_dir}/.local/bin/codex-remote daemon" '$0 ~ target {print $1; exit}')"
+    daemon_pid="$(ps -eo pid=,args= | awk -v target="$(install_bin_dir "${home_dir}")/codex-remote daemon" '$0 ~ target && !f {f=1; print $1}')"
   fi
   if [[ -n "${daemon_pid}" ]]; then
     kill "${daemon_pid}" 2>/dev/null || true
@@ -119,12 +127,13 @@ expected_dir="${install_root}/${version}"
 installed_version="$("${expected_dir}/codex-remote" version)"
 [[ "${installed_version}" == "${version}" ]]
 
-python3 - <<PY
-import json
+python3 - "${home_dir}" <<'PY'
+import json, sys
 from pathlib import Path
 
-config_path = Path(${home_dir@Q}) / ".config" / "codex-remote" / "config.json"
-state_path = Path(${home_dir@Q}) / ".local" / "share" / "codex-remote" / "install-state.json"
+home = sys.argv[1]
+config_path = Path(home) / ".config" / "codex-remote" / "config.json"
+state_path = Path(home) / ".local" / "share" / "codex-remote" / "install-state.json"
 config_payload = json.loads(config_path.read_text())
 state_payload = json.loads(state_path.read_text())
 
@@ -135,7 +144,7 @@ PY
 
 for _ in $(seq 1 60); do
   if curl --noproxy '*' -fsS "http://127.0.0.1:${admin_port}/api/setup/bootstrap-state" > "${work_dir}/bootstrap-state.json" 2>/dev/null; then
-    daemon_pid="$(ps -eo pid=,args= | awk -v target="${home_dir}/.local/bin/codex-remote daemon" '$0 ~ target {print $1; exit}')"
+    daemon_pid="$(ps -eo pid=,args= | awk -v target="$(install_bin_dir "${home_dir}")/codex-remote daemon" '$0 ~ target && !f {f=1; print $1}')"
     break
   fi
   sleep 0.2
@@ -145,17 +154,18 @@ done
 curl --noproxy '*' -fsS "http://127.0.0.1:${admin_port}/api/setup/bootstrap-state" > "${work_dir}/bootstrap-state.json"
 curl --noproxy '*' -fsS "http://127.0.0.1:${admin_port}/setup" > "${work_dir}/setup.html"
 
-python3 - <<PY
-import json
+python3 - "${work_dir}" "${admin_port}" "${relay_port}" <<'PY'
+import json, sys
 from pathlib import Path
 
-payload = json.loads((Path(${work_dir@Q}) / "bootstrap-state.json").read_text())
+work_dir, admin_port, relay_port = sys.argv[1], sys.argv[2], sys.argv[3]
+payload = json.loads((Path(work_dir) / "bootstrap-state.json").read_text())
 assert payload["setupRequired"] is True, payload
 assert payload["phase"] == "uninitialized", payload
-assert payload["admin"]["listenPort"] == str(${admin_port}), payload
-assert payload["relay"]["listenPort"] == str(${relay_port}), payload
+assert payload["admin"]["listenPort"] == admin_port, payload
+assert payload["relay"]["listenPort"] == relay_port, payload
 assert payload["session"]["trustedLoopback"] is True, payload
 
-html = (Path(${work_dir@Q}) / "setup.html").read_text()
+html = (Path(work_dir) / "setup.html").read_text()
 assert "Codex Remote" in html, html[:200]
 PY

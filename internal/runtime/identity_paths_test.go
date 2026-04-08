@@ -30,8 +30,12 @@ func TestBinaryIdentityHelpersAndPersistence(t *testing.T) {
 	if !strings.HasPrefix(identity.BuildFingerprint, "sha256:") {
 		t.Fatalf("fingerprint = %q, want sha256 prefix", identity.BuildFingerprint)
 	}
-	if identity.BinaryPath != binaryPath {
-		t.Fatalf("binary path = %q, want %q", identity.BinaryPath, binaryPath)
+	wantPath := binaryPath
+	if real, err := filepath.EvalSymlinks(binaryPath); err == nil {
+		wantPath = real
+	}
+	if identity.BinaryPath != wantPath {
+		t.Fatalf("binary path = %q, want %q", identity.BinaryPath, wantPath)
 	}
 
 	startedAt := time.Unix(1_700_000_000, 0).UTC()
