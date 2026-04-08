@@ -1,8 +1,8 @@
 # Relay 回压治理设计
 
 > Type: `implemented`
-> Updated: `2026-04-07`
-> Summary: 完成 wrapper 削峰、transport 分级、daemon ingress 解耦、transport degraded 与错误抑制，实现 relay 回压治理第一轮闭环。
+> Updated: `2026-04-09`
+> Summary: 同步 wrapper `item.delta` 合并边界，允许 metadata 稳定的 reasoning delta 进入安全 coalescing。
 
 ## 1. 文档定位
 
@@ -306,6 +306,7 @@ Codex stdout
 - `itemKind`
 - `trafficClass`
 - `initiator`
+- `metadata`（若存在，必须稳定一致）
 
 合并方式：
 
@@ -330,6 +331,17 @@ Codex stdout
 - 等 item 边界或 turn 边界再决定是否渲染
 
 也就是说，对同一 `itemId` 的相邻 `delta` 做字符串拼接，不会改变最终文本与状态机语义，只会降低事件数量。
+
+当前已知可以安全纳入这一规则的高频源包括：
+
+- `agent_message`
+- `plan`
+- `reasoning_summary`
+- `reasoning_content`
+- `command_execution_output`
+- `file_change_output`
+
+其中 reasoning 两类虽然携带 `summaryIndex` / `contentIndex`，但只要 index 不变，它们在当前 orchestrator 中仍然是同一 item 上的文本追加；若 index 变化，则必须先 flush，不能跨段合并。
 
 ### 7.2 daemon: 引入 inbound ingress pump
 

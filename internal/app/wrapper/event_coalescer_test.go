@@ -152,3 +152,70 @@ func TestRelayEventCoalescerFlushesOnWindowLimit(t *testing.T) {
 		t.Fatalf("expected second delta to remain buffered after window flush, got %#v", flushed)
 	}
 }
+
+func TestRelayEventCoalescerMergesReasoningSummaryDeltaWithStableMetadata(t *testing.T) {
+	coalescer := newRelayEventCoalescer(func() time.Time { return time.Unix(0, 0) }, 1024, time.Second)
+	first := agentproto.Event{
+		Kind:         agentproto.EventItemDelta,
+		ThreadID:     "thread-1",
+		TurnID:       "turn-1",
+		ItemID:       "item-1",
+		ItemKind:     "reasoning_summary",
+		Delta:        "need",
+		TrafficClass: agentproto.TrafficClassPrimary,
+		Metadata:     map[string]any{"summaryIndex": 0},
+	}
+	second := first
+	second.Delta = " more"
+	second.Metadata = map[string]any{"summaryIndex": 0}
+
+	if got := coalescer.Push([]agentproto.Event{first}); len(got) != 0 {
+		t.Fatalf("expected first reasoning delta to stay buffered, got %#v", got)
+	}
+	if got := coalescer.Push([]agentproto.Event{second}); len(got) != 0 {
+		t.Fatalf("expected second reasoning delta to merge into buffer, got %#v", got)
+	}
+	flushed := coalescer.Flush()
+	if len(flushed) != 1 {
+		t.Fatalf("expected one flushed reasoning event, got %#v", flushed)
+	}
+	if flushed[0].Delta != "need more" {
+		t.Fatalf("unexpected merged reasoning delta: %#v", flushed[0])
+	}
+	if got, ok := flushed[0].Metadata["summaryIndex"].(int); !ok || got != 0 {
+		t.Fatalf("expected merged reasoning delta to preserve summaryIndex, got %#v", flushed[0].Metadata)
+	}
+}
+
+func TestRelayEventCoalescerFlushesOnMetadataChange(t *testing.T) {
+	coalescer := newRelayEventCoalescer(func() time.Time { return time.Unix(0, 0) }, 1024, time.Second)
+	first := agentproto.Event{
+		Kind:         agentproto.EventItemDelta,
+		ThreadID:     "thread-1",
+		TurnID:       "turn-1",
+		ItemID:       "item-1",
+		ItemKind:     "reasoning_content",
+		Delta:        "A",
+		TrafficClass: agentproto.TrafficClassPrimary,
+		Metadata:     map[string]any{"contentIndex": 0},
+	}
+	second := first
+	second.Delta = "B"
+	second.Metadata = map[string]any{"contentIndex": 1}
+
+	_ = coalescer.Push([]agentproto.Event{first})
+	got := coalescer.Push([]agentproto.Event{second})
+	if len(got) != 1 {
+		t.Fatalf("expected metadata change to flush first delta, got %#v", got)
+	}
+	if got[0].Delta != "A" {
+		t.Fatalf("unexpected flushed reasoning delta: %#v", got[0])
+	}
+	flushed := coalescer.Flush()
+	if len(flushed) != 1 || flushed[0].Delta != "B" {
+		t.Fatalf("expected second reasoning delta to remain buffered, got %#v", flushed)
+	}
+	if got, ok := flushed[0].Metadata["contentIndex"].(int); !ok || got != 1 {
+		t.Fatalf("expected buffered reasoning delta to preserve metadata, got %#v", flushed[0].Metadata)
+	}
+}

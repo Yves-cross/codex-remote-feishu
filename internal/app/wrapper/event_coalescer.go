@@ -1,6 +1,7 @@
 package wrapper
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -107,8 +108,8 @@ func isCoalescibleRelayDelta(event agentproto.Event) bool {
 		event.Loaded ||
 		event.Archived ||
 		event.Problem != nil ||
-		len(event.Metadata) != 0 ||
-		len(event.Threads) != 0 {
+		len(event.Threads) != 0 ||
+		len(event.FileChanges) != 0 {
 		return false
 	}
 	return true
@@ -121,5 +122,13 @@ func sameCoalescibleRelayDelta(left, right agentproto.Event) bool {
 		left.ItemID == right.ItemID &&
 		left.ItemKind == right.ItemKind &&
 		left.TrafficClass == right.TrafficClass &&
-		left.Initiator == right.Initiator
+		left.Initiator == right.Initiator &&
+		sameEventMetadata(left.Metadata, right.Metadata)
+}
+
+func sameEventMetadata(left, right map[string]any) bool {
+	if len(left) == 0 && len(right) == 0 {
+		return true
+	}
+	return reflect.DeepEqual(left, right)
 }
