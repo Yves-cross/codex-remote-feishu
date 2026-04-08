@@ -1,9 +1,7 @@
 package daemon
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,94 +45,19 @@ func (a *App) handleAdminInstancesList(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *App) handleAdminInstanceCreate(w http.ResponseWriter, r *http.Request) {
-	var req adminInstanceCreateRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "invalid_request",
-			Message: "failed to decode managed instance payload",
-			Details: err.Error(),
-		})
-		return
-	}
-	summary, err := a.createManagedHeadlessInstance(strings.TrimSpace(req.WorkspaceRoot), strings.TrimSpace(req.DisplayName))
-	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "managed_instance_create_failed",
-			Message: "failed to create managed headless instance",
-			Details: err.Error(),
-		})
-		return
-	}
-	writeJSON(w, http.StatusCreated, struct {
-		Instance adminInstanceSummary `json:"instance"`
-	}{Instance: summary})
+	_ = r
+	writeAPIError(w, http.StatusGone, apiError{
+		Code:    "managed_instance_admin_removed",
+		Message: "managed background instances are no longer created from web admin",
+	})
 }
 
 func (a *App) handleAdminInstanceDelete(w http.ResponseWriter, r *http.Request) {
-	instanceID := strings.TrimSpace(r.PathValue("id"))
-	if instanceID == "" {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "invalid_instance_id",
-			Message: "instance id is required",
-		})
-		return
-	}
-
-	a.mu.Lock()
-	summary, ok := a.adminManagedInstanceSummaryLocked(instanceID)
-	if !ok {
-		a.mu.Unlock()
-		writeAPIError(w, http.StatusNotFound, apiError{
-			Code:    "managed_instance_not_found",
-			Message: "managed instance not found",
-			Details: instanceID,
-		})
-		return
-	}
-	if summary.Source != "headless" || !summary.Managed {
-		a.mu.Unlock()
-		writeAPIError(w, http.StatusConflict, apiError{
-			Code:    "managed_instance_delete_forbidden",
-			Message: "only managed headless instances can be deleted from web admin",
-			Details: instanceID,
-		})
-		return
-	}
-	pid := a.managedInstancePIDLocked(instanceID)
-	if pid == 0 {
-		a.mu.Unlock()
-		writeAPIError(w, http.StatusConflict, apiError{
-			Code:    "managed_instance_pid_unknown",
-			Message: "managed headless instance has no known pid",
-			Details: instanceID,
-		})
-		return
-	}
-	killGrace := a.headlessRuntime.KillGrace
-	a.mu.Unlock()
-
-	if err := a.stopProcess(pid, killGrace); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "managed_instance_delete_failed",
-			Message: "failed to stop managed headless instance",
-			Details: err.Error(),
-		})
-		return
-	}
-
-	a.mu.Lock()
-	delete(a.managedHeadless, instanceID)
-	a.service.RemoveInstance(instanceID)
-	a.mu.Unlock()
-
-	logDelete := struct {
-		InstanceID string `json:"instanceId"`
-		PID        int    `json:"pid"`
-	}{InstanceID: instanceID, PID: pid}
-	if payload, err := json.Marshal(logDelete); err == nil {
-		log.Printf("admin managed instance deleted: %s", string(payload))
-	}
-	w.WriteHeader(http.StatusNoContent)
+	_ = r
+	writeAPIError(w, http.StatusGone, apiError{
+		Code:    "managed_instance_admin_removed",
+		Message: "managed background instances are no longer deleted from web admin",
+	})
 }
 
 func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
@@ -142,10 +65,9 @@ func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
 	defer a.mu.Unlock()
 	a.syncManagedHeadlessLocked(time.Now().UTC())
 
-	summaries := make([]adminInstanceSummary, 0, len(a.service.Instances())+len(a.managedHeadless))
-	seen := map[string]bool{}
+	summaries := make([]adminInstanceSummary, 0, len(a.service.Instances()))
 	for _, inst := range a.service.Instances() {
-		if inst == nil {
+		if inst == nil || strings.EqualFold(strings.TrimSpace(inst.Source), "headless") {
 			continue
 		}
 		summary := adminInstanceSummary{
@@ -167,23 +89,6 @@ func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
 		if managed := a.managedHeadless[inst.InstanceID]; managed != nil {
 			overlayManagedSummary(&summary, managed)
 		}
-		summaries = append(summaries, summary)
-		seen[inst.InstanceID] = true
-	}
-	for instanceID, managed := range a.managedHeadless {
-		if seen[instanceID] || managed == nil {
-			continue
-		}
-		summary := adminInstanceSummary{
-			InstanceID:    instanceID,
-			DisplayName:   managed.DisplayName,
-			WorkspaceRoot: managed.WorkspaceRoot,
-			Source:        "headless",
-			Managed:       true,
-			PID:           managed.PID,
-			Status:        firstNonEmpty(strings.TrimSpace(managed.Status), "starting"),
-		}
-		overlayManagedSummary(&summary, managed)
 		summaries = append(summaries, summary)
 	}
 	sort.Slice(summaries, func(i, j int) bool {

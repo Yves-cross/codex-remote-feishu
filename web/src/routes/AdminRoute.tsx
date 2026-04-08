@@ -60,8 +60,6 @@ export function AdminRoute() {
   const [previews, setPreviews] = useState<PreviewMap>({});
   const [selectedAppID, setSelectedAppID] = useState<string>(newAppID);
   const [draft, setDraft] = useState<AppDraft>(emptyDraft());
-  const [workspaceRoot, setWorkspaceRoot] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [error, setError] = useState<string>("");
   const [busyAction, setBusyAction] = useState("");
@@ -285,30 +283,6 @@ export function AdminRoute() {
     }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
   }
 
-  async function createInstance() {
-    await runAction("create-instance", async () => {
-      await sendJSON<{ instance: AdminInstanceSummary }>("/api/admin/instances", "POST", {
-        workspaceRoot,
-        displayName: blankToUndefined(displayName),
-      });
-      setWorkspaceRoot("");
-      setDisplayName("");
-      await loadAdminData(activeApp?.id);
-      setNotice({ tone: "good", message: "新的工作实例已启动。" });
-    });
-  }
-
-  async function deleteInstance(instanceID: string, display: string) {
-    if (!window.confirm(`删除实例 “${display}”？`)) {
-      return;
-    }
-    await runAction("delete-instance", async () => {
-      await requestVoid(`/api/admin/instances/${encodeURIComponent(instanceID)}`, { method: "DELETE" });
-      await loadAdminData(activeApp?.id);
-      setNotice({ tone: "warn", message: "实例已删除。" });
-    });
-  }
-
   async function cleanupImageStaging() {
     await runAction("cleanup-images", async () => {
       const response = await sendJSON<ImageStagingCleanupResponse>("/api/admin/storage/image-staging/cleanup", "POST", {
@@ -468,14 +442,7 @@ export function AdminRoute() {
             onDeleteApp={() => void deleteApp()}
           />
           <AdminInstancesPanel
-            workspaceRoot={workspaceRoot}
-            displayName={displayName}
             instances={instances}
-            busyAction={busyAction}
-            onWorkspaceRootChange={setWorkspaceRoot}
-            onDisplayNameChange={setDisplayName}
-            onCreateInstance={() => void createInstance()}
-            onDeleteInstance={(instanceID, display) => void deleteInstance(instanceID, display)}
           />
           <AdminStoragePanel
             apps={apps}

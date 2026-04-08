@@ -198,4 +198,25 @@ describe("AdminRoute", () => {
 
     expect(await screen.findByText(/已接管这台机器上的 VS Code 扩展入口/)).toBeInTheDocument();
   });
+
+  it("hides manual managed-instance controls from the admin panel", async () => {
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByText(/后台恢复实例由系统自动管理/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新建实例" })).not.toBeInTheDocument();
+    expect(screen.queryByText("可由管理页删除")).not.toBeInTheDocument();
+  });
 });

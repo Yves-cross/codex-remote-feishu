@@ -59,14 +59,7 @@ type AdminFeishuPanelProps = {
 };
 
 type AdminInstancesPanelProps = {
-  workspaceRoot: string;
-  displayName: string;
   instances: AdminInstanceSummary[];
-  busyAction: string;
-  onWorkspaceRootChange: (value: string) => void;
-  onDisplayNameChange: (value: string) => void;
-  onCreateInstance: () => void;
-  onDeleteInstance: (instanceID: string, display: string) => void;
 };
 
 type AdminStoragePanelProps = {
@@ -372,53 +365,24 @@ export function AdminFeishuPanel({
 }
 
 export function AdminInstancesPanel({
-  workspaceRoot,
-  displayName,
   instances,
-  busyAction,
-  onWorkspaceRootChange,
-  onDisplayNameChange,
-  onCreateInstance,
-  onDeleteInstance,
 }: AdminInstancesPanelProps) {
   return (
-    <Panel id="instances" title="工作实例" description="管理本机可接入的工作实例，也可以从这里直接启动新的后台实例。">
-      <div className="wizard-step-layout two-column">
-        <div className="manifest-block">
-          <h4>新增工作实例</h4>
-          <div className="form-grid">
-            <label className="field">
-              <span>工作目录</span>
-              <input value={workspaceRoot} placeholder="/data/dl/project" onChange={(event) => onWorkspaceRootChange(event.target.value)} />
-            </label>
-            <label className="field">
-              <span>显示名称（可选）</span>
-              <input value={displayName} placeholder="Demo Project" onChange={(event) => onDisplayNameChange(event.target.value)} />
-            </label>
-          </div>
-          <p className="form-hint">如果不填显示名称，系统会默认使用工作目录名。</p>
-          <div className="button-row">
-            <button className="primary-button" type="button" onClick={onCreateInstance} disabled={busyAction !== ""}>
-              新建实例
-            </button>
-          </div>
-        </div>
-
-        <div className="manifest-block">
-          <h4>什么时候适合新建实例</h4>
-          <ul className="wizard-bullet-list">
-            <li>你想提前准备一个后台工作区，稍后再从飞书附着进去。</li>
-            <li>你需要把不同项目拆成独立实例，避免上下文互相干扰。</li>
-            <li>你希望管理页主动启动一个可复用的工作入口。</li>
-          </ul>
-        </div>
+    <Panel id="instances" title="工作实例" description="查看本机当前可接入的工作实例。后台恢复实例由系统自动管理，不再在这里手工创建或删除。">
+      <div className="manifest-block">
+        <h4>当前策略</h4>
+        <ul className="wizard-bullet-list">
+          <li>这里只显示当前可见的 VS Code 工作实例。</li>
+          <li>后台恢复流程会由系统按需自动复用或启动，不再单独暴露成管理页操作。</li>
+          <li>如果这里为空，请先在 VS Code 里打开 Codex 会话。</li>
+        </ul>
       </div>
 
       <div className="section-block">
         <div className="section-heading">
           <div>
             <h4>当前实例</h4>
-            <p>这里只显示本机当前可见的实例，方便确认哪个在线、哪个由管理页创建。</p>
+            <p>这里只显示本机当前可见的 VS Code 实例，方便确认哪个在线、哪个可被飞书接管。</p>
           </div>
         </div>
 
@@ -434,23 +398,15 @@ export function AdminInstancesPanel({
                 <div className="app-card-flags">
                   <StatusBadge value={instanceSourceLabel(instance)} tone="neutral" />
                   {instance.pid ? <StatusBadge value={`PID ${instance.pid}`} tone="neutral" /> : null}
-                  {instance.managed ? <StatusBadge value="可由管理页删除" tone="good" /> : null}
                 </div>
                 <p>{buildInstanceDetail(instance)}</p>
-                {instance.managed && instance.source === "headless" ? (
-                  <div className="button-row">
-                    <button className="danger-button" type="button" onClick={() => onDeleteInstance(instance.instanceId, instance.displayName || instance.instanceId)} disabled={busyAction !== ""}>
-                      删除实例
-                    </button>
-                  </div>
-                ) : null}
               </article>
             ))}
           </div>
         ) : (
           <div className="inline-note">
             <StatusBadge value="暂无实例" tone="neutral" />
-            <span>本机还没有可显示的工作实例。你可以先在这里新建一个，或从 VS Code 先启动 Codex。</span>
+            <span>本机还没有可显示的 VS Code 实例。请先在 VS Code 里启动 Codex。</span>
           </div>
         )}
       </div>
