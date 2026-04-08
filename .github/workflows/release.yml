@@ -3,6 +3,15 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      track:
+        description: Release track
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - beta
+          - alpha
       version:
         description: Explicit version to release, e.g. v1.0.0. Leave empty to auto-calculate.
         required: false
@@ -20,11 +29,6 @@ on:
           - major
       draft:
         description: Create the GitHub release as a draft
-        required: true
-        default: false
-        type: boolean
-      prerelease:
-        description: Mark the release as prerelease
         required: true
         default: false
         type: boolean
@@ -69,6 +73,9 @@ jobs:
             exit 1
           fi
 
+      - name: Check release track versioning
+        run: bash scripts/check/release-track-version.sh
+
       - name: Run tests
         run: go test ./...
 
@@ -78,23 +85,51 @@ jobs:
       - name: Determine next version
         id: version
         run: |
+          track='${{ inputs.track }}'
           if [[ -n '${{ inputs.version }}' ]]; then
             version='${{ inputs.version }}'
           else
-            version="$(BUMP_OVERRIDE='${{ inputs.bump }}' bash scripts/release/next-version.sh)"
+            version="$(RELEASE_TRACK="${track}" BUMP_OVERRIDE='${{ inputs.bump }}' bash scripts/release/next-version.sh)"
           fi
           if [[ ! "${version}" =~ ^v[0-9] ]]; then
             version="v${version}"
           fi
-          latest_tag="$(git tag --list 'v*' --sort=-version:refname | grep -vx "${version}" | head -n1 || true)"
+          case "${track}" in
+            production)
+              version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+              prerelease=false
+              ;;
+            beta|alpha)
+              version_pattern="^v[0-9]+\.[0-9]+\.[0-9]+-${track}\\.[0-9]+$"
+              prerelease=true
+              ;;
+            *)
+              echo "Unsupported release track: ${track}" >&2
+              exit 1
+              ;;
+          esac
+          if ! [[ "${version}" =~ ${version_pattern} ]]; then
+            echo "Version ${version} does not match track ${track}." >&2
+            exit 1
+          fi
+          latest_tag="$(
+            git tag --list 'v*' --sort=-version:refname |
+              grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+              grep -vx "${version}" |
+              head -n1 ||
+              true
+          )"
+          echo "track=${track}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "latest_tag=${latest_tag}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
 
       - name: Build artifacts
         run: bash scripts/release/build-artifacts.sh "${{ steps.version.outputs.version }}"
 
       - name: Generate release notes
         run: |
+          RELEASE_TRACK="${{ steps.version.outputs.track }}" \
           VERSION="${{ steps.version.outputs.version }}" \
           LATEST_TAG="${{ steps.version.outputs.latest_tag }}" \
           bash scripts/release/release-notes.sh > release-notes.md
@@ -107,7 +142,7 @@ jobs:
           if [[ "${{ inputs.draft }}" == "true" ]]; then
             flags+=(--draft)
           fi
-          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+          if [[ "${{ steps.version.outputs.prerelease }}" == "true" ]]; then
             flags+=(--prerelease)
           fi
           gh release create "${{ steps.version.outputs.version }}" dist/* \

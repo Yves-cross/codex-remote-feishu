@@ -1,12 +1,13 @@
 GO ?= go
 
-.PHONY: check test build fmt release-artifacts smoke-release-install start stop status web-build
+.PHONY: check test build fmt release-artifacts smoke-release-install release-track-version start stop status web-build
 
 check:
 	bash scripts/web/build-admin-ui.sh
 	bash scripts/check/no-local-paths.sh
 	bash scripts/check/no-legacy-names.sh
 	files="$$(find cmd internal testkit -name '*.go' | sort)"; output="$$(gofmt -l $$files)"; test -z "$$output" || (echo "$$output" >&2; exit 1)
+	bash scripts/check/release-track-version.sh
 	bash scripts/check/smoke-install-release.sh
 	$(GO) test ./...
 
@@ -32,6 +33,9 @@ release-artifacts:
 
 smoke-release-install:
 	bash scripts/check/smoke-install-release.sh
+
+release-track-version:
+	bash scripts/check/release-track-version.sh
 
 start:
 	./install.sh start

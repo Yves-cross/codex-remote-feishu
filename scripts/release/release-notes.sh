@@ -6,10 +6,19 @@ cd "${ROOT_DIR}"
 
 version="${VERSION:-}"
 latest_tag="${LATEST_TAG:-}"
+track="${RELEASE_TRACK:-}"
 
 if [[ -z "${version}" ]]; then
   echo "VERSION is required." >&2
   exit 1
+fi
+
+if [[ -z "${track}" ]]; then
+  case "${version}" in
+    *-alpha.*) track="alpha" ;;
+    *-beta.*) track="beta" ;;
+    *) track="production" ;;
+  esac
 fi
 
 if [[ -n "${latest_tag}" ]]; then
@@ -52,6 +61,8 @@ print_section() {
 
 echo "Release ${version}"
 echo
+echo "Track: ${track}."
+echo
 if [[ -n "${latest_tag}" ]]; then
   echo "Changes since ${latest_tag}."
 else
@@ -60,12 +71,20 @@ fi
 echo
 echo "## Install"
 echo
-echo "Latest macOS / Linux install:"
+echo "Latest production install:"
 echo
 echo '```bash'
 echo "curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash"
 echo '```'
 echo
+if [[ "${track}" != "production" ]]; then
+  echo "Latest ${track} install:"
+  echo
+  echo '```bash'
+  echo "curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --track ${track}"
+  echo '```'
+  echo
+fi
 echo "The installer downloads the GitHub-built release archive, installs the binary, starts the local daemon, and opens or prints the WebSetup URL."
 echo
 echo "Pin this version:"

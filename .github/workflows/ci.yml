@@ -56,6 +56,9 @@ jobs:
             exit 1
           fi
 
+      - name: Check release track versioning
+        run: bash scripts/check/release-track-version.sh
+
       - name: Test web
         working-directory: web
         run: npm run test:run
