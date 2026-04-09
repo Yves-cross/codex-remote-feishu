@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步 VS Code managed-shim-only 接入路径，并保留 release track、命令帮助、旧卡片、后台恢复、迁移卡片与文档预览 fixed-root inventory 的当前用户语义。
+> Summary: 同步 setup 里的运行环境检查步骤与 VS Code managed-shim-only 接入路径，并保留 release track、命令帮助、旧卡片、后台恢复、迁移卡片与文档预览 fixed-root inventory 的当前用户语义。
 
 ## 1. 这是什么
 
@@ -141,8 +141,18 @@ Windows PowerShell：
 1. 添加飞书机器人名称、`App ID` 和 `App Secret`
 2. 测试连接
 3. 按页面指引完成飞书平台里的权限、事件订阅、菜单和发布
-4. 让页面检测当前 VS Code 环境
-5. 按你的实际使用场景完成 VS Code 接入
+4. 先看页面给出的“运行环境检查”结果，确认当前机器已经满足正常使用要求
+5. 按需处理自动启动
+6. 如果你需要 VS Code，再按你的实际使用场景完成 VS Code 接入
+
+这个“运行环境检查”步骤会统一告诉你：
+
+- 当前 daemon 会用哪个 `codex-remote` 作为 headless 启动器
+- wrapper 实际会启动哪个真实 `codex`
+- 当前服务环境里能不能把它解析成可执行文件
+- 是否存在明显风险，例如只靠 `PATH` 解析，或者错误地回指 `codex-remote` 自己
+
+它只检查基础运行条件，不检查 Codex 登录状态、账号配置或 provider 凭据。
 
 当前 setup 不再直接让你面对 `editor_settings` / `managed_shim` 这些内部模式名，而是先按场景引导：
 
