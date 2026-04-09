@@ -60,6 +60,7 @@ type remoteTurnBinding struct {
 	ThreadID              string
 	TurnID                string
 	Status                string
+	StartedAt             time.Time
 }
 
 type pendingSteerBinding struct {
@@ -391,7 +392,14 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		deleteMatchingItemBuffers(s.itemBuffers, instanceID, event.ThreadID, event.TurnID)
 		summary := s.takeTurnFileChangeSummary(instanceID, event.ThreadID, event.TurnID)
 		finalText := pendingTurnTextValue(s.pendingTurnText, instanceID, event.ThreadID, event.TurnID)
-		events := s.flushPendingTurnTextWithSummary(instanceID, event.ThreadID, event.TurnID, true, summary)
+		events := s.flushPendingTurnTextWithSummary(
+			instanceID,
+			event.ThreadID,
+			event.TurnID,
+			true,
+			summary,
+			finalTurnSummaryForBinding(s.now().UTC(), s.lookupRemoteTurn(instanceID, event.ThreadID, event.TurnID)),
+		)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
 			if surface != nil {

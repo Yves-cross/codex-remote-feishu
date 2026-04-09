@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -238,7 +239,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Block == nil {
 			return nil
 		}
-		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, event.SourceMessagePreview, *event.Block, event.FileChangeSummary)
+		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, event.SourceMessagePreview, *event.Block, event.FileChangeSummary, event.FinalTurnSummary)
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil
@@ -264,7 +265,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 	}
 }
 
-func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary) []Operation {
+func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
 			Kind:             OperationSendText,
@@ -280,7 +281,7 @@ func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMe
 	} else if block.Kind == render.BlockAssistantMarkdown {
 		body = renderSystemInlineTags(block.Text)
 	}
-	elements := finalBlockExtraElements(summary)
+	elements := finalBlockExtraElements(summary, finalSummary)
 	return []Operation{{
 		Kind:             OperationSendCard,
 		GatewayID:        gatewayID,
@@ -731,41 +732,75 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 	return false
 }
 
-func finalBlockExtraElements(summary *control.FileChangeSummary) []map[string]any {
-	if summary == nil || summary.FileCount == 0 || len(summary.Files) == 0 {
-		return nil
-	}
-	elements := []map[string]any{{
-		"tag": "markdown",
-		"content": fmt.Sprintf(
-			"**本次修改** %d 个文件  %s",
-			summary.FileCount,
-			formatFileChangeCountsMarkdown(summary.AddedLines, summary.RemovedLines),
-		),
-	}}
-	labels := fileChangeDisplayLabels(summary.Files)
-	limit := len(summary.Files)
-	if limit > maxEmbeddedFileSummaryRows {
-		limit = maxEmbeddedFileSummaryRows
-	}
-	for index := 0; index < limit; index++ {
+func finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []map[string]any {
+	var elements []map[string]any
+	if summary != nil && summary.FileCount > 0 && len(summary.Files) > 0 {
 		elements = append(elements, map[string]any{
 			"tag": "markdown",
 			"content": fmt.Sprintf(
-				"%d. %s  %s",
-				index+1,
-				formatFileChangePath(summary.Files[index], labels),
-				formatFileChangeCountsMarkdown(summary.Files[index].AddedLines, summary.Files[index].RemovedLines),
+				"**本次修改** %d 个文件  %s",
+				summary.FileCount,
+				formatFileChangeCountsMarkdown(summary.AddedLines, summary.RemovedLines),
 			),
 		})
+		labels := fileChangeDisplayLabels(summary.Files)
+		limit := len(summary.Files)
+		if limit > maxEmbeddedFileSummaryRows {
+			limit = maxEmbeddedFileSummaryRows
+		}
+		for index := 0; index < limit; index++ {
+			elements = append(elements, map[string]any{
+				"tag": "markdown",
+				"content": fmt.Sprintf(
+					"%d. %s  %s",
+					index+1,
+					formatFileChangePath(summary.Files[index], labels),
+					formatFileChangeCountsMarkdown(summary.Files[index].AddedLines, summary.Files[index].RemovedLines),
+				),
+			})
+		}
+		if remaining := len(summary.Files) - limit; remaining > 0 {
+			elements = append(elements, map[string]any{
+				"tag":     "markdown",
+				"content": fmt.Sprintf("另有 %d 个文件未展开。", remaining),
+			})
+		}
 	}
-	if remaining := len(summary.Files) - limit; remaining > 0 {
+	if line := formatFinalTurnSummaryLine(finalSummary); line != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
-			"content": fmt.Sprintf("另有 %d 个文件未展开。", remaining),
+			"content": line,
 		})
 	}
+	if len(elements) == 0 {
+		return nil
+	}
 	return elements
+}
+
+func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
+	if summary == nil || summary.Elapsed <= 0 {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("**本轮用时** %s", formatElapsedDuration(summary.Elapsed))}
+	if usage := summary.Usage; usage != nil {
+		total := usage.TotalTokens
+		if total <= 0 {
+			total = usage.InputTokens + usage.OutputTokens
+		}
+		if total > 0 {
+			parts = append(parts, fmt.Sprintf("**Token** %d", total))
+		}
+	}
+	return strings.Join(parts, "  ")
+}
+
+func formatElapsedDuration(value time.Duration) string {
+	seconds := value.Seconds()
+	if seconds < 0 {
+		seconds = 0
+	}
+	return fmt.Sprintf("%.1fs", seconds)
 }
 
 func formatFileChangePath(file control.FileChangeSummaryEntry, labels map[string]string) string {

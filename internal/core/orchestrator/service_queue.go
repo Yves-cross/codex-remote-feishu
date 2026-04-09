@@ -8,6 +8,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"sort"
 	"strings"
+	"time"
 )
 
 func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
@@ -212,6 +213,9 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	if item.FrozenThreadID == "" {
 		item.FrozenThreadID = threadID
 	}
+	if binding.StartedAt.IsZero() {
+		binding.StartedAt = s.now().UTC()
+	}
 	item.Status = state.QueueItemRunning
 	events := s.pendingInputEvents(surface, control.PendingInputState{
 		QueueItemID: item.ID,
@@ -226,6 +230,20 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 		events = append(events, s.bindSurfaceToThreadMode(surface, inst, item.FrozenThreadID, routeMode)...)
 	}
 	return events
+}
+
+func finalTurnSummaryForBinding(now time.Time, binding *remoteTurnBinding) *control.FinalTurnSummary {
+	if binding == nil || binding.StartedAt.IsZero() {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	elapsed := now.Sub(binding.StartedAt)
+	if elapsed <= 0 {
+		return nil
+	}
+	return &control.FinalTurnSummary{Elapsed: elapsed}
 }
 
 func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {
@@ -281,10 +299,10 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 }
 
 func (s *Service) renderTextItem(instanceID, threadID, turnID, itemID, text string, final bool) []control.UIEvent {
-	return s.renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text, final, nil)
+	return s.renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text, final, nil, nil)
 }
 
-func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary) []control.UIEvent {
+func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []control.UIEvent {
 	inst := s.root.Instances[instanceID]
 	surface := s.turnSurface(instanceID, threadID, turnID)
 	if surface == nil {
@@ -296,10 +314,10 @@ func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID
 	if final {
 		s.clearThreadReplay(inst, threadID)
 	}
-	return s.renderTextToSurface(surface, inst, threadID, turnID, itemID, text, final, summary)
+	return s.renderTextToSurface(surface, inst, threadID, turnID, itemID, text, final, summary, finalSummary)
 }
 
-func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary) []control.UIEvent {
+func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
@@ -335,7 +353,11 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 	if themeKey == "" {
 		themeKey = title
 	}
-	if len(blocks) == 0 && final && summary != nil {
+	if len(blocks) == 0 && final && (summary != nil || finalSummary != nil) {
+		syntheticText := "已完成。"
+		if summary != nil {
+			syntheticText = "已完成文件修改。"
+		}
 		blocks = []render.Block{{
 			ID:               itemID + "-summary",
 			SurfaceSessionID: surface.SurfaceSessionID,
@@ -345,7 +367,7 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 			TurnID:           turnID,
 			ItemID:           itemID,
 			Kind:             render.BlockAssistantMarkdown,
-			Text:             "已完成文件修改。",
+			Text:             syntheticText,
 			ThemeKey:         themeKey,
 			Final:            true,
 		}}
@@ -365,6 +387,9 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 		}
 		if final && summary != nil && i == lastBlockIndex {
 			event.FileChangeSummary = summary
+		}
+		if final && finalSummary != nil && i == lastBlockIndex {
+			event.FinalTurnSummary = finalSummary
 		}
 		events = append(events, event)
 	}
@@ -452,20 +477,20 @@ func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, ite
 }
 
 func (s *Service) flushPendingTurnText(instanceID, threadID, turnID string, final bool) []control.UIEvent {
-	return s.flushPendingTurnTextWithSummary(instanceID, threadID, turnID, final, nil)
+	return s.flushPendingTurnTextWithSummary(instanceID, threadID, turnID, final, nil, nil)
 }
 
-func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID string, final bool, summary *control.FileChangeSummary) []control.UIEvent {
+func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID string, final bool, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []control.UIEvent {
 	key := turnRenderKey(instanceID, threadID, turnID)
 	pending := s.pendingTurnText[key]
 	if pending == nil {
-		if final && summary != nil {
-			return s.renderTextItemWithSummary(instanceID, threadID, turnID, "file-change-summary", "", true, summary)
+		if final && (summary != nil || finalSummary != nil) {
+			return s.renderTextItemWithSummary(instanceID, threadID, turnID, "file-change-summary", "", true, summary, finalSummary)
 		}
 		return nil
 	}
 	delete(s.pendingTurnText, key)
-	return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, pending.ItemID, pending.Text, final, summary)
+	return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, pending.ItemID, pending.Text, final, summary, finalSummary)
 }
 
 func (s *Service) flushPendingTurnTextIfTurnContinues(instanceID string, event agentproto.Event) []control.UIEvent {

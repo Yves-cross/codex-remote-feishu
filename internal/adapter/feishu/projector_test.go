@@ -753,6 +753,73 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	}
 }
 
+func TestProjectFinalAssistantBlockAppendsElapsedAfterFileChangeSummary(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-2",
+		Block: &render.Block{
+			Kind:        render.BlockAssistantMarkdown,
+			Text:        "已完成修改。",
+			ThreadID:    "thread-1",
+			ThreadTitle: "droid · 修复登录流程",
+			ThemeKey:    "thread-1",
+			Final:       true,
+		},
+		FileChangeSummary: &control.FileChangeSummary{
+			ThreadID:     "thread-1",
+			ThreadTitle:  "droid · 修复登录流程",
+			FileCount:    2,
+			AddedLines:   5,
+			RemovedLines: 1,
+			Files: []control.FileChangeSummaryEntry{
+				{Path: "internal/core/orchestrator/service.go", AddedLines: 3, RemovedLines: 1},
+				{Path: "internal/adapter/feishu/service.go", AddedLines: 2},
+			},
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 3400 * time.Millisecond,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 4 {
+		t.Fatalf("expected file summary rows plus elapsed footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[3]["content"] != "**本轮用时** 3.4s" {
+		t.Fatalf("unexpected elapsed footer: %#v", ops[0].CardElements[3])
+	}
+}
+
+func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-2",
+		Block: &render.Block{
+			Kind:        render.BlockAssistantMarkdown,
+			Text:        "已完成。",
+			ThreadID:    "thread-1",
+			ThreadTitle: "droid · 修复登录流程",
+			ThemeKey:    "thread-1",
+			Final:       true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 2100 * time.Millisecond,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 1 {
+		t.Fatalf("expected standalone elapsed footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[0]["content"] != "**本轮用时** 2.1s" {
+		t.Fatalf("unexpected standalone elapsed footer: %#v", ops[0].CardElements[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockTruncatesChineseTitlePreview(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

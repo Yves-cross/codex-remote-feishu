@@ -4009,6 +4009,75 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 	}
 }
 
+func TestTurnCompletedEmbedsElapsedIntoFinalAssistantBlock(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "处理一下",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	now = now.Add(3400 * time.Millisecond)
+	if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "msg-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"text": "已完成。"},
+	}); len(events) != 0 {
+		t.Fatalf("expected assistant final text to stay buffered until turn completion, got %#v", events)
+	}
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	var finalBlockEvent *control.UIEvent
+	for i := range finished {
+		event := finished[i]
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成。" {
+			finalBlockEvent = &finished[i]
+		}
+	}
+	if finalBlockEvent == nil {
+		t.Fatalf("expected final assistant block, got %#v", finished)
+	}
+	if finalBlockEvent.FinalTurnSummary == nil {
+		t.Fatalf("expected final assistant block to embed elapsed summary, got %#v", finalBlockEvent)
+	}
+	if finalBlockEvent.FinalTurnSummary.Elapsed != 3400*time.Millisecond {
+		t.Fatalf("unexpected elapsed payload: %#v", finalBlockEvent.FinalTurnSummary)
+	}
+	if finalBlockEvent.FileChangeSummary != nil {
+		t.Fatalf("expected no file summary on elapsed-only final block, got %#v", finalBlockEvent.FileChangeSummary)
+	}
+}
+
 func TestTurnCompletedAggregatesMultipleCompletedFileChangeItemsIntoFinalBlock(t *testing.T) {
 	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -4164,6 +4233,64 @@ func TestTurnCompletedSynthesizesFinalBlockWhenOnlyFileSummaryExists(t *testing.
 	}
 	if finalBlockEvent.FileChangeSummary == nil || finalBlockEvent.FileChangeSummary.FileCount != 1 {
 		t.Fatalf("expected synthetic final block to carry file summary, got %#v", finalBlockEvent)
+	}
+}
+
+func TestTurnCompletedSynthesizesFinalBlockWhenOnlyElapsedExists(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "处理一下",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+	now = now.Add(2100 * time.Millisecond)
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	var finalBlockEvent *control.UIEvent
+	for i := range finished {
+		if finished[i].Block != nil && finished[i].Block.Final {
+			finalBlockEvent = &finished[i]
+		}
+	}
+	if finalBlockEvent == nil {
+		t.Fatalf("expected synthetic final block when only elapsed exists, got %#v", finished)
+	}
+	if finalBlockEvent.Block.Text != "已完成。" {
+		t.Fatalf("expected synthetic elapsed final block text, got %#v", finalBlockEvent.Block)
+	}
+	if finalBlockEvent.FinalTurnSummary == nil || finalBlockEvent.FinalTurnSummary.Elapsed != 2100*time.Millisecond {
+		t.Fatalf("expected synthetic final block to carry elapsed summary, got %#v", finalBlockEvent)
+	}
+	if finalBlockEvent.FileChangeSummary != nil {
+		t.Fatalf("expected no file summary on elapsed-only synthetic block, got %#v", finalBlockEvent.FileChangeSummary)
 	}
 }
 

@@ -300,6 +300,17 @@ type FileChangeSummary struct {
 	Files        []FileChangeSummaryEntry
 }
 
+type FinalTurnUsage struct {
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
+type FinalTurnSummary struct {
+	Elapsed time.Duration
+	Usage   *FinalTurnUsage
+}
+
 type UIEventKind string
 
 const (
@@ -352,6 +363,7 @@ type UIEvent struct {
 	ThreadSelection      *ThreadSelectionChanged
 	Block                *render.Block
 	FileChangeSummary    *FileChangeSummary
+	FinalTurnSummary     *FinalTurnSummary
 	Command              *agentproto.Command
 	DaemonCommand        *DaemonCommand
 }
