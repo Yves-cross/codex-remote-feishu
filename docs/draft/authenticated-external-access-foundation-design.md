@@ -1,0 +1,588 @@
+# Authenticated External Access Foundation Design
+
+> Type: `draft`
+> Updated: `2026-04-09`
+> Summary: 收敛 `#83` 第一阶段方案，明确独立 listener、`trycloudflare` provider、短时授权 URL 与内部 URL builder 的基座接口。
+
+## 1. 文档定位
+
+这份文档只解决 `#83` 当前真正要落的“基座问题”：
+
+- 不是把现有 admin/setup 页面直接公网化。
+- 不是替换现有 `.md` 上传到飞书云空间的预览链路。
+- 不是直接交付某个具体 preview / review 页面。
+
+第一阶段只做一件事：
+
+- 为指定 localhost HTTP 服务提供一个独立的、带认证的外部访问底座。
+
+这个底座必须同时满足两类调用：
+
+1. 用户点击一个短时有效的外部链接，可以从公网访问到指定的本地页面。
+2. 程序内部可以通过统一接口，把某个 localhost 目标 URL 变成一个短时有效的外部授权 URL。
+
+## 2. 收敛结论
+
+当前产品方向按下面结论收敛：
+
+- 走独立 listener，不与现有 admin/setup listener 混用。
+- provider 第一阶段选择 `trycloudflare`。
+- 运行时需要随仓库发行物一起 bundle 一个 `cloudflared` sidecar。
+- 对外能力的 source of truth 是 daemon 内部的授权与 allowlist 规则，不是 consumer 自己拼 token。
+- 面向公网的第一阶段只提供“有认证的 HTTP/WS 反代能力”，不承诺通用任意端口穿透。
+
+`gradio` 仍然可以作为将来某些页面自身的实现技术，但不再作为这条“通用外部访问基座”的 provider。
+
+## 3. 为什么第一阶段不用 Gradio
+
+这次要解决的是“让任意指定 localhost Web 目标在短时间内可被认证外部访问”，不是“分享一个 Gradio app”。
+
+按官方文档，Gradio 的 `share=True` 和自定义 FRP server 语义都绑定在 Gradio app 生命周期里；它适合把 Gradio 服务分享出去，不适合作为仓库级通用反代入口。相比之下，`cloudflared tunnel --url <localhost>` 直接面向任意本地 HTTP 服务，更贴合这张单的需求。
+
+因此这里的结论不是“以后仓库里不能用 Gradio”，而是：
+
+- 基座 provider 选 `trycloudflare`
+- 具体 consumer 页面是否用 Gradio，是上层实现问题
+
+## 4. `trycloudflare` 的适用边界
+
+官方文档给出的几个关键事实会直接影响接口设计：
+
+- Quick Tunnel 只用于 testing / development，不承诺生产 SLA。
+- `trycloudflare.com` 域名是随机生成的临时子域名。
+- 并发上限是 200 in-flight requests，超限返回 `429`。
+- Quick Tunnel 不支持 SSE。
+- 如果用户目录里已经有 `.cloudflared/config.yaml`，Quick Tunnel 当前不受支持。
+- `cloudflared` 自带 metrics endpoint，并提供 `/ready` 健康检查。
+
+这意味着第一阶段必须明确：
+
+- provider 是“临时公网入口”，不是稳定生产入口。
+- 外部授权 URL 不能假设公网域名长期稳定。
+- consumer 第一阶段不能依赖 SSE。
+- daemon 启动 `cloudflared` 时必须隔离配置目录，避免用户现有 `.cloudflared` 污染 quick tunnel 行为。
+
+## 5. 总体架构
+
+建议把这套能力拆成 4 个明确组件：
+
+1. `external-access service`
+   - daemon 内部总入口
+   - 负责签发 URL、持有 grants、协调 provider 与 proxy listener
+2. `proxy listener`
+   - 独立监听 `127.0.0.1:<externalAccess.listenPort>`
+   - 负责 token 交换、cookie 建立、请求转发、header/cookie/redirect 重写
+3. `provider`
+   - 第一阶段唯一实现为 `trycloudflare`
+   - 负责把 proxy listener 暴露到公网，并给出 `publicBaseURL`
+4. `consumer-facing URL builder`
+   - 给程序内部调用
+   - 输入 localhost 目标 URL，输出短时有效的外部授权 URL
+
+运行结构如下：
+
+```text
+consumer / daemon code
+  -> external-access service.IssueURL()
+      -> ensure provider public base
+      -> create in-memory grant
+      -> return https://<random>.trycloudflare.com/g/<grant-id>/?t=<token>
+
+external user browser
+  -> trycloudflare public URL
+      -> cloudflared
+          -> local proxy listener
+              -> token exchange / cookie session
+              -> reverse proxy to localhost target
+```
+
+## 6. 配置与状态模型
+
+### 6.1 新增配置段
+
+建议在 `config.AppConfig` 中新增：
+
+```go
+type ExternalAccessSettings struct {
+	ListenHost                string                         `json:"listenHost,omitempty"`
+	ListenPort                int                            `json:"listenPort,omitempty"`
+	DefaultLinkTTLSeconds     int                            `json:"defaultLinkTTLSeconds,omitempty"`
+	DefaultSessionTTLSeconds  int                            `json:"defaultSessionTTLSeconds,omitempty"`
+	Provider                  ExternalAccessProviderSettings `json:"provider,omitempty"`
+}
+
+type ExternalAccessProviderSettings struct {
+	Kind          string                    `json:"kind,omitempty"` // disabled | trycloudflare
+	LazyStart     *bool                     `json:"lazyStart,omitempty"`
+	TryCloudflare TryCloudflareSettings     `json:"tryCloudflare,omitempty"`
+}
+
+type TryCloudflareSettings struct {
+	BinaryPath           string `json:"binaryPath,omitempty"`
+	LaunchTimeoutSeconds int    `json:"launchTimeoutSeconds,omitempty"`
+	MetricsPort          int    `json:"metricsPort,omitempty"` // 0 = auto
+	LogPath              string `json:"logPath,omitempty"`
+}
+```
+
+建议默认值：
+
+- `listenHost = "127.0.0.1"`
+- `listenPort = 9512`
+- `defaultLinkTTLSeconds = 600`
+- `defaultSessionTTLSeconds = 1800`
+- `provider.kind = "trycloudflare"`
+- `provider.lazyStart = true`
+- `tryCloudflare.launchTimeoutSeconds = 20`
+- `tryCloudflare.metricsPort = 0`
+
+### 6.2 环境变量 override
+
+建议补齐：
+
+- `EXTERNAL_ACCESS_HOST`
+- `EXTERNAL_ACCESS_PORT`
+- `CODEX_REMOTE_EXTERNAL_ACCESS_PROVIDER`
+- `CODEX_REMOTE_TRYCLOUDFLARE_BINARY`
+- `CODEX_REMOTE_TRYCLOUDFLARE_LAUNCH_TIMEOUT`
+
+这批 env 只做 runtime override，不改变“当前真实配置以 `config.json` 为准”的方向。
+
+### 6.3 不落盘的状态
+
+以下内容不建议持久化：
+
+- 当前随机 `trycloudflare.com` 域名
+- grant 列表
+- grant token
+- grant session
+
+原因：
+
+- 这些值本身就是短时临时态
+- daemon 重启后 tunnel URL 通常变化
+- grants 与 tunnel 生命周期天然绑定
+
+因此 phase 1 的 source of truth 应该是进程内内存状态，而不是 state file。
+
+## 7. cloudflared bundle 设计
+
+### 7.1 为什么要 bundle
+
+用户已经明确提出第一阶段倾向“自带 `cloudflared`”。这也是正确方向，因为：
+
+- `trycloudflare` 不是仓库用户默认会手工安装的工具
+- 如果依赖 PATH，上手与排障成本都会很高
+- provider 行为对版本比较敏感，绑定一组经过测试的 `cloudflared` 版本更稳
+
+### 7.2 sidecar 布局
+
+建议不要把 `cloudflared` 作为“系统依赖”处理，而是作为当前版本槽位的 sidecar：
+
+```text
+<versionsRoot>/<slot>/
+  codex-remote
+  cloudflared
+```
+
+好处：
+
+- 当前版本槽位切换时，`codex-remote` 和 `cloudflared` 一起切
+- 回滚时 sidecar 也天然跟着回滚
+- 不需要为 provider 单独做另一套版本状态机
+
+### 7.3 解析顺序
+
+运行时解析 `cloudflared` binary 的顺序建议为：
+
+1. `config.externalAccess.provider.tryCloudflare.binaryPath`
+2. 当前版本槽位同目录下的 bundled `cloudflared`
+3. 当前进程旁边的 sidecar `cloudflared`
+4. PATH 中的 `cloudflared` 作为开发环境兜底
+
+phase 1 不建议只保留 PATH 方案。
+
+### 7.4 sidecar 元数据
+
+如果后续需要把 sidecar 元数据纳入 `install-state.json`，不要单独再加 `CloudflaredBinaryPath` 这种 feature-specific 字段。建议直接抽象成通用结构：
+
+```go
+type BundledToolState struct {
+	Path    string `json:"path,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type InstallState struct {
+	// ...
+	BundledTools map[string]BundledToolState `json:"bundledTools,omitempty"`
+}
+```
+
+phase 1 如果实现成本太高，也可以先只在 runtime 内部解析，不急着第一天就写进 state。
+
+## 8. 内部 Go 接口
+
+### 8.1 daemon 对外总入口
+
+建议新建 `internal/externalaccess`，由 daemon 持有一个 service：
+
+```go
+package externalaccess
+
+type Purpose string
+
+const (
+	PurposePreview Purpose = "preview"
+	PurposeReview  Purpose = "review"
+	PurposeDebug   Purpose = "debug"
+)
+
+type IssueRequest struct {
+	Purpose         Purpose
+	TargetURL       string
+	TargetBasePath  string
+	LinkTTL         time.Duration
+	SessionTTL      time.Duration
+	AllowWebsocket  bool
+}
+
+type IssuedURL struct {
+	ExternalURL  string
+	ProviderKind string
+	ExpiresAt    time.Time
+}
+
+type Service interface {
+	IssueURL(ctx context.Context, req IssueRequest) (IssuedURL, error)
+	Snapshot() Status
+	Close() error
+}
+```
+
+其中：
+
+- `TargetURL` 是用户真正想打开的本地入口 URL
+- `TargetBasePath` 用于限制同一 grant 允许代理的上游 path 前缀
+- 如果 `TargetBasePath` 为空，默认按 `TargetURL` 推导一个“可加载资产但不无限放大”的前缀
+
+### 8.2 provider 接口
+
+```go
+type Provider interface {
+	Kind() string
+	EnsurePublicBase(ctx context.Context, localListenerURL string) (PublicBase, error)
+	Snapshot() ProviderStatus
+	Close() error
+}
+
+type PublicBase struct {
+	BaseURL   string
+	StartedAt time.Time
+}
+```
+
+phase 1 只实现 `trycloudflare`，但 service 必须通过接口依赖它，而不是在 handler 里直接拼 `cloudflared` 命令。
+
+### 8.3 grant / session 管理
+
+```go
+type GrantSpec struct {
+	Purpose        Purpose
+	TargetURL      *url.URL
+	TargetBasePath string
+	AllowWebsocket bool
+	ExpiresAt      time.Time
+	SessionTTL     time.Duration
+}
+
+type GrantStore interface {
+	Issue(spec GrantSpec) (Grant, string, error) // returns grant + raw exchange token
+	Exchange(grantID string, token string) (GrantSession, error)
+	Authorize(grantID string, sessionValue string) (Grant, error)
+	Revoke(grantID string)
+	Snapshot() GrantStatus
+}
+```
+
+这里不要复用当前 `adminauth.Manager` 的“单 setup token”状态机，因为 preview/review 场景天然会同时存在多条 grant。更合理的做法是：
+
+- 保持 `adminauth` 继续只管 setup/admin
+- 在 `externalaccess` 内部引入自己的多 grant in-memory store
+- 如果后面需要复用 HMAC session 编码能力，再做小范围共用抽象
+
+## 9. HTTP surface 设计
+
+### 9.1 独立 listener
+
+独立 listener 只服务“外部授权访问”，不承载 admin/setup 页面：
+
+- 监听地址：`127.0.0.1:<externalAccess.listenPort>`
+- path 前缀：`/g/{grantID}/...`
+
+这样可以避免把 admin scope、setup scope、preview scope 混成一套授权等级。
+
+### 9.2 本地调试 API
+
+为了让这套能力可观测、可手工验证，建议新增本地 admin-only API：
+
+- `GET /api/admin/external-access/status`
+- `POST /api/admin/external-access/link`
+
+`POST /api/admin/external-access/link` 只用于本地调试和验证，consumer 正式接入还是应该直接调用 daemon 内部 service。
+
+### 9.3 外部 URL 形态
+
+建议签发结果固定为：
+
+```text
+https://<public-base>/g/<grant-id>/?t=<exchange-token>
+```
+
+第一次访问：
+
+1. 校验 `grant-id + token`
+2. 生成一个 path-scoped cookie
+3. 302/303 跳转到干净 URL
+
+跳转后：
+
+```text
+https://<public-base>/g/<grant-id>/
+```
+
+这样 token 不会长期留在地址栏、浏览器历史或后续 subresource request 里。
+
+## 10. 认证与 cookie 规则
+
+### 10.1 grant token
+
+grant token 的职责只有一个：
+
+- 交换出一个 grant-scoped session cookie
+
+不让 token 直接参与每一次请求鉴权，这样可以：
+
+- 避免 token 挂在后续资源 URL 上
+- 减少 Referer 泄漏
+- 让 consumer 页面里的相对路径资源加载更自然
+
+### 10.2 session cookie
+
+建议 cookie 规则：
+
+- `HttpOnly`
+- `Secure`
+- `SameSite=Lax`
+- `Path=/g/<grant-id>/`
+- 只包含最小 claims：
+  - `grantID`
+  - `purpose`
+  - `exp`
+
+### 10.3 TTL 语义
+
+建议分两层：
+
+- `link TTL`
+  - 外部授权 URL 最长多久还能交换出 cookie
+- `session TTL`
+  - 一旦 cookie 已建立，还能继续访问多久
+
+默认：
+
+- `link TTL = 10m`
+- `session TTL = 30m`
+
+这比“只有 URL TTL”更适合页面加载和后续交互。
+
+## 11. 反代 allowlist 规则
+
+### 11.1 默认拒绝
+
+这一层不能成为 open proxy。默认规则必须是：
+
+- 不接受 `target=` 之类的外部目标参数
+- 不允许运行时切换到 grant 之外的 host/port
+- 不允许代理非 loopback 目标
+
+### 11.2 目标约束
+
+只允许：
+
+- `http://localhost:...`
+- `http://127.0.0.1:...`
+- `http://[::1]:...`
+- `https://localhost/...` 这类本机目标
+
+不允许：
+
+- 远端 IP
+- 局域网 IP
+- Unix socket
+- 任意 TCP CONNECT
+
+### 11.3 path 前缀约束
+
+grant 必须冻结：
+
+- `target origin`
+- `target base path`
+
+只有落在同一 `origin + basePath` 内的请求才允许透传。
+
+如果 upstream 重定向到了另一个 localhost 路径：
+
+- 落在 allowlist 内：重写成同一 external grant path
+- 不在 allowlist 内：拒绝，不跟随
+
+## 12. 反代重写规则
+
+### 12.1 必做重写
+
+phase 1 的 proxy 不仅要“能转发”，还要能支撑真实网页加载，因此至少要做：
+
+- `Location` header 重写
+- `Set-Cookie Path` 重写
+- 去掉 `Set-Cookie Domain`
+- 正确设置 `X-Forwarded-Host` / `X-Forwarded-Proto` / `X-Forwarded-Prefix`
+
+### 12.2 WebSocket 与 SSE
+
+proxy 层应该支持 WebSocket 透传，因为后续交互页面可能会用到。
+
+但是 phase 1 不能承诺 SSE，因为 Quick Tunnel 官方文档明确写了不支持 SSE。也就是说：
+
+- 代理层支持 HTTP / WebSocket
+- consumer 第一阶段不要依赖 SSE
+
+## 13. trycloudflare provider 运行模型
+
+### 13.1 启动方式
+
+provider 启动 `cloudflared` 的推荐命令形态：
+
+```bash
+cloudflared tunnel \
+  --url http://127.0.0.1:<external-access-port> \
+  --no-autoupdate \
+  --metrics 127.0.0.1:<metrics-port>
+```
+
+### 13.2 健康判定
+
+只有同时满足下面条件，provider 才算 ready：
+
+1. 解析到了 `https://*.trycloudflare.com` 公网基址
+2. `cloudflared` 子进程仍然活着
+3. metrics `/ready` 返回 `200`
+
+### 13.3 配置隔离
+
+因为 Quick Tunnel 官方文档明确提到 `.cloudflared/config.yaml` 会影响支持性，所以子进程必须隔离自己的配置目录。
+
+建议策略：
+
+- 为 child process 设置专用 `HOME` / `XDG_CONFIG_HOME` / Windows 对应用户配置目录
+- 不复用用户真实主目录下的 `.cloudflared`
+
+这是 phase 1 必须做的，不是优化项。
+
+## 14. daemon 内部集成点
+
+建议落点：
+
+- `internal/externalaccess/*`
+  - 核心 service、grant store、provider 接口、trycloudflare 实现
+- `internal/app/daemon/external_access_http.go`
+  - public listener handler
+- `internal/app/daemon/startup.go`
+  - 打印本地 external access listener 信息
+- `internal/config/configfile.go`
+  - 新增 `externalAccess` schema
+- `internal/config/envfile.go`
+  - 新增 env override 读取
+- `internal/app/install/*`
+  - sidecar 解析与未来 bundle metadata
+
+daemon 侧建议新增：
+
+```go
+func (a *App) IssueExternalAccessURL(ctx context.Context, req externalaccess.IssueRequest) (externalaccess.IssuedURL, error)
+```
+
+consumer 统一走这条入口，不直接碰 provider。
+
+## 15. 分阶段实现建议
+
+### 阶段 1
+
+- 配置结构
+- 独立 listener
+- grant store
+- token -> cookie -> reverse proxy 主链路
+- admin debug API
+
+完成后应能在不接任何具体 consumer 的情况下手工验证：
+
+- 给一个 localhost URL 生成短时外链
+- 外链能打开
+- 过期会拒绝
+
+### 阶段 2
+
+- `trycloudflare` provider
+- bundled `cloudflared` 解析
+- metrics `/ready` 健康检查
+- provider 状态观测与自动重启策略
+
+完成后应能做到：
+
+- 内部 `IssueURL()` 在 tunnel 未启动时可懒启动
+- 成功拿到 `trycloudflare` 外链
+
+### 阶段 3
+
+- 第一个真实 consumer 接入
+- 补 redirect/cookie/websocket 边界测试
+- 视需要再决定是否把某个 preview/review 页面正式挂上
+
+## 16. 需要测试的内容
+
+至少需要覆盖：
+
+- grant 生成、过期、cookie 交换
+- loopback allowlist
+- path 前缀越权拒绝
+- `Location` / `Set-Cookie` 重写
+- provider ready / not ready / exited
+- `trycloudflare` URL 解析
+- metrics `/ready` 健康检查
+- child process 配置目录隔离
+
+## 17. 当前建议
+
+基于当前需求，建议把 `#83` 从“继续调研”切换成“可开工的 staged implementation issue”。
+
+原因不是问题已经全部实现，而是：
+
+- provider 选型已经收敛为 `trycloudflare`
+- listener 与 auth model 已经明确
+- 内部 builder 接口已经明确
+- sidecar bundling 方向已经明确
+
+下一步不应该继续停留在“需要更多方向”，而应该直接进入分阶段编码。
+
+## 18. 参考资料
+
+- Cloudflare Quick Tunnels
+  - https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/
+- Cloudflare Tunnel setup / quick tunnel summary
+  - https://developers.cloudflare.com/tunnel/setup/
+- Cloudflare Tunnel monitoring
+  - https://developers.cloudflare.com/tunnel/monitoring/
+- Cloudflare Kubernetes example mentioning `/ready`
+  - https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/deployment-guides/kubernetes/
+- cloudflared GitHub repository
+  - https://github.com/cloudflare/cloudflared
+- Gradio sharing guide
+  - https://www.gradio.app/guides/sharing-your-app/
