@@ -405,6 +405,9 @@ func (s *Service) resolveThreadTarget(surface *state.SurfaceConsoleRecord, threa
 			NoticeText: "目标会话不存在或当前不可见。",
 		}
 	}
+	if !s.threadViewSelectableInCurrentScope(surface, view) {
+		return s.threadOutsideCurrentWorkspaceTarget(surface)
+	}
 	return s.resolveThreadTargetFromView(surface, view)
 }
 
@@ -515,6 +518,52 @@ func threadCWD(view *mergedThreadView) string {
 		return ""
 	}
 	return strings.TrimSpace(view.Thread.CWD)
+}
+
+func (s *Service) threadSelectionWorkspaceScope(surface *state.SurfaceConsoleRecord) string {
+	if surface == nil || s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
+		return ""
+	}
+	if strings.TrimSpace(surface.AttachedInstanceID) == "" {
+		return ""
+	}
+	return s.surfaceCurrentWorkspaceKey(surface)
+}
+
+func (s *Service) threadViewSelectableInCurrentScope(surface *state.SurfaceConsoleRecord, view *mergedThreadView) bool {
+	workspaceKey := s.threadSelectionWorkspaceScope(surface)
+	if workspaceKey == "" {
+		return true
+	}
+	return mergedThreadWorkspaceClaimKey(view) == workspaceKey
+}
+
+func (s *Service) scopedMergedThreadViews(surface *state.SurfaceConsoleRecord) []*mergedThreadView {
+	views := s.mergedThreadViews(surface)
+	workspaceKey := s.threadSelectionWorkspaceScope(surface)
+	if workspaceKey == "" {
+		return views
+	}
+	scoped := make([]*mergedThreadView, 0, len(views))
+	for _, view := range views {
+		if s.threadViewSelectableInCurrentScope(surface, view) {
+			scoped = append(scoped, view)
+		}
+	}
+	return scoped
+}
+
+func (s *Service) threadOutsideCurrentWorkspaceTarget(surface *state.SurfaceConsoleRecord) resolvedThreadTarget {
+	workspaceKey := s.threadSelectionWorkspaceScope(surface)
+	text := "当前已接管其他工作区；请先发送 /list 切换工作区，再选择这个会话。"
+	if workspaceKey != "" {
+		text = "当前已接管工作区 " + workspaceKey + "。请先发送 /list 切换工作区，再选择这个会话。"
+	}
+	return resolvedThreadTarget{
+		Mode:       threadAttachUnavailable,
+		NoticeCode: "thread_outside_workspace",
+		NoticeText: text,
+	}
 }
 
 func (s *Service) mergedThreadStatus(surface *state.SurfaceConsoleRecord, view *mergedThreadView) (string, string, bool) {

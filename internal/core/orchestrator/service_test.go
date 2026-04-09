@@ -6459,6 +6459,65 @@ func TestPresentGlobalThreadSelectionMarksBusyThreadDisabled(t *testing.T) {
 	}
 }
 
+func TestShowThreadsAttachedNormalFiltersToCurrentWorkspace(t *testing.T) {
+	now := time.Date(2026, 4, 7, 18, 15, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-droid-1",
+		DisplayName:   "droid-a",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid-a",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "当前实例会话", CWD: "/data/dl/droid", LastUsedAt: now.Add(2 * time.Minute)},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-droid-2",
+		DisplayName:   "droid-b",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid-b",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-2": {ThreadID: "thread-2", Name: "同工作区另一实例", CWD: "/data/dl/droid", LastUsedAt: now.Add(1 * time.Minute)},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-web-1",
+		DisplayName:   "web",
+		WorkspaceRoot: "/data/dl/web",
+		WorkspaceKey:  "/data/dl/web",
+		ShortName:     "web",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-3": {ThreadID: "thread-3", Name: "其他工作区会话", CWD: "/data/dl/web", LastUsedAt: now.Add(3 * time.Minute)},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachWorkspace, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", WorkspaceKey: "/data/dl/droid"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionShowThreads,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].SelectionPrompt == nil {
+		t.Fatalf("expected selection prompt, got %#v", events)
+	}
+	prompt := events[0].SelectionPrompt
+	if len(prompt.Options) != 2 {
+		t.Fatalf("expected only current-workspace threads, got %#v", prompt.Options)
+	}
+	for _, option := range prompt.Options {
+		if option.OptionID == "thread-3" {
+			t.Fatalf("expected other-workspace thread to be filtered out, got %#v", prompt.Options)
+		}
+	}
+}
+
 func TestUseThreadDetachedAttachesFreeVisibleInstanceAndReplays(t *testing.T) {
 	now := time.Date(2026, 4, 7, 18, 20, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -6499,9 +6558,53 @@ func TestUseThreadDetachedAttachesFreeVisibleInstanceAndReplays(t *testing.T) {
 	}
 }
 
-func TestUseThreadCrossInstanceAttachesResolvedTargetAfterDetachSemantics(t *testing.T) {
+func TestUseThreadAttachedNormalRejectsCrossWorkspaceSelection(t *testing.T) {
+	now := time.Date(2026, 4, 7, 18, 25, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-2",
+		DisplayName:   "web",
+		WorkspaceRoot: "/data/dl/web",
+		WorkspaceKey:  "/data/dl/web",
+		ShortName:     "web",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-2": {ThreadID: "thread-2", Name: "整理样式", CWD: "/data/dl/web", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachWorkspace, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", WorkspaceKey: "/data/dl/droid"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ThreadID:         "thread-2",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "thread_outside_workspace" {
+		t.Fatalf("expected normal attached /use to reject other workspace, got %#v", events)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.AttachedInstanceID != "inst-1" || surface.ClaimedWorkspaceKey != "/data/dl/droid" || surface.SelectedThreadID != "" || surface.RouteMode != state.RouteModeUnbound {
+		t.Fatalf("expected surface to stay on current workspace without rebinding, got %#v", surface)
+	}
+}
+
+func TestUseThreadCrossInstanceAttachesResolvedTargetAfterDetachSemanticsInVSCodeMode(t *testing.T) {
 	now := time.Date(2026, 4, 7, 18, 30, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	svc.root.Surfaces["surface-1"].ProductMode = state.ProductModeVSCode
 	svc.UpsertInstance(&state.InstanceRecord{
 		InstanceID:              "inst-1",
 		DisplayName:             "droid",
@@ -6559,9 +6662,11 @@ func TestUseThreadCrossInstanceAttachesResolvedTargetAfterDetachSemantics(t *tes
 	}
 }
 
-func TestUseThreadCrossInstanceBlockedByPendingRequest(t *testing.T) {
+func TestUseThreadCrossInstanceBlockedByPendingRequestInVSCodeMode(t *testing.T) {
 	now := time.Date(2026, 4, 7, 18, 35, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	svc.root.Surfaces["surface-1"].ProductMode = state.ProductModeVSCode
 	svc.UpsertInstance(&state.InstanceRecord{
 		InstanceID:              "inst-1",
 		DisplayName:             "droid",

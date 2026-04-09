@@ -677,8 +677,11 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 }
 
 func (s *Service) presentThreadSelection(surface *state.SurfaceConsoleRecord, showAll bool) []control.UIEvent {
-	threads := s.mergedThreadViews(surface)
+	threads := s.scopedMergedThreadViews(surface)
 	if len(threads) == 0 {
+		if workspaceKey := s.threadSelectionWorkspaceScope(surface); workspaceKey != "" {
+			return notice(surface, "no_visible_threads", fmt.Sprintf("当前工作区 %s 还没有可恢复会话。请稍后发送 /use，或先 /list 切换工作区。", workspaceKey))
+		}
 		return notice(surface, "no_visible_threads", "当前还没有可恢复会话。")
 	}
 	limit := len(threads)
