@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { SetupRoute } from "./SetupRoute";
-import { makeApp, makeAutostartDetect, makeBootstrap, makeManifest, makeVSCodeDetect } from "../test/fixtures";
+import { makeApp, makeAutostartDetect, makeBootstrap, makeManifest, makeRuntimeRequirementsDetect, makeVSCodeDetect } from "../test/fixtures";
 import { installMockFetch } from "../test/http";
 
 describe("SetupRoute", () => {
@@ -279,6 +279,77 @@ describe("SetupRoute", () => {
     expect(await screen.findByText("已为当前用户启用登录后自动启动。")).toBeInTheDocument();
     expect(await screen.findByText("不使用 VS Code 可以直接跳过")).toBeInTheDocument();
     expect(calls.some((call) => call.path === "/api/setup/autostart/apply")).toBe(true);
+  });
+
+  it("blocks optional steps until runtime requirements pass and then continues", async () => {
+    window.history.replaceState({}, "", "/setup");
+    let ready = false;
+    const { calls } = installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/apps": {
+        body: {
+          apps: [
+            makeApp({
+              wizard: {
+                connectionVerifiedAt: "2026-04-08T00:00:00Z",
+                scopesExportedAt: "2026-04-08T00:01:00Z",
+                eventsConfirmedAt: "2026-04-08T00:02:00Z",
+                callbacksConfirmedAt: "2026-04-08T00:03:00Z",
+                menusConfirmedAt: "2026-04-08T00:04:00Z",
+                publishedAt: "2026-04-08T00:05:00Z",
+              },
+            }),
+          ],
+        },
+      },
+      "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/setup/runtime-requirements/detect": () => ({
+        body: ready
+          ? makeRuntimeRequirementsDetect()
+          : makeRuntimeRequirementsDetect({
+              ready: false,
+              summary: "当前机器还不满足基础运行条件，请先修复失败项后再继续。",
+              resolvedCodexRealBinary: "",
+              checks: [
+                {
+                  id: "real_codex_binary",
+                  title: "真实 Codex 二进制",
+                  status: "fail",
+                  summary: "当前服务环境下无法解析到可执行的 codex。",
+                },
+              ],
+            }),
+      }),
+      "/api/setup/autostart/detect": {
+        body: makeAutostartDetect({
+          platform: "linux",
+          supported: true,
+          manager: "systemd_user",
+          currentManager: "detached",
+          status: "disabled",
+          configured: false,
+          enabled: false,
+          canApply: true,
+        }),
+      },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByText("这一步在检查什么")).toBeInTheDocument();
+    expect(screen.getByText("当前机器还不满足基础运行条件，请先修复失败项后再继续。")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "检查并继续" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("当前机器还不满足正常使用要求。请先修复失败项，再重新检查。");
+
+    ready = true;
+    await user.click(screen.getByRole("button", { name: "我知道了" }));
+    await user.click(screen.getByRole("button", { name: "检查并继续" }));
+
+    expect(await screen.findByText("当前平台支持自动启动")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "/api/setup/runtime-requirements/detect").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows unsupported autostart copy on non-linux platforms and lets the user continue", async () => {

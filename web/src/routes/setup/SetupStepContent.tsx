@@ -1,5 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { AutostartDetectResponse, FeishuAppSummary, FeishuManifest, FeishuOnboardingSession, VSCodeDetectResponse } from "../../lib/types";
+import { StatusBadge } from "../../components/ui";
+import type {
+  AutostartDetectResponse,
+  FeishuAppSummary,
+  FeishuManifest,
+  FeishuOnboardingSession,
+  RuntimeRequirementsDetectResponse,
+  VSCodeDetectResponse,
+} from "../../lib/types";
 import type { FeishuConnectMode, FeishuConnectStage, SetupDraft, StepID } from "./types";
 import { feishuAppConsoleURL } from "./helpers";
 import type { VSCodeUsageScenario } from "../shared/helpers";
@@ -20,6 +28,8 @@ type SetupStepContentProps = {
   eventsConfirmed: boolean;
   longConnectionConfirmed: boolean;
   menusConfirmed: boolean;
+  runtimeRequirements: RuntimeRequirementsDetectResponse | null;
+  runtimeRequirementsError: string;
   autostart: AutostartDetectResponse | null;
   autostartError: string;
   autostartSummary: string;
@@ -58,6 +68,7 @@ type SetupStepPrimaryActionProps = {
   onConfirmLongConnection: () => void;
   onConfirmMenus: () => void;
   onCheckPublish: () => void;
+  onCheckRuntimeRequirements: () => void;
   onContinueAutostart: () => void;
   onContinueVSCode: () => void;
   onFinishSetup: () => void;
@@ -86,6 +97,8 @@ export function SetupStepContent({
   eventsConfirmed,
   longConnectionConfirmed,
   menusConfirmed,
+  runtimeRequirements,
+  runtimeRequirementsError,
   autostart,
   autostartError,
   autostartSummary,
@@ -122,7 +135,7 @@ export function SetupStepContent({
             <ul className="wizard-bullet-list">
               <li>先创建并连接飞书应用。</li>
               <li>再完成权限、事件、回调长连接、菜单和发布。</li>
-              <li>发布后可选配置自动启动，再按需处理 VS Code 集成。</li>
+              <li>发布后先做一次运行环境检查，再按需处理自动启动和 VS Code。</li>
             </ul>
           </div>
         </div>
@@ -316,6 +329,73 @@ export function SetupStepContent({
               <li>发版完成以后，再回来点击“检查并继续”。</li>
             </ul>
           </div>
+        </div>
+      );
+    case "runtimeRequirements":
+      return (
+        <div className="wizard-step-layout">
+          {runtimeRequirementsError ? <div className="notice-banner warn">运行环境检查暂时不可用：{runtimeRequirementsError}</div> : null}
+          {!runtimeRequirements && !runtimeRequirementsError ? <div className="notice-banner warn">当前还没拿到运行环境检查结果，请先刷新状态后再继续。</div> : null}
+          {runtimeRequirements ? (
+            <>
+              <div className={`notice-banner ${runtimeRequirements.ready ? (runtimeRequirements.checks.some((check) => check.status === "warn") ? "warn" : "good") : "danger"}`}>
+                {runtimeRequirements.summary}
+              </div>
+              <div className="manifest-block">
+                <h4>这一步在检查什么</h4>
+                <ul className="wizard-bullet-list">
+                  <li>当前 daemon 有没有可用的 headless 启动器。</li>
+                  <li>wrapper 实际将要启动哪个真实 <code>codex</code>。</li>
+                  <li>当前服务环境里能不能把它解析成可执行文件。</li>
+                  <li>是否存在明显配置风险，例如回指自身或只靠 PATH 解析。</li>
+                </ul>
+              </div>
+              <div className="wizard-summary-grid">
+                <div className="wizard-summary-card">
+                  <strong>当前 codex-remote</strong>
+                  <p>{runtimeRequirements.currentBinary || "未检测到"}</p>
+                </div>
+                <div className="wizard-summary-card">
+                  <strong>配置的真实 Codex</strong>
+                  <p>{runtimeRequirements.codexRealBinary || "未配置"}</p>
+                </div>
+                <div className="wizard-summary-card">
+                  <strong>配置来源</strong>
+                  <p>{runtimeRequirementSourceLabel(runtimeRequirements.codexRealBinarySource)}</p>
+                </div>
+                <div className="wizard-summary-card">
+                  <strong>实际解析结果</strong>
+                  <p>{runtimeRequirements.resolvedCodexRealBinary || "当前不可解析"}</p>
+                </div>
+              </div>
+              <div className="checkbox-card-list">
+                {runtimeRequirements.checks.map((check) => (
+                  <div key={check.id} className="checkbox-card">
+                    <StatusBadge value={runtimeRequirementStatusLabel(check.status)} tone={runtimeRequirementStatusTone(check.status)} />
+                    <div>
+                      <strong>{check.title}</strong>
+                      <p>{check.summary}</p>
+                      {check.detail ? (
+                        <p>
+                          <code>{check.detail}</code>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {runtimeRequirements.notes?.length ? (
+                <div className="manifest-block">
+                  <h4>当前边界</h4>
+                  <ul className="wizard-bullet-list">
+                    {runtimeRequirements.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       );
     case "autostart":
@@ -536,6 +616,7 @@ export function SetupStepPrimaryAction({
   onConfirmLongConnection,
   onConfirmMenus,
   onCheckPublish,
+  onCheckRuntimeRequirements,
   onContinueAutostart,
   onContinueVSCode,
   onFinishSetup,
@@ -577,6 +658,12 @@ export function SetupStepPrimaryAction({
       return (
         <button className="primary-button" type="button" onClick={onCheckPublish} disabled={busyAction !== ""}>
           检查并继续
+        </button>
+      );
+    case "runtimeRequirements":
+      return (
+        <button className="primary-button" type="button" onClick={onCheckRuntimeRequirements} disabled={busyAction !== ""}>
+          {busyAction === "runtime-requirements-detect" ? "正在检查..." : "检查并继续"}
         </button>
       );
     case "autostart":
@@ -632,4 +719,43 @@ export function SetupStepSecondaryAction({ currentStep, busyAction, onCopyScopes
     );
   }
   return null;
+}
+
+function runtimeRequirementStatusTone(status: string): "neutral" | "good" | "warn" | "danger" {
+  switch (status) {
+    case "pass":
+      return "good";
+    case "warn":
+      return "warn";
+    case "fail":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
+function runtimeRequirementStatusLabel(status: string): string {
+  switch (status) {
+    case "pass":
+      return "通过";
+    case "warn":
+      return "注意";
+    case "fail":
+      return "阻断";
+    default:
+      return "信息";
+  }
+}
+
+function runtimeRequirementSourceLabel(source?: string): string {
+  switch (source) {
+    case "env_override":
+      return "环境变量覆盖";
+    case "config":
+      return "配置文件";
+    case "default":
+      return "默认值";
+    default:
+      return "未说明";
+  }
 }

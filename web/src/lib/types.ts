@@ -231,6 +231,26 @@ export interface AutostartDetectResponse {
   lingerHint?: string;
 }
 
+export interface RuntimeRequirementCheck {
+  id: string;
+  title: string;
+  status: string;
+  summary: string;
+  detail?: string;
+}
+
+export interface RuntimeRequirementsDetectResponse {
+  ready: boolean;
+  summary: string;
+  currentBinary?: string;
+  codexRealBinary?: string;
+  codexRealBinarySource?: string;
+  resolvedCodexRealBinary?: string;
+  lookupMode?: string;
+  checks: RuntimeRequirementCheck[];
+  notes?: string[];
+}
+
 export interface SetupCompleteResponse {
   setupRequired: boolean;
   adminURL: string;

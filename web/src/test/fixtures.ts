@@ -7,6 +7,7 @@ import type {
   GatewayStatus,
   ImageStagingStatusResponse,
   PreviewDriveStatusResponse,
+  RuntimeRequirementsDetectResponse,
   RuntimeStatus,
   VSCodeDetectResponse,
 } from "../lib/types";
@@ -127,6 +128,34 @@ export function makeAutostartDetect(overrides: Partial<AutostartDetectResponse> 
     configured: false,
     enabled: false,
     canApply: false,
+    ...overrides,
+  };
+}
+
+export function makeRuntimeRequirementsDetect(overrides: Partial<RuntimeRequirementsDetectResponse> = {}): RuntimeRequirementsDetectResponse {
+  return {
+    ready: true,
+    summary: "当前机器已满足基础运行条件，可以继续后面的可选配置。",
+    currentBinary: "/usr/local/bin/codex-remote",
+    codexRealBinary: "/usr/local/bin/codex",
+    codexRealBinarySource: "config",
+    resolvedCodexRealBinary: "/usr/local/bin/codex",
+    lookupMode: "absolute",
+    checks: [
+      {
+        id: "headless_launcher",
+        title: "Headless 启动器",
+        status: "pass",
+        summary: "当前服务已经有可用的 codex-remote 启动器。",
+      },
+      {
+        id: "real_codex_binary",
+        title: "真实 Codex 二进制",
+        status: "pass",
+        summary: "当前服务环境下可以解析到真实 codex。",
+      },
+    ],
+    notes: ["这里只检查基础运行条件，不检查 Codex 登录状态。"],
     ...overrides,
   };
 }

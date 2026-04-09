@@ -13,6 +13,7 @@ import type {
   FeishuAppVerifyResponse,
   FeishuAppsResponse,
   FeishuManifestResponse,
+  RuntimeRequirementsDetectResponse,
   SetupCompleteResponse,
   VSCodeDetectResponse,
 } from "../lib/types";
@@ -56,6 +57,8 @@ export function SetupRoute() {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
   const [apps, setApps] = useState<FeishuAppSummary[]>([]);
   const [manifest, setManifest] = useState<FeishuManifestResponse["manifest"] | null>(null);
+  const [runtimeRequirements, setRuntimeRequirements] = useState<RuntimeRequirementsDetectResponse | null>(null);
+  const [runtimeRequirementsError, setRuntimeRequirementsError] = useState<string>("");
   const [autostart, setAutostart] = useState<AutostartDetectResponse | null>(null);
   const [autostartError, setAutostartError] = useState<string>("");
   const [vscode, setVSCode] = useState<VSCodeDetectResponse | null>(null);
@@ -82,10 +85,11 @@ export function SetupRoute() {
   const [onboardingNeedsManualRetry, setOnboardingNeedsManualRetry] = useState(false);
 
   async function loadData(preferredID?: string) {
-    const [bootstrapState, appList, manifestResponse, autostartState, vscodeState] = await Promise.all([
+    const [bootstrapState, appList, manifestResponse, runtimeRequirementsState, autostartState, vscodeState] = await Promise.all([
       requestJSON<BootstrapState>("/api/setup/bootstrap-state"),
       requestJSON<FeishuAppsResponse>("/api/setup/feishu/apps"),
       requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
+      loadRuntimeRequirementsState(),
       loadAutostartState("/api/setup/autostart/detect"),
       loadVSCodeState("/api/setup/vscode/detect"),
     ]);
@@ -95,6 +99,8 @@ export function SetupRoute() {
     setBootstrap(bootstrapState);
     setApps(appList.apps);
     setManifest(manifestResponse.manifest);
+    setRuntimeRequirements(runtimeRequirementsState.data);
+    setRuntimeRequirementsError(runtimeRequirementsState.error);
     setAutostart(autostartState.data);
     setAutostartError(autostartState.error);
     setVSCode(vscodeState.data);
@@ -106,6 +112,7 @@ export function SetupRoute() {
         bootstrapState,
         appList.apps,
         nextActiveApp,
+        Boolean(runtimeRequirementsState.data?.ready),
         autostartIsComplete(autostartState.data, autostartSkipped),
         Boolean(vscodeOutcome) || vscodeIsReady(vscodeState.data),
         setupStarted,
@@ -113,7 +120,7 @@ export function SetupRoute() {
       if (current === "start" && fallback !== "start") {
         return fallback;
       }
-      return isStepReachable(current, bootstrapState, nextActiveApp) ? current : fallback;
+      return isStepReachable(current, bootstrapState, nextActiveApp, Boolean(runtimeRequirementsState.data?.ready)) ? current : fallback;
     });
   }
 
@@ -175,6 +182,7 @@ export function SetupRoute() {
   }, [vscode?.sshSession]);
 
   const vscodeComplete = Boolean(vscodeOutcome) || vscodeIsReady(vscode);
+  const runtimeRequirementsReady = Boolean(runtimeRequirements?.ready);
   const autostartComplete = autostartIsComplete(autostart, autostartSkipped);
   const autostartSummary = useMemo(() => {
     if (autostartSkipped) {
@@ -202,10 +210,10 @@ export function SetupRoute() {
 
   const resolvedCurrentStep = useMemo(
     () =>
-      isStepReachable(currentStepHint, bootstrap, activeApp)
+      isStepReachable(currentStepHint, bootstrap, activeApp, runtimeRequirementsReady)
         ? currentStepHint
-        : defaultStepFor(bootstrap, apps, activeApp, autostartComplete, vscodeComplete, setupStarted),
-    [activeApp, apps, autostartComplete, bootstrap, currentStepHint, setupStarted, vscodeComplete],
+        : defaultStepFor(bootstrap, apps, activeApp, runtimeRequirementsReady, autostartComplete, vscodeComplete, setupStarted),
+    [activeApp, apps, autostartComplete, bootstrap, currentStepHint, runtimeRequirementsReady, setupStarted, vscodeComplete],
   );
   const currentStepIndex = wizardSteps.findIndex((step) => step.id === resolvedCurrentStep);
   const currentStepMeta = wizardSteps[currentStepIndex >= 0 ? currentStepIndex : 0];
@@ -217,6 +225,7 @@ export function SetupRoute() {
     longConnection: Boolean(activeApp?.wizard?.callbacksConfirmedAt),
     menus: Boolean(activeApp?.wizard?.menusConfirmedAt),
     publish: Boolean(activeApp?.wizard?.publishedAt),
+    runtimeRequirements: runtimeRequirementsReady,
     autostart: autostartComplete,
     vscode: vscodeComplete,
   };
@@ -251,6 +260,18 @@ export function SetupRoute() {
       await navigator.clipboard.writeText(value);
       setNotice({ tone: "good", message: successMessage });
     });
+  }
+
+  async function loadRuntimeRequirementsState() {
+    try {
+      const data = await requestJSON<RuntimeRequirementsDetectResponse>("/api/setup/runtime-requirements/detect");
+      return { data, error: "" };
+    } catch (err: unknown) {
+      return {
+        data: null,
+        error: formatError(err),
+      };
+    }
   }
 
   function resetFeishuConnectFlow(nextMode?: FeishuConnectMode) {
@@ -494,6 +515,30 @@ export function SetupRoute() {
         return;
       }
       setNotice({ tone: "good", message: "发布验收通过，继续下一步。" });
+      setCurrentStepHint("runtimeRequirements");
+    });
+  }
+
+  async function checkRuntimeRequirementsAndContinue() {
+    await runAction("runtime-requirements-detect", async () => {
+      const response = await requestJSON<RuntimeRequirementsDetectResponse>("/api/setup/runtime-requirements/detect");
+      setRuntimeRequirements(response);
+      setRuntimeRequirementsError("");
+      if (!response.ready) {
+        const failedChecks = response.checks
+          .filter((check) => check.status === "fail")
+          .map((check) => `${check.title}: ${check.summary}`);
+        showBlockingError(
+          "这一步还没有完成",
+          "当前机器还不满足正常使用要求。请先修复失败项，再重新检查。",
+          failedChecks.join("\n"),
+        );
+        return;
+      }
+      setNotice({
+        tone: response.checks.some((check) => check.status === "warn") ? "warn" : "good",
+        message: response.summary,
+      });
       setCurrentStepHint("autostart");
     });
   }
@@ -641,7 +686,7 @@ export function SetupRoute() {
           <p className="side-copy">向导一次只展示当前步骤。左侧只保留步骤名和状态，不提前暴露后面的配置细节。</p>
           <div className="wizard-step-nav" aria-label="Setup Steps">
             {wizardSteps.map((step) => {
-              const state = stepState(step.id, resolvedCurrentStep, stepCompletion, bootstrap, activeApp);
+              const state = stepState(step.id, resolvedCurrentStep, stepCompletion, bootstrap, activeApp, runtimeRequirementsReady);
               const disabled = state === "locked";
               return (
                 <button key={step.id} type="button" className={`wizard-step-link${step.id === resolvedCurrentStep ? " current" : ""}`} onClick={() => setCurrentStepHint(step.id)} disabled={disabled}>
@@ -673,7 +718,7 @@ export function SetupRoute() {
           </header>
 
           {notice ? <div className={`notice-banner ${notice.tone}`}>{notice.message}</div> : null}
-          {!bootstrap && !error ? <LoadingState title="正在初始化 Setup 页面" description="读取 bootstrap、飞书应用、manifest 和 VS Code 检测结果。" /> : null}
+          {!bootstrap && !error ? <LoadingState title="正在初始化 Setup 页面" description="读取 bootstrap、飞书应用、运行环境检查、manifest、自动启动和 VS Code 检测结果。" /> : null}
           {error ? <ErrorState title="无法加载 Setup 状态" description="setup shell 已就位，但当前状态读取失败。" detail={error} /> : null}
           {bootstrap && manifest ? (
             <Panel title={currentStepMeta.label} description={currentStepMeta.summary} className="wizard-panel">
@@ -692,6 +737,8 @@ export function SetupRoute() {
                 eventsConfirmed={eventsConfirmed}
                 longConnectionConfirmed={longConnectionConfirmed}
                 menusConfirmed={menusConfirmed}
+                runtimeRequirements={runtimeRequirements}
+                runtimeRequirementsError={runtimeRequirementsError}
                 autostart={autostart}
                 autostartError={autostartError}
                 autostartSummary={autostartSummary}
@@ -761,6 +808,7 @@ export function SetupRoute() {
                     onConfirmLongConnection={() => void confirmLongConnectionAndContinue()}
                     onConfirmMenus={() => void confirmMenusAndContinue()}
                     onCheckPublish={() => void checkPublishAndContinue()}
+                    onCheckRuntimeRequirements={() => void checkRuntimeRequirementsAndContinue()}
                     onContinueAutostart={() => void continueAutostart()}
                     onContinueVSCode={() => void continueVSCode()}
                     onFinishSetup={() => void finishSetup()}

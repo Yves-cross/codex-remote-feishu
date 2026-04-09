@@ -48,6 +48,7 @@ export function stepState(
   completion: StepCompletion,
   bootstrap: BootstrapState | null,
   activeApp: FeishuAppSummary | null,
+  runtimeRequirementsReady: boolean,
 ): StepState {
   if (stepID === currentStep) {
     return "current";
@@ -55,7 +56,7 @@ export function stepState(
   if (stepID !== "finish" && completion[stepID as Exclude<StepID, "finish">]) {
     return "done";
   }
-  if (isStepReachable(stepID, bootstrap, activeApp)) {
+  if (isStepReachable(stepID, bootstrap, activeApp, runtimeRequirementsReady)) {
     return "pending";
   }
   return "locked";
@@ -91,6 +92,7 @@ export function defaultStepFor(
   _bootstrap: BootstrapState | null,
   apps: FeishuAppSummary[],
   activeApp: FeishuAppSummary | null,
+  runtimeRequirementsReady: boolean,
   autostartComplete: boolean,
   vscodeComplete: boolean,
   setupStarted: boolean,
@@ -117,6 +119,9 @@ export function defaultStepFor(
   if (!activeApp.wizard?.publishedAt) {
     return "publish";
   }
+  if (!runtimeRequirementsReady) {
+    return "runtimeRequirements";
+  }
   if (!autostartComplete) {
     return "autostart";
   }
@@ -126,7 +131,7 @@ export function defaultStepFor(
   return "finish";
 }
 
-export function isStepReachable(stepID: StepID, bootstrap: BootstrapState | null, activeApp: FeishuAppSummary | null): boolean {
+export function isStepReachable(stepID: StepID, bootstrap: BootstrapState | null, activeApp: FeishuAppSummary | null, runtimeRequirementsReady: boolean): boolean {
   switch (stepID) {
     case "start":
       return true;
@@ -142,12 +147,14 @@ export function isStepReachable(stepID: StepID, bootstrap: BootstrapState | null
       return Boolean(activeApp?.wizard?.callbacksConfirmedAt);
     case "publish":
       return Boolean(activeApp?.wizard?.menusConfirmedAt);
+    case "runtimeRequirements":
+      return Boolean(activeApp?.wizard?.publishedAt);
     case "autostart":
-      return Boolean(activeApp?.wizard?.publishedAt);
+      return Boolean(activeApp?.wizard?.publishedAt) && runtimeRequirementsReady;
     case "vscode":
-      return Boolean(activeApp?.wizard?.publishedAt);
+      return Boolean(activeApp?.wizard?.publishedAt) && runtimeRequirementsReady;
     case "finish":
-      return Boolean(activeApp?.wizard?.publishedAt);
+      return Boolean(activeApp?.wizard?.publishedAt) && runtimeRequirementsReady;
     default:
       return false;
   }
@@ -167,8 +174,10 @@ export function previousStepFor(stepID: StepID): StepID | null {
       return "longConnection";
     case "publish":
       return "menus";
-    case "autostart":
+    case "runtimeRequirements":
       return "publish";
+    case "autostart":
+      return "runtimeRequirements";
     case "vscode":
       return "autostart";
     case "finish":

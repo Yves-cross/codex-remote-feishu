@@ -28,6 +28,30 @@ export function installMockFetch(routes: Record<string, MockHandler>) {
     calls.push(call);
 
     const handler = routes[path] ?? routes[url.pathname];
+    if (!handler && (url.pathname === "/api/setup/runtime-requirements/detect" || url.pathname === "/api/admin/runtime-requirements/detect")) {
+      return new Response(JSON.stringify({
+        ready: true,
+        summary: "当前机器已满足基础运行条件，可以继续后面的可选配置。",
+        currentBinary: "/usr/local/bin/codex-remote",
+        codexRealBinary: "/usr/local/bin/codex",
+        codexRealBinarySource: "config",
+        resolvedCodexRealBinary: "/usr/local/bin/codex",
+        lookupMode: "absolute",
+        checks: [
+          {
+            id: "headless_launcher",
+            title: "Headless 启动器",
+            status: "pass",
+            summary: "当前服务已经有可用的 codex-remote 启动器。",
+          },
+        ],
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    }
     if (!handler && (url.pathname === "/api/setup/autostart/detect" || url.pathname === "/api/admin/autostart/detect")) {
       return new Response(JSON.stringify({
         platform: "linux",
