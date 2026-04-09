@@ -73,7 +73,10 @@ func LoadConfig(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	workspaceRoot = state.ResolveWorkspaceKey(workspaceRoot)
+	workspaceRoot, err = state.ResolveWorkspaceRootOnHost(workspaceRoot)
+	if err != nil {
+		return Config{}, err
+	}
 	instanceID := strings.TrimSpace(os.Getenv("CODEX_REMOTE_INSTANCE_ID"))
 	if instanceID == "" {
 		instanceID, err = generateInstanceID()

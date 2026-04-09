@@ -221,6 +221,7 @@ func (s *Service) UpsertInstance(inst *state.InstanceRecord) {
 	if inst.DisplayName == "" {
 		inst.DisplayName = inst.ShortName
 	}
+	s.backfillLegacyWorkspaceDefaults(inst)
 	s.root.Instances[inst.InstanceID] = inst
 }
 

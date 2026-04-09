@@ -287,6 +287,7 @@ func (s *Service) resolveBasePromptConfig(inst *state.InstanceRecord, surface *s
 	if inst == nil {
 		return model, effort, access
 	}
+	s.backfillLegacyWorkspaceDefaults(inst)
 	if thread := inst.Threads[threadID]; thread != nil {
 		if cwd == "" {
 			cwd = thread.CWD
@@ -358,6 +359,74 @@ func (s *Service) updateWorkspaceDefaults(workspaceKey string, apply func(*state
 		return
 	}
 	s.root.WorkspaceDefaults[workspaceKey] = current
+}
+
+func (s *Service) backfillLegacyWorkspaceDefaults(inst *state.InstanceRecord) {
+	if inst == nil || len(inst.CWDDefaults) == 0 {
+		return
+	}
+	workspaceKey := state.ResolveWorkspaceKey(inst.WorkspaceKey, inst.WorkspaceRoot)
+	if workspaceKey == "" {
+		return
+	}
+	candidates := legacyWorkspaceDefaultCandidates(workspaceKey, inst.CWDDefaults)
+	if len(candidates) == 0 {
+		return
+	}
+	s.updateWorkspaceDefaults(workspaceKey, func(current *state.ModelConfigRecord) {
+		for _, candidate := range candidates {
+			if current.Model == "" && candidate.Model != "" {
+				current.Model = candidate.Model
+			}
+			if current.ReasoningEffort == "" && candidate.ReasoningEffort != "" {
+				current.ReasoningEffort = candidate.ReasoningEffort
+			}
+			if current.AccessMode == "" && candidate.AccessMode != "" {
+				current.AccessMode = candidate.AccessMode
+			}
+		}
+	})
+}
+
+func legacyWorkspaceDefaultCandidates(workspaceKey string, legacy map[string]state.ModelConfigRecord) []state.ModelConfigRecord {
+	type candidate struct {
+		key    string
+		config state.ModelConfigRecord
+		exact  bool
+	}
+
+	var candidates []candidate
+	for key, config := range legacy {
+		normalizedKey := state.ResolveWorkspaceKey(key)
+		config = compactModelConfig(config)
+		if normalizedKey == "" || modelConfigRecordEmpty(config) {
+			continue
+		}
+		if normalizedKey != workspaceKey &&
+			!strings.HasPrefix(normalizedKey, workspaceKey+string(os.PathSeparator)) &&
+			!strings.HasPrefix(workspaceKey, normalizedKey+string(os.PathSeparator)) {
+			continue
+		}
+		candidates = append(candidates, candidate{
+			key:    normalizedKey,
+			config: config,
+			exact:  normalizedKey == workspaceKey,
+		})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].exact != candidates[j].exact {
+			return candidates[i].exact
+		}
+		if len(candidates[i].key) != len(candidates[j].key) {
+			return len(candidates[i].key) < len(candidates[j].key)
+		}
+		return candidates[i].key < candidates[j].key
+	})
+	merged := make([]state.ModelConfigRecord, 0, len(candidates))
+	for _, candidate := range candidates {
+		merged = append(merged, candidate.config)
+	}
+	return merged
 }
 
 func (s *Service) findAttachedSurface(instanceID string) *state.SurfaceConsoleRecord {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -178,18 +179,18 @@ func normalizeWorkspaceRoot(workspaceRoot string) (string, error) {
 			}
 		}
 	}
-	absRoot, err := filepath.Abs(workspaceRoot)
+	normalizedRoot, err := state.ResolveWorkspaceRootOnHost(workspaceRoot)
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Stat(absRoot)
+	info, err := os.Stat(normalizedRoot)
 	if err != nil {
 		return "", err
 	}
 	if !info.IsDir() {
 		return "", fmt.Errorf("workspaceRoot must be a directory")
 	}
-	return absRoot, nil
+	return normalizedRoot, nil
 }
 
 func controlToHeadlessLaunch(cfg HeadlessRuntimeConfig, env []string, workDir, instanceID string) relayruntime.HeadlessLaunchOptions {

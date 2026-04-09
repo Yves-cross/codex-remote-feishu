@@ -1664,6 +1664,44 @@ func TestTextMessageFreezesObservedPromptConfigWhenNoSurfaceOverride(t *testing.
 	}
 }
 
+func TestUpsertInstanceBackfillsLegacyCWDDefaultsIntoWorkspaceDefaults(t *testing.T) {
+	now := time.Date(2026, 4, 9, 14, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		CWDDefaults: map[string]state.ModelConfigRecord{
+			"/data/dl/droid/.":      {Model: "gpt-5.4", ReasoningEffort: "high"},
+			"/data/dl/droid/subdir": {AccessMode: agentproto.AccessModeConfirm},
+		},
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+
+	defaults := svc.root.WorkspaceDefaults["/data/dl/droid"]
+	if defaults.Model != "gpt-5.4" || defaults.ReasoningEffort != "high" || defaults.AccessMode != agentproto.AccessModeConfirm {
+		t.Fatalf("expected legacy defaults backfilled into workspace defaults, got %#v", defaults)
+	}
+
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected surface snapshot")
+	}
+	if snapshot.NextPrompt.BaseModelSource != "workspace_default" || snapshot.NextPrompt.BaseReasoningEffortSource != "workspace_default" {
+		t.Fatalf("expected legacy defaults to resolve through workspace defaults, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.EffectiveAccessMode != agentproto.AccessModeConfirm || snapshot.NextPrompt.EffectiveAccessModeSource != "workspace_default" {
+		t.Fatalf("expected migrated workspace access default in snapshot, got %#v", snapshot.NextPrompt)
+	}
+}
+
 func TestTextMessageFreezesFallbackReasoningWhenConfigUnknown(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

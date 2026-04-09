@@ -1,6 +1,10 @@
 package state
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestResolveWorkspaceKey(t *testing.T) {
 	if got := ResolveWorkspaceKey("", " /data/dl/work/../droid/ "); got != "/data/dl/droid" {
@@ -17,5 +21,25 @@ func TestWorkspaceShortName(t *testing.T) {
 	}
 	if got := WorkspaceShortName("/"); got != "/" {
 		t.Fatalf("WorkspaceShortName(root) = %q, want %q", got, "/")
+	}
+}
+
+func TestResolveWorkspaceRootOnHostResolvesSymlink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "real")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("mkdir target: %v", err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	resolved, err := ResolveWorkspaceRootOnHost(filepath.Join(link, ".", ""))
+	if err != nil {
+		t.Fatalf("ResolveWorkspaceRootOnHost() error = %v", err)
+	}
+	if resolved != target {
+		t.Fatalf("ResolveWorkspaceRootOnHost() = %q, want %q", resolved, target)
 	}
 }

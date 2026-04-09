@@ -26,6 +26,18 @@ func ResolveWorkspaceKey(values ...string) string {
 	return ""
 }
 
+func ResolveWorkspaceRootOnHost(value string) (string, error) {
+	absolute, err := filepath.Abs(strings.TrimSpace(value))
+	if err != nil {
+		return "", err
+	}
+	normalized := NormalizeWorkspaceKey(absolute)
+	if resolved, err := filepath.EvalSymlinks(normalized); err == nil {
+		normalized = NormalizeWorkspaceKey(resolved)
+	}
+	return normalized, nil
+}
+
 func WorkspaceShortName(value string) string {
 	key := ResolveWorkspaceKey(value)
 	if key == "" {
