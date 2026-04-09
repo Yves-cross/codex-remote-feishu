@@ -40,6 +40,17 @@
       "reason": "current docs already cover steering across relay protocol, Feishu product behavior, and the canonical remote surface state machine",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/38",
       "recordedAt": "2026-04-08T04:20:35Z"
+    },
+    {
+      "number": 93,
+      "updatedAt": "2026-04-09T16:14:28Z",
+      "decision": "merge",
+      "reason": "durable setup runtime requirements behavior already merged into canonical setup docs during implementation",
+      "targetDocs": [
+        "docs/general/user-guide.md",
+        "docs/draft/web-setup-wizard-redesign.md"
+      ],
+      "recordedAt": "2026-04-09T16:17:29Z"
     }
   ]
 }
