@@ -203,6 +203,14 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 	},
 	{
+		section:    "实例与会话",
+		showInHelp: false,
+		showInMenu: false,
+		textExact: []feishuCommandMatch{
+			{alias: "/vscode-migrate", action: Action{Kind: ActionVSCodeMigrate}},
+		},
+	},
+	{
 		section:      "实例与会话",
 		helpCommands: []string{"/stop"},
 		description:  "中断当前执行，并丢弃飞书侧尚未发送的排队输入。",

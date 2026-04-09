@@ -39,6 +39,7 @@ const (
 	ActionCancelKickThread    ActionKind = "surface.button.cancel_kick_thread"
 	ActionFollowLocal         ActionKind = "surface.button.follow_local"
 	ActionDetach              ActionKind = "surface.button.detach"
+	ActionVSCodeMigrate       ActionKind = "surface.button.vscode_migrate"
 )
 
 type InboundLifecycleVerdict string
@@ -339,6 +340,7 @@ const (
 	DaemonCommandStartHeadless DaemonCommandKind = "headless.start"
 	DaemonCommandKillHeadless  DaemonCommandKind = "headless.kill"
 	DaemonCommandDebug         DaemonCommandKind = "debug.command"
+	DaemonCommandVSCodeMigrate DaemonCommandKind = "vscode.migrate"
 )
 
 type DaemonCommand struct {

@@ -529,14 +529,14 @@ export function SetupRoute() {
     return "还没检测到这台机器上的 VS Code 扩展安装。请先在这台机器上打开一次 VS Code，并确保 Codex 扩展已经安装，然后再回来继续。";
   }
 
-  async function applyVSCodeMode(mode: string, outcome: Extract<VSCodeSetupOutcome, "settings" | "managed_shim">, message: string) {
+  async function applyVSCodeMode(message: string) {
     await runAction("vscode-apply", async () => {
       const response = await sendJSON<VSCodeDetectResponse>("/api/setup/vscode/apply", "POST", {
-        mode,
+        mode: "managed_shim",
       });
       setVSCode(response);
       setVSCodeError("");
-      setVSCodeOutcome(outcome);
+      setVSCodeOutcome("managed_shim");
       setNotice({ tone: "good", message });
       setCurrentStepHint("finish");
     });
@@ -552,11 +552,7 @@ export function SetupRoute() {
         showBlockingError("这一步还没有完成", missingBundleMessage(true));
         return;
       }
-      await applyVSCodeMode(
-        "managed_shim",
-        "managed_shim",
-        "已接管这台远程机器上的 VS Code 扩展入口。以后如果扩展升级，回到管理页重新安装扩展入口即可。",
-      );
+      await applyVSCodeMode("已接管这台远程机器上的 VS Code 扩展入口。以后如果扩展升级，回到管理页重新安装扩展入口即可。");
       return;
     }
     if (!vscodeScenario) {
@@ -579,15 +575,7 @@ export function SetupRoute() {
       showBlockingError("这一步还没有完成", missingBundleMessage(false));
       return;
     }
-    if (mode === "editor_settings") {
-      await applyVSCodeMode("editor_settings", "settings", "已写入这台机器的 VS Code settings.json，现在可以在本机 VS Code 里使用 Codex。");
-      return;
-    }
-    await applyVSCodeMode(
-      "managed_shim",
-      "managed_shim",
-      "已接管这台机器上的 VS Code 扩展入口。本机可以继续使用；以后如果要在其他 SSH 机器上使用，需要去那些机器分别完成接入。",
-    );
+    await applyVSCodeMode("已接管这台机器上的 VS Code 扩展入口。当前策略不会写本机 settings.json；如果扩展升级，回到管理页重新安装扩展入口即可。");
   }
 
   async function finishSetup() {

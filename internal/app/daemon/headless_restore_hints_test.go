@@ -263,6 +263,72 @@ func TestDaemonModeSwitchToVSCodeClearsHeadlessRestoreState(t *testing.T) {
 	}
 }
 
+func TestDaemonModeSwitchToVSCodeStaysDetachedAfterNormalAutoRestore(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ThreadID:         "thread-1",
+		ThreadTitle:      "修复登录流程",
+		ThreadCWD:        "/data/dl/droid",
+	})
+
+	app := newRestoreHintTestApp(stateDir)
+	app.startHeadless = func(opts relayruntime.HeadlessLaunchOptions) (int, error) {
+		return 4321, nil
+	}
+
+	base := time.Date(2026, 4, 9, 14, 0, 0, 0, time.UTC)
+	app.onTick(context.Background(), base)
+	pending := app.service.SurfaceSnapshot("surface-1").PendingHeadless
+	if pending.InstanceID == "" {
+		t.Fatalf("expected pending headless after auto-restore tick, got %#v", pending)
+	}
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    pending.InstanceID,
+			DisplayName:   "headless",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "headless",
+			Source:        "headless",
+			Managed:       true,
+			PID:           4321,
+		},
+	})
+
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.ProductMode != "normal" || snapshot.Attachment.InstanceID != pending.InstanceID || snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected normal auto-restore to attach headless thread, got %#v", snapshot)
+	}
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionModeCommand,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/mode vscode",
+	})
+	app.onTick(context.Background(), base.Add(time.Second))
+
+	snapshot = app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.ProductMode != "vscode" || snapshot.Attachment.InstanceID != "" || snapshot.PendingHeadless.InstanceID != "" {
+		t.Fatalf("expected vscode mode switch to stay detached after prior auto-restore, got %#v", snapshot)
+	}
+	if hint := app.HeadlessRestoreHint("surface-1"); hint != nil {
+		t.Fatalf("expected restore hint to clear after /mode vscode from auto-restored state, got %#v", hint)
+	}
+	if len(app.headlessRestoreState) != 0 {
+		t.Fatalf("expected in-memory restore state to clear after /mode vscode from auto-restored state, got %#v", app.headlessRestoreState)
+	}
+}
+
 func TestDaemonKeepsHeadlessRestoreHintOnDisconnect(t *testing.T) {
 	t.Parallel()
 

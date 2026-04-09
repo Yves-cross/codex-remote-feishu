@@ -112,7 +112,7 @@ func DefaultAppConfig() AppConfig {
 		Wrapper: WrapperSettings{
 			CodexRealBinary: "codex",
 			NameMode:        "workspace_basename",
-			IntegrationMode: "editor_settings",
+			IntegrationMode: "managed_shim",
 		},
 		Storage: StorageSettings{
 			PreviewRootFolderName: defaultPreviewRootName,

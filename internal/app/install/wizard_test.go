@@ -14,7 +14,7 @@ func TestRunInteractiveWizardManagedShimBlankCodexBinaryUsesAutoResolution(t *te
 		InstallBinDir:              "/tmp/demo/bin",
 		VSCodeSettingsPath:         "/tmp/demo/settings.json",
 		CandidateBundleEntrypoints: []string{"/tmp/demo/.vscode-server/extensions/openai.chatgpt/bin/linux-x86_64/codex"},
-		DefaultIntegrations:        []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim},
+		DefaultIntegrations:        []WrapperIntegrationMode{IntegrationManagedShim},
 	}
 	input := strings.Join([]string{
 		"2",
@@ -49,7 +49,7 @@ func TestRunInteractiveWizardHonorsExplicitIntegrationSeed(t *testing.T) {
 		BaseDir:             "/Users/demo",
 		InstallBinDir:       "/Users/demo/Library/Application Support/codex-remote/bin",
 		VSCodeSettingsPath:  "/Users/demo/Library/Application Support/Code/User/settings.json",
-		DefaultIntegrations: []WrapperIntegrationMode{IntegrationEditorSettings},
+		DefaultIntegrations: []WrapperIntegrationMode{IntegrationManagedShim},
 	}
 	input := strings.Join([]string{
 		"",
@@ -72,7 +72,7 @@ func TestRunInteractiveWizardHonorsExplicitIntegrationSeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunInteractiveWizard: %v", err)
 	}
-	if len(opts.Integrations) != 1 || opts.Integrations[0] != IntegrationEditorSettings {
+	if len(opts.Integrations) != 1 || opts.Integrations[0] != IntegrationManagedShim {
 		t.Fatalf("unexpected integrations: %#v", opts.Integrations)
 	}
 	if opts.CodexRealBinary != filepath.Join("/opt", "homebrew", "bin", "codex") {

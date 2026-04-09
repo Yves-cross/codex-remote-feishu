@@ -349,6 +349,19 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return notice(surface, "kick_cancelled", "已取消强踢。")
 	case control.ActionFollowLocal:
 		return s.followLocal(surface)
+	case control.ActionVSCodeMigrate:
+		return []control.UIEvent{{
+			Kind:             control.UIEventDaemonCommand,
+			GatewayID:        surface.GatewayID,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			SourceMessageID:  action.MessageID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandVSCodeMigrate,
+				GatewayID:        surface.GatewayID,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				SourceMessageID:  action.MessageID,
+			},
+		}}
 	case control.ActionTextMessage:
 		return s.handleText(surface, action)
 	case control.ActionImageMessage:

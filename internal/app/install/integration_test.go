@@ -4,9 +4,9 @@ import "testing"
 
 func TestDefaultIntegrations(t *testing.T) {
 	tests := map[string][]WrapperIntegrationMode{
-		"linux":   {IntegrationEditorSettings, IntegrationManagedShim},
-		"darwin":  {IntegrationEditorSettings},
-		"windows": {IntegrationEditorSettings},
+		"linux":   {IntegrationManagedShim},
+		"darwin":  {IntegrationManagedShim},
+		"windows": {IntegrationManagedShim},
 	}
 	for goos, want := range tests {
 		got := DefaultIntegrations(goos)
@@ -33,19 +33,19 @@ func TestParseIntegrations(t *testing.T) {
 			name: "auto on linux",
 			raw:  "auto",
 			goos: "linux",
-			want: []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim},
+			want: []WrapperIntegrationMode{IntegrationManagedShim},
 		},
 		{
 			name: "both alias",
 			raw:  "both",
 			goos: "darwin",
-			want: []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim},
+			want: []WrapperIntegrationMode{IntegrationManagedShim},
 		},
 		{
-			name: "comma list dedupes",
+			name: "comma list normalizes to managed_shim",
 			raw:  "managed_shim,editor_settings,managed_shim",
 			goos: "linux",
-			want: []WrapperIntegrationMode{IntegrationManagedShim, IntegrationEditorSettings},
+			want: []WrapperIntegrationMode{IntegrationManagedShim},
 		},
 		{
 			name:  "unsupported",
@@ -84,7 +84,7 @@ func TestIntegrationsConfigValue(t *testing.T) {
 		values []WrapperIntegrationMode
 		want   string
 	}{
-		{nil, "editor_settings"},
+		{nil, "managed_shim"},
 		{[]WrapperIntegrationMode{IntegrationEditorSettings}, "editor_settings"},
 		{[]WrapperIntegrationMode{IntegrationManagedShim}, "managed_shim"},
 		{[]WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim}, "both"},

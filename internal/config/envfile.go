@@ -131,7 +131,7 @@ func LoadWrapperConfig() (WrapperConfig, error) {
 		IntegrationMode: chooseNonEmpty(
 			os.Getenv("CODEX_REMOTE_WRAPPER_INTEGRATION_MODE"),
 			loaded.Config.Wrapper.IntegrationMode,
-			"editor_settings",
+			"managed_shim",
 		),
 		ConfigPath: loaded.Path,
 		DebugRelayFlow: chooseBool(

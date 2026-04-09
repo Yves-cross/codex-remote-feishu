@@ -170,12 +170,10 @@ func (a *App) buildVSCodeDetectResponse() (vscodeDetectResponse, error) {
 
 	currentMode := strings.TrimSpace(loaded.Config.Wrapper.IntegrationMode)
 	if currentMode == "" {
-		currentMode = "editor_settings"
+		currentMode = string(install.IntegrationManagedShim)
 	}
-	recommendedMode := "all"
-	if admin.sshSession {
-		recommendedMode = "managed_shim"
-	}
+	recommendedMode := string(install.IntegrationManagedShim)
+	_ = admin
 	needsReinstall := computeShimReinstallNeed(currentMode, installState, latestEntrypoint, latestShim)
 
 	return vscodeDetectResponse{
@@ -219,23 +217,24 @@ func (a *App) applyVSCodeIntegration(req vscodeApplyRequest) error {
 			StatePath: statePath,
 		}
 	}
-	settingsPath := firstNonEmpty(strings.TrimSpace(req.SettingsPath), state.VSCodeSettingsPath, defaults.VSCodeSettingsPath)
-	bundleEntrypoint := firstNonEmpty(strings.TrimSpace(req.BundleEntrypoint), state.BundleEntrypoint)
+	if strings.TrimSpace(state.VSCodeSettingsPath) == "" {
+		state.VSCodeSettingsPath = firstNonEmpty(strings.TrimSpace(req.SettingsPath), defaults.VSCodeSettingsPath)
+	}
+	bundleEntrypoint := strings.TrimSpace(req.BundleEntrypoint)
 	if bundleEntrypoint == "" && len(defaults.CandidateBundleEntrypoints) > 0 {
 		bundleEntrypoint = defaults.CandidateBundleEntrypoints[0]
 	}
-
-	if modeIncludes(mode, install.IntegrationEditorSettings) {
-		if err := editor.PatchVSCodeSettings(settingsPath, currentBinary); err != nil {
-			return err
-		}
-		state.VSCodeSettingsPath = settingsPath
+	if bundleEntrypoint == "" {
+		bundleEntrypoint = strings.TrimSpace(state.BundleEntrypoint)
 	}
 	if modeIncludes(mode, install.IntegrationManagedShim) {
 		if strings.TrimSpace(bundleEntrypoint) == "" {
 			return errors.New("no vscode extension bundle entrypoint detected")
 		}
 		if err := editor.PatchBundleEntrypoint(bundleEntrypoint, currentBinary); err != nil {
+			return err
+		}
+		if err := editor.ClearVSCodeSettingsExecutable(state.VSCodeSettingsPath); err != nil {
 			return err
 		}
 		state.BundleEntrypoint = bundleEntrypoint
@@ -293,6 +292,14 @@ func (a *App) reinstallVSCodeShim(bundleEntrypoint string) error {
 	if err := editor.PatchBundleEntrypoint(target, currentBinary); err != nil {
 		return err
 	}
+	settingsPath := firstNonEmpty(strings.TrimSpace(state.VSCodeSettingsPath), defaults.VSCodeSettingsPath)
+	if err := editor.ClearVSCodeSettingsExecutable(settingsPath); err != nil {
+		return err
+	}
+	state.VSCodeSettingsPath = settingsPath
+	if err := a.updateVSCodeConfig(string(install.IntegrationManagedShim), target); err != nil {
+		return err
+	}
 	install.ApplyStateMetadata(state, install.StateMetadataOptions{
 		StatePath:       statePath,
 		InstalledBinary: currentBinary,
@@ -320,7 +327,7 @@ func (a *App) updateVSCodeConfig(mode, bundleEntrypoint string) error {
 	}
 	cfg := loaded.Config
 	cfg.Wrapper.IntegrationMode = mode
-	if modeIncludes(mode, install.IntegrationManagedShim) && strings.TrimSpace(cfg.Wrapper.CodexRealBinary) == "" && strings.TrimSpace(bundleEntrypoint) != "" {
+	if modeIncludes(mode, install.IntegrationManagedShim) && strings.TrimSpace(bundleEntrypoint) != "" {
 		cfg.Wrapper.CodexRealBinary = editor.ManagedShimRealBinaryPath(bundleEntrypoint)
 	}
 	return config.WriteAppConfig(loaded.Path, cfg)
@@ -366,17 +373,13 @@ func loadInstallStateIfPresent(path string) (*install.InstallState, error) {
 func resolveVSCodeMode(raw string, sshSession bool) (string, error) {
 	raw = strings.TrimSpace(strings.ToLower(raw))
 	if raw == "" {
-		if sshSession {
-			return string(install.IntegrationManagedShim), nil
-		}
-		return "both", nil
+		return string(install.IntegrationManagedShim), nil
 	}
 	switch raw {
-	case string(install.IntegrationEditorSettings), string(install.IntegrationManagedShim), "both", "all":
-		if raw == "all" {
-			return "both", nil
-		}
-		return raw, nil
+	case string(install.IntegrationManagedShim), "both", "all":
+		return string(install.IntegrationManagedShim), nil
+	case string(install.IntegrationEditorSettings):
+		return "", errors.New("editor_settings integration is no longer supported; migrate to managed_shim instead")
 	default:
 		return "", errors.New("unsupported vscode integration mode")
 	}
@@ -384,20 +387,13 @@ func resolveVSCodeMode(raw string, sshSession bool) (string, error) {
 
 func displayVSCodeMode(mode string) string {
 	if strings.TrimSpace(mode) == "both" {
-		return "all"
+		return string(install.IntegrationManagedShim)
 	}
 	return mode
 }
 
 func integrationModesFor(mode string) []install.WrapperIntegrationMode {
-	switch mode {
-	case "both":
-		return []install.WrapperIntegrationMode{install.IntegrationEditorSettings, install.IntegrationManagedShim}
-	case string(install.IntegrationManagedShim):
-		return []install.WrapperIntegrationMode{install.IntegrationManagedShim}
-	default:
-		return []install.WrapperIntegrationMode{install.IntegrationEditorSettings}
-	}
+	return []install.WrapperIntegrationMode{install.IntegrationManagedShim}
 }
 
 func modeIncludes(mode string, target install.WrapperIntegrationMode) bool {

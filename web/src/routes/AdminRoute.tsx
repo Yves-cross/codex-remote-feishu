@@ -123,7 +123,7 @@ export function AdminRoute() {
   const setupURL = bootstrap?.admin.setupURL || "/setup";
   const setupURLForApp = (appID: string) => buildAppSetupURL(setupURL, appID);
   const vscodePrimaryLabel = vscodePrimaryActionLabel(vscode, vscodeScenario);
-  const vscodeCanContinue = Boolean(vscode) && (vscode?.sshSession ? vscodeHasDetectedBundle(vscode) : vscodeScenario !== null && (vscodeScenario === "remote_only" || vscodeScenario === "local_only" || vscodeHasDetectedBundle(vscode)));
+  const vscodeCanContinue = Boolean(vscode) && (vscode?.sshSession ? vscodeHasDetectedBundle(vscode) : vscodeScenario !== null && (vscodeScenario === "remote_only" || vscodeHasDetectedBundle(vscode)));
 
   useEffect(() => {
     if (vscode?.sshSession) {
@@ -354,11 +354,7 @@ export function AdminRoute() {
       setNotice({ tone: "warn", message: "还没检测到这台机器上的 VS Code 扩展安装。请先在这台机器上打开一次 VS Code，并确保 Codex 扩展已经安装。" });
       return;
     }
-    if (mode === "editor_settings") {
-      await applyVSCode("editor_settings", "已写入这台机器的 VS Code settings.json，现在可以在本机 VS Code 里使用 Codex。");
-      return;
-    }
-    await applyVSCode("managed_shim", "已接管这台机器上的 VS Code 扩展入口。本机可以继续使用；以后如果要在其他 SSH 机器上使用，需要去那些机器分别完成接入。");
+    await applyVSCode("managed_shim", "已接管这台机器上的 VS Code 扩展入口。当前策略不会写本机 settings.json；如果扩展升级，回到管理页重新安装扩展入口即可。");
   }
 
   async function reinstallShim() {

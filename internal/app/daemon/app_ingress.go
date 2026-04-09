@@ -229,6 +229,17 @@ func (a *App) HandleAction(ctx context.Context, action control.Action) {
 		clearTargets = map[string]bool{strings.TrimSpace(action.SurfaceSessionID): true}
 	}
 	a.syncSurfaceResumeStateLocked(clearTargets)
+	if action.Kind == control.ActionModeCommand {
+		after := a.service.SurfaceSnapshot(action.SurfaceSessionID)
+		switchedIntoVSCode := after != nil &&
+			state.NormalizeProductMode(state.ProductMode(after.ProductMode)) == state.ProductModeVSCode &&
+			(before == nil || state.NormalizeProductMode(state.ProductMode(before.ProductMode)) != state.ProductModeVSCode)
+		if !switchedIntoVSCode {
+			return
+		}
+		promptEvents, _ := a.maybePromptVSCodeCompatibilityLocked(action.SurfaceSessionID)
+		a.handleUIEvents(ctx, promptEvents)
+	}
 }
 
 func (a *App) ensureSurfaceRouteForNotice(action control.Action) {
@@ -319,7 +330,13 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	}
 	a.refreshHeadlessRestoreHintsLocked()
 	a.syncHeadlessRestoreStateLocked()
-	vscodeRecoveryEvents := a.maybeRecoverVSCodeSurfacesLocked(now)
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+	a.handleUIEvents(ctx, vscodePromptEvents)
+	vscodeRecoveryEvents := []control.UIEvent{}
+	if !vscodeBlocked {
+		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
+		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
+	}
 	a.handleUIEvents(ctx, vscodeRecoveryEvents)
 	normalRecoveryEvents := a.maybeRecoverNormalSurfacesLocked(now)
 	a.handleUIEvents(ctx, normalRecoveryEvents)
@@ -356,7 +373,12 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 		}
 		switch event.Kind {
 		case agentproto.EventThreadsSnapshot, agentproto.EventThreadDiscovered, agentproto.EventThreadFocused:
-			uiEvents = append(uiEvents, a.maybeRecoverVSCodeSurfacesLocked(now)...)
+			vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+			uiEvents = append(uiEvents, vscodePromptEvents...)
+			if !vscodeBlocked {
+				uiEvents = append(uiEvents, a.maybeRecoverVSCodeSurfacesLocked(now)...)
+				uiEvents = append(uiEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
+			}
 			uiEvents = append(uiEvents, a.maybeRecoverNormalSurfacesLocked(now)...)
 			uiEvents = append(uiEvents, a.maybeRecoverHeadlessSurfacesLocked(now)...)
 		}
@@ -418,7 +440,13 @@ func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 		inst.PID,
 	)
 	a.handleUIEvents(ctx, uiEvents)
-	vscodeRecoveryEvents := a.maybeRecoverVSCodeSurfacesLocked(now)
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+	a.handleUIEvents(ctx, vscodePromptEvents)
+	vscodeRecoveryEvents := []control.UIEvent{}
+	if !vscodeBlocked {
+		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
+		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
+	}
 	a.handleUIEvents(ctx, vscodeRecoveryEvents)
 	normalRecoveryEvents := a.maybeRecoverNormalSurfacesLocked(now)
 	a.handleUIEvents(ctx, normalRecoveryEvents)
@@ -442,7 +470,13 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.syncManagedHeadlessLocked(now)
 	a.ensureMinIdleManagedHeadlessLocked(now)
 	a.maybeStartAutoUpgradeCheckLocked(now)
-	vscodeRecoveryEvents := a.maybeRecoverVSCodeSurfacesLocked(now)
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+	a.handleUIEvents(ctx, vscodePromptEvents)
+	vscodeRecoveryEvents := []control.UIEvent{}
+	if !vscodeBlocked {
+		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
+		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
+	}
 	a.handleUIEvents(ctx, vscodeRecoveryEvents)
 	normalRecoveryEvents := a.maybeRecoverNormalSurfacesLocked(now)
 	a.handleUIEvents(ctx, normalRecoveryEvents)

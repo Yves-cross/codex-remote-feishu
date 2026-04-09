@@ -193,7 +193,7 @@ describe("AdminRoute", () => {
 
     expect(await screen.findByText("你以后主要怎么使用 VS Code 里的 Codex？")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: /这台机器本地要用，也会 SSH 到别的机器/ }));
+    await user.click(screen.getByRole("radio", { name: /要在当前这台机器上使用/ }));
     await user.click(screen.getByRole("button", { name: "在这台机器上启用 VS Code" }));
 
     expect(await screen.findByText(/已接管这台机器上的 VS Code 扩展入口/)).toBeInTheDocument();

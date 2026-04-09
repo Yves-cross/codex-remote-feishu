@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -61,8 +62,8 @@ func TestVSCodeDetectApplyAndReinstallManagedShim(t *testing.T) {
 	if loaded.Config.Wrapper.IntegrationMode != "managed_shim" {
 		t.Fatalf("wrapper integration mode = %q, want managed_shim", loaded.Config.Wrapper.IntegrationMode)
 	}
-	if loaded.Config.Wrapper.CodexRealBinary != "codex" {
-		t.Fatalf("expected existing codexRealBinary to be preserved, got %q", loaded.Config.Wrapper.CodexRealBinary)
+	if loaded.Config.Wrapper.CodexRealBinary != entrypointV1+".real" {
+		t.Fatalf("expected codexRealBinary to point at managed shim backup, got %q", loaded.Config.Wrapper.CodexRealBinary)
 	}
 
 	entrypointV2 := filepath.Join(home, ".vscode-server", "extensions", "openai.chatgpt-2", "bin", "linux-x86_64", "codex")
@@ -86,9 +87,9 @@ func TestVSCodeDetectApplyAndReinstallManagedShim(t *testing.T) {
 		t.Fatalf("expected shim reinstall to be required after extension upgrade, got %#v", detect)
 	}
 
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/reinstall-shim", "")
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/apply", `{"mode":"managed_shim"}`)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("reinstall status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("re-apply status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 	if _, err := os.Stat(entrypointV2 + ".real"); err != nil {
 		t.Fatalf("expected .real backup on latest entrypoint: %v", err)
@@ -97,10 +98,23 @@ func TestVSCodeDetectApplyAndReinstallManagedShim(t *testing.T) {
 		t.Fatalf("expected latest entrypoint to match wrapper binary")
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
-		t.Fatalf("decode reinstall detect: %v", err)
+		t.Fatalf("decode re-apply detect: %v", err)
 	}
 	if detect.NeedsShimReinstall {
-		t.Fatalf("did not expect reinstall flag after reinstall, got %#v", detect)
+		t.Fatalf("did not expect reinstall flag after re-apply, got %#v", detect)
+	}
+
+	loaded, err = config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath after re-apply: %v", err)
+	}
+	if loaded.Config.Wrapper.CodexRealBinary != entrypointV2+".real" {
+		t.Fatalf("expected codexRealBinary to move to latest managed shim backup, got %q", loaded.Config.Wrapper.CodexRealBinary)
+	}
+
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/reinstall-shim", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reinstall status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 
 	rawState, err := os.ReadFile(installStatePath)
@@ -112,65 +126,21 @@ func TestVSCodeDetectApplyAndReinstallManagedShim(t *testing.T) {
 	}
 }
 
-func TestVSCodeApplyEditorSettings(t *testing.T) {
+func TestVSCodeApplyEditorSettingsRejected(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	app, configPath, installStatePath := newVSCodeAdminTestApp(t, home, binaryPath, false)
+	app, _, _ := newVSCodeAdminTestApp(t, home, binaryPath, false)
 
 	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/apply", `{"mode":"editor_settings"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("apply status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-
-	defaults, err := install.DetectPlatformDefaults()
-	if err != nil {
-		t.Fatalf("DetectPlatformDefaults: %v", err)
-	}
-	settingsPath := defaults.VSCodeSettingsPath
-	if readFileString(t, settingsPath) == "" {
-		t.Fatal("expected settings.json to be created")
-	}
-	loaded, err := config.LoadAppConfigAtPath(configPath)
-	if err != nil {
-		t.Fatalf("LoadAppConfigAtPath: %v", err)
-	}
-	if loaded.Config.Wrapper.IntegrationMode != "editor_settings" {
-		t.Fatalf("wrapper integration mode = %q, want editor_settings", loaded.Config.Wrapper.IntegrationMode)
-	}
-	rawState, err := os.ReadFile(installStatePath)
-	if err != nil {
-		t.Fatalf("read install-state: %v", err)
-	}
-	if !strings.Contains(string(rawState), settingsPath) {
-		t.Fatalf("expected install-state to record settings path, got %s", string(rawState))
-	}
-	if !strings.Contains(string(rawState), `"installSource": "repo"`) {
-		t.Fatalf("expected install-state to mark repo source, got %s", string(rawState))
-	}
-	if !strings.Contains(string(rawState), `"currentTrack": "alpha"`) {
-		t.Fatalf("expected install-state to default repo installs to alpha, got %s", string(rawState))
-	}
-	if !strings.Contains(string(rawState), `"currentBinaryPath": "`+binaryPath+`"`) {
-		t.Fatalf("expected install-state to record current binary path, got %s", string(rawState))
-	}
-
-	rec = performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("detect status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	var detect vscodeDetectResponse
-	if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
-		t.Fatalf("decode detect: %v", err)
-	}
-	if !detect.Settings.MatchesBinary {
-		t.Fatalf("expected settings to point at current binary, got %#v", detect.Settings)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("apply status = %d, want 400 body=%s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestVSCodeDetectRecommendsAllOutsideSSH(t *testing.T) {
+func TestVSCodeDetectRecommendsManagedShimOutsideSSH(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
@@ -186,8 +156,8 @@ func TestVSCodeDetectRecommendsAllOutsideSSH(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
 		t.Fatalf("decode detect: %v", err)
 	}
-	if detect.RecommendedMode != "all" {
-		t.Fatalf("recommended mode = %q, want all", detect.RecommendedMode)
+	if detect.RecommendedMode != "managed_shim" {
+		t.Fatalf("recommended mode = %q, want managed_shim", detect.RecommendedMode)
 	}
 }
 
@@ -212,8 +182,8 @@ func TestVSCodeApplyAllAliasesBoth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath: %v", err)
 	}
-	if loaded.Config.Wrapper.IntegrationMode != "both" {
-		t.Fatalf("wrapper integration mode = %q, want both", loaded.Config.Wrapper.IntegrationMode)
+	if loaded.Config.Wrapper.IntegrationMode != "managed_shim" {
+		t.Fatalf("wrapper integration mode = %q, want managed_shim", loaded.Config.Wrapper.IntegrationMode)
 	}
 }
 
@@ -256,6 +226,11 @@ func TestVSCodeDetectSupportsJSONCSettings(t *testing.T) {
 
 func newVSCodeAdminTestApp(t *testing.T, home, binaryPath string, sshSession bool) (*App, string, string) {
 	t.Helper()
+	return newVSCodeAdminTestAppWithGateway(t, &recordingGateway{}, home, binaryPath, sshSession)
+}
+
+func newVSCodeAdminTestAppWithGateway(t *testing.T, gateway feishu.Gateway, home, binaryPath string, sshSession bool) (*App, string, string) {
+	t.Helper()
 
 	cfg := config.DefaultAppConfig()
 	configPath := filepath.Join(t.TempDir(), "config.json")
@@ -265,7 +240,7 @@ func newVSCodeAdminTestApp(t *testing.T, home, binaryPath string, sshSession boo
 	dataDir := filepath.Join(home, ".local", "share", "codex-remote")
 	installStatePath := filepath.Join(dataDir, "install-state.json")
 
-	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
 		BinaryIdentity: agentproto.BinaryIdentity{Version: "dev"},
 	})
 	app.SetHeadlessRuntime(HeadlessRuntimeConfig{

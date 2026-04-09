@@ -42,7 +42,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	serviceManagerFlag := flagSet.String("service-manager", string(ServiceManagerDetached), "daemon lifecycle manager: detached or systemd_user (linux only)")
 	relayURL := flagSet.String("relay-url", "", "relay websocket url; empty preserves existing or default config")
 	codexBinary := flagSet.String("codex-binary", "", "real codex binary path; empty keeps wrapper default and lets managed_shim auto-resolve codex.real")
-	integrationMode := flagSet.String("integration", "auto", "integration mode: auto, editor_settings, managed_shim, both, or comma list")
+	integrationMode := flagSet.String("integration", "auto", "integration mode: auto or managed_shim; legacy editor_settings/both inputs are accepted and normalized to managed_shim")
 	feishuAppID := flagSet.String("feishu-app-id", "", "feishu app id")
 	feishuSecret := flagSet.String("feishu-app-secret", "", "feishu app secret")
 	useSystemProxy := flagSet.Bool("use-system-proxy", false, "whether relayd should use system proxy for Feishu API")

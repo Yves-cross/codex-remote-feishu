@@ -96,15 +96,15 @@ export function makeManifest(overrides: Partial<FeishuManifest> = {}): FeishuMan
 export function makeVSCodeDetect(overrides: Partial<VSCodeDetectResponse> = {}): VSCodeDetectResponse {
   return {
     sshSession: false,
-    recommendedMode: "all",
-    currentMode: "all",
+    recommendedMode: "managed_shim",
+    currentMode: "managed_shim",
     currentBinary: "/usr/local/bin/codex",
     installStatePath: "/tmp/install-state.json",
     settings: {
       path: "/tmp/settings.json",
       exists: true,
       cliExecutable: "/usr/local/bin/codex",
-      matchesBinary: true,
+      matchesBinary: false,
     },
     latestShim: {
       entrypoint: "/tmp/codex-shim.js",

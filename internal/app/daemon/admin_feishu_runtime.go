@@ -212,8 +212,6 @@ func isRuntimeOnlyFeishuApp(admin adminRuntimeState, cfg config.AppConfig, gatew
 }
 
 func (a *App) snapshotAdminRuntime() adminRuntimeState {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	return a.admin
 }
 

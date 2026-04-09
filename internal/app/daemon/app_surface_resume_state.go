@@ -107,6 +107,7 @@ func (a *App) syncSurfaceResumeStateLocked(clearTargets map[string]bool) {
 			log.Printf("clear surface resume state failed: surface=%s err=%v", surfaceID, err)
 		}
 	}
+	a.syncVSCodeResumeNoticeStateLocked(desired)
 	a.syncSurfaceResumeRecoveryStateLocked()
 }
 
@@ -334,6 +335,76 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 		a.syncHeadlessRestoreStateLocked()
 	}
 	return events
+}
+
+func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []control.UIEvent {
+	if a.surfaceResumeState == nil {
+		return nil
+	}
+	entries := a.surfaceResumeState.Entries()
+	if len(entries) == 0 {
+		return nil
+	}
+	surfaceIDs := make([]string, 0, len(entries))
+	for surfaceID := range entries {
+		surfaceIDs = append(surfaceIDs, surfaceID)
+	}
+	sort.Strings(surfaceIDs)
+	events := make([]control.UIEvent, 0, len(surfaceIDs))
+	for _, surfaceID := range surfaceIDs {
+		entry := entries[surfaceID]
+		if state.NormalizeProductMode(state.ProductMode(entry.ProductMode)) != state.ProductModeVSCode {
+			continue
+		}
+		if !entryPredatesDaemonStart(a.daemonStartedAt, entry.UpdatedAt) {
+			continue
+		}
+		if a.vscodeResumeNotices[strings.TrimSpace(surfaceID)] {
+			continue
+		}
+		snapshot := a.service.SurfaceSnapshot(surfaceID)
+		if snapshot == nil || state.NormalizeProductMode(state.ProductMode(snapshot.ProductMode)) != state.ProductModeVSCode {
+			continue
+		}
+		if strings.TrimSpace(snapshot.Attachment.InstanceID) != "" || strings.TrimSpace(snapshot.PendingHeadless.InstanceID) != "" {
+			continue
+		}
+		a.vscodeResumeNotices[strings.TrimSpace(surfaceID)] = true
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surfaceID,
+			Notice:           orchestrator.NoticeForVSCodeOpenPrompt(strings.TrimSpace(entry.ResumeInstanceID) != ""),
+		})
+	}
+	return events
+}
+
+func (a *App) syncVSCodeResumeNoticeStateLocked(entries map[string]SurfaceResumeEntry) {
+	if a.vscodeResumeNotices == nil {
+		a.vscodeResumeNotices = map[string]bool{}
+	}
+	if entries == nil {
+		entries = map[string]SurfaceResumeEntry{}
+		if a.surfaceResumeState != nil {
+			entries = a.surfaceResumeState.Entries()
+		}
+	}
+	for surfaceID := range a.vscodeResumeNotices {
+		entry, ok := entries[surfaceID]
+		if !ok || state.NormalizeProductMode(state.ProductMode(entry.ProductMode)) != state.ProductModeVSCode {
+			delete(a.vscodeResumeNotices, surfaceID)
+		}
+	}
+}
+
+func entryPredatesDaemonStart(daemonStartedAt, updatedAt time.Time) bool {
+	if updatedAt.IsZero() {
+		return true
+	}
+	if daemonStartedAt.IsZero() {
+		return true
+	}
+	return !updatedAt.After(daemonStartedAt)
 }
 
 func (a *App) clearSurfaceResumeBackoffLocked(surfaceID string) {

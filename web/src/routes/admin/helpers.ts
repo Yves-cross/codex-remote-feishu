@@ -196,12 +196,12 @@ export function instanceSourceLabel(instance: AdminInstanceSummary): string {
 
 export function vscodeModeLabel(mode?: string): string {
   switch (mode) {
-    case "all":
-      return "同时配置两处";
     case "editor_settings":
-      return "只写入 settings";
+      return "旧版 settings 方式";
+    case "both":
+      return "旧版双接入";
     case "managed_shim":
-      return "只处理扩展入口";
+      return "扩展入口";
     default:
       return "未知";
   }
@@ -238,26 +238,23 @@ export function vscodeReadinessText(vscode: VSCodeDetectResponse | null): string
   if (!vscode) {
     return "尚未检测";
   }
-  if (vscodeIsReady(vscode)) {
-    if (vscode.settings.matchesBinary && vscode.latestShim.matchesBinary && !vscode.sshSession) {
-      return "这台机器已经通过 settings.json 和扩展入口接入 VS Code。";
-    }
-    if (vscode.settings.matchesBinary) {
-      return "这台机器已经通过 settings.json 接入 VS Code。";
-    }
-    return vscode.sshSession ? "这台远程机器已经通过扩展入口接入 VS Code。" : "这台机器已经通过扩展入口接入 VS Code。";
-  }
   if (vscode.sshSession && !vscodeHasDetectedBundle(vscode)) {
     return "还没检测到这台远程机器上的 VS Code 扩展安装。";
   }
   if (!vscode.sshSession && !vscodeHasDetectedBundle(vscode)) {
     return "这台机器还没检测到可处理的 VS Code 扩展安装。";
   }
+  if (vscode.settings.matchesBinary) {
+    return "检测到旧版 settings.json 接入，建议迁移到扩展入口。";
+  }
   if (vscode.needsShimReinstall) {
     return "检测到 VS Code 扩展已升级，建议重新安装扩展入口。";
+  }
+  if (vscodeIsReady(vscode)) {
+    return vscode.sshSession ? "这台远程机器已经通过扩展入口接入 VS Code。" : "这台机器已经通过扩展入口接入 VS Code。";
   }
   if (vscode.sshSession) {
     return "这台远程机器还没接入 VS Code，请先处理扩展入口。";
   }
-  return "这台机器还没接入 VS Code。先选择你的使用场景，再决定写 settings.json 还是只处理扩展入口。";
+  return "这台机器还没接入 VS Code。当前只支持扩展入口接入。";
 }

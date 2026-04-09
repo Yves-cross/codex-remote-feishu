@@ -7392,6 +7392,25 @@ func TestShowThreadsAttachedVSCodeFiltersToCurrentInstance(t *testing.T) {
 	}
 }
 
+func TestVSCodeMigrateActionDispatchesDaemonCommand(t *testing.T) {
+	now := time.Date(2026, 4, 7, 18, 17, 30, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionVSCodeMigrate,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].DaemonCommand == nil {
+		t.Fatalf("expected one daemon command event, got %#v", events)
+	}
+	if events[0].DaemonCommand.Kind != control.DaemonCommandVSCodeMigrate {
+		t.Fatalf("expected vscode migrate daemon command, got %#v", events[0].DaemonCommand)
+	}
+}
+
 func TestShowThreadsDetachedVSCodeRequiresAttach(t *testing.T) {
 	now := time.Date(2026, 4, 7, 18, 18, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

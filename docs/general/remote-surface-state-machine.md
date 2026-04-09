@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode：`/list` 在 normal 下先选 workspace，在 vscode 下 follow-first attach instance；`/mode` 会清理 headless 恢复语义，vscode 下禁止 headless auto-restore；daemon 重启后会恢复 latent surface 与 mode，其中 normal mode 会继续按 persisted target 尝试 visible/workspace 恢复，vscode mode 会按 exact instance 恢复并回到 follow-local 语义。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode：`/list` 在 normal 下先选 workspace，在 vscode 下 follow-first attach instance；`/mode` 会清理 headless 恢复语义，vscode 下禁止 headless auto-restore；daemon 重启后会恢复 latent surface 与 mode，其中 normal mode 会继续按 persisted target 尝试 visible/workspace 恢复，vscode mode 会先做本机 VS Code 兼容性检查，再决定是恢复 exact instance 还是发迁移/修复卡片。
 
 ## 1. 文档定位
 
@@ -34,6 +34,9 @@
 17. [internal/app/daemon/surface_resume_state.go](../../internal/app/daemon/surface_resume_state.go)
 18. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
 19. [internal/app/daemon/surface_resume_state_test.go](../../internal/app/daemon/surface_resume_state_test.go)
+20. [internal/app/daemon/admin_vscode.go](../../internal/app/daemon/admin_vscode.go)
+21. [internal/app/daemon/app_vscode_migration.go](../../internal/app/daemon/app_vscode_migration.go)
+22. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
 
 ## 2. 审计前提
 
@@ -80,10 +83,13 @@ surface 不是单一枚举，而是五层正交状态叠加。
       3. 若还带有 headless restore hint，则只有在 visible/workspace 路径没有恢复成功时，才继续交给 headless auto-restore。
       4. 若持久化目标里包含 `ResumeThreadID`，则在 daemon 启动后的首轮 `threads.refresh -> threads.snapshot` 完成前，会先保持 detached 并静默等待，避免过早降级或过早报失败。
    4. `vscode` mode surface 会按 persisted `ResumeInstanceID` 继续尝试恢复：
-      1. 只允许恢复到 exact VS Code instance，不做 workspace fallback。
-      2. 恢复成功后直接回到现有 vscode attach/follow-local 路径。
-      3. 若当前还没有新的 VS Code 活动可继续 follow，会保留 follow waiting，并明确提示用户去 VS Code 再说一句话或手动 `/use`。
-      4. stale headless restore hint 会被主动清理，恢复链路不会 attach/start headless。
+      1. 先做本机 VS Code 兼容性检查：
+         1. 若检测到旧版 `settings.json` override，或当前 managed shim 已失效，则保持 detached，并发迁移/修复卡片。
+         2. 若兼容性检查通过，才继续 exact-instance 恢复。
+      2. 只允许恢复到 exact VS Code instance，不做 workspace fallback。
+      3. 恢复成功后直接回到现有 vscode attach/follow-local 路径。
+      4. 若当前还没有新的 VS Code 活动可继续 follow，会保留 follow waiting，并明确提示用户去 VS Code 再说一句话或手动 `/use`。
+      5. stale headless restore hint 会被主动清理，恢复链路不会 attach/start headless。
 3. `/mode` 当前只在没有 live remote work 的 surface 上执行切换：
    1. 会先走 detach-like 清理。
    2. 清掉 attachment / workspace claim / thread claim、`PromptOverride`、`PendingRequest`、`RequestCapture`、`PreparedThread*`、staged image 与 queued draft。
@@ -127,9 +133,10 @@ surface 不是单一枚举，而是五层正交状态叠加。
       2. visible thread 不可见但 workspace 仍可接管时，会进入 `R1 AttachedUnbound`。
       3. 若还在等待 daemon 启动后的首轮 refresh，则会暂时保持 `R0 Detached` 并静默等待。
    5. 对 `vscode` mode 来说，这个 latent detached 也可能是短暂中间态：
-      1. exact instance 恢复成功后会进入 `R3 FollowWaiting` 或 `R4 FollowBound`。
-      2. 若目标 instance 还没重新连回，会保持 `R0 Detached` 并静默等待。
-      3. 不做 workspace fallback，也不会进入 headless 恢复。
+      1. 若本机 VS Code 集成仍是旧版 `settings.json` override，或 managed shim 因扩展升级而失效，会保持 `R0 Detached` 并改发迁移/修复卡片。
+      2. 兼容性检查通过后，exact instance 恢复成功会进入 `R3 FollowWaiting` 或 `R4 FollowBound`。
+      3. 若目标 instance 还没重新连回，会保持 `R0 Detached` 并静默等待。
+      4. 不做 workspace fallback，也不会进入 headless 恢复。
    6. 若该 surface 还带有持久化的 headless restore hint，daemon 只会在 `normal` mode 的 visible/workspace 恢复链路之后，再继续评估 normal-mode 的 headless auto-restore；`vscode` mode 会主动清理这类 stale hint。
 2. 这种 latent surface 在 route 维度上仍然是 `R0 Detached`，不是新的 route state。
 3. 当前 startup 阶段不会因为 resume target 元数据而在 materialize 当下直接进入 `R1~R5`；是否进入后台恢复、是否转入 `G1 PendingHeadlessStarting`，仍取决于 daemon 后续恢复调度，而不是 materialize 本身。
@@ -164,6 +171,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 | `G2 PendingRequest` | `PendingRequests` 非空 | 普通文本/图片会被确认卡片门禁挡住 |
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
 | `G4 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autocontinue` 继续正常，其余动作被挡 |
+| `G5 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到 legacy `settings.json` override 或 stale managed shim | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发迁移/修复卡片 |
 
 ### 3.5 草稿状态
 
@@ -829,6 +837,7 @@ transport degraded retained attachment
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `E6 Abandoning` | 只允许 `/status`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
+| `G5 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发迁移/修复卡片；surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理 |
 
 retained-offline overlay 额外规则：
 
@@ -850,6 +859,7 @@ retained-offline overlay 额外规则：
 | `kick_thread_confirm` | `ActionConfirmKickThread` | 强踢前再次校验实时状态 |
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
 | `prompt_select` | `ActionSelectPrompt` | 旧兼容入口，统一回 `selection_expired` |
+| `run_command(/vscode-migrate)` | `ActionVSCodeMigrate` | 仅由 daemon 发出的 VS Code 迁移/修复卡片使用，点击后走本机 managed-shim 迁移链路 |
 
 菜单与文本命令里新增：
 
@@ -900,6 +910,7 @@ retained-offline overlay 额外规则：
 28. **daemon 重启后 latent surface 会丢 mode，或根本无法在没有 headless hint 的情况下重新 materialize**：已修复。当前 startup 会先从 `surface resume state` 恢复 surface 路由与 `ProductMode`。
 29. **normal mode daemon 重启后会静默掉回 detached、过早报失败，或与 headless restore 优先级互相打架**：已修复。当前恢复顺序已收敛为 exact visible thread > workspace fallback > headless restore；首轮 refresh 前会静默等待，成功后会清理 stale headless hint，失败路径也只保留单条 notice + backoff。
 30. **vscode mode daemon 重启后只保留 mode、不恢复实例，或者恢复链路误走 headless**：已修复。当前会按 exact `ResumeInstanceID` 恢复到原 VS Code 实例，回到 follow-local 语义；若还没有新的 VS Code 活动，会明确提示去 VS Code 再说一句话或手动 `/use`，并且会主动清理 stale headless hint。
+31. **vscode mode 进入或 daemon 重启恢复时，会在 legacy `settings.json` / stale managed shim 状态下继续尝试恢复，导致用户看起来进入了 vscode mode，但底层仍沿用旧接入方式或失效入口**：已修复。当前 detached-vscode 恢复会先做本机 VS Code 兼容性检查；命中旧 `settings.json` override 或 stale managed shim 时，会保持 detached，发迁移/修复卡片，并在点击后统一迁移到 managed shim，同时清掉旧 `chatgpt.cliExecutable`。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 

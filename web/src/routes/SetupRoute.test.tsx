@@ -349,6 +349,9 @@ describe("SetupRoute", () => {
       "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
       "/api/setup/vscode/detect": {
         body: makeVSCodeDetect({
+          latestBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          recordedBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          candidateBundleEntrypoints: ["/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js"],
           settings: {
             path: "/tmp/settings.json",
             exists: true,
@@ -380,7 +383,7 @@ describe("SetupRoute", () => {
     expect(calls.some((call) => call.path === "/api/setup/vscode/apply")).toBe(false);
   });
 
-  it("applies editor settings for local-only vscode usage", async () => {
+  it("applies managed shim for current-machine vscode usage", async () => {
     window.history.replaceState({}, "", "/setup");
     const { calls } = installMockFetch({
       "/api/setup/bootstrap-state": { body: makeBootstrap() },
@@ -403,6 +406,9 @@ describe("SetupRoute", () => {
       "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
       "/api/setup/vscode/detect": {
         body: makeVSCodeDetect({
+          latestBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          recordedBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          candidateBundleEntrypoints: ["/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js"],
           settings: {
             path: "/tmp/settings.json",
             exists: true,
@@ -420,15 +426,18 @@ describe("SetupRoute", () => {
         }),
       },
       "/api/setup/vscode/apply": (call) => {
-        expect(JSON.parse(String(call.init?.body))).toEqual({ mode: "editor_settings" });
+        expect(JSON.parse(String(call.init?.body))).toEqual({ mode: "managed_shim" });
         return {
           body: makeVSCodeDetect({
-            currentMode: "editor_settings",
+            currentMode: "managed_shim",
+            latestBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+            recordedBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+            candidateBundleEntrypoints: ["/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js"],
             settings: {
               path: "/tmp/settings.json",
               exists: true,
               cliExecutable: "/usr/local/bin/codex",
-              matchesBinary: true,
+              matchesBinary: false,
             },
             latestShim: {
               entrypoint: "/tmp/codex-shim.js",
@@ -448,11 +457,11 @@ describe("SetupRoute", () => {
     expect(await screen.findByText("你以后主要怎么使用 VS Code 里的 Codex？")).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("radio", { name: /只在这台机器本地使用/ }));
+    await user.click(screen.getByRole("radio", { name: /要在当前这台机器上使用/ }));
     await user.click(screen.getByRole("button", { name: "在这台机器上启用 VS Code" }));
 
-    expect(await screen.findByText("已写入这台机器的 VS Code settings.json，现在可以在本机 VS Code 里使用 Codex。")).toBeInTheDocument();
-    expect(screen.getByText("已在这台机器上接入（settings.json）")).toBeInTheDocument();
+    expect(await screen.findByText("已接管这台机器上的 VS Code 扩展入口。当前策略不会写本机 settings.json；如果扩展升级，回到管理页重新安装扩展入口即可。")).toBeInTheDocument();
+    expect(screen.getByText("已在这台机器上接入（扩展入口）")).toBeInTheDocument();
     expect(calls.some((call) => call.path === "/api/setup/vscode/apply")).toBe(true);
   });
 

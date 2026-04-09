@@ -13,12 +13,7 @@ const (
 )
 
 func DefaultIntegrations(goos string) []WrapperIntegrationMode {
-	switch goos {
-	case "linux":
-		return []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim}
-	default:
-		return []WrapperIntegrationMode{IntegrationEditorSettings}
-	}
+	return []WrapperIntegrationMode{IntegrationManagedShim}
 }
 
 func ParseIntegrations(raw, goos string) ([]WrapperIntegrationMode, error) {
@@ -26,8 +21,8 @@ func ParseIntegrations(raw, goos string) ([]WrapperIntegrationMode, error) {
 	switch trimmed {
 	case "", "auto":
 		return DefaultIntegrations(goos), nil
-	case "both":
-		return []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim}, nil
+	case "both", string(IntegrationEditorSettings):
+		return []WrapperIntegrationMode{IntegrationManagedShim}, nil
 	}
 
 	parts := strings.Split(trimmed, ",")
@@ -35,7 +30,7 @@ func ParseIntegrations(raw, goos string) ([]WrapperIntegrationMode, error) {
 	for _, part := range parts {
 		switch WrapperIntegrationMode(strings.TrimSpace(part)) {
 		case IntegrationEditorSettings:
-			values = append(values, IntegrationEditorSettings)
+			values = append(values, IntegrationManagedShim)
 		case IntegrationManagedShim:
 			values = append(values, IntegrationManagedShim)
 		default:
@@ -68,7 +63,7 @@ func hasIntegration(values []WrapperIntegrationMode, target WrapperIntegrationMo
 }
 
 func integrationsConfigValue(values []WrapperIntegrationMode) string {
-	return integrationsConfigValueOr(values, string(IntegrationEditorSettings))
+	return integrationsConfigValueOr(values, string(IntegrationManagedShim))
 }
 
 func integrationsConfigValueOr(values []WrapperIntegrationMode, emptyValue string) string {

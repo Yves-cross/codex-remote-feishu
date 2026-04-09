@@ -58,6 +58,16 @@ func TestParseFeishuTextActionRecognizesModeCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesVSCodeMigrateCommand(t *testing.T) {
+	action, ok := ParseFeishuTextAction("/vscode-migrate")
+	if !ok {
+		t.Fatal("expected /vscode-migrate to be parsed")
+	}
+	if action.Kind != ActionVSCodeMigrate {
+		t.Fatalf("action kind = %q, want %q", action.Kind, ActionVSCodeMigrate)
+	}
+}
+
 func TestFeishuCommandCatalogsHideKillInstanceFromVisibleEntries(t *testing.T) {
 	cases := []struct {
 		name    string

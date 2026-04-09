@@ -41,19 +41,15 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 	fmt.Fprintln(out, integrationHelpText(defaults.GOOS))
 
 	selection, err := promptString(reader, out,
-		"请选择集成方式 [1=仅 settings, 2=仅 managed_shim, 3=两者都做]",
+		"请选择集成方式 [1=managed_shim；兼容输入 2/3 也会收敛为 managed_shim]",
 		integrationPromptDefault(opts.Integrations, defaults.GOOS),
 	)
 	if err != nil {
 		return Options{}, err
 	}
 	switch strings.TrimSpace(selection) {
-	case "", "1":
-		opts.Integrations = []WrapperIntegrationMode{IntegrationEditorSettings}
-	case "2":
+	case "", "1", "2", "3":
 		opts.Integrations = []WrapperIntegrationMode{IntegrationManagedShim}
-	case "3":
-		opts.Integrations = []WrapperIntegrationMode{IntegrationEditorSettings, IntegrationManagedShim}
 	default:
 		return Options{}, fmt.Errorf("unsupported integration selection: %s", selection)
 	}
@@ -104,23 +100,12 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 	}
 	opts.RelayServerURL = relayURL
 
-	if hasIntegration(opts.Integrations, IntegrationEditorSettings) {
-		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, "editor_settings 说明：")
-		fmt.Fprintln(out, "- 适合本机桌面 VS Code。")
-		fmt.Fprintln(out, "- 安装器会修改 settings.json，让扩展直接调用 codex-remote。")
-		settingsPath, err := promptString(reader, out, "VS Code settings.json 路径", opts.VSCodeSettingsPath)
-		if err != nil {
-			return Options{}, err
-		}
-		opts.VSCodeSettingsPath = settingsPath
-	}
-
 	if hasIntegration(opts.Integrations, IntegrationManagedShim) {
 		fmt.Fprintln(out, "")
 		fmt.Fprintln(out, "managed_shim 说明：")
-		fmt.Fprintln(out, "- 更适合 VS Code Remote。")
+		fmt.Fprintln(out, "- 当前唯一推荐的 VS Code 接入方式。")
 		fmt.Fprintln(out, "- 安装器会直接替换扩展 bundle 里的 codex 入口，并保留原始 codex.real。")
+		fmt.Fprintln(out, "- 不会修改客户端侧 settings.json，因此不会把 host 机器上的 override 带进 Remote SSH 会话。")
 		fmt.Fprintln(out, "- 请先关闭 VS Code / VS Code Remote，避免 Windows 或 macOS 上文件被占用。")
 		if len(defaults.CandidateBundleEntrypoints) > 0 {
 			fmt.Fprintln(out, "检测到这些候选 bundle 入口：")
@@ -139,8 +124,8 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "真实 Codex 配置说明：")
-	fmt.Fprintln(out, "- settings 模式下，codex-remote 的 wrapper role 会调用这里指定的真实 codex。")
-	fmt.Fprintln(out, "- managed_shim 模式下，如未显式填写，会自动使用 bundle 里保留下来的 codex.real。")
+	fmt.Fprintln(out, "- 当前默认的 managed_shim 模式下，如未显式填写，会自动使用 bundle 里保留下来的 codex.real。")
+	fmt.Fprintln(out, "- 只有兼容旧配置或你明确要覆盖默认行为时，才需要手动填写真实 codex 路径。")
 	defaultCodexRealBinary := opts.CodexRealBinary
 	if strings.TrimSpace(defaultCodexRealBinary) == "" && !hasIntegration(opts.Integrations, IntegrationManagedShim) {
 		defaultCodexRealBinary = "codex"
@@ -196,12 +181,5 @@ func integrationPromptDefault(values []WrapperIntegrationMode, goos string) stri
 	if len(values) == 0 {
 		values = DefaultIntegrations(goos)
 	}
-	switch integrationsConfigValue(values) {
-	case "both":
-		return "3"
-	case string(IntegrationManagedShim):
-		return "2"
-	default:
-		return "1"
-	}
+	return "1"
 }

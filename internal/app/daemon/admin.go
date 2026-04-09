@@ -519,9 +519,7 @@ func (a *App) bootstrapState(auth requestAuthState) (bootstrapStatePayload, erro
 }
 
 func (a *App) loadAdminConfig() (config.LoadedAppConfig, error) {
-	a.mu.Lock()
 	loadConfig := a.admin.loadConfig
-	a.mu.Unlock()
 	if loadConfig == nil {
 		return config.LoadAppConfig()
 	}

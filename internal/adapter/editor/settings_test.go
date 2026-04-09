@@ -76,6 +76,39 @@ func TestPatchVSCodeSettingsKeepsFileOnMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestClearVSCodeSettingsExecutable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	raw := []byte("{\n  \"chatgpt.cliExecutable\": \"/usr/local/bin/codex-remote\",\n  \"editor.fontSize\": 14\n}\n")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("seed settings: %v", err)
+	}
+
+	if err := ClearVSCodeSettingsExecutable(path); err != nil {
+		t.Fatalf("clear settings: %v", err)
+	}
+
+	updated, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read cleared settings: %v", err)
+	}
+	text := string(updated)
+	if strings.Contains(text, "chatgpt.cliExecutable") {
+		t.Fatalf("expected cli executable override to be removed, got %s", text)
+	}
+	if !strings.Contains(text, "\"editor.fontSize\": 14") {
+		t.Fatalf("expected unrelated settings to remain, got %s", text)
+	}
+}
+
+func TestClearVSCodeSettingsExecutableMissingFileIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "missing.json")
+	if err := ClearVSCodeSettingsExecutable(path); err != nil {
+		t.Fatalf("clear settings: %v", err)
+	}
+}
+
 func TestDetectVSCodeSettingsSupportsJSONC(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")

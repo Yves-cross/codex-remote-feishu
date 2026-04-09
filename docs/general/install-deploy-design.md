@@ -121,9 +121,8 @@ Windows PowerShell:
 `codex-remote install` 仍然保留旧的完整安装能力，方便仓库联调和特殊场景：
 
 - `-interactive`
-- `-integration editor_settings`
 - `-integration managed_shim`
-- `-integration both`
+- 兼容旧脚本时，`-integration editor_settings|both|all` 仍可被接受，但当前都会归一化到 `managed_shim`
 
 这些能力主要用于源码仓库或定向调试，不再作为发布包默认路径。
 
@@ -212,16 +211,13 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 
 ## 5. VS Code 接管模型
 
-### 5.1 `editor_settings`
+### 5.1 当前产品策略
 
-修改 VS Code `settings.json`：
+当前产品已经收敛到 `managed_shim` 单一路径：
 
-- `chatgpt.cliExecutable`
-
-适用：
-
-- 本机桌面 VS Code
-- 不方便直接改 bundle 的场景
+1. WebSetup / Admin UI / daemon 内部迁移卡片都只会执行 `managed_shim`。
+2. 执行 `managed_shim` apply/reinstall 时，会同时清理旧的 `chatgpt.cliExecutable`，避免 host 侧 `settings.json` override 继续污染 Remote SSH。
+3. 若检测到存量 `editor_settings` 状态，或扩展升级导致 managed shim 失效，系统会提示用户迁移/重新接入，而不是继续把 `editor_settings` 当成可选策略。
 
 ### 5.2 `managed_shim`
 
@@ -233,15 +229,32 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 
 适用：
 
+- 当前机器本地 VS Code
 - VS Code Remote
 - 希望不依赖 `settings.json` 的场景
 
-### 5.3 当前产品约束
+### 5.3 legacy `settings.json` 迁移
+
+旧版本可能还会留下：
+
+- VS Code `settings.json` 中的 `chatgpt.cliExecutable`
+- `wrapper.integrationMode=editor_settings`
+
+当前处理方式：
+
+1. detect 仍会识别这些 legacy 状态。
+2. 一旦用户执行迁移或重新接入，系统会：
+   - patch 最新检测到的扩展入口
+   - 更新 install-state / config
+   - 清掉旧的 `chatgpt.cliExecutable`
+3. 迁移完成后，不再保留 `editor_settings` 作为产品可选路径。
+
+### 5.4 当前产品约束
 
 对 release 用户：
 
 - 安装器 bootstrap 完成后，`wrapper.integrationMode` 默认会记录为 `none`
-- 真正的 `editor_settings` / `managed_shim` apply 在 WebSetup / Admin UI 中进行
+- 真正的 VS Code 接入统一在 WebSetup / Admin UI / daemon 迁移卡片中执行 `managed_shim`
 
 对仓库联调：
 
@@ -249,7 +262,7 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 - `./bin/codex-remote install -bootstrap-only -start-daemon`
 - `codex-remote install -interactive`
 
-仍然可以直接在 CLI 里触发接管。
+仍然可以直接在 CLI 里触发接管，但 legacy `editor_settings` 形态只保留兼容解析，不再作为推荐输出。
 
 ## 6. release 打包与发布
 

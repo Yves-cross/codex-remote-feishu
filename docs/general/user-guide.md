@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步 VS Code 场景化接入路径，并保留 release track、命令帮助、旧卡片、后台恢复与文档预览 fixed-root inventory 的当前用户语义。
+> Summary: 同步 VS Code managed-shim-only 接入路径，并保留 release track、命令帮助、旧卡片、后台恢复、迁移卡片与文档预览 fixed-root inventory 的当前用户语义。
 
 ## 1. 这是什么
 
@@ -151,18 +151,23 @@ Windows PowerShell：
   - 这条路径只接管扩展入口，不去写 host 机器的 `settings.json`
 - 如果当前不是 SSH 机器：
   - 页面会先问你以后主要怎么使用 VS Code 里的 Codex
-  - `只在这台机器本地使用`
-    - 会写当前机器的 `settings.json`
+  - `要在当前这台机器上使用`
+    - 当前机器统一只接管扩展入口
+    - 不再写当前机器的 `settings.json`
   - `主要去别的 SSH 机器上使用`
     - 当前机器先跳过，不做接入
     - 等你在目标 SSH 机器上安装 `codex-remote` 后，再去那台机器完成这一步
-  - `这台机器本地要用，也会 SSH 到别的机器`
-    - 当前机器只接管扩展入口
-    - 不写当前机器的 `settings.json`，避免 host 设置影响后续 Remote SSH
+    - 这样可以避免 host 设置影响后续 Remote SSH
 
 如果你后续升级了 VS Code 扩展，页面可能会提示重新安装扩展入口。按提示处理即可。
 
-管理页里的 VS Code 区域也沿用同一套场景心智；只有在 `高级处理` 里，才会再看到更底层的接入方式。
+如果你是从旧版本升级上来的，当前机器还残留 `chatgpt.cliExecutable`，或者扩展升级后 managed shim 失效，那么：
+
+- setup / 管理页会把它识别成“需要迁移 / 重新接入”
+- 飞书里的 `vscode` 模式也会在进入或重连恢复时直接发迁移卡片
+- 按卡片提示先关闭 VS Code，再点击按钮迁移；成功后重新打开 VS Code 即可
+
+管理页里的 VS Code 区域也沿用同一套场景心智；高级处理只保留重新安装扩展入口和技术详情，不再提供 `settings.json` 模式。
 
 首次在飞书里验证时，建议先发一次 `/help` 或 `menu`，先确认当前可用命令和快捷入口。
 

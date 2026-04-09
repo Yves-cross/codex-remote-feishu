@@ -525,17 +525,15 @@ export function AdminVSCodePanel({
 }: AdminVSCodePanelProps) {
   const ready = vscodeIsReady(vscode);
   const bundleDetected = vscodeHasDetectedBundle(vscode);
-  const currentModeLabel = vscode?.settings.matchesBinary && vscode?.latestShim.matchesBinary
-    ? "settings.json + 扩展入口"
+  const currentModeLabel = vscode?.latestShim.matchesBinary
+    ? (vscode?.settings.matchesBinary ? "扩展入口（检测到旧 settings 残留）" : "扩展入口")
     : vscode?.settings.matchesBinary
-      ? "settings.json"
-      : vscode?.latestShim.matchesBinary
-        ? "扩展入口"
-        : "尚未接入";
+      ? "旧版 settings 接入（待迁移）"
+      : "尚未接入";
   const showPrimaryAction = Boolean(vscode?.sshSession || scenario);
 
   return (
-    <Panel id="vscode" title="VS Code" description="先确认你会怎么使用 VS Code 里的 Codex，再决定当前这台机器应该怎么接入。">
+    <Panel id="vscode" title="VS Code" description="当前策略只保留扩展入口接入，不再修改本机 settings.json。">
       {vscodeError ? <div className="notice-banner warn">当前还没拿到 VS Code 检测结果：{vscodeError}</div> : null}
 
       <StatGrid>
@@ -562,14 +560,14 @@ export function AdminVSCodePanel({
           <>
             <div className="manifest-block">
               <h4>你以后主要怎么使用 VS Code 里的 Codex？</h4>
-              <p>先选你的使用场景。主操作区会根据这个选择，只给当前这台机器提供一条更安全的接入路径。</p>
+              <p>先确认当前这台机器是否需要接入。只要这台机器要用 VS Code，就统一只处理扩展入口，不再写 settings.json。</p>
             </div>
             <div className="choice-card-list" role="radiogroup" aria-label="Admin VS Code 使用场景">
-              <label className={`choice-card${scenario === "local_only" ? " selected" : ""}`}>
-                <input type="radio" name="admin-vscode-usage-scenario" checked={scenario === "local_only"} onChange={() => onScenarioChange("local_only")} />
+              <label className={`choice-card${scenario === "current_machine" ? " selected" : ""}`}>
+                <input type="radio" name="admin-vscode-usage-scenario" checked={scenario === "current_machine"} onChange={() => onScenarioChange("current_machine")} />
                 <div>
-                  <strong>只在这台机器本地使用</strong>
-                  <p>适合桌面 VS Code。会写入这台机器的 settings.json。</p>
+                  <strong>要在当前这台机器上使用</strong>
+                  <p>无论是本地 VS Code，还是这台机器被 Remote SSH 连接，都统一只处理扩展入口。</p>
                 </div>
               </label>
               <label className={`choice-card${scenario === "remote_only" ? " selected" : ""}`}>
@@ -579,18 +577,12 @@ export function AdminVSCodePanel({
                   <p>当前机器先不做 VS Code 接入，避免 host 设置影响远端。</p>
                 </div>
               </label>
-              <label className={`choice-card${scenario === "local_and_remote" ? " selected" : ""}`}>
-                <input type="radio" name="admin-vscode-usage-scenario" checked={scenario === "local_and_remote"} onChange={() => onScenarioChange("local_and_remote")} />
-                <div>
-                  <strong>这台机器本地要用，也会 SSH 到别的机器</strong>
-                  <p>当前机器只处理扩展入口，不写 settings.json。</p>
-                </div>
-              </label>
             </div>
-            {scenario === "local_only" ? (
+            {scenario === "current_machine" ? (
               <div className="manifest-block">
-                <h4>推荐：写入这台机器的 settings.json</h4>
-                <p>这是最适合本机桌面 VS Code 的接入方式。我们会把这台机器上的 Codex 执行入口指向 codex-remote。</p>
+                <h4>当前策略：只处理扩展入口</h4>
+                <p>这条路径不会写本机 settings.json，因此不会再把 host 机器上的客户端 override 带进远端会话。</p>
+                <p>如果扩展升级导致入口失效，回来重新安装扩展入口即可。</p>
               </div>
             ) : null}
             {scenario === "remote_only" ? (
@@ -599,15 +591,7 @@ export function AdminVSCodePanel({
                 <p>如果你主要是在别的 SSH 机器上使用 VS Code Codex，真正需要安装和接入的是目标远程机器，而不是当前这台本机。</p>
               </div>
             ) : null}
-            {scenario === "local_and_remote" ? (
-              <>
-                <div className="manifest-block">
-                  <h4>推荐：只处理这台机器的扩展入口</h4>
-                  <p>这个场景下，不建议写这台机器的 settings.json。我们只接管当前机器的扩展入口，避免 host 设置影响以后连接到远程机器。</p>
-                </div>
-                {!bundleDetected ? <div className="notice-banner warn">还没检测到这台机器上的 VS Code 扩展安装。请先在这台机器上打开一次 VS Code，并确保 Codex 扩展已经安装。</div> : null}
-              </>
-            ) : null}
+            {scenario === "current_machine" && !bundleDetected ? <div className="notice-banner warn">还没检测到这台机器上的 VS Code 扩展安装。请先在这台机器上打开一次 VS Code，并确保 Codex 扩展已经安装。</div> : null}
           </>
         ) : null}
       </div>
@@ -622,7 +606,7 @@ export function AdminVSCodePanel({
 
       <DefinitionList
         items={[
-          { label: "settings.json", value: vscode?.settings.matchesBinary ? "已指向当前 relay" : "还没有写入或还未生效" },
+          { label: "settings.json", value: vscode?.settings.matchesBinary ? "检测到旧版客户端 override，建议迁移" : "当前策略不依赖 settings.json" },
           { label: "扩展入口", value: vscode?.latestShim.matchesBinary ? "已指向当前 relay" : vscode?.latestBundleEntrypoint ? "还没有同步到当前 relay" : "未检测到可处理的扩展安装" },
           { label: "当前会话", value: vscode?.sshSession ? "远程 VS Code" : "本机 VS Code" },
           { label: "建议", value: readinessText },
@@ -632,9 +616,6 @@ export function AdminVSCodePanel({
       <details className="wizard-tech-detail">
         <summary>高级处理</summary>
         <div className="button-row">
-          <button className="secondary-button" type="button" onClick={() => onApplyVSCode("editor_settings")} disabled={!vscode || busyAction !== ""}>
-            只写入 settings.json
-          </button>
           <button className="secondary-button" type="button" onClick={() => onApplyVSCode("managed_shim")} disabled={!vscode || busyAction !== ""}>
             只处理扩展入口
           </button>

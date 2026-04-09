@@ -1,9 +1,9 @@
 import { formatError, requestJSON } from "../../lib/api";
 import type { AutostartDetectResponse, FeishuAppMutation, FeishuAppSummary, VSCodeDetectResponse } from "../../lib/types";
 
-export type VSCodeUsageScenario = "local_only" | "remote_only" | "local_and_remote";
+export type VSCodeUsageScenario = "current_machine" | "remote_only";
 
-export type VSCodeSetupOutcome = "settings" | "managed_shim" | "remote_only_skip" | "deferred";
+export type VSCodeSetupOutcome = "managed_shim" | "remote_only_skip" | "deferred";
 
 export function blankToUndefined(value: string): string | undefined {
   const trimmed = value.trim();
@@ -49,10 +49,7 @@ export function vscodeIsReady(vscode: VSCodeDetectResponse | null): boolean {
   if (!vscode) {
     return false;
   }
-  if (vscode.sshSession) {
-    return vscode.latestShim.matchesBinary;
-  }
-  return vscode.settings.matchesBinary || vscode.latestShim.matchesBinary;
+  return vscode.latestShim.matchesBinary && !vscode.needsShimReinstall && !vscode.settings.matchesBinary;
 }
 
 export function vscodePrimaryActionLabel(vscode: VSCodeDetectResponse | null, scenario: VSCodeUsageScenario | null): string {
@@ -72,7 +69,7 @@ export function vscodeRequiresBundle(vscode: VSCodeDetectResponse | null, scenar
   if (vscode.sshSession) {
     return true;
   }
-  return scenario === "local_and_remote";
+  return scenario === "current_machine";
 }
 
 export function vscodeApplyModeForScenario(vscode: VSCodeDetectResponse | null, scenario: VSCodeUsageScenario | null): string | null {
@@ -83,9 +80,7 @@ export function vscodeApplyModeForScenario(vscode: VSCodeDetectResponse | null, 
     return "managed_shim";
   }
   switch (scenario) {
-    case "local_only":
-      return "editor_settings";
-    case "local_and_remote":
+    case "current_machine":
       return "managed_shim";
     default:
       return null;
@@ -96,18 +91,13 @@ export function currentVSCodeSummary(vscode: VSCodeDetectResponse | null): strin
   if (!vscode) {
     return "暂未处理";
   }
-  const settingsReady = vscode.settings.matchesBinary;
-  const shimReady = vscode.latestShim.matchesBinary;
-  if (settingsReady && shimReady) {
-    if (vscode.sshSession) {
-      return "已在这台远程机器上接入（扩展入口）";
-    }
-    return "已在这台机器上接入（settings.json + 扩展入口）";
+  if (vscode.settings.matchesBinary) {
+    return "检测到旧版 settings.json 接入，需迁移到扩展入口";
   }
-  if (settingsReady) {
-    return "已在这台机器上接入（settings.json）";
+  if (vscode.needsShimReinstall) {
+    return "检测到扩展升级，需重新安装扩展入口";
   }
-  if (shimReady) {
+  if (vscode.latestShim.matchesBinary) {
     if (vscode.sshSession) {
       return "已在这台远程机器上接入（扩展入口）";
     }
@@ -118,8 +108,6 @@ export function currentVSCodeSummary(vscode: VSCodeDetectResponse | null): strin
 
 export function vscodeOutcomeSummary(vscode: VSCodeDetectResponse | null, outcome: VSCodeSetupOutcome | null): string {
   switch (outcome) {
-    case "settings":
-      return "已在这台机器上接入（settings.json）";
     case "managed_shim":
       if (vscode?.sshSession) {
         return "已在这台远程机器上接入（扩展入口）";

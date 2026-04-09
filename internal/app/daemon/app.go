@@ -95,28 +95,30 @@ type App struct {
 	ingressRunMu  sync.Mutex
 	relayConnMu   sync.Mutex
 
-	pendingGatewayNotices map[string][]control.UIEvent
-	headlessRuntime       HeadlessRuntimeConfig
-	surfaceResumeState    *surfaceResumeStore
-	surfaceResumeRecovery map[string]*surfaceResumeRecoveryState
-	headlessRestoreHints  *headlessRestoreHintStore
-	headlessRestoreState  map[string]*headlessRestoreRecoveryState
-	startupRefreshPending map[string]bool
-	startupRefreshSeen    bool
-	managedHeadless       map[string]*managedHeadlessProcess
-	startHeadless         func(relayruntime.HeadlessLaunchOptions) (int, error)
-	stopProcess           func(int, time.Duration) error
-	sendAgentCommand      func(string, agentproto.Command) error
-	ingress               *ingressPump
-	ingressCancel         context.CancelFunc
-	ingressStarted        bool
-	ingressWG             sync.WaitGroup
-	gatewayRunCancel      context.CancelFunc
-	gatewayRunDone        chan struct{}
-	relayConnections      map[string]*relayConnectionState
-	feishuRuntimeApply    map[string]feishuRuntimeApplyPendingState
-	feishuOnboarding      map[string]*feishuOnboardingSession
-	feishuSetup           feishuSetupClient
+	pendingGatewayNotices  map[string][]control.UIEvent
+	headlessRuntime        HeadlessRuntimeConfig
+	surfaceResumeState     *surfaceResumeStore
+	surfaceResumeRecovery  map[string]*surfaceResumeRecoveryState
+	vscodeResumeNotices    map[string]bool
+	vscodeMigrationPrompts map[string]string
+	headlessRestoreHints   *headlessRestoreHintStore
+	headlessRestoreState   map[string]*headlessRestoreRecoveryState
+	startupRefreshPending  map[string]bool
+	startupRefreshSeen     bool
+	managedHeadless        map[string]*managedHeadlessProcess
+	startHeadless          func(relayruntime.HeadlessLaunchOptions) (int, error)
+	stopProcess            func(int, time.Duration) error
+	sendAgentCommand       func(string, agentproto.Command) error
+	ingress                *ingressPump
+	ingressCancel          context.CancelFunc
+	ingressStarted         bool
+	ingressWG              sync.WaitGroup
+	gatewayRunCancel       context.CancelFunc
+	gatewayRunDone         chan struct{}
+	relayConnections       map[string]*relayConnectionState
+	feishuRuntimeApply     map[string]feishuRuntimeApplyPendingState
+	feishuOnboarding       map[string]*feishuOnboardingSession
+	feishuSetup            feishuSetupClient
 
 	adminAuth *adminauth.Manager
 	admin     adminRuntimeState
@@ -166,6 +168,8 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		daemonLifecycleID:      daemonLifecycleID(serverIdentity, daemonStartedAt),
 		pendingGatewayNotices:  map[string][]control.UIEvent{},
 		surfaceResumeRecovery:  map[string]*surfaceResumeRecoveryState{},
+		vscodeResumeNotices:    map[string]bool{},
+		vscodeMigrationPrompts: map[string]string{},
 		headlessRestoreState:   map[string]*headlessRestoreRecoveryState{},
 		startupRefreshPending:  map[string]bool{},
 		managedHeadless:        map[string]*managedHeadlessProcess{},

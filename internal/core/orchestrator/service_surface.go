@@ -1163,6 +1163,21 @@ func NoticeForVSCodeSurfaceResumeFailure(code string) *control.Notice {
 	return vscodeSurfaceResumeFailureNotice(code)
 }
 
+func NoticeForVSCodeOpenPrompt(hadPreviousInstance bool) *control.Notice {
+	if hadPreviousInstance {
+		return &control.Notice{
+			Code:  "surface_resume_open_vscode",
+			Title: "请先打开 VS Code",
+			Text:  "还没有找到之前的 VS Code 实例。请先打开 VS Code 中的 Codex，然后再回来使用。",
+		}
+	}
+	return &control.Notice{
+		Code:  "vscode_open_required",
+		Title: "请先打开 VS Code",
+		Text:  "当前还没有可用的 VS Code 实例。请先打开 VS Code 中的 Codex，然后再回来使用。",
+	}
+}
+
 func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string) []control.UIEvent {
 	threadID = strings.TrimSpace(threadID)
 	target := s.resolveThreadTarget(surface, threadID)
