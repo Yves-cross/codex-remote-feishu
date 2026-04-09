@@ -2,7 +2,7 @@
 
 > Type: `draft`
 > Updated: `2026-04-09`
-> Summary: 首次定稿 normal workspace mode 与 vscode mode 的双模式方案，明确 workspace identity、claim、命令语义与配置归属。
+> Summary: 补充 current->target route 映射，拍板 3 个剩余决策，并把 follow-up issue 切分边界写实。
 
 ## 1. 文档目标
 
@@ -297,6 +297,28 @@ vscode mode 不建立自己的 workspace defaults：
 2. 只要观测到新的 local focused thread，`V2` 仍然跟随切换。
 3. 当前 `follow_local` 的长期叙事以后只属于 vscode mode，不再是 normal mode 的主路径。
 
+### 9.1 current -> target route 映射矩阵
+
+| 当前 route state | 新模式 | 目标 route state | 迁移说明 |
+| --- | --- | --- | --- |
+| `R0 Detached` | 未定 | `N0 Detached` | detached 本身不再隐含 instance-first 入口；用户通过 `/use` / `/useall` 走 normal path，通过 `/list` 走 vscode path |
+| `R1 AttachedUnbound` | normal | `N1 WorkspaceAttachedNoThread` | 语义从“已 attach instance 但未绑定 thread”收敛成“已 attach workspace 但未选 thread” |
+| `R2 AttachedPinned` | normal | `N2 WorkspacePinnedThread` | pinned 仍然保留，但边界收缩到当前 workspace 内 |
+| `R3 FollowWaiting` | vscode | `V1 VSCodeAttachedWaiting` | follow-waiting 以后只属于 vscode mode，不再作为 normal mode 常驻路径 |
+| `R4 FollowBound` | vscode | `V2 VSCodeAttachedFollowing` | follow-bound 以后直接升级成 vscode mode 的主状态 |
+| `R5 NewThreadReady` | normal | `N3 WorkspaceNewThreadReady` | `/new` 以后只属于 normal mode；依赖当前 workspace 内 thread 的 cwd |
+
+### 9.2 命令路由重定向
+
+current -> target 还有两条关键重定向：
+
+1. 当前所有 `/list` 入口
+   - 从“任意 attached state 可用”
+   - 收敛为“detached / vscode mode 可用，normal mode 禁用”
+2. 当前所有 `/follow` 入口
+   - 从“一般 attached route 的通用动作”
+   - 收敛为“只在 vscode mode 有意义”
+
 ## 10. 对现有命令的影响
 
 建议按下面的方向拆语义：
@@ -315,7 +337,24 @@ vscode mode 不建立自己的 workspace defaults：
    - normal mode 写 workspace defaults 或 surface override。
    - vscode mode 只写 surface override。
 
-## 11. 建议的后续拆分
+## 11. 已拍板的剩余取舍
+
+上一轮留下的 3 个小决策，这轮先按当前 preference 定掉，不再继续挂起：
+
+1. detached 不新增单独的 workspace chooser 命令
+   - v1 继续使用 `/use` / `/useall` 作为 normal mode 的 workspace attach 入口。
+   - 原因是当前产品已经有稳定入口，继续加 chooser 只会引入一层新的概念和卡片状态。
+2. `vscode mode` 下 `/useall` 只看“当前 attached VS Code instance 已知的 thread 集合”
+   - 不走跨 instance 的全局 merged thread view。
+   - `/use` 展示当前较新的 thread。
+   - `/useall` 展示当前 instance 已知的全部 thread；如果还没有任何 thread 元数据，就直接提示用户先在 VS Code 里实际操作一次会话。
+3. canonical workspace key 的 v1 规范化规则
+   - `trim -> filepath.Abs -> filepath.Clean`
+   - 若路径存在且可以 `EvalSymlinks`，则使用解析后的真实路径
+   - v1 不做额外 case folding
+   - v1 不额外引入挂载点级特殊归一化
+
+## 12. 建议的后续拆分
 
 建议按下面顺序拆 follow-up issue：
 
@@ -349,10 +388,13 @@ vscode mode 不建立自己的 workspace defaults：
    - 更新 `docs/general/feishu-product-design.md`
    - 更新用户文档与帮助文案
 
-## 12. 仍待确认的点
+## 13. issue 拆分落点
 
-这轮先把主方向定下来，仍保留三个实现前需要拍板的小点：
+母 issue `#67` 只负责定型，不继续承载实现。当前已拆出的 follow-up issue 为：
 
-1. detached 状态是否需要一个显式的“workspace chooser”入口，而不只依赖 `/use` / `/useall`。
-2. vscode mode 下 `/useall` 的范围，是只看当前 attached instance，还是允许看该 instance 已知的全部历史 thread。
-3. canonical workspace key 的规范化规则是否需要纳入 symlink / 大小写 / 挂载点归一化。
+1. `#68` surface mode / workspace claim 基础设施
+2. `#69` workspace identity 与 metadata plumbing
+3. `#70` vscode mode 产品拆分
+4. `#71` normal mode `/use` / `/useall` 重构
+5. `#72` workspace-aware 状态机与文档同步
+6. `#73` workspace defaults 与 prompt config 迁移
