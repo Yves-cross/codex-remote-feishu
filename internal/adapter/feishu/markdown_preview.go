@@ -26,7 +26,6 @@ var markdownLineSuffixPattern = regexp.MustCompile(`^(.*\.md)(:\d+(?::\d+)?)$`)
 type PreviewDriveAdminService interface {
 	Summary() (PreviewDriveSummary, error)
 	CleanupBefore(context.Context, time.Time) (PreviewDriveCleanupResult, error)
-	Reconcile(context.Context) (PreviewDriveReconcileResult, error)
 }
 
 type MarkdownPreviewConfig struct {
@@ -122,16 +121,6 @@ type PreviewDriveCleanupResult struct {
 	DeletedEstimatedBytes       int64               `json:"deletedEstimatedBytes"`
 	SkippedUnknownLastUsedCount int                 `json:"skippedUnknownLastUsedCount"`
 	Summary                     PreviewDriveSummary `json:"summary"`
-}
-
-type PreviewDriveReconcileResult struct {
-	Summary                 PreviewDriveSummary `json:"summary"`
-	RootMissing             bool                `json:"rootMissing"`
-	RemoteMissingScopeCount int                 `json:"remoteMissingScopeCount"`
-	RemoteMissingFileCount  int                 `json:"remoteMissingFileCount"`
-	LocalOnlyScopeCount     int                 `json:"localOnlyScopeCount"`
-	LocalOnlyFileCount      int                 `json:"localOnlyFileCount"`
-	PermissionDriftCount    int                 `json:"permissionDriftCount"`
 }
 
 type driveAPIError struct {

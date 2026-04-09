@@ -219,4 +219,24 @@ describe("AdminRoute", () => {
     expect(screen.queryByRole("button", { name: "新建实例" })).not.toBeInTheDocument();
     expect(screen.queryByText("可由管理页删除")).not.toBeInTheDocument();
   });
+
+  it("does not show preview reconcile controls in the admin panel", async () => {
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByText(/固定的预览 inventory 根目录/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "检查目录一致性" })).not.toBeInTheDocument();
+  });
 });

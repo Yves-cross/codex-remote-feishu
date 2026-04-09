@@ -361,6 +361,33 @@ func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
 	}
 
 	api := newFakePreviewAPI()
+	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
+		deleted := map[string]bool{}
+		for _, call := range api.deleteFileCalls {
+			deleted[call.Token] = true
+		}
+		switch folderToken {
+		case "fld-root":
+			return []previewRemoteNode{
+				{Token: "fld-scope", Type: previewFolderType, Name: "feishu-app-1-chat-oc_chat"},
+			}, nil
+		case "fld-scope":
+			files := []previewRemoteNode{
+				{Token: "file-old", Type: previewFileType, Name: "old.md", CreatedTime: now.Add(-72 * time.Hour)},
+				{Token: "file-recent", Type: previewFileType, Name: "recent.md", CreatedTime: now.Add(-24 * time.Hour)},
+				{Token: "file-unknown", Type: previewFileType, Name: "unknown.md", CreatedTime: now.Add(-12 * time.Hour)},
+			}
+			filtered := make([]previewRemoteNode, 0, len(files))
+			for _, file := range files {
+				if !deleted[file.Token] {
+					filtered = append(filtered, file)
+				}
+			}
+			return filtered, nil
+		default:
+			return nil, nil
+		}
+	}
 	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
 	previewer.loaded = true
 	previewer.state = normalizePreviewState(state)
@@ -389,93 +416,6 @@ func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
 	}
 	if _, ok := previewer.state.Files["feishu:app-1:chat:oc_chat|/repo/docs/old.md|sha-old"]; ok {
 		t.Fatalf("expected old preview file to be removed from state")
-	}
-}
-
-func TestDriveMarkdownPreviewerReconcileDetectsMissingRemoteNodesAndPermissionDrift(t *testing.T) {
-	state := &previewState{
-		Root: &previewFolderRecord{
-			Token: "fld-root",
-			URL:   "https://preview/fld-root",
-		},
-		Scopes: map[string]*previewScopeRecord{
-			"feishu:app-1:chat:oc_main": {
-				Folder: &previewFolderRecord{
-					Token:  "fld-main",
-					URL:    "https://preview/fld-main",
-					Shared: map[string]bool{"openchat:oc_main": true},
-				},
-			},
-			"feishu:app-1:chat:oc_missing": {
-				Folder: &previewFolderRecord{
-					Token: "fld-missing",
-					URL:   "https://preview/fld-missing",
-				},
-			},
-		},
-		Files: map[string]*previewFileRecord{
-			"feishu:app-1:chat:oc_main|/repo/docs/main.md|sha-main": {
-				Path:      "/repo/docs/main.md",
-				Token:     "file-main",
-				URL:       "https://preview/file-main",
-				ScopeKey:  "feishu:app-1:chat:oc_main",
-				Shared:    map[string]bool{"openid:ou_user": true},
-				CreatedAt: time.Now().UTC(),
-			},
-			"feishu:app-1:chat:oc_main|/repo/docs/missing.md|sha-missing": {
-				Path:      "/repo/docs/missing.md",
-				Token:     "file-missing",
-				URL:       "https://preview/file-missing",
-				ScopeKey:  "feishu:app-1:chat:oc_main",
-				CreatedAt: time.Now().UTC(),
-			},
-		},
-	}
-
-	api := newFakePreviewAPI()
-	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
-		switch folderToken {
-		case "fld-root":
-			return []previewRemoteNode{
-				{Token: "fld-main", Type: previewFolderType},
-				{Token: "fld-orphan", Type: previewFolderType},
-			}, nil
-		case "fld-main":
-			return []previewRemoteNode{
-				{Token: "file-main", Type: previewFileType},
-				{Token: "file-orphan", Type: previewFileType},
-			}, nil
-		default:
-			return nil, &driveAPIError{Code: 1061003, Msg: "missing"}
-		}
-	}
-	api.listPermissionFunc = func(_ context.Context, token, _ string) (map[string]bool, error) {
-		switch token {
-		case "fld-main":
-			return map[string]bool{"openchat:oc_main": true}, nil
-		case "file-main":
-			return map[string]bool{}, nil
-		default:
-			return map[string]bool{}, nil
-		}
-	}
-
-	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
-	previewer.loaded = true
-	previewer.state = normalizePreviewState(state)
-
-	result, err := previewer.Reconcile(context.Background())
-	if err != nil {
-		t.Fatalf("Reconcile returned error: %v", err)
-	}
-	if result.RemoteMissingScopeCount != 1 || result.RemoteMissingFileCount != 1 {
-		t.Fatalf("unexpected remote missing counts: %#v", result)
-	}
-	if result.LocalOnlyScopeCount != 1 || result.LocalOnlyFileCount != 1 {
-		t.Fatalf("unexpected local-only counts: %#v", result)
-	}
-	if result.PermissionDriftCount != 1 {
-		t.Fatalf("expected one permission drift, got %#v", result)
 	}
 }
 
@@ -645,6 +585,72 @@ func TestDriveMarkdownPreviewerCleanupBeforeDeletesNestedInventoryFiles(t *testi
 	}
 	if len(api.deleteFileCalls) != 1 || api.deleteFileCalls[0].Token != "file-nested" {
 		t.Fatalf("unexpected delete calls: %#v", api.deleteFileCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerSummaryUsesRemoteInventoryWithoutLocalRoot(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	api := newFakePreviewAPI()
+	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
+		switch folderToken {
+		case "":
+			return []previewRemoteNode{{
+				Token:       "fld-root",
+				Type:        previewFolderType,
+				Name:        defaultPreviewRootFolderName,
+				URL:         "https://preview/fld-root",
+				CreatedTime: now.Add(-72 * time.Hour),
+			}}, nil
+		case "fld-root":
+			return []previewRemoteNode{
+				{Token: "fld-scope", Type: previewFolderType, Name: "feishu-main-chat-oc_old"},
+				{
+					Token:       "file-remote-only",
+					Type:        previewFileType,
+					Name:        "remote-only.md",
+					CreatedTime: now.Add(-36 * time.Hour),
+				},
+			}, nil
+		case "fld-scope":
+			return []previewRemoteNode{{
+				Token:       "file-tracked",
+				Type:        previewFileType,
+				Name:        "tracked.md",
+				CreatedTime: now.Add(-48 * time.Hour),
+			}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
+	previewer.loaded = true
+	previewer.state = normalizePreviewState(&previewState{
+		Files: map[string]*previewFileRecord{
+			"feishu:main:chat:oc_chat|/repo/docs/tracked.md|sha-tracked": {
+				Token:      "file-tracked",
+				ScopeKey:   "feishu:main:chat:oc_chat",
+				SizeBytes:  42,
+				LastUsedAt: now.Add(-2 * time.Hour),
+			},
+		},
+	})
+
+	summary, err := previewer.Summary()
+	if err != nil {
+		t.Fatalf("Summary returned error: %v", err)
+	}
+	if summary.RootToken != "fld-root" || summary.RootURL != "https://preview/fld-root" {
+		t.Fatalf("expected remote root to be discovered, got %#v", summary)
+	}
+	if summary.FileCount != 2 || summary.ScopeCount != 1 {
+		t.Fatalf("expected remote inventory counts, got %#v", summary)
+	}
+	if summary.EstimatedBytes != 42 || summary.UnknownSizeFileCount != 1 {
+		t.Fatalf("expected tracked size cache plus one unknown remote file, got %#v", summary)
+	}
+	if previewer.state == nil || previewer.state.Root == nil || previewer.state.Root.Token != "fld-root" {
+		t.Fatalf("expected discovered root to be cached in state, got %#v", previewer.state)
 	}
 }
 

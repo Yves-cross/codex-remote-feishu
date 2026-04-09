@@ -90,15 +90,6 @@ func normalizePreviewState(state *previewState) *previewState {
 	return state
 }
 
-func (p *DriveMarkdownPreviewer) Summary() (PreviewDriveSummary, error) {
-	if p == nil {
-		return PreviewDriveSummary{}, nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return summarizePreviewState(p.loadStateLocked(), strings.TrimSpace(p.config.StatePath)), nil
-}
-
 func summarizePreviewState(state *previewState, statePath string) PreviewDriveSummary {
 	state = normalizePreviewState(state)
 	summary := PreviewDriveSummary{

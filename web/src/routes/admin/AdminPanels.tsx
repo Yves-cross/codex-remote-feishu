@@ -69,7 +69,6 @@ type AdminStoragePanelProps = {
   busyAction: string;
   onCleanupImageStaging: () => void;
   onCleanupPreview: (gatewayID: string) => void;
-  onReconcilePreview: (gatewayID: string) => void;
 };
 
 type AdminVSCodePanelProps = {
@@ -421,7 +420,6 @@ export function AdminStoragePanel({
   busyAction,
   onCleanupImageStaging,
   onCleanupPreview,
-  onReconcilePreview,
 }: AdminStoragePanelProps) {
   return (
     <Panel id="storage" title="文档与图片" description="查看图片暂存和文档预览占用情况，并按需清理旧内容。">
@@ -452,7 +450,7 @@ export function AdminStoragePanel({
           <div className="section-heading">
             <div>
               <h4>文档预览</h4>
-              <p>每个机器人各自维护自己的预览目录，互不混用。</p>
+              <p>每个机器人会在自己的飞书云盘里维护固定的预览 inventory 根目录，清理只会作用于这个目录内的内容。</p>
             </div>
           </div>
 
@@ -484,15 +482,10 @@ export function AdminStoragePanel({
                           <DefinitionList
                             items={[
                               { label: "预览目录链接", value: summary?.rootURL || "尚未创建" },
-                              { label: "已授权对象", value: summary?.scopeCount ?? 0 },
+                              { label: "inventory 子目录", value: summary?.scopeCount ?? 0 },
                               { label: "最近使用", value: summary?.newestLastUsedAt ? formatDateTime(summary.newestLastUsedAt) : "尚未记录" },
                             ]}
                           />
-                          <div className="button-row">
-                            <button className="ghost-button" type="button" onClick={() => onReconcilePreview(app.id)} disabled={busyAction !== ""}>
-                              检查目录一致性
-                            </button>
-                          </div>
                         </div>
                       ) : (
                         <div className="inline-note">
@@ -889,9 +882,9 @@ function buildPreviewDetail(summary: PreviewDriveStatusResponse["summary"] | und
     return "这个机器人还没有生成过可打开的文档预览。";
   }
   if (summary.newestLastUsedAt) {
-    return `最近使用于 ${formatDateTime(summary.newestLastUsedAt)}。`;
+    return `固定 inventory 根目录最近使用于 ${formatDateTime(summary.newestLastUsedAt)}。`;
   }
-  return "预览目录已建立，暂时还没有最近使用记录。";
+  return "固定 inventory 根目录已建立，暂时还没有最近使用记录。";
 }
 
 function describeAppStorage(app: FeishuAppSummary): string {

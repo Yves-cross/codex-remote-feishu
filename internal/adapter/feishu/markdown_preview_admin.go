@@ -24,153 +24,113 @@ func (p *DriveMarkdownPreviewer) CleanupBefore(ctx context.Context, cutoff time.
 		return PreviewDriveCleanupResult{}, err
 	}
 	state.LastCleanupAt = p.nowUTC()
+	result.Summary, err = p.summarizeManagedInventoryLocked(ctx, state)
+	if err != nil {
+		return PreviewDriveCleanupResult{}, err
+	}
 	if err := p.saveStateLocked(); err != nil {
 		return PreviewDriveCleanupResult{}, err
 	}
 	return result, nil
 }
 
-func (p *DriveMarkdownPreviewer) Reconcile(ctx context.Context) (PreviewDriveReconcileResult, error) {
+func (p *DriveMarkdownPreviewer) Summary() (PreviewDriveSummary, error) {
 	if p == nil {
-		return PreviewDriveReconcileResult{}, nil
+		return PreviewDriveSummary{}, nil
 	}
 	if p.api == nil {
-		return PreviewDriveReconcileResult{}, fmt.Errorf("preview drive api is not available")
+		return PreviewDriveSummary{}, fmt.Errorf("preview drive api is not available")
 	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	state := p.loadStateLocked()
-	result := PreviewDriveReconcileResult{
-		Summary: summarizePreviewState(state, strings.TrimSpace(p.config.StatePath)),
+	beforeToken, beforeURL := previewRootSnapshot(state)
+	summary, err := p.summarizeManagedInventoryLocked(context.Background(), state)
+	if err != nil {
+		return PreviewDriveSummary{}, err
 	}
-	if state.Root == nil || strings.TrimSpace(state.Root.Token) == "" {
-		return result, nil
-	}
-
-	rootChildren, err := p.api.ListFiles(ctx, state.Root.Token)
-	switch {
-	case err == nil:
-	case isPreviewResourceMissingError(err):
-		result.RootMissing = true
-		result.RemoteMissingScopeCount = len(state.Scopes)
-		result.RemoteMissingFileCount = len(state.Files)
-		return result, nil
-	default:
-		return PreviewDriveReconcileResult{}, err
-	}
-
-	knownScopeTokens := map[string]string{}
-	filesByScope := map[string]map[string]*previewFileRecord{}
-	for scopeKey, scope := range state.Scopes {
-		if scope == nil || scope.Folder == nil {
-			continue
-		}
-		if token := strings.TrimSpace(scope.Folder.Token); token != "" {
-			knownScopeTokens[token] = scopeKey
+	afterToken, afterURL := previewRootSnapshot(state)
+	if beforeToken != afterToken || beforeURL != afterURL {
+		if err := p.saveStateLocked(); err != nil {
+			return PreviewDriveSummary{}, err
 		}
 	}
+	return summary, nil
+}
+
+func (p *DriveMarkdownPreviewer) summarizeManagedInventoryLocked(ctx context.Context, state *previewState) (PreviewDriveSummary, error) {
+	state = normalizePreviewState(state)
+	summary := PreviewDriveSummary{
+		StatePath: strings.TrimSpace(p.config.StatePath),
+	}
+
+	snapshot, ok, err := p.loadManagedInventoryLocked(ctx, state)
+	if err != nil {
+		return PreviewDriveSummary{}, err
+	}
+	if !ok {
+		return summary, nil
+	}
+
+	summary.RootToken = snapshot.root.Token
+	summary.RootURL = snapshot.root.URL
+	summary.FileCount = len(snapshot.files)
+	summary.ScopeCount = len(snapshot.folders)
+
+	recordsByToken := map[string]*previewFileRecord{}
 	for _, record := range state.Files {
 		if record == nil {
 			continue
 		}
-		scopeKey := strings.TrimSpace(record.ScopeKey)
-		if scopeKey == "" {
+		token := strings.TrimSpace(record.Token)
+		if token == "" {
 			continue
 		}
-		if filesByScope[scopeKey] == nil {
-			filesByScope[scopeKey] = map[string]*previewFileRecord{}
+		recordsByToken[token] = record
+	}
+
+	for _, node := range snapshot.files {
+		record := recordsByToken[node.Token]
+		if record != nil && record.SizeBytes > 0 {
+			summary.EstimatedBytes += record.SizeBytes
+		} else {
+			summary.UnknownSizeFileCount++
 		}
-		if token := strings.TrimSpace(record.Token); token != "" {
-			filesByScope[scopeKey][token] = record
+		if value, ok := previewInventorySummaryTime(record, node); ok {
+			updatePreviewSummaryWindow(&summary, value)
 		}
 	}
 
-	rootFolders := map[string]previewRemoteNode{}
-	for _, node := range rootChildren {
-		switch strings.TrimSpace(node.Type) {
-		case previewFolderType:
-			rootFolders[node.Token] = node
-			if knownScopeTokens[node.Token] == "" {
-				result.LocalOnlyScopeCount++
-			}
-		default:
-			result.LocalOnlyFileCount++
-		}
+	return summary, nil
+}
+
+func previewRootSnapshot(state *previewState) (string, string) {
+	if state == nil || state.Root == nil {
+		return "", ""
 	}
+	return strings.TrimSpace(state.Root.Token), strings.TrimSpace(state.Root.URL)
+}
 
-	for scopeKey, scope := range state.Scopes {
-		if scope == nil || scope.Folder == nil {
-			continue
-		}
-		scopeToken := strings.TrimSpace(scope.Folder.Token)
-		if scopeToken == "" {
-			result.RemoteMissingScopeCount++
-			continue
-		}
-		if _, ok := rootFolders[scopeToken]; !ok {
-			result.RemoteMissingScopeCount++
-			continue
-		}
-		if len(scope.Folder.Shared) > 0 {
-			drift, err := previewPermissionDrift(ctx, p.api, scopeToken, previewFolderType, scope.Folder.Shared)
-			if err != nil {
-				if isPreviewResourceMissingError(err) {
-					result.RemoteMissingScopeCount++
-					continue
-				}
-				return PreviewDriveReconcileResult{}, err
-			}
-			if drift {
-				result.PermissionDriftCount++
-			}
-		}
-
-		scopeChildren, err := p.api.ListFiles(ctx, scopeToken)
-		if err != nil {
-			if isPreviewResourceMissingError(err) {
-				result.RemoteMissingScopeCount++
-				continue
-			}
-			return PreviewDriveReconcileResult{}, err
-		}
-		expectedFiles := filesByScope[scopeKey]
-		remoteFiles := map[string]previewRemoteNode{}
-		for _, node := range scopeChildren {
-			switch strings.TrimSpace(node.Type) {
-			case previewFileType:
-				remoteFiles[node.Token] = node
-				if expectedFiles[node.Token] == nil {
-					result.LocalOnlyFileCount++
-				}
-			case previewFolderType:
-				result.LocalOnlyScopeCount++
-			default:
-				result.LocalOnlyFileCount++
-			}
-		}
-		for token, record := range expectedFiles {
-			if _, ok := remoteFiles[token]; !ok {
-				result.RemoteMissingFileCount++
-				continue
-			}
-			if len(record.Shared) == 0 {
-				continue
-			}
-			drift, err := previewPermissionDrift(ctx, p.api, token, previewFileType, record.Shared)
-			if err != nil {
-				if isPreviewResourceMissingError(err) {
-					result.RemoteMissingFileCount++
-					continue
-				}
-				return PreviewDriveReconcileResult{}, err
-			}
-			if drift {
-				result.PermissionDriftCount++
-			}
-		}
+func previewInventorySummaryTime(record *previewFileRecord, node previewRemoteNode) (time.Time, bool) {
+	if value, ok := previewRecordLastUsedAt(record); ok {
+		return value, true
 	}
+	return previewRemoteCleanupTime(node)
+}
 
-	return result, nil
+func updatePreviewSummaryWindow(summary *PreviewDriveSummary, value time.Time) {
+	if summary == nil || value.IsZero() {
+		return
+	}
+	value = value.UTC()
+	if summary.OldestLastUsedAt == nil || value.Before(*summary.OldestLastUsedAt) {
+		copyValue := value
+		summary.OldestLastUsedAt = &copyValue
+	}
+	if summary.NewestLastUsedAt == nil || value.After(*summary.NewestLastUsedAt) {
+		copyValue := value
+		summary.NewestLastUsedAt = &copyValue
+	}
 }

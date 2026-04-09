@@ -15,13 +15,11 @@ import (
 )
 
 type fakePreviewDriveAdmin struct {
-	summary         feishu.PreviewDriveSummary
-	cleanupResult   feishu.PreviewDriveCleanupResult
-	reconcileResult feishu.PreviewDriveReconcileResult
-	summaryErr      error
-	cleanupErr      error
-	reconcileErr    error
-	cleanupCutoff   time.Time
+	summary       feishu.PreviewDriveSummary
+	cleanupResult feishu.PreviewDriveCleanupResult
+	summaryErr    error
+	cleanupErr    error
+	cleanupCutoff time.Time
 }
 
 func (f *fakePreviewDriveAdmin) Summary() (feishu.PreviewDriveSummary, error) {
@@ -31,10 +29,6 @@ func (f *fakePreviewDriveAdmin) Summary() (feishu.PreviewDriveSummary, error) {
 func (f *fakePreviewDriveAdmin) CleanupBefore(_ context.Context, cutoff time.Time) (feishu.PreviewDriveCleanupResult, error) {
 	f.cleanupCutoff = cutoff
 	return f.cleanupResult, f.cleanupErr
-}
-
-func (f *fakePreviewDriveAdmin) Reconcile(context.Context) (feishu.PreviewDriveReconcileResult, error) {
-	return f.reconcileResult, f.reconcileErr
 }
 
 func TestPreviewDriveStatusAndCleanupRoutes(t *testing.T) {
@@ -67,17 +61,6 @@ func TestPreviewDriveStatusAndCleanupRoutes(t *testing.T) {
 				EstimatedBytes:       1114,
 				UnknownSizeFileCount: 0,
 			},
-		},
-		reconcileResult: feishu.PreviewDriveReconcileResult{
-			Summary: feishu.PreviewDriveSummary{
-				FileCount:      1,
-				ScopeCount:     1,
-				EstimatedBytes: 1114,
-			},
-			RemoteMissingScopeCount: 1,
-			RemoteMissingFileCount:  2,
-			LocalOnlyFileCount:      1,
-			PermissionDriftCount:    1,
 		},
 	}
 
@@ -123,21 +106,9 @@ func TestPreviewDriveStatusAndCleanupRoutes(t *testing.T) {
 	if fake.cleanupCutoff.Before(minCutoff) || fake.cleanupCutoff.After(maxCutoff) {
 		t.Fatalf("unexpected cleanup cutoff: %s not in [%s, %s]", fake.cleanupCutoff, minCutoff, maxCutoff)
 	}
-
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/storage/preview-drive/main/reconcile", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("reconcile status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	var reconcile previewDriveReconcileResponse
-	if err := json.NewDecoder(rec.Body).Decode(&reconcile); err != nil {
-		t.Fatalf("decode reconcile: %v", err)
-	}
-	if reconcile.GatewayID != "main" || reconcile.Result.RemoteMissingScopeCount != 1 || reconcile.Result.PermissionDriftCount != 1 {
-		t.Fatalf("unexpected reconcile payload: %#v", reconcile)
-	}
 }
 
-func TestPreviewDriveCleanupReturnsConflictWithoutAPI(t *testing.T) {
+func TestPreviewDriveStatusAndCleanupReturnConflictWithoutAPI(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	cfg.Feishu.Apps = []config.FeishuAppConfig{{
 		ID:   "main",
@@ -145,14 +116,14 @@ func TestPreviewDriveCleanupReturnsConflictWithoutAPI(t *testing.T) {
 	}}
 	app, _ := newPreviewDriveAdminTestApp(t, cfg)
 
-	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/storage/preview-drive/main/cleanup", "")
+	rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/storage/preview-drive/main", "")
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("cleanup status = %d, want 409 body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("status status = %d, want 409 body=%s", rec.Code, rec.Body.String())
 	}
 
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/storage/preview-drive/main/reconcile", "")
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/storage/preview-drive/main/cleanup", "")
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("reconcile status = %d, want 409 body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("cleanup status = %d, want 409 body=%s", rec.Code, rec.Body.String())
 	}
 }
 

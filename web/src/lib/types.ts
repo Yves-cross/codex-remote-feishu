@@ -268,17 +268,3 @@ export interface PreviewDriveCleanupResponse {
     summary: PreviewDriveSummary;
   };
 }
-
-export interface PreviewDriveReconcileResponse {
-  gatewayId: string;
-  name?: string;
-  result: {
-    summary: PreviewDriveSummary;
-    rootMissing: boolean;
-    remoteMissingScopeCount: number;
-    remoteMissingFileCount: number;
-    localOnlyScopeCount: number;
-    localOnlyFileCount: number;
-    permissionDriftCount: number;
-  };
-}

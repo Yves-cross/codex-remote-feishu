@@ -15,7 +15,6 @@ import type {
   ImageStagingCleanupResponse,
   ImageStagingStatusResponse,
   PreviewDriveCleanupResponse,
-  PreviewDriveReconcileResponse,
   PreviewDriveStatusResponse,
   RuntimeStatus,
   VSCodeDetectResponse,
@@ -314,17 +313,6 @@ export function AdminRoute() {
     });
   }
 
-  async function reconcilePreview(gatewayID: string) {
-    await runAction(`reconcile-preview-${gatewayID}`, async () => {
-      const response = await sendJSON<PreviewDriveReconcileResponse>(`/api/admin/storage/preview-drive/${encodeURIComponent(gatewayID)}/reconcile`, "POST");
-      setNotice({
-        tone: response.result.rootMissing || response.result.permissionDriftCount > 0 ? "warn" : "good",
-        message: `${response.name || response.gatewayId} 预览目录检查完成：远端缺失 ${response.result.remoteMissingFileCount}，权限不一致 ${response.result.permissionDriftCount}。`,
-      });
-      await loadAdminData(gatewayID);
-    });
-  }
-
   async function applyVSCode(mode: string, successMessage = "VS Code 接入方式已更新。") {
     if (!vscode) {
       return;
@@ -451,7 +439,6 @@ export function AdminRoute() {
             busyAction={busyAction}
             onCleanupImageStaging={() => void cleanupImageStaging()}
             onCleanupPreview={(gatewayID) => void cleanupPreview(gatewayID)}
-            onReconcilePreview={(gatewayID) => void reconcilePreview(gatewayID)}
           />
           <AdminVSCodePanel
             vscode={vscode}

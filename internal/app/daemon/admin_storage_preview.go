@@ -41,12 +41,6 @@ type previewDriveCleanupResponse struct {
 	Result         feishu.PreviewDriveCleanupResult `json:"result"`
 }
 
-type previewDriveReconcileResponse struct {
-	GatewayID string                             `json:"gatewayId"`
-	Name      string                             `json:"name,omitempty"`
-	Result    feishu.PreviewDriveReconcileResult `json:"result"`
-}
-
 func (a *App) handlePreviewDriveStatus(w http.ResponseWriter, r *http.Request) {
 	runtimeCfg, err := a.previewDriveRuntimeConfig(strings.TrimSpace(r.PathValue("id")))
 	if err != nil {
@@ -63,11 +57,7 @@ func (a *App) handlePreviewDriveStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	summary, err := admin.Summary()
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "preview_drive_summary_failed",
-			Message: "failed to summarize preview drive state",
-			Details: err.Error(),
-		})
+		writePreviewDriveAdminError(w, "failed to summarize preview drive inventory", "preview_drive_summary_failed", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, previewDriveStatusResponse{
@@ -127,32 +117,6 @@ func (a *App) handlePreviewDriveCleanup(w http.ResponseWriter, r *http.Request) 
 		Name:           strings.TrimSpace(runtimeCfg.Name),
 		OlderThanHours: req.OlderThanHours,
 		Result:         result,
-	})
-}
-
-func (a *App) handlePreviewDriveReconcile(w http.ResponseWriter, r *http.Request) {
-	runtimeCfg, err := a.previewDriveRuntimeConfig(strings.TrimSpace(r.PathValue("id")))
-	if err != nil {
-		writePreviewDriveRuntimeError(w, err)
-		return
-	}
-	admin := newPreviewDriveAdminService(runtimeCfg)
-	if admin == nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "preview_drive_admin_unavailable",
-			Message: "preview drive admin service is not available",
-		})
-		return
-	}
-	result, err := admin.Reconcile(context.Background())
-	if err != nil {
-		writePreviewDriveAdminError(w, "failed to reconcile preview drive state", "preview_drive_reconcile_failed", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, previewDriveReconcileResponse{
-		GatewayID: runtimeCfg.GatewayID,
-		Name:      strings.TrimSpace(runtimeCfg.Name),
-		Result:    result,
 	})
 }
 
