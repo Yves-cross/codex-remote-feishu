@@ -886,6 +886,7 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSnapshot,
 		Snapshot: &control.Snapshot{
+			ProductMode: "vscode",
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-1",
 				DisplayName:         "droid",
@@ -916,6 +917,7 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
+		"**当前模式：** <text_tag color='neutral'>vscode</text_tag>",
 		"如果现在从飞书发送一条消息：",
 		"**模型：** <text_tag color='neutral'>gpt-5.4</text_tag>（飞书临时覆盖）",
 		"**推理强度：** <text_tag color='neutral'>medium</text_tag>（会话配置）",
@@ -926,6 +928,25 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	}
 	if strings.Contains(ops[0].CardBody, "已知会话：") || strings.Contains(ops[0].CardBody, "在线实例：") {
 		t.Fatalf("status card should not include list sections, got %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotShowsNormalModeWhenDetached(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			ProductMode: "normal",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"**当前模式：** <text_tag color='neutral'>normal</text_tag>",
+		"**已接管：** 无",
+	) {
+		t.Fatalf("unexpected detached snapshot body: %#v", ops[0].CardBody)
 	}
 }
 

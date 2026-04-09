@@ -60,6 +60,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		if surface.PendingRequests == nil {
 			surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 		}
+		s.normalizeSurfaceProductMode(surface)
 		surface.LastInboundAt = s.now()
 		return surface
 	}
@@ -70,6 +71,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		GatewayID:        action.GatewayID,
 		ChatID:           action.ChatID,
 		ActorUserID:      action.ActorUserID,
+		ProductMode:      state.ProductModeNormal,
 		RouteMode:        state.RouteModeUnbound,
 		DispatchMode:     state.DispatchModeNormal,
 		LastInboundAt:    s.now(),
@@ -902,6 +904,63 @@ func clearAutoContinueRuntime(surface *state.SurfaceConsoleRecord) {
 		return
 	}
 	surface.AutoContinue = state.AutoContinueRuntimeRecord{}
+}
+
+func parseProductMode(value string) (state.ProductMode, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "normal":
+		return state.ProductModeNormal, true
+	case "vscode", "vs-code", "vs_code":
+		return state.ProductModeVSCode, true
+	default:
+		return "", false
+	}
+}
+
+func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	current := s.normalizeSurfaceProductMode(surface)
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{{
+			Kind:             control.UIEventSnapshot,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Snapshot:         s.buildSnapshot(surface),
+		}}
+	}
+	if len(parts) != 2 {
+		return notice(surface, "surface_mode_usage", "用法：/mode 查看当前状态；/mode normal；/mode vscode。")
+	}
+	target, ok := parseProductMode(parts[1])
+	if !ok {
+		return notice(surface, "surface_mode_usage", "用法：/mode 查看当前状态；/mode normal；/mode vscode。")
+	}
+	if target == current {
+		return notice(surface, "surface_mode_current", fmt.Sprintf("当前已处于 %s 模式。", target))
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if s.surfaceHasLiveRemoteWork(surface) || s.surfaceNeedsDelayedDetach(surface, inst) {
+		return notice(surface, "surface_mode_busy", "当前仍有执行中的 turn、派发中的请求或排队消息，暂时不能切换模式。请等待完成、/stop，或先 /detach。")
+	}
+
+	events := s.discardDrafts(surface)
+	pending := surface.PendingHeadless
+	events = append(events, s.finalizeDetachedSurface(surface)...)
+	if pending != nil {
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventDaemonCommand,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandKillHeadless,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				InstanceID:       pending.InstanceID,
+				ThreadID:         pending.ThreadID,
+				ThreadTitle:      pending.ThreadTitle,
+				ThreadCWD:        pending.ThreadCWD,
+			},
+		})
+	}
+	surface.ProductMode = target
+	return append(events, notice(surface, "surface_mode_switched", fmt.Sprintf("已切换到 %s 模式。当前没有接管中的目标。", target))...)
 }
 
 func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

@@ -1014,6 +1014,7 @@ func formatFileChangeCountsMarkdown(added, removed int) string {
 
 func formatSnapshot(snapshot control.Snapshot) string {
 	lines := []string{}
+	lines = append(lines, snapshotField("当前模式", formatNeutralTextTag(displaySnapshotMode(snapshot.ProductMode))))
 	if snapshot.Attachment.InstanceID == "" {
 		lines = append(lines, snapshotField("已接管", "无"))
 	} else {
@@ -1116,6 +1117,15 @@ func formatSnapshot(snapshot control.Snapshot) string {
 
 func snapshotField(label, value string) string {
 	return fmt.Sprintf("**%s：** %s", label, value)
+}
+
+func displaySnapshotMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "vscode", "vs-code", "vs_code":
+		return "vscode"
+	default:
+		return "normal"
+	}
 }
 
 func displaySnapshotValue(value, source string) string {

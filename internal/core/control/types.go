@@ -23,6 +23,7 @@ const (
 	ActionReasoningCommand    ActionKind = "surface.command.reasoning"
 	ActionAccessCommand       ActionKind = "surface.command.access"
 	ActionAutoContinueCommand ActionKind = "surface.command.auto_continue"
+	ActionModeCommand         ActionKind = "surface.command.mode"
 	ActionRespondRequest      ActionKind = "surface.request.respond"
 	ActionTextMessage         ActionKind = "surface.message.text"
 	ActionImageMessage        ActionKind = "surface.message.image"
@@ -115,6 +116,7 @@ type SelectionPrompt struct {
 type Snapshot struct {
 	SurfaceSessionID string
 	ActorUserID      string
+	ProductMode      string
 	Attachment       AttachmentSummary
 	PendingHeadless  PendingHeadlessSummary
 	NextPrompt       PromptRouteSummary

@@ -86,6 +86,21 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	},
 	{
 		section:      "实例与会话",
+		helpCommands: []string{"/mode", "/mode normal", "/mode vscode"},
+		description:  "查看或切换当前飞书会话的产品模式。",
+		examples:     []string{"/mode normal", "/mode vscode"},
+		buttons: []CommandCatalogButton{
+			{Label: "Normal 模式", CommandText: "/mode normal"},
+			{Label: "VS Code 模式", CommandText: "/mode vscode"},
+		},
+		showInHelp: true,
+		showInMenu: true,
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/mode", kind: ActionModeCommand},
+		},
+	},
+	{
+		section:      "实例与会话",
 		helpCommands: []string{"/autocontinue", "/autocontinue on", "/autocontinue off"},
 		description:  "查看或切换当前飞书会话的 auto-continue 状态。",
 		examples:     []string{"/autocontinue on", "/autocontinue off"},

@@ -156,6 +156,14 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 	}
 }
 
+func (s *Service) normalizeSurfaceProductMode(surface *state.SurfaceConsoleRecord) state.ProductMode {
+	if surface == nil {
+		return state.ProductModeNormal
+	}
+	surface.ProductMode = state.NormalizeProductMode(surface.ProductMode)
+	return surface.ProductMode
+}
+
 func (s *Service) UpsertInstance(inst *state.InstanceRecord) {
 	if inst.Threads == nil {
 		inst.Threads = map[string]*state.ThreadRecord{}
@@ -225,6 +233,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.handleAccessCommand(surface, action)
 	case control.ActionAutoContinueCommand:
 		return s.handleAutoContinueCommand(surface, action)
+	case control.ActionModeCommand:
+		return s.handleModeCommand(surface, action)
 	case control.ActionRespondRequest:
 		return s.respondRequest(surface, action)
 	case control.ActionShowThreads:

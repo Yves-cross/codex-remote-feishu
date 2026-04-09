@@ -502,6 +502,138 @@ func TestListWithoutOnlineInstancesReturnsNotice(t *testing.T) {
 	}
 }
 
+func TestStatusMaterializesSurfaceWithDefaultNormalMode(t *testing.T) {
+	now := time.Date(2026, 4, 9, 10, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionStatus,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].Snapshot == nil {
+		t.Fatalf("expected one snapshot event, got %#v", events)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface == nil {
+		t.Fatal("expected surface to be materialized")
+	}
+	if surface.ProductMode != state.ProductModeNormal {
+		t.Fatalf("expected default product mode normal, got %q", surface.ProductMode)
+	}
+	if events[0].Snapshot.ProductMode != "normal" {
+		t.Fatalf("expected snapshot product mode normal, got %#v", events[0].Snapshot)
+	}
+}
+
+func TestModeCommandSwitchesDetachedSurface(t *testing.T) {
+	now := time.Date(2026, 4, 9, 10, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionStatus, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1"})
+	surface := svc.root.Surfaces["surface-1"]
+	surface.PromptOverride = state.ModelConfigRecord{Model: "gpt-5.4"}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/mode vscode",
+	})
+
+	if surface.ProductMode != state.ProductModeVSCode {
+		t.Fatalf("expected product mode vscode, got %q", surface.ProductMode)
+	}
+	if surface.AttachedInstanceID != "" || surface.SelectedThreadID != "" || surface.RouteMode != state.RouteModeUnbound {
+		t.Fatalf("expected detached unbound surface after mode switch, got %#v", surface)
+	}
+	if surface.PromptOverride != (state.ModelConfigRecord{}) {
+		t.Fatalf("expected prompt override to be cleared, got %#v", surface.PromptOverride)
+	}
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "surface_mode_switched" {
+		t.Fatalf("expected surface_mode_switched notice, got %#v", events)
+	}
+}
+
+func TestModeCommandDetachesIdleAttachmentBeforeSwitching(t *testing.T) {
+	now := time.Date(2026, 4, 9, 10, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/mode vscode",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ProductMode != state.ProductModeVSCode {
+		t.Fatalf("expected product mode vscode, got %q", surface.ProductMode)
+	}
+	if surface.AttachedInstanceID != "" || surface.SelectedThreadID != "" || surface.RouteMode != state.RouteModeUnbound {
+		t.Fatalf("expected mode switch to detach attached surface, got %#v", surface)
+	}
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "surface_mode_switched" {
+		t.Fatalf("expected surface_mode_switched notice, got %#v", events)
+	}
+}
+
+func TestModeCommandRejectsSwitchWhileWorkIsRunning(t *testing.T) {
+	now := time.Date(2026, 4, 9, 10, 15, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "你好",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/mode vscode",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.ProductMode != state.ProductModeNormal {
+		t.Fatalf("expected mode to remain normal while busy, got %q", surface.ProductMode)
+	}
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "surface_mode_busy" {
+		t.Fatalf("expected surface_mode_busy notice, got %#v", events)
+	}
+}
+
 func TestListHeadlessOnlyReturnsNoVSCodeNotice(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

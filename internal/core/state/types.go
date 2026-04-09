@@ -23,6 +23,22 @@ const (
 	DispatchModePausedForLocal DispatchMode = "paused_for_local"
 )
 
+type ProductMode string
+
+const (
+	ProductModeNormal ProductMode = "normal"
+	ProductModeVSCode ProductMode = "vscode"
+)
+
+func NormalizeProductMode(mode ProductMode) ProductMode {
+	switch mode {
+	case ProductModeVSCode:
+		return ProductModeVSCode
+	default:
+		return ProductModeNormal
+	}
+}
+
 type QueueItemStatus string
 
 const (
@@ -127,6 +143,7 @@ type SurfaceConsoleRecord struct {
 	GatewayID            string
 	ChatID               string
 	ActorUserID          string
+	ProductMode          ProductMode
 	AttachedInstanceID   string
 	SelectedThreadID     string
 	LastInboundAt        time.Time

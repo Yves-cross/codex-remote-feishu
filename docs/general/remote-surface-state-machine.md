@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步 `/use` 的 detached/global thread source：候选列表现在会 merge runtime visible thread 与 Codex sqlite recent persisted thread，同时保持现有 runtime resolver / headless attach 语义不变。
+> Summary: 同步显式 `ProductMode` overlay：surface 现在默认 `normal`、支持 `/mode normal|vscode`、`/status` 会展示当前 mode，但 attach/list/use/follow 语义当前仍维持既有 instance/thread-first 行为。
 
 ## 1. 文档定位
 
@@ -22,14 +22,15 @@
 5. [internal/core/orchestrator/service_test.go](../../internal/core/orchestrator/service_test.go)
 6. [internal/core/state/types.go](../../internal/core/state/types.go)
 7. [internal/core/control/types.go](../../internal/core/control/types.go)
-8. [internal/core/orchestrator/service_autocontinue.go](../../internal/core/orchestrator/service_autocontinue.go)
-9. [internal/codexstate/sqlite_threads.go](../../internal/codexstate/sqlite_threads.go)
-10. [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
-11. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
-12. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
-13. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
-14. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
-15. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
+8. [internal/core/control/feishu_commands.go](../../internal/core/control/feishu_commands.go)
+9. [internal/core/orchestrator/service_autocontinue.go](../../internal/core/orchestrator/service_autocontinue.go)
+10. [internal/codexstate/sqlite_threads.go](../../internal/codexstate/sqlite_threads.go)
+11. [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
+12. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
+13. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
+14. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
+15. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
+16. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
 
 ## 2. 审计前提
 
@@ -53,11 +54,28 @@ surface 本身仍按 `gatewayID + chat/user` 区分，不同飞书 app 会形成
 1. 不同飞书 app 之间会竞争同一套 instance/thread 资源。
 2. instance attach 互斥、thread attach 互斥都是**跨 app 的全局规则**。
 
-## 3. 当前状态机的四层结构与运行时 overlay
+## 3. 当前状态机的五层结构与运行时 overlay
 
-surface 不是单一枚举，而是四层正交状态叠加。
+surface 不是单一枚举，而是五层正交状态叠加。
 
-### 3.1 路由主状态
+### 3.1 产品模式 overlay
+
+| 代号 | 条件 | 用户语义 |
+| --- | --- | --- |
+| `M0 Normal` | `ProductMode=normal` | 新 surface 默认值；当前只影响 `/status` 投影、持久记忆与 `/mode` 切换入口，不改变 attach/list/use/follow 的既有语义 |
+| `M1 VSCode` | `ProductMode=vscode` | 只能显式 `/mode vscode` 进入；当前同样只影响 mode 投影与记忆，不改变既有 instance/thread-first 路由语义 |
+
+补充说明：
+
+1. `ProductMode` 当前是 surface 级持久字段；`/detach` 不会清掉它。
+2. daemon 重启后，只要该 surface 状态被恢复，mode 也会一起恢复。
+3. `/mode` 当前只在 detached 或 idle attached surface 上执行切换：
+   1. 会先走 detach-like 清理。
+   2. 清掉 attachment / claim、`PromptOverride`、`PendingRequest`、`RequestCapture`、`PreparedThread*`、staged image 与 queued draft。
+4. 若当前仍有 live remote work，则 `/mode` 直接拒绝，并明确提示用户 `/stop` 或 `/detach`。
+5. `PendingHeadless` 与 `Abandoning` 仍是更高优先级 gate，所以这两类状态下 `/mode` 不会放行。
+
+### 3.2 路由主状态
 
 | 代号 | 条件 | 用户语义 |
 | --- | --- | --- |
@@ -77,7 +95,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 2. 这种 latent surface 在 route 维度上仍然是 `R0 Detached`，不是新的 route state。
 3. 是否进入后台恢复、是否转入 `G1 PendingHeadlessStarting`，取决于 daemon 的恢复调度，而不是用户显式动作。
 
-### 3.2 执行状态
+### 3.3 执行状态
 
 | 代号 | 条件 | 含义 |
 | --- | --- | --- |
@@ -98,7 +116,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 2. 这个 overlay 不占用 `ActiveQueueItemID`，所以可以与 `E3 Running` 并存。
 3. steering ack 成功后，item 进入 `steered`；失败时恢复回原 queue 位置。
 
-### 3.3 输入门禁状态
+### 3.4 输入门禁状态
 
 | 代号 | 条件 | 作用 |
 | --- | --- | --- |
@@ -108,7 +126,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
 | `G4 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autocontinue` 继续正常，其余动作被挡 |
 
-### 3.4 草稿状态
+### 3.5 草稿状态
 
 | 代号 | 条件 | 含义 |
 | --- | --- | --- |
@@ -123,7 +141,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 2. `D1` 还没有冻结路由，所以 route change 时必须显式处理。
 3. `D3` 不是独立 route state，而是 `R5` 上的附加约束。
 
-### 3.5 auto-continue overlay
+### 3.6 auto-continue overlay
 
 `AutoContinueRuntimeRecord` 当前不是新的 route state，而是 surface 上附加的一层运行时 overlay：
 
@@ -221,7 +239,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 1. 普通 route change，例如 `/use`、`/follow`、follow 自动切换、claim 丢失回退：
    1. 只丢 staged image。
    2. 不会静默把未冻结图片串到新 thread。
-2. clear 语义，例如 `/stop`、`/detach`、`/new`、`R5` 下的 `/use` `/follow`：
+2. clear 语义，例如 `/stop`、`/detach`、`/mode`、`/new`、`R5` 下的 `/use` `/follow`：
    1. staged image 和 queued draft 都会被显式丢弃。
    2. 会发 discard reaction / notice。
 
@@ -304,36 +322,50 @@ surface 不是单一枚举，而是四层正交状态叠加。
    2. 会直接清空该 thread 的旧 replay。
    3. 用户只会看到一条新的恢复成功提示。
 
-### 4.11 `/status` 当前至少会显式投影 gate / dispatch / retained-offline
+### 4.11 `/status` 当前至少会显式投影 mode / gate / dispatch / retained-offline
 
 当前 `Snapshot` 不再只展示 attachment 和 next prompt。
 
-现在至少会额外投影三类“决定下一条输入会发生什么”的状态：
+现在至少会额外投影五类“决定下一条输入会发生什么”的状态：
 
-1. request gate：
+1. 当前 `ProductMode`
+   1. `normal`
+   2. `vscode`
+2. request gate：
    1. `PendingRequest`
    2. `RequestCapture`
-2. dispatch / queue：
+3. dispatch / queue：
    1. `Dispatching`
    2. `Running`
    3. `PausedForLocal`
    4. `HandoffWait`
    5. queued count
-3. auto-continue runtime：
+4. auto-continue runtime：
    1. enabled / disabled
    2. pending reason
    3. pending due time
    4. consecutive count
-4. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
+5. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
 
 它仍然不是完整调试面板，但已经能回答最关键的问题：
 
-1. 下一条文本是不是会先被 request gate 吃掉。
-2. 现在是执行中、排队中，还是被本地 VS Code 暂停。
-3. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
-4. attachment 还在不在，以及当前是不是在等实例恢复。
+1. 当前到底记住的是 `normal` 还是 `vscode`。
+2. 下一条文本是不是会先被 request gate 吃掉。
+3. 现在是执行中、排队中，还是被本地 VS Code 暂停。
+4. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
+5. attachment 还在不在，以及当前是不是在等实例恢复。
 
-### 4.12 `/autocontinue` 是 surface 级、内存态、跨 route 可查询的 overlay 开关
+### 4.12 `/mode` 是 surface 级持久 overlay，当前只负责记忆与清理切换
+
+当前 `/mode` 的实现边界已经固定为：
+
+1. `/mode` 无参数时，直接回当前 `Snapshot`。
+2. `/mode normal` / `/mode vscode` 允许在 detached 或 idle attached surface 上切换。
+3. 切换时一定先做 detach-like 清理，再进入目标 mode 的 detached 态。
+4. 切换当前不会隐式改写 `/list`、`/use`、`/follow` 的既有 instance/thread-first 逻辑。
+5. 若当前仍有 running / dispatching / queued work，则 `/mode` 会直接拒绝，而不是进入半切换状态。
+
+### 4.13 `/autocontinue` 是 surface 级、内存态、跨 route 可查询的 overlay 开关
 
 当前 `/autocontinue` 不要求 surface 已 attach：
 
@@ -342,7 +374,7 @@ surface 不是单一枚举，而是四层正交状态叠加。
 3. `Abandoning` 期间 `/autocontinue` 也仍然允许，用户可以查看或关闭当前 surface 的 auto-continue。
 4. daemon 重启后不恢复该开关；当前已接受这是内存态语义。
 
-### 4.13 auto-continue 调度只允许走显式 reply-anchor，不再伪造用户消息 pending/typing
+### 4.14 auto-continue 调度只允许走显式 reply-anchor，不再伪造用户消息 pending/typing
 
 当前 auto-continue queue item 增加了显式来源类型：
 
@@ -628,6 +660,7 @@ transport degraded retained attachment
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/use` `/useall` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
 | `/follow` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
 | 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
@@ -642,9 +675,9 @@ transport degraded retained attachment
 | 覆盖状态 | 当前行为 |
 | --- | --- |
 | `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autocontinue`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
-| `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；用户必须先处理请求卡片 |
-| `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住 |
-| `E6 Abandoning` | 只允许 `/status`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；其余动作统一拒绝 |
+| `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片 |
+| `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
+| `E6 Abandoning` | 只允许 `/status`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
 
 retained-offline overlay 额外规则：
 
@@ -673,6 +706,14 @@ retained-offline overlay 额外规则：
 
 二者都直接映射到 `ActionNewThread`。
 
+同时，文本命令里新增：
+
+1. `/mode`
+2. `/mode normal`
+3. `/mode vscode`
+
+三者都映射到 `ActionModeCommand`，由服务端在当前 surface 上解释并决定是否执行切换。
+
 ## 8. 当前死状态审计结论
 
 这轮按当前实现重新审计后，以下几类 bug-grade 半死状态已经收口：
@@ -696,6 +737,7 @@ retained-offline overlay 额外规则：
 17. **queued 点赞升级成 steering 后 item 会脱离普通 queue，若 ack 失败则可能丢失**：已修复。当前已强制恢复原 queue 位置，并补失败 notice。
 18. **headless 自动恢复在首轮 refresh 前过早报失败，或恢复成功后重放旧 replay / 额外补 attached 噪音**：已修复。当前会先静默等待首轮 refresh，恢复成功只发单条成功 notice，且会清空旧 replay 而不是补发。
 19. **`PendingHeadless` 只能靠隐藏的 `/killinstance` 逃生**：已修复。当前 `/detach` 可以直接取消恢复流程并回到 `R0 Detached`；旧 `/killinstance` 只回迁移提示。
+20. **显式切 mode 会保留旧 attachment / request gate / draft 残留，导致进入半切换状态**：已修复。当前 idle/detached 时 `/mode` 会先做 detach-like 清理；busy path 则明确拒绝并提示 `/stop` 或 `/detach`。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 
