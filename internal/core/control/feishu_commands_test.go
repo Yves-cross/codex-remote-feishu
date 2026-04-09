@@ -118,16 +118,12 @@ func TestParseFeishuLegacyKillInstanceCommandsAsRemoved(t *testing.T) {
 func TestFeishuRecommendedMenusStayInSuggestedOrder(t *testing.T) {
 	got := FeishuRecommendedMenus()
 	want := []FeishuRecommendedMenu{
-		{Key: "list", Name: "查看列表", Description: "默认列出可用工作区；切到 vscode 模式后列出在线实例。"},
-		{Key: "status", Name: "当前状态", Description: "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"},
-		{Key: "threads", Name: "切换会话", Description: "展示最近可见会话；normal 模式可全局继续，vscode detached 时需先 list。"},
+		{Key: "menu", Name: "命令菜单", Description: "打开阶段感知的命令菜单首页。"},
 		{Key: "stop", Name: "停止当前执行", Description: "中断当前执行，并丢弃飞书侧尚未发送的排队输入。"},
-		{Key: "reason_low", Name: "推理 Low", Description: "把后续飞书消息切到 low 推理，直到 clear 或接管清理。"},
-		{Key: "reason_medium", Name: "推理 Medium", Description: "把后续飞书消息切到 medium 推理，直到 clear 或接管清理。"},
-		{Key: "reason_high", Name: "推理 High", Description: "把后续飞书消息切到 high 推理，直到 clear 或接管清理。"},
-		{Key: "reason_xhigh", Name: "推理 XHigh", Description: "把后续飞书消息切到 xhigh 推理，直到 clear 或接管清理。"},
-		{Key: "access_full", Name: "执行权限 Full", Description: "把后续飞书消息切到 full 权限，直到 clear 或接管清理。"},
-		{Key: "access_confirm", Name: "执行权限 Confirm", Description: "把后续飞书消息切到 confirm 权限，直到 clear 或接管清理。"},
+		{Key: "new", Name: "新建会话", Description: "仅 normal 模式可用：准备一个新会话，下一条消息会作为首条输入。"},
+		{Key: "reasoning", Name: "推理强度", Description: "打开推理强度参数卡；如果知道完整 key，也可直接使用 `reasoning_high` 这类直达入口。"},
+		{Key: "model", Name: "模型", Description: "打开模型卡片；如果知道完整 key，也可直接使用 `model_gpt-5.4` 这类直达入口。"},
+		{Key: "access", Name: "执行权限", Description: "打开执行权限参数卡；如果知道完整 key，也可直接使用 `access_confirm` 这类直达入口。"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("recommended menus mismatch:\n got: %#v\nwant: %#v", got, want)
@@ -167,5 +163,47 @@ func TestFeishuCommandCatalogsIncludeMode(t *testing.T) {
 		if !found {
 			t.Fatalf("catalog %#v does not include /mode", catalog.Title)
 		}
+	}
+}
+
+func TestFeishuCommandHelpCatalogUsesCanonicalCommandsOnly(t *testing.T) {
+	catalog := FeishuCommandHelpCatalog()
+	var commands []string
+	for _, section := range catalog.Sections {
+		for _, entry := range section.Entries {
+			commands = append(commands, entry.Commands...)
+		}
+	}
+	for _, legacy := range []string{"/threads", "/sessions", "/approval", "/effort"} {
+		for _, command := range commands {
+			if command == legacy {
+				t.Fatalf("help catalog should not expose legacy alias %q: %#v", legacy, commands)
+			}
+		}
+	}
+	for _, canonical := range []string{"/use", "/access", "/reasoning", "/menu"} {
+		found := false
+		for _, command := range commands {
+			if command == canonical {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("help catalog missing canonical command %q: %#v", canonical, commands)
+		}
+	}
+}
+
+func TestParseFeishuTextActionRecognizesMenuSubcommands(t *testing.T) {
+	action, ok := ParseFeishuTextAction("/menu send_settings")
+	if !ok {
+		t.Fatal("expected /menu send_settings to be parsed")
+	}
+	if action.Kind != ActionShowCommandMenu {
+		t.Fatalf("action kind = %q, want %q", action.Kind, ActionShowCommandMenu)
+	}
+	if action.Text != "/menu send_settings" {
+		t.Fatalf("unexpected action text: %#v", action)
 	}
 }

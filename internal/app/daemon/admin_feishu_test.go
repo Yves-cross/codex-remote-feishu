@@ -126,14 +126,14 @@ func TestFeishuManifestAndScopesRoutes(t *testing.T) {
 	if manifestResp.Manifest.Scopes.Scopes.Tenant[0] != "drive:drive" {
 		t.Fatalf("unexpected manifest scopes: %#v", manifestResp.Manifest.Scopes)
 	}
-	if len(manifestResp.Manifest.Menus) < 8 {
+	if len(manifestResp.Manifest.Menus) != 6 {
 		t.Fatalf("unexpected manifest menus: %#v", manifestResp.Manifest.Menus)
 	}
-	wantReasoningKeys := []string{"reason_low", "reason_medium", "reason_high", "reason_xhigh"}
-	for index, want := range wantReasoningKeys {
-		got := manifestResp.Manifest.Menus[index+4].Key
+	wantMenuKeys := []string{"menu", "stop", "new", "reasoning", "model", "access"}
+	for index, want := range wantMenuKeys {
+		got := manifestResp.Manifest.Menus[index].Key
 		if got != want {
-			t.Fatalf("manifest menu[%d] key = %q, want %q", index+4, got, want)
+			t.Fatalf("manifest menu[%d] key = %q, want %q", index, got, want)
 		}
 	}
 

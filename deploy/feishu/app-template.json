@@ -5,19 +5,9 @@
     "name": "Codex Remote",
     "menus": [
       {
-        "key": "list",
-        "name": "查看列表",
-        "description": "默认列出可用工作区；切到 vscode 模式后列出在线实例。"
-      },
-      {
-        "key": "status",
-        "name": "当前状态",
-        "description": "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"
-      },
-      {
-        "key": "threads",
-        "name": "切换会话",
-        "description": "展示最近可见会话；normal 模式可全局继续，vscode detached 时需先 list。"
+        "key": "menu",
+        "name": "命令菜单",
+        "description": "打开阶段感知的命令菜单首页。"
       },
       {
         "key": "stop",
@@ -25,34 +15,24 @@
         "description": "中断当前执行，并丢弃飞书侧尚未发送的排队输入。"
       },
       {
-        "key": "reason_low",
-        "name": "推理 Low",
-        "description": "把后续飞书消息切到 low 推理，直到 clear 或接管清理。"
+        "key": "new",
+        "name": "新建会话",
+        "description": "仅 normal 模式可用：准备一个新会话，下一条消息会作为首条输入。"
       },
       {
-        "key": "reason_medium",
-        "name": "推理 Medium",
-        "description": "把后续飞书消息切到 medium 推理，直到 clear 或接管清理。"
+        "key": "reasoning",
+        "name": "推理强度",
+        "description": "打开推理强度参数卡；如果知道完整 key，也可直接使用 `reasoning_high` 这类直达入口。"
       },
       {
-        "key": "reason_high",
-        "name": "推理 High",
-        "description": "把后续飞书消息切到 high 推理，直到 clear 或接管清理。"
+        "key": "model",
+        "name": "模型",
+        "description": "打开模型卡片；如果知道完整 key，也可直接使用 `model_gpt-5.4` 这类直达入口。"
       },
       {
-        "key": "reason_xhigh",
-        "name": "推理 XHigh",
-        "description": "把后续飞书消息切到 xhigh 推理，直到 clear 或接管清理。"
-      },
-      {
-        "key": "access_full",
-        "name": "执行权限 Full",
-        "description": "把后续飞书消息切到 full 权限，直到 clear 或接管清理。"
-      },
-      {
-        "key": "access_confirm",
-        "name": "执行权限 Confirm",
-        "description": "把后续飞书消息切到 confirm 权限，直到 clear 或接管清理。"
+        "key": "access",
+        "name": "执行权限",
+        "description": "打开执行权限参数卡；如果知道完整 key，也可直接使用 `access_confirm` 这类直达入口。"
       }
     ]
   },
@@ -90,13 +70,13 @@
     },
     {
       "event": "application.bot.menu_v6",
-      "purpose": "处理机器人菜单里的 list/status/threads/stop、推理强度快捷键和执行权限快捷键。"
+      "purpose": "处理机器人静态菜单里的阶段入口和高频快捷键，例如 menu/stop/new/reasoning/model/access。"
     }
   ],
   "callback_subscriptions": [
     {
       "callback": "card.action.trigger",
-      "purpose": "通过飞书回调长连接处理消息卡片里的 attach / 切换会话按钮，以及 approval request 确认按钮。"
+      "purpose": "通过飞书回调长连接处理消息卡片里的 attach / 切换会话按钮、命令菜单导航、参数卡和 approval request 交互。"
     }
   ],
   "permissions_checklist": [

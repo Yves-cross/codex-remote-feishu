@@ -2,6 +2,66 @@ package control
 
 import "strings"
 
+const (
+	FeishuCommandGroupCurrentWork  = "current_work"
+	FeishuCommandGroupSendSettings = "send_settings"
+	FeishuCommandGroupSwitchTarget = "switch_target"
+	FeishuCommandGroupMaintenance  = "maintenance"
+	FeishuCommandList              = "list"
+	FeishuCommandStatus            = "status"
+	FeishuCommandUse               = "use"
+	FeishuCommandUseAll            = "useall"
+	FeishuCommandNew               = "new"
+	FeishuCommandFollow            = "follow"
+	FeishuCommandDetach            = "detach"
+	FeishuCommandStop              = "stop"
+	FeishuCommandMode              = "mode"
+	FeishuCommandAutoContinue      = "autocontinue"
+	FeishuCommandModel             = "model"
+	FeishuCommandReasoning         = "reasoning"
+	FeishuCommandAccess            = "access"
+	FeishuCommandHelp              = "help"
+	FeishuCommandMenu              = "menu"
+	FeishuCommandDebug             = "debug"
+)
+
+type FeishuCommandArgumentKind string
+
+const (
+	FeishuCommandArgumentNone   FeishuCommandArgumentKind = "none"
+	FeishuCommandArgumentChoice FeishuCommandArgumentKind = "choice"
+	FeishuCommandArgumentText   FeishuCommandArgumentKind = "text"
+)
+
+type FeishuCommandGroup struct {
+	ID          string
+	Title       string
+	Description string
+}
+
+type FeishuCommandOption struct {
+	Value       string
+	Label       string
+	Description string
+	CommandText string
+	MenuKey     string
+}
+
+type FeishuCommandDefinition struct {
+	ID               string
+	GroupID          string
+	Title            string
+	CanonicalSlash   string
+	CanonicalMenuKey string
+	ArgumentKind     FeishuCommandArgumentKind
+	Description      string
+	Examples         []string
+	Options          []FeishuCommandOption
+	ShowInHelp       bool
+	ShowInMenu       bool
+	RecommendedMenu  *FeishuRecommendedMenu
+}
+
 type feishuCommandMatch struct {
 	alias  string
 	action Action
@@ -19,18 +79,11 @@ type feishuCommandDynamicMenuMatch struct {
 }
 
 type feishuCommandSpec struct {
-	section          string
-	helpCommands     []string
-	description      string
-	examples         []string
-	buttons          []CommandCatalogButton
-	recommendedMenus []FeishuRecommendedMenu
-	showInHelp       bool
-	showInMenu       bool
-	textExact        []feishuCommandMatch
-	textPrefixes     []feishuCommandPrefixMatch
-	menuExact        []feishuCommandMatch
-	menuDynamic      []feishuCommandDynamicMenuMatch
+	definition   FeishuCommandDefinition
+	textExact    []feishuCommandMatch
+	textPrefixes []feishuCommandPrefixMatch
+	menuExact    []feishuCommandMatch
+	menuDynamic  []feishuCommandDynamicMenuMatch
 }
 
 type FeishuRecommendedMenu struct {
@@ -39,86 +92,71 @@ type FeishuRecommendedMenu struct {
 	Description string
 }
 
-var feishuCommandSections = []string{
-	"实例与会话",
-	"发送前覆盖",
-	"帮助",
+var feishuCommandGroups = []FeishuCommandGroup{
+	{
+		ID:          FeishuCommandGroupCurrentWork,
+		Title:       "当前工作",
+		Description: "steady-state 主路径：停止当前执行，或在 normal 模式下准备新会话。",
+	},
+	{
+		ID:          FeishuCommandGroupSendSettings,
+		Title:       "发送设置",
+		Description: "调整后续飞书消息的推理强度、模型和执行权限。",
+	},
+	{
+		ID:          FeishuCommandGroupSwitchTarget,
+		Title:       "切换目标",
+		Description: "查看列表、切换会话、切换工作目标，或解除当前接管。",
+	},
+	{
+		ID:          FeishuCommandGroupMaintenance,
+		Title:       "低频与维护",
+		Description: "查看状态、切换模式、auto-continue、帮助和调试入口。",
+	},
 }
 
 var feishuCommandSpecs = []feishuCommandSpec{
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/list"},
-		description:  "默认列出可用工作区；切到 `vscode` 模式后列出在线实例，并从 follow-first 路径接管。",
-		buttons: []CommandCatalogButton{
-			{Label: "查看列表", CommandText: "/list"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandStop,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "停止当前执行",
+			CanonicalSlash:   "/stop",
+			CanonicalMenuKey: "stop",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "中断当前执行，并丢弃飞书侧尚未发送的排队输入。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "stop",
+				Name:        "停止当前执行",
+				Description: "中断当前执行，并丢弃飞书侧尚未发送的排队输入。",
+			},
 		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "list", Name: "查看列表", Description: "默认列出可用工作区；切到 vscode 模式后列出在线实例。"},
-		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
-			{alias: "/list", action: Action{Kind: ActionListInstances}},
+			{alias: "/stop", action: Action{Kind: ActionStop}},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "list", action: Action{Kind: ActionListInstances}},
+			{alias: "stop", action: Action{Kind: ActionStop}},
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/status"},
-		description:  "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。",
-		buttons: []CommandCatalogButton{
-			{Label: "当前状态", CommandText: "/status"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandNew,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "新建会话",
+			CanonicalSlash:   "/new",
+			CanonicalMenuKey: "new",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "仅 normal 模式可用：准备一个新会话，下一条消息会作为首条输入。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "new",
+				Name:        "新建会话",
+				Description: "仅 normal 模式可用：准备一个新会话，下一条消息会作为首条输入。",
+			},
 		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "status", Name: "当前状态", Description: "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"},
-		},
-		showInHelp: true,
-		showInMenu: true,
-		textExact: []feishuCommandMatch{
-			{alias: "/status", action: Action{Kind: ActionStatus}},
-		},
-		menuExact: []feishuCommandMatch{
-			{alias: "status", action: Action{Kind: ActionStatus}},
-		},
-	},
-	{
-		section:      "实例与会话",
-		helpCommands: []string{"/mode", "/mode normal", "/mode vscode"},
-		description:  "查看或切换当前飞书会话的产品模式。",
-		examples:     []string{"/mode normal", "/mode vscode"},
-		buttons: []CommandCatalogButton{
-			{Label: "Normal 模式", CommandText: "/mode normal"},
-			{Label: "VS Code 模式", CommandText: "/mode vscode"},
-		},
-		showInHelp: true,
-		showInMenu: true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/mode", kind: ActionModeCommand},
-		},
-	},
-	{
-		section:      "实例与会话",
-		helpCommands: []string{"/autocontinue", "/autocontinue on", "/autocontinue off"},
-		description:  "查看或切换当前飞书会话的 auto-continue 状态。",
-		examples:     []string{"/autocontinue on", "/autocontinue off"},
-		showInHelp:   true,
-		showInMenu:   true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/autocontinue", kind: ActionAutoContinueCommand},
-		},
-	},
-	{
-		section:      "实例与会话",
-		helpCommands: []string{"/new"},
-		description:  "仅 `normal` 模式可用：准备一个新会话，下一条消息会作为首条输入。",
-		buttons: []CommandCatalogButton{
-			{Label: "新建会话", CommandText: "/new"},
-		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
 			{alias: "/new", action: Action{Kind: ActionNewThread}},
 			{alias: "/newinstance", action: Action{Kind: ActionRemovedCommand, Text: "/newinstance"}},
@@ -130,111 +168,378 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/threads", "/use", "/sessions"},
-		description:  "展示最近可见会话；normal 模式可全局继续或限制到当前工作区，vscode detached 时需先 `/list`。",
-		buttons: []CommandCatalogButton{
-			{Label: "最近会话", CommandText: "/use"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandReasoning,
+			GroupID:          FeishuCommandGroupSendSettings,
+			Title:            "推理强度",
+			CanonicalSlash:   "/reasoning",
+			CanonicalMenuKey: "reasoning",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			Description:      "查看当前推理强度；bare `/reasoning` 会返回可选参数卡片。",
+			Examples:         []string{"/reasoning high", "/reasoning clear"},
+			Options: []FeishuCommandOption{
+				commandOption("/reasoning", "reasoning", "low", "low", "把后续飞书消息切到 low 推理，直到 clear 或接管清理。"),
+				commandOption("/reasoning", "reasoning", "medium", "medium", "把后续飞书消息切到 medium 推理，直到 clear 或接管清理。"),
+				commandOption("/reasoning", "reasoning", "high", "high", "把后续飞书消息切到 high 推理，直到 clear 或接管清理。"),
+				commandOption("/reasoning", "reasoning", "xhigh", "xhigh", "把后续飞书消息切到 xhigh 推理，直到 clear 或接管清理。"),
+				commandOption("/reasoning", "reasoning", "clear", "clear", "清除飞书临时推理强度覆盖。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "reasoning",
+				Name:        "推理强度",
+				Description: "打开推理强度参数卡；如果知道完整 key，也可直接使用 `reasoning_high` 这类直达入口。",
+			},
 		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "threads", Name: "切换会话", Description: "展示最近可见会话；normal 模式可全局继续，vscode detached 时需先 list。"},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/reasoning", kind: ActionReasoningCommand},
+			{alias: "/effort", kind: ActionReasoningCommand},
 		},
-		showInHelp: true,
-		showInMenu: true,
+		menuExact: []feishuCommandMatch{
+			{alias: "reasoning", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning"}},
+			{alias: "reasonlow", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning low"}},
+			{alias: "reasonmedium", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning medium"}},
+			{alias: "reasonhigh", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning high"}},
+			{alias: "reasonxhigh", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning xhigh"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "reasoning_", kind: ActionReasoningCommand, build: buildMenuReasoningText},
+			{prefix: "reasoning-", kind: ActionReasoningCommand, build: buildMenuReasoningText},
+			{prefix: "reason_", kind: ActionReasoningCommand, build: buildMenuReasoningText},
+			{prefix: "reason-", kind: ActionReasoningCommand, build: buildMenuReasoningText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandModel,
+			GroupID:          FeishuCommandGroupSendSettings,
+			Title:            "模型",
+			CanonicalSlash:   "/model",
+			CanonicalMenuKey: "model",
+			ArgumentKind:     FeishuCommandArgumentText,
+			Description:      "查看当前模型配置；bare `/model` 会给出常见模型与手动输入入口。",
+			Examples:         []string{"/model gpt-5.4", "/model gpt-5.4 high", "/model clear"},
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "model",
+				Name:        "模型",
+				Description: "打开模型卡片；如果知道完整 key，也可直接使用 `model_gpt-5.4` 这类直达入口。",
+			},
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/model", kind: ActionModelCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "model", action: Action{Kind: ActionModelCommand, Text: "/model"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "model_", kind: ActionModelCommand, build: buildMenuModelText},
+			{prefix: "model-", kind: ActionModelCommand, build: buildMenuModelText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandAccess,
+			GroupID:          FeishuCommandGroupSendSettings,
+			Title:            "执行权限",
+			CanonicalSlash:   "/access",
+			CanonicalMenuKey: "access",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			Description:      "查看当前执行权限；bare `/access` 会返回可选参数卡片。",
+			Examples:         []string{"/access confirm", "/access clear"},
+			Options: []FeishuCommandOption{
+				commandOption("/access", "access", "full", "full", "把后续飞书消息切到 full 权限，直到 clear 或接管清理。"),
+				commandOption("/access", "access", "confirm", "confirm", "把后续飞书消息切到 confirm 权限，直到 clear 或接管清理。"),
+				commandOption("/access", "access", "clear", "clear", "恢复飞书默认执行权限。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "access",
+				Name:        "执行权限",
+				Description: "打开执行权限参数卡；如果知道完整 key，也可直接使用 `access_confirm` 这类直达入口。",
+			},
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/access", kind: ActionAccessCommand},
+			{alias: "/approval", kind: ActionAccessCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "access", action: Action{Kind: ActionAccessCommand, Text: "/access"}},
+			{alias: "approval", action: Action{Kind: ActionAccessCommand, Text: "/access"}},
+			{alias: "accessfull", action: Action{Kind: ActionAccessCommand, Text: "/access full"}},
+			{alias: "approvalfull", action: Action{Kind: ActionAccessCommand, Text: "/access full"}},
+			{alias: "accessconfirm", action: Action{Kind: ActionAccessCommand, Text: "/access confirm"}},
+			{alias: "approvalconfirm", action: Action{Kind: ActionAccessCommand, Text: "/access confirm"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "access_", kind: ActionAccessCommand, build: buildMenuAccessText},
+			{prefix: "access-", kind: ActionAccessCommand, build: buildMenuAccessText},
+			{prefix: "approval_", kind: ActionAccessCommand, build: buildMenuAccessText},
+			{prefix: "approval-", kind: ActionAccessCommand, build: buildMenuAccessText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandList,
+			GroupID:          FeishuCommandGroupSwitchTarget,
+			Title:            "查看列表",
+			CanonicalSlash:   "/list",
+			CanonicalMenuKey: "list",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "默认列出可用工作区；切到 `vscode` 模式后列出在线实例，并从 follow-first 路径接管。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
 		textExact: []feishuCommandMatch{
-			{alias: "/threads", action: Action{Kind: ActionShowThreads}},
+			{alias: "/list", action: Action{Kind: ActionListInstances}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "list", action: Action{Kind: ActionListInstances}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandUse,
+			GroupID:          FeishuCommandGroupSwitchTarget,
+			Title:            "切换会话",
+			CanonicalSlash:   "/use",
+			CanonicalMenuKey: "use",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "展示最近可见会话；normal 模式可全局继续或限制到当前工作区，vscode detached 时需先 `/list`。",
+			Examples:         []string{"/useall"},
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textExact: []feishuCommandMatch{
 			{alias: "/use", action: Action{Kind: ActionShowThreads}},
+			{alias: "/threads", action: Action{Kind: ActionShowThreads}},
 			{alias: "/sessions", action: Action{Kind: ActionShowThreads}},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "threads", action: Action{Kind: ActionShowThreads}},
 			{alias: "use", action: Action{Kind: ActionShowThreads}},
+			{alias: "threads", action: Action{Kind: ActionShowThreads}},
 			{alias: "sessions", action: Action{Kind: ActionShowThreads}},
 			{alias: "showthreads", action: Action{Kind: ActionShowThreads}},
 			{alias: "showsessions", action: Action{Kind: ActionShowThreads}},
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/useall", "/sessionsall", "/sessions/all"},
-		description:  "展示全部可见会话；normal 模式可全局继续或限制到当前工作区，vscode detached 时需先 `/list`。",
-		buttons: []CommandCatalogButton{
-			{Label: "全部会话", CommandText: "/useall"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandUseAll,
+			GroupID:          FeishuCommandGroupSwitchTarget,
+			Title:            "全部会话",
+			CanonicalSlash:   "/useall",
+			CanonicalMenuKey: "useall",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "展示全部可见会话；normal 模式可全局继续或限制到当前工作区，vscode detached 时需先 `/list`。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
 		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
 			{alias: "/useall", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "/sessionsall", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "/sessions/all", action: Action{Kind: ActionShowAllThreads}},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "threadsall", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "useall", action: Action{Kind: ActionShowAllThreads}},
+			{alias: "threadsall", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "sessionsall", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "showallthreads", action: Action{Kind: ActionShowAllThreads}},
 			{alias: "showallsessions", action: Action{Kind: ActionShowAllThreads}},
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/follow"},
-		description:  "仅 `vscode` 模式可用：跟随当前 VS Code 聚焦会话；normal 模式会提示改走 `/use`、`/new` 或 `/mode vscode`。",
-		buttons: []CommandCatalogButton{
-			{Label: "跟随当前", CommandText: "/follow"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandDetach,
+			GroupID:          FeishuCommandGroupSwitchTarget,
+			Title:            "解除接管",
+			CanonicalSlash:   "/detach",
+			CanonicalMenuKey: "detach",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "解除当前接管，停止把后续输入发送到当前实例。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
 		},
-		showInHelp: true,
-		showInMenu: true,
-		textExact: []feishuCommandMatch{
-			{alias: "/follow", action: Action{Kind: ActionFollowLocal}},
-		},
-	},
-	{
-		section:      "实例与会话",
-		helpCommands: []string{"/detach"},
-		description:  "解除当前接管，停止把后续输入发送到当前实例。",
-		buttons: []CommandCatalogButton{
-			{Label: "解除接管", CommandText: "/detach"},
-		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
 			{alias: "/detach", action: Action{Kind: ActionDetach}},
 		},
-	},
-	{
-		section:    "实例与会话",
-		showInHelp: false,
-		showInMenu: false,
-		textExact: []feishuCommandMatch{
-			{alias: "/vscode-migrate", action: Action{Kind: ActionVSCodeMigrate}},
+		menuExact: []feishuCommandMatch{
+			{alias: "detach", action: Action{Kind: ActionDetach}},
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/stop"},
-		description:  "中断当前执行，并丢弃飞书侧尚未发送的排队输入。",
-		buttons: []CommandCatalogButton{
-			{Label: "停止", CommandText: "/stop"},
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandFollow,
+			GroupID:          FeishuCommandGroupSwitchTarget,
+			Title:            "跟随当前",
+			CanonicalSlash:   "/follow",
+			CanonicalMenuKey: "follow",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "仅 `vscode` 模式可用：跟随当前 VS Code 聚焦会话；normal 模式请改走 `/use`、`/new` 或 `/mode vscode`。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
 		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "stop", Name: "停止当前执行", Description: "中断当前执行，并丢弃飞书侧尚未发送的排队输入。"},
-		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
-			{alias: "/stop", action: Action{Kind: ActionStop}},
+			{alias: "/follow", action: Action{Kind: ActionFollowLocal}},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "stop", action: Action{Kind: ActionStop}},
+			{alias: "follow", action: Action{Kind: ActionFollowLocal}},
 		},
 	},
 	{
-		section:      "实例与会话",
-		helpCommands: []string{"/killinstance"},
-		description:  "历史兼容入口，提示改用 /detach。",
-		showInHelp:   false,
-		showInMenu:   false,
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandStatus,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "当前状态",
+			CanonicalSlash:   "/status",
+			CanonicalMenuKey: "status",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/status", action: Action{Kind: ActionStatus}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "status", action: Action{Kind: ActionStatus}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandMode,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "切换模式",
+			CanonicalSlash:   "/mode",
+			CanonicalMenuKey: "mode",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			Description:      "查看当前模式；bare `/mode` 会返回 normal / vscode 切换卡片。",
+			Examples:         []string{"/mode normal", "/mode vscode"},
+			Options: []FeishuCommandOption{
+				commandOption("/mode", "mode", "normal", "normal", "切换到 normal 模式。"),
+				commandOption("/mode", "mode", "vscode", "vscode", "切换到 vscode 模式。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/mode", kind: ActionModeCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "mode", action: Action{Kind: ActionModeCommand, Text: "/mode"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "mode_", kind: ActionModeCommand, build: buildMenuModeText},
+			{prefix: "mode-", kind: ActionModeCommand, build: buildMenuModeText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandAutoContinue,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "自动续跑",
+			CanonicalSlash:   "/autocontinue",
+			CanonicalMenuKey: "autocontinue",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			Description:      "查看当前 auto-continue 状态；bare `/autocontinue` 会返回 on / off 切换卡片。",
+			Examples:         []string{"/autocontinue on", "/autocontinue off"},
+			Options: []FeishuCommandOption{
+				commandOption("/autocontinue", "autocontinue", "on", "on", "开启当前飞书会话的 auto-continue。"),
+				commandOption("/autocontinue", "autocontinue", "off", "off", "关闭当前飞书会话的 auto-continue。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/autocontinue", kind: ActionAutoContinueCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "autocontinue", action: Action{Kind: ActionAutoContinueCommand, Text: "/autocontinue"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "autocontinue_", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
+			{prefix: "autocontinue-", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandHelp,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "Slash 帮助",
+			CanonicalSlash:   "/help",
+			CanonicalMenuKey: "help",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "查看 canonical slash command 列表和示例。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/help", action: Action{Kind: ActionShowCommandHelp}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "help", action: Action{Kind: ActionShowCommandHelp}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandMenu,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "命令菜单",
+			CanonicalSlash:   "/menu",
+			CanonicalMenuKey: "menu",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "打开阶段感知的命令菜单首页。",
+			ShowInHelp:       true,
+			ShowInMenu:       false,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "menu",
+				Name:        "命令菜单",
+				Description: "打开阶段感知的命令菜单首页。",
+			},
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "menu", kind: ActionShowCommandMenu},
+			{alias: "/menu", kind: ActionShowCommandMenu},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "menu", action: Action{Kind: ActionShowCommandMenu}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandDebug,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "调试",
+			CanonicalSlash:   "/debug",
+			CanonicalMenuKey: "debug",
+			ArgumentKind:     FeishuCommandArgumentText,
+			Description:      "查看升级状态、手动检查更新，或切换当前 release track。",
+			Examples:         []string{"/debug", "/debug upgrade", "/debug track beta"},
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/debug", kind: ActionDebugCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "debug", action: Action{Kind: ActionDebugCommand, Text: "/debug"}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               "killinstance_legacy",
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "旧版 killinstance",
+			CanonicalSlash:   "/killinstance",
+			CanonicalMenuKey: "killinstance",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "历史兼容入口，提示改用 /detach。",
+			ShowInHelp:       false,
+			ShowInMenu:       false,
+		},
 		textExact: []feishuCommandMatch{
 			{alias: "/killinstance", action: Action{Kind: ActionRemovedCommand, Text: "/killinstance"}},
 		},
@@ -243,111 +548,19 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 	},
 	{
-		section:      "发送前覆盖",
-		helpCommands: []string{"/model <模型名>"},
-		description:  "覆盖后续飞书消息使用的模型，直到 `clear` 或接管清理。",
-		examples:     []string{"/model gpt-5.4"},
-		showInHelp:   true,
-		showInMenu:   true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/model", kind: ActionModelCommand},
+		definition: FeishuCommandDefinition{
+			ID:               "vscode_migrate_hidden",
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "VS Code 迁移",
+			CanonicalSlash:   "/vscode-migrate",
+			CanonicalMenuKey: "vscode-migrate",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "内部迁移入口。",
+			ShowInHelp:       false,
+			ShowInMenu:       false,
 		},
-		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "model_", kind: ActionModelCommand, build: buildMenuModelText},
-			{prefix: "model-", kind: ActionModelCommand, build: buildMenuModelText},
-		},
-	},
-	{
-		section:      "发送前覆盖",
-		helpCommands: []string{"/reasoning <low|medium|high|xhigh>", "/effort <low|medium|high|xhigh>"},
-		description:  "覆盖后续飞书消息的推理强度，直到 `clear` 或接管清理。",
-		examples:     []string{"/reasoning high"},
-		buttons: []CommandCatalogButton{
-			{Label: "low", CommandText: "/reasoning low"},
-			{Label: "medium", CommandText: "/reasoning medium"},
-			{Label: "high", CommandText: "/reasoning high"},
-			{Label: "xhigh", CommandText: "/reasoning xhigh"},
-		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "reason_low", Name: "推理 Low", Description: "把后续飞书消息切到 low 推理，直到 clear 或接管清理。"},
-			{Key: "reason_medium", Name: "推理 Medium", Description: "把后续飞书消息切到 medium 推理，直到 clear 或接管清理。"},
-			{Key: "reason_high", Name: "推理 High", Description: "把后续飞书消息切到 high 推理，直到 clear 或接管清理。"},
-			{Key: "reason_xhigh", Name: "推理 XHigh", Description: "把后续飞书消息切到 xhigh 推理，直到 clear 或接管清理。"},
-		},
-		showInHelp: true,
-		showInMenu: true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/reasoning", kind: ActionReasoningCommand},
-			{alias: "/effort", kind: ActionReasoningCommand},
-		},
-		menuExact: []feishuCommandMatch{
-			{alias: "reasonlow", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning low"}},
-			{alias: "reasonmedium", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning medium"}},
-			{alias: "reasonhigh", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning high"}},
-			{alias: "reasonxhigh", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning xhigh"}},
-		},
-		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "reason_", kind: ActionReasoningCommand, build: buildMenuReasoningText},
-			{prefix: "reason-", kind: ActionReasoningCommand, build: buildMenuReasoningText},
-		},
-	},
-	{
-		section:      "发送前覆盖",
-		helpCommands: []string{"/access <full|confirm>", "/approval <full|confirm>"},
-		description:  "覆盖后续飞书消息的执行权限，直到 `clear` 或接管清理。",
-		examples:     []string{"/access confirm"},
-		buttons: []CommandCatalogButton{
-			{Label: "全部允许", CommandText: "/access full"},
-			{Label: "逐次确认", CommandText: "/access confirm"},
-		},
-		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "access_full", Name: "执行权限 Full", Description: "把后续飞书消息切到 full 权限，直到 clear 或接管清理。"},
-			{Key: "access_confirm", Name: "执行权限 Confirm", Description: "把后续飞书消息切到 confirm 权限，直到 clear 或接管清理。"},
-		},
-		showInHelp: true,
-		showInMenu: true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/access", kind: ActionAccessCommand},
-			{alias: "/approval", kind: ActionAccessCommand},
-		},
-		menuExact: []feishuCommandMatch{
-			{alias: "accessfull", action: Action{Kind: ActionAccessCommand, Text: "/access full"}},
-			{alias: "approvalfull", action: Action{Kind: ActionAccessCommand, Text: "/access full"}},
-			{alias: "accessconfirm", action: Action{Kind: ActionAccessCommand, Text: "/access confirm"}},
-			{alias: "approvalconfirm", action: Action{Kind: ActionAccessCommand, Text: "/access confirm"}},
-		},
-	},
-	{
-		section:      "帮助",
-		helpCommands: []string{"/debug", "/debug upgrade", "/debug track", "/debug track alpha|beta|production"},
-		description:  "查看升级状态、手动检查更新，或切换当前 release track。",
-		examples:     []string{"/debug", "/debug upgrade", "/debug track beta"},
-		showInHelp:   true,
-		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/debug", kind: ActionDebugCommand},
-		},
-	},
-	{
-		section:      "帮助",
-		helpCommands: []string{"/help"},
-		description:  "查看当前支持的 slash command 和说明。",
-		buttons: []CommandCatalogButton{
-			{Label: "Slash 帮助", CommandText: "/help"},
-		},
-		showInHelp: true,
-		showInMenu: true,
 		textExact: []feishuCommandMatch{
-			{alias: "/help", action: Action{Kind: ActionShowCommandHelp}},
-		},
-	},
-	{
-		section:      "帮助",
-		helpCommands: []string{"menu", "/menu"},
-		description:  "发送一张命令汇总卡片，固定动作可直接点击。",
-		showInHelp:   true,
-		textExact: []feishuCommandMatch{
-			{alias: "menu", action: Action{Kind: ActionShowCommandMenu}},
-			{alias: "/menu", action: Action{Kind: ActionShowCommandMenu}},
+			{alias: "/vscode-migrate", action: Action{Kind: ActionVSCodeMigrate}},
 		},
 	},
 }
@@ -421,66 +634,118 @@ func NormalizeFeishuMenuEventKey(value string) string {
 	return b.String()
 }
 
+func FeishuCommandGroups() []FeishuCommandGroup {
+	groups := make([]FeishuCommandGroup, 0, len(feishuCommandGroups))
+	for _, group := range feishuCommandGroups {
+		groups = append(groups, group)
+	}
+	return groups
+}
+
+func FeishuCommandGroupByID(groupID string) (FeishuCommandGroup, bool) {
+	for _, group := range feishuCommandGroups {
+		if group.ID == groupID {
+			return group, true
+		}
+	}
+	return FeishuCommandGroup{}, false
+}
+
+func FeishuCommandDefinitions() []FeishuCommandDefinition {
+	defs := make([]FeishuCommandDefinition, 0, len(feishuCommandSpecs))
+	for _, spec := range feishuCommandSpecs {
+		defs = append(defs, cloneFeishuCommandDefinition(spec.definition))
+	}
+	return defs
+}
+
+func FeishuCommandDefinitionByID(commandID string) (FeishuCommandDefinition, bool) {
+	for _, spec := range feishuCommandSpecs {
+		if spec.definition.ID == commandID {
+			return cloneFeishuCommandDefinition(spec.definition), true
+		}
+	}
+	return FeishuCommandDefinition{}, false
+}
+
+func FeishuCommandDefinitionsForGroup(groupID string) []FeishuCommandDefinition {
+	defs := make([]FeishuCommandDefinition, 0, len(feishuCommandSpecs))
+	for _, spec := range feishuCommandSpecs {
+		if spec.definition.GroupID != groupID {
+			continue
+		}
+		defs = append(defs, cloneFeishuCommandDefinition(spec.definition))
+	}
+	return defs
+}
+
 func FeishuCommandHelpCatalog() CommandCatalog {
 	return buildFeishuCommandCatalog(
 		"Slash 命令帮助",
-		"当前支持的 slash command 如下。带参数的命令请直接发送文字，例如 /model gpt-5.4。",
+		"以下是当前主展示的 canonical slash command。历史 alias 仍可兼容，但不再作为新的主展示入口。",
 		false,
 	)
 }
 
 func FeishuCommandMenuCatalog() CommandCatalog {
 	return buildFeishuCommandCatalog(
-		"命令菜单",
-		"固定动作可直接点击。需要自定义参数的命令请参考说明中的示例后，直接给机器人发送文字。",
+		"命令目录",
+		"这是同源的静态命令目录。真正的 `/menu` 首页会在 service 层按当前阶段动态重排。",
 		true,
 	)
 }
 
 func FeishuRecommendedMenus() []FeishuRecommendedMenu {
-	menus := make([]FeishuRecommendedMenu, 0, len(feishuCommandSpecs))
-	seen := make(map[string]struct{}, len(feishuCommandSpecs))
-	for _, spec := range feishuCommandSpecs {
-		for _, menu := range spec.recommendedMenus {
-			key := strings.TrimSpace(menu.Key)
-			if key == "" {
-				continue
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			menus = append(menus, FeishuRecommendedMenu{
-				Key:         key,
-				Name:        strings.TrimSpace(menu.Name),
-				Description: strings.TrimSpace(menu.Description),
-			})
+	order := []string{
+		FeishuCommandMenu,
+		FeishuCommandStop,
+		FeishuCommandNew,
+		FeishuCommandReasoning,
+		FeishuCommandModel,
+		FeishuCommandAccess,
+	}
+	menus := make([]FeishuRecommendedMenu, 0, len(order))
+	for _, commandID := range order {
+		def, ok := FeishuCommandDefinitionByID(commandID)
+		if !ok || def.RecommendedMenu == nil {
+			continue
 		}
+		menu := *def.RecommendedMenu
+		menus = append(menus, FeishuRecommendedMenu{
+			Key:         strings.TrimSpace(menu.Key),
+			Name:        strings.TrimSpace(menu.Name),
+			Description: strings.TrimSpace(menu.Description),
+		})
 	}
 	return menus
 }
 
 func buildFeishuCommandCatalog(title, summary string, interactive bool) CommandCatalog {
-	sections := make([]CommandCatalogSection, 0, len(feishuCommandSections))
-	for _, sectionTitle := range feishuCommandSections {
+	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
+	for _, group := range feishuCommandGroups {
 		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
 		for _, spec := range feishuCommandSpecs {
-			if spec.section != sectionTitle {
+			if spec.definition.GroupID != group.ID {
 				continue
 			}
-			if interactive && !spec.showInMenu {
+			if interactive && !spec.definition.ShowInMenu {
 				continue
 			}
-			if !interactive && !spec.showInHelp {
+			if !interactive && !spec.definition.ShowInHelp {
 				continue
 			}
 			entry := CommandCatalogEntry{
-				Commands:    append([]string(nil), spec.helpCommands...),
-				Description: spec.description,
-				Examples:    append([]string(nil), spec.examples...),
+				Title:       strings.TrimSpace(spec.definition.Title),
+				Commands:    []string{spec.definition.CanonicalSlash},
+				Description: spec.definition.Description,
+				Examples:    append([]string(nil), spec.definition.Examples...),
 			}
 			if interactive {
-				entry.Buttons = append([]CommandCatalogButton(nil), spec.buttons...)
+				entry.Buttons = append(entry.Buttons, CommandCatalogButton{
+					Label:       catalogButtonLabel(spec.definition),
+					Kind:        CommandCatalogButtonRunCommand,
+					CommandText: spec.definition.CanonicalSlash,
+				})
 			}
 			entries = append(entries, entry)
 		}
@@ -488,7 +753,7 @@ func buildFeishuCommandCatalog(title, summary string, interactive bool) CommandC
 			continue
 		}
 		sections = append(sections, CommandCatalogSection{
-			Title:   sectionTitle,
+			Title:   group.Title,
 			Entries: entries,
 		})
 	}
@@ -497,6 +762,38 @@ func buildFeishuCommandCatalog(title, summary string, interactive bool) CommandC
 		Summary:     summary,
 		Interactive: interactive,
 		Sections:    sections,
+	}
+}
+
+func catalogButtonLabel(def FeishuCommandDefinition) string {
+	switch def.ArgumentKind {
+	case FeishuCommandArgumentChoice, FeishuCommandArgumentText:
+		return "打开"
+	default:
+		return strings.TrimSpace(def.Title)
+	}
+}
+
+func cloneFeishuCommandDefinition(def FeishuCommandDefinition) FeishuCommandDefinition {
+	cloned := def
+	cloned.Examples = append([]string(nil), def.Examples...)
+	if len(def.Options) > 0 {
+		cloned.Options = append([]FeishuCommandOption(nil), def.Options...)
+	}
+	if def.RecommendedMenu != nil {
+		menu := *def.RecommendedMenu
+		cloned.RecommendedMenu = &menu
+	}
+	return cloned
+}
+
+func commandOption(commandText, menuKey, value, label, description string) FeishuCommandOption {
+	return FeishuCommandOption{
+		Value:       value,
+		Label:       label,
+		Description: description,
+		CommandText: commandText + " " + value,
+		MenuKey:     menuKey + "_" + value,
 	}
 }
 
@@ -511,8 +808,38 @@ func buildMenuModelText(value string) (string, bool) {
 func buildMenuReasoningText(value string) (string, bool) {
 	effort := strings.ToLower(strings.TrimSpace(value))
 	switch effort {
-	case "low", "medium", "high", "xhigh":
+	case "low", "medium", "high", "xhigh", "clear":
 		return "/reasoning " + effort, true
+	default:
+		return "", false
+	}
+}
+
+func buildMenuAccessText(value string) (string, bool) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "full", "confirm", "clear":
+		return "/access " + mode, true
+	default:
+		return "", false
+	}
+}
+
+func buildMenuModeText(value string) (string, bool) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "normal", "vscode":
+		return "/mode " + mode, true
+	default:
+		return "", false
+	}
+}
+
+func buildMenuAutoContinueText(value string) (string, bool) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "on", "off":
+		return "/autocontinue " + mode, true
 	default:
 		return "", false
 	}
