@@ -89,6 +89,35 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if state.CurrentSlot != "" {
 		t.Fatalf("current slot = %q, want empty for repo bootstrap", state.CurrentSlot)
 	}
+	if state.BaseDir != baseDir {
+		t.Fatalf("base dir = %q, want %q", state.BaseDir, baseDir)
+	}
+	if state.ServiceManager != ServiceManagerDetached {
+		t.Fatalf("service manager = %q, want detached", state.ServiceManager)
+	}
+}
+
+func TestBootstrapSystemdUserPersistsLinuxServiceMetadata(t *testing.T) {
+	baseDir := t.TempDir()
+	binaryPath := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin")
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:        baseDir,
+		BinaryPath:     binaryPath,
+		ServiceManager: ServiceManagerSystemdUser,
+		CurrentVersion: "dev",
+		RelayServerURL: "ws://127.0.0.1:9500/ws/agent",
+	})
+	if err != nil {
+		t.Fatalf("bootstrap systemd_user: %v", err)
+	}
+	if state.ServiceManager != ServiceManagerSystemdUser {
+		t.Fatalf("ServiceManager = %q, want systemd_user", state.ServiceManager)
+	}
+	if state.ServiceUnitPath != filepath.Join(baseDir, ".config", "systemd", "user", "codex-remote.service") {
+		t.Fatalf("ServiceUnitPath = %q", state.ServiceUnitPath)
+	}
 }
 
 func TestBootstrapManagedShimCopiesWrapperAndPreservesRealBinary(t *testing.T) {

@@ -16,6 +16,7 @@ type Options struct {
 	BaseDir            string
 	InstallBinDir      string
 	BinaryPath         string
+	ServiceManager     ServiceManager
 	CurrentVersion     string
 	InstallSource      InstallSource
 	CurrentTrack       ReleaseTrack
@@ -36,10 +37,13 @@ type Options struct {
 }
 
 type InstallState struct {
+	BaseDir                string                   `json:"baseDir,omitempty"`
 	ConfigPath             string                   `json:"configPath,omitempty"`
 	WrapperConfigPath      string                   `json:"wrapperConfigPath"`
 	ServicesConfigPath     string                   `json:"servicesConfigPath"`
 	StatePath              string                   `json:"statePath"`
+	ServiceManager         ServiceManager           `json:"serviceManager,omitempty"`
+	ServiceUnitPath        string                   `json:"serviceUnitPath,omitempty"`
 	InstallSource          InstallSource            `json:"installSource,omitempty"`
 	CurrentTrack           ReleaseTrack             `json:"currentTrack,omitempty"`
 	CurrentVersion         string                   `json:"currentVersion,omitempty"`
@@ -65,8 +69,9 @@ func NewService() *Service {
 }
 
 func (s *Service) Bootstrap(opts Options) (InstallState, error) {
-	configDir := filepath.Join(opts.BaseDir, ".config", "codex-remote")
-	stateDir := filepath.Join(opts.BaseDir, ".local", "share", "codex-remote")
+	layout := installLayoutForBaseDir(opts.BaseDir)
+	configDir := layout.ConfigDir
+	stateDir := layout.StateDir
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return InstallState{}, err
 	}
@@ -92,7 +97,7 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	legacyConfigPath := filepath.Join(configDir, "config.env")
 	legacyWrapperConfigPath := filepath.Join(configDir, "wrapper.env")
 	legacyServicesConfigPath := filepath.Join(configDir, "services.env")
-	statePath := filepath.Join(stateDir, "install-state.json")
+	statePath := layout.StatePath
 	existing, err := config.LoadAppConfigAtPath(configPath, legacyConfigPath, legacyWrapperConfigPath, legacyServicesConfigPath)
 	if err != nil {
 		return InstallState{}, err
@@ -135,10 +140,12 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	}
 
 	state := InstallState{
+		BaseDir:                opts.BaseDir,
 		ConfigPath:             configPath,
 		WrapperConfigPath:      configPath,
 		ServicesConfigPath:     configPath,
 		StatePath:              statePath,
+		ServiceManager:         opts.ServiceManager,
 		InstalledBinary:        installedBinary,
 		InstalledWrapperBinary: installedBinary,
 		InstalledRelaydBinary:  installedBinary,
@@ -155,6 +162,7 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 		CurrentTrack:    opts.CurrentTrack,
 		VersionsRoot:    opts.VersionsRoot,
 		CurrentSlot:     opts.CurrentSlot,
+		ServiceManager:  opts.ServiceManager,
 	})
 	if err := WriteState(statePath, state); err != nil {
 		return InstallState{}, err

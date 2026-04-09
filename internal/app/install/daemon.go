@@ -42,10 +42,50 @@ func ensureDaemonReady(ctx context.Context, state InstallState, version string) 
 		DaemonUseSystemProxy: loaded.Config.Feishu.UseSystemProxy,
 		CapturedProxyEnv:     config.CaptureProxyEnv(),
 	})
+	if effectiveServiceManager(state) == ServiceManagerSystemdUser {
+		manager = relayruntime.NewManager(relayruntime.ManagerConfig{
+			RelayServerURL: strings.TrimSpace(loaded.Config.Relay.ServerURL),
+			Identity:       identity,
+			ConfigPath:     state.ConfigPath,
+			Paths:          paths,
+			StartFunc: func(ctx context.Context) (int, error) {
+				if _, err := installSystemdUserUnit(ctx, state); err != nil {
+					return 0, err
+				}
+				if err := systemdUserEnable(ctx); err != nil {
+					return 0, err
+				}
+				return 0, systemdUserStart(ctx)
+			},
+			RestartFunc: func(ctx context.Context) error {
+				if _, err := installSystemdUserUnit(ctx, state); err != nil {
+					return err
+				}
+				if err := systemdUserEnable(ctx); err != nil {
+					return err
+				}
+				return systemdUserRestart(ctx)
+			},
+		})
+	}
 	if err := manager.EnsureReady(ctx); err != nil {
+		if effectiveServiceManager(state) == ServiceManagerSystemdUser {
+			return fallbackDaemonStatus(loaded.Config), err
+		}
 		return daemonStatus{LogPath: paths.DaemonLogFile}, err
 	}
+	if effectiveServiceManager(state) == ServiceManagerSystemdUser {
+		return fallbackDaemonStatus(loaded.Config), nil
+	}
 	return discoverDaemonStatus(paths, loaded.Config), nil
+}
+
+func fallbackDaemonStatus(cfg config.AppConfig) daemonStatus {
+	return daemonStatus{
+		AdminURL:      fallbackAdminURL(cfg),
+		SetupURL:      fallbackSetupURL(cfg),
+		SetupRequired: configuredRuntimeAppCount(cfg) == 0,
+	}
 }
 
 func discoverDaemonStatus(paths relayruntime.Paths, cfg config.AppConfig) daemonStatus {

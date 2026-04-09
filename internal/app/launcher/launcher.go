@@ -24,6 +24,7 @@ type Options struct {
 type RunnerSet struct {
 	RunDaemon        func(context.Context, string) error
 	RunInstall       func([]string, io.Reader, io.Writer, io.Writer, string) error
+	RunService       func([]string, io.Reader, io.Writer, io.Writer, string) error
 	RunUpgradeHelper func([]string, io.Reader, io.Writer, io.Writer, string) error
 	RunWrapper       func(context.Context, []string, io.Reader, io.Writer, io.Writer, string) (int, error)
 }
@@ -63,6 +64,12 @@ func Main(opts Options) int {
 	case RoleInstall:
 		if err := opts.Runners.RunInstall(decision.Args, opts.Stdin, opts.Stdout, opts.Stderr, opts.Version); err != nil {
 			_, _ = fmt.Fprintf(opts.Stderr, "install error: %v\n", err)
+			return 1
+		}
+		return 0
+	case RoleService:
+		if err := opts.Runners.RunService(decision.Args, opts.Stdin, opts.Stdout, opts.Stderr, opts.Version); err != nil {
+			_, _ = fmt.Fprintf(opts.Stderr, "service error: %v\n", err)
 			return 1
 		}
 		return 0
@@ -107,6 +114,9 @@ func withDefaults(opts Options) Options {
 	if opts.Runners.RunInstall == nil {
 		opts.Runners.RunInstall = install.RunMain
 	}
+	if opts.Runners.RunService == nil {
+		opts.Runners.RunService = install.RunService
+	}
 	if opts.Runners.RunUpgradeHelper == nil {
 		opts.Runners.RunUpgradeHelper = install.RunUpgradeHelper
 	}
@@ -121,6 +131,7 @@ func usageText() string {
   codex-remote
   codex-remote daemon
   codex-remote install [flags]
+  codex-remote service <subcommand> [flags]
   codex-remote app-server [codex app-server args...]
   codex-remote wrapper app-server [codex app-server args...]
   codex-remote version

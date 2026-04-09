@@ -68,6 +68,8 @@ type StateMetadataOptions struct {
 	CurrentTrack    ReleaseTrack
 	VersionsRoot    string
 	CurrentSlot     string
+	BaseDir         string
+	ServiceManager  ServiceManager
 }
 
 var releaseVersionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta)\.[0-9]+)?$`)
@@ -77,8 +79,29 @@ func ApplyStateMetadata(state *InstallState, opts StateMetadataOptions) {
 		return
 	}
 
+	if strings.TrimSpace(state.BaseDir) == "" {
+		state.BaseDir = firstNonEmpty(
+			strings.TrimSpace(opts.BaseDir),
+			inferBaseDir(strings.TrimSpace(state.ConfigPath), strings.TrimSpace(state.StatePath)),
+			inferBaseDir(strings.TrimSpace(opts.StatePath), strings.TrimSpace(opts.StatePath)),
+		)
+	}
+
 	if strings.TrimSpace(state.StatePath) == "" {
 		state.StatePath = strings.TrimSpace(opts.StatePath)
+	}
+
+	if state.ServiceManager == "" {
+		state.ServiceManager = effectiveServiceManager(InstallState{ServiceManager: opts.ServiceManager})
+	}
+	if state.ServiceManager == "" {
+		state.ServiceManager = ServiceManagerDetached
+	}
+	if effectiveServiceManager(*state) == ServiceManagerSystemdUser && strings.TrimSpace(state.ServiceUnitPath) == "" {
+		state.ServiceUnitPath = systemdUserUnitPath(firstNonEmpty(strings.TrimSpace(state.BaseDir), inferBaseDir(strings.TrimSpace(state.ConfigPath), strings.TrimSpace(state.StatePath))))
+	}
+	if effectiveServiceManager(*state) != ServiceManagerSystemdUser {
+		state.ServiceUnitPath = ""
 	}
 
 	if strings.TrimSpace(state.CurrentBinaryPath) == "" {

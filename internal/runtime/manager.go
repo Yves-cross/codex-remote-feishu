@@ -44,14 +44,18 @@ type ManagerConfig struct {
 	ProbeTimeout         time.Duration
 	StartupTimeout       time.Duration
 	PollInterval         time.Duration
+	StartFunc            func(context.Context) (int, error)
+	RestartFunc          func(context.Context) error
+	StopFunc             func(context.Context, int) error
 }
 
 type Manager struct {
 	config ManagerConfig
 
-	probeFunc func(context.Context) ProbeResult
-	startFunc func(context.Context) (int, error)
-	stopFunc  func(context.Context, int) error
+	probeFunc   func(context.Context) ProbeResult
+	startFunc   func(context.Context) (int, error)
+	restartFunc func(context.Context) error
+	stopFunc    func(context.Context, int) error
 }
 
 func NewManager(cfg ManagerConfig) *Manager {
@@ -64,7 +68,12 @@ func NewManager(cfg ManagerConfig) *Manager {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 200 * time.Millisecond
 	}
-	return &Manager{config: cfg}
+	return &Manager{
+		config:      cfg,
+		startFunc:   cfg.StartFunc,
+		restartFunc: cfg.RestartFunc,
+		stopFunc:    cfg.StopFunc,
+	}
 }
 
 func (m *Manager) EnsureReady(ctx context.Context) error {
@@ -90,6 +99,9 @@ func (m *Manager) EnsureReady(ctx context.Context) error {
 	case ProbeUnreachable:
 		return m.startAndWait(ctx)
 	case ProbeIncompatible, ProbeLegacy:
+		if m.restartFunc != nil {
+			return m.restartAndWait(ctx)
+		}
 		pid, err := m.currentDaemonPID(current)
 		if err != nil {
 			return err
@@ -152,6 +164,20 @@ func (m *Manager) startAndWait(ctx context.Context) error {
 	if _, err := m.startDaemon(ctx); err != nil {
 		return err
 	}
+	return m.waitForReady(ctx)
+}
+
+func (m *Manager) restartAndWait(ctx context.Context) error {
+	if m.restartFunc == nil {
+		return errors.New("restart hook is not configured")
+	}
+	if err := m.restartFunc(ctx); err != nil {
+		return err
+	}
+	return m.waitForReady(ctx)
+}
+
+func (m *Manager) waitForReady(ctx context.Context) error {
 	deadline := time.NewTimer(m.config.StartupTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(m.config.PollInterval)

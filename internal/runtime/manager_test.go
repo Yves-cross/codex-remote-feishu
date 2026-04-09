@@ -223,6 +223,97 @@ func TestManagerEnsureReadyReplacesIncompatibleDaemonDuringBootstrap(t *testing.
 	}
 }
 
+func TestManagerEnsureReadyUsesRestartHookForIncompatibleRelay(t *testing.T) {
+	manager := NewManager(ManagerConfig{
+		Identity: agentproto.BinaryIdentity{
+			Product:          ProductName,
+			Version:          "2.0.0",
+			BuildFingerprint: "fp-new",
+		},
+		Paths: testPaths(t),
+	})
+	sequence := []ProbeResult{
+		{
+			Status: ProbeIncompatible,
+			Welcome: agentproto.Welcome{
+				Protocol: agentproto.WireProtocol,
+				Server: &agentproto.ServerIdentity{
+					BinaryIdentity: agentproto.BinaryIdentity{
+						Product:          ProductName,
+						Version:          "1.0.0",
+						BuildFingerprint: "fp-old",
+					},
+					PID: 333,
+				},
+			},
+		},
+		{
+			Status: ProbeIncompatible,
+			Welcome: agentproto.Welcome{
+				Protocol: agentproto.WireProtocol,
+				Server: &agentproto.ServerIdentity{
+					BinaryIdentity: agentproto.BinaryIdentity{
+						Product:          ProductName,
+						Version:          "1.0.0",
+						BuildFingerprint: "fp-old",
+					},
+					PID: 333,
+				},
+			},
+		},
+		{
+			Status: ProbeCompatible,
+			Welcome: agentproto.Welcome{
+				Protocol: agentproto.WireProtocol,
+				Server: &agentproto.ServerIdentity{
+					BinaryIdentity: agentproto.BinaryIdentity{
+						Product:          ProductName,
+						Version:          "2.0.0",
+						BuildFingerprint: "fp-new",
+					},
+					PID: 444,
+				},
+			},
+		},
+	}
+	index := 0
+	manager.probeFunc = func(context.Context) ProbeResult {
+		result := sequence[index]
+		if index < len(sequence)-1 {
+			index++
+		}
+		return result
+	}
+	starts := 0
+	restarts := 0
+	stopped := false
+	manager.startFunc = func(context.Context) (int, error) {
+		starts++
+		return 444, nil
+	}
+	manager.restartFunc = func(context.Context) error {
+		restarts++
+		return nil
+	}
+	manager.stopFunc = func(context.Context, int) error {
+		stopped = true
+		return nil
+	}
+
+	if err := manager.EnsureReady(context.Background()); err != nil {
+		t.Fatalf("EnsureReady: %v", err)
+	}
+	if restarts != 1 {
+		t.Fatalf("expected one restart hook call, got %d", restarts)
+	}
+	if starts != 0 {
+		t.Fatalf("expected restart hook to avoid fresh start, got %d starts", starts)
+	}
+	if stopped {
+		t.Fatal("expected restart hook path to avoid PID stop")
+	}
+}
+
 func TestProbeWelcomeAcceptsLegacyCommandBeforeWelcome(t *testing.T) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

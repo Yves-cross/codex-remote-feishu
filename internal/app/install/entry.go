@@ -37,6 +37,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	currentVersion := flagSet.String("current-version", version, "current binary version metadata")
 	versionsRoot := flagSet.String("versions-root", "", "version cache root metadata")
 	currentSlot := flagSet.String("current-slot", "", "current version slot metadata")
+	serviceManagerFlag := flagSet.String("service-manager", string(ServiceManagerDetached), "daemon lifecycle manager: detached or systemd_user (linux only)")
 	relayURL := flagSet.String("relay-url", "", "relay websocket url; empty preserves existing or default config")
 	codexBinary := flagSet.String("codex-binary", "", "real codex binary path; empty keeps wrapper default and lets managed_shim auto-resolve codex.real")
 	integrationMode := flagSet.String("integration", "auto", "integration mode: auto, editor_settings, managed_shim, both, or comma list")
@@ -67,12 +68,17 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 			return err
 		}
 	}
+	serviceManager, err := ParseServiceManager(*serviceManagerFlag, defaults.GOOS)
+	if err != nil {
+		return err
+	}
 
 	service := NewService()
 	opts := Options{
 		BaseDir:            *baseDir,
 		InstallBinDir:      *installBinDir,
 		BinaryPath:         *binaryPath,
+		ServiceManager:     serviceManager,
 		CurrentVersion:     *currentVersion,
 		InstallSource:      InstallSource(*installSource),
 		CurrentTrack:       ReleaseTrack(*currentTrack),
