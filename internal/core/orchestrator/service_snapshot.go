@@ -45,6 +45,7 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 		}
 		snapshot.Attachment = control.AttachmentSummary{
 			InstanceID:            inst.InstanceID,
+			ObjectType:            snapshotAttachmentObjectType(s.normalizeSurfaceProductMode(surface), inst),
 			DisplayName:           inst.DisplayName,
 			Source:                inst.Source,
 			Managed:               inst.Managed,
@@ -95,6 +96,21 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 		return snapshot.Instances[i].WorkspaceKey < snapshot.Instances[j].WorkspaceKey
 	})
 	return snapshot
+}
+
+func snapshotAttachmentObjectType(mode state.ProductMode, inst *state.InstanceRecord) string {
+	switch {
+	case inst == nil:
+		return ""
+	case mode == state.ProductModeNormal:
+		return "workspace"
+	case isVSCodeInstance(inst):
+		return "vscode_instance"
+	case isHeadlessInstance(inst):
+		return "headless_instance"
+	default:
+		return "instance"
+	}
 }
 
 func snapshotAutoContinueSummary(surface *state.SurfaceConsoleRecord) control.AutoContinueSummary {
@@ -318,6 +334,9 @@ func (s *Service) resolveBasePromptConfig(inst *state.InstanceRecord, surface *s
 			}
 			if effort.Value == "" && defaults.ReasoningEffort != "" {
 				effort = configValue{Value: defaults.ReasoningEffort, Source: "cwd_default"}
+			}
+			if access.Value == "" && defaults.AccessMode != "" {
+				access = configValue{Value: defaults.AccessMode, Source: "cwd_default"}
 			}
 		}
 	}
@@ -1087,10 +1106,22 @@ func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope
 	}
 	cwd = state.NormalizeWorkspaceKey(cwd)
 	workspaceKey := state.ResolveWorkspaceKey(inst.WorkspaceKey, inst.WorkspaceRoot, cwd)
+	cwdDefaultKey := firstNonEmpty(cwd, workspaceKey)
 	access = agentproto.NormalizeAccessMode(access)
 	switch scope {
 	case "cwd_default":
-		if workspaceKey == "" {
+		s.updateInstanceCWDDefaults(inst, cwdDefaultKey, func(current *state.ModelConfigRecord) {
+			if model != "" {
+				current.Model = model
+			}
+			if effort != "" {
+				current.ReasoningEffort = effort
+			}
+			if access != "" {
+				current.AccessMode = access
+			}
+		})
+		if workspaceKey == "" || isVSCodeInstance(inst) {
 			return
 		}
 		s.updateWorkspaceDefaults(workspaceKey, func(current *state.ModelConfigRecord) {
@@ -1120,12 +1151,35 @@ func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope
 				thread.ExplicitReasoningEffort = effort
 			}
 		}
-		if access != "" && workspaceKey != "" {
+		if access != "" && isVSCodeInstance(inst) {
+			s.updateInstanceCWDDefaults(inst, cwdDefaultKey, func(current *state.ModelConfigRecord) {
+				current.AccessMode = access
+			})
+		}
+		if access != "" && workspaceKey != "" && !isVSCodeInstance(inst) {
 			s.updateWorkspaceDefaults(workspaceKey, func(current *state.ModelConfigRecord) {
 				current.AccessMode = access
 			})
 		}
 	}
+}
+
+func (s *Service) updateInstanceCWDDefaults(inst *state.InstanceRecord, cwd string, apply func(*state.ModelConfigRecord)) {
+	cwd = state.NormalizeWorkspaceKey(cwd)
+	if inst == nil || cwd == "" || apply == nil {
+		return
+	}
+	if inst.CWDDefaults == nil {
+		inst.CWDDefaults = map[string]state.ModelConfigRecord{}
+	}
+	current := compactModelConfig(inst.CWDDefaults[cwd])
+	apply(&current)
+	current = compactModelConfig(current)
+	if modelConfigRecordEmpty(current) {
+		delete(inst.CWDDefaults, cwd)
+		return
+	}
+	inst.CWDDefaults[cwd] = current
 }
 
 func (s *Service) discardDrafts(surface *state.SurfaceConsoleRecord) []control.UIEvent {

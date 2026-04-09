@@ -321,11 +321,11 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 规则：
 
 - normal mode 下，只要当前已 attach 且 workspace 已知，就允许进入 `new_thread_ready`
-- vscode mode 下，仍要求当前真实持有一个有 `cwd` 的可见 thread
+- vscode mode 下，`/new` 直接拒绝，并提示先 `/mode normal`，或继续 follow / `/use` 当前 VS Code 会话
 - 进入后会保留 instance attachment，但释放旧 thread claim
 - 下一条普通文本会成为新 thread 的首条输入
 - 若首条消息已进入 queued/dispatching/running，第二条文本与新图片会被挡住，直到新 thread 落地
-- 若此时改走 `/use`、`vscode /follow`、重复 `/new`、`/detach` 或 `/stop`，会先按当前规则处理未发送 draft
+- 若此时改走 `/use`、重复 `/new`、`/detach` 或 `/stop`，会先按当前规则处理未发送 draft
 
 ## 5. Queue、Typing 与本地优先
 

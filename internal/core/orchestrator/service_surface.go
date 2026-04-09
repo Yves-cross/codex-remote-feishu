@@ -1262,6 +1262,9 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 }
 
 func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
+		return notice(surface, "new_thread_disabled_vscode", "当前处于 vscode 模式，`/new` 只在 normal 模式可用。请先 `/mode normal`，或继续通过 follow / `/use` 使用当前 VS Code 会话。")
+	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")

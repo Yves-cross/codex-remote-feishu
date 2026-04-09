@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"strings"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -169,6 +170,7 @@ func (s *Service) normalizeSurfaceProductMode(surface *state.SurfaceConsoleRecor
 	}
 	surface.ProductMode = state.NormalizeProductMode(surface.ProductMode)
 	s.normalizeLegacyNormalFollowRoute(surface)
+	s.normalizeLegacyVSCodePreparedNewThread(surface)
 	return surface.ProductMode
 }
 
@@ -202,6 +204,48 @@ func (s *Service) normalizeLegacyNormalFollowRoute(surface *state.SurfaceConsole
 		ThreadID:  "",
 		RouteMode: string(state.RouteModeUnbound),
 		Title:     "未绑定会话",
+		Preview:   "",
+	}
+}
+
+func (s *Service) normalizeLegacyVSCodePreparedNewThread(surface *state.SurfaceConsoleRecord) {
+	if surface == nil || surface.ProductMode != state.ProductModeVSCode || surface.RouteMode != state.RouteModeNewThreadReady {
+		return
+	}
+	if s.preparedNewThreadHasPendingCreate(surface) {
+		return
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	s.clearPreparedNewThread(surface)
+	s.releaseSurfaceThreadClaim(surface)
+	surface.RouteMode = state.RouteModeFollowLocal
+
+	if inst != nil {
+		targetThreadID := strings.TrimSpace(inst.ObservedFocusedThreadID)
+		if targetThreadID != "" && threadVisible(inst.Threads[targetThreadID]) {
+			if owner := s.threadClaimSurface(targetThreadID); owner == nil || owner.SurfaceSessionID == surface.SurfaceSessionID {
+				if !s.surfaceOwnsThread(surface, targetThreadID) {
+					s.claimKnownThread(surface, inst, targetThreadID)
+				}
+				if s.surfaceOwnsThread(surface, targetThreadID) {
+					thread := s.ensureThread(inst, targetThreadID)
+					surface.SelectedThreadID = targetThreadID
+					surface.LastSelection = &state.SelectionAnnouncementRecord{
+						ThreadID:  targetThreadID,
+						RouteMode: string(state.RouteModeFollowLocal),
+						Title:     displayThreadTitle(inst, thread, targetThreadID),
+						Preview:   threadPreview(thread),
+					}
+					return
+				}
+			}
+		}
+	}
+
+	surface.LastSelection = &state.SelectionAnnouncementRecord{
+		ThreadID:  "",
+		RouteMode: string(state.RouteModeFollowLocal),
+		Title:     "跟随当前 VS Code（等待中）",
 		Preview:   "",
 	}
 }

@@ -1038,8 +1038,10 @@ func formatSnapshot(snapshot control.Snapshot) string {
 		lines = append(lines, snapshotField("当前 workspace", formatNeutralTextTag(snapshot.WorkspaceKey)))
 	}
 	if snapshot.Attachment.InstanceID == "" {
+		lines = append(lines, snapshotField("接管对象类型", "无"))
 		lines = append(lines, snapshotField("已接管", "无"))
 	} else {
+		lines = append(lines, snapshotField("接管对象类型", formatNeutralTextTag(displayAttachmentObjectType(snapshot.Attachment.ObjectType))))
 		lines = append(lines, snapshotField("已接管", formatInstanceLabel(snapshot.Attachment.DisplayName, snapshot.Attachment.Source, snapshot.Attachment.Managed)))
 		if snapshot.Attachment.Abandoning {
 			lines = append(lines, snapshotField("状态", "正在断开，等待当前 turn 收尾"))
@@ -1246,6 +1248,21 @@ func snapshotConfigSourceLabel(source string) string {
 		return "飞书临时覆盖"
 	case "surface_default":
 		return "飞书默认"
+	default:
+		return "未知"
+	}
+}
+
+func displayAttachmentObjectType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "workspace":
+		return "工作区"
+	case "vscode_instance":
+		return "VS Code 实例"
+	case "headless_instance":
+		return "headless 实例"
+	case "instance":
+		return "实例"
 	default:
 		return "未知"
 	}

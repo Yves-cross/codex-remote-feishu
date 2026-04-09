@@ -109,7 +109,7 @@ func TestFeishuRecommendedMenusStayInSuggestedOrder(t *testing.T) {
 	got := FeishuRecommendedMenus()
 	want := []FeishuRecommendedMenu{
 		{Key: "list", Name: "查看列表", Description: "默认列出可用工作区；切到 vscode 模式后列出在线实例。"},
-		{Key: "status", Name: "当前状态", Description: "查看当前接管状态、输入目标和飞书侧临时覆盖。"},
+		{Key: "status", Name: "当前状态", Description: "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"},
 		{Key: "threads", Name: "切换会话", Description: "展示最近可见会话；normal 模式可全局继续，vscode detached 时需先 list。"},
 		{Key: "stop", Name: "停止当前执行", Description: "中断当前执行，并丢弃飞书侧尚未发送的排队输入。"},
 		{Key: "reason_low", Name: "推理 Low", Description: "把后续飞书消息切到 low 推理，直到 clear 或接管清理。"},

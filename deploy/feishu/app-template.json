@@ -12,7 +12,7 @@
       {
         "key": "status",
         "name": "当前状态",
-        "description": "查看当前接管状态、输入目标和飞书侧临时覆盖。"
+        "description": "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"
       },
       {
         "key": "threads",

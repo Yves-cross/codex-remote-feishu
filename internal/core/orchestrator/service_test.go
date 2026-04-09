@@ -1589,6 +1589,94 @@ func TestStatusUsesObservedWorkspaceDefaultAccessMode(t *testing.T) {
 	}
 }
 
+func TestObserveConfigVSCodeDoesNotPersistWorkspaceDefaults(t *testing.T) {
+	now := time.Date(2026, 4, 9, 14, 30, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:            agentproto.EventConfigObserved,
+		ThreadID:        "thread-1",
+		CWD:             "/data/dl/droid",
+		ConfigScope:     "cwd_default",
+		Model:           "gpt-5.3-codex",
+		ReasoningEffort: "medium",
+		AccessMode:      agentproto.AccessModeConfirm,
+	})
+
+	if defaults := svc.root.WorkspaceDefaults["/data/dl/droid"]; defaults != (state.ModelConfigRecord{}) {
+		t.Fatalf("expected vscode config observation not to persist workspace defaults, got %#v", defaults)
+	}
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected surface snapshot")
+	}
+	if snapshot.NextPrompt.BaseModel != "gpt-5.3-codex" || snapshot.NextPrompt.BaseModelSource != "cwd_default" {
+		t.Fatalf("expected vscode snapshot to resolve model from instance cwd defaults, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.BaseReasoningEffort != "medium" || snapshot.NextPrompt.BaseReasoningEffortSource != "cwd_default" {
+		t.Fatalf("expected vscode snapshot to resolve effort from instance cwd defaults, got %#v", snapshot.NextPrompt)
+	}
+	if snapshot.NextPrompt.EffectiveAccessMode != agentproto.AccessModeConfirm || snapshot.NextPrompt.EffectiveAccessModeSource != "cwd_default" {
+		t.Fatalf("expected vscode snapshot to resolve access from instance cwd defaults, got %#v", snapshot.NextPrompt)
+	}
+}
+
+func TestSurfaceSnapshotExposesAttachmentObjectTypeByMode(t *testing.T) {
+	now := time.Date(2026, 4, 9, 14, 45, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-normal",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-vscode",
+		DisplayName:             "web",
+		WorkspaceRoot:           "/data/dl/web",
+		WorkspaceKey:            "/data/dl/web",
+		ShortName:               "web",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "整理样式", CWD: "/data/dl/web", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachWorkspace, SurfaceSessionID: "surface-normal", ChatID: "chat-normal", ActorUserID: "user-normal", WorkspaceKey: "/data/dl/droid"})
+	materializeVSCodeSurfaceForTest(svc, "surface-vscode")
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-vscode", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-vscode"})
+
+	normalSnapshot := svc.SurfaceSnapshot("surface-normal")
+	if normalSnapshot == nil || normalSnapshot.Attachment.ObjectType != "workspace" {
+		t.Fatalf("expected normal snapshot attachment type workspace, got %#v", normalSnapshot)
+	}
+
+	vscodeSnapshot := svc.SurfaceSnapshot("surface-vscode")
+	if vscodeSnapshot == nil || vscodeSnapshot.Attachment.ObjectType != "vscode_instance" {
+		t.Fatalf("expected vscode snapshot attachment type vscode_instance, got %#v", vscodeSnapshot)
+	}
+}
+
 func TestStatusUsesSurfaceDefaultsWhenObservedConfigUnknown(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -3077,6 +3165,50 @@ func TestLegacyNormalFollowRouteNormalizesToPinned(t *testing.T) {
 	surface := svc.root.Surfaces["surface-1"]
 	if surface.RouteMode != state.RouteModePinned || surface.SelectedThreadID != "thread-1" {
 		t.Fatalf("expected surface route to normalize to pinned, got %#v", surface)
+	}
+}
+
+func TestLegacyVSCodePreparedNewThreadRouteNormalizesToFollowLocal(t *testing.T) {
+	now := time.Date(2026, 4, 9, 15, 20, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.root.Surfaces["surface-1"] = &state.SurfaceConsoleRecord{
+		SurfaceSessionID:     "surface-1",
+		ProductMode:          state.ProductModeVSCode,
+		AttachedInstanceID:   "inst-1",
+		RouteMode:            state.RouteModeNewThreadReady,
+		PreparedThreadCWD:    "/data/dl/droid",
+		PreparedFromThreadID: "thread-legacy",
+		QueueItems:           map[string]*state.QueueItemRecord{},
+		StagedImages:         map[string]*state.StagedImageRecord{},
+		PendingRequests:      map[string]*state.RequestPromptRecord{},
+	}
+
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil {
+		t.Fatal("expected snapshot")
+	}
+	if snapshot.Attachment.RouteMode != string(state.RouteModeFollowLocal) || snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected legacy vscode new-thread route to normalize to follow_local, got %#v", snapshot)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.RouteMode != state.RouteModeFollowLocal || surface.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected surface route to normalize to follow_local, got %#v", surface)
+	}
+	if surface.PreparedThreadCWD != "" || surface.PreparedFromThreadID != "" {
+		t.Fatalf("expected legacy prepared-new-thread state to clear, got %#v", surface)
 	}
 }
 
@@ -6708,6 +6840,46 @@ func TestNewThreadReadyNormalWorkspaceAttachedWithoutBoundThread(t *testing.T) {
 	}
 	if len(events) == 0 || events[len(events)-1].Notice == nil || events[len(events)-1].Notice.Code != "new_thread_ready" {
 		t.Fatalf("expected /new readiness notice, got %#v", events)
+	}
+}
+
+func TestNewThreadRejectedInVSCodeMode(t *testing.T) {
+	now := time.Date(2026, 4, 9, 15, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionImageMessage, SurfaceSessionID: "surface-1", MessageID: "msg-img", LocalPath: "/tmp/img.png", MIMEType: "image/png"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionNewThread,
+		SurfaceSessionID: "surface-1",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "new_thread_disabled_vscode" {
+		t.Fatalf("expected vscode /new to reject, got %#v", events)
+	}
+	if surface.RouteMode != state.RouteModeFollowLocal || surface.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected vscode /new to preserve current follow state, got %#v", surface)
+	}
+	if surface.PreparedThreadCWD != "" || surface.PreparedFromThreadID != "" {
+		t.Fatalf("expected vscode /new not to prepare new-thread state, got %#v", surface)
+	}
+	if len(surface.StagedImages) != 1 {
+		t.Fatalf("expected vscode /new reject not to discard staged images, got %#v", surface.StagedImages)
 	}
 }
 

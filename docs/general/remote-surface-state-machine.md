@@ -98,7 +98,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 | `R2 AttachedPinned` | `AttachedInstanceID != ""`，`RouteMode=pinned`，`SelectedThreadID != ""`，且持有 thread claim | 当前输入固定发到该 thread |
 | `R3 FollowWaiting` | `AttachedInstanceID != ""`，`RouteMode=follow_local`，`SelectedThreadID == ""` | 仅 `vscode mode` 合法：已进入 follow，但当前没有可接管 thread |
 | `R4 FollowBound` | `AttachedInstanceID != ""`，`RouteMode=follow_local`，`SelectedThreadID != ""`，且持有 thread claim | 仅 `vscode mode` 合法：已跟随到一个 thread |
-| `R5 NewThreadReady` | `AttachedInstanceID != ""`，`RouteMode=new_thread_ready`，`SelectedThreadID == ""`，`PreparedThreadCWD != ""` | 已准备一个待 materialize 的新 thread；下一条普通文本会创建新 thread |
+| `R5 NewThreadReady` | `AttachedInstanceID != ""`，`RouteMode=new_thread_ready`，`SelectedThreadID == ""`，`PreparedThreadCWD != ""` | 仅 `normal mode` 合法：已准备一个待 materialize 的新 thread；下一条普通文本会创建新 thread |
 
 补充说明：
 
@@ -279,7 +279,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 当前 `/new` 已实现为 clear-and-prepare：
 
 1. normal mode 下，只要 surface 已 attach 且当前 workspace 已知，就允许进入。
-2. vscode mode 下，仍要求当前已真实持有一个可见 thread，且该 thread `CWD` 非空。
+2. vscode mode 下，`/new` 直接拒绝，并明确提示用户先 `/mode normal`，或继续 follow / `/use` 当前 VS Code 会话。
 3. 不允许 fallback 到 home。
 4. 进入时会释放旧 thread claim，但保留 instance attachment 与 `PromptOverride`。
 5. `PreparedThreadCWD`、`PreparedFromThreadID`、`PreparedAt` 会显式保存。
@@ -288,7 +288,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 1. `R5` 没有“attach 成功但用户无路可走”的问题。
 2. `R5` 下第一条普通文本合法，且会创建新 thread。
-3. `R5` 下如果只有 staged/queued draft，用户仍然能 `/use`、`vscode mode /follow`、`/detach`、`/stop` 或重复 `/new`。
+3. `R5` 下如果只有 staged/queued draft，用户仍然能 `/use`、`/detach`、`/stop` 或重复 `/new`。
 
 ### 4.8 空 thread turn 不再靠 `ActiveThreadID` 猜归属
 
@@ -341,40 +341,46 @@ surface 不是单一枚举，而是五层正交状态叠加。
    2. 会直接清空该 thread 的旧 replay。
    3. 用户只会看到一条新的恢复成功提示。
 
-### 4.11 `/status` 当前至少会显式投影 mode / gate / dispatch / retained-offline
+### 4.11 `/status` 当前至少会显式投影 mode / attach object / gate / dispatch / retained-offline
 
 当前 `Snapshot` 不再只展示 attachment 和 next prompt。
 
-现在至少会额外投影六类“决定下一条输入会发生什么”的状态：
+现在至少会额外投影七类“决定下一条输入会发生什么”的状态：
 
 1. 当前 `ProductMode`
    1. `normal`
    2. `vscode`
-2. 当前已占用的 workspace（若有）
-3. request gate：
+2. 当前 attach 对象类型
+   1. `工作区`
+   2. `VS Code 实例`
+   3. `headless 实例`
+   4. `实例`
+3. 当前已占用的 workspace（若有）
+4. request gate：
    1. `PendingRequest`
    2. `RequestCapture`
-4. dispatch / queue：
+5. dispatch / queue：
    1. `Dispatching`
    2. `Running`
    3. `PausedForLocal`
    4. `HandoffWait`
    5. queued count
-5. auto-continue runtime：
+6. auto-continue runtime：
    1. enabled / disabled
    2. pending reason
    3. pending due time
    4. consecutive count
-6. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
+7. transport degraded 后“attachment 仍保留但实例已离线”的 retained-offline 状态。
 
 它仍然不是完整调试面板，但已经能回答最关键的问题：
 
 1. 当前到底记住的是 `normal` 还是 `vscode`。
-2. 当前到底占着哪个 workspace。
-3. 下一条文本是不是会先被 request gate 吃掉。
-4. 现在是执行中、排队中，还是被本地 VS Code 暂停。
-5. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
-6. attachment 还在不在，以及当前是不是在等实例恢复。
+2. 当前接管的是工作区、VS Code 实例，还是 headless/其他实例。
+3. 当前到底占着哪个 workspace。
+4. 下一条文本是不是会先被 request gate 吃掉。
+5. 现在是执行中、排队中，还是被本地 VS Code 暂停。
+6. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
+7. attachment 还在不在，以及当前是不是在等实例恢复。
 
 ### 4.12 `/mode` 是 surface 级持久 overlay，当前只负责记忆与清理切换
 
@@ -443,7 +449,7 @@ R2 AttachedPinned
   -- /use(other thread，normal mode 且需要切换实例但仍在当前 workspace) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
   -- /follow(vscode mode) --> R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
-  -- /new(无 live remote work；normal mode 只要求 workspace 已知，vscode mode 仍要求当前 thread 有 cwd) --> R5 NewThreadReady
+  -- /new(normal mode 且无 live remote work，workspace 已知) --> R5 NewThreadReady
   -- selected thread claim 丢失 --> R1 AttachedUnbound 或 R3 FollowWaiting(vscode mode)
   -- /detach(no live work) --> R0 Detached
   -- /detach(live work) --> E6 Abandoning -> R0 Detached
@@ -459,7 +465,7 @@ R4 FollowBound
   -- VS Code focus 消失或被别人占用 --> R3 FollowWaiting
   -- /use(thread，当前 attached instance 可见) --> R4 FollowBound
   -- /use(thread，其他 instance / persisted global thread) --> 拒绝 + migration to /list
-  -- /new(无 live remote work，当前 thread 有 cwd) --> R5 NewThreadReady
+  -- /new --> 拒绝 + 提示先 `/mode normal`，或继续 follow / `/use`
   -- /detach(no live work) --> R0 Detached
   -- /detach(live work) --> E6 Abandoning -> R0 Detached
 
@@ -467,8 +473,6 @@ R5 NewThreadReady
   -- 第一条普通文本 --> R5 + E1/E2，等待新 thread 落地
   -- turn.started(remote_surface，新 thread) --> R2 AttachedPinned
   -- /use(thread，normal mode) 且仅有 staged/queued draft --> discard drafts + R2 AttachedPinned
-  -- /use(thread，vscode mode 且当前 instance 可见) 且仅有 staged/queued draft --> discard drafts + R4 FollowBound
-  -- /follow(vscode mode) 且仅有 staged/queued draft --> discard drafts + R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- 重复 /new 且无 draft --> 保持 R5，仅回 already_new_thread_ready
   -- 重复 /new 且仅有 staged/queued draft --> discard drafts，保持 R5
@@ -692,10 +696,10 @@ transport degraded retained attachment
 | --- | --- | --- | --- | --- | --- | --- |
 | `/list` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 允许 | 拒绝 | 允许 | 允许；若首条消息已 dispatching/running 则拒绝 |
+| `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 拒绝 | 拒绝 | 允许；若首条消息已 dispatching/running 则拒绝 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | `normal`: 允许；`vscode`: 拒绝并提示先 `/list` | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread（该态通常只作兼容） | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread；若仅有 unsent draft 会先丢弃 |
-| `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许；若仅有 unsent draft 会先丢弃 |
+| `/use` `/useall` | `normal`: 允许；`vscode`: 拒绝并提示先 `/list` | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread（该态通常只作兼容） | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | 允许；若仅有 unsent draft 会先丢弃 |
+| `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | 拒绝并提示迁移 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
@@ -778,6 +782,7 @@ retained-offline overlay 额外规则：
 21. **显式切 mode 会保留旧 attachment / request gate / draft 残留，导致进入半切换状态**：已修复。当前 idle/detached 时 `/mode` 会先做 detach-like 清理；busy path 则明确拒绝并提示 `/stop` 或 `/detach`。
 22. **normal mode 仍然只按 instance/thread 仲裁，导致同 workspace 多 surface 并存**：已修复。当前 normal mode 的 attach/use/headless 恢复都会先经过 workspace claim；只有显式切到 `vscode` mode 才绕过这层仲裁。
 23. **normal mode 还能长期停留在 follow 路径，导致 workspace-first 叙事失真**：已修复。当前新 `/follow` 会直接回迁移提示；历史 normal follow route 也会在读取 surface 时落回 pinned/unbound。
+24. **旧版本残留的 `vscode + new_thread_ready` 会在升级后继续活着，等价绕回被设计移除的 `/new` 路径**：已修复。现在 surface 读取时会自动归一化回 `follow_local`，并尽量复用当前 observed focus。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 

@@ -133,6 +133,7 @@ type Snapshot struct {
 
 type AttachmentSummary struct {
 	InstanceID            string
+	ObjectType            string
 	DisplayName           string
 	Source                string
 	Managed               bool

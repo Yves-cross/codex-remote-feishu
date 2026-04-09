@@ -68,12 +68,12 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	{
 		section:      "实例与会话",
 		helpCommands: []string{"/status"},
-		description:  "查看当前接管状态、输入目标和飞书侧临时覆盖。",
+		description:  "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。",
 		buttons: []CommandCatalogButton{
 			{Label: "当前状态", CommandText: "/status"},
 		},
 		recommendedMenus: []FeishuRecommendedMenu{
-			{Key: "status", Name: "当前状态", Description: "查看当前接管状态、输入目标和飞书侧临时覆盖。"},
+			{Key: "status", Name: "当前状态", Description: "查看当前模式、接管对象类型、输入目标和飞书侧临时覆盖。"},
 		},
 		showInHelp: true,
 		showInMenu: true,
@@ -113,7 +113,7 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	{
 		section:      "实例与会话",
 		helpCommands: []string{"/new"},
-		description:  "准备一个新会话；normal 模式用当前工作区，vscode 模式用当前会话目录，下一条消息会作为首条输入。",
+		description:  "仅 `normal` 模式可用：准备一个新会话，下一条消息会作为首条输入。",
 		buttons: []CommandCatalogButton{
 			{Label: "新建会话", CommandText: "/new"},
 		},
