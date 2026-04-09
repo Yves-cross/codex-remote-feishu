@@ -2,399 +2,415 @@
 
 > Type: `draft`
 > Updated: `2026-04-09`
-> Summary: 补充 current->target route 映射，拍板 3 个剩余决策，并把 follow-up issue 切分边界写实。
+> Summary: 按 `#67` 最新评论重构为“surface 显式记忆 mode、normal mode 全面 workspace-first、`/list` 按 mode 分流”的新设计母稿。
 
 ## 1. 文档目标
 
-这份文档服务于 `#67 Workspace 概念化`，目标不是描述当前已实现行为，而是把下一阶段要落地的产品模型先定型。
+这份文档服务于 `#67 Workspace 概念化`，描述的是**下一阶段要落地的产品模型**，不是当前代码已实现行为。
 
-本轮重点回答四个问题：
+这次重写的原因很直接：
 
-1. remote surface 以后到底围绕什么核心对象工作。
-2. `normal mode` 和 `vscode mode` 是否需要显式拆开。
-3. workspace identity、独占 claim、thread 选择和命令入口分别怎么定义。
-4. model / reasoning / access 这些配置到底归谁管。
+1. 上一版把 `normal mode` / `vscode mode` 写成了路径依赖，而不是 surface 自己显式持有的产品状态。
+2. 上一版把 `normal mode /list` 错写成禁用，但最新结论是它应当成为 workspace 列表与切换入口。
+3. 上一版 follow-up issue 的拆分依赖这些错误前提，因此当前不能再把 `#68` 到 `#73` 当成已定型实现计划。
 
-## 2. 当前实现约束
+本轮目标是先把新的产品骨架收敛清楚，再决定如何重新拆实现。
 
-当前代码已经形成以下事实：
+## 2. 最新修正前提
+
+根据 `#67` 最新评论，本轮 redesign 先以以下前提为准：
+
+1. surface 需要显式记录当前 `ProductMode`。
+   - 首次出现默认是 `normal mode`
+   - 用户必须显式切到 `vscode mode`
+   - surface 可以记住上一次 mode
+   - `/status` 必须展示当前 mode
+2. `normal mode` 是全面的 workspace-first 叙事。
+3. `normal mode /list` 展示的是可用 workspace，而不是 VS Code instance。
+4. `normal mode /new` 不只是“准备一条新 thread 的第一条消息”，而是 surface 在当前 workspace 下拥有一个“待 materialize 的新 thread”。
+5. `normal mode` 中 `/follow` 废弃。
+6. workspace 和 thread 都有互斥语义，只是 normal mode 下最高层互斥改成了 workspace。
+
+## 3. 当前实现约束
+
+当前代码已经形成以下事实，这些事实决定了 redesign 不能只停留在 UI 文案层：
 
 1. surface 当前先 attach instance，再在其上 `/use` 或 `/follow` thread。
-2. `/use` / `/useall` 走的是 merged thread view，会跨 instance 汇总成 thread-first 全局列表。
-3. thread claim 只有 `threadID`，没有显式 workspace claim。
+2. `/use` / `/useall` 当前走 merged thread view，会跨 instance 汇总成 thread-first 全局列表。
+3. claim 目前只有 `instanceClaims` 与 `threadClaims`，没有显式 workspace claim。
 4. prompt 基础配置当前来自 `thread explicit -> Instance.CWDDefaults[cwd]`，surface override 再覆盖其上。
-5. `WorkspaceRoot` 目前更接近 instance 自报的根目录元数据，不等于产品层已经稳定建模的 workspace。
-6. VS Code source 存在“workspace 可能在用户不知情时切换”的现实问题，不能直接套入普通 headless/workspace 语义。
+5. route 主状态仍围绕 `AttachedInstanceID + RouteMode + SelectedThreadID` 建模。
+6. VS Code source 确实存在“workspace 可能在用户不知情时切换”的现实问题，所以不能把它直接并入 normal mode 的 workspace 语义。
 
-这意味着如果继续沿着“全局 thread-first + instance attach”硬加需求，`/history`、`/use`、恢复链路和默认配置都会反复返工。
+因此这轮 redesign 需要同时重做：
 
-## 3. 设计结论摘要
+1. surface 的产品 mode 模型。
+2. workspace claim / thread claim 的层次。
+3. `/list` / `/use` / `/new` / `/follow` 的命令语义。
+4. workspace identity 与默认配置归属。
 
-本轮先收敛为两个显式产品模式，而不是继续试图用一套语义同时覆盖所有 source：
+## 4. 重构后的总体模型
 
-1. `normal workspace mode`
-   - 面向 headless / managed headless / 其他稳定 workspace source。
-   - 产品语义全面 workspace-first。
-   - 一个飞书 surface 独占一个 workspace。
-   - attach workspace 后默认先不选 thread，必须先在 workspace 内选 thread。
+新的骨架不是“先 attach 什么，再推导 mode”，而是反过来：
 
-2. `vscode mode`
-   - 面向 `source=vscode` 的实例。
-   - 产品语义是“观察并跟随当前 VS Code 会话”，不是 bot 自己拥有一个稳定 workspace。
-   - follow 默认开启且长期为准。
-   - surface override 可以临时存在，但不持久化，也不作为 workspace 默认配置来源。
+1. surface 先有一个显式 `ProductMode`
+   - `normal`
+   - `vscode`
+2. mode 决定 `/list`、`/use`、`/follow`、`/new`、状态提示与 attach 语义。
+3. detached 不是 mode 之外的第三条路，而是**每个 mode 都可能存在 detached 状态**。
 
-这两个模式之间允许共用底层 relay / wrapper / orchestrator 基础设施，但产品层不再强行共用一套叙事。
+这意味着：
 
-## 4. 模式切换规则
+1. `normal detached` 是合法稳定态。
+2. `vscode detached` 也是合法稳定态。
+3. `/list` 不应该再承担“顺手切 mode”的隐式职责。
+4. 用户看到的“当前处于哪种产品模式”必须独立于“当前有没有 attach 目标”。
 
-surface 以后需要显式区分当前处于哪种产品模式。
+## 5. 模式切换规则
 
-### 4.1 进入 `normal workspace mode`
+### 5.1 显式切换
 
-以下路径进入 normal mode：
+推荐把 mode 切换做成明确命令，而不是让 `/list` 或 `/use` 偷偷改变 surface 类型：
 
-1. 用户 attach 一个稳定 workspace。
-2. 用户在 detached 状态下通过 `/use` / `/useall` 选择了一个可解析到稳定 workspace 的 thread。
-3. 后台恢复链路命中了一个可恢复的非-VSCode workspace。
+1. `/mode normal`
+2. `/mode vscode`
 
-进入 normal mode 时，surface 应执行一次带模式切换语义的清理：
+也可以提供等价菜单按钮，但产品语义应当等价于这两个显式动作。
 
-1. 清掉旧的 `PromptOverride`。
-2. 清掉 pending request / request capture。
-3. 清掉 prepared new thread 状态。
-4. 丢弃未发送草稿。
-5. 释放旧模式留下的 attach / thread claim。
+推荐规则：
 
-### 4.2 进入 `vscode mode`
+1. 首次 materialize 的 surface 默认 `normal mode`。
+2. 只有显式执行 mode 切换命令，才会改变 `ProductMode`。
+3. `/list`、`/use`、卡片 attach 行为都遵从当前 mode，不负责隐式切 mode。
 
-以下路径进入 vscode mode：
+### 5.2 记忆与展示
 
-1. 用户在 detached 状态下通过 `/list` 选择一个 VS Code 实例。
-2. 用户已在 vscode mode 中，再次切到另一台 VS Code 实例。
+surface 应记住最近一次 mode：
 
-进入 vscode mode 时，同样先做一次 detach-like 清理，但有两个额外规则：
+1. `/detach` 不改变 mode。
+2. daemon 重启后，如果 surface 状态被恢复，mode 也应一起恢复。
+3. `/status` 需要显式展示：
+   - 当前 mode
+   - 当前 attach 的对象类型
+   - 当前是否已拥有 thread
 
-1. follow 默认开启，不保留旧的 pinned thread 叙事。
-2. surface override 只作为当前 surface 的临时覆盖，不写回任何持久默认配置。
+### 5.3 mode switch 的清理语义
 
-### 4.3 模式切换后的可见原则
+mode 切换本身应当是一次 detach-like 清理，而不是“带着旧路由语义穿越到新 mode”。
 
-1. `normal mode` 不暴露 VS Code instance 列表。
-2. `vscode mode` 不暴露 workspace attach 独占语义。
-3. detached 状态允许用户自行选择进入哪条路径：
-   - `/use` / `/useall` 走 normal path
-   - `/list` 走 vscode path
+切换时建议统一清掉：
 
-## 5. Normal Workspace Mode
+1. 当前 attach / claim
+2. 当前 selected thread
+3. `PromptOverride`
+4. pending request / request capture
+5. prepared new thread 状态
+6. staged image 与未发送 draft
 
-## 5.1 核心语义
+切换后的目标态：
 
-normal mode 下，surface 面向的是一个 workspace，而不是一个 instance：
+1. `/mode normal` -> `normal detached`
+2. `/mode vscode` -> `vscode detached`
 
-1. 一个 surface 只 attach 一个 workspace。
-2. 一个 workspace 同时只能被一个 normal-mode surface 占有。
-3. attach workspace 后默认处于“已选 workspace、未选 thread”状态。
-4. 只有选中 workspace 内的某个 thread 后，普通文本才能继续发送。
+这样做的原因是避免“上一种模式的草稿、claim、follow 语义”悄悄污染下一种模式。
 
-## 5.2 detached 状态下的 `/use` / `/useall`
+## 6. Normal Workspace Mode
 
-当 surface 当前没有 workspace 时：
+### 6.1 核心语义
 
-1. `/use` / `/useall` 展示全局“可 attach 的 thread 候选”。
-2. 列表需要按 workspace 过滤：
+normal mode 下，surface 面向的是 workspace，不是 instance：
+
+1. 一个 surface 同时只拥有一个 workspace。
+2. 一个 workspace 同时只允许一个 normal-mode surface 占有。
+3. thread 互斥仍然存在，只是它退回为 workspace 内的第二层排他。
+4. normal mode 下普通文本只能发往：
+   - 当前已选中的 thread
+   - 或当前已拥有的“prepared new thread”
+
+因此 normal mode 里至少有四个稳定态：
+
+1. `N0 NormalDetached`
+2. `N1 WorkspaceAttachedNoThread`
+3. `N2 WorkspacePinnedThread`
+4. `N3 WorkspacePreparedNewThread`
+
+其中 `N3` 对应的是：
+
+1. surface 已拥有当前 workspace
+2. surface 还没有 materialize 出一个新 thread id
+3. 但下一条普通文本会在这个 workspace 下创建并接管新的 thread
+
+这就是“不是要先选中它，而是要拥有一个”的产品语义。
+
+### 6.2 `normal mode /list`
+
+`normal mode` 下，`/list` 的职责重构为“列 workspace，并支持切换 workspace”：
+
+1. detached 时，`/list` 展示可 attach 的 workspace。
+2. 已 attach workspace 时，`/list` 仍然可用，用来直接切到另一个 workspace。
+3. 用户点选 workspace 后：
+   - 若当前是 detached，则 attach 到该 workspace
+   - 若当前已在别的 workspace，则直接切换 workspace
+4. attach / switch 成功后，统一进入 `N1 WorkspaceAttachedNoThread`。
+5. 系统立即发送 thread attach 卡片或 `/use` 引导，明确要求用户继续选 thread。
+
+展示规则建议：
+
+1. 列出可用 workspace。
+2. 已被其他 normal-mode surface 占有的 workspace 可显示为 busy，但不可选。
+3. 若某个 workspace 当前有 VS Code 活动，可显示提示，但不作为硬阻塞。
+
+这样 `/list` 就成为 normal mode 下的“workspace attach / workspace switch”标准入口。
+
+### 6.3 `normal mode /use` / `/useall`
+
+`/use` / `/useall` 在 normal mode 下仍然保留，但语义要按 attach 状态分层：
+
+1. `normal detached`
+   - `/use` / `/useall` 可以保留为全局 thread 入口。
+   - 用户选中 thread 后，系统先解析其所属 workspace，再 attach 该 workspace，并 pin 到目标 thread。
    - 已被其他 normal-mode surface 占用的 workspace，其下 thread 不可选。
-   - 仅被 VS Code 当前使用的 thread 不构成硬阻塞，只做提示信息。
-3. 用户选中后，系统先 attach 对应 workspace，再选中该 thread。
+2. `normal attached`
+   - `/use` 只列当前 workspace 最近 thread。
+   - `/useall` 只列当前 workspace 全部 thread。
+   - 不再通过 `/use` 静默跳到其他 workspace。
 
-这意味着 detached `/use` 的全局列表，本质上是“workspace attach 的 thread 入口”，不再是“全局 thread-first 一视同仁”的旧语义。
+因此在 normal mode 里：
 
-## 5.3 已 attach workspace 时的 `/use` / `/useall`
+1. `/list` 是 workspace 入口。
+2. `/use` 是 thread 入口。
+3. detached `/use` 只是一个 thread-first 快捷入口，但落点仍然回到 workspace-first 语义。
 
-当 surface 已有 workspace 时：
+### 6.4 `normal mode /new`
 
-1. `/use` 默认展示当前 workspace 最近 thread。
-2. `/useall` 展示当前 workspace 的全部可见 thread。
-3. 不再借由 `/use` 静默跳到其他 workspace。
-4. 若要切换到另一个 workspace，应先 detach，再从 detached 入口重新选择。
+`/new` 在 normal mode 下保留，并且语义需要更明确：
 
-## 5.4 `/list` 与 `/follow`
+1. 它不是“暂时没有 thread，只是等下一条消息再说”的弱状态。
+2. 它是 surface 在当前 workspace 下显式拥有一个“待创建的新 thread”。
+3. 这个 thread 可以 lazy create。
+4. 但 ownership 已经成立，直到用户：
+   - 发出第一条普通文本并 materialize 它
+   - 或 `/use`
+   - 或 `/list` 切 workspace
+   - 或 `/detach`
+   - 或切 mode
+
+这要求运行时后续实现里把 `prepared new thread` 当成一个真正的 route/ownership 状态，而不是临时补丁。
+
+### 6.5 `normal mode /follow` 与 `/detach`
 
 normal mode 下：
 
-1. `/list` 不再是合法入口；它只属于 vscode mode。
-2. `/follow` 不再作为 normal mode 的长期产品路径。
-3. `/new` 仍然保留，但语义变成“在当前 workspace 中，用当前 thread 的 cwd 准备一个新 thread”。
+1. `/follow` 废弃，不再作为合法长期路径。
+2. `/detach` 释放当前 workspace 与 thread ownership，但不修改当前 mode。
+3. `/list` 可以直接切 workspace，不强制要求先 `/detach`。
 
-## 5.5 VS Code 占用的处理
+直接切 workspace 的前提是沿用现有的阻塞规则：
 
-normal mode 不把 VS Code 当前活动当成 workspace 独占者：
+1. 当前有 queued / running work 时不能静默切走。
+2. 当前有 request gate / abandoning / 其他 dominant gate 时也不能硬切。
 
-1. VS Code 当前 focused thread 可以作为“正在本地使用”的提示展示。
-2. 这类提示不阻止 normal mode attach workspace。
-3. normal mode 若要选中同一个 thread，可以直接按 normal-mode 规则继续，不必因为 VS Code 当前正在看它而阻塞。
+## 7. VSCode Mode
 
-这里的核心取舍是：
+### 7.1 核心语义
 
-1. workspace 独占是 bot 侧产品规则。
-2. VS Code 当前活动是本地运行时现象，不升级成 workspace 级排他 claim。
+vscode mode 的产品目标不是“拥有一个稳定 workspace”，而是“观察并跟随一个 VS Code 实例当前正在看的会话”：
 
-## 6. VSCode Mode
-
-## 6.1 核心语义
-
-vscode mode 是“跟着 VS Code 走”的模式，不给用户承诺一个稳定 workspace 主心骨：
-
-1. attach 的对象是 VS Code instance，不是 workspace claim。
+1. attach 的对象是 VS Code instance。
 2. follow 默认开启，并且长期为准。
-3. surface 不持久拥有自己的 workspace 默认配置。
-4. detach 后，当前 surface 上的临时 override 一并清理。
+3. surface 不承诺自己拥有稳定 workspace 主心骨。
+4. surface override 可以存在，但不持久化为 workspace 默认值。
 
-## 6.2 `/list`
+### 7.2 `vscode mode /list`
 
-`/list` 以后只服务于 vscode mode：
+`/list` 在 vscode mode 下继续承担“列 VS Code instance 并接管”的职责：
 
-1. detached 状态下，`/list` 展示在线 VS Code 实例，供用户进入 vscode mode。
-2. 已在 vscode mode 时，`/list` 允许切换当前附着的 VS Code 实例。
-3. normal mode 下调用 `/list`，直接提示该命令只适用于 VS Code 模式。
+1. `vscode detached` 时，`/list` 展示在线 VS Code instance。
+2. `vscode attached` 时，`/list` 允许切换当前 instance。
+3. attach 或 switch 成功后：
+   - 若已观测到 focused thread，则进入 follow-bound 状态
+   - 若尚未观测到 thread，则进入 waiting 状态，并明确提示用户先在 VS Code 里操作一次会话
 
-## 6.3 `/use` / `/useall`
+### 7.3 `vscode mode /use` / `/useall`
 
-vscode mode 下，`/use` / `/useall` 仍然保留，但语义不是切到一个稳定 pinned route，而是“手动强制切一次当前目标 thread”：
+这里保留一个“手动强制切一次 thread”的能力，但它不能改写 follow-first 的总原则：
 
-1. 如果当前实例已经观测到 thread 列表，则允许用户手动选一个 thread。
-2. 这个手动选择只是一次性的 rebind / force-pick，不改变“follow 为准”的总规则。
-3. 后续只要 VS Code 观测到新的 focused thread，surface 仍然跟着切过去。
-4. 如果当前 attach 上来但还没有任何 thread 元数据，明确提示用户先在 VS Code 里实际操作一次会话。
+1. 如果当前 instance 已有可见 thread 列表，则允许 `/use` / `/useall` 手动选一个 thread。
+2. 这个选择只是一次性的 rebind / force-pick。
+3. 只要后续 VS Code 再观测到新的 focused thread，surface 仍然跟着切过去。
+4. 如果 attach 上来时还没有任何 thread 元数据，则不盲目适配，直接提示用户先去 VS Code 里实际操作一次会话。
 
-## 6.4 配置策略
+### 7.4 配置归属
 
 vscode mode 下：
 
-1. 初始不写任何 workspace default。
-2. 默认沿用 VS Code 实例 / 当前 thread 自己已有的配置状态。
-3. `/model`、`/reasoning`、`/access` 允许做 surface 级临时 override。
-4. 这些 override 不持久化，detach 或模式切换后直接清空。
+1. 不建立自己的 workspace defaults。
+2. 默认沿用 VS Code / 当前 thread 已有配置。
+3. `/model`、`/reasoning`、`/access` 只做 surface 级临时 override。
+4. detach 或 mode switch 后清理这些 override。
 
-## 7. Workspace Identity 与 Claim
+## 8. Workspace Identity 与 Claim
 
-## 7.1 canonical identity
+### 8.1 产品层判断
 
-normal mode 里的 workspace identity，应以“规范化后的 workspace root / cwd root”为主，而不是直接拿当前 thread 的精确 `cwd` 当最终身份。
+我同意最新评论里的核心方向：**产品层不应该同时教用户两个概念，叫 `WorkspaceRoot` 和 thread `cwd`。**
 
-原因：
+如果当前 Codex 暴露出来的 thread `cwd` 本身就是“这个 thread 所属 workspace 的路径表达”，那产品层没有必要再把两者包装成两个相互竞争的用户概念。
 
-1. `WorkspaceRoot` 更像 instance 自报的稳定根目录。
-2. thread `cwd` 可能只是该 workspace 下的子目录。
-3. 如果直接按 thread `cwd` 做 identity，同一个仓库会被拆成多个伪 workspace。
+### 8.2 推荐的技术落点
 
-因此产品定义应当是：
+即便产品层只暴露一个“workspace 路径”概念，运行时仍然建议保留一个明确的 canonical key：
 
-1. canonical workspace key 代表“这个 surface 正在占有哪一个 workspace 根”。
-2. thread `cwd` 只用于：
-   - thread 内具体执行路径
-   - 新 thread 继承路径
-   - 恢复和候选匹配时的辅助 metadata
-3. thread `cwd` 不应天然升级成长期 workspace identity。
+1. normal mode 使用单一 `WorkspaceKey` 作为：
+   - workspace claim key
+   - `/list` 的 workspace identity
+   - `/status` 的 workspace 展示主体
+2. 这个 `WorkspaceKey` 应优先来自“当前 runtime 真正用于 thread/workspace 归属判断的路径字段”。
+3. `Instance.WorkspaceRoot` 可以作为：
+   - fallback 来源
+   - 对照来源
+   - 恢复链路的辅助 metadata
+4. `ThreadRecord.CWD` 仍可保留为执行与继承元数据，例如：
+   - `/new` 时继承创建位置
+   - queue item freeze
+   - 恢复提示
 
-## 7.2 对当前字段的解释
+关键点不是保不保留字段，而是：
 
-1. `WorkspaceRoot`
-   - 倾向于作为稳定 workspace 根的候选来源。
-   - 它是 instance 级元数据，不应被 thread 子目录反复缩窄。
-2. 规范化 `cwd`
-   - 更适合作为临时匹配、恢复提示和 fallback 候选。
-   - 只有在当前确实缺少 workspace root metadata 时，才允许作为过渡阶段的 provisional key。
+1. 不把它们讲成两个不同的产品对象。
+2. 最终只产出一个 workspace identity 给产品层使用。
 
-也就是说，产品要围绕 workspace root 建模，而不是围绕每个 thread 的工作子目录建模。
+### 8.3 claim 分层
 
-## 7.3 claim 模型
-
-建议把 claim 拆成两层：
+normal mode 下建议明确两层互斥：
 
 1. `workspace claim`
-   - 只用于 normal mode。
-   - key 是 canonical workspace key。
-   - 一个 workspace 同时只能被一个 normal-mode surface 占有。
-
+   - 最高层产品排他
+   - 同一 workspace 同时只能被一个 normal-mode surface 占有
 2. `thread claim`
-   - 作为当前 workspace 内的线程路由锁。
-   - 仍可保留，但不再承担“跨 workspace 的最高层产品排他语义”。
+   - 仍然保留
+   - 负责当前已选 thread 或 prepared-new-thread 的线程级 ownership
 
-3. `vscode instance attach`
-   - 继续保留 instance 级 attach 概念。
-   - 只用于 vscode mode。
-   - 不升级成 normal mode 的 workspace 排他规则。
+vscode mode 下则保留 instance attach / follow 语义，但它不升级成 normal mode 的 workspace 排他规则。
 
-## 8. 配置归属
+## 9. 配置归属
 
-当前代码里的配置来源可以拆成两层来看：
+### 9.1 normal mode
 
-1. base default 解析
-   - `thread explicit`
-   - `CWDDefaults[cwd]`
-2. 最终覆盖
-   - `surface override` 最后覆盖前面的基础结果
-
-这里真正需要重构的不是“有没有覆盖关系”，而是“默认配置归谁持久拥有”。
-
-### 8.1 normal mode
-
-normal mode 下，建议把用户真正想保存的默认值升级为 workspace 级 source of truth：
+normal mode 下，持久默认配置应当升级为 workspace 级 source of truth：
 
 1. `thread explicit`
-   - 继续保留，表示这个 thread 自己已有的明确配置。
-   - 它是线程事实，不是 workspace 默认值。
+   - 继续表示 thread 自己已有的明确配置
 2. `workspace defaults`
-   - 接替今天的 `CWDDefaults`。
-   - 成为 model / reasoning / access 的持久默认配置归属。
+   - 接替今天的 `CWDDefaults`
+   - 成为 model / reasoning / access 的持久默认配置归属
 3. `surface override`
-   - 继续存在。
-   - 只代表当前飞书 surface 的临时覆盖。
-   - detach 或 mode switch 后清理。
+   - 继续存在
+   - 但只代表当前飞书 surface 的临时覆盖
+   - detach 或 mode switch 后清理
 
-对应的新模型也保持同样结构：
+### 9.2 vscode mode
 
-1. base default 解析
-   - `thread explicit`
-   - `workspace defaults`
-2. 最终覆盖
-   - `surface override`
+vscode mode 不写自己的 workspace defaults：
 
-其中真正的 source of truth 是 `workspace defaults` 这一层，而不是今天挂在 instance 上、按 `cwd` 分散存储的 `CWDDefaults`。
-这里补充一个边界：
+1. 继续沿用实例 / thread 已有配置
+2. 允许 surface override
+3. 不把 override 持久化
 
-1. `model` / `reasoning` 需要迁移到 workspace defaults。
-2. `access mode` 目前更多还是 surface 级概念，但 redesign 目标是把它也纳入 normal mode 的 workspace default 体系。
+## 10. 目标状态机骨架
 
-### 8.2 vscode mode
+这轮 redesign 最关键的状态机修正是：**mode overlay 与 route state 解耦。**
 
-vscode mode 不建立自己的 workspace defaults：
+先有 `ProductMode`：
 
-1. 继续沿用 VS Code / thread 当前已有配置。
-2. 允许 surface override。
-3. 不把 override 写成持久 workspace 默认值。
+1. `M0 Normal`
+2. `M1 VSCode`
 
-## 9. 状态机映射
-
-执行态、gate、queue overlay 这一层可以基本沿用当前状态机；主要变化发生在 route 主状态。
-
-建议把当前 route 主状态收敛成下面两组：
+再在 mode 内看 route：
 
 1. normal mode
-   - `N0 Detached`
+   - `N0 NormalDetached`
    - `N1 WorkspaceAttachedNoThread`
    - `N2 WorkspacePinnedThread`
-   - `N3 WorkspaceNewThreadReady`
-
+   - `N3 WorkspacePreparedNewThread`
 2. vscode mode
+   - `V0 VSCodeDetached`
    - `V1 VSCodeAttachedWaiting`
    - `V2 VSCodeAttachedFollowing`
 
-说明：
+这里最重要的不是名字，而是两条原则：
 
-1. `V2` 下允许 `/use` 手动 rebind，但它不是一个新的稳定 pinned state。
-2. 只要观测到新的 local focused thread，`V2` 仍然跟随切换。
-3. 当前 `follow_local` 的长期叙事以后只属于 vscode mode，不再是 normal mode 的主路径。
+1. detached 在两种 mode 下都存在。
+2. `normal mode` 不再共享 `follow_local` 叙事。
 
-### 9.1 current -> target route 映射矩阵
+## 11. 对现有命令的重新定义
 
-| 当前 route state | 新模式 | 目标 route state | 迁移说明 |
-| --- | --- | --- | --- |
-| `R0 Detached` | 未定 | `N0 Detached` | detached 本身不再隐含 instance-first 入口；用户通过 `/use` / `/useall` 走 normal path，通过 `/list` 走 vscode path |
-| `R1 AttachedUnbound` | normal | `N1 WorkspaceAttachedNoThread` | 语义从“已 attach instance 但未绑定 thread”收敛成“已 attach workspace 但未选 thread” |
-| `R2 AttachedPinned` | normal | `N2 WorkspacePinnedThread` | pinned 仍然保留，但边界收缩到当前 workspace 内 |
-| `R3 FollowWaiting` | vscode | `V1 VSCodeAttachedWaiting` | follow-waiting 以后只属于 vscode mode，不再作为 normal mode 常驻路径 |
-| `R4 FollowBound` | vscode | `V2 VSCodeAttachedFollowing` | follow-bound 以后直接升级成 vscode mode 的主状态 |
-| `R5 NewThreadReady` | normal | `N3 WorkspaceNewThreadReady` | `/new` 以后只属于 normal mode；依赖当前 workspace 内 thread 的 cwd |
+按新的方向，命令矩阵应当变成：
 
-### 9.2 命令路由重定向
+1. `/mode normal`
+   - 切到 normal mode，并做 detach-like 清理
+2. `/mode vscode`
+   - 切到 vscode mode，并做 detach-like 清理
+3. `/list`
+   - normal mode: 列 workspace / 切 workspace
+   - vscode mode: 列 VS Code instance / 切 instance
+4. `/use` / `/useall`
+   - normal detached: 全局 thread 快捷入口
+   - normal attached: 当前 workspace thread 列表
+   - vscode mode: one-shot force-pick
+5. `/follow`
+   - 只在 vscode mode 保留意义
+6. `/new`
+   - 只在 normal mode 保留
+7. `/status`
+   - 必须把 mode 和 attach 对象类型一起展示
 
-current -> target 还有两条关键重定向：
+## 12. 对旧 follow-up issue 的影响
 
-1. 当前所有 `/list` 入口
-   - 从“任意 attached state 可用”
-   - 收敛为“detached / vscode mode 可用，normal mode 禁用”
-2. 当前所有 `/follow` 入口
-   - 从“一般 attached route 的通用动作”
-   - 收敛为“只在 vscode mode 有意义”
+上一版设计拆出的 `#68` 到 `#73` 建立在旧前提上，当前至少有三处基础假设已失效：
 
-## 10. 对现有命令的影响
+1. mode 不是路径依赖，而是 surface 显式状态。
+2. normal mode 下 `/list` 不是禁用，而是核心 workspace 入口。
+3. `WorkspaceRoot` vs `thread cwd` 不应继续被当成两个并列产品概念。
 
-建议按下面的方向拆语义：
+因此当前更稳妥的做法是：
 
-1. `/list`
-   - 只保留给 VS Code 模式使用。
-2. `/use` / `/useall`
-   - detached 时是 normal mode 的全局 workspace attach 入口。
-   - normal mode attach 后只看当前 workspace 内 thread。
-   - vscode mode 下保留“强制切一次 thread”的能力，但 follow 仍然最高优先。
-3. `/follow`
-   - 只在 vscode mode 下保留。
-4. `/new`
-   - 只在 normal mode 下保留。
-5. `/model` `/reasoning` `/access`
-   - normal mode 写 workspace defaults 或 surface override。
-   - vscode mode 只写 surface override。
+1. 先把母设计重新收敛。
+2. 再决定旧 follow-up issue 是重写、复用还是废弃。
 
-## 11. 已拍板的剩余取舍
+## 13. 下一步建议拆分
 
-上一轮留下的 3 个小决策，这轮先按当前 preference 定掉，不再继续挂起：
+等这版母设计稳定后，建议按下面顺序重新拆实现：
 
-1. detached 不新增单独的 workspace chooser 命令
-   - v1 继续使用 `/use` / `/useall` 作为 normal mode 的 workspace attach 入口。
-   - 原因是当前产品已经有稳定入口，继续加 chooser 只会引入一层新的概念和卡片状态。
-2. `vscode mode` 下 `/useall` 只看“当前 attached VS Code instance 已知的 thread 集合”
-   - 不走跨 instance 的全局 merged thread view。
-   - `/use` 展示当前较新的 thread。
-   - `/useall` 展示当前 instance 已知的全部 thread；如果还没有任何 thread 元数据，就直接提示用户先在 VS Code 里实际操作一次会话。
-3. canonical workspace key 的 v1 规范化规则
-   - `trim -> filepath.Abs -> filepath.Clean`
-   - 若路径存在且可以 `EvalSymlinks`，则使用解析后的真实路径
-   - v1 不做额外 case folding
-   - v1 不额外引入挂载点级特殊归一化
+1. `ProductMode` 基础设施
+   - 显式 mode 字段
+   - `/mode`
+   - `/status` 展示
+   - mode switch 清理语义
+2. normal mode workspace attach / switch
+   - `/list` workspace 列表
+   - workspace claim
+   - attach 后进入 `WorkspaceAttachedNoThread`
+3. normal mode thread ownership
+   - `/use` / `/useall` 语义重做
+   - `prepared new thread` 升级为正式状态
+   - `/follow` 在 normal mode 下移除
+4. vscode mode 产品收窄
+   - 显式进入
+   - `/list` 实例列表
+   - follow-first + one-shot `/use`
+5. workspace identity 与默认配置迁移
+   - `WorkspaceKey`
+   - workspace defaults
+   - 恢复链路与展示同步
 
-## 12. 建议的后续拆分
+## 14. 当前仍值得继续讨论的点
 
-建议按下面顺序拆 follow-up issue：
+当前我建议继续围绕下面 3 个点收口：
 
-1. surface mode / workspace claim 基础设施
-   - 新增 surface product mode
-   - 引入 workspace claim
-   - 梳理 mode switch 清理语义
-
-2. workspace identity 与 metadata plumbing
-   - 明确 canonical workspace key
-   - 补齐非-VSCode source 的 workspace root 透传与持久化
-   - 处理只有 `cwd` 时的 provisional key 过渡
-
-3. normal mode `/use` / `/useall` 重构
-   - detached 全局列表按 workspace 过滤
-   - attached 后只看当前 workspace 内 thread
-   - `/list` 在 normal mode 下禁用
-
-4. vscode mode 产品拆分
-   - `/list` 进入和切换 vscode mode
-   - follow-first 路由
-   - thread 未观测到时的明确提示
-
-5. 配置归属迁移
-   - `CWDDefaults` 迁移到 workspace defaults
-   - `access mode` 纳入 workspace default 体系
-   - vscode mode 保持 override-only
-
-6. 状态机与文档同步
-   - 更新 `docs/general/remote-surface-state-machine.md`
-   - 更新 `docs/general/feishu-product-design.md`
-   - 更新用户文档与帮助文案
-
-## 13. issue 拆分落点
-
-母 issue `#67` 只负责定型，不继续承载实现。当前已拆出的 follow-up issue 为：
-
-1. `#68` surface mode / workspace claim 基础设施
-2. `#69` workspace identity 与 metadata plumbing
-3. `#70` vscode mode 产品拆分
-4. `#71` normal mode `/use` / `/useall` 重构
-5. `#72` workspace-aware 状态机与文档同步
-6. `#73` workspace defaults 与 prompt config 迁移
+1. detached 的 normal mode 是否保留全局 `/use` thread 快捷入口
+   - 我的倾向是保留，因为它只是快捷入口，不会破坏 workspace-first 落点
+2. `WorkspaceKey` 的来源优先级
+   - 我的倾向是：谁更接近 runtime 真实 thread/workspace 归属，就优先信谁；产品层只保留一个结果
+3. `normal mode /list` 是否展示 busy workspace
+   - 我的倾向是展示但禁用，这样用户能理解“为什么某个 workspace 现在不可选”
