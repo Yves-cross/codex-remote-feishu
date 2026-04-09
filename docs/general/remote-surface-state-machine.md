@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步 vscode mode follow-first：`/list` attach/switch 进入 `follow_local`，attached vscode `/use` / `/useall` 只看当前 instance，force-pick 仍保持 follow-local。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode：`/list` 在 normal 下先选 workspace，在 vscode 下 follow-first attach instance；`/new` 是稳定 prepared state；帮助与用户语义以此为准。
 
 ## 1. 文档定位
 
@@ -421,10 +421,9 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 ```text
 R0 Detached
-  -- /attach(instance，normal mode 且可拿默认 thread) --> R2 AttachedPinned
-  -- /attach(instance，normal mode 且默认 thread 不可拿或不存在) --> R1 AttachedUnbound
-  -- /attach(instance，vscode mode 且 observed focus 可接管) --> R4 FollowBound
-  -- /attach(instance，vscode mode 且尚无可接管 observed focus) --> R3 FollowWaiting
+  -- /list -> attach_workspace(normal mode，workspace 可接管) --> R1 AttachedUnbound
+  -- /list -> attach_instance(vscode mode 且 observed focus 可接管) --> R4 FollowBound
+  -- /list -> attach_instance(vscode mode 且尚无可接管 observed focus) --> R3 FollowWaiting
   -- /use(thread，normal mode 且可解析到当前可用实例) --> R2 AttachedPinned
   -- /use(thread，normal mode 且需要新 headless) --> R0 + G1 PendingHeadlessStarting
   -- /use(thread，vscode mode) --> 拒绝 + migration to /list
@@ -695,8 +694,8 @@ transport degraded retained attachment
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 允许 | 拒绝 | 允许 | 允许；若首条消息已 dispatching/running 则拒绝 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | `normal`: 允许；`vscode`: 拒绝并提示先 `/list` | `normal`: 允许；`vscode legacy`: 仅当前 instance 已知 thread | `normal`: 允许；`vscode legacy`: 仅当前 instance 已知 thread | 仅当前 instance 已知 thread | 仅当前 instance 已知 thread | `normal`: 允许；`vscode`: 仅当前 instance 已知 thread；若仅有 unsent draft 会先丢弃 |
-| `/follow` | 拒绝 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许；若仅有 unsent draft 会先丢弃 |
+| `/use` `/useall` | `normal`: 允许；`vscode`: 拒绝并提示先 `/list` | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread（该态通常只作兼容） | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | 仅当前 attached instance 已知 thread | `normal`: 允许；`vscode`: 仅当前 attached instance 已知 thread；若仅有 unsent draft 会先丢弃 |
+| `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许；若仅有 unsent draft 会先丢弃 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |

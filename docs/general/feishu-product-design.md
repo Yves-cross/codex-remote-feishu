@@ -37,6 +37,7 @@
 
 - `/list`
 - `/status`
+- `/mode`
 - `/autocontinue`
 - `/new`
 - `/stop`
@@ -184,7 +185,35 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 ## 4. Attachment 与 thread 路由
 
-### 4.1 `attach(workspace|instance)`
+### 4.1 产品模式与 `/mode`
+
+新 surface 默认进入 `normal mode`。
+
+当前两种模式分工已经固定：
+
+1. `normal mode`
+   - `/list` 列**工作区**
+   - detached `/use` / `/useall` 仍可全局继续已有会话
+   - 已 attach 后 `/use` / `/useall` 只看当前 workspace
+   - `/new` 只要求当前 workspace 已知
+   - `/follow` 只返回迁移提示
+2. `vscode mode`
+   - 需要显式 `/mode vscode`
+   - `/list` 改为列**在线 VS Code 实例**
+   - attach 后默认走 follow-first
+   - detached `/use` / `/useall` 不再提供 global shortcut
+
+`/mode normal` / `/mode vscode` 当前只允许在 detached 或 idle attached surface 上切换。
+
+切换时会先做 detach-like 清理：
+
+- 释放 attachment / workspace claim / thread claim
+- 清掉 `PromptOverride`
+- 清掉 request gate / prepared new thread / staged image / queued draft
+
+若当前仍有 live remote work，或 surface 正处于 `PendingHeadless` / `Abandoning`，`/mode` 会直接拒绝。
+
+### 4.2 `attach(workspace|instance)`
 
 `/list` 当前已经按 `ProductMode` 分流：
 
@@ -212,7 +241,7 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - 旧 `prompt_select` 兼容动作统一回 `selection_expired`
 - 普通数字文本不会再被解释成实例或工作区选择
 
-### 4.2 `use-thread(thread)`
+### 4.3 `use-thread(thread)`
 
 `/threads`、`/use`、`/sessions` 当前都走同一条主入口：展示**最近会话**。
 
@@ -261,7 +290,7 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 如果用户点到旧卡片上的 legacy `prompt_select`，会统一收到 `selection_expired` 提示，要求重新发送 `/list`、`/use` 或 `/useall`。
 
-### 4.3 `follow`
+### 4.4 `follow`
 
 `/follow` 当前只在 `vscode mode` 下保留：
 
@@ -274,7 +303,7 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - 会返回迁移提示，要求用户改走当前 workspace 下的 `/use`、`/new`
 - 如果确实需要 VS Code follow 语义，用户需要先显式 `/mode vscode`
 
-### 4.4 无可用 thread 的等待态
+### 4.5 无可用 thread 的等待态
 
 当 surface 已接管实例，但当前没有拿到可发送的 thread 时：
 
@@ -284,6 +313,19 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
   - 系统会明确提示下一步应该走“先在 VS Code 里实际操作一次会话”或 `/use`
   - 若当前实例仍有可见会话，会主动补发一张**当前 instance 范围**的 `/use` 选择卡
 - 普通文本不会再被当成“隐式创建 thread”来直接发出
+
+### 4.6 `/new`
+
+`/new` 当前已经是稳定的 prepared state，而不是临时兼容入口。
+
+规则：
+
+- normal mode 下，只要当前已 attach 且 workspace 已知，就允许进入 `new_thread_ready`
+- vscode mode 下，仍要求当前真实持有一个有 `cwd` 的可见 thread
+- 进入后会保留 instance attachment，但释放旧 thread claim
+- 下一条普通文本会成为新 thread 的首条输入
+- 若首条消息已进入 queued/dispatching/running，第二条文本与新图片会被挡住，直到新 thread 落地
+- 若此时改走 `/use`、`vscode /follow`、重复 `/new`、`/detach` 或 `/stop`，会先按当前规则处理未发送 draft
 
 ## 5. Queue、Typing 与本地优先
 
@@ -304,7 +346,7 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 - `threadId`
 - `cwd`
-- `model/reasoning override`
+- `model/reasoning/access override`
 - `routeModeAtEnqueue`
 
 所以 thread 切换只影响**后续**消息，不会改写已入队项。
@@ -411,13 +453,26 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 - 返回提示，要求先发文字或重新处理卡片
 
-### 5.8 飞书侧执行权限覆盖
+### 5.8 飞书侧发送前覆盖
 
-飞书侧 prompt override 包含 `accessMode`。
+飞书侧 prompt override 当前包含：
+
+- `model`
+- `reasoningEffort`
+- `accessMode`
 
 当前规则：
 
-- 默认有效执行权限是 `full access`
+- `/model`、`/reasoning`、`/access` 更新的是 surface 级 override
+- 这些覆盖只影响**之后从飞书发出的消息**
+- 已经入队的请求会继续使用它入队时冻结下来的配置
+- 覆盖不会同步回 VS Code
+- 覆盖会一直保留到：
+  - 你显式 `clear`
+  - `/detach`
+  - `/mode` 切换
+  - 系统因跨工作区切换或恢复链路而执行 detach-like 清理
+- 默认执行权限仍是 `full access`
 - `/access confirm` 或菜单 `access_confirm` 会把之后飞书发出的消息切到确认模式
 - `/access full` 或菜单 `access_full` 会恢复为全放行
 - `/access clear` 会清除 surface override，并回到默认的 `full access`
