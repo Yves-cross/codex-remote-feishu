@@ -26,6 +26,15 @@ const (
 	upgradeGatewayGraceWindow   = 10 * time.Second
 )
 
+var (
+	upgradeHelperObserveFunc             = observeUpgrade
+	upgradeHelperSleepFunc               = time.Sleep
+	upgradeHelperStartDetachedDaemonFunc = relayruntime.StartDetachedDaemon
+	upgradeHelperReadPIDFunc             = relayruntime.ReadPID
+	upgradeHelperTerminateProcessFunc    = relayruntime.TerminateProcess
+	upgradeHelperRemoveFileFunc          = os.Remove
+)
+
 func RunUpgradeHelper(args []string, _ io.Reader, stdout, _ io.Writer, _ string) error {
 	flagSet := flag.NewFlagSet("upgrade-helper", flag.ContinueOnError)
 	flagSet.SetOutput(stdout)
@@ -66,7 +75,7 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 		return err
 	}
 
-	if err := stopCurrentDaemon(paths); err != nil {
+	if err := stopCurrentDaemon(ctx, stateValue, paths); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("stop current daemon: %w", err))
 	}
 	if err := switchUpgradeBinary(&stateValue); err != nil {
@@ -78,10 +87,10 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 		return err
 	}
 
-	if _, err := startUpgradeDaemon(cfg, stateValue, paths); err != nil {
+	if _, err := startUpgradeDaemon(ctx, cfg, stateValue, paths); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("start upgraded daemon: %w", err))
 	}
-	if err := observeUpgrade(ctx, cfg); err != nil {
+	if err := upgradeHelperObserveFunc(ctx, cfg); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, err)
 	}
 
@@ -221,9 +230,13 @@ func switchUpgradeBinary(stateValue *InstallState) error {
 	return nil
 }
 
-func stopCurrentDaemon(paths relayruntime.Paths) error {
-	time.Sleep(upgradeHelperStopDelay)
-	pid, err := relayruntime.ReadPID(paths.PIDFile)
+func stopCurrentDaemon(ctx context.Context, stateValue InstallState, paths relayruntime.Paths) error {
+	upgradeHelperSleepFunc(upgradeHelperStopDelay)
+	if effectiveServiceManager(stateValue) == ServiceManagerSystemdUser {
+		return systemdUserStop(ctx)
+	}
+
+	pid, err := upgradeHelperReadPIDFunc(paths.PIDFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -233,20 +246,23 @@ func stopCurrentDaemon(paths relayruntime.Paths) error {
 	if pid <= 0 {
 		return nil
 	}
-	if err := relayruntime.TerminateProcess(pid, upgradeHelperStopGrace); err != nil {
+	if err := upgradeHelperTerminateProcessFunc(pid, upgradeHelperStopGrace); err != nil {
 		return err
 	}
-	_ = os.Remove(paths.PIDFile)
-	_ = os.Remove(paths.IdentityFile)
+	_ = upgradeHelperRemoveFileFunc(paths.PIDFile)
+	_ = upgradeHelperRemoveFileFunc(paths.IdentityFile)
 	return nil
 }
 
-func startUpgradeDaemon(cfg config.LoadedAppConfig, stateValue InstallState, paths relayruntime.Paths) (int, error) {
+func startUpgradeDaemon(ctx context.Context, cfg config.LoadedAppConfig, stateValue InstallState, paths relayruntime.Paths) (int, error) {
+	if effectiveServiceManager(stateValue) == ServiceManagerSystemdUser {
+		return 0, systemdUserStart(ctx)
+	}
 	env := config.FilterEnvWithoutProxy(os.Environ())
 	if cfg.Config.Feishu.UseSystemProxy {
 		env = append(env, config.CaptureProxyEnv()...)
 	}
-	return relayruntime.StartDetachedDaemon(relayruntime.LaunchOptions{
+	return upgradeHelperStartDetachedDaemonFunc(relayruntime.LaunchOptions{
 		BinaryPath: stateValue.CurrentBinaryPath,
 		ConfigPath: firstNonEmpty(strings.TrimSpace(stateValue.ConfigPath), cfg.Path),
 		Env:        env,
@@ -255,7 +271,7 @@ func startUpgradeDaemon(cfg config.LoadedAppConfig, stateValue InstallState, pat
 }
 
 func rollbackUpgradeState(ctx context.Context, statePath string, stateValue InstallState, cfg config.LoadedAppConfig, paths relayruntime.Paths, cause error) error {
-	stopErr := stopCurrentDaemon(paths)
+	stopErr := stopCurrentDaemon(ctx, stateValue, paths)
 	if stateValue.RollbackCandidate != nil {
 		if err := restoreConfigSnapshots(stateValue.RollbackCandidate.ConfigSnapshots); err != nil {
 			stateValue.PendingUpgrade.Phase = PendingUpgradePhaseFailed
@@ -278,7 +294,7 @@ func rollbackUpgradeState(ctx context.Context, statePath string, stateValue Inst
 	if err := WriteState(statePath, stateValue); err != nil {
 		return err
 	}
-	if _, err := startUpgradeDaemon(cfg, stateValue, paths); err != nil {
+	if _, err := startUpgradeDaemon(ctx, cfg, stateValue, paths); err != nil {
 		stateValue.PendingUpgrade.Phase = PendingUpgradePhaseFailed
 		_ = WriteState(statePath, stateValue)
 		return fmt.Errorf("restart rollback daemon failed after %v: %w", cause, err)
