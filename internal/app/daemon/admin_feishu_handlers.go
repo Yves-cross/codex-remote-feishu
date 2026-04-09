@@ -89,9 +89,10 @@ func (a *App) handleFeishuAppCreate(w http.ResponseWriter, r *http.Request) {
 		enabled = *req.Enabled
 	}
 	now := time.Now().UTC()
+	resolvedName := a.suggestFeishuAppName(r.Context(), trimmedString(req.Name), trimmedString(req.AppID), trimmedString(req.AppSecret), gatewayID)
 	app := config.FeishuAppConfig{
 		ID:      gatewayID,
-		Name:    firstNonEmpty(trimmedString(req.Name), trimmedString(req.AppID), gatewayID),
+		Name:    firstNonEmpty(resolvedName, trimmedString(req.AppID), gatewayID),
 		AppID:   trimmedString(req.AppID),
 		Enabled: daemonBoolPtr(enabled),
 	}
@@ -196,18 +197,26 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current := updated.Feishu.Apps[index]
+	requestedName := trimmedString(req.Name)
+	nextAppID := strings.TrimSpace(current.AppID)
+	nextAppSecret := strings.TrimSpace(current.AppSecret)
 	appIDChanged := false
 	secretChanged := false
-	if name := trimmedString(req.Name); name != "" {
-		current.Name = name
+	if requestedName != "" {
+		current.Name = requestedName
 	}
 	if appID := trimmedString(req.AppID); appID != "" && appID != current.AppID {
 		current.AppID = appID
+		nextAppID = appID
 		appIDChanged = true
 	}
 	if secret := trimmedString(req.AppSecret); secret != "" && secret != current.AppSecret {
 		current.AppSecret = secret
+		nextAppSecret = secret
 		secretChanged = true
+	}
+	if requestedName == "" && (appIDChanged || strings.TrimSpace(current.Name) == "") {
+		current.Name = a.suggestFeishuAppName(r.Context(), "", nextAppID, nextAppSecret, current.Name)
 	}
 	if req.Enabled != nil {
 		current.Enabled = daemonBoolPtr(*req.Enabled)

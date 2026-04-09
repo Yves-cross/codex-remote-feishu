@@ -106,6 +106,8 @@ type App struct {
 	gatewayRunDone        chan struct{}
 	relayConnections      map[string]*relayConnectionState
 	feishuRuntimeApply    map[string]feishuRuntimeApplyPendingState
+	feishuOnboarding      map[string]*feishuOnboardingSession
+	feishuSetup           feishuSetupClient
 
 	adminAuth *adminauth.Manager
 	admin     adminRuntimeState
@@ -160,6 +162,8 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		ingress:                newIngressPump(),
 		relayConnections:       map[string]*relayConnectionState{},
 		feishuRuntimeApply:     map[string]feishuRuntimeApplyPendingState{},
+		feishuOnboarding:       map[string]*feishuOnboardingSession{},
+		feishuSetup:            newLiveFeishuSetupClient(),
 		adminAuth:              authManager,
 		shutdownGracePeriod:    5 * time.Second,
 		shutdownNoticeTimeout:  2 * time.Second,

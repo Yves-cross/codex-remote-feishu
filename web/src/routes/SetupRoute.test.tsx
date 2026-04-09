@@ -6,6 +6,113 @@ import { makeApp, makeBootstrap, makeManifest, makeVSCodeDetect } from "../test/
 import { installMockFetch } from "../test/http";
 
 describe("SetupRoute", () => {
+  it("starts connect flow from explicit mode selection and shows manual fields for existing apps", async () => {
+    window.history.replaceState({}, "", "/setup");
+
+    installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/apps": {
+        body: {
+          apps: [makeApp({ wizard: {} })],
+        },
+      },
+      "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("radio", { name: /接入已有应用/ }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(await screen.findByText("已有应用怎么接")).toBeInTheDocument();
+    expect(screen.getByLabelText("App ID")).toBeInTheDocument();
+    expect(screen.getByLabelText("App Secret")).toBeInTheDocument();
+    expect(screen.queryByLabelText("显示名称")).not.toBeInTheDocument();
+  });
+
+  it("creates a new app through qr onboarding and advances to permissions", async () => {
+    window.history.replaceState({}, "", "/setup");
+    let appsConfigured = false;
+    const { calls } = installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/apps": () => ({
+        body: {
+          apps: appsConfigured
+            ? [
+                makeApp({
+                  id: "bot-qr",
+                  name: "扫码 Bot",
+                  appId: "cli_qr",
+                  wizard: {
+                    connectionVerifiedAt: "2026-04-09T00:00:00Z",
+                  },
+                }),
+              ]
+            : [],
+        },
+      }),
+      "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/setup/feishu/onboarding/sessions": {
+        status: 201,
+        body: {
+          session: {
+            id: "sess-1",
+            status: "ready",
+            qrCodeDataUrl: "data:image/png;base64,abc",
+            appId: "cli_qr",
+            displayName: "扫码 Bot",
+          },
+        },
+      },
+      "/api/setup/feishu/onboarding/sessions/sess-1/complete": () => {
+        appsConfigured = true;
+        return {
+          body: {
+            app: makeApp({
+              id: "bot-qr",
+              name: "扫码 Bot",
+              appId: "cli_qr",
+              wizard: {
+                connectionVerifiedAt: "2026-04-09T00:00:00Z",
+              },
+            }),
+            mutation: {
+              kind: "created",
+              message: "飞书机器人已创建。接下来请先测试连接，并完成首次配置。",
+            },
+            result: {
+              connected: true,
+              duration: 1_000_000_000,
+            },
+            session: {
+              id: "sess-1",
+              status: "completed",
+              appId: "cli_qr",
+              displayName: "扫码 Bot",
+            },
+          },
+        };
+      },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByText("开始设置 Codex Remote")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "开始" }));
+    await user.click(await screen.findByRole("button", { name: "下一步" }));
+
+    expect(await screen.findByText("权限导入说明")).toBeInTheDocument();
+    expect(calls.some((call) => call.path === "/api/setup/feishu/onboarding/sessions")).toBe(true);
+    expect(calls.some((call) => call.path === "/api/setup/feishu/onboarding/sessions/sess-1/complete")).toBe(true);
+  });
+
   it("shows read-only connect state and disables credential inputs", async () => {
     window.history.replaceState({}, "", "/setup");
 

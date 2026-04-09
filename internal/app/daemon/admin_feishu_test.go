@@ -67,6 +67,41 @@ func (f *fakeAdminGatewayController) Status() []feishu.GatewayStatus {
 	return append([]feishu.GatewayStatus(nil), f.statuses...)
 }
 
+type fakeFeishuSetupClient struct {
+	startResult    feishuRegistrationStartResult
+	startErr       error
+	pollResults    []feishuRegistrationPollResult
+	pollErr        error
+	describeResult feishuAppIdentity
+	describeErr    error
+	pollCalls      int
+	describeCalls  int
+}
+
+func (f *fakeFeishuSetupClient) StartRegistration(context.Context) (feishuRegistrationStartResult, error) {
+	return f.startResult, f.startErr
+}
+
+func (f *fakeFeishuSetupClient) PollRegistration(context.Context, string) (feishuRegistrationPollResult, error) {
+	if f.pollErr != nil {
+		return feishuRegistrationPollResult{}, f.pollErr
+	}
+	index := f.pollCalls
+	f.pollCalls++
+	if len(f.pollResults) == 0 {
+		return feishuRegistrationPollResult{Status: feishuOnboardingStatusPending}, nil
+	}
+	if index >= len(f.pollResults) {
+		index = len(f.pollResults) - 1
+	}
+	return f.pollResults[index], nil
+}
+
+func (f *fakeFeishuSetupClient) DescribeApp(context.Context, string, string) (feishuAppIdentity, error) {
+	f.describeCalls++
+	return f.describeResult, f.describeErr
+}
+
 func TestFeishuManifestAndScopesRoutes(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	cfg.Feishu.Apps = []config.FeishuAppConfig{{
@@ -115,6 +150,144 @@ func TestFeishuManifestAndScopesRoutes(t *testing.T) {
 	}
 	if scopes.Scopes.Tenant[0] != "drive:drive" {
 		t.Fatalf("unexpected scopes payload: %#v", scopes)
+	}
+}
+
+func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{
+		verifyResult: feishu.VerifyResult{Connected: true, Duration: time.Second},
+	}
+	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+	app.feishuSetup = &fakeFeishuSetupClient{
+		startResult: feishuRegistrationStartResult{
+			DeviceCode:      "device-1",
+			VerificationURL: "https://example.test/qr",
+			ExpiresAt:       time.Now().Add(5 * time.Minute),
+		},
+		pollResults: []feishuRegistrationPollResult{{
+			Status:    feishuOnboardingStatusReady,
+			AppID:     "cli_qr",
+			AppSecret: "secret_qr",
+		}},
+		describeResult: feishuAppIdentity{DisplayName: "扫码 Bot"},
+	}
+
+	createRec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/onboarding/sessions", "")
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create onboarding status = %d, want 201 body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp feishuOnboardingSessionResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode onboarding create: %v", err)
+	}
+	if createResp.Session.Status != feishuOnboardingStatusPending || createResp.Session.ID == "" || createResp.Session.QRCodeDataURL == "" {
+		t.Fatalf("unexpected onboarding session: %#v", createResp.Session)
+	}
+
+	getRec := performAdminRequest(t, app, http.MethodGet, "/api/setup/feishu/onboarding/sessions/"+createResp.Session.ID, "")
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get onboarding status = %d, want 200 body=%s", getRec.Code, getRec.Body.String())
+	}
+	var getResp feishuOnboardingSessionResponse
+	if err := json.NewDecoder(getRec.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode onboarding get: %v", err)
+	}
+	if getResp.Session.Status != feishuOnboardingStatusReady || getResp.Session.AppID != "cli_qr" || getResp.Session.DisplayName != "扫码 Bot" {
+		t.Fatalf("unexpected onboarding get response: %#v", getResp.Session)
+	}
+
+	completeRec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/onboarding/sessions/"+createResp.Session.ID+"/complete", "")
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("complete onboarding status = %d, want 200 body=%s", completeRec.Code, completeRec.Body.String())
+	}
+	var completeResp feishuOnboardingCompleteResponse
+	if err := json.NewDecoder(completeRec.Body).Decode(&completeResp); err != nil {
+		t.Fatalf("decode onboarding complete: %v", err)
+	}
+	if completeResp.App.Name != "扫码 Bot" || completeResp.App.AppID != "cli_qr" {
+		t.Fatalf("unexpected completed app: %#v", completeResp.App)
+	}
+	if completeResp.Mutation == nil || completeResp.Mutation.Kind != "created" {
+		t.Fatalf("unexpected onboarding mutation: %#v", completeResp.Mutation)
+	}
+	if completeResp.Session.Status != feishuOnboardingStatusCompleted {
+		t.Fatalf("expected completed onboarding session, got %#v", completeResp.Session)
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath: %v", err)
+	}
+	if len(loaded.Config.Feishu.Apps) != 1 {
+		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
+	}
+	if loaded.Config.Feishu.Apps[0].Name != "扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.ConnectionVerifiedAt == nil {
+		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
+	}
+}
+
+func TestSetupFeishuOnboardingRetryDoesNotDuplicateAppAfterVerifyFailure(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{
+		verifyResult: feishu.VerifyResult{Connected: false, ErrorCode: "verify_failed", ErrorMessage: "bot ability missing"},
+		verifyErr:    errors.New("bot ability missing"),
+	}
+	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+	app.feishuSetup = &fakeFeishuSetupClient{
+		startResult: feishuRegistrationStartResult{
+			DeviceCode:      "device-2",
+			VerificationURL: "https://example.test/qr-2",
+			ExpiresAt:       time.Now().Add(5 * time.Minute),
+		},
+		pollResults: []feishuRegistrationPollResult{{
+			Status:    feishuOnboardingStatusReady,
+			AppID:     "cli_retry",
+			AppSecret: "secret_retry",
+		}},
+		describeResult: feishuAppIdentity{DisplayName: "Retry Bot"},
+	}
+
+	createRec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/onboarding/sessions", "")
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create onboarding status = %d, want 201 body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp feishuOnboardingSessionResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode onboarding create: %v", err)
+	}
+
+	getRec := performAdminRequest(t, app, http.MethodGet, "/api/setup/feishu/onboarding/sessions/"+createResp.Session.ID, "")
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get onboarding status = %d, want 200 body=%s", getRec.Code, getRec.Body.String())
+	}
+
+	completeRec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/onboarding/sessions/"+createResp.Session.ID+"/complete", "")
+	if completeRec.Code != http.StatusBadGateway {
+		t.Fatalf("first complete status = %d, want 502 body=%s", completeRec.Code, completeRec.Body.String())
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath(first): %v", err)
+	}
+	if len(loaded.Config.Feishu.Apps) != 1 {
+		t.Fatalf("expected one saved app after failed verify, got %#v", loaded.Config.Feishu.Apps)
+	}
+
+	gateway.verifyErr = nil
+	gateway.verifyResult = feishu.VerifyResult{Connected: true, Duration: time.Second}
+	retryRec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/onboarding/sessions/"+createResp.Session.ID+"/complete", "")
+	if retryRec.Code != http.StatusOK {
+		t.Fatalf("retry complete status = %d, want 200 body=%s", retryRec.Code, retryRec.Body.String())
+	}
+
+	loaded, err = config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath(retry): %v", err)
+	}
+	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
+		t.Fatalf("expected retry to reuse saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
 }
 
@@ -198,6 +371,27 @@ func TestFeishuAppsCreateUpdateVerifyAndDisable(t *testing.T) {
 	}
 	if len(gateway.upserted) < 3 || gateway.upserted[len(gateway.upserted)-1].Enabled {
 		t.Fatalf("expected disable to hot-apply runtime config, got %#v", gateway.upserted)
+	}
+}
+
+func TestFeishuCreateAutoFillsDisplayNameWhenNameOmitted(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+	app.feishuSetup = &fakeFeishuSetupClient{
+		describeResult: feishuAppIdentity{DisplayName: "Auto Named Bot"},
+	}
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/setup/feishu/apps", `{"id":"main","appId":"cli_xxx","appSecret":"secret_xxx"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
+	}
+	var payload feishuAppResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if payload.App.Name != "Auto Named Bot" {
+		t.Fatalf("expected auto-filled app name, got %#v", payload.App)
 	}
 }
 

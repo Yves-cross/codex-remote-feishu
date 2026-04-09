@@ -15,8 +15,10 @@ type FeishuAppFieldsProps = {
   values: FeishuAppFieldValues;
   readOnly?: boolean;
   hasSecret?: boolean;
+  showNameField?: boolean;
   nameLabel: string;
   namePlaceholder: string;
+  appIDHint?: string;
   secretPlaceholderWithExisting?: string;
   secretPlaceholderWithoutExisting?: string;
   nameFieldClassName?: string;
@@ -34,8 +36,10 @@ export function FeishuAppFields({
   values,
   readOnly = false,
   hasSecret = false,
+  showNameField = true,
   nameLabel,
   namePlaceholder,
+  appIDHint = "改成另一个 App ID 等于切换到另一个机器人身份，旧飞书会话不会自动迁移。",
   secretPlaceholderWithExisting = "留空表示保留当前 secret",
   secretPlaceholderWithoutExisting = "secret_xxx",
   nameFieldClassName = "field",
@@ -53,15 +57,17 @@ export function FeishuAppFields({
           {notice.message}
         </div>
       ))}
-      <label className={nameFieldClassName}>
-        <span>{nameLabel}</span>
-        <input value={values.name} placeholder={namePlaceholder} disabled={readOnly} onChange={(event) => onNameChange(event.target.value)} />
-      </label>
+      {showNameField ? (
+        <label className={nameFieldClassName}>
+          <span>{nameLabel}</span>
+          <input value={values.name} placeholder={namePlaceholder} disabled={readOnly} onChange={(event) => onNameChange(event.target.value)} />
+        </label>
+      ) : null}
       <label className={appIDFieldClassName}>
         <span>App ID</span>
         <input value={values.appId} placeholder="cli_xxx" disabled={readOnly} onChange={(event) => onAppIDChange(event.target.value)} />
       </label>
-      <p className={appIDHintClassName}>改成另一个 App ID 等于切换到另一个机器人身份，旧飞书会话不会自动迁移。</p>
+      <p className={appIDHintClassName}>{appIDHint}</p>
       <label className={secretFieldClassName}>
         <span>App Secret</span>
         <input

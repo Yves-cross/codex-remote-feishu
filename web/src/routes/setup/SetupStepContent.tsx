@@ -1,9 +1,9 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { FeishuAppSummary, FeishuManifest, VSCodeDetectResponse } from "../../lib/types";
-import { FeishuAppFields } from "../shared/FeishuAppFields";
-import type { SetupDraft, StepID } from "./types";
+import type { FeishuAppSummary, FeishuManifest, FeishuOnboardingSession, VSCodeDetectResponse } from "../../lib/types";
+import type { FeishuConnectMode, FeishuConnectStage, SetupDraft, StepID } from "./types";
 import { feishuAppConsoleURL } from "./helpers";
 import type { VSCodeUsageScenario } from "../shared/helpers";
+import { FeishuConnectStep } from "./FeishuConnectStep";
 
 type SetupStepContentProps = {
   currentStep: StepID;
@@ -11,6 +11,10 @@ type SetupStepContentProps = {
   activeApp: FeishuAppSummary | null;
   manifest: FeishuManifest;
   draft: SetupDraft;
+  connectStage: FeishuConnectStage;
+  connectMode: FeishuConnectMode | null;
+  onboardingSession: FeishuOnboardingSession | null;
+  onboardingNeedsManualRetry: boolean;
   scopesJSON: string;
   permissionsConfirmed: boolean;
   eventsConfirmed: boolean;
@@ -21,6 +25,14 @@ type SetupStepContentProps = {
   vscode: VSCodeDetectResponse | null;
   vscodeError: string;
   onDraftChange: Dispatch<SetStateAction<SetupDraft>>;
+  onConnectModeChange: (value: FeishuConnectMode) => void;
+  onContinueModeSelection: () => void;
+  onVerifyManual: () => void;
+  onBackToConnectModeSelection: () => void;
+  onRefreshOnboarding: () => void;
+  onRestartOnboarding: () => void;
+  onSwitchToExistingFlow: () => void;
+  onRetryOnboardingComplete: () => void;
   onPermissionsConfirmedChange: (value: boolean) => void;
   onEventsConfirmedChange: (value: boolean) => void;
   onLongConnectionConfirmedChange: (value: boolean) => void;
@@ -59,6 +71,10 @@ export function SetupStepContent({
   activeApp,
   manifest,
   draft,
+  connectStage,
+  connectMode,
+  onboardingSession,
+  onboardingNeedsManualRetry,
   scopesJSON,
   permissionsConfirmed,
   eventsConfirmed,
@@ -69,6 +85,14 @@ export function SetupStepContent({
   vscode,
   vscodeError,
   onDraftChange,
+  onConnectModeChange,
+  onContinueModeSelection,
+  onVerifyManual,
+  onBackToConnectModeSelection,
+  onRefreshOnboarding,
+  onRestartOnboarding,
+  onSwitchToExistingFlow,
+  onRetryOnboardingComplete,
   onPermissionsConfirmedChange,
   onEventsConfirmedChange,
   onLongConnectionConfirmedChange,
@@ -96,50 +120,27 @@ export function SetupStepContent({
       );
     case "connect":
       return (
-        <div className="wizard-step-layout two-column">
-          <FeishuAppFields
-            className="wizard-form-stack"
-            notices={[
-              ...(apps.length > 1 ? [{ tone: "warn" as const, message: "当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。" }] : []),
-              ...(activeApp?.readOnly
-                ? [{ tone: "warn" as const, message: "当前应用由运行时环境变量接管，setup 页面会直接对它做连接测试，但不会修改本地配置。" }]
-                : []),
-            ]}
-            values={draft}
-            readOnly={Boolean(activeApp?.readOnly)}
-            hasSecret={activeApp?.hasSecret}
-            nameLabel="显示名称"
-            namePlaceholder="Main Bot"
-            secretPlaceholderWithExisting="留空表示保留现有 App Secret"
-            onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
-            onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
-            onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
-          />
-
-          <div className="wizard-info-stack">
-            <div className="manifest-block">
-              <h4>先去飞书后台做什么</h4>
-              <div className="wizard-link-list">
-                <a href="https://open.feishu.cn/app?lang=zh-CN" target="_blank" rel="noreferrer">
-                  打开飞书开发者后台
-                </a>
-              </div>
-              <ul className="wizard-bullet-list">
-                <li>进入后创建企业自建应用。</li>
-                <li>必须给应用添加机器人能力，否则后续消息、菜单和事件都不会生效。</li>
-                <li>推荐路径：左侧“应用能力”或“添加应用能力”里添加“机器人”。</li>
-              </ul>
-            </div>
-            <div className="manifest-block">
-              <h4>App ID / App Secret 在哪里</h4>
-              <ul className="wizard-bullet-list">
-                <li>进入应用后，打开左侧“凭证与基础信息”。</li>
-                <li>在“应用凭证”区域复制 App ID。</li>
-                <li>同一块区域可以复制 App Secret。</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+        <FeishuConnectStep
+          apps={apps}
+          activeApp={activeApp}
+          draft={draft}
+          connectStage={connectStage}
+          connectMode={connectMode}
+          onboardingSession={onboardingSession}
+          onboardingNeedsManualRetry={onboardingNeedsManualRetry}
+          busyAction={busyAction}
+          onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
+          onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
+          onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
+          onConnectModeChange={onConnectModeChange}
+          onContinueModeSelection={onContinueModeSelection}
+          onVerifyManual={onVerifyManual}
+          onBackToModeSelection={onBackToConnectModeSelection}
+          onRefreshOnboarding={onRefreshOnboarding}
+          onRestartOnboarding={onRestartOnboarding}
+          onSwitchToExistingFlow={onSwitchToExistingFlow}
+          onRetryOnboardingComplete={onRetryOnboardingComplete}
+        />
       );
     case "permissions":
       return (
@@ -481,11 +482,7 @@ export function SetupStepPrimaryAction({
         </button>
       );
     case "connect":
-      return (
-        <button className="primary-button" type="button" onClick={onTestAndContinue} disabled={busyAction !== ""}>
-          测试并继续
-        </button>
-      );
+      return null;
     case "permissions":
       return (
         <button className="primary-button" type="button" onClick={onConfirmPermissions} disabled={busyAction !== ""}>
@@ -534,6 +531,9 @@ export function SetupStepPrimaryAction({
 }
 
 export function SetupStepSecondaryAction({ currentStep, busyAction, onCopyScopes, onDeferVSCode }: SetupStepSecondaryActionProps) {
+  if (currentStep === "connect") {
+    return null;
+  }
   if (currentStep === "vscode") {
     return (
       <button className="secondary-button" type="button" onClick={onDeferVSCode} disabled={busyAction !== ""}>

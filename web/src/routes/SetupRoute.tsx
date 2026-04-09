@@ -3,6 +3,9 @@ import { formatError, requestJSON, requestJSONAllowHTTPError, sendJSON } from ".
 import type {
   BootstrapState,
   FeishuAppMutation,
+  FeishuOnboardingCompleteResponse,
+  FeishuOnboardingSession,
+  FeishuOnboardingSessionResponse,
   FeishuAppPublishCheckResponse,
   FeishuAppResponse,
   FeishuAppSummary,
@@ -30,7 +33,7 @@ import {
   stepStateLabel,
   stepStateTone,
 } from "./setup/helpers";
-import type { BlockingErrorState, SetupDraft, SetupNotice, StepID } from "./setup/types";
+import type { BlockingErrorState, FeishuConnectMode, FeishuConnectStage, SetupDraft, SetupNotice, StepID } from "./setup/types";
 import { newAppID, wizardSteps } from "./setup/types";
 import {
   blankToUndefined,
@@ -67,6 +70,10 @@ export function SetupRoute() {
   const [busyAction, setBusyAction] = useState<string>("");
   const [finishInfo, setFinishInfo] = useState<SetupCompleteResponse | null>(null);
   const [blockingError, setBlockingError] = useState<BlockingErrorState>(null);
+  const [feishuConnectStage, setFeishuConnectStage] = useState<FeishuConnectStage>("mode_select");
+  const [feishuConnectMode, setFeishuConnectMode] = useState<FeishuConnectMode | null>(null);
+  const [onboardingSession, setOnboardingSession] = useState<FeishuOnboardingSession | null>(null);
+  const [onboardingNeedsManualRetry, setOnboardingNeedsManualRetry] = useState(false);
 
   async function loadData(preferredID?: string) {
     const [bootstrapState, appList, manifestResponse, vscodeState] = await Promise.all([
@@ -124,6 +131,13 @@ export function SetupRoute() {
   useEffect(() => {
     setDraft(appToDraft(activeApp));
   }, [activeApp?.id, activeApp?.name, activeApp?.appId, activeApp?.hasSecret]);
+
+  useEffect(() => {
+    setFeishuConnectStage("mode_select");
+    setOnboardingSession(null);
+    setOnboardingNeedsManualRetry(false);
+    setFeishuConnectMode(apps.length > 0 ? "existing" : "new");
+  }, [selectedID, apps.length]);
 
   useEffect(() => {
     setPermissionsConfirmed(Boolean(activeApp?.wizard?.scopesExportedAt));
@@ -200,6 +214,84 @@ export function SetupRoute() {
     });
   }
 
+  function resetFeishuConnectFlow(nextMode?: FeishuConnectMode) {
+    setFeishuConnectStage("mode_select");
+    setFeishuConnectMode(nextMode ?? (apps.length > 0 ? "existing" : "new"));
+    setOnboardingSession(null);
+    setOnboardingNeedsManualRetry(false);
+  }
+
+  async function continueFeishuConnectModeSelection() {
+    if (!feishuConnectMode) {
+      showBlockingError("这一步还没有完成", "请先选择你想怎么接入飞书应用。");
+      return;
+    }
+    if (feishuConnectMode === "existing") {
+      setFeishuConnectStage("existing_manual");
+      setOnboardingSession(null);
+      setOnboardingNeedsManualRetry(false);
+      return;
+    }
+    await startFeishuOnboarding();
+  }
+
+  async function startFeishuOnboarding() {
+    await runAction("start-feishu-onboarding", async () => {
+      const response = await sendJSON<FeishuOnboardingSessionResponse>("/api/setup/feishu/onboarding/sessions", "POST");
+      setFeishuConnectMode("new");
+      setFeishuConnectStage("new_qr");
+      setOnboardingSession(response.session);
+      setOnboardingNeedsManualRetry(false);
+    });
+  }
+
+  async function refreshFeishuOnboarding(options?: { silent?: boolean }) {
+    if (!onboardingSession?.id) {
+      return;
+    }
+    try {
+      const response = await requestJSON<FeishuOnboardingSessionResponse>(`/api/setup/feishu/onboarding/sessions/${encodeURIComponent(onboardingSession.id)}`);
+      setOnboardingSession(response.session);
+      if (response.session.status === "pending") {
+        setOnboardingNeedsManualRetry(false);
+      }
+    } catch (err: unknown) {
+      if (options?.silent) {
+        return;
+      }
+      throw err;
+    }
+  }
+
+  async function retryOnboardingComplete() {
+    if (!onboardingSession?.id) {
+      showBlockingError("这一步还没有完成", "当前还没有可用的扫码会话。请重新开始扫码。");
+      return;
+    }
+    await runAction("complete-feishu-onboarding", async () => {
+      const response = await requestJSONAllowHTTPError<FeishuOnboardingCompleteResponse>(
+        `/api/setup/feishu/onboarding/sessions/${encodeURIComponent(onboardingSession.id)}/complete`,
+        { method: "POST" },
+      );
+      setOnboardingSession(response.data.session);
+      await loadData(response.data.app.id);
+      if (!response.ok) {
+        const detail = `${response.data.result.errorCode || "verify_failed"} ${response.data.result.errorMessage || ""}`.trim();
+        setOnboardingNeedsManualRetry(true);
+        showBlockingError("这一步还没有完成", "扫码创建的飞书应用已经拿到凭据，但连接测试失败。请检查机器人能力是否可用，然后重试连接测试。", detail);
+        return;
+      }
+      setOnboardingNeedsManualRetry(false);
+      setNotice({
+        tone: response.data.app.status?.state !== "connected" ? "warn" : "good",
+        message: buildSetupFeishuVerifySuccessMessage(response.data.app, response.data.mutation),
+      });
+      setSetupStarted(true);
+      resetFeishuConnectFlow("existing");
+      setCurrentStepHint("permissions");
+    });
+  }
+
   async function testAndContinue() {
     const hasPersistedSecret = Boolean(activeApp?.hasSecret);
     if (activeApp?.readOnly) {
@@ -245,9 +337,36 @@ export function SetupRoute() {
         message: buildSetupFeishuVerifySuccessMessage(response.data.app, mutation),
       });
       setSetupStarted(true);
+      resetFeishuConnectFlow("existing");
       setCurrentStepHint("permissions");
     });
   }
+
+  useEffect(() => {
+    if (resolvedCurrentStep !== "connect" || feishuConnectStage !== "new_qr" || !onboardingSession?.id) {
+      return;
+    }
+    if (onboardingSession.status === "ready" && !onboardingNeedsManualRetry && busyAction !== "complete-feishu-onboarding") {
+      void retryOnboardingComplete();
+      return;
+    }
+    if (onboardingSession.status !== "pending") {
+      return;
+    }
+    const delay = Math.max(2_000, (onboardingSession.pollIntervalSeconds ?? 5) * 1_000);
+    const timer = window.setTimeout(() => {
+      void refreshFeishuOnboarding({ silent: true });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    busyAction,
+    feishuConnectStage,
+    onboardingNeedsManualRetry,
+    onboardingSession?.id,
+    onboardingSession?.pollIntervalSeconds,
+    onboardingSession?.status,
+    resolvedCurrentStep,
+  ]);
 
   async function confirmPermissionsAndContinue() {
     if (!permissionsConfirmed) {
@@ -513,6 +632,10 @@ export function SetupRoute() {
                 activeApp={activeApp}
                 manifest={manifest}
                 draft={draft}
+                connectStage={feishuConnectStage}
+                connectMode={feishuConnectMode}
+                onboardingSession={onboardingSession}
+                onboardingNeedsManualRetry={onboardingNeedsManualRetry}
                 scopesJSON={scopesJSON}
                 permissionsConfirmed={permissionsConfirmed}
                 eventsConfirmed={eventsConfirmed}
@@ -523,6 +646,19 @@ export function SetupRoute() {
                 vscode={vscode}
                 vscodeError={vscodeError}
                 onDraftChange={setDraft}
+                onConnectModeChange={setFeishuConnectMode}
+                onContinueModeSelection={() => void continueFeishuConnectModeSelection()}
+                onVerifyManual={() => void testAndContinue()}
+                onBackToConnectModeSelection={() => resetFeishuConnectFlow()}
+                onRefreshOnboarding={() => void runAction("refresh-feishu-onboarding", async () => refreshFeishuOnboarding())}
+                onRestartOnboarding={() => void startFeishuOnboarding()}
+                onSwitchToExistingFlow={() => {
+                  setFeishuConnectMode("existing");
+                  setFeishuConnectStage("existing_manual");
+                  setOnboardingSession(null);
+                  setOnboardingNeedsManualRetry(false);
+                }}
+                onRetryOnboardingComplete={() => void retryOnboardingComplete()}
                 onPermissionsConfirmedChange={setPermissionsConfirmed}
                 onEventsConfirmedChange={setEventsConfirmed}
                 onLongConnectionConfirmedChange={setLongConnectionConfirmed}

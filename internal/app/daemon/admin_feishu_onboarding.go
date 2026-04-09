@@ -1,0 +1,859 @@
+package daemon
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/config"
+	"github.com/skip2/go-qrcode"
+)
+
+const (
+	feishuOnboardingStatusPending   = "pending"
+	feishuOnboardingStatusReady     = "ready"
+	feishuOnboardingStatusCompleted = "completed"
+	feishuOnboardingStatusExpired   = "expired"
+	feishuOnboardingStatusFailed    = "failed"
+
+	feishuRegistrationAccountsBaseURL = "https://accounts.feishu.cn"
+	feishuRegistrationOpenBaseURL     = "https://open.feishu.cn"
+)
+
+type feishuSetupClient interface {
+	StartRegistration(context.Context) (feishuRegistrationStartResult, error)
+	PollRegistration(context.Context, string) (feishuRegistrationPollResult, error)
+	DescribeApp(context.Context, string, string) (feishuAppIdentity, error)
+}
+
+type liveFeishuSetupClient struct {
+	httpClient *http.Client
+}
+
+type feishuRegistrationStartResult struct {
+	DeviceCode      string
+	VerificationURL string
+	Interval        time.Duration
+	ExpiresAt       time.Time
+}
+
+type feishuRegistrationPollResult struct {
+	Status       string
+	AppID        string
+	AppSecret    string
+	ErrorCode    string
+	ErrorMessage string
+	RetryAfter   time.Duration
+}
+
+type feishuAppIdentity struct {
+	DisplayName string
+}
+
+type feishuOnboardingSession struct {
+	ID                 string
+	Status             string
+	DeviceCode         string
+	VerificationURL    string
+	QRCodeDataURL      string
+	ExpiresAt          time.Time
+	PollInterval       time.Duration
+	NextPollAt         time.Time
+	LastPolledAt       time.Time
+	AppID              string
+	AppSecret          string
+	DisplayName        string
+	ErrorCode          string
+	ErrorMessage       string
+	PersistedGatewayID string
+	CompletedApp       *adminFeishuAppSummary
+	CompletedMutation  *feishuAppMutationView
+	CompletedResult    *feishu.VerifyResult
+}
+
+type feishuOnboardingSessionView struct {
+	ID                  string     `json:"id"`
+	Status              string     `json:"status"`
+	VerificationURL     string     `json:"verificationUrl,omitempty"`
+	QRCodeDataURL       string     `json:"qrCodeDataUrl,omitempty"`
+	ExpiresAt           *time.Time `json:"expiresAt,omitempty"`
+	PollIntervalSeconds int        `json:"pollIntervalSeconds,omitempty"`
+	AppID               string     `json:"appId,omitempty"`
+	DisplayName         string     `json:"displayName,omitempty"`
+	ErrorCode           string     `json:"errorCode,omitempty"`
+	ErrorMessage        string     `json:"errorMessage,omitempty"`
+}
+
+type feishuOnboardingSessionResponse struct {
+	Session feishuOnboardingSessionView `json:"session"`
+}
+
+type feishuOnboardingCompleteResponse struct {
+	App      adminFeishuAppSummary       `json:"app"`
+	Mutation *feishuAppMutationView      `json:"mutation,omitempty"`
+	Result   feishu.VerifyResult         `json:"result"`
+	Session  feishuOnboardingSessionView `json:"session"`
+}
+
+type registrationInitResponse struct {
+	SupportedAuthMethods []string `json:"supported_auth_methods"`
+	Error                string   `json:"error"`
+	ErrorDescription     string   `json:"error_description"`
+}
+
+type registrationBeginResponse struct {
+	DeviceCode              string `json:"device_code"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	Interval                int    `json:"interval"`
+	ExpireIn                int    `json:"expire_in"`
+	Error                   string `json:"error"`
+	ErrorDescription        string `json:"error_description"`
+}
+
+type registrationPollResponse struct {
+	ClientID         string `json:"client_id"`
+	ClientSecret     string `json:"client_secret"`
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+}
+
+type tenantAccessTokenResponse struct {
+	Code              int    `json:"code"`
+	Msg               string `json:"msg"`
+	TenantAccessToken string `json:"tenant_access_token"`
+}
+
+type botInfoResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Bot  struct {
+		AppName string `json:"app_name"`
+		OpenID  string `json:"open_id"`
+	} `json:"bot"`
+}
+
+func newLiveFeishuSetupClient() feishuSetupClient {
+	return &liveFeishuSetupClient{
+		httpClient: &http.Client{Timeout: 15 * time.Second},
+	}
+}
+
+func (c *liveFeishuSetupClient) StartRegistration(ctx context.Context) (feishuRegistrationStartResult, error) {
+	var initResp registrationInitResponse
+	if err := c.registrationCall(ctx, "init", nil, &initResp); err != nil {
+		return feishuRegistrationStartResult{}, err
+	}
+	if initResp.Error != "" {
+		return feishuRegistrationStartResult{}, fmt.Errorf("%s: %s", initResp.Error, initResp.ErrorDescription)
+	}
+
+	var beginResp registrationBeginResponse
+	if err := c.registrationCall(ctx, "begin", map[string]string{
+		"archetype":         "PersonalAgent",
+		"auth_method":       "client_secret",
+		"request_user_info": "open_id",
+	}, &beginResp); err != nil {
+		return feishuRegistrationStartResult{}, err
+	}
+	if beginResp.Error != "" {
+		return feishuRegistrationStartResult{}, fmt.Errorf("%s: %s", beginResp.Error, beginResp.ErrorDescription)
+	}
+	if strings.TrimSpace(beginResp.DeviceCode) == "" || strings.TrimSpace(beginResp.VerificationURIComplete) == "" {
+		return feishuRegistrationStartResult{}, errors.New("registration flow returned incomplete onboarding data")
+	}
+
+	interval := time.Duration(beginResp.Interval) * time.Second
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+	expireIn := time.Duration(beginResp.ExpireIn) * time.Second
+	if expireIn <= 0 {
+		expireIn = 10 * time.Minute
+	}
+	now := time.Now().UTC()
+	return feishuRegistrationStartResult{
+		DeviceCode:      strings.TrimSpace(beginResp.DeviceCode),
+		VerificationURL: strings.TrimSpace(beginResp.VerificationURIComplete),
+		Interval:        interval,
+		ExpiresAt:       now.Add(expireIn),
+	}, nil
+}
+
+func (c *liveFeishuSetupClient) PollRegistration(ctx context.Context, deviceCode string) (feishuRegistrationPollResult, error) {
+	var pollResp registrationPollResponse
+	if err := c.registrationCall(ctx, "poll", map[string]string{"device_code": strings.TrimSpace(deviceCode)}, &pollResp); err != nil {
+		return feishuRegistrationPollResult{}, err
+	}
+	if strings.TrimSpace(pollResp.ClientID) != "" && strings.TrimSpace(pollResp.ClientSecret) != "" {
+		return feishuRegistrationPollResult{
+			Status:    feishuOnboardingStatusReady,
+			AppID:     strings.TrimSpace(pollResp.ClientID),
+			AppSecret: strings.TrimSpace(pollResp.ClientSecret),
+		}, nil
+	}
+
+	switch strings.TrimSpace(pollResp.Error) {
+	case "", "authorization_pending":
+		return feishuRegistrationPollResult{Status: feishuOnboardingStatusPending}, nil
+	case "slow_down":
+		return feishuRegistrationPollResult{Status: feishuOnboardingStatusPending, RetryAfter: 5 * time.Second}, nil
+	case "expired_token":
+		return feishuRegistrationPollResult{
+			Status:       feishuOnboardingStatusExpired,
+			ErrorCode:    "expired_token",
+			ErrorMessage: "二维码已过期，请重新开始扫码。",
+		}, nil
+	case "access_denied":
+		return feishuRegistrationPollResult{
+			Status:       feishuOnboardingStatusFailed,
+			ErrorCode:    "access_denied",
+			ErrorMessage: "扫码授权已取消，请重新开始。",
+		}, nil
+	default:
+		if strings.TrimSpace(pollResp.Error) != "" {
+			return feishuRegistrationPollResult{
+				Status:       feishuOnboardingStatusFailed,
+				ErrorCode:    strings.TrimSpace(pollResp.Error),
+				ErrorMessage: firstNonEmpty(strings.TrimSpace(pollResp.ErrorDescription), "飞书返回了未识别的扫码结果。"),
+			}, nil
+		}
+		return feishuRegistrationPollResult{Status: feishuOnboardingStatusPending}, nil
+	}
+}
+
+func (c *liveFeishuSetupClient) DescribeApp(ctx context.Context, appID, appSecret string) (feishuAppIdentity, error) {
+	appID = strings.TrimSpace(appID)
+	appSecret = strings.TrimSpace(appSecret)
+	if appID == "" || appSecret == "" {
+		return feishuAppIdentity{}, errors.New("missing app credentials")
+	}
+
+	payload, err := json.Marshal(map[string]string{
+		"app_id":     appID,
+		"app_secret": appSecret,
+	})
+	if err != nil {
+		return feishuAppIdentity{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, feishuRegistrationOpenBaseURL+"/open-apis/auth/v3/tenant_access_token/internal", bytes.NewReader(payload))
+	if err != nil {
+		return feishuAppIdentity{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return feishuAppIdentity{}, err
+	}
+	defer resp.Body.Close()
+
+	var tokenResp tenantAccessTokenResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tokenResp); err != nil {
+		return feishuAppIdentity{}, err
+	}
+	if tokenResp.Code != 0 || strings.TrimSpace(tokenResp.TenantAccessToken) == "" {
+		return feishuAppIdentity{}, fmt.Errorf("tenant access token failed: code=%d msg=%s", tokenResp.Code, tokenResp.Msg)
+	}
+
+	infoReq, err := http.NewRequestWithContext(ctx, http.MethodGet, feishuRegistrationOpenBaseURL+"/open-apis/bot/v3/info", nil)
+	if err != nil {
+		return feishuAppIdentity{}, err
+	}
+	infoReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(tokenResp.TenantAccessToken))
+
+	infoResp, err := c.httpClient.Do(infoReq)
+	if err != nil {
+		return feishuAppIdentity{}, err
+	}
+	defer infoResp.Body.Close()
+
+	var botResp botInfoResponse
+	if err := json.NewDecoder(io.LimitReader(infoResp.Body, 1<<20)).Decode(&botResp); err != nil {
+		return feishuAppIdentity{}, err
+	}
+	if botResp.Code != 0 {
+		return feishuAppIdentity{}, fmt.Errorf("bot info failed: code=%d msg=%s", botResp.Code, botResp.Msg)
+	}
+	return feishuAppIdentity{
+		DisplayName: strings.TrimSpace(botResp.Bot.AppName),
+	}, nil
+}
+
+func (c *liveFeishuSetupClient) registrationCall(ctx context.Context, action string, params map[string]string, out any) error {
+	form := url.Values{}
+	form.Set("action", action)
+	for key, value := range params {
+		form.Set(key, value)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, feishuRegistrationAccountsBaseURL+"/oauth/v1/app/registration", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+}
+
+func (a *App) snapshotFeishuOnboardingSession(sessionID string) (feishuOnboardingSessionView, bool) {
+	a.adminFeishuMu.RLock()
+	defer a.adminFeishuMu.RUnlock()
+	if a.feishuOnboarding == nil {
+		return feishuOnboardingSessionView{}, false
+	}
+	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	if !ok || session == nil {
+		return feishuOnboardingSessionView{}, false
+	}
+	return feishuOnboardingSessionToView(session), true
+}
+
+func (a *App) cleanupFeishuOnboardingSessions(now time.Time) {
+	now = now.UTC()
+	a.adminFeishuMu.Lock()
+	defer a.adminFeishuMu.Unlock()
+	if len(a.feishuOnboarding) == 0 {
+		return
+	}
+	for sessionID, session := range a.feishuOnboarding {
+		if session == nil {
+			delete(a.feishuOnboarding, sessionID)
+			continue
+		}
+		if session.Status == feishuOnboardingStatusCompleted {
+			continue
+		}
+		if !session.ExpiresAt.IsZero() && now.After(session.ExpiresAt.Add(15*time.Minute)) {
+			delete(a.feishuOnboarding, sessionID)
+		}
+	}
+}
+
+func (a *App) createFeishuOnboardingSession(ctx context.Context) (feishuOnboardingSessionView, error) {
+	a.cleanupFeishuOnboardingSessions(time.Now().UTC())
+	result, err := a.feishuSetup.StartRegistration(ctx)
+	if err != nil {
+		return feishuOnboardingSessionView{}, err
+	}
+	sessionID, err := randomHex(12)
+	if err != nil {
+		return feishuOnboardingSessionView{}, err
+	}
+	qrCodeDataURL, err := qrCodeDataURL(result.VerificationURL)
+	if err != nil {
+		return feishuOnboardingSessionView{}, err
+	}
+	session := &feishuOnboardingSession{
+		ID:              sessionID,
+		Status:          feishuOnboardingStatusPending,
+		DeviceCode:      result.DeviceCode,
+		VerificationURL: result.VerificationURL,
+		QRCodeDataURL:   qrCodeDataURL,
+		ExpiresAt:       result.ExpiresAt.UTC(),
+		PollInterval:    result.Interval,
+		NextPollAt:      time.Now().UTC().Add(result.Interval),
+	}
+	a.adminFeishuMu.Lock()
+	if a.feishuOnboarding == nil {
+		a.feishuOnboarding = map[string]*feishuOnboardingSession{}
+	}
+	a.feishuOnboarding[session.ID] = session
+	a.adminFeishuMu.Unlock()
+	return feishuOnboardingSessionToView(session), nil
+}
+
+func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID string) (feishuOnboardingSessionView, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	a.adminFeishuMu.Lock()
+	session, ok := a.feishuOnboarding[sessionID]
+	if !ok || session == nil {
+		a.adminFeishuMu.Unlock()
+		return feishuOnboardingSessionView{}, false, nil
+	}
+
+	now := time.Now().UTC()
+	if session.Status == feishuOnboardingStatusPending && !session.ExpiresAt.IsZero() && now.After(session.ExpiresAt) {
+		session.Status = feishuOnboardingStatusExpired
+		session.ErrorCode = "expired_token"
+		session.ErrorMessage = "二维码已过期，请重新开始扫码。"
+	}
+	shouldPoll := session.Status == feishuOnboardingStatusPending && (session.NextPollAt.IsZero() || !now.Before(session.NextPollAt))
+	deviceCode := session.DeviceCode
+	pollInterval := session.PollInterval
+	a.adminFeishuMu.Unlock()
+
+	if !shouldPoll {
+		view, ok := a.snapshotFeishuOnboardingSession(sessionID)
+		return view, ok, nil
+	}
+
+	pollCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	pollResult, err := a.feishuSetup.PollRegistration(pollCtx, deviceCode)
+	if err != nil {
+		a.adminFeishuMu.Lock()
+		session, ok = a.feishuOnboarding[sessionID]
+		if ok && session != nil {
+			session.Status = feishuOnboardingStatusFailed
+			session.ErrorCode = "poll_failed"
+			session.ErrorMessage = err.Error()
+			session.LastPolledAt = time.Now().UTC()
+		}
+		a.adminFeishuMu.Unlock()
+		view, ok := a.snapshotFeishuOnboardingSession(sessionID)
+		return view, ok, nil
+	}
+
+	displayName := ""
+	if pollResult.Status == feishuOnboardingStatusReady {
+		displayName = a.suggestFeishuAppName(ctx, "", pollResult.AppID, pollResult.AppSecret, pollResult.AppID)
+	}
+
+	a.adminFeishuMu.Lock()
+	session, ok = a.feishuOnboarding[sessionID]
+	if !ok || session == nil {
+		a.adminFeishuMu.Unlock()
+		return feishuOnboardingSessionView{}, false, nil
+	}
+	now = time.Now().UTC()
+	session.LastPolledAt = now
+	if pollResult.RetryAfter > 0 {
+		session.PollInterval += pollResult.RetryAfter
+		if session.PollInterval <= 0 {
+			session.PollInterval = 5 * time.Second
+		}
+		pollInterval = session.PollInterval
+	}
+	if pollInterval <= 0 {
+		pollInterval = 5 * time.Second
+	}
+	session.NextPollAt = now.Add(pollInterval)
+
+	switch pollResult.Status {
+	case feishuOnboardingStatusReady:
+		session.Status = feishuOnboardingStatusReady
+		session.AppID = strings.TrimSpace(pollResult.AppID)
+		session.AppSecret = strings.TrimSpace(pollResult.AppSecret)
+		session.DisplayName = firstNonEmpty(displayName, session.AppID)
+		session.ErrorCode = ""
+		session.ErrorMessage = ""
+	case feishuOnboardingStatusExpired:
+		session.Status = feishuOnboardingStatusExpired
+		session.ErrorCode = pollResult.ErrorCode
+		session.ErrorMessage = pollResult.ErrorMessage
+	case feishuOnboardingStatusFailed:
+		session.Status = feishuOnboardingStatusFailed
+		session.ErrorCode = pollResult.ErrorCode
+		session.ErrorMessage = pollResult.ErrorMessage
+	default:
+		session.Status = feishuOnboardingStatusPending
+	}
+	view := feishuOnboardingSessionToView(session)
+	a.adminFeishuMu.Unlock()
+	return view, true, nil
+}
+
+func (a *App) suggestFeishuAppName(ctx context.Context, requestedName, appID, appSecret, fallback string) string {
+	if strings.TrimSpace(requestedName) != "" {
+		return strings.TrimSpace(requestedName)
+	}
+	identity, err := a.resolveFeishuAppIdentity(ctx, appID, appSecret)
+	if err == nil && strings.TrimSpace(identity.DisplayName) != "" {
+		return strings.TrimSpace(identity.DisplayName)
+	}
+	return firstNonEmpty(strings.TrimSpace(appID), strings.TrimSpace(fallback))
+}
+
+func (a *App) resolveFeishuAppIdentity(ctx context.Context, appID, appSecret string) (feishuAppIdentity, error) {
+	if a.feishuSetup == nil {
+		return feishuAppIdentity{}, errors.New("feishu setup client unavailable")
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return a.feishuSetup.DescribeApp(timeoutCtx, appID, appSecret)
+}
+
+func feishuOnboardingSessionToView(session *feishuOnboardingSession) feishuOnboardingSessionView {
+	if session == nil {
+		return feishuOnboardingSessionView{}
+	}
+	view := feishuOnboardingSessionView{
+		ID:              session.ID,
+		Status:          session.Status,
+		VerificationURL: session.VerificationURL,
+		QRCodeDataURL:   session.QRCodeDataURL,
+		AppID:           session.AppID,
+		DisplayName:     session.DisplayName,
+		ErrorCode:       session.ErrorCode,
+		ErrorMessage:    session.ErrorMessage,
+	}
+	if !session.ExpiresAt.IsZero() {
+		expiresAt := session.ExpiresAt
+		view.ExpiresAt = &expiresAt
+	}
+	if session.PollInterval > 0 {
+		view.PollIntervalSeconds = int(session.PollInterval / time.Second)
+	}
+	return view
+}
+
+func qrCodeDataURL(value string) (string, error) {
+	png, err := qrcode.Encode(strings.TrimSpace(value), qrcode.Medium, 256)
+	if err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
+}
+
+func randomHex(size int) (string, error) {
+	if size <= 0 {
+		size = 12
+	}
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
+func (a *App) handleFeishuOnboardingSessionCreate(w http.ResponseWriter, r *http.Request) {
+	sessionCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	session, err := a.createFeishuOnboardingSession(sessionCtx)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, apiError{
+			Code:    "feishu_onboarding_unavailable",
+			Message: "failed to start feishu onboarding session",
+			Details: err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusCreated, feishuOnboardingSessionResponse{Session: session})
+}
+
+func (a *App) handleFeishuOnboardingSessionGet(w http.ResponseWriter, r *http.Request) {
+	session, ok, err := a.refreshFeishuOnboardingSession(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, apiError{
+			Code:    "feishu_onboarding_unavailable",
+			Message: "failed to refresh feishu onboarding session",
+			Details: err.Error(),
+		})
+		return
+	}
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    "feishu_onboarding_not_found",
+			Message: "feishu onboarding session not found",
+			Details: strings.TrimSpace(r.PathValue("id")),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, feishuOnboardingSessionResponse{Session: session})
+}
+
+func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(r.PathValue("id"))
+	sessionView, ok, err := a.refreshFeishuOnboardingSession(r.Context(), sessionID)
+	if err != nil {
+		writeAPIError(w, http.StatusBadGateway, apiError{
+			Code:    "feishu_onboarding_unavailable",
+			Message: "failed to refresh feishu onboarding session",
+			Details: err.Error(),
+		})
+		return
+	}
+	if !ok {
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    "feishu_onboarding_not_found",
+			Message: "feishu onboarding session not found",
+			Details: sessionID,
+		})
+		return
+	}
+
+	a.adminFeishuMu.RLock()
+	session, ok := a.feishuOnboarding[sessionID]
+	if !ok || session == nil {
+		a.adminFeishuMu.RUnlock()
+		writeAPIError(w, http.StatusNotFound, apiError{
+			Code:    "feishu_onboarding_not_found",
+			Message: "feishu onboarding session not found",
+			Details: sessionID,
+		})
+		return
+	}
+	if session.Status == feishuOnboardingStatusCompleted && session.CompletedApp != nil && session.CompletedResult != nil {
+		response := feishuOnboardingCompleteResponse{
+			App:      *session.CompletedApp,
+			Mutation: session.CompletedMutation,
+			Result:   *session.CompletedResult,
+			Session:  feishuOnboardingSessionToView(session),
+		}
+		a.adminFeishuMu.RUnlock()
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	sessionState := *session
+	a.adminFeishuMu.RUnlock()
+
+	switch sessionView.Status {
+	case feishuOnboardingStatusPending:
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    "feishu_onboarding_pending",
+			Message: "feishu onboarding is still waiting for scan authorization",
+			Details: "scan the QR code and wait for credentials to be issued",
+		})
+		return
+	case feishuOnboardingStatusExpired:
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    firstNonEmpty(sessionView.ErrorCode, "expired_token"),
+			Message: "the current QR code session has expired",
+			Details: sessionView.ErrorMessage,
+		})
+		return
+	case feishuOnboardingStatusFailed:
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    firstNonEmpty(sessionView.ErrorCode, "feishu_onboarding_failed"),
+			Message: "the current QR onboarding session cannot be completed",
+			Details: sessionView.ErrorMessage,
+		})
+		return
+	case feishuOnboardingStatusReady:
+	default:
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    "feishu_onboarding_not_ready",
+			Message: "the current QR onboarding session is not ready yet",
+			Details: sessionView.Status,
+		})
+		return
+	}
+
+	if strings.TrimSpace(sessionState.AppID) == "" || strings.TrimSpace(sessionState.AppSecret) == "" {
+		writeAPIError(w, http.StatusConflict, apiError{
+			Code:    "feishu_onboarding_missing_credentials",
+			Message: "the current QR onboarding session has not received credentials yet",
+		})
+		return
+	}
+
+	mutation := buildCreatedFeishuAppMutation()
+	gatewayID := strings.TrimSpace(sessionState.PersistedGatewayID)
+	var summary adminFeishuAppSummary
+
+	if gatewayID == "" {
+		created, nextGatewayID, createErr := a.createFeishuOnboardedApp(sessionState.DisplayName, sessionState.AppID, sessionState.AppSecret)
+		if createErr != nil {
+			if nextGatewayID != "" {
+				a.markOnboardingSessionPersistedGateway(sessionID, nextGatewayID)
+				a.writeFeishuRuntimeApplyError(w, nextGatewayID, created, feishuRuntimeApplyActionUpsert, "feishu app saved but runtime apply failed", createErr)
+				return
+			}
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "config_write_failed",
+				Message: "failed to save feishu app from onboarding session",
+				Details: createErr.Error(),
+			})
+			return
+		}
+		gatewayID = nextGatewayID
+		summary = created
+		a.markOnboardingSessionPersistedGateway(sessionID, gatewayID)
+	} else {
+		loaded, err := a.loadAdminConfig()
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "config_unavailable",
+				Message: "failed to load config for onboarding completion",
+				Details: err.Error(),
+			})
+			return
+		}
+		reloadedSummary, ok, summaryErr := a.adminFeishuAppSummary(loaded, gatewayID)
+		if summaryErr != nil || !ok {
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "feishu_app_unavailable",
+				Message: "failed to load feishu app created from onboarding session",
+				Details: gatewayID,
+			})
+			return
+		}
+		summary = reloadedSummary
+		if err := a.applyRuntimeFeishuConfig(loaded.Config, gatewayID); err != nil {
+			a.writeFeishuRuntimeApplyError(w, gatewayID, summary, feishuRuntimeApplyActionUpsert, "failed to re-apply feishu runtime for onboarding session", err)
+			return
+		}
+	}
+
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "config_unavailable",
+			Message: "failed to load config after onboarding completion",
+			Details: err.Error(),
+		})
+		return
+	}
+	runtimeCfg, ok := a.runtimeGatewayConfigFor(loaded.Config, gatewayID)
+	if !ok {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "feishu_app_unavailable",
+			Message: "feishu app created from onboarding session is not available at runtime",
+			Details: gatewayID,
+		})
+		return
+	}
+	controller, err := a.gatewayController()
+	if err != nil {
+		writeAPIError(w, http.StatusNotImplemented, apiError{
+			Code:    "gateway_controller_unavailable",
+			Message: "current gateway does not support runtime feishu management",
+			Details: err.Error(),
+		})
+		return
+	}
+	verifyCtx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	result, verifyErr := controller.Verify(verifyCtx, runtimeCfg)
+	if verifyErr == nil {
+		if err := a.markFeishuAppVerified(loaded.Path, gatewayID, time.Now().UTC()); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "config_write_failed",
+				Message: "feishu app verified but failed to persist verification time",
+				Details: err.Error(),
+			})
+			return
+		}
+		loaded, err = a.loadAdminConfig()
+		if err != nil {
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "config_unavailable",
+				Message: "failed to reload config after verification",
+				Details: err.Error(),
+			})
+			return
+		}
+	}
+
+	summary, ok, err = a.adminFeishuAppSummary(loaded, gatewayID)
+	if err != nil || !ok {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "feishu_app_unavailable",
+			Message: "failed to load feishu app after onboarding verification",
+			Details: gatewayID,
+		})
+		return
+	}
+
+	response := feishuOnboardingCompleteResponse{
+		App:      summary,
+		Mutation: mutation,
+		Result:   result,
+		Session:  sessionView,
+	}
+	if verifyErr != nil {
+		writeJSON(w, http.StatusBadGateway, response)
+		return
+	}
+
+	response.Session = a.markOnboardingSessionCompleted(sessionID, gatewayID, summary, mutation, result)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) createFeishuOnboardedApp(name, appID, appSecret string) (adminFeishuAppSummary, string, error) {
+	a.adminConfigMu.Lock()
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		a.adminConfigMu.Unlock()
+		return adminFeishuAppSummary{}, "", err
+	}
+
+	admin := a.snapshotAdminRuntime()
+	req := feishuAppWriteRequest{
+		Name:  daemonStringPtr(name),
+		AppID: daemonStringPtr(appID),
+	}
+	gatewayID := nextGatewayID(loaded.Config.Feishu.Apps, admin, req)
+	now := time.Now().UTC()
+	app := config.FeishuAppConfig{
+		ID:        gatewayID,
+		Name:      firstNonEmpty(strings.TrimSpace(name), strings.TrimSpace(appID), gatewayID),
+		AppID:     strings.TrimSpace(appID),
+		AppSecret: strings.TrimSpace(appSecret),
+		Enabled:   daemonBoolPtr(true),
+	}
+	markFeishuCredentialsSaved(&app, now)
+
+	updated := loaded.Config
+	updated.Feishu.Apps = append(updated.Feishu.Apps, app)
+	if err := config.WriteAppConfig(loaded.Path, updated); err != nil {
+		a.adminConfigMu.Unlock()
+		return adminFeishuAppSummary{}, "", err
+	}
+	a.adminConfigMu.Unlock()
+
+	summary, _, summaryErr := a.adminFeishuAppSummary(config.LoadedAppConfig{Path: loaded.Path, Config: updated}, gatewayID)
+	if summaryErr != nil {
+		summary = adminFeishuAppSummary{
+			ID:        gatewayID,
+			Name:      firstNonEmpty(strings.TrimSpace(app.Name), gatewayID),
+			AppID:     strings.TrimSpace(app.AppID),
+			HasSecret: strings.TrimSpace(app.AppSecret) != "",
+			Enabled:   true,
+			Persisted: true,
+		}
+	}
+	if err := a.applyRuntimeFeishuConfig(updated, gatewayID); err != nil {
+		return summary, gatewayID, err
+	}
+	return summary, gatewayID, nil
+}
+
+func (a *App) markOnboardingSessionPersistedGateway(sessionID, gatewayID string) {
+	a.adminFeishuMu.Lock()
+	defer a.adminFeishuMu.Unlock()
+	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	if !ok || session == nil {
+		return
+	}
+	session.PersistedGatewayID = strings.TrimSpace(gatewayID)
+}
+
+func (a *App) markOnboardingSessionCompleted(sessionID, gatewayID string, app adminFeishuAppSummary, mutation *feishuAppMutationView, result feishu.VerifyResult) feishuOnboardingSessionView {
+	a.adminFeishuMu.Lock()
+	defer a.adminFeishuMu.Unlock()
+	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	if !ok || session == nil {
+		return feishuOnboardingSessionView{}
+	}
+	appCopy := app
+	resultCopy := result
+	session.Status = feishuOnboardingStatusCompleted
+	session.PersistedGatewayID = strings.TrimSpace(gatewayID)
+	session.CompletedApp = &appCopy
+	session.CompletedMutation = mutation
+	session.CompletedResult = &resultCopy
+	return feishuOnboardingSessionToView(session)
+}
+
+func daemonStringPtr(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}

@@ -12,6 +12,10 @@ export type SetupNotice = {
   message: string;
 };
 
+export type FeishuConnectMode = "new" | "existing";
+
+export type FeishuConnectStage = "mode_select" | "new_qr" | "existing_manual";
+
 export type BlockingErrorState = {
   title: string;
   message: string;

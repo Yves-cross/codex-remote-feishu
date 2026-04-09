@@ -120,6 +120,30 @@ export interface FeishuAppVerifyResponse {
   result: VerifyResult;
 }
 
+export interface FeishuOnboardingSession {
+  id: string;
+  status: string;
+  verificationUrl?: string;
+  qrCodeDataUrl?: string;
+  expiresAt?: string;
+  pollIntervalSeconds?: number;
+  appId?: string;
+  displayName?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface FeishuOnboardingSessionResponse {
+  session: FeishuOnboardingSession;
+}
+
+export interface FeishuOnboardingCompleteResponse {
+  app: FeishuAppSummary;
+  mutation?: FeishuAppMutation;
+  result: VerifyResult;
+  session: FeishuOnboardingSession;
+}
+
 export interface FeishuAppPublishCheckResponse {
   app: FeishuAppSummary;
   ready: boolean;
