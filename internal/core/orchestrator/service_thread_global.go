@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -273,18 +272,14 @@ func syntheticPersistedThreadInstance(thread *state.ThreadRecord) *state.Instanc
 	if thread == nil {
 		return nil
 	}
-	cwd := strings.TrimSpace(thread.CWD)
+	cwd := state.NormalizeWorkspaceKey(thread.CWD)
 	if cwd == "" {
 		return nil
 	}
-	short := filepath.Base(cwd)
-	if short == "" || short == "." || short == string(filepath.Separator) {
-		short = cwd
-	}
 	return &state.InstanceRecord{
 		WorkspaceRoot: cwd,
-		WorkspaceKey:  cwd,
-		ShortName:     short,
+		WorkspaceKey:  state.ResolveWorkspaceKey(cwd),
+		ShortName:     state.WorkspaceShortName(cwd),
 	}
 }
 
@@ -381,8 +376,8 @@ func reusableHeadlessScore(surface *state.SurfaceConsoleRecord, inst *state.Inst
 }
 
 func workspaceAffinityScore(root, cwd string) int {
-	root = strings.TrimSpace(root)
-	cwd = strings.TrimSpace(cwd)
+	root = state.NormalizeWorkspaceKey(root)
+	cwd = state.NormalizeWorkspaceKey(cwd)
 	if root == "" || cwd == "" {
 		return 0
 	}

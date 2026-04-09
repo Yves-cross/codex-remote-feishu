@@ -898,6 +898,43 @@ func TestWorkspaceAttachProjectsUnboundSnapshot(t *testing.T) {
 	}
 }
 
+func TestAttachWorkspaceCanonicalizesWorkspaceKey(t *testing.T) {
+	now := time.Date(2026, 4, 9, 13, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/work/../droid/",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachWorkspace,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		WorkspaceKey:     " /data/dl/droid/./ ",
+	})
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface == nil {
+		t.Fatal("expected materialized surface")
+	}
+	if surface.AttachedInstanceID != "inst-1" || surface.ClaimedWorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected canonical workspace attach, got %#v", surface)
+	}
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.WorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected canonical workspace key in snapshot, got %#v", snapshot)
+	}
+	if len(snapshot.Instances) != 1 || snapshot.Instances[0].WorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected canonical instance workspace key in snapshot, got %#v", snapshot)
+	}
+}
+
 func TestNormalModeAttachRejectsBusyWorkspaceAcrossInstances(t *testing.T) {
 	now := time.Date(2026, 4, 9, 11, 5, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

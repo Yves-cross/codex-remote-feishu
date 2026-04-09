@@ -213,6 +213,14 @@ func (s *Service) UpsertInstance(inst *state.InstanceRecord) {
 	if inst.CWDDefaults == nil {
 		inst.CWDDefaults = map[string]state.ModelConfigRecord{}
 	}
+	inst.WorkspaceRoot = state.NormalizeWorkspaceKey(inst.WorkspaceRoot)
+	inst.WorkspaceKey = state.ResolveWorkspaceKey(inst.WorkspaceKey, inst.WorkspaceRoot)
+	if inst.ShortName == "" {
+		inst.ShortName = state.WorkspaceShortName(inst.WorkspaceKey)
+	}
+	if inst.DisplayName == "" {
+		inst.DisplayName = inst.ShortName
+	}
 	s.root.Instances[inst.InstanceID] = inst
 }
 

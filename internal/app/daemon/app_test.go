@@ -178,6 +178,31 @@ func (g *timeoutThenRecordGateway) snapshot() ([]error, []feishu.Operation) {
 	return errs, ops
 }
 
+func TestDaemonHelloCanonicalizesWorkspaceMetadata(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+	app.sendAgentCommand = func(string, agentproto.Command) error { return nil }
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-1",
+			DisplayName:   "droid",
+			WorkspaceRoot: " /data/dl/work/../droid/ ",
+			Source:        "vscode",
+		},
+	})
+
+	inst := app.service.Instance("inst-1")
+	if inst == nil {
+		t.Fatal("expected instance after hello")
+	}
+	if inst.WorkspaceRoot != "/data/dl/droid" || inst.WorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected canonical workspace metadata, got %#v", inst)
+	}
+	if inst.ShortName != "droid" {
+		t.Fatalf("expected canonical short name, got %#v", inst)
+	}
+}
+
 func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})

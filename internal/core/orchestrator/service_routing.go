@@ -1,11 +1,12 @@
 package orchestrator
 
 import (
+	"strings"
+	"time"
+
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
-	"strings"
-	"time"
 )
 
 type threadKickStatus string
@@ -38,17 +39,14 @@ func (s *Service) surfaceThreadPickRouteMode(surface *state.SurfaceConsoleRecord
 }
 
 func normalizeWorkspaceClaimKey(value string) string {
-	return strings.TrimSpace(value)
+	return state.ResolveWorkspaceKey(value)
 }
 
 func instanceWorkspaceClaimKey(inst *state.InstanceRecord) string {
 	if inst == nil {
 		return ""
 	}
-	if key := normalizeWorkspaceClaimKey(inst.WorkspaceKey); key != "" {
-		return key
-	}
-	return normalizeWorkspaceClaimKey(inst.WorkspaceRoot)
+	return state.ResolveWorkspaceKey(inst.WorkspaceKey, inst.WorkspaceRoot)
 }
 
 func mergedThreadWorkspaceClaimKey(view *mergedThreadView) string {

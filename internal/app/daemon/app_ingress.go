@@ -258,9 +258,12 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 		}
 	}
 	inst.DisplayName = hello.Instance.DisplayName
-	inst.WorkspaceRoot = hello.Instance.WorkspaceRoot
-	inst.WorkspaceKey = hello.Instance.WorkspaceKey
-	inst.ShortName = hello.Instance.ShortName
+	inst.WorkspaceRoot = state.NormalizeWorkspaceKey(hello.Instance.WorkspaceRoot)
+	inst.WorkspaceKey = state.ResolveWorkspaceKey(hello.Instance.WorkspaceKey, inst.WorkspaceRoot)
+	inst.ShortName = strings.TrimSpace(hello.Instance.ShortName)
+	if inst.ShortName == "" {
+		inst.ShortName = state.WorkspaceShortName(inst.WorkspaceKey)
+	}
 	inst.Source = firstNonEmpty(strings.TrimSpace(hello.Instance.Source), "vscode")
 	inst.Managed = hello.Instance.Managed
 	inst.PID = hello.Instance.PID

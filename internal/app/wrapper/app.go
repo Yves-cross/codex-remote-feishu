@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
@@ -73,6 +73,7 @@ func LoadConfig(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	workspaceRoot = state.ResolveWorkspaceKey(workspaceRoot)
 	instanceID := strings.TrimSpace(os.Getenv("CODEX_REMOTE_INSTANCE_ID"))
 	if instanceID == "" {
 		instanceID, err = generateInstanceID()
@@ -80,7 +81,7 @@ func LoadConfig(args []string) (Config, error) {
 			return Config{}, err
 		}
 	}
-	shortName := filepath.Base(workspaceRoot)
+	shortName := state.WorkspaceShortName(workspaceRoot)
 	displayName := shortName
 	if displayName == "." || displayName == "/" {
 		displayName = workspaceRoot
@@ -110,7 +111,7 @@ func LoadConfig(args []string) (Config, error) {
 		InstanceID:           instanceID,
 		DisplayName:          displayName,
 		WorkspaceRoot:        workspaceRoot,
-		WorkspaceKey:         workspaceRoot,
+		WorkspaceKey:         state.ResolveWorkspaceKey(workspaceRoot),
 		ShortName:            shortName,
 		Source:               source,
 		Managed:              managed,

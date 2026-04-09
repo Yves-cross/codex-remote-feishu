@@ -2,13 +2,13 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
+	"sort"
+	"strings"
+
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 )
 
 func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Snapshot {
@@ -1060,29 +1060,33 @@ func (s *Service) discardStagedImagesForRouteChange(surface *state.SurfaceConsol
 }
 
 func (s *Service) maybePromoteWorkspaceRoot(inst *state.InstanceRecord, cwd string) {
+	cwd = state.NormalizeWorkspaceKey(cwd)
 	if cwd == "" {
 		return
 	}
+	currentRoot := state.NormalizeWorkspaceKey(inst.WorkspaceRoot)
 	switch {
-	case inst.WorkspaceRoot == "":
-		inst.WorkspaceRoot = cwd
-	case strings.HasPrefix(inst.WorkspaceRoot, cwd+string(os.PathSeparator)):
-		inst.WorkspaceRoot = cwd
+	case currentRoot == "":
+		currentRoot = cwd
+	case strings.HasPrefix(currentRoot, cwd+string(os.PathSeparator)):
+		currentRoot = cwd
 	}
-	inst.WorkspaceKey = inst.WorkspaceRoot
-	inst.ShortName = filepath.Base(inst.WorkspaceKey)
+	inst.WorkspaceRoot = currentRoot
+	inst.WorkspaceKey = state.ResolveWorkspaceKey(currentRoot)
+	inst.ShortName = state.WorkspaceShortName(inst.WorkspaceKey)
 	if inst.DisplayName == "" {
 		inst.DisplayName = inst.ShortName
 	}
 }
 
 func (s *Service) retargetManagedHeadlessInstance(inst *state.InstanceRecord, cwd string) {
-	if inst == nil || strings.TrimSpace(cwd) == "" || !isHeadlessInstance(inst) {
+	cwd = state.NormalizeWorkspaceKey(cwd)
+	if inst == nil || cwd == "" || !isHeadlessInstance(inst) {
 		return
 	}
 	inst.WorkspaceRoot = cwd
-	inst.WorkspaceKey = cwd
-	inst.ShortName = filepath.Base(cwd)
+	inst.WorkspaceKey = state.ResolveWorkspaceKey(cwd)
+	inst.ShortName = state.WorkspaceShortName(cwd)
 	inst.DisplayName = inst.ShortName
 }
 
