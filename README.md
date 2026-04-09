@@ -155,6 +155,39 @@ VS Code 两种接管方式的区别：
 
 它们是仓库 helper，不是 release 包产品入口。
 
+## Linux 常驻服务与本地升级
+
+如果你希望 Linux 上的正式常驻实例由 `systemd --user` 托管，而不是依赖 detached daemon：
+
+```bash
+codex-remote service install-user
+codex-remote service enable
+codex-remote service start
+codex-remote service status
+```
+
+如果希望用户未登录时也保持 user service 可自启，还需要：
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+这条路径保持运行身份为当前用户，并继续使用当前 XDG 配置/状态目录。
+
+如果你已经在源码仓库里编译了一个新的本地 binary，希望复用内置 upgrade transaction 去更新已安装的稳定路径：
+
+```bash
+./bin/codex-remote install -upgrade-source-binary ./bin/codex-remote -upgrade-slot local-$(git rev-parse --short HEAD)
+```
+
+这会：
+
+- 把本地 binary 导入 `versionsRoot/<slot>/`
+- 写入同一套 upgrade journal / rollback candidate
+- 启动内置 `upgrade-helper`
+- 在 `systemd_user` 模式下通过 `systemctl --user stop/start` 切换服务
+- 如果健康检查失败，自动回滚 binary 和 live config
+
 ## 仓库内联调入口
 
 源码仓库里不再保留单独的 `install.sh` 生命周期脚本。现在统一使用现有单 binary 入口：

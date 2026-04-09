@@ -70,6 +70,33 @@ If you are working from a source checkout instead of a release archive:
 
 These repo helpers are not part of the released product package.
 
+## Linux `systemd --user` service
+
+If you want the Linux daemon to be managed as a long-running user service instead of a detached process:
+
+```bash
+codex-remote service install-user
+codex-remote service enable
+codex-remote service start
+codex-remote service status
+```
+
+If you also want it to come back after reboot before opening a terminal session, enable lingering for your user:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+## Upgrade From A Local Build
+
+If you already built a fresh local binary and want to roll the installed daemon forward through the built-in upgrade transaction:
+
+```bash
+./bin/codex-remote install -upgrade-source-binary ./bin/codex-remote -upgrade-slot local-$(git rev-parse --short HEAD)
+```
+
+This imports the local binary into `versionsRoot/<slot>`, runs the same upgrade helper transaction, and automatically rolls back if the new daemon does not recover to a healthy state.
+
 ## Before you test in Feishu
 
 - make sure the app has the bot message/event permissions from `deploy/feishu/README.md`

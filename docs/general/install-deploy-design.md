@@ -1,8 +1,8 @@
 # 安装与部署设计
 
 > Type: `general`
-> Updated: `2026-04-08`
-> Summary: 同步 release archive 附带 CHANGELOG，并对齐 changelog-first 的 GitHub release notes 生成方式。
+> Updated: `2026-04-09`
+> Summary: 增补 Linux systemd user service 与本地 binary 升级事务入口。
 
 ## 1. 范围
 
@@ -142,6 +142,43 @@ Windows PowerShell:
 ```
 
 默认 `baseDir` 是用户 home 目录。
+
+### 4.3 Linux `systemd --user` 管理模式
+
+Linux 当前已支持显式选择 `systemd_user` 作为 daemon lifecycle manager。
+
+当前产品语义：
+
+- `detached`
+  - 仍保留为默认兼容模式
+- `systemd_user`
+  - 由 `codex-remote service install-user|enable|start|stop|restart|status` 管理
+  - unit 安装到 `~/.config/systemd/user/codex-remote.service`
+  - 运行身份仍保持为当前用户
+  - 继续使用当前 XDG config/data/state 目录
+
+如果希望机器重启后在没有手工打开终端的情况下也恢复 user service，需要额外启用：
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+### 4.4 本地 binary 升级入口
+
+除了 release asset 下载路径，当前还支持把“本机刚编译出的 binary”导入同一套 upgrade transaction：
+
+```bash
+codex-remote install -upgrade-source-binary /path/to/codex-remote -upgrade-slot local-<slot>
+```
+
+行为：
+
+- 把目标 binary 复制到 `versionsRoot/<slot>/`
+- 写入 `PendingUpgrade` 与 rollback candidate
+- 启动隐藏 `upgrade-helper`
+- 在 `systemd_user` 模式下通过 `systemctl --user stop/start` 管理切换
+- 在 `detached` 模式下继续沿用 PID stop + detached start
+- 新版本健康检查失败时，自动回滚 binary 和 live config
 
 ### 4.2 已安装二进制目录
 
