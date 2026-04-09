@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-08`
-> Summary: 新增 managed headless pool 已实现文档并刷新索引。
+> Updated: `2026-04-09`
+> Summary: 新增 workspace 模型重构草案文档并刷新索引。
 
 ## 1. 适用范围
 
@@ -142,6 +142,7 @@
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-setup-wizard-redesign.md](./draft/web-setup-wizard-redesign.md)
+- [workspace-mode-redesign.md](./draft/workspace-mode-redesign.md)
 
 ### 6.5 `obsoleted`
 
