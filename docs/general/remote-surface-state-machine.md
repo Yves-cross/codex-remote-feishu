@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-09`
-> Summary: 同步 normal-mode thread ownership：normal mode `/use` 已收敛到 workspace scope，`/new` 改为 workspace-owned prepared state，`/follow` 仅保留给 vscode mode。
+> Summary: 同步 vscode mode follow-first：`/list` attach/switch 进入 `follow_local`，attached vscode `/use` / `/useall` 只看当前 instance，force-pick 仍保持 follow-local。
 
 ## 1. 文档定位
 
@@ -82,7 +82,12 @@ surface 不是单一枚举，而是五层正交状态叠加。
    2. `/use` 已 attach 后只允许留在当前 workspace 内。
    3. `/new` 已变成 workspace-owned prepared state。
    4. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
-8. `vscode mode` 的 follow-first 细化仍在后续 issue 中继续推进，但当前 `/follow` 的长期路由已经只留给 `vscode`。
+8. `vscode mode` 当前已经完成这一轮收窄：
+   1. `/list` attach/switch instance 后默认进入 follow-first，而不是落回 pinned/unbound。
+   2. 默认跟随目标只看 `ObservedFocusedThreadID`，不再回落 `ActiveThreadID`。
+   3. detached `vscode /use` / `/useall` 会直接拒绝，并要求先 `/list`。
+   4. attached `vscode /use` / `/useall` 只看当前 attached instance 的已知 thread 集合。
+   5. `vscode /use` 的 one-shot force-pick 会保留 `RouteMode=follow_local`，后续 observed focus 仍可覆盖。
 
 ### 3.2 路由主状态
 
@@ -381,7 +386,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 4. 切换当前已经会改变 `/list` 的主交互语义：
    1. `normal` 下 `/list` 是 workspace chooser。
    2. `vscode` 下 `/list` 是 instance chooser。
-5. `normal mode` 下 `/follow` 已退出长期路径；后续 issue 只继续收窄 `vscode mode` 的 follow-first 细节。
+5. `normal mode` 下 `/follow` 已退出长期路径；`vscode mode` 当前则固定走 follow-first，并把 `/use` 收窄到当前 instance 内的一次性 force-pick。
 6. 若当前仍有 running / dispatching / queued work，则 `/mode` 会直接拒绝，而不是进入半切换状态。
 
 ### 4.13 `/autocontinue` 是 surface 级、内存态、跨 route 可查询的 overlay 开关
@@ -416,15 +421,18 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 ```text
 R0 Detached
-  -- /attach(instance，可拿默认 thread) --> R2 AttachedPinned
-  -- /attach(instance，默认 thread 不可拿或不存在) --> R1 AttachedUnbound
-  -- /use(thread，可解析到当前可用实例) --> R2 AttachedPinned
-  -- /use(thread，需要新 headless) --> R0 + G1 PendingHeadlessStarting
+  -- /attach(instance，normal mode 且可拿默认 thread) --> R2 AttachedPinned
+  -- /attach(instance，normal mode 且默认 thread 不可拿或不存在) --> R1 AttachedUnbound
+  -- /attach(instance，vscode mode 且 observed focus 可接管) --> R4 FollowBound
+  -- /attach(instance，vscode mode 且尚无可接管 observed focus) --> R3 FollowWaiting
+  -- /use(thread，normal mode 且可解析到当前可用实例) --> R2 AttachedPinned
+  -- /use(thread，normal mode 且需要新 headless) --> R0 + G1 PendingHeadlessStarting
+  -- /use(thread，vscode mode) --> 拒绝 + migration to /list
 
 R1 AttachedUnbound
   -- /use(thread，同 instance 可见) --> R2 AttachedPinned
   -- /use(thread，normal mode 且目标在其他 workspace) --> 拒绝 + migration to /list
-  -- /use(thread，需要切换实例但仍在当前 workspace，或当前为 vscode mode) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /use(thread，normal mode 且需要切换实例但仍在当前 workspace) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
   -- /follow(vscode mode) --> R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- /new(normal mode，workspace 已知) --> R5 NewThreadReady
@@ -433,7 +441,7 @@ R1 AttachedUnbound
 R2 AttachedPinned
   -- /use(other thread，同 instance 可见) --> R2 AttachedPinned
   -- /use(other thread，normal mode 且目标在其他 workspace) --> 拒绝 + migration to /list
-  -- /use(other thread，需要切换实例但仍在当前 workspace，或当前为 vscode mode) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /use(other thread，normal mode 且需要切换实例但仍在当前 workspace) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
   -- /follow(vscode mode) --> R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- /new(无 live remote work；normal mode 只要求 workspace 已知，vscode mode 仍要求当前 thread 有 cwd) --> R5 NewThreadReady
@@ -443,15 +451,15 @@ R2 AttachedPinned
 
 R3 FollowWaiting
   -- VS Code focus 到可接管 thread --> R4 FollowBound
-  -- /use(thread，同 instance 可见) --> R2 AttachedPinned
-  -- /use(thread，需要切换实例) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /use(thread，当前 attached instance 可见) --> R4 FollowBound
+  -- /use(thread，其他 instance / persisted global thread) --> 拒绝 + migration to /list
   -- /detach --> R0 Detached
 
 R4 FollowBound
   -- VS Code focus 切到其他可接管 thread --> R4 FollowBound
   -- VS Code focus 消失或被别人占用 --> R3 FollowWaiting
-  -- /use(thread，同 instance 可见) --> R2 AttachedPinned
-  -- /use(thread，需要切换实例) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /use(thread，当前 attached instance 可见) --> R4 FollowBound
+  -- /use(thread，其他 instance / persisted global thread) --> 拒绝 + migration to /list
   -- /new(无 live remote work，当前 thread 有 cwd) --> R5 NewThreadReady
   -- /detach(no live work) --> R0 Detached
   -- /detach(live work) --> E6 Abandoning -> R0 Detached
@@ -459,7 +467,8 @@ R4 FollowBound
 R5 NewThreadReady
   -- 第一条普通文本 --> R5 + E1/E2，等待新 thread 落地
   -- turn.started(remote_surface，新 thread) --> R2 AttachedPinned
-  -- /use(thread) 且仅有 staged/queued draft --> discard drafts + R2 AttachedPinned
+  -- /use(thread，normal mode) 且仅有 staged/queued draft --> discard drafts + R2 AttachedPinned
+  -- /use(thread，vscode mode 且当前 instance 可见) 且仅有 staged/queued draft --> discard drafts + R4 FollowBound
   -- /follow(vscode mode) 且仅有 staged/queued draft --> discard drafts + R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- 重复 /new 且无 draft --> 保持 R5，仅回 already_new_thread_ready
@@ -476,28 +485,31 @@ R5 NewThreadReady
 3. `/attach` 或 `/use` 进入某个已选 thread 后，还会执行一次 thread replay 检查：
    1. 该 thread idle 且存在 `UndeliveredReplay` 时，会立刻补发并清空。
    2. 该 thread busy 时不会插入旧 final/旧 notice，候选保留到后续 idle 的 `/attach` 或 `/use`。
-4. global `/use` 的 resolver 顺序当前是：
+4. normal mode detached/global `/use` 的 resolver 顺序当前是：
    1. 当前 attached instance 内可见 thread。
    2. free existing visible instance。
    3. reusable managed headless。
    4. create managed headless。
-5. detached/global `/use` 的**候选 thread 列表**当前先 merge 两类来源：
+5. normal mode detached/global `/use` 的**候选 thread 列表**当前先 merge 两类来源：
    1. runtime/catalog 已可见 thread。
    2. Codex sqlite 中最近 persisted 的非 archived thread metadata。
 6. sqlite 只负责补 freshness，不旁路 resolver：
    1. busy / claim / free-visible / reusable-headless / create-headless 仍只由现有 runtime resolver 决定。
    2. sqlite read 失败或 schema 不兼容时，会安全回退到 runtime/catalog-only 行为。
-7. 当 `/use` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
+7. attached `vscode /use` / `/useall` 当前有两条额外约束：
+   1. 只展示当前 attached instance 的可见 thread，不再走 merged global thread view。
+   2. force-pick 后会保留 `RouteMode=follow_local`，后续 observed focus 变化仍可覆盖。
+8. 当 normal mode `/use` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
    3. 当前 instance claim 会先释放，再 attach 到新目标。
-8. 当 surface 处于 `PendingRequest` 或 `RequestCapture` 时：
+9. 当 surface 处于 `PendingRequest` 或 `RequestCapture` 时：
    1. same-instance `/use`
    2. `/follow`
    3. follow-local 自动重绑定
    当前都会被冻结，避免 UI 宣布的新目标和下一条普通输入的实际落点不一致。
-9. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
-10. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
+10. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
+11. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
    1. 当前可见 thread 若只存在于 VS Code instance，不会被自动 attach 到 VS Code。
    2. 它仍可复用该 thread 的 metadata / cwd。
    3. 后续只允许落到 free visible headless、reusable managed headless，或 create managed headless。
@@ -683,7 +695,7 @@ transport degraded retained attachment
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 允许 | 拒绝 | 允许 | 允许；若首条消息已 dispatching/running 则拒绝 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/use` `/useall` | `normal`: 允许；`vscode`: 拒绝并提示先 `/list` | `normal`: 允许；`vscode legacy`: 仅当前 instance 已知 thread | `normal`: 允许；`vscode legacy`: 仅当前 instance 已知 thread | 仅当前 instance 已知 thread | 仅当前 instance 已知 thread | `normal`: 允许；`vscode`: 仅当前 instance 已知 thread；若仅有 unsent draft 会先丢弃 |
 | `/follow` | 拒绝 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许；若仅有 unsent draft 会先丢弃 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
@@ -755,17 +767,18 @@ retained-offline overlay 额外规则：
 9. **`R5 NewThreadReady` 在 queued draft 时没有出口**：已修复。现在 `/use`、`/follow`、`/detach`、`/stop`、重复 `/new` 都有明确语义。
 10. **detach 期间最后一条 final / thread notice 会被完全吞掉**：已修复。当前会保留单条 thread 级 replay，并在后续 idle 的 `/attach` 或 `/use` 时一次性补发。
 11. **detached 状态下 `/use` 是死入口，只能先 attach instance**：已修复。现在 `/use` 会展示 global merged thread list，并按 resolver 自动 attach。
-12. **cross-instance `/use` 会绕过 detach 语义，保留旧 request/capture/override**：已修复。现在会先走 detach 风格清理与门禁，再 attach 新 thread。
+12. **cross-instance `/use` 会绕过 detach 语义，保留旧 request/capture/override**：已修复。现在只有 normal-mode detached/global `/use` 还会做这类 resolver attach；切换前会先走 detach 风格清理与门禁。
 13. **旧 `/newinstance` 手工 headless 选择分支仍能把用户带进过时状态**：已修复。当前只保留 thread-first `/use` 的 preselected headless；旧命令和旧 `resume_headless_thread` 卡片统一回迁移提示。
-14. **same-instance `/use` / `/follow` / auto-follow 会在旧 request gate 还活着时静默改路由**：已修复。现在只要 request gate 仍在，所有会改路由的动作都会被冻结。
-15. **cross-instance attach 到复用/新建 headless 时会丢 thread replay**：已修复。当前 replay 会先按 `threadID` 全局迁移，再在目标 attach 上一次性补发。
-16. **transport degraded 后既误报“已中断当前执行”，又缺少 retained-offline 逃生口**：已修复。当前会保留可相关的 in-flight turn，不再伪造“已中断”；同时 `/status`、`/stop`、`/detach` 都已显式区分 retained-offline 与真正 detach。
-17. **queued 点赞升级成 steering 后 item 会脱离普通 queue，若 ack 失败则可能丢失**：已修复。当前已强制恢复原 queue 位置，并补失败 notice。
-18. **headless 自动恢复在首轮 refresh 前过早报失败，或恢复成功后重放旧 replay / 额外补 attached 噪音**：已修复。当前会先静默等待首轮 refresh，恢复成功只发单条成功 notice，且会清空旧 replay 而不是补发。
-19. **`PendingHeadless` 只能靠隐藏的 `/killinstance` 逃生**：已修复。当前 `/detach` 可以直接取消恢复流程并回到 `R0 Detached`；旧 `/killinstance` 只回迁移提示。
-20. **显式切 mode 会保留旧 attachment / request gate / draft 残留，导致进入半切换状态**：已修复。当前 idle/detached 时 `/mode` 会先做 detach-like 清理；busy path 则明确拒绝并提示 `/stop` 或 `/detach`。
-21. **normal mode 仍然只按 instance/thread 仲裁，导致同 workspace 多 surface 并存**：已修复。当前 normal mode 的 attach/use/headless 恢复都会先经过 workspace claim；只有显式切到 `vscode` mode 才绕过这层仲裁。
-22. **normal mode 还能长期停留在 follow 路径，导致 workspace-first 叙事失真**：已修复。当前新 `/follow` 会直接回迁移提示；历史 normal follow route 也会在读取 surface 时落回 pinned/unbound。
+14. **same-instance `/use` / `/follow` / auto-follow 会在旧 request gate 还活着时静默改路由**：已修复。现在只要 request gate 仍在，所有会改路由的动作都会被冻结，包括 `follow_local` 下手动 force-pick 后再 `/follow` 的回切。
+15. **attached vscode `/use` 会误走全局 merged thread view，甚至跨 instance retarget**：已修复。现在 detached vscode 必须先 `/list`，attached vscode 只允许当前 instance 已知 thread，且 one-shot force-pick 仍保持 `follow_local`。
+16. **cross-instance attach 到复用/新建 headless 时会丢 thread replay**：已修复。当前 replay 会先按 `threadID` 全局迁移，再在目标 attach 上一次性补发。
+17. **transport degraded 后既误报“已中断当前执行”，又缺少 retained-offline 逃生口**：已修复。当前会保留可相关的 in-flight turn，不再伪造“已中断”；同时 `/status`、`/stop`、`/detach` 都已显式区分 retained-offline 与真正 detach。
+18. **queued 点赞升级成 steering 后 item 会脱离普通 queue，若 ack 失败则可能丢失**：已修复。当前已强制恢复原 queue 位置，并补失败 notice。
+19. **headless 自动恢复在首轮 refresh 前过早报失败，或恢复成功后重放旧 replay / 额外补 attached 噪音**：已修复。当前会先静默等待首轮 refresh，恢复成功只发单条成功 notice，且会清空旧 replay 而不是补发。
+20. **`PendingHeadless` 只能靠隐藏的 `/killinstance` 逃生**：已修复。当前 `/detach` 可以直接取消恢复流程并回到 `R0 Detached`；旧 `/killinstance` 只回迁移提示。
+21. **显式切 mode 会保留旧 attachment / request gate / draft 残留，导致进入半切换状态**：已修复。当前 idle/detached 时 `/mode` 会先做 detach-like 清理；busy path 则明确拒绝并提示 `/stop` 或 `/detach`。
+22. **normal mode 仍然只按 instance/thread 仲裁，导致同 workspace 多 surface 并存**：已修复。当前 normal mode 的 attach/use/headless 恢复都会先经过 workspace claim；只有显式切到 `vscode` mode 才绕过这层仲裁。
+23. **normal mode 还能长期停留在 follow 路径，导致 workspace-first 叙事失真**：已修复。当前新 `/follow` 会直接回迁移提示；历史 normal follow route 也会在读取 surface 时落回 pinned/unbound。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 

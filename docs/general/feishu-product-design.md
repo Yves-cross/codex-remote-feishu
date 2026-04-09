@@ -199,13 +199,13 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
    - 继续只列出**在线 VS Code 实例**
    - 按钮走 `attach_instance -> ActionAttachInstance`
    - attach 成功后：
-     1. 若 instance 有 `ObservedFocusedThreadID`
-        - 立即 pin 到该 thread
-     2. 否则若 instance 有 `ActiveThreadID`
-        - pin 到该 thread
-     3. 否则
-        - 进入 `attached_unbound`
-        - 若当前仍有可见会话，会主动补一张 `/use` 选择卡
+     1. 若 `ObservedFocusedThreadID` 当前可接管
+        - 立即进入 `follow_local`
+        - 并绑定到该 thread
+     2. 否则
+        - 进入 follow waiting
+        - 明确提示用户先在 VS Code 里实际操作一次会话
+        - 若当前实例仍有可见会话，会主动补一张**只包含当前 instance** 的 `/use` 选择卡
 
 无论哪种 mode：
 
@@ -224,9 +224,15 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - normal mode 已 attach workspace 时：
   - `/use` / `/useall` 只展示当前 workspace 内会话
   - 不再通过 `/use` 静默跳到其他 workspace
-- vscode mode 时：
-  - 仍保留当前的 merged thread view / force-pick 语义
-- `/useall` / `/sessionsall` 仍走同一套 merged source，只是展示范围更大
+- vscode mode detached 时：
+  - `/use` / `/useall` 不再走 global merged thread shortcut
+  - 必须先 `/list` 选择一个 VS Code instance
+- vscode mode 已 attach instance 时：
+  - `/use` / `/useall` 只展示当前 attached instance 的已知会话
+  - 手动选择只做 one-shot force-pick
+  - `SelectedThreadID` 会切到目标 thread
+  - `RouteMode` 保持 `follow_local`，后续 observed focus 仍可覆盖
+- `/useall` / `/sessionsall` 仍走同一套入口，但展示范围由当前 `ProductMode + attach` 状态决定
 - sqlite 只负责补 freshness；最终 attach/reuse/create/busy 判定仍走现有 runtime resolver
 - sqlite read 失败或 schema 不兼容时，会安全回退到当前 runtime/catalog-only 行为
 
@@ -237,16 +243,21 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 切换后：
 
-- `SelectedThreadID` 更新
-- `RouteMode = pinned`
+- normal mode 或 detached/global `/use` 进入目标 thread 时：
+  - `SelectedThreadID` 更新
+  - `RouteMode = pinned`
+- attached vscode force-pick 时：
+  - `SelectedThreadID` 更新
+  - `RouteMode` 继续保持 `follow_local`
 
 选择目标会话时，当前实现会按 resolver 自动决定后续动作：
 
 - 当前实例可见：直接切到目标 thread
 - normal mode detached 且目标会话在其他在线实例上可见：自动接管所属 workspace，再落到目标 thread
 - normal mode 已 attach workspace 时：只允许留在当前 workspace 内部解析
-- vscode mode 下，目标会话在其他在线实例上可见时仍可自动接管目标实例
-- 当前没有合适在线实例但会话带有可恢复 `cwd`：自动复用现有恢复链路，或在后台准备恢复
+- vscode mode detached 时：直接拒绝，并提示用户先 `/list`
+- vscode mode 已 attach instance 时：只允许当前 instance 已知 thread；跨 instance / persisted global thread 会直接拒绝，并提示先 `/list` 切实例
+- 当前没有合适在线实例但会话带有可恢复 `cwd`：只有 normal mode detached/global `/use` 仍会自动复用现有恢复链路，或在后台准备恢复
 
 如果用户点到旧卡片上的 legacy `prompt_select`，会统一收到 `selection_expired` 提示，要求重新发送 `/list`、`/use` 或 `/useall`。
 
@@ -263,13 +274,15 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - 会返回迁移提示，要求用户改走当前 workspace 下的 `/use`、`/new`
 - 如果确实需要 VS Code follow 语义，用户需要先显式 `/mode vscode`
 
-### 4.4 `attached_unbound`
+### 4.4 无可用 thread 的等待态
 
-当 surface 已接管实例，但当前没有拿到可发送的 thread 时，会进入 `attached_unbound`：
+当 surface 已接管实例，但当前没有拿到可发送的 thread 时：
 
-- normal mode 下，系统会明确提示下一步应该走 `/use`、`/useall`、`/new` 或 `/list`
-- vscode mode 下，系统会明确提示下一步应该走 `/use`、`/useall`、`/follow` 或 `/detach`
-- 若当前实例仍有可见会话，会主动补发 `/use` 选择卡
+- normal mode 会进入 `attached_unbound`
+  - 系统会明确提示下一步应该走 `/use`、`/useall`、`/new` 或 `/list`
+- vscode mode 会进入 follow waiting
+  - 系统会明确提示下一步应该走“先在 VS Code 里实际操作一次会话”或 `/use`
+  - 若当前实例仍有可见会话，会主动补发一张**当前 instance 范围**的 `/use` 选择卡
 - 普通文本不会再被当成“隐式创建 thread”来直接发出
 
 ## 5. Queue、Typing 与本地优先

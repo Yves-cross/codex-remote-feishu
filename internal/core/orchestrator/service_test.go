@@ -2807,6 +2807,74 @@ func TestFollowLocalBlockedByRequestCapture(t *testing.T) {
 	}
 }
 
+func TestFollowLocalManualPickBlockedByPendingRequest(t *testing.T) {
+	now := time.Date(2026, 4, 7, 19, 7, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+			"thread-2": {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-2"})
+	svc.root.Surfaces["surface-1"].PendingRequests["req-1"] = &state.RequestPromptRecord{RequestID: "req-1"}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionFollowLocal,
+		SurfaceSessionID: "surface-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_pending" {
+		t.Fatalf("expected pending request gate to freeze manual follow-local rebind, got %#v", events)
+	}
+	if surface := svc.root.Surfaces["surface-1"]; surface.RouteMode != state.RouteModeFollowLocal || surface.SelectedThreadID != "thread-2" {
+		t.Fatalf("expected follow-local manual pick to stay put while request gate is active, got %#v", surface)
+	}
+}
+
+func TestFollowLocalManualPickBlockedByRequestCapture(t *testing.T) {
+	now := time.Date(2026, 4, 7, 19, 8, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
+			"thread-2": {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-2"})
+	svc.root.Surfaces["surface-1"].ActiveRequestCapture = &state.RequestCaptureRecord{RequestID: "req-1"}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionFollowLocal,
+		SurfaceSessionID: "surface-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_capture_waiting_text" {
+		t.Fatalf("expected request capture gate to freeze manual follow-local rebind, got %#v", events)
+	}
+	if surface := svc.root.Surfaces["surface-1"]; surface.RouteMode != state.RouteModeFollowLocal || surface.SelectedThreadID != "thread-2" {
+		t.Fatalf("expected follow-local manual pick to stay put while capture gate is active, got %#v", surface)
+	}
+}
+
 func TestFollowLocalNormalModeShowsMigrationNotice(t *testing.T) {
 	now := time.Date(2026, 4, 7, 19, 7, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

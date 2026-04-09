@@ -690,7 +690,8 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 	if inst == nil {
 		return notice(surface, "not_attached", "当前还没有接管任何实例。")
 	}
-	if surface.RouteMode != state.RouteModeFollowLocal && surfaceHasRouteMutationRequestState(surface) {
+	if surfaceHasRouteMutationRequestState(surface) &&
+		(surface.RouteMode != state.RouteModeFollowLocal || s.followLocalWouldRetarget(surface, inst)) {
 		if blocked := s.blockRouteMutationForRequestState(surface); blocked != nil {
 			return blocked
 		}
@@ -725,6 +726,26 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 		return events
 	}
 	return notice(surface, "follow_local_enabled", "已进入跟随模式。后续会尝试跟随当前 VS Code 会话。")
+}
+
+func (s *Service) followLocalWouldRetarget(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) bool {
+	if surface == nil || inst == nil || surface.RouteMode != state.RouteModeFollowLocal {
+		return true
+	}
+	if s.surfaceHasLiveRemoteWork(surface) {
+		return false
+	}
+	if inst.ActiveTurnID != "" && s.surfaceOwnsThread(surface, inst.ActiveThreadID) {
+		return false
+	}
+	targetThreadID := strings.TrimSpace(inst.ObservedFocusedThreadID)
+	if targetThreadID == "" || !threadVisible(inst.Threads[targetThreadID]) {
+		return surface.SelectedThreadID != ""
+	}
+	if owner := s.threadClaimSurface(targetThreadID); owner != nil && owner.SurfaceSessionID != surface.SurfaceSessionID {
+		return surface.SelectedThreadID != ""
+	}
+	return surface.SelectedThreadID != targetThreadID || !s.surfaceOwnsThread(surface, targetThreadID)
 }
 
 func (s *Service) reevaluateFollowSurfaces(instanceID string) []control.UIEvent {
