@@ -91,9 +91,8 @@ func NewMultiGatewayController() *MultiGatewayController {
 		return NewDriveMarkdownPreviewer(
 			NewLarkDrivePreviewAPI(runtime.Client()),
 			MarkdownPreviewConfig{
-				StatePath:      cfg.PreviewStatePath,
-				RootFolderName: cfg.PreviewRootFolderName,
-				GatewayID:      cfg.GatewayID,
+				StatePath: cfg.PreviewStatePath,
+				GatewayID: cfg.GatewayID,
 			},
 		)
 	}

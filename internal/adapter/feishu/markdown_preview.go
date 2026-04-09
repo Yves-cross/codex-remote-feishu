@@ -18,8 +18,6 @@ const (
 	previewFileType              = "file"
 	previewFolderType            = "folder"
 	previewPermissionView        = "view"
-	previewManagedFilePrefix     = "__crp__"
-	previewRootMarkerPrefix      = "__codex_remote_gateway__"
 )
 
 var markdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
@@ -32,11 +30,10 @@ type PreviewDriveAdminService interface {
 }
 
 type MarkdownPreviewConfig struct {
-	StatePath      string
-	RootFolderName string
-	GatewayID      string
-	ProcessCWD     string
-	MaxFileBytes   int64
+	StatePath    string
+	GatewayID    string
+	ProcessCWD   string
+	MaxFileBytes int64
 }
 
 type DriveMarkdownPreviewer struct {
@@ -93,7 +90,6 @@ type previewFolderRecord struct {
 	Token            string          `json:"token,omitempty"`
 	URL              string          `json:"url,omitempty"`
 	Shared           map[string]bool `json:"shared,omitempty"`
-	MarkerReady      bool            `json:"markerReady,omitempty"`
 	LastReconciledAt time.Time       `json:"lastReconciledAt,omitempty"`
 }
 
@@ -154,9 +150,6 @@ func (e *driveAPIError) Error() string {
 }
 
 func NewDriveMarkdownPreviewer(api previewDriveAPI, cfg MarkdownPreviewConfig) *DriveMarkdownPreviewer {
-	if cfg.RootFolderName == "" {
-		cfg.RootFolderName = defaultPreviewRootFolderName
-	}
 	cfg.GatewayID = normalizeGatewayID(cfg.GatewayID)
 	if cfg.MaxFileBytes <= 0 {
 		cfg.MaxFileBytes = defaultPreviewMaxFileBytes

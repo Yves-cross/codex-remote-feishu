@@ -21,19 +21,6 @@ func (p *DriveMarkdownPreviewer) nowUTC() time.Time {
 	return p.nowFn().UTC()
 }
 
-func previewRootMarkerFolderName(gatewayID string) string {
-	value := strings.NewReplacer(":", "-", "/", "-", "\\", "-", " ", "-").Replace(normalizeGatewayID(gatewayID))
-	value = strings.Trim(value, "-")
-	if value == "" {
-		value = normalizeGatewayID("")
-	}
-	return limitNameBytes(previewRootMarkerPrefix+value, 180)
-}
-
-func previewManagedFileName(name string) bool {
-	return strings.HasPrefix(strings.TrimSpace(name), previewManagedFilePrefix)
-}
-
 func previewRemoteCleanupTime(node previewRemoteNode) (time.Time, bool) {
 	switch {
 	case !node.CreatedTime.IsZero():
@@ -119,49 +106,11 @@ func (p *DriveMarkdownPreviewer) cleanupManagedPreviewFilesLocked(ctx context.Co
 		}
 		delete(state.Files, key)
 	}
-
-	if err := p.ensureKnownRootMarkerLocked(ctx, state); err != nil {
-		return PreviewDriveCleanupResult{}, err
-	}
 	if err := p.cleanupRemoteManagedFilesLocked(ctx, state, cutoff, &result); err != nil {
 		return PreviewDriveCleanupResult{}, err
 	}
 	result.Summary = summarizePreviewState(state, strings.TrimSpace(p.config.StatePath))
 	return result, nil
-}
-
-func (p *DriveMarkdownPreviewer) ensureKnownRootMarkerLocked(ctx context.Context, state *previewState) error {
-	if p == nil || p.api == nil || state == nil || state.Root == nil || strings.TrimSpace(state.Root.Token) == "" || state.Root.MarkerReady {
-		return nil
-	}
-	if err := p.ensureRootMarkerLocked(ctx, state.Root.Token); err != nil {
-		if isPreviewResourceMissingError(err) {
-			state.Root = nil
-			return nil
-		}
-		return fmt.Errorf("ensure markdown preview root marker: %w", err)
-	}
-	state.Root.MarkerReady = true
-	return nil
-}
-
-func (p *DriveMarkdownPreviewer) ensureRootMarkerLocked(ctx context.Context, rootToken string) error {
-	rootToken = strings.TrimSpace(rootToken)
-	if rootToken == "" {
-		return fmt.Errorf("missing markdown preview root token")
-	}
-	children, err := p.api.ListFiles(ctx, rootToken)
-	if err != nil {
-		return err
-	}
-	markerName := previewRootMarkerFolderName(p.config.GatewayID)
-	for _, child := range children {
-		if child.Type == previewFolderType && strings.TrimSpace(child.Name) == markerName {
-			return nil
-		}
-	}
-	_, err = p.api.CreateFolder(ctx, markerName, rootToken)
-	return err
 }
 
 func (p *DriveMarkdownPreviewer) discoverManagedRootLocked(ctx context.Context) (previewRemoteNode, bool, error) {
@@ -170,25 +119,10 @@ func (p *DriveMarkdownPreviewer) discoverManagedRootLocked(ctx context.Context) 
 		return previewRemoteNode{}, false, err
 	}
 
-	markerName := previewRootMarkerFolderName(p.config.GatewayID)
-	rootName := strings.TrimSpace(p.config.RootFolderName)
 	candidates := []previewRemoteNode{}
 	for _, node := range rootFolders {
-		if node.Type != previewFolderType || strings.TrimSpace(node.Name) != rootName {
-			continue
-		}
-		children, err := p.api.ListFiles(ctx, node.Token)
-		if err != nil {
-			if isPreviewResourceMissingError(err) {
-				continue
-			}
-			return previewRemoteNode{}, false, fmt.Errorf("list markdown preview root candidate %s: %w", node.Token, err)
-		}
-		for _, child := range children {
-			if child.Type == previewFolderType && strings.TrimSpace(child.Name) == markerName {
-				candidates = append(candidates, node)
-				break
-			}
+		if node.Type == previewFolderType && strings.TrimSpace(node.Name) == defaultPreviewRootFolderName {
+			candidates = append(candidates, node)
 		}
 	}
 	if len(candidates) == 0 {
@@ -212,37 +146,105 @@ func (p *DriveMarkdownPreviewer) discoverManagedRootLocked(ctx context.Context) 
 	return candidates[0], true, nil
 }
 
-func (p *DriveMarkdownPreviewer) cleanupRemoteManagedFilesLocked(ctx context.Context, state *previewState, cutoff time.Time, result *PreviewDriveCleanupResult) error {
+type previewInventorySnapshot struct {
+	root    previewRemoteNode
+	folders []previewRemoteNode
+	files   []previewRemoteNode
+}
+
+func (p *DriveMarkdownPreviewer) loadManagedInventoryLocked(ctx context.Context, state *previewState) (previewInventorySnapshot, bool, error) {
 	if p == nil || p.api == nil {
-		return nil
+		return previewInventorySnapshot{}, false, nil
 	}
 
 	var root previewRemoteNode
-	switch {
-	case state != nil && state.Root != nil && strings.TrimSpace(state.Root.Token) != "":
-		root = previewRemoteNode{
-			Token: state.Root.Token,
-			URL:   state.Root.URL,
-			Type:  previewFolderType,
-			Name:  p.config.RootFolderName,
-		}
-	case true:
-		discovered, ok, err := p.discoverManagedRootLocked(ctx)
-		if err != nil {
-			return fmt.Errorf("discover markdown preview root: %w", err)
-		}
-		if !ok {
-			return nil
-		}
-		root = discovered
-		if state != nil {
-			if state.Root == nil {
-				state.Root = &previewFolderRecord{}
+	for attempt := 0; attempt < 2; attempt++ {
+		root = previewRemoteNode{}
+		if state != nil && state.Root != nil && strings.TrimSpace(state.Root.Token) != "" {
+			root = previewRemoteNode{
+				Token: strings.TrimSpace(state.Root.Token),
+				URL:   strings.TrimSpace(state.Root.URL),
+				Type:  previewFolderType,
+				Name:  defaultPreviewRootFolderName,
 			}
-			state.Root.Token = discovered.Token
-			state.Root.URL = discovered.URL
-			state.Root.MarkerReady = true
+		} else {
+			discovered, ok, err := p.discoverManagedRootLocked(ctx)
+			if err != nil {
+				return previewInventorySnapshot{}, false, fmt.Errorf("discover markdown preview root: %w", err)
+			}
+			if !ok {
+				return previewInventorySnapshot{}, false, nil
+			}
+			root = discovered
+			if state != nil {
+				if state.Root == nil {
+					state.Root = &previewFolderRecord{}
+				}
+				state.Root.Token = discovered.Token
+				state.Root.URL = discovered.URL
+			}
 		}
+
+		snapshot, err := p.walkManagedInventoryLocked(ctx, root)
+		if err == nil {
+			return snapshot, true, nil
+		}
+		if !isPreviewResourceMissingError(err) {
+			return previewInventorySnapshot{}, false, err
+		}
+		if state != nil {
+			state.Root = nil
+		}
+	}
+
+	return previewInventorySnapshot{}, false, nil
+}
+
+func (p *DriveMarkdownPreviewer) walkManagedInventoryLocked(ctx context.Context, root previewRemoteNode) (previewInventorySnapshot, error) {
+	snapshot := previewInventorySnapshot{root: root}
+	queue := []previewRemoteNode{root}
+	visited := map[string]bool{}
+	if strings.TrimSpace(root.Token) != "" {
+		visited[root.Token] = true
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		children, err := p.api.ListFiles(ctx, current.Token)
+		if err != nil {
+			return previewInventorySnapshot{}, fmt.Errorf("list markdown preview folder %s: %w", current.Token, err)
+		}
+		for _, child := range children {
+			switch child.Type {
+			case previewFolderType:
+				if strings.TrimSpace(child.Token) == "" || visited[child.Token] {
+					continue
+				}
+				visited[child.Token] = true
+				snapshot.folders = append(snapshot.folders, child)
+				queue = append(queue, child)
+			case previewFileType:
+				snapshot.files = append(snapshot.files, child)
+			}
+		}
+	}
+
+	return snapshot, nil
+}
+
+func (p *DriveMarkdownPreviewer) cleanupRemoteManagedFilesLocked(ctx context.Context, state *previewState, cutoff time.Time, result *PreviewDriveCleanupResult) error {
+	if p == nil || p.api == nil || result == nil {
+		return nil
+	}
+
+	snapshot, ok, err := p.loadManagedInventoryLocked(ctx, state)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
 	}
 
 	trackedTokens := map[string]bool{}
@@ -255,44 +257,24 @@ func (p *DriveMarkdownPreviewer) cleanupRemoteManagedFilesLocked(ctx context.Con
 		}
 	}
 
-	rootChildren, err := p.api.ListFiles(ctx, root.Token)
-	if err != nil {
-		if isPreviewResourceMissingError(err) {
-			if state != nil {
-				state.Root = nil
-			}
-			return nil
-		}
-		return fmt.Errorf("list markdown preview root children: %w", err)
+	if state != nil && state.Root != nil {
+		state.Root.Token = snapshot.root.Token
+		state.Root.URL = snapshot.root.URL
 	}
 
-	markerName := previewRootMarkerFolderName(p.config.GatewayID)
-	for _, child := range rootChildren {
-		if child.Type != previewFolderType || strings.TrimSpace(child.Name) == markerName {
+	for _, node := range snapshot.files {
+		if trackedTokens[node.Token] {
 			continue
 		}
-
-		scopeChildren, err := p.api.ListFiles(ctx, child.Token)
-		if err != nil {
-			if isPreviewResourceMissingError(err) {
-				continue
-			}
-			return fmt.Errorf("list markdown preview scope children: %w", err)
+		createdAt, ok := previewRemoteCleanupTime(node)
+		if !ok || createdAt.After(cutoff) {
+			continue
 		}
-		for _, node := range scopeChildren {
-			if node.Type != previewFileType || trackedTokens[node.Token] || !previewManagedFileName(node.Name) {
-				continue
-			}
-			createdAt, ok := previewRemoteCleanupTime(node)
-			if !ok || createdAt.After(cutoff) {
-				continue
-			}
-			err := p.api.DeleteFile(ctx, node.Token, previewFileType)
-			if err != nil && !isPreviewResourceMissingError(err) {
-				return fmt.Errorf("delete markdown preview file %s: %w", node.Token, err)
-			}
-			result.DeletedFileCount++
+		err := p.api.DeleteFile(ctx, node.Token, previewFileType)
+		if err != nil && !isPreviewResourceMissingError(err) {
+			return fmt.Errorf("delete markdown preview file %s: %w", node.Token, err)
 		}
+		result.DeletedFileCount++
 	}
 
 	return nil

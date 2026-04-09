@@ -193,11 +193,11 @@ func previewFileName(resolvedPath, contentSHA string) string {
 	if len(shortSHA) > 8 {
 		shortSHA = shortSHA[:8]
 	}
-	name = limitNameBytes(name, 200-len(ext)-len(shortSHA)-2-len(previewManagedFilePrefix))
+	name = limitNameBytes(name, 200-len(ext)-len(shortSHA)-2)
 	if name == "" {
 		name = "preview"
 	}
-	return previewManagedFilePrefix + name + "--" + shortSHA + ext
+	return name + "--" + shortSHA + ext
 }
 
 func limitNameBytes(value string, limit int) string {

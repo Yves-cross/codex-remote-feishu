@@ -174,16 +174,16 @@ func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
 	if want := "See [design](https://preview/file-1)."; result1.Block.Text != want {
 		t.Fatalf("unexpected rewritten text: %q", result1.Block.Text)
 	}
-	if len(api1.createFolderCalls) != 3 {
-		t.Fatalf("expected root + marker + scope folder creation, got %#v", api1.createFolderCalls)
+	if len(api1.createFolderCalls) != 2 {
+		t.Fatalf("expected root + scope folder creation, got %#v", api1.createFolderCalls)
 	}
 	if len(api1.uploadFileCalls) != 1 {
 		t.Fatalf("expected one upload, got %#v", api1.uploadFileCalls)
 	}
-	if api1.uploadFileCalls[0].ParentToken != "folder-3" {
+	if api1.uploadFileCalls[0].ParentToken != "folder-2" {
 		t.Fatalf("expected upload into scope folder, got %#v", api1.uploadFileCalls[0])
 	}
-	if !strings.HasPrefix(api1.uploadFileCalls[0].FileName, previewManagedFilePrefix+"design--") || !strings.HasSuffix(api1.uploadFileCalls[0].FileName, ".md") {
+	if !strings.HasPrefix(api1.uploadFileCalls[0].FileName, "design--") || !strings.HasSuffix(api1.uploadFileCalls[0].FileName, ".md") {
 		t.Fatalf("unexpected uploaded file name: %#v", api1.uploadFileCalls[0])
 	}
 	if api1.uploadFileCalls[0].Content != "# design\n" {
@@ -192,7 +192,7 @@ func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
 	if len(api1.grantPermissionCalls) != 2 {
 		t.Fatalf("expected folder + file grants, got %#v", api1.grantPermissionCalls)
 	}
-	if api1.grantPermissionCalls[0].Token != "folder-3" || api1.grantPermissionCalls[1].Token != "file-1" {
+	if api1.grantPermissionCalls[0].Token != "folder-2" || api1.grantPermissionCalls[1].Token != "file-1" {
 		t.Fatalf("unexpected grant targets: %#v", api1.grantPermissionCalls)
 	}
 	if api1.grantPermissionCalls[0].Principal.Key != "openid:ou_user" || api1.grantPermissionCalls[1].Principal.Key != "openid:ou_user" {
@@ -298,8 +298,8 @@ func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 	}
 
 	wantKeys := map[string]bool{
-		"folder-3|openid:ou_user":   true,
-		"folder-3|openchat:oc_chat": true,
+		"folder-2|openid:ou_user":   true,
+		"folder-2|openchat:oc_chat": true,
 		"file-1|openid:ou_user":     true,
 		"file-1|openchat:oc_chat":   true,
 	}
@@ -322,9 +322,8 @@ func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
 	now := time.Date(2026, 4, 6, 12, 0, 0, 0, time.UTC)
 	state := &previewState{
 		Root: &previewFolderRecord{
-			Token:       "fld-root",
-			URL:         "https://preview/fld-root",
-			MarkerReady: true,
+			Token: "fld-root",
+			URL:   "https://preview/fld-root",
 		},
 		Scopes: map[string]*previewScopeRecord{
 			"feishu:app-1:chat:oc_chat": {
@@ -396,9 +395,8 @@ func TestDriveMarkdownPreviewerSummaryAndCleanupBefore(t *testing.T) {
 func TestDriveMarkdownPreviewerReconcileDetectsMissingRemoteNodesAndPermissionDrift(t *testing.T) {
 	state := &previewState{
 		Root: &previewFolderRecord{
-			Token:       "fld-root",
-			URL:         "https://preview/fld-root",
-			MarkerReady: true,
+			Token: "fld-root",
+			URL:   "https://preview/fld-root",
 		},
 		Scopes: map[string]*previewScopeRecord{
 			"feishu:app-1:chat:oc_main": {
@@ -487,7 +485,7 @@ func TestDriveMarkdownPreviewerRecreatesMissingScopeFolder(t *testing.T) {
 	statePath := filepath.Join(root, "state", "preview.json")
 
 	initialState := &previewState{
-		Root: &previewFolderRecord{Token: "fld-root", URL: "https://preview/fld-root", MarkerReady: true},
+		Root: &previewFolderRecord{Token: "fld-root", URL: "https://preview/fld-root"},
 		Scopes: map[string]*previewScopeRecord{
 			"feishu:user:ou_user": {
 				Folder: &previewFolderRecord{
@@ -560,7 +558,6 @@ func TestDriveMarkdownPreviewerCleanupBeforeDeletesManagedRemoteFilesWithoutLoca
 			}, nil
 		case "fld-root":
 			return []previewRemoteNode{
-				{Token: "fld-marker", Type: previewFolderType, Name: previewRootMarkerFolderName("main")},
 				{Token: "fld-scope", Type: previewFolderType, Name: "feishu-main-chat-oc_old"},
 			}, nil
 		case "fld-scope":
@@ -568,7 +565,7 @@ func TestDriveMarkdownPreviewerCleanupBeforeDeletesManagedRemoteFilesWithoutLoca
 				{
 					Token:       "file-old",
 					Type:        previewFileType,
-					Name:        previewManagedFilePrefix + "old--deadbeef.md",
+					Name:        "old--deadbeef.md",
 					CreatedTime: now.Add(-48 * time.Hour),
 				},
 			}, nil
@@ -601,6 +598,56 @@ func TestDriveMarkdownPreviewerCleanupBeforeDeletesManagedRemoteFilesWithoutLoca
 	}
 }
 
+func TestDriveMarkdownPreviewerCleanupBeforeDeletesNestedInventoryFiles(t *testing.T) {
+	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
+	api := newFakePreviewAPI()
+	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
+		switch folderToken {
+		case "":
+			return []previewRemoteNode{{
+				Token:       "fld-root",
+				Type:        previewFolderType,
+				Name:        defaultPreviewRootFolderName,
+				URL:         "https://preview/fld-root",
+				CreatedTime: now.Add(-72 * time.Hour),
+			}}, nil
+		case "fld-root":
+			return []previewRemoteNode{
+				{Token: "fld-scope", Type: previewFolderType, Name: "feishu-main-chat-oc_old"},
+			}, nil
+		case "fld-scope":
+			return []previewRemoteNode{
+				{Token: "fld-nested", Type: previewFolderType, Name: "nested"},
+			}, nil
+		case "fld-nested":
+			return []previewRemoteNode{{
+				Token:       "file-nested",
+				Type:        previewFileType,
+				Name:        "notes.md",
+				CreatedTime: now.Add(-48 * time.Hour),
+			}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		StatePath: filepath.Join(t.TempDir(), "preview.json"),
+	})
+	previewer.nowFn = func() time.Time { return now }
+
+	result, err := previewer.CleanupBefore(context.Background(), now.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatalf("CleanupBefore returned error: %v", err)
+	}
+	if result.DeletedFileCount != 1 {
+		t.Fatalf("expected one nested inventory deletion, got %#v", result)
+	}
+	if len(api.deleteFileCalls) != 1 || api.deleteFileCalls[0].Token != "file-nested" {
+		t.Fatalf("unexpected delete calls: %#v", api.deleteFileCalls)
+	}
+}
+
 func TestDriveMarkdownPreviewerLazyCleanupRunsAtMostOncePerInterval(t *testing.T) {
 	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	root := t.TempDir()
@@ -622,7 +669,6 @@ func TestDriveMarkdownPreviewerLazyCleanupRunsAtMostOncePerInterval(t *testing.T
 			}, nil
 		case "fld-root":
 			return []previewRemoteNode{
-				{Token: "fld-marker", Type: previewFolderType, Name: previewRootMarkerFolderName("main")},
 				{Token: "fld-old", Type: previewFolderType, Name: "feishu-main-chat-oc_old"},
 			}, nil
 		case "fld-old":
@@ -630,7 +676,7 @@ func TestDriveMarkdownPreviewerLazyCleanupRunsAtMostOncePerInterval(t *testing.T
 				{
 					Token:       "file-old",
 					Type:        previewFileType,
-					Name:        previewManagedFilePrefix + "legacy--deadbeef.md",
+					Name:        "__crp__legacy--deadbeef.md",
 					CreatedTime: now.Add(-48 * time.Hour),
 				},
 			}, nil

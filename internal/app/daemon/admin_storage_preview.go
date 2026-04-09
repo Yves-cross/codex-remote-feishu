@@ -19,9 +19,8 @@ var newPreviewDriveAdminService = func(cfg feishu.GatewayAppConfig) feishu.Previ
 		api = feishu.NewLarkDrivePreviewAPI(lark.NewClient(cfg.AppID, cfg.AppSecret))
 	}
 	return feishu.NewDriveMarkdownPreviewer(api, feishu.MarkdownPreviewConfig{
-		StatePath:      cfg.PreviewStatePath,
-		RootFolderName: cfg.PreviewRootFolderName,
-		GatewayID:      cfg.GatewayID,
+		StatePath: cfg.PreviewStatePath,
+		GatewayID: cfg.GatewayID,
 	})
 }
 

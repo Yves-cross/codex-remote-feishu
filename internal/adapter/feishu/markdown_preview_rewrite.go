@@ -422,29 +422,16 @@ func (p *DriveMarkdownPreviewer) ensureRootFolderLocked(ctx context.Context, sta
 			if ok {
 				state.Root.Token = node.Token
 				state.Root.URL = node.URL
-				state.Root.MarkerReady = true
 			}
 		}
 
 		if state.Root.Token == "" {
-			node, err := p.api.CreateFolder(ctx, p.config.RootFolderName, "")
+			node, err := p.api.CreateFolder(ctx, defaultPreviewRootFolderName, "")
 			if err != nil {
 				return nil, fmt.Errorf("create markdown preview root folder: %w", err)
 			}
 			state.Root.Token = node.Token
 			state.Root.URL = node.URL
-			state.Root.MarkerReady = false
-		}
-
-		if !state.Root.MarkerReady {
-			if err := p.ensureRootMarkerLocked(ctx, state.Root.Token); err != nil {
-				if isPreviewResourceMissingError(err) {
-					state.Root = &previewFolderRecord{}
-					continue
-				}
-				return nil, fmt.Errorf("ensure markdown preview root marker: %w", err)
-			}
-			state.Root.MarkerReady = true
 		}
 		return state.Root, nil
 	}
