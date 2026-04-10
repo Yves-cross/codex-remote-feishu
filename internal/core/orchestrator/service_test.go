@@ -5131,7 +5131,7 @@ func TestPresentThreadSelectionShowsMostRecentFive(t *testing.T) {
 	if prompt.Options[0].OptionID != "thread-6" || prompt.Options[4].OptionID != "thread-2" {
 		t.Fatalf("expected most recent sessions first, got %#v", prompt.Options)
 	}
-	if prompt.Options[5].ActionKind != "show_scoped_threads" || prompt.Options[5].ButtonLabel != "显示当前工作区全部会话" {
+	if prompt.Options[5].ActionKind != "show_scoped_threads" || prompt.Options[5].ButtonLabel != "当前工作区全部会话" {
 		t.Fatalf("expected trailing scoped-all action, got %#v", prompt.Options[5])
 	}
 }

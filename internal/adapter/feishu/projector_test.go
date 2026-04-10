@@ -113,26 +113,29 @@ func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 	if ops[0].CardTitle != "最近会话" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if len(ops[0].CardElements) != 2 {
-		t.Fatalf("expected action + markdown elements, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) != 3 {
+		t.Fatalf("expected group header + action + markdown elements, got %#v", ops[0].CardElements)
 	}
-	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
+	if ops[0].CardElements[0]["content"] != "**可接管**" {
+		t.Fatalf("unexpected group header: %#v", ops[0].CardElements[0])
+	}
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
 	if len(actionRow) != 1 {
-		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[0])
+		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
 	}
 	if actionRow[0]["width"] != "fill" {
 		t.Fatalf("expected thread button to fill width, got %#v", actionRow[0])
 	}
 	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "修复登录流程" {
+	if textValue["content"] != "接管 · 修复登录流程" {
 		t.Fatalf("unexpected button text: %#v", actionRow[0])
 	}
 	value, _ := actionRow[0]["value"].(map[string]any)
 	if value["kind"] != "use_thread" || value["thread_id"] != "thread-1" || value["allow_cross_workspace"] != true {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
-	if ops[0].CardElements[1]["content"] != "<text_tag color='neutral'>/data/dl/droid</text_tag>\n可接管" {
-		t.Fatalf("unexpected option detail element: %#v", ops[0].CardElements[1])
+	if ops[0].CardElements[2]["content"] != "<text_tag color='neutral'>/data/dl/droid</text_tag>\n可接管" {
+		t.Fatalf("unexpected option detail element: %#v", ops[0].CardElements[2])
 	}
 }
 
@@ -148,10 +151,72 @@ func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 			},
 		},
 	})
-	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
 	value, _ := actionRow[0]["value"].(map[string]any)
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected selection prompt action to carry daemon lifecycle id, got %#v", value)
+	}
+}
+
+func TestProjectSessionSelectionPromptGroupsCurrentAndMoreActions(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind:  control.SelectionPromptUseThread,
+			Title: "全部会话",
+			Options: []control.SelectionOption{
+				{
+					Index:       2,
+					OptionID:    "thread-2",
+					Label:       "别的会话",
+					ButtonLabel: "别的会话",
+					Subtitle:    "/data/dl/other\n可接管",
+				},
+				{
+					Index:       1,
+					OptionID:    "thread-1",
+					Label:       "当前会话",
+					ButtonLabel: "当前会话",
+					Subtitle:    "已接管",
+					IsCurrent:   true,
+				},
+				{
+					Index:       3,
+					ButtonLabel: "当前工作区全部会话",
+					Subtitle:    "展开当前工作区内的全部会话",
+					ActionKind:  "show_scoped_threads",
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	wantHeaders := []string{"**当前会话**", "**可接管**", "**更多**"}
+	for _, header := range wantHeaders {
+		found := false
+		for _, element := range ops[0].CardElements {
+			if element["content"] == header {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected grouped header %q, got %#v", header, ops[0].CardElements)
+		}
+	}
+	var buttonLabels []string
+	for _, element := range ops[0].CardElements {
+		actions, _ := element["actions"].([]map[string]any)
+		if len(actions) == 0 {
+			continue
+		}
+		textValue, _ := actions[0]["text"].(map[string]any)
+		buttonLabels = append(buttonLabels, textValue["content"].(string))
+	}
+	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 接管 · 别的会话 | 查看全部 · 当前工作区全部会话" {
+		t.Fatalf("unexpected grouped button labels: %#v", buttonLabels)
 	}
 }
 

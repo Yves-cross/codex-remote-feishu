@@ -684,9 +684,9 @@ func (s *Service) threadSelectionStatus(surface *state.SurfaceConsoleRecord, vie
 	}
 	if surface != nil && surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID) {
 		if surface.RouteMode == state.RouteModeFollowLocal {
-			return "当前跟随", false
+			return "当前跟随中", false
 		}
-		return "当前会话", false
+		return "已接管", false
 	}
 	if owner := s.workspaceBusyOwnerForView(surface, view); owner != nil {
 		return "所在 workspace 已被其他飞书会话接管", true

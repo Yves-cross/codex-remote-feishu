@@ -970,8 +970,8 @@ func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConso
 		default:
 			if len(views) > 5 {
 				presentation.showScopedAllButton = true
-				presentation.scopedAllButtonText = "显示当前实例全部会话"
-				presentation.scopedAllStatus = "不再只显示最近 5 个"
+				presentation.scopedAllButtonText = "当前实例全部会话"
+				presentation.scopedAllStatus = "展开当前实例内的全部会话"
 			}
 		}
 		return presentation
@@ -1001,8 +1001,8 @@ func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConso
 		}
 		if len(views) > 5 {
 			presentation.showScopedAllButton = true
-			presentation.scopedAllButtonText = "显示当前工作区全部会话"
-			presentation.scopedAllStatus = "不再只显示最近 5 个"
+			presentation.scopedAllButtonText = "当前工作区全部会话"
+			presentation.scopedAllStatus = "展开当前工作区内的全部会话"
 		}
 		return presentation
 	}

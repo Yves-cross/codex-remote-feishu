@@ -421,6 +421,9 @@ func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID s
 	if len(prompt.Options) == 0 {
 		return nil
 	}
+	if prompt.Kind == control.SelectionPromptUseThread {
+		return useThreadSelectionPromptElements(prompt, daemonLifecycleID)
+	}
 	elements := make([]map[string]any, 0, len(prompt.Options)*2+1)
 	for _, option := range prompt.Options {
 		button := map[string]any{
@@ -455,6 +458,94 @@ func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID s
 		})
 	}
 	return elements
+}
+
+type useThreadOptionGroup string
+
+const (
+	useThreadOptionGroupCurrent     useThreadOptionGroup = "current"
+	useThreadOptionGroupTakeover    useThreadOptionGroup = "takeover"
+	useThreadOptionGroupUnavailable useThreadOptionGroup = "unavailable"
+	useThreadOptionGroupMore        useThreadOptionGroup = "more"
+)
+
+func useThreadSelectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID string) []map[string]any {
+	grouped := map[useThreadOptionGroup][]control.SelectionOption{
+		useThreadOptionGroupCurrent:     {},
+		useThreadOptionGroupTakeover:    {},
+		useThreadOptionGroupUnavailable: {},
+		useThreadOptionGroupMore:        {},
+	}
+	for _, option := range prompt.Options {
+		group := useThreadSelectionOptionGroup(option)
+		grouped[group] = append(grouped[group], option)
+	}
+	order := []useThreadOptionGroup{
+		useThreadOptionGroupCurrent,
+		useThreadOptionGroupTakeover,
+		useThreadOptionGroupUnavailable,
+		useThreadOptionGroupMore,
+	}
+	elements := make([]map[string]any, 0, len(prompt.Options)*3+4)
+	for _, group := range order {
+		options := grouped[group]
+		if len(options) == 0 {
+			continue
+		}
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**" + useThreadSelectionGroupTitle(group) + "**",
+		})
+		for _, option := range options {
+			elements = append(elements, map[string]any{
+				"tag": "action",
+				"actions": []map[string]any{
+					selectionOptionButton(prompt, option, daemonLifecycleID),
+				},
+			})
+			if line := selectionOptionBody(prompt.Kind, option); line != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": line,
+				})
+			}
+		}
+	}
+	if hint := strings.TrimSpace(prompt.Hint); hint != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": renderSystemInlineTags(hint),
+		})
+	}
+	return elements
+}
+
+func useThreadSelectionOptionGroup(option control.SelectionOption) useThreadOptionGroup {
+	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+		return useThreadOptionGroupMore
+	}
+	if option.IsCurrent {
+		return useThreadOptionGroupCurrent
+	}
+	if option.Disabled {
+		return useThreadOptionGroupUnavailable
+	}
+	return useThreadOptionGroupTakeover
+}
+
+func useThreadSelectionGroupTitle(group useThreadOptionGroup) string {
+	switch group {
+	case useThreadOptionGroupCurrent:
+		return "当前会话"
+	case useThreadOptionGroupTakeover:
+		return "可接管"
+	case useThreadOptionGroupUnavailable:
+		return "其他状态"
+	case useThreadOptionGroupMore:
+		return "更多"
+	default:
+		return "会话"
+	}
 }
 
 func selectionOptionBody(kind control.SelectionPromptKind, option control.SelectionOption) string {
@@ -516,10 +607,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 }
 
 func selectionOptionButton(prompt control.SelectionPrompt, option control.SelectionOption, daemonLifecycleID string) map[string]any {
-	text := strings.TrimSpace(option.ButtonLabel)
-	if text == "" {
-		text = "选择"
-	}
+	text := selectionOptionButtonText(prompt, option)
 	value := map[string]any{}
 	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
 		value = map[string]any{"kind": "show_scoped_threads"}
@@ -590,6 +678,29 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 		button["width"] = "fill"
 	}
 	return button
+}
+
+func selectionOptionButtonText(prompt control.SelectionPrompt, option control.SelectionOption) string {
+	text := strings.TrimSpace(option.ButtonLabel)
+	if prompt.Kind != control.SelectionPromptUseThread {
+		if text == "" {
+			return "选择"
+		}
+		return text
+	}
+	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "全部会话")
+		return "查看全部 · " + base
+	}
+	summary := firstNonEmpty(strings.TrimSpace(option.Label), strings.TrimSpace(option.ButtonLabel), "未命名会话")
+	switch {
+	case option.IsCurrent:
+		return "当前 · " + summary
+	case option.Disabled:
+		return "不可接管 · " + summary
+	default:
+		return "接管 · " + summary
+	}
 }
 
 func commandCatalogBody(catalog control.CommandCatalog) string {
