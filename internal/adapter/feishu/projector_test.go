@@ -15,9 +15,12 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind: control.SelectionPromptAttachInstance,
+			Kind:         control.SelectionPromptAttachInstance,
+			ContextTitle: "当前实例",
+			ContextText:  "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list",
 			Options: []control.SelectionOption{
-				{Index: 1, OptionID: "inst-1", Label: "droid", Subtitle: "/data/dl/droid", IsCurrent: true},
+				{Index: 1, OptionID: "inst-2", Label: "web", MetaText: "2分前 · 当前焦点可跟随", ButtonLabel: "切换"},
+				{Index: 2, OptionID: "inst-3", Label: "ops", MetaText: "1小时前 · 当前被其他飞书会话接管", Disabled: true},
 			},
 		},
 	})
@@ -30,18 +33,45 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardBody != "" {
 		t.Fatalf("expected interactive selection card body to be empty markdown root, got %#v", ops[0])
 	}
-	if len(ops[0].CardElements) != 2 {
-		t.Fatalf("expected markdown + action button elements, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) != 8 {
+		t.Fatalf("expected grouped instance selection elements, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[0]["content"] != "1. droid - 工作目录 <text_tag color='neutral'>/data/dl/droid</text_tag> [当前]" {
+	if ops[0].CardElements[0]["content"] != "**当前实例**" {
 		t.Fatalf("unexpected first element: %#v", ops[0].CardElements[0])
 	}
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	if ops[0].CardElements[1]["content"] != "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list" {
+		t.Fatalf("unexpected context summary: %#v", ops[0].CardElements[1])
+	}
+	if ops[0].CardElements[2]["content"] != "**可接管**" {
+		t.Fatalf("unexpected available header: %#v", ops[0].CardElements[2])
+	}
+	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
 	if len(actionRow) != 1 {
-		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
+		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[3])
+	}
+	textValue, _ := actionRow[0]["text"].(map[string]any)
+	if textValue["content"] != "切换 · web" || actionRow[0]["width"] != "fill" {
+		t.Fatalf("unexpected button label: %#v", actionRow[0])
 	}
 	value, _ := actionRow[0]["value"].(map[string]any)
-	if value["kind"] != "attach_instance" || value["instance_id"] != "inst-1" {
+	if value["kind"] != "attach_instance" || value["instance_id"] != "inst-2" {
+		t.Fatalf("unexpected action payload: %#v", value)
+	}
+	if ops[0].CardElements[4]["content"] != "2分前 · 当前焦点可跟随" {
+		t.Fatalf("unexpected available meta: %#v", ops[0].CardElements[4])
+	}
+	if ops[0].CardElements[5]["content"] != "**其他状态**" {
+		t.Fatalf("unexpected unavailable header: %#v", ops[0].CardElements[5])
+	}
+	blockedRow, _ := ops[0].CardElements[6]["actions"].([]map[string]any)
+	if len(blockedRow) != 1 {
+		t.Fatalf("expected one unavailable action button, got %#v", ops[0].CardElements[6])
+	}
+	blockedText, _ := blockedRow[0]["text"].(map[string]any)
+	if blockedText["content"] != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
+		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
+	}
+	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
 }
@@ -345,6 +375,136 @@ func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t
 	}
 	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 查看当前工作区全部会话 | 接管 · web-1 | 接管 · web-2 | 接管 · web-3 | 接管 · web-4 | 接管 · web-5 | 查看web全部会话" {
 		t.Fatalf("unexpected grouped/limited button labels: %#v", buttonLabels)
+	}
+}
+
+func TestProjectVSCodeRecentSelectionPromptShowsInstanceSummaryAndMore(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Layout:       "vscode_instance_threads",
+			Kind:         control.SelectionPromptUseThread,
+			Title:        "最近会话",
+			ContextTitle: "当前实例",
+			ContextText:  "droid · 当前跟随中",
+			Options: []control.SelectionOption{
+				{
+					Index:       1,
+					OptionID:    "thread-current",
+					Label:       "修复登录流程",
+					ButtonLabel: "修复登录流程",
+					MetaText:    "当前跟随中 · 20秒前",
+					IsCurrent:   true,
+				},
+				{
+					Index:       2,
+					OptionID:    "thread-focus",
+					Label:       "整理日志",
+					ButtonLabel: "整理日志",
+					MetaText:    "VS Code 当前焦点 · 1分前",
+				},
+				{
+					Index:       3,
+					ButtonLabel: "当前实例全部会话",
+					MetaText:    "展开当前实例内的全部会话",
+					ActionKind:  "show_scoped_threads",
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	wantHeaders := []string{"**当前实例**", "**当前会话**", "**可接管**", "**更多**"}
+	for _, header := range wantHeaders {
+		found := false
+		for _, element := range ops[0].CardElements {
+			if element["content"] == header {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected header %q, got %#v", header, ops[0].CardElements)
+		}
+	}
+	var buttonLabels []string
+	for _, element := range ops[0].CardElements {
+		actions, _ := element["actions"].([]map[string]any)
+		if len(actions) == 0 {
+			continue
+		}
+		textValue, _ := actions[0]["text"].(map[string]any)
+		buttonLabels = append(buttonLabels, textValue["content"].(string))
+	}
+	if strings.Join(buttonLabels, " | ") != "当前 · 修复登录流程 | 接管 · 整理日志 | 查看全部 · 当前实例全部会话" {
+		t.Fatalf("unexpected vscode recent button labels: %#v", buttonLabels)
+	}
+}
+
+func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Layout:       "vscode_instance_threads",
+			Kind:         control.SelectionPromptUseThread,
+			Title:        "当前实例全部会话",
+			ContextTitle: "当前实例",
+			ContextText:  "droid · 当前跟随中",
+			Options: []control.SelectionOption{
+				{
+					Index:       1,
+					OptionID:    "thread-current",
+					Label:       "修复登录流程",
+					ButtonLabel: "修复登录流程",
+					MetaText:    "当前跟随中 · 20秒前",
+					IsCurrent:   true,
+				},
+				{
+					Index:       2,
+					OptionID:    "thread-focus",
+					Label:       "整理日志",
+					ButtonLabel: "整理日志",
+					MetaText:    "VS Code 当前焦点 · 1分前",
+				},
+				{
+					Index:       3,
+					OptionID:    "thread-old",
+					Label:       "历史会话",
+					ButtonLabel: "历史会话",
+					MetaText:    "已被其他飞书会话接管",
+					Disabled:    true,
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	var rendered []string
+	for _, element := range ops[0].CardElements {
+		if content, _ := element["content"].(string); content != "" {
+			rendered = append(rendered, content)
+		}
+	}
+	for _, fragment := range []string{"**当前实例**", "**当前会话**", "**全部会话**", "1. VS Code 当前焦点 · 1分前", "2. 已被其他飞书会话接管"} {
+		if !containsString(rendered, fragment) {
+			t.Fatalf("expected rendered vscode all content to include %q, got %#v", fragment, rendered)
+		}
+	}
+	var buttonLabels []string
+	for _, element := range ops[0].CardElements {
+		actions, _ := element["actions"].([]map[string]any)
+		if len(actions) == 0 {
+			continue
+		}
+		textValue, _ := actions[0]["text"].(map[string]any)
+		buttonLabels = append(buttonLabels, textValue["content"].(string))
+	}
+	if strings.Join(buttonLabels, " | ") != "当前 · 修复登录流程 | 接管 · 整理日志 | 不可接管 · 历史会话" {
+		t.Fatalf("unexpected vscode all button labels: %#v", buttonLabels)
 	}
 }
 

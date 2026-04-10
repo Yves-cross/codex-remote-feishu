@@ -246,62 +246,172 @@ func (s *Service) presentInstanceSelection(surface *state.SurfaceConsoleRecord) 
 	if len(instances) == 0 {
 		return notice(surface, "no_online_instances", "当前没有在线 VS Code 实例。请先在 VS Code 中打开 Codex 会话。")
 	}
-	sort.Slice(instances, func(i, j int) bool {
-		if instances[i].WorkspaceKey == instances[j].WorkspaceKey {
-			return instances[i].InstanceID < instances[j].InstanceID
+	available := make([]instanceSelectionEntry, 0, len(instances))
+	unavailable := make([]instanceSelectionEntry, 0, len(instances))
+	contextTitle := ""
+	contextText := ""
+	for _, inst := range instances {
+		if inst == nil {
+			continue
 		}
-		return instances[i].WorkspaceKey < instances[j].WorkspaceKey
-	})
-
-	options := make([]control.SelectionOption, 0, len(instances))
-	for i, inst := range instances {
-		label := inst.ShortName
-		if label == "" {
-			label = filepath.Base(inst.WorkspaceKey)
+		current := surface != nil && surface.AttachedInstanceID == inst.InstanceID
+		busy := false
+		if owner := s.instanceClaimSurface(inst.InstanceID); owner != nil && (surface == nil || owner.SurfaceSessionID != surface.SurfaceSessionID) {
+			busy = true
 		}
-		if label == "" {
-			label = inst.InstanceID
+		latestUsedAt := instanceLatestVisibleThreadUsedAt(inst)
+		ageText := ""
+		if !latestUsedAt.IsZero() {
+			ageText = humanizeRelativeTime(s.now(), latestUsedAt)
 		}
-		subtitle := inst.WorkspaceKey
 		buttonLabel := ""
-		current := surface.AttachedInstanceID == inst.InstanceID
-		disabled := false
-		if owner := s.workspaceBusyOwnerForSurface(surface, instanceWorkspaceClaimKey(inst)); owner != nil {
-			disabled = true
-			buttonLabel = "已占用"
-			if subtitle == "" {
-				subtitle = "所在 workspace 已被其他飞书会话接管"
-			} else {
-				subtitle += "\n所在 workspace 已被其他飞书会话接管"
-			}
-		} else if owner := s.instanceClaimSurface(inst.InstanceID); owner != nil && owner.SurfaceSessionID != surface.SurfaceSessionID {
-			disabled = true
-			buttonLabel = "已占用"
-			if subtitle == "" {
-				subtitle = "已被其他飞书会话接管"
-			} else {
-				subtitle += "\n已被其他飞书会话接管"
-			}
+		if !current && !busy && surface != nil && strings.TrimSpace(surface.AttachedInstanceID) != "" {
+			buttonLabel = "切换"
 		}
-		options = append(options, control.SelectionOption{
-			Index:       i + 1,
+		option := control.SelectionOption{
 			OptionID:    inst.InstanceID,
-			Label:       label,
-			Subtitle:    subtitle,
+			Label:       instanceSelectionLabel(inst),
 			ButtonLabel: buttonLabel,
+			AgeText:     ageText,
+			MetaText:    instanceSelectionMetaText(inst, ageText, busy),
 			IsCurrent:   current,
-			Disabled:    disabled,
-		})
+			Disabled:    busy,
+		}
+		if current {
+			contextTitle = "当前实例"
+			contextText = s.instanceSelectionContextText(surface, inst)
+			continue
+		}
+		entry := instanceSelectionEntry{
+			option:       option,
+			latestUsedAt: latestUsedAt,
+			hasFocus:     instanceHasObservedFocus(inst),
+		}
+		if busy {
+			unavailable = append(unavailable, entry)
+			continue
+		}
+		available = append(available, entry)
+	}
+	sortInstanceSelectionEntries(available)
+	sortInstanceSelectionEntries(unavailable)
+
+	options := make([]control.SelectionOption, 0, len(available)+len(unavailable))
+	appendIndexed := func(entries []instanceSelectionEntry) {
+		for _, entry := range entries {
+			entry.option.Index = len(options) + 1
+			options = append(options, entry.option)
+		}
+	}
+	appendIndexed(available)
+	appendIndexed(unavailable)
+
+	hint := ""
+	if contextTitle != "" && len(options) == 0 {
+		hint = "当前没有其他可接管实例。"
 	}
 	return []control.UIEvent{{
 		Kind:             control.UIEventSelectionPrompt,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:    control.SelectionPromptAttachInstance,
-			Title:   "在线 VS Code 实例",
-			Options: options,
+			Kind:         control.SelectionPromptAttachInstance,
+			Layout:       "grouped_attach_instance",
+			Title:        "在线 VS Code 实例",
+			Hint:         hint,
+			ContextTitle: contextTitle,
+			ContextText:  contextText,
+			Options:      options,
 		},
 	}}
+}
+
+type instanceSelectionEntry struct {
+	option       control.SelectionOption
+	latestUsedAt time.Time
+	hasFocus     bool
+}
+
+func sortInstanceSelectionEntries(entries []instanceSelectionEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		left := entries[i]
+		right := entries[j]
+		if left.hasFocus != right.hasFocus {
+			return left.hasFocus
+		}
+		switch {
+		case left.latestUsedAt.IsZero() && right.latestUsedAt.IsZero():
+		case left.latestUsedAt.IsZero():
+			return false
+		case right.latestUsedAt.IsZero():
+			return true
+		case !left.latestUsedAt.Equal(right.latestUsedAt):
+			return left.latestUsedAt.After(right.latestUsedAt)
+		}
+		return strings.TrimSpace(left.option.OptionID) < strings.TrimSpace(right.option.OptionID)
+	})
+}
+
+func instanceSelectionLabel(inst *state.InstanceRecord) string {
+	if inst == nil {
+		return ""
+	}
+	label := strings.TrimSpace(inst.ShortName)
+	if label == "" {
+		label = strings.TrimSpace(filepath.Base(inst.WorkspaceKey))
+	}
+	if label == "" || label == "." || label == string(filepath.Separator) {
+		label = strings.TrimSpace(inst.DisplayName)
+	}
+	if label == "" {
+		label = strings.TrimSpace(inst.InstanceID)
+	}
+	return label
+}
+
+func instanceLatestVisibleThreadUsedAt(inst *state.InstanceRecord) time.Time {
+	if inst == nil {
+		return time.Time{}
+	}
+	latest := time.Time{}
+	for _, thread := range visibleThreads(inst) {
+		if thread == nil || !thread.LastUsedAt.After(latest) {
+			continue
+		}
+		latest = thread.LastUsedAt
+	}
+	return latest
+}
+
+func instanceHasObservedFocus(inst *state.InstanceRecord) bool {
+	return inst != nil && strings.TrimSpace(inst.ObservedFocusedThreadID) != ""
+}
+
+func instanceSelectionMetaText(inst *state.InstanceRecord, ageText string, busy bool) string {
+	parts := make([]string, 0, 2)
+	if age := strings.TrimSpace(ageText); age != "" {
+		parts = append(parts, age)
+	}
+	switch {
+	case busy:
+		parts = append(parts, "当前被其他飞书会话接管")
+	case instanceHasObservedFocus(inst):
+		parts = append(parts, "当前焦点可跟随")
+	default:
+		parts = append(parts, "等待 VS Code 焦点")
+	}
+	return strings.Join(parts, " · ")
+}
+
+func (s *Service) instanceSelectionContextText(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) string {
+	label := instanceSelectionLabel(inst)
+	stateText := s.vscodeInstanceSurfaceStatus(surface, inst)
+	if stateText == "" {
+		stateText = "等待 VS Code 焦点"
+	}
+	return strings.Join([]string{
+		label + " · " + stateText,
+		"焦点切换仍会自动跟随，换实例才用 /list",
+	}, "\n")
 }
 
 func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
@@ -1010,7 +1120,7 @@ func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleR
 	options := make([]control.SelectionOption, 0, len(filtered))
 	for i, view := range filtered {
 		status, disabled := s.threadSelectionStatus(surface, view, true)
-		summary := threadSelectionButtonLabel(view.Thread, view.ThreadID)
+		summary := s.threadSelectionSummary(surface, view)
 		options = append(options, control.SelectionOption{
 			Index:               i + 1,
 			OptionID:            view.ThreadID,
@@ -1060,7 +1170,7 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 	options := make([]control.SelectionOption, 0, len(threads)+1)
 	for i, view := range threads {
 		status, disabled := s.threadSelectionStatus(surface, view, presentation.allowCrossWorkspace)
-		summary := threadSelectionButtonLabel(view.Thread, view.ThreadID)
+		summary := s.threadSelectionSummary(surface, view)
 		workspaceKey := mergedThreadWorkspaceClaimKey(view)
 		options = append(options, control.SelectionOption{
 			Index:               i + 1,
@@ -1090,7 +1200,7 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SelectionPrompt: &control.SelectionPrompt{
 			Kind:         control.SelectionPromptUseThread,
-			Layout:       s.threadSelectionPromptLayout(presentation),
+			Layout:       s.threadSelectionPromptLayout(surface, presentation),
 			Title:        presentation.title,
 			ContextTitle: s.threadSelectionContextTitle(surface, presentation),
 			ContextText:  s.threadSelectionContextText(surface, presentation),
@@ -1100,7 +1210,12 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 	}}
 }
 
-func (s *Service) threadSelectionPromptLayout(presentation threadSelectionPresentation) string {
+func (s *Service) threadSelectionPromptLayout(surface *state.SurfaceConsoleRecord, presentation threadSelectionPresentation) string {
+	if surface != nil &&
+		s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode &&
+		strings.TrimSpace(surface.AttachedInstanceID) != "" {
+		return "vscode_instance_threads"
+	}
 	if presentation.title == "全部会话" && presentation.includeWorkspace {
 		return "workspace_grouped_useall"
 	}
@@ -1108,13 +1223,13 @@ func (s *Service) threadSelectionPromptLayout(presentation threadSelectionPresen
 }
 
 func (s *Service) threadSelectionContextTitle(surface *state.SurfaceConsoleRecord, presentation threadSelectionPresentation) string {
-	if surface == nil || !presentation.includeWorkspace || strings.TrimSpace(surface.AttachedInstanceID) == "" {
+	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" {
 		return ""
 	}
-	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
-		return ""
+	if s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode {
+		return "当前实例"
 	}
-	if presentation.title != "全部会话" {
+	if !presentation.includeWorkspace || presentation.title != "全部会话" {
 		return ""
 	}
 	if workspaceKey := s.surfaceCurrentWorkspaceKey(surface); workspaceKey != "" {
@@ -1124,6 +1239,11 @@ func (s *Service) threadSelectionContextTitle(surface *state.SurfaceConsoleRecor
 }
 
 func (s *Service) threadSelectionContextText(surface *state.SurfaceConsoleRecord, presentation threadSelectionPresentation) string {
+	if surface != nil &&
+		s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode &&
+		strings.TrimSpace(surface.AttachedInstanceID) != "" {
+		return s.vscodeThreadSelectionContextText(surface)
+	}
 	workspaceKey := s.threadSelectionContextKey(surface, presentation)
 	if workspaceKey == "" {
 		return ""
@@ -1153,6 +1273,58 @@ func (s *Service) threadSelectionContextKey(surface *state.SurfaceConsoleRecord,
 	return s.surfaceCurrentWorkspaceKey(surface)
 }
 
+func (s *Service) threadSelectionSummary(surface *state.SurfaceConsoleRecord, view *mergedThreadView) string {
+	if surface != nil &&
+		s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode &&
+		strings.TrimSpace(surface.AttachedInstanceID) != "" {
+		return vscodeThreadSelectionButtonLabel(view.Thread, view.ThreadID)
+	}
+	return threadSelectionButtonLabel(view.Thread, view.ThreadID)
+}
+
+func vscodeThreadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
+	source := threadDisplayBody(thread, 20)
+	if source == "" {
+		source = shortenThreadID(fallback)
+	}
+	if source == "" {
+		source = "未命名会话"
+	}
+	return source
+}
+
+func (s *Service) vscodeInstanceSurfaceStatus(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) string {
+	if surface == nil || inst == nil || strings.TrimSpace(surface.AttachedInstanceID) != inst.InstanceID {
+		return ""
+	}
+	if strings.TrimSpace(surface.SelectedThreadID) != "" {
+		if surface.RouteMode == state.RouteModeFollowLocal {
+			return "当前跟随中"
+		}
+		return "已接管"
+	}
+	if instanceHasObservedFocus(inst) {
+		return "当前焦点可跟随"
+	}
+	return "等待 VS Code 焦点"
+}
+
+func (s *Service) vscodeThreadSelectionContextText(surface *state.SurfaceConsoleRecord) string {
+	if surface == nil {
+		return ""
+	}
+	inst := s.root.Instances[strings.TrimSpace(surface.AttachedInstanceID)]
+	if inst == nil {
+		return ""
+	}
+	label := instanceSelectionLabel(inst)
+	status := s.vscodeInstanceSurfaceStatus(surface, inst)
+	if status == "" {
+		return label
+	}
+	return label + " · " + status
+}
+
 func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode) threadSelectionPresentation {
 	productMode := state.ProductModeNormal
 	if surface != nil {
@@ -1169,7 +1341,7 @@ func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConso
 		}
 		switch mode {
 		case threadSelectionDisplayAll:
-			presentation.title = "全部会话"
+			presentation.title = "当前实例全部会话"
 			presentation.limit = len(views)
 		case threadSelectionDisplayScopedAll:
 			presentation.title = "当前实例全部会话"

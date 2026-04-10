@@ -246,6 +246,22 @@ surface 不是单一枚举，而是五层正交状态叠加。
 5. normal mode 的 `/list` attach/switch 不会自动抢默认 thread；用户会明确落到 `R1`，然后继续 `/use` 或点 thread 卡片。
 6. 如果当前 surface 已 attach 且没有其他可切换 workspace，卡片仍会保留“当前工作区”摘要，并在底部给出“当前没有其他可接管工作区”的短提示，不会出现空白卡片。
 
+### 4.1.1 vscode mode `/list` 先选 instance，并显式投影“当前实例”
+
+当前 `vscode mode` 的 `/list` 仍然只列在线 VS Code instance，但卡片展示已经切到 instance-aware 的专用布局。
+
+对应实现里：
+
+1. `presentInstanceSelection()` 只保留在线且 `source=vscode` 的实例，不再夹带 headless。
+2. Feishu 卡片当前走专用 `grouped_attach_instance` 布局，不再复用旧的通用 selection 模板。
+   1. 若 surface 当前已 attach instance，会先在顶部投影“当前实例”摘要，格式为 `实例标签 + 当前跟随状态`，并附带“换实例才用 /list”的短提示。
+   2. 当前实例不会再混进下面的可点击列表。
+   3. 其他实例按“可接管 / 其他状态”分组，按钮使用全宽动作前缀文案，例如 `接管 · web`、`切换 · admin`、`不可接管 · ops`。
+   4. 每个实例的第二行状态压缩为短元信息，例如 `2分前 · 当前焦点可跟随`、`1小时前 · 等待 VS Code 焦点`、`30分前 · 当前被其他飞书会话接管`。
+   5. 组内排序优先 `ObservedFocusedThreadID` 非空的实例，再按该实例可见 thread 的最近活跃时间倒序；无时间时再回退到 `InstanceID`。
+3. 卡片按钮仍走 `attach_instance -> ActionAttachInstance`。
+4. attach / switch 成功后，surface 仍会进入既有的 follow-local 语义：有 observed focus 时进入 `R4 FollowBound`，否则进入 `R3 FollowWaiting`。
+
 ### 4.2 thread claim 仍是全局的，但在 normal mode 下退回 workspace 内仲裁
 
 当前 `threadClaims` 仍按 `threadID` 做全局仲裁。
@@ -613,7 +629,11 @@ R5 NewThreadReady
 8. attached `vscode /use` / `/useall` 当前有两条额外约束：
    1. 只展示当前 attached instance 的可见 thread，不再走 merged global thread view。
    2. force-pick 后会保留 `RouteMode=follow_local`，后续 observed focus 变化仍可覆盖。
-   3. attached `vscode /use` / `/useall` 的卡片分组和动作前缀与 normal mode 一致，只是“更多”按钮文案会改成 `查看全部 · 当前实例全部会话`
+   3. attached `vscode /use` / `/useall` 当前都会在顶部插入一个“当前实例”摘要，格式为 `实例标签 + 当前跟随状态`。
+   4. thread 按钮摘要不再重复 workspace 前缀，而是只保留会话标题本身；状态行改由 `MetaText` 投影，例如 `当前跟随中 · 3分前`、`VS Code 当前焦点 · 2分前`、`已被其他飞书会话接管`。
+   5. attached `vscode /use` 的卡片分组仍是“当前会话 / 可接管 / 其他状态 / 更多”，只是“更多”按钮文案会改成 `查看全部 · 当前实例全部会话`。
+   6. attached `vscode /useall` 的标题当前已改成 `当前实例全部会话`，不再使用含糊的 `全部会话`。
+   7. `当前实例全部会话` 卡片会保留“当前会话”区块；其余 thread 按最近活跃时间顺序平铺在“全部会话”区块里，并在按钮外用 `1. VS Code 当前焦点 · 2分前` 这类编号 + 元信息行帮助快速扫读长列表。
 9. attached normal `/useall` 当前会显示 cross-workspace 的全部会话，并允许直接点击切到其他 workspace。
    1. 这类 global 卡片会先保留一个单独的“当前会话”区块。
    2. 若当前 surface 已 attach workspace，还会在其后插入一段“当前工作区”摘要，仅供参考，不再展开当前 workspace 的 thread 列表；同 workspace 内切换仍建议回 `/use`

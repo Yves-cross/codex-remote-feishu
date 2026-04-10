@@ -785,6 +785,11 @@ func (s *Service) threadSelectionMetaText(surface *state.SurfaceConsoleRecord, v
 	if view == nil {
 		return ""
 	}
+	if surface != nil &&
+		s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode &&
+		strings.TrimSpace(surface.AttachedInstanceID) != "" {
+		return s.vscodeThreadSelectionMetaText(surface, view, status)
+	}
 	status = strings.TrimSpace(status)
 	if surface != nil && surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID) {
 		if status != "" {
@@ -806,6 +811,36 @@ func (s *Service) threadSelectionMetaText(surface *state.SurfaceConsoleRecord, v
 		return age
 	}
 	return firstNonEmpty(status, "时间未知")
+}
+
+func (s *Service) vscodeThreadSelectionMetaText(surface *state.SurfaceConsoleRecord, view *mergedThreadView, status string) string {
+	status = strings.TrimSpace(status)
+	age := humanizeRelativeTime(s.now(), threadLastUsedAt(view))
+	isCurrent := surface != nil && surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID)
+	if isCurrent {
+		parts := []string{firstNonEmpty(status, "已接管")}
+		if age != "" {
+			parts = append(parts, age)
+		}
+		return strings.Join(parts, " · ")
+	}
+	if status != "" && (strings.Contains(status, "其他飞书会话接管") || strings.Contains(status, "不可接管") || strings.Contains(status, "不存在")) {
+		return status
+	}
+	parts := make([]string, 0, 2)
+	if view != nil && view.Inst != nil && strings.TrimSpace(view.Inst.ObservedFocusedThreadID) == view.ThreadID {
+		parts = append(parts, "VS Code 当前焦点")
+	}
+	if age != "" {
+		parts = append(parts, age)
+	}
+	if len(parts) != 0 {
+		return strings.Join(parts, " · ")
+	}
+	if status != "" {
+		return status
+	}
+	return "时间未知"
 }
 
 func threadLastUsedAt(view *mergedThreadView) time.Time {
