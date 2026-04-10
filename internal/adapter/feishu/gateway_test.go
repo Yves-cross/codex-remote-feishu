@@ -682,6 +682,69 @@ func TestParseCardActionTriggerEventBuildsCommandCaptureActions(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsSubmitCommandFormActionFromFormValue(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-form-1", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":       "submit_command_form",
+					"command":    "/model",
+					"field_name": "command_args",
+				},
+				FormValue: map[string]interface{}{
+					"command_args": "gpt-5.4 high",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-form-1",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected submit_command_form callback to be parsed")
+	}
+	if action.Kind != control.ActionModelCommand || action.Text != "/model gpt-5.4 high" {
+		t.Fatalf("unexpected form submit action: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsSubmitCommandFormActionFromInputValueFallback(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-form-2", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":    "submit_command_form",
+					"command": "/debug",
+				},
+				InputValue: "track beta",
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-form-2",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected submit_command_form callback to be parsed")
+	}
+	if action.Kind != control.ActionDebugCommand || action.Text != "/debug track beta" {
+		t.Fatalf("unexpected input fallback action: %#v", action)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsDirectAttachInstanceAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-4", "feishu:app-1:user:user-1")

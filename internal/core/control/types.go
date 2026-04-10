@@ -284,6 +284,12 @@ const (
 	CommandCatalogButtonCancelCommandCapture CommandCatalogButtonKind = "cancel_command_capture"
 )
 
+type CommandCatalogFormFieldKind string
+
+const (
+	CommandCatalogFormFieldText CommandCatalogFormFieldKind = "text"
+)
+
 type CommandCatalogDisplayStyle string
 
 const (
@@ -304,12 +310,28 @@ type CommandCatalogButton struct {
 	Disabled    bool
 }
 
+type CommandCatalogFormField struct {
+	Name         string
+	Kind         CommandCatalogFormFieldKind
+	Label        string
+	Placeholder  string
+	DefaultValue string
+}
+
+type CommandCatalogForm struct {
+	CommandID   string
+	CommandText string
+	SubmitLabel string
+	Field       CommandCatalogFormField
+}
+
 type CommandCatalogEntry struct {
 	Title       string
 	Commands    []string
 	Description string
 	Examples    []string
 	Buttons     []CommandCatalogButton
+	Form        *CommandCatalogForm
 }
 
 type CommandCatalogSection struct {

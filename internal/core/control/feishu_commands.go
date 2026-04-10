@@ -55,6 +55,9 @@ type FeishuCommandDefinition struct {
 	CanonicalSlash   string
 	CanonicalMenuKey string
 	ArgumentKind     FeishuCommandArgumentKind
+	ArgumentFormHint string
+	ArgumentFormNote string
+	ArgumentSubmit   string
 	Description      string
 	Examples         []string
 	Options          []FeishuCommandOption
@@ -176,6 +179,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/reasoning",
 			CanonicalMenuKey: "reasoning",
 			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "high",
+			ArgumentFormNote: "输入 low / medium / high / xhigh / clear。",
+			ArgumentSubmit:   "应用",
 			Description:      "查看当前推理强度；bare `/reasoning` 会返回可选参数卡片。",
 			Examples:         []string{"/reasoning high", "/reasoning clear"},
 			Options: []FeishuCommandOption{
@@ -219,6 +225,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/model",
 			CanonicalMenuKey: "model",
 			ArgumentKind:     FeishuCommandArgumentText,
+			ArgumentFormHint: "gpt-5.4 high",
+			ArgumentFormNote: "输入模型名，或输入“模型名 推理强度”。",
+			ArgumentSubmit:   "应用",
 			Description:      "查看当前模型配置；bare `/model` 会给出常见模型与手动输入入口。",
 			Examples:         []string{"/model gpt-5.4", "/model gpt-5.4 high", "/model clear"},
 			ShowInHelp:       true,
@@ -248,6 +257,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/access",
 			CanonicalMenuKey: "access",
 			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "confirm",
+			ArgumentFormNote: "输入 full / confirm / clear。",
+			ArgumentSubmit:   "应用",
 			Description:      "查看当前执行权限；bare `/access` 会返回可选参数卡片。",
 			Examples:         []string{"/access confirm", "/access clear"},
 			Options: []FeishuCommandOption{
@@ -417,6 +429,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/mode",
 			CanonicalMenuKey: "mode",
 			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "vscode",
+			ArgumentFormNote: "输入 normal 或 vscode。",
+			ArgumentSubmit:   "切换",
 			Description:      "查看当前模式；bare `/mode` 会返回 normal / vscode 切换卡片。",
 			Examples:         []string{"/mode normal", "/mode vscode"},
 			Options: []FeishuCommandOption{
@@ -445,6 +460,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/autocontinue",
 			CanonicalMenuKey: "autocontinue",
 			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "on",
+			ArgumentFormNote: "输入 on 或 off。",
+			ArgumentSubmit:   "应用",
 			Description:      "查看当前 auto-continue 状态；bare `/autocontinue` 会返回 on / off 切换卡片。",
 			Examples:         []string{"/autocontinue on", "/autocontinue off"},
 			Options: []FeishuCommandOption{
@@ -516,6 +534,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/upgrade",
 			CanonicalMenuKey: "upgrade",
 			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "latest",
+			ArgumentFormNote: "输入 latest 或 local。",
+			ArgumentSubmit:   "执行",
 			Description:      "查看升级状态；`/upgrade latest` 检查或继续 release 升级，`/upgrade local` 使用固定本地 artifact 发起升级。",
 			Examples:         []string{"/upgrade latest", "/upgrade local"},
 			Options: []FeishuCommandOption{
@@ -544,6 +565,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/debug",
 			CanonicalMenuKey: "debug",
 			ArgumentKind:     FeishuCommandArgumentText,
+			ArgumentFormHint: "track beta",
+			ArgumentFormNote: "例如 track、track alpha、track beta、track production。",
+			ArgumentSubmit:   "执行",
 			Description:      "查看调试状态，或切换当前 release track。",
 			Examples:         []string{"/debug", "/debug track beta"},
 			ShowInHelp:       true,
@@ -813,6 +837,37 @@ func cloneFeishuCommandDefinition(def FeishuCommandDefinition) FeishuCommandDefi
 		cloned.RecommendedMenu = &menu
 	}
 	return cloned
+}
+
+func FeishuCommandForm(commandID string) (*CommandCatalogForm, bool) {
+	def, ok := FeishuCommandDefinitionByID(commandID)
+	if !ok {
+		return nil, false
+	}
+	switch def.ArgumentKind {
+	case FeishuCommandArgumentChoice, FeishuCommandArgumentText:
+	default:
+		return nil, false
+	}
+	submit := strings.TrimSpace(def.ArgumentSubmit)
+	if submit == "" {
+		submit = "执行"
+	}
+	label := strings.TrimSpace(def.ArgumentFormNote)
+	if label == "" {
+		label = "输入这条命令后面的参数。"
+	}
+	return &CommandCatalogForm{
+		CommandID:   def.ID,
+		CommandText: def.CanonicalSlash,
+		SubmitLabel: submit,
+		Field: CommandCatalogFormField{
+			Name:        "command_args",
+			Kind:        CommandCatalogFormFieldText,
+			Label:       label,
+			Placeholder: strings.TrimSpace(def.ArgumentFormHint),
+		},
+	}, true
 }
 
 func commandOption(commandText, menuKey, value, label, description string) FeishuCommandOption {

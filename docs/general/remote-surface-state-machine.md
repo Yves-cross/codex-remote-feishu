@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-10`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autocontinue` `/reasoning` `/access` 参数卡，以及 bare `/model` 的 capture/apply fallback。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页，以及 bare `/mode` `/autocontinue` `/reasoning` `/access` `/model` `/debug` `/upgrade` 的统一参数卡表单。
 
 ## 1. 文档定位
 
@@ -172,7 +172,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 | `G1 PendingHeadlessStarting` | `PendingHeadless.Status=starting` | headless 仍在启动 |
 | `G2 PendingRequest` | `PendingRequests` 非空 | 普通文本/图片会被确认卡片门禁挡住 |
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
-| `G4 CommandCapture` | `ActiveCommandCapture != nil` | 当前只用于 `/model` capture/apply fallback：下一条普通文本会先被当成模型名候选，不进入普通消息队列 |
+| `G4 CommandCapture` | `ActiveCommandCapture != nil` | 仅保留旧 `/model` 历史兼容：当前 UI 不再创建新 capture；若 surface 上残留旧 capture，下一条普通文本会被直接转换成 `/model <输入>` |
 | `G5 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autocontinue` 继续正常，其余动作被挡 |
 | `G6 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到 legacy `settings.json` override 或 stale managed shim | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发迁移/修复卡片 |
 
@@ -420,7 +420,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 2. 当前接管的是工作区、VS Code 实例，还是 headless/其他实例。
 3. 当前到底占着哪个 workspace。
 4. 下一条文本是不是会先被 request gate 吃掉。
-5. 下一条文本是不是会先被 `/model` capture/apply fallback 吃掉。
+5. 下一条文本是不是会先被 legacy `/model` capture 兼容态吃掉。
 6. 现在是执行中、排队中，还是被本地 VS Code 暂停。
 7. auto-continue 当前是关闭、待触发，还是刚因 backoff 暂缓。
 8. attachment 还在不在，以及当前是不是在等实例恢复。
@@ -482,7 +482,15 @@ surface 不是单一枚举，而是五层正交状态叠加。
    4. `/access`
    5. `/follow`
 5. `normal` working 首页与主路径里不再暴露 `/follow`。
-6. 二级分组当前通过卡片按钮 + breadcrumb 返回首页实现，不依赖飞书后台把整棵导航树都铺成静态菜单。
+6. bare 参数命令现在统一走“快捷按钮 + 单字段表单”：
+   1. `send settings`：`/reasoning`、`/model`、`/access`
+   2. `maintenance`：`/mode`、`/autocontinue`、`/debug`、`/upgrade`
+   3. 表单提交通过 card callback `submit_command_form` 拼回 canonical slash text，再复用文本命令解析链路。
+7. 旧 `/model start_command_capture` 卡片只保留历史兼容：
+   1. 点击后不会再创建新的 `G4 CommandCapture`
+   2. 服务端会直接重新打开新的 `/model` 表单卡
+   3. 若 daemon 热更新前已经残留 `G4`，下一条文本会立即应用，不再要求再点一次 Apply
+8. 二级分组当前通过卡片按钮 + breadcrumb 返回首页实现，不依赖飞书后台把整棵导航树都铺成静态菜单。
 
 ### 4.15 auto-continue 调度只允许走显式 reply-anchor，不再伪造用户消息 pending/typing
 
@@ -864,15 +872,16 @@ transport degraded retained attachment
 | `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | 拒绝并提示迁移 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
-| `/help` `/menu` `/debug` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| `/help` `/menu` `/debug` `/upgrade` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
 | 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
 | 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 理论上通常不会出现；若出现仍按 attached surface 处理 |
 | `/stop` | 通常无效果 | 通常无效果 | 允许 | 允许 | 允许 | 允许；可清掉 staged/queued draft |
 | `/status` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/detach` | 允许但通常只提示已 detached | 允许 | 允许 | 允许 | 允许 | 允许；dispatching/running 时走 abandoning |
-| bare `/mode` / bare `/autocontinue` | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 |
-| bare `/model` `/reasoning` `/access` | 允许，但当前只回恢复/参数卡，不直接执行 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 | 允许，返回参数卡 |
+| bare `/mode` / bare `/autocontinue` | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 |
+| bare `/model` `/reasoning` `/access` | 允许，但 detached 时只回恢复/参数卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 | 允许，返回快捷按钮 + 表单卡 |
+| bare `/debug` `/upgrade` | 允许，返回状态 + 快捷按钮 + 表单卡 | 允许，返回状态 + 快捷按钮 + 表单卡 | 允许，返回状态 + 快捷按钮 + 表单卡 | 允许，返回状态 + 快捷按钮 + 表单卡 | 允许，返回状态 + 快捷按钮 + 表单卡 | 允许，返回状态 + 快捷按钮 + 表单卡 |
 | 带参数 `/model` `/reasoning` `/access` | 拒绝 | 允许 | 允许 | 允许 | 允许 | 允许 |
 
 ### 6.2 覆盖门禁
@@ -882,7 +891,7 @@ transport degraded retained attachment
 | `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autocontinue`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
-| `G4 CommandCapture` | 下一条普通文本优先被当成模型名候选，不进入普通消息队列；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` |
+| `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |
 | `E6 Abandoning` | 只允许 `/status`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
 | `G6 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发迁移/修复卡片；surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理 |
 

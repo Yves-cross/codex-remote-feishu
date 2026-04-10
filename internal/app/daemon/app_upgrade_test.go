@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +217,46 @@ func TestCopyUpgradeHelperBinaryUsesCurrentBinaryPath(t *testing.T) {
 	}
 	if string(raw) != "current-live-binary" {
 		t.Fatalf("helper content = %q, want current-live-binary", string(raw))
+	}
+}
+
+func TestBuildDebugStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
+	catalog := buildDebugStatusCatalog(install.InstallState{
+		CurrentTrack:   install.ReleaseTrackBeta,
+		CurrentVersion: "v1.0.0",
+	}, false)
+	if catalog == nil || !catalog.Interactive {
+		t.Fatalf("expected interactive debug catalog, got %#v", catalog)
+	}
+	if len(catalog.Sections) != 3 {
+		t.Fatalf("expected quick actions + track + form sections, got %#v", catalog.Sections)
+	}
+	if catalog.Sections[1].Entries[0].Buttons[1].Disabled != true {
+		t.Fatalf("expected current beta track button to be disabled, got %#v", catalog.Sections[1].Entries[0].Buttons)
+	}
+	form := catalog.Sections[2].Entries[0].Form
+	if form == nil || form.CommandText != "/debug" {
+		t.Fatalf("expected debug form entry, got %#v", catalog.Sections[2].Entries[0])
+	}
+}
+
+func TestBuildUpgradeStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
+	catalog := buildUpgradeStatusCatalog(install.InstallState{
+		CurrentTrack:   install.ReleaseTrackProduction,
+		CurrentVersion: "v1.0.0",
+	}, false)
+	if catalog == nil || !catalog.Interactive {
+		t.Fatalf("expected interactive upgrade catalog, got %#v", catalog)
+	}
+	if len(catalog.Sections) != 2 {
+		t.Fatalf("expected quick actions + form sections, got %#v", catalog.Sections)
+	}
+	form := catalog.Sections[1].Entries[0].Form
+	if form == nil || form.CommandText != "/upgrade" {
+		t.Fatalf("expected upgrade form entry, got %#v", catalog.Sections[1].Entries[0])
+	}
+	if !strings.Contains(catalog.Summary, "本地升级产物：") {
+		t.Fatalf("expected upgrade summary to keep artifact path, got %#v", catalog.Summary)
 	}
 }
 

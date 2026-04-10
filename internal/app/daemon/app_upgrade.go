@@ -571,21 +571,42 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 	} else {
 		summaryLines = append(summaryLines, "后台检查：空闲")
 	}
+	currentTrack := strings.TrimSpace(string(stateValue.CurrentTrack))
 	return &control.CommandCatalog{
-		Title:       "Debug / Upgrade",
-		Summary:     strings.Join(summaryLines, "\n"),
-		Interactive: false,
-		Sections: []control.CommandCatalogSection{{
-			Title: "命令",
-			Entries: []control.CommandCatalogEntry{
-				{Commands: []string{"/debug"}, Description: "查看当前升级状态和可用子命令。"},
-				{Commands: []string{"/upgrade"}, Description: "查看正式升级入口和当前状态。"},
-				{Commands: []string{"/upgrade latest"}, Description: "立即按当前 track 检查或继续升级到最新 release。"},
-				{Commands: []string{"/upgrade local"}, Description: "使用固定本地 artifact 发起升级。"},
-				{Commands: []string{"/debug track"}, Description: "查看当前 track。"},
-				{Commands: []string{"/debug track alpha|beta|production"}, Description: "切换后续检查目标，不自动升级。"},
+		Title:        "Debug / Upgrade",
+		Summary:      strings.Join(summaryLines, "\n"),
+		Interactive:  true,
+		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+		Sections: []control.CommandCatalogSection{
+			{
+				Title: "快捷操作",
+				Entries: []control.CommandCatalogEntry{{
+					Buttons: []control.CommandCatalogButton{
+						runCommandButton("查看 track", "/debug track", "", false),
+						runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
+						runCommandButton("本地升级", "/upgrade local", "", false),
+					},
+				}},
 			},
-		}},
+			{
+				Title: "切换 track",
+				Entries: []control.CommandCatalogEntry{{
+					Buttons: []control.CommandCatalogButton{
+						runCommandButton("alpha", "/debug track alpha", "primary", currentTrack == string(install.ReleaseTrackAlpha)),
+						runCommandButton("beta", "/debug track beta", "", currentTrack == string(install.ReleaseTrackBeta)),
+						runCommandButton("production", "/debug track production", "", currentTrack == string(install.ReleaseTrackProduction)),
+					},
+				}},
+			},
+			{
+				Title: "手动输入",
+				Entries: []control.CommandCatalogEntry{{
+					Commands:    []string{"/debug"},
+					Description: "输入 `/debug` 后面的参数，例如 `track beta`。",
+					Form:        commandCatalogForm(control.FeishuCommandDebug, ""),
+				}},
+			},
+		},
 	}
 }
 
@@ -611,19 +632,30 @@ func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bo
 		summaryLines = append(summaryLines, "后台检查：空闲")
 	}
 	return &control.CommandCatalog{
-		Title:       "Upgrade",
-		Summary:     strings.Join(summaryLines, "\n"),
-		Interactive: false,
-		Sections: []control.CommandCatalogSection{{
-			Title: "命令",
-			Entries: []control.CommandCatalogEntry{
-				{Commands: []string{"/upgrade"}, Description: "查看当前升级状态和固定本地 artifact 路径。"},
-				{Commands: []string{"/upgrade latest"}, Description: "检查或继续升级到当前 track 的最新 release。"},
-				{Commands: []string{"/upgrade local"}, Description: "使用固定本地 artifact 发起升级。"},
-				{Commands: []string{"/debug track"}, Description: "查看当前 track。"},
-				{Commands: []string{"/debug track alpha|beta|production"}, Description: "切换 release track，不自动升级。"},
+		Title:        "Upgrade",
+		Summary:      strings.Join(summaryLines, "\n"),
+		Interactive:  true,
+		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+		Sections: []control.CommandCatalogSection{
+			{
+				Title: "快捷操作",
+				Entries: []control.CommandCatalogEntry{{
+					Buttons: []control.CommandCatalogButton{
+						runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
+						runCommandButton("本地升级", "/upgrade local", "", false),
+						runCommandButton("查看 track", "/debug track", "", false),
+					},
+				}},
 			},
-		}},
+			{
+				Title: "手动输入",
+				Entries: []control.CommandCatalogEntry{{
+					Commands:    []string{"/upgrade"},
+					Description: "输入 `/upgrade` 后面的参数，例如 `latest` 或 `local`。",
+					Form:        commandCatalogForm(control.FeishuCommandUpgrade, ""),
+				}},
+			},
+		},
 	}
 }
 
@@ -750,11 +782,7 @@ func debugUsageEvents(surfaceID, message string) []control.UIEvent {
 	events = append(events, control.UIEvent{
 		Kind:             control.UIEventCommandCatalog,
 		SurfaceSessionID: surfaceID,
-		CommandCatalog: &control.CommandCatalog{
-			Title:       "Debug / Upgrade",
-			Summary:     "支持的命令：/debug、/debug track、/debug track alpha|beta|production、/upgrade、/upgrade latest、/upgrade local",
-			Interactive: false,
-		},
+		CommandCatalog:   buildDebugStatusCatalog(install.InstallState{}, false),
 	})
 	return events
 }
@@ -767,13 +795,30 @@ func upgradeUsageEvents(surfaceID, message string) []control.UIEvent {
 	events = append(events, control.UIEvent{
 		Kind:             control.UIEventCommandCatalog,
 		SurfaceSessionID: surfaceID,
-		CommandCatalog: &control.CommandCatalog{
-			Title:       "Upgrade",
-			Summary:     "支持的命令：/upgrade、/upgrade latest、/upgrade local；track 维护命令仍使用 /debug track。",
-			Interactive: false,
-		},
+		CommandCatalog:   buildUpgradeStatusCatalog(install.InstallState{}, false),
 	})
 	return events
+}
+
+func commandCatalogForm(commandID, defaultValue string) *control.CommandCatalogForm {
+	form, ok := control.FeishuCommandForm(commandID)
+	if !ok || form == nil {
+		return nil
+	}
+	cloned := *form
+	cloned.Field = form.Field
+	cloned.Field.DefaultValue = strings.TrimSpace(defaultValue)
+	return &cloned
+}
+
+func runCommandButton(label, commandText, style string, disabled bool) control.CommandCatalogButton {
+	return control.CommandCatalogButton{
+		Label:       label,
+		Kind:        control.CommandCatalogButtonRunCommand,
+		CommandText: commandText,
+		Style:       style,
+		Disabled:    disabled,
+	}
 }
 
 func debugNoticeEvent(surfaceID, code, text string) control.UIEvent {

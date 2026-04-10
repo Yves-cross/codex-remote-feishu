@@ -679,7 +679,7 @@ func (s *Service) Tick(now time.Time) []control.UIEvent {
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice: &control.Notice{
 					Code: "command_capture_expired",
-					Text: "上一条命令输入已过期，请重新点击卡片按钮后再发送文本。",
+					Text: "上一条命令输入已过期，请重新打开 `/model` 卡片后再提交。",
 				},
 			})
 		}

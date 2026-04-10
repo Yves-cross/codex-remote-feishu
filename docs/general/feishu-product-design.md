@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-10`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括 canonical slash/menu 命令面、阶段感知 `/menu` 首页、参数卡与 `model` capture/apply fallback、auto-continue、图文/引用入站、旧生命周期动作判定、卡片交互、queued 点赞 steering、turn 失败红卡、最终回复 reply 与文件修改摘要。
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括 canonical slash/menu 命令面、阶段感知 `/menu` 首页、统一参数卡表单、auto-continue、图文/引用入站、旧生命周期动作判定、卡片交互、queued 点赞 steering、turn 失败红卡、最终回复 reply 与文件修改摘要。
 
 ## 1. 文档定位
 
@@ -51,6 +51,7 @@
 - `/reasoning`
 - `/access`
 - `/debug`
+- `/upgrade`
 
 alias 仍继续兼容，但不再作为主展示入口：
 
@@ -64,8 +65,9 @@ alias 仍继续兼容，但不再作为主展示入口：
 
 - `/menu` 当前会打开阶段感知的命令首页，而不是静态平铺目录
 - `/menu` 和参数卡当前采用紧凑按钮优先布局，尽量让主操作一屏可见；`/help` 保持文本帮助取向
-- bare `/reasoning`、`/access`、`/mode`、`/autocontinue` 会返回当前状态 + 参数选择卡
-- bare `/model` 会返回当前状态 + 常见示例 + 手动输入入口；手动输入走 capture/apply fallback，而不是只回 usage 文本
+- bare `/reasoning`、`/access`、`/mode`、`/autocontinue` 会返回当前状态 + 快捷按钮 + 单字段表单
+- bare `/model` 会返回当前状态 + 常见示例 + 手动输入表单
+- bare `/debug`、`/upgrade` 会返回当前状态卡；卡内既有快捷按钮，也有手动输入表单
 
 除了纯文本外，当前还支持两类更完整的入站整理：
 
@@ -169,13 +171,21 @@ canonical menu key 语法当前固定为：
 
 ### 3.6 卡片回调
 
-当前支持两类卡片按钮：
+当前支持以下几类卡片回调：
 
 - command menu 首页 / 面包屑 / submenu 导航
-- 参数卡 apply 按钮
-- `model` capture / cancel / apply fallback
+- 参数卡快捷按钮
+- 参数卡表单提交按钮
 - selection prompt 选择
 - approval request 确认
+
+其中参数表单当前统一走 `submit_command_form` 回调，把卡片内输入的参数尾巴拼回 canonical slash command，再复用文本命令解析链路。
+
+旧的 `start_command_capture` / `cancel_command_capture` 只保留 `/model` 历史卡片兼容职责：
+
+- 旧“开始输入模型名”卡片点下去时，不再创建新的 capture 状态
+- 服务端会直接重新打开新的 `/model` 表单卡
+- 若 daemon 热更新前已经进入旧 capture 等待态，下一条文本会被直接转换成 `/model <输入>` 立即应用，避免用户卡死
 
 approval request 卡片当前按动态 option 渲染，常见选项包括：
 
@@ -243,7 +253,12 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - 清掉 `PromptOverride`
 - 清掉 request gate / prepared new thread / staged image / queued draft
 
-若当前仍有 live remote work，或 surface 正处于 `PendingHeadless` / `Abandoning`，`/mode` 会直接拒绝。
+若当前仍有 live remote work，或 surface 正处于 `Abandoning`，`/mode` 会直接拒绝。
+
+`PendingHeadless` 现在不再单独阻塞 `/mode`：
+
+- 用户可以在恢复尚未真正跑起来时直接切到 `vscode`
+- daemon 会先 kill 当前 headless 恢复流程，再完成 mode 切换
 
 ### 4.2 `attach(workspace|instance)`
 

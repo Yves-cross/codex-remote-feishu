@@ -1960,7 +1960,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	}
 	if surface.ActiveCommandCapture != nil {
 		if text == "" {
-			return notice(surface, "command_capture_waiting_text", "当前输入模式只接受文本，请发送一条模型名，或先点击卡片上的取消。")
+			return notice(surface, "command_capture_waiting_text", "当前输入模式只接受文本，请发送一条模型名，或重新打开 `/model` 卡片。")
 		}
 		return s.consumeCapturedCommandInput(surface, text)
 	}
@@ -2006,7 +2006,7 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 		return notice(surface, "request_capture_waiting_text", "当前正在等待你发送一条文字处理意见，请先发送文本或重新处理确认卡片。")
 	}
 	if surface.ActiveCommandCapture != nil {
-		return notice(surface, "command_capture_waiting_text", "当前正在等待你发送一条模型名，请先发送文本或取消这次输入。")
+		return notice(surface, "command_capture_waiting_text", "当前正在等待你发送一条模型名，请先发送文本，或重新打开 `/model` 卡片。")
 	}
 	if pending := activePendingRequest(surface); pending != nil {
 		_ = pending

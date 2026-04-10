@@ -218,8 +218,56 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			CommandID:        commandID,
 			Inbound:          meta,
 		}, true
+	case "submit_command_form":
+		commandText := strings.TrimSpace(stringMapValue(value, "command"))
+		if commandText == "" {
+			commandText = strings.TrimSpace(stringMapValue(value, "command_text"))
+		}
+		if commandText == "" {
+			return control.Action{}, false
+		}
+		fieldName := strings.TrimSpace(stringMapValue(value, "field_name"))
+		if fieldName == "" {
+			fieldName = "command_args"
+		}
+		args := strings.TrimSpace(formStringValue(event.Event.Action.FormValue, fieldName))
+		if args == "" {
+			args = strings.TrimSpace(event.Event.Action.InputValue)
+		}
+		if args != "" {
+			commandText += " " + args
+		}
+		action, ok := parseTextAction(commandText)
+		if !ok {
+			return control.Action{}, false
+		}
+		action.GatewayID = g.config.GatewayID
+		action.SurfaceSessionID = surfaceSessionID
+		action.ChatID = chatID
+		action.ActorUserID = operatorID
+		action.MessageID = messageID
+		action.Inbound = meta
+		return action, true
 	default:
 		return control.Action{}, false
+	}
+}
+
+func formStringValue(values map[string]interface{}, key string) string {
+	if len(values) == 0 || strings.TrimSpace(key) == "" {
+		return ""
+	}
+	raw, ok := values[key]
+	if !ok || raw == nil {
+		return ""
+	}
+	switch value := raw.(type) {
+	case string:
+		return value
+	case fmt.Stringer:
+		return value.String()
+	default:
+		return fmt.Sprint(raw)
 	}
 }
 

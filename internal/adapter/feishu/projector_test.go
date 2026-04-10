@@ -320,32 +320,35 @@ func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testin
 	}
 }
 
-func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCaptureButtons(t *testing.T) {
+func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventCommandCatalog,
 		CommandCatalog: &control.CommandCatalog{
 			Title:        "模型",
-			Summary:      "等待输入模型名。",
+			Summary:      "直接在卡片里输入模型名。",
 			Interactive:  true,
 			DisplayStyle: control.CommandCatalogDisplayCompactButtons,
 			Breadcrumbs:  []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
 			Sections: []control.CommandCatalogSection{{
 				Title: "手动输入",
 				Entries: []control.CommandCatalogEntry{{
-					Title:       "capture/apply fallback",
-					Description: "下一条普通文本会先被捕获。",
-					Buttons: []control.CommandCatalogButton{{
-						Label:     "开始输入",
-						Kind:      control.CommandCatalogButtonStartCommandCapture,
-						CommandID: control.FeishuCommandModel,
-					}},
+					Form: &control.CommandCatalogForm{
+						CommandID:   control.FeishuCommandModel,
+						CommandText: "/model",
+						SubmitLabel: "应用",
+						Field: control.CommandCatalogFormField{
+							Name:        "command_args",
+							Kind:        control.CommandCatalogFormFieldText,
+							Label:       "输入模型名，或输入“模型名 推理强度”。",
+							Placeholder: "gpt-5.4 high",
+						},
+					},
 				}},
 			}},
 			RelatedButtons: []control.CommandCatalogButton{{
-				Label:     "取消",
-				Kind:      control.CommandCatalogButtonCancelCommandCapture,
-				CommandID: control.FeishuCommandModel,
+				Label:       "返回发送设置",
+				CommandText: "/menu send_settings",
 			}},
 		},
 	})
@@ -353,20 +356,63 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCaptureButtons(t *
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if len(ops[0].CardElements) != 4 {
-		t.Fatalf("expected breadcrumb + section + action + related action, got %#v", ops[0].CardElements)
+		t.Fatalf("expected breadcrumb + section + form + related action, got %#v", ops[0].CardElements)
 	}
 	if ops[0].CardElements[0]["content"] != "菜单首页 / 发送设置 / 模型" {
 		t.Fatalf("unexpected breadcrumb element: %#v", ops[0].CardElements[0])
 	}
-	actionRow, _ := ops[0].CardElements[2]["actions"].([]map[string]any)
-	value, _ := actionRow[0]["value"].(map[string]any)
-	if value["kind"] != "start_command_capture" || value["command_id"] != control.FeishuCommandModel {
-		t.Fatalf("unexpected start capture payload: %#v", value)
+	formContainer := ops[0].CardElements[2]
+	if formContainer["tag"] != "form_container" {
+		t.Fatalf("expected form container, got %#v", formContainer)
+	}
+	formElements, _ := formContainer["elements"].([]map[string]any)
+	if len(formElements) != 3 {
+		t.Fatalf("expected label + input + submit action, got %#v", formContainer)
+	}
+	input, _ := formElements[1]["name"].(string)
+	if input != "command_args" {
+		t.Fatalf("unexpected form field name: %#v", formElements[1])
+	}
+	submitRow, _ := formElements[2]["actions"].([]map[string]any)
+	value, _ := submitRow[0]["value"].(map[string]any)
+	if value["kind"] != "submit_command_form" || value["command"] != "/model" || value["field_name"] != "command_args" {
+		t.Fatalf("unexpected submit payload: %#v", value)
 	}
 	relatedRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
 	relatedValue, _ := relatedRow[0]["value"].(map[string]any)
-	if relatedValue["kind"] != "cancel_command_capture" || relatedValue["command_id"] != control.FeishuCommandModel {
-		t.Fatalf("unexpected cancel capture payload: %#v", relatedValue)
+	if relatedValue["kind"] != "run_command" || relatedValue["command_text"] != "/menu send_settings" {
+		t.Fatalf("unexpected related button payload: %#v", relatedValue)
+	}
+}
+
+func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventCommandCatalog,
+		DaemonLifecycleID: "life-1",
+		CommandCatalog: &control.CommandCatalog{
+			Interactive: true,
+			Sections: []control.CommandCatalogSection{{
+				Entries: []control.CommandCatalogEntry{{
+					Form: &control.CommandCatalogForm{
+						CommandID:   control.FeishuCommandReasoning,
+						CommandText: "/reasoning",
+						SubmitLabel: "应用",
+						Field: control.CommandCatalogFormField{
+							Name: "command_args",
+							Kind: control.CommandCatalogFormFieldText,
+						},
+					},
+				}},
+			}},
+		},
+	})
+	formContainer := ops[0].CardElements[0]
+	formElements, _ := formContainer["elements"].([]map[string]any)
+	submitRow, _ := formElements[1]["actions"].([]map[string]any)
+	value, _ := submitRow[0]["value"].(map[string]any)
+	if value["daemon_lifecycle_id"] != "life-1" {
+		t.Fatalf("expected form action to carry daemon lifecycle id, got %#v", value)
 	}
 }
 
@@ -384,7 +430,7 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 			}},
 		},
 	})
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
 	value, _ := actionRow[0]["value"].(map[string]any)
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected command catalog action to carry daemon lifecycle id, got %#v", value)

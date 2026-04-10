@@ -4804,9 +4804,12 @@ func TestBareReasoningCommandBuildsParameterCard(t *testing.T) {
 	if len(buttons) != 5 || buttons[0].CommandText != "/reasoning low" || buttons[4].CommandText != "/reasoning clear" {
 		t.Fatalf("unexpected reasoning buttons: %#v", buttons)
 	}
+	if len(catalog.Sections) < 2 || catalog.Sections[1].Entries[0].Form == nil {
+		t.Fatalf("expected reasoning card to expose manual form input, got %#v", catalog.Sections)
+	}
 }
 
-func TestModelCaptureFlowBuildsWaitingAndApplyCards(t *testing.T) {
+func TestBareModelCommandBuildsPresetAndFormCard(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
@@ -4819,35 +4822,92 @@ func TestModelCaptureFlowBuildsWaitingAndApplyCards(t *testing.T) {
 		Threads:       map[string]*state.ThreadRecord{},
 	})
 
-	start := svc.ApplySurfaceAction(control.Action{
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModelCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/model",
+	})
+	if len(events) != 1 || events[0].CommandCatalog == nil {
+		t.Fatalf("expected model catalog, got %#v", events)
+	}
+	catalog := events[0].CommandCatalog
+	if len(catalog.Sections) != 2 {
+		t.Fatalf("expected preset + manual sections, got %#v", catalog.Sections)
+	}
+	buttons := catalog.Sections[0].Entries[0].Buttons
+	if len(buttons) != 2 || buttons[0].CommandText != "/model gpt-5.4" || buttons[1].CommandText != "/model gpt-5.4-mini" {
+		t.Fatalf("unexpected model preset buttons: %#v", buttons)
+	}
+	manual := catalog.Sections[1].Entries[0]
+	if manual.Form == nil || manual.Form.CommandText != "/model" {
+		t.Fatalf("expected manual model form, got %#v", manual)
+	}
+	if svc.root.Surfaces["surface-1"].ActiveCommandCapture != nil {
+		t.Fatalf("expected model catalog not to create command capture state")
+	}
+}
+
+func TestLegacyModelCaptureActionReopensModelCatalogWithoutCaptureState(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	svc.root.Surfaces["surface-1"].AttachedInstanceID = "inst-1"
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionStartCommandCapture,
 		SurfaceSessionID: "surface-1",
 		CommandID:        control.FeishuCommandModel,
 	})
-	if len(start) != 1 || start[0].CommandCatalog == nil {
-		t.Fatalf("expected waiting catalog, got %#v", start)
-	}
-	if svc.root.Surfaces["surface-1"].ActiveCommandCapture == nil {
-		t.Fatalf("expected active command capture to be created")
-	}
-	if !strings.Contains(start[0].CommandCatalog.Summary, "下一条普通文本会先被捕获为模型名") {
-		t.Fatalf("unexpected waiting summary: %#v", start[0].CommandCatalog)
-	}
-
-	apply := svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "surface-1",
-		Text:             "gpt-5.4",
-	})
-	if len(apply) != 1 || apply[0].CommandCatalog == nil {
-		t.Fatalf("expected apply catalog, got %#v", apply)
+	if len(events) != 1 || events[0].CommandCatalog == nil {
+		t.Fatalf("expected model catalog, got %#v", events)
 	}
 	if svc.root.Surfaces["surface-1"].ActiveCommandCapture != nil {
-		t.Fatalf("expected command capture to be cleared after text input")
+		t.Fatalf("expected legacy capture action not to leave capture state behind")
 	}
-	buttons := apply[0].CommandCatalog.Sections[0].Entries[0].Buttons
-	if len(buttons) == 0 || buttons[0].CommandText != "/model gpt-5.4" {
-		t.Fatalf("unexpected apply buttons: %#v", buttons)
+	if events[0].CommandCatalog.Sections[1].Entries[0].Form == nil {
+		t.Fatalf("expected legacy capture action to reopen model form, got %#v", events[0].CommandCatalog)
+	}
+}
+
+func TestLegacyCapturedModelInputAppliesDirectly(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	surface := svc.root.Surfaces["surface-1"]
+	surface.AttachedInstanceID = "inst-1"
+	surface.ActiveCommandCapture = &state.CommandCaptureRecord{
+		CommandID: control.FeishuCommandModel,
+		CreatedAt: now,
+		ExpiresAt: now.Add(10 * time.Minute),
+	}
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		Text:             "gpt-5.4 high",
+	})
+	if len(events) != 1 || events[0].Notice == nil {
+		t.Fatalf("expected direct model apply notice, got %#v", events)
+	}
+	if surface.ActiveCommandCapture != nil {
+		t.Fatalf("expected legacy command capture to be cleared after text input")
+	}
+	if surface.PromptOverride.Model != "gpt-5.4" || surface.PromptOverride.ReasoningEffort != "high" {
+		t.Fatalf("expected captured text to apply model override, got %#v", surface.PromptOverride)
 	}
 }
 

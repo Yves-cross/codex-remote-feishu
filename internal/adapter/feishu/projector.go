@@ -615,17 +615,24 @@ func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID st
 		for _, entry := range section.Entries {
 			if catalog.DisplayStyle == control.CommandCatalogDisplayCompactButtons && catalog.Interactive && len(entry.Buttons) > 0 {
 				elements = append(elements, commandCatalogCompactButtonElements(entry.Buttons, daemonLifecycleID)...)
-				continue
+				if entry.Form == nil {
+					continue
+				}
 			}
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": commandCatalogEntryMarkdown(entry),
-			})
+			if markdown := commandCatalogEntryMarkdown(entry); markdown != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": markdown,
+				})
+			}
 			if catalog.Interactive && len(entry.Buttons) > 0 {
 				elements = append(elements, map[string]any{
 					"tag":     "action",
 					"actions": commandCatalogButtons(entry.Buttons, daemonLifecycleID),
 				})
+			}
+			if catalog.Interactive && entry.Form != nil {
+				elements = append(elements, commandCatalogFormElement(*entry.Form, daemonLifecycleID))
 			}
 		}
 	}
@@ -636,6 +643,53 @@ func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID st
 		})
 	}
 	return elements
+}
+
+func commandCatalogFormElement(form control.CommandCatalogForm, daemonLifecycleID string) map[string]any {
+	field := form.Field
+	input := map[string]any{
+		"tag":  "input",
+		"name": strings.TrimSpace(field.Name),
+	}
+	if placeholder := strings.TrimSpace(field.Placeholder); placeholder != "" {
+		input["placeholder"] = map[string]any{
+			"tag":     "plain_text",
+			"content": placeholder,
+		}
+	}
+	if value := strings.TrimSpace(field.DefaultValue); value != "" {
+		input["default_value"] = value
+	}
+	formElements := []map[string]any{}
+	if label := strings.TrimSpace(field.Label); label != "" {
+		formElements = append(formElements, map[string]any{
+			"tag":     "markdown",
+			"content": label,
+		})
+	}
+	formElements = append(formElements, input)
+	submitValue := stampActionValue(map[string]any{
+		"kind":       "submit_command_form",
+		"command_id": strings.TrimSpace(form.CommandID),
+		"command":    strings.TrimSpace(form.CommandText),
+		"field_name": strings.TrimSpace(field.Name),
+	}, daemonLifecycleID)
+	formElements = append(formElements, map[string]any{
+		"tag": "action",
+		"actions": []map[string]any{{
+			"tag":  "button",
+			"type": "primary",
+			"text": map[string]any{
+				"tag":     "plain_text",
+				"content": firstNonEmpty(strings.TrimSpace(form.SubmitLabel), "执行"),
+			},
+			"value": submitValue,
+		}},
+	})
+	return map[string]any{
+		"tag":      "form_container",
+		"elements": formElements,
+	}
 }
 
 func commandCatalogCompactButtonElements(buttons []control.CommandCatalogButton, daemonLifecycleID string) []map[string]any {
