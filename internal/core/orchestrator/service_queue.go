@@ -302,6 +302,80 @@ func (s *Service) renderTextItem(instanceID, threadID, turnID, itemID, text stri
 	return s.renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text, final, nil, nil)
 }
 
+func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []control.UIEvent {
+	inst := s.root.Instances[instanceID]
+	thread := (*state.ThreadRecord)(nil)
+	if inst != nil && strings.TrimSpace(event.ThreadID) != "" {
+		thread = s.ensureThread(inst, event.ThreadID)
+		preview := strings.TrimSpace(metadataString(event.Metadata, "revisedPrompt"))
+		if preview == "" {
+			preview = "已生成图片"
+		}
+		thread.Preview = previewOfText("图片：" + preview)
+		s.touchThread(thread)
+	}
+
+	problem := agentproto.ErrorInfo{
+		Code:      "image_generation_missing_payload",
+		Layer:     "orchestrator",
+		Stage:     "image_item_completed",
+		Operation: "image_generation",
+		Message:   "图片生成结果缺少可发送内容。",
+		ThreadID:  event.ThreadID,
+		TurnID:    event.TurnID,
+		ItemID:    event.ItemID,
+	}
+	savedPath := strings.TrimSpace(metadataString(event.Metadata, "savedPath"))
+	imageBase64 := strings.TrimSpace(metadataString(event.Metadata, "imageBase64"))
+	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
+	if surface == nil {
+		if inst != nil && (savedPath == "" && imageBase64 == "") && strings.TrimSpace(event.ThreadID) != "" {
+			s.storeThreadReplayNotice(inst, event.ThreadID, NoticeForProblem(problem))
+		}
+		return nil
+	}
+	problem.SurfaceSessionID = surface.SurfaceSessionID
+	events := []control.UIEvent{}
+	if surface.ActiveTurnOrigin != agentproto.InitiatorLocalUI {
+		routeMode := surface.RouteMode
+		if routeMode != state.RouteModeFollowLocal {
+			routeMode = state.RouteModePinned
+		}
+		if inst != nil {
+			events = append(events, s.bindSurfaceToThreadMode(surface, inst, event.ThreadID, routeMode)...)
+		}
+	}
+	if savedPath == "" && imageBase64 == "" {
+		notice := NoticeForProblem(problem)
+		return append(events, control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice:           &notice,
+		})
+	}
+
+	replySourceMessageID := ""
+	replySourceMessagePreview := ""
+	if binding := s.lookupRemoteTurn(instanceID, event.ThreadID, event.TurnID); binding != nil {
+		replySourceMessageID = strings.TrimSpace(binding.ReplyToMessageID)
+		replySourceMessagePreview = strings.TrimSpace(binding.ReplyToMessagePreview)
+	}
+	return append(events, control.UIEvent{
+		Kind:                 control.UIEventImageOutput,
+		SurfaceSessionID:     surface.SurfaceSessionID,
+		SourceMessageID:      replySourceMessageID,
+		SourceMessagePreview: replySourceMessagePreview,
+		ImageOutput: &control.ImageOutput{
+			ThreadID:    event.ThreadID,
+			TurnID:      event.TurnID,
+			ItemID:      event.ItemID,
+			Prompt:      metadataString(event.Metadata, "revisedPrompt"),
+			SavedPath:   savedPath,
+			ImageBase64: imageBase64,
+		},
+	})
+}
+
 func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []control.UIEvent {
 	inst := s.root.Instances[instanceID]
 	surface := s.turnSurface(instanceID, threadID, turnID)
@@ -433,6 +507,10 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 		delete(s.itemBuffers, key)
 		s.recordTurnFileChanges(instanceID, event)
 		return nil
+	}
+	if isImageGenerationItem(event.ItemKind) {
+		delete(s.itemBuffers, key)
+		return s.renderImageItem(instanceID, event)
 	}
 	buf := s.itemBuffers[key]
 	if buf == nil {

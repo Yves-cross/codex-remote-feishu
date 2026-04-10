@@ -385,6 +385,15 @@ type FinalTurnSummary struct {
 	Usage   *FinalTurnUsage
 }
 
+type ImageOutput struct {
+	ThreadID    string
+	TurnID      string
+	ItemID      string
+	Prompt      string
+	SavedPath   string
+	ImageBase64 string
+}
+
 type UIEventKind string
 
 const (
@@ -396,6 +405,7 @@ const (
 	UIEventNotice                UIEventKind = "notice"
 	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
 	UIEventBlockCommitted        UIEventKind = "block.committed"
+	UIEventImageOutput           UIEventKind = "image.output"
 	UIEventAgentCommand          UIEventKind = "agent.command"
 	UIEventDaemonCommand         UIEventKind = "daemon.command"
 )
@@ -438,6 +448,7 @@ type UIEvent struct {
 	Notice               *Notice
 	ThreadSelection      *ThreadSelectionChanged
 	Block                *render.Block
+	ImageOutput          *ImageOutput
 	FileChangeSummary    *FileChangeSummary
 	FinalTurnSummary     *FinalTurnSummary
 	Command              *agentproto.Command

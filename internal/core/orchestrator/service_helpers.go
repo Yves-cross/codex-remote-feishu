@@ -926,3 +926,7 @@ func rendersTextItem(itemKind string) bool {
 		return false
 	}
 }
+
+func isImageGenerationItem(itemKind string) bool {
+	return strings.TrimSpace(itemKind) == "image_generation"
+}

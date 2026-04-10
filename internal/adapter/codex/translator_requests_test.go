@@ -339,3 +339,43 @@ func TestObserveClientThreadNameSetResponseEmitsThreadDiscovered(t *testing.T) {
 		t.Fatalf("unexpected thread name update event: %#v", result.Events[0])
 	}
 }
+
+func TestObserveServerImageGenerationLifecycleExtractsStructuredMetadata(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"img-1","type":"image_generation_call","status":"in_progress","revised_prompt":"a cat in watercolor"}}}`))
+	if err != nil {
+		t.Fatalf("observe image generation started: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one image generation started event, got %#v", started.Events)
+	}
+	startedEvent := started.Events[0]
+	if startedEvent.Kind != agentproto.EventItemStarted || startedEvent.ItemKind != "image_generation" {
+		t.Fatalf("unexpected image generation started event: %#v", startedEvent)
+	}
+	if startedEvent.Metadata["revisedPrompt"] != "a cat in watercolor" {
+		t.Fatalf("unexpected image generation start metadata: %#v", startedEvent.Metadata)
+	}
+
+	completed, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"img-1","type":"imageGenerationCall","status":"completed","revisedPrompt":"a cat in watercolor","savedPath":"/tmp/generated.png","result":"aGVsbG8="}}}`))
+	if err != nil {
+		t.Fatalf("observe image generation completed: %v", err)
+	}
+	if len(completed.Events) != 1 {
+		t.Fatalf("expected one image generation completed event, got %#v", completed.Events)
+	}
+	completedEvent := completed.Events[0]
+	if completedEvent.Kind != agentproto.EventItemCompleted || completedEvent.ItemKind != "image_generation" {
+		t.Fatalf("unexpected image generation completed event: %#v", completedEvent)
+	}
+	if completedEvent.Metadata["revisedPrompt"] != "a cat in watercolor" {
+		t.Fatalf("unexpected completed image prompt metadata: %#v", completedEvent.Metadata)
+	}
+	if completedEvent.Metadata["savedPath"] != "/tmp/generated.png" {
+		t.Fatalf("unexpected completed image saved path metadata: %#v", completedEvent.Metadata)
+	}
+	if completedEvent.Metadata["imageBase64"] != "aGVsbG8=" {
+		t.Fatalf("unexpected completed image base64 metadata: %#v", completedEvent.Metadata)
+	}
+}

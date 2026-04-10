@@ -145,6 +145,8 @@ func normalizeItemKind(raw string) string {
 		return "command_execution"
 	case "fileChange", "file_change":
 		return "file_change"
+	case "imageGeneration", "image_generation", "imageGenerationCall", "image_generation_call":
+		return "image_generation"
 	case "mcpToolCall", "mcp_tool_call":
 		return "mcp_tool_call"
 	case "dynamicToolCall", "dynamic_tool_call":
@@ -171,6 +173,27 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 		}
 		if content := extractStringList(item["content"]); len(content) > 0 {
 			metadata["content"] = content
+		}
+	case "image_generation":
+		if revisedPrompt := firstNonEmptyString(
+			lookupStringFromAny(item["revised_prompt"]),
+			lookupStringFromAny(item["revisedPrompt"]),
+		); revisedPrompt != "" {
+			metadata["revisedPrompt"] = revisedPrompt
+		}
+		if savedPath := firstNonEmptyString(
+			lookupStringFromAny(item["saved_path"]),
+			lookupStringFromAny(item["savedPath"]),
+		); savedPath != "" {
+			metadata["savedPath"] = savedPath
+		}
+		if imageBase64 := firstNonEmptyString(
+			lookupStringFromAny(item["result"]),
+			lookupString(item, "result", "data"),
+			lookupString(item, "result", "b64_json"),
+			lookupString(item, "result", "base64"),
+		); imageBase64 != "" {
+			metadata["imageBase64"] = imageBase64
 		}
 	}
 	return metadata
