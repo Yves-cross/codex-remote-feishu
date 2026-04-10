@@ -541,5 +541,4 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.recordHeadlessRestoreOutcomeEventsLocked(recoveryEvents, now)
 	a.handleUIEvents(ctx, recoveryEvents)
 	a.maybeShutdownExternalAccessIdleLocked(now)
-	a.syncSurfaceResumeStateLocked(nil)
 }

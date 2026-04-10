@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -348,6 +349,37 @@ func TestDaemonDetachedVSCodeModePromptsOpenVSCodeAfterRestart(t *testing.T) {
 	app.onTick(context.Background(), time.Now().UTC().Add(time.Second))
 	if len(gateway.operations) != 1 {
 		t.Fatalf("expected detached vscode guidance to stay one-shot, got %#v", gateway.operations)
+	}
+}
+
+func TestDaemonTickDoesNotRewriteSurfaceResumeStateWithoutStateChange(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	app := newRestoreHintTestApp(stateDir)
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	path := surfaceResumeStatePath(stateDir)
+	base := time.Date(2026, 4, 11, 1, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, base, base); err != nil {
+		t.Fatalf("Chtimes(surface resume state): %v", err)
+	}
+
+	app.onTick(context.Background(), base.Add(time.Second))
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(surface resume state): %v", err)
+	}
+	if !info.ModTime().Equal(base) {
+		t.Fatalf("expected idle tick to avoid rewriting surface resume state, modtime=%s want=%s", info.ModTime(), base)
 	}
 }
 
