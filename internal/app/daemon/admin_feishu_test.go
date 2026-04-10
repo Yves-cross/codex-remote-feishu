@@ -211,6 +211,9 @@ func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	if completeResp.Mutation == nil || completeResp.Mutation.Kind != "created" {
 		t.Fatalf("unexpected onboarding mutation: %#v", completeResp.Mutation)
 	}
+	if completeResp.Guide.RecommendedNextStep != "runtimeRequirements" || len(completeResp.Guide.RemainingManualActions) == 0 {
+		t.Fatalf("unexpected onboarding guide: %#v", completeResp.Guide)
+	}
 	if completeResp.Session.Status != feishuOnboardingStatusCompleted {
 		t.Fatalf("expected completed onboarding session, got %#v", completeResp.Session)
 	}
@@ -222,7 +225,8 @@ func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	if len(loaded.Config.Feishu.Apps) != 1 {
 		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
-	if loaded.Config.Feishu.Apps[0].Name != "扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.ConnectionVerifiedAt == nil {
+	wizard := loaded.Config.Feishu.Apps[0].Wizard
+	if loaded.Config.Feishu.Apps[0].Name != "扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || wizard.ConnectionVerifiedAt == nil || wizard.ScopesExportedAt == nil || wizard.EventsConfirmedAt == nil || wizard.CallbacksConfirmedAt == nil || wizard.MenusConfirmedAt == nil || wizard.PublishedAt == nil {
 		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
 	}
 }
@@ -280,7 +284,8 @@ func TestAdminFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	if len(loaded.Config.Feishu.Apps) != 1 {
 		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
-	if loaded.Config.Feishu.Apps[0].Name != "Admin 扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.ConnectionVerifiedAt == nil {
+	adminWizard := loaded.Config.Feishu.Apps[0].Wizard
+	if loaded.Config.Feishu.Apps[0].Name != "Admin 扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || adminWizard.ConnectionVerifiedAt == nil || adminWizard.ScopesExportedAt == nil || adminWizard.EventsConfirmedAt == nil || adminWizard.CallbacksConfirmedAt == nil || adminWizard.MenusConfirmedAt == nil || adminWizard.PublishedAt == nil {
 		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
 	}
 }
@@ -344,7 +349,7 @@ func TestSetupFeishuOnboardingRetryDoesNotDuplicateAppAfterVerifyFailure(t *test
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath(retry): %v", err)
 	}
-	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
+	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.PublishedAt == nil {
 		t.Fatalf("expected retry to reuse saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
 }

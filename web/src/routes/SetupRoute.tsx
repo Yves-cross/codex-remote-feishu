@@ -363,7 +363,7 @@ export function SetupRoute() {
       });
       setSetupStarted(true);
       resetFeishuConnectFlow("existing");
-      setCurrentStepHint("permissions");
+      setCurrentStepHint("runtimeRequirements");
     });
   }
 

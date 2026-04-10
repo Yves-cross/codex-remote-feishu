@@ -270,6 +270,29 @@ func (a *App) markFeishuAppVerified(path, gatewayID string, verifiedAt time.Time
 	return config.WriteAppConfig(path, updated)
 }
 
+func (a *App) markFeishuAppOnboardingCompleted(path, gatewayID string, verifiedAt time.Time) error {
+	a.adminConfigMu.Lock()
+	defer a.adminConfigMu.Unlock()
+	loaded, err := a.loadAdminConfig()
+	if err != nil {
+		return err
+	}
+	index := indexOfConfigFeishuApp(loaded.Config.Feishu.Apps, gatewayID)
+	if index < 0 {
+		return nil
+	}
+	updated := loaded.Config
+	value := verifiedAt.UTC()
+	updated.Feishu.Apps[index].VerifiedAt = &value
+	updated.Feishu.Apps[index].Wizard.ConnectionVerifiedAt = &value
+	updated.Feishu.Apps[index].Wizard.ScopesExportedAt = &value
+	updated.Feishu.Apps[index].Wizard.EventsConfirmedAt = &value
+	updated.Feishu.Apps[index].Wizard.CallbacksConfirmedAt = &value
+	updated.Feishu.Apps[index].Wizard.MenusConfirmedAt = &value
+	updated.Feishu.Apps[index].Wizard.PublishedAt = &value
+	return config.WriteAppConfig(path, updated)
+}
+
 func (a *App) updateFeishuAppWizard(gatewayID string, req feishuAppWizardUpdateRequest, at time.Time) (config.LoadedAppConfig, error) {
 	a.adminConfigMu.Lock()
 	defer a.adminConfigMu.Unlock()

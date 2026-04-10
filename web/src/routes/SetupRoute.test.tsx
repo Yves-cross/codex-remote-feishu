@@ -63,7 +63,7 @@ describe("SetupRoute", () => {
     expect(screen.queryByLabelText("显示名称")).not.toBeInTheDocument();
   });
 
-  it("creates a new app through qr onboarding, shows the notice page, and then advances to permissions", async () => {
+  it("creates a new app through qr onboarding, shows the notice page, and then advances to runtime requirements", async () => {
     window.history.replaceState({}, "", "/setup");
     let appsConfigured = false;
     const { calls } = installMockFetch({
@@ -78,6 +78,11 @@ describe("SetupRoute", () => {
                   appId: "cli_qr",
                   wizard: {
                     connectionVerifiedAt: "2026-04-09T00:00:00Z",
+                    scopesExportedAt: "2026-04-09T00:00:01Z",
+                    eventsConfirmedAt: "2026-04-09T00:00:02Z",
+                    callbacksConfirmedAt: "2026-04-09T00:00:03Z",
+                    menusConfirmedAt: "2026-04-09T00:00:04Z",
+                    publishedAt: "2026-04-09T00:00:05Z",
                   },
                 }),
               ]
@@ -108,6 +113,11 @@ describe("SetupRoute", () => {
               appId: "cli_qr",
               wizard: {
                 connectionVerifiedAt: "2026-04-09T00:00:00Z",
+                scopesExportedAt: "2026-04-09T00:00:01Z",
+                eventsConfirmedAt: "2026-04-09T00:00:02Z",
+                callbacksConfirmedAt: "2026-04-09T00:00:03Z",
+                menusConfirmedAt: "2026-04-09T00:00:04Z",
+                publishedAt: "2026-04-09T00:00:05Z",
               },
             }),
             mutation: {
@@ -124,6 +134,11 @@ describe("SetupRoute", () => {
               appId: "cli_qr",
               displayName: "扫码 Bot",
             },
+            guide: {
+              autoConfiguredSummary: "扫码创建已经完成，大部分基础配置已自动处理。",
+              remainingManualActions: ["如果需要把 Markdown 预览上传到飞书云盘，还需要额外申请 `drive:drive` 权限。"],
+              recommendedNextStep: "runtimeRequirements",
+            },
           },
         };
       },
@@ -137,11 +152,11 @@ describe("SetupRoute", () => {
     await user.click(screen.getByRole("button", { name: "开始" }));
     await user.click(await screen.findByRole("button", { name: "下一步" }));
 
-    expect(await screen.findByText("扫码创建已经完成")).toBeInTheDocument();
+    expect(await screen.findByText("扫码创建已经完成，大部分基础配置已自动处理。")).toBeInTheDocument();
     expect(screen.getByText(/drive:drive/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "下一步" }));
 
-    expect(await screen.findByText("权限导入说明")).toBeInTheDocument();
+    expect(await screen.findByText("这一步在检查什么")).toBeInTheDocument();
     expect(calls.some((call) => call.path === "/api/setup/feishu/onboarding/sessions")).toBe(true);
     expect(calls.some((call) => call.path === "/api/setup/feishu/onboarding/sessions/sess-1/complete")).toBe(true);
   });

@@ -104,6 +104,13 @@ type feishuOnboardingCompleteResponse struct {
 	Mutation *feishuAppMutationView      `json:"mutation,omitempty"`
 	Result   feishu.VerifyResult         `json:"result"`
 	Session  feishuOnboardingSessionView `json:"session"`
+	Guide    feishuOnboardingGuideView   `json:"guide,omitempty"`
+}
+
+type feishuOnboardingGuideView struct {
+	AutoConfiguredSummary  string   `json:"autoConfiguredSummary,omitempty"`
+	RemainingManualActions []string `json:"remainingManualActions,omitempty"`
+	RecommendedNextStep    string   `json:"recommendedNextStep,omitempty"`
 }
 
 type registrationInitResponse struct {
@@ -511,6 +518,17 @@ func feishuOnboardingSessionToView(session *feishuOnboardingSession) feishuOnboa
 	return view
 }
 
+func buildFeishuOnboardingGuide() feishuOnboardingGuideView {
+	return feishuOnboardingGuideView{
+		AutoConfiguredSummary: "扫码创建已经完成，大部分基础配置已自动处理。",
+		RemainingManualActions: []string{
+			"如果需要把 Markdown 预览上传到飞书云盘，还需要额外申请 `drive:drive` 权限。",
+			"这个权限通常需要管理员审批；如果暂时不需要 Markdown 预览，可以先直接继续。",
+		},
+		RecommendedNextStep: "runtimeRequirements",
+	}
+}
+
 func qrCodeDataURL(value string) (string, error) {
 	png, err := qrcode.Encode(strings.TrimSpace(value), qrcode.Medium, 256)
 	if err != nil {
@@ -603,6 +621,7 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 			Mutation: session.CompletedMutation,
 			Result:   *session.CompletedResult,
 			Session:  feishuOnboardingSessionToView(session),
+			Guide:    buildFeishuOnboardingGuide(),
 		}
 		a.adminFeishuMu.RUnlock()
 		writeJSON(w, http.StatusOK, response)
@@ -730,7 +749,7 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 	defer cancel()
 	result, verifyErr := controller.Verify(verifyCtx, runtimeCfg)
 	if verifyErr == nil {
-		if err := a.markFeishuAppVerified(loaded.Path, gatewayID, time.Now().UTC()); err != nil {
+		if err := a.markFeishuAppOnboardingCompleted(loaded.Path, gatewayID, time.Now().UTC()); err != nil {
 			writeAPIError(w, http.StatusInternalServerError, apiError{
 				Code:    "config_write_failed",
 				Message: "feishu app verified but failed to persist verification time",
@@ -764,6 +783,7 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 		Mutation: mutation,
 		Result:   result,
 		Session:  sessionView,
+		Guide:    buildFeishuOnboardingGuide(),
 	}
 	if verifyErr != nil {
 		writeJSON(w, http.StatusBadGateway, response)
