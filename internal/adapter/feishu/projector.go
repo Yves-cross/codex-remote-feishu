@@ -651,6 +651,13 @@ func commandCatalogFormElement(form control.CommandCatalogForm, daemonLifecycleI
 		"tag":  "input",
 		"name": strings.TrimSpace(field.Name),
 	}
+	if label := strings.TrimSpace(field.Label); label != "" {
+		input["label"] = map[string]any{
+			"tag":     "plain_text",
+			"content": label,
+		}
+		input["label_position"] = "left"
+	}
 	if placeholder := strings.TrimSpace(field.Placeholder); placeholder != "" {
 		input["placeholder"] = map[string]any{
 			"tag":     "plain_text",
@@ -660,35 +667,35 @@ func commandCatalogFormElement(form control.CommandCatalogForm, daemonLifecycleI
 	if value := strings.TrimSpace(field.DefaultValue); value != "" {
 		input["default_value"] = value
 	}
-	formElements := []map[string]any{}
-	if label := strings.TrimSpace(field.Label); label != "" {
-		formElements = append(formElements, map[string]any{
-			"tag":     "markdown",
-			"content": label,
-		})
-	}
-	formElements = append(formElements, input)
 	submitValue := stampActionValue(map[string]any{
 		"kind":       "submit_command_form",
 		"command_id": strings.TrimSpace(form.CommandID),
 		"command":    strings.TrimSpace(form.CommandText),
 		"field_name": strings.TrimSpace(field.Name),
 	}, daemonLifecycleID)
-	formElements = append(formElements, map[string]any{
-		"tag": "action",
-		"actions": []map[string]any{{
-			"tag":  "button",
-			"type": "primary",
-			"text": map[string]any{
-				"tag":     "plain_text",
-				"content": firstNonEmpty(strings.TrimSpace(form.SubmitLabel), "执行"),
-			},
-			"value": submitValue,
-		}},
-	})
+	formName := strings.TrimSpace(form.CommandID)
+	if formName == "" {
+		formName = "command_form"
+	} else {
+		formName = "command_form_" + formName
+	}
 	return map[string]any{
-		"tag":      "form_container",
-		"elements": formElements,
+		"tag":  "form",
+		"name": formName,
+		"elements": []map[string]any{
+			input,
+			{
+				"tag":         "button",
+				"type":        "primary",
+				"action_type": "form_submit",
+				"name":        "submit",
+				"text": map[string]any{
+					"tag":     "plain_text",
+					"content": firstNonEmpty(strings.TrimSpace(form.SubmitLabel), "执行"),
+				},
+				"value": submitValue,
+			},
+		},
 	}
 }
 

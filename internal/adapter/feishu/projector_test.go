@@ -362,19 +362,21 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 		t.Fatalf("unexpected breadcrumb element: %#v", ops[0].CardElements[0])
 	}
 	formContainer := ops[0].CardElements[2]
-	if formContainer["tag"] != "form_container" {
+	if formContainer["tag"] != "form" {
 		t.Fatalf("expected form container, got %#v", formContainer)
 	}
 	formElements, _ := formContainer["elements"].([]map[string]any)
-	if len(formElements) != 3 {
-		t.Fatalf("expected label + input + submit action, got %#v", formContainer)
+	if len(formElements) != 2 {
+		t.Fatalf("expected input + submit button, got %#v", formContainer)
 	}
-	input, _ := formElements[1]["name"].(string)
+	input, _ := formElements[0]["name"].(string)
 	if input != "command_args" {
-		t.Fatalf("unexpected form field name: %#v", formElements[1])
+		t.Fatalf("unexpected form field name: %#v", formElements[0])
 	}
-	submitRow, _ := formElements[2]["actions"].([]map[string]any)
-	value, _ := submitRow[0]["value"].(map[string]any)
+	if formElements[1]["action_type"] != "form_submit" {
+		t.Fatalf("expected form submit button, got %#v", formElements[1])
+	}
+	value, _ := formElements[1]["value"].(map[string]any)
 	if value["kind"] != "submit_command_form" || value["command"] != "/model" || value["field_name"] != "command_args" {
 		t.Fatalf("unexpected submit payload: %#v", value)
 	}
@@ -409,8 +411,7 @@ func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 	})
 	formContainer := ops[0].CardElements[0]
 	formElements, _ := formContainer["elements"].([]map[string]any)
-	submitRow, _ := formElements[1]["actions"].([]map[string]any)
-	value, _ := submitRow[0]["value"].(map[string]any)
+	value, _ := formElements[1]["value"].(map[string]any)
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected form action to carry daemon lifecycle id, got %#v", value)
 	}
