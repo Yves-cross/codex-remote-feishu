@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-10`
-> Summary: 将 external-access foundation 文档转入 implemented 并刷新索引。
+> Updated: `2026-04-11`
+> Summary: 新增 Codex MCP app-server 协议基线文档并刷新索引。
 
 ## 1. 适用范围
 
@@ -111,6 +111,7 @@
 ### 6.1 `general`
 
 - [architecture.md](./general/architecture.md)
+- [codex-mcp-app-server-protocol.md](./general/codex-mcp-app-server-protocol.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [feishu-im-message-research.md](./general/feishu-im-message-research.md)
 - [go-test-strategy.md](./general/go-test-strategy.md)
