@@ -39,6 +39,7 @@ type Operation struct {
 	CardBody         string
 	CardThemeKey     string
 	CardElements     []map[string]any
+	card             *cardDocument
 }
 
 const (

@@ -95,7 +95,7 @@ func callbackCardResponse(result *ActionResult) *larkcallback.CardActionTriggerR
 	return &larkcallback.CardActionTriggerResponse{
 		Card: &larkcallback.Card{
 			Type: "card_json",
-			Data: buildCallbackCard(card.CardTitle, card.CardBody, card.CardThemeKey, card.CardElements),
+			Data: renderOperationCard(*card, cardEnvelopeV2),
 		},
 	}
 }
@@ -150,7 +150,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 		}
 		return nil
 	case OperationSendCard:
-		card, err := json.Marshal(buildCard(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements))
+		card, err := json.Marshal(renderOperationCard(operation, cardEnvelopeLegacy))
 		if err != nil {
 			return err
 		}
@@ -454,59 +454,6 @@ func ignoredMissingReactionError(_ int, msg string) bool {
 		}
 	}
 	return false
-}
-
-func buildCard(title, body, themeKey string, extraElements []map[string]any) map[string]any {
-	elements := make([]map[string]any, 0, len(extraElements)+1)
-	if strings.TrimSpace(body) != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": body,
-		})
-	}
-	elements = append(elements, extraElements...)
-	return map[string]any{
-		"config": map[string]any{
-			"wide_screen_mode": true,
-			"enable_forward":   true,
-		},
-		"header": map[string]any{
-			"template": cardTemplate(themeKey, title),
-			"title": map[string]any{
-				"tag":     "plain_text",
-				"content": title,
-			},
-		},
-		"elements": elements,
-	}
-}
-
-func buildCallbackCard(title, body, themeKey string, extraElements []map[string]any) map[string]any {
-	elements := make([]map[string]any, 0, len(extraElements)+1)
-	if strings.TrimSpace(body) != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": body,
-		})
-	}
-	elements = append(elements, extraElements...)
-	return map[string]any{
-		"schema": "2.0",
-		"config": map[string]any{
-			"width_mode":     "fill",
-			"enable_forward": true,
-		},
-		"header": map[string]any{
-			"template": cardTemplate(themeKey, title),
-			"title": map[string]any{
-				"tag":     "plain_text",
-				"content": title,
-			},
-		},
-		"body": map[string]any{
-			"elements": elements,
-		},
-	}
 }
 
 func cardTemplate(themeKey, fallback string) string {
