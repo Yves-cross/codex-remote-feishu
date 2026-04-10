@@ -47,6 +47,7 @@ type TryCloudflareProvider struct {
 	configDir  string
 	publicBase PublicBase
 	lastError  string
+	startWait  chan struct{}
 }
 
 func NewTryCloudflareProvider(opts TryCloudflareOptions) *TryCloudflareProvider {
@@ -93,31 +94,61 @@ func (p *TryCloudflareProvider) Snapshot() ProviderStatus {
 }
 
 func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListenerURL string) (PublicBase, error) {
-	p.mu.Lock()
-	if p.cmd != nil && p.cmd.Process != nil && strings.TrimSpace(p.publicBase.BaseURL) != "" {
-		base := p.publicBase
+	for {
+		p.mu.Lock()
+		if p.cmd != nil && p.cmd.Process != nil && strings.TrimSpace(p.publicBase.BaseURL) != "" {
+			base := p.publicBase
+			p.mu.Unlock()
+			return base, nil
+		}
+		if waitCh := p.startWait; waitCh != nil {
+			p.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				err := fmt.Errorf("start trycloudflare provider: %w", ctx.Err())
+				p.recordError(err)
+				return PublicBase{}, err
+			case <-waitCh:
+				continue
+			}
+		}
+		p.startWait = make(chan struct{})
+		waitCh := p.startWait
 		p.mu.Unlock()
-		return base, nil
-	}
-	p.mu.Unlock()
 
+		base, cmd, configDir, err := p.startPublicBase(ctx, localListenerURL)
+		p.mu.Lock()
+		if err == nil {
+			_ = p.closeLocked()
+			p.cmd = cmd
+			p.configDir = configDir
+			p.publicBase = base
+			p.lastError = ""
+		} else {
+			p.lastError = err.Error()
+		}
+		close(waitCh)
+		p.startWait = nil
+		p.mu.Unlock()
+		return base, err
+	}
+}
+
+func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListenerURL string) (PublicBase, *exec.Cmd, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.launchTimeout)
 	defer cancel()
 
 	binaryPath, err := p.resolveBinaryPath()
 	if err != nil {
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 	metricsAddr, metricsPort, err := chooseMetricsAddr(p.metricsPort)
 	if err != nil {
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 	configDir, err := os.MkdirTemp("", "codex-remote-cloudflared-*")
 	if err != nil {
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 
 	args := []string{
@@ -144,14 +175,12 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		_ = os.RemoveAll(configDir)
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		_ = os.RemoveAll(configDir)
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 	urlCh := make(chan string, 2)
 	pump := func(reader io.Reader) {
@@ -170,8 +199,7 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 
 	if err := cmd.Start(); err != nil {
 		_ = os.RemoveAll(configDir)
-		p.recordError(err)
-		return PublicBase{}, err
+		return PublicBase{}, nil, "", err
 	}
 	go pump(stdout)
 	go pump(stderr)
@@ -182,9 +210,7 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
 			_ = os.RemoveAll(configDir)
-			err := fmt.Errorf("start trycloudflare provider: %w", ctx.Err())
-			p.recordError(err)
-			return PublicBase{}, err
+			return PublicBase{}, nil, "", fmt.Errorf("start trycloudflare provider: %w", ctx.Err())
 		case candidate := <-urlCh:
 			if candidate == "" {
 				continue
@@ -192,8 +218,7 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 			if err := waitReady(ctx, metricsPort); err != nil {
 				_ = cmd.Process.Kill()
 				_ = os.RemoveAll(configDir)
-				p.recordError(err)
-				return PublicBase{}, err
+				return PublicBase{}, nil, "", err
 			}
 			publicURL = candidate
 		}
@@ -201,20 +226,17 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 			break
 		}
 	}
-
-	base := PublicBase{BaseURL: publicURL, StartedAt: p.now().UTC()}
-	p.mu.Lock()
-	_ = p.closeLocked()
-	p.cmd = cmd
-	p.configDir = configDir
-	p.publicBase = base
-	p.lastError = ""
-	p.mu.Unlock()
-	return base, nil
+	return PublicBase{BaseURL: publicURL, StartedAt: p.now().UTC()}, cmd, configDir, nil
 }
 
 func (p *TryCloudflareProvider) Close() error {
 	p.mu.Lock()
+	waitCh := p.startWait
+	if waitCh != nil {
+		p.mu.Unlock()
+		<-waitCh
+		p.mu.Lock()
+	}
 	defer p.mu.Unlock()
 	return p.closeLocked()
 }

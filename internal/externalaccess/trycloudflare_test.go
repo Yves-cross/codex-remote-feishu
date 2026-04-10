@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -108,6 +110,65 @@ func TestTryCloudflareProviderResolveBinaryPathReportsBundledError(t *testing.T)
 	}
 	if !strings.Contains(message, "path fallback failed") {
 		t.Fatalf("error = %q, want path fallback detail", message)
+	}
+}
+
+func TestTryCloudflareProviderEnsurePublicBaseCoalescesConcurrentStart(t *testing.T) {
+	metricsPort := reserveLocalPort(t)
+	readyServer := &http.Server{
+		Addr: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", metricsPort)),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/ready" {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+				return
+			}
+			http.NotFound(w, r)
+		}),
+	}
+	go func() {
+		_ = readyServer.ListenAndServe()
+	}()
+	t.Cleanup(func() {
+		_ = readyServer.Close()
+	})
+
+	var factoryCalls atomic.Int32
+	provider := NewTryCloudflareProvider(TryCloudflareOptions{
+		BinaryPath:  "cloudflared",
+		MetricsPort: metricsPort,
+		CommandFactory: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+			factoryCalls.Add(1)
+			return exec.CommandContext(ctx, "bash", "-lc", "sleep 0.2; printf 'https://example.trycloudflare.com\\n'; sleep 60")
+		},
+	})
+	defer provider.Close()
+
+	results := make([]PublicBase, 2)
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = provider.EnsurePublicBase(t.Context(), "http://127.0.0.1:9512")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("EnsurePublicBase[%d]: %v", i, err)
+		}
+	}
+	if results[0].BaseURL == "" || results[1].BaseURL == "" {
+		t.Fatalf("results = %#v, want populated base URLs", results)
+	}
+	if results[0].BaseURL != results[1].BaseURL {
+		t.Fatalf("results = %#v, want shared public base", results)
+	}
+	if got := factoryCalls.Load(); got != 1 {
+		t.Fatalf("factoryCalls = %d, want 1", got)
 	}
 }
 
