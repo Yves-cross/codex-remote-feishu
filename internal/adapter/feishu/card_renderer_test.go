@@ -138,10 +138,12 @@ func TestRenderOperationCardPrefersStructuredDocument(t *testing.T) {
 	}
 }
 
-func TestRenderOperationCardV2ConvertsLegacyActionRowToButton(t *testing.T) {
+func TestRenderOperationCardV2DoesNotTranslateLegacyActionRow(t *testing.T) {
 	payload := renderOperationCard(Operation{
-		Kind: OperationSendCard,
-		card: legacyCompatibleCardDocument("命令菜单", "", cardThemeInfo, []map[string]any{{
+		Kind:         OperationSendCard,
+		CardTitle:    "命令菜单",
+		CardThemeKey: cardThemeInfo,
+		CardElements: []map[string]any{{
 			"tag": "action",
 			"actions": []map[string]any{{
 				"tag":  "button",
@@ -155,78 +157,22 @@ func TestRenderOperationCardV2ConvertsLegacyActionRowToButton(t *testing.T) {
 					"command_text": "/list",
 				},
 			}},
-		}}),
+		}},
 	}, cardEnvelopeV2)
 
 	body, _ := payload["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["tag"] != "button" {
-		t.Fatalf("expected v2 action row to render as a button, got %#v", payload)
-	}
-	if elements[0]["value"] != nil {
-		t.Fatalf("expected legacy button value to be removed in v2, got %#v", elements[0])
-	}
-	behaviors, _ := elements[0]["behaviors"].([]map[string]any)
-	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
-		t.Fatalf("expected v2 button behaviors callback, got %#v", elements[0])
-	}
-	value, _ := behaviors[0]["value"].(map[string]any)
-	if value["kind"] != "run_command" || value["command_text"] != "/list" {
-		t.Fatalf("unexpected v2 callback payload: %#v", behaviors[0])
+	if len(elements) != 1 || elements[0]["tag"] != "action" {
+		t.Fatalf("expected renderer to preserve raw legacy action row instead of translating it, got %#v", payload)
 	}
 }
 
-func TestRenderOperationCardV2ConvertsLegacyMultiButtonRowToColumnSet(t *testing.T) {
+func TestRenderOperationCardV2DoesNotTranslateLegacyFormSubmitButton(t *testing.T) {
 	payload := renderOperationCard(Operation{
-		Kind: OperationSendCard,
-		card: legacyCompatibleCardDocument("命令菜单", "", cardThemeInfo, []map[string]any{{
-			"tag": "action",
-			"actions": []map[string]any{
-				{
-					"tag":  "button",
-					"type": "default",
-					"text": map[string]any{"tag": "plain_text", "content": "返回"},
-					"value": map[string]any{
-						"kind":         "run_command",
-						"command_text": "/menu",
-					},
-				},
-				{
-					"tag":  "button",
-					"type": "primary",
-					"text": map[string]any{"tag": "plain_text", "content": "查看实例"},
-					"value": map[string]any{
-						"kind":         "run_command",
-						"command_text": "/list",
-					},
-				},
-			},
-		}}),
-	}, cardEnvelopeV2)
-
-	body, _ := payload["body"].(map[string]any)
-	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["tag"] != "column_set" {
-		t.Fatalf("expected multi-button action row to render as v2 column_set, got %#v", payload)
-	}
-	columns, _ := elements[0]["columns"].([]map[string]any)
-	if len(columns) != 2 {
-		t.Fatalf("expected two button columns, got %#v", elements[0])
-	}
-	firstElements, _ := columns[0]["elements"].([]map[string]any)
-	secondElements, _ := columns[1]["elements"].([]map[string]any)
-	if len(firstElements) != 1 || len(secondElements) != 1 {
-		t.Fatalf("expected one button per v2 column, got %#v", elements[0])
-	}
-	if firstElements[0]["tag"] != "button" || secondElements[0]["tag"] != "button" {
-		t.Fatalf("expected button elements inside v2 columns, got %#v", elements[0])
-	}
-}
-
-func TestRenderOperationCardV2ConvertsLegacyFormSubmitButton(t *testing.T) {
-	payload := renderOperationCard(Operation{
-		Kind: OperationSendCard,
-		card: legacyCompatibleCardDocument("输入参数", "", cardThemeApproval, []map[string]any{{
+		Kind:         OperationSendCard,
+		CardTitle:    "输入参数",
+		CardThemeKey: cardThemeApproval,
+		CardElements: []map[string]any{{
 			"tag":  "form",
 			"name": "request_form_req_1",
 			"elements": []map[string]any{
@@ -235,21 +181,21 @@ func TestRenderOperationCardV2ConvertsLegacyFormSubmitButton(t *testing.T) {
 					"name": "notes",
 				},
 				{
-					"tag":         "button",
-					"type":        "primary",
-					"action_type": "form_submit",
-					"name":        "submit",
+					"tag":  "button",
+					"type": "primary",
 					"text": map[string]any{
 						"tag":     "plain_text",
 						"content": "提交答案",
 					},
+					"action_type": "form_submit",
+					"name":        "submit",
 					"value": map[string]any{
 						"kind":       "submit_request_form",
 						"request_id": "req-1",
 					},
 				},
 			},
-		}}),
+		}},
 	}, cardEnvelopeV2)
 
 	body, _ := payload["body"].(map[string]any)
@@ -262,11 +208,7 @@ func TestRenderOperationCardV2ConvertsLegacyFormSubmitButton(t *testing.T) {
 		t.Fatalf("expected input and submit button inside v2 form, got %#v", elements[0])
 	}
 	submitButton := formElements[1]
-	if submitButton["action_type"] != nil || submitButton["form_action_type"] != "submit" {
-		t.Fatalf("expected v2 submit button to use form_action_type, got %#v", submitButton)
-	}
-	behaviors, _ := submitButton["behaviors"].([]map[string]any)
-	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
-		t.Fatalf("expected v2 submit button callback behavior, got %#v", submitButton)
+	if submitButton["action_type"] != "form_submit" || submitButton["form_action_type"] != nil {
+		t.Fatalf("expected renderer to preserve raw legacy form submit button instead of translating it, got %#v", submitButton)
 	}
 }

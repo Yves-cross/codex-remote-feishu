@@ -28,10 +28,6 @@ type cardRawComponent struct {
 	v2     map[string]any
 }
 
-type cardActionRowComponent struct {
-	actions []map[string]any
-}
-
 func newCardDocument(title, themeKey string, components ...cardComponent) *cardDocument {
 	doc := &cardDocument{
 		Title:      strings.TrimSpace(title),
@@ -62,35 +58,10 @@ func legacyCardDocument(title, body, themeKey string, extraElements []map[string
 	return rawCardDocument(title, body, themeKey, extraElements)
 }
 
-// legacyCompatibleCardDocument is retained only for explicit compatibility and tests.
-func legacyCompatibleCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
-	components := make([]cardComponent, 0, len(extraElements)+1)
-	if strings.TrimSpace(body) != "" {
-		components = append(components, cardMarkdownComponent{Content: body})
-	}
-	for _, element := range extraElements {
-		components = append(components, newLegacyCompatibleCardComponent(element))
-	}
-	return newCardDocument(title, themeKey, components...)
-}
-
 func newRawCardComponent(data map[string]any) cardComponent {
 	return cardRawComponent{
 		legacy: cloneCardMap(data),
 		v2:     cloneCardMap(data),
-	}
-}
-
-func newLegacyCompatibleCardComponent(data map[string]any) cardComponent {
-	if strings.EqualFold(strings.TrimSpace(stringMapValue(data, "tag")), "action") {
-		if actions := cardMapSlice(data["actions"]); len(actions) != 0 {
-			return cardActionRowComponent{actions: cloneCardMaps(actions)}
-		}
-	}
-	legacy := cloneCardMap(data)
-	return cardRawComponent{
-		legacy: legacy,
-		v2:     adaptLegacyCardMapToV2(legacy),
 	}
 }
 
@@ -109,48 +80,6 @@ func (c cardRawComponent) renderCardComponent(version cardEnvelopeVersion) map[s
 		return cloneCardMap(c.v2)
 	}
 	return cloneCardMap(c.legacy)
-}
-
-func (c cardActionRowComponent) renderCardComponent(version cardEnvelopeVersion) map[string]any {
-	if len(c.actions) == 0 {
-		return nil
-	}
-	if version != cardEnvelopeV2 {
-		return map[string]any{
-			"tag":     "action",
-			"actions": cloneCardMaps(c.actions),
-		}
-	}
-	buttons := make([]map[string]any, 0, len(c.actions))
-	for _, action := range c.actions {
-		button := adaptLegacyButtonToV2(action)
-		if len(button) == 0 {
-			continue
-		}
-		buttons = append(buttons, button)
-	}
-	switch len(buttons) {
-	case 0:
-		return nil
-	case 1:
-		return buttons[0]
-	default:
-		columns := make([]map[string]any, 0, len(buttons))
-		for _, button := range buttons {
-			columns = append(columns, map[string]any{
-				"tag":            "column",
-				"width":          "auto",
-				"vertical_align": "top",
-				"elements":       []map[string]any{button},
-			})
-		}
-		return map[string]any{
-			"tag":                "column_set",
-			"flex_mode":          "flow",
-			"horizontal_spacing": "small",
-			"columns":            columns,
-		}
-	}
 }
 
 func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[string]any {
@@ -335,89 +264,4 @@ func cloneCardMaps(values []map[string]any) []map[string]any {
 		out = append(out, cloneCardMap(value))
 	}
 	return out
-}
-
-func cardMapSlice(value any) []map[string]any {
-	switch typed := value.(type) {
-	case []map[string]any:
-		return cloneCardMaps(typed)
-	case []any:
-		out := make([]map[string]any, 0, len(typed))
-		for _, item := range typed {
-			mapped, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-			out = append(out, cloneCardMap(mapped))
-		}
-		if len(out) == 0 {
-			return nil
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func adaptLegacyCardMapToV2(data map[string]any) map[string]any {
-	if len(data) == 0 {
-		return nil
-	}
-	out := make(map[string]any, len(data))
-	for key, raw := range data {
-		out[key] = adaptLegacyCardAnyToV2(raw)
-	}
-	if strings.EqualFold(strings.TrimSpace(stringMapValue(out, "tag")), "button") {
-		return adaptLegacyButtonToV2(out)
-	}
-	return out
-}
-
-func adaptLegacyCardAnyToV2(value any) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		return adaptLegacyCardMapToV2(typed)
-	case []map[string]any:
-		out := make([]map[string]any, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, adaptLegacyCardMapToV2(item))
-		}
-		return out
-	case []any:
-		out := make([]any, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, adaptLegacyCardAnyToV2(item))
-		}
-		return out
-	default:
-		return typed
-	}
-}
-
-func adaptLegacyButtonToV2(action map[string]any) map[string]any {
-	button := cloneCardMap(action)
-	if len(button) == 0 {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(stringMapValue(button, "tag")), "button") {
-		return button
-	}
-	switch strings.TrimSpace(stringMapValue(button, "action_type")) {
-	case "form_submit":
-		button["form_action_type"] = "submit"
-		delete(button, "action_type")
-	case "form_reset":
-		button["form_action_type"] = "reset"
-		delete(button, "action_type")
-	}
-	if _, ok := button["behaviors"]; !ok {
-		if value, ok := button["value"]; ok && value != nil {
-			button["behaviors"] = []map[string]any{{
-				"type":  "callback",
-				"value": cloneCardAny(value),
-			}}
-		}
-	}
-	delete(button, "value")
-	return button
 }

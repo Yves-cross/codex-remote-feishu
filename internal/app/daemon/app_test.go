@@ -201,19 +201,6 @@ func cardElementButtons(element map[string]any) []map[string]any {
 			buttons = append(buttons, elements[0])
 		}
 		return buttons
-	case "action":
-		if actions, _ := element["actions"].([]map[string]any); len(actions) != 0 {
-			return actions
-		}
-		rawActions, _ := element["actions"].([]any)
-		buttons := make([]map[string]any, 0, len(rawActions))
-		for _, raw := range rawActions {
-			button, _ := raw.(map[string]any)
-			if len(button) != 0 {
-				buttons = append(buttons, button)
-			}
-		}
-		return buttons
 	default:
 		return nil
 	}

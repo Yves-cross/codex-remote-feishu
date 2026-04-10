@@ -75,6 +75,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected selection prompt to use structured V2 send path, got %#v", ops[0])
 	}
+	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	if containsRenderedTag(renderedElements, "action") {
 		t.Fatalf("expected rendered V2 selection prompt to avoid legacy action rows, got %#v", renderedElements)
@@ -670,6 +671,7 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected button-only command catalog to use structured V2 send path, got %#v", ops[0])
 	}
+	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	if containsRenderedTag(renderedElements, "action") {
 		t.Fatalf("expected rendered V2 command catalog to avoid legacy action rows, got %#v", renderedElements)
@@ -802,6 +804,7 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected command catalog with form to use V2 in #120, got %#v", ops[0])
 	}
+	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	if renderedElements[3]["tag"] != "form" {
 		t.Fatalf("expected rendered V2 form element, got %#v", renderedElements)
@@ -965,6 +968,7 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected request prompt to use structured V2 send path, got %#v", ops[0])
 	}
+	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	renderedButtons := renderedColumnButtons(t, renderedElements[1])
 	if len(renderedButtons) != 4 {
@@ -1064,6 +1068,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected request_user_input prompt to use structured V2 send path, got %#v", ops[0])
 	}
+	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	renderedButtons := renderedColumnButtons(t, renderedElements[2])
 	if len(renderedButtons) != 2 {
@@ -2094,15 +2099,40 @@ func cardElementButtons(t *testing.T, element map[string]any) []map[string]any {
 			t.Fatalf("expected buttons inside column_set, got %#v", element)
 		}
 		return buttons
-	case "action":
-		actions, _ := element["actions"].([]map[string]any)
-		if len(actions) == 0 {
-			t.Fatalf("expected buttons inside action row, got %#v", element)
-		}
-		return actions
 	default:
-		t.Fatalf("expected button, column_set, or action row, got %#v", element)
+		t.Fatalf("expected button or column_set, got %#v", element)
 		return nil
+	}
+}
+
+func assertNoLegacyCardModelMarkers(t *testing.T, values []map[string]any) {
+	t.Helper()
+	for _, value := range values {
+		assertNoLegacyCardModelMarkersAny(t, value)
+	}
+}
+
+func assertNoLegacyCardModelMarkersAny(t *testing.T, value any) {
+	t.Helper()
+	switch typed := value.(type) {
+	case map[string]any:
+		if tag, _ := typed["tag"].(string); tag == "action" {
+			t.Fatalf("unexpected legacy action container in production card model: %#v", typed)
+		}
+		if actionType, ok := typed["action_type"]; ok && actionType != nil {
+			t.Fatalf("unexpected legacy action_type in production card model: %#v", typed)
+		}
+		for _, child := range typed {
+			assertNoLegacyCardModelMarkersAny(t, child)
+		}
+	case []map[string]any:
+		for _, child := range typed {
+			assertNoLegacyCardModelMarkersAny(t, child)
+		}
+	case []any:
+		for _, child := range typed {
+			assertNoLegacyCardModelMarkersAny(t, child)
+		}
 	}
 }
 
