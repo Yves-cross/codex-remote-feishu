@@ -418,11 +418,14 @@ func fenced(language, text string) string {
 }
 
 func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID string) []map[string]any {
-	if len(prompt.Options) == 0 {
-		return nil
-	}
 	if prompt.Kind == control.SelectionPromptUseThread {
 		return useThreadSelectionPromptElements(prompt, daemonLifecycleID)
+	}
+	if prompt.Kind == control.SelectionPromptAttachWorkspace {
+		return attachWorkspaceSelectionPromptElements(prompt, daemonLifecycleID)
+	}
+	if len(prompt.Options) == 0 {
+		return nil
 	}
 	elements := make([]map[string]any, 0, len(prompt.Options)*2+1)
 	for _, option := range prompt.Options {
@@ -456,6 +459,118 @@ func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID s
 			"tag":     "markdown",
 			"content": renderSystemInlineTags(hint),
 		})
+	}
+	return elements
+}
+
+func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID string) []map[string]any {
+	available := make([]control.SelectionOption, 0, len(prompt.Options))
+	unavailable := make([]control.SelectionOption, 0, len(prompt.Options))
+	current := make([]control.SelectionOption, 0, 1)
+	for _, option := range prompt.Options {
+		switch {
+		case option.IsCurrent:
+			current = append(current, option)
+		case option.Disabled:
+			unavailable = append(unavailable, option)
+		default:
+			available = append(available, option)
+		}
+	}
+
+	capacity := len(prompt.Options)*2 + 4
+	if strings.TrimSpace(prompt.ContextTitle) != "" || strings.TrimSpace(prompt.ContextText) != "" {
+		capacity += 2
+	}
+	if len(current) > 0 {
+		capacity += len(current) * 2
+	}
+	elements := make([]map[string]any, 0, capacity)
+
+	if title := strings.TrimSpace(prompt.ContextTitle); title != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**" + title + "**",
+		})
+	}
+	if text := strings.TrimSpace(prompt.ContextText); text != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": renderSystemInlineTags(text),
+		})
+	}
+
+	if len(current) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**当前工作区**",
+		})
+		for _, option := range current {
+			elements = append(elements, map[string]any{
+				"tag": "action",
+				"actions": []map[string]any{
+					selectionOptionButton(prompt, option, daemonLifecycleID),
+				},
+			})
+			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": renderSystemInlineTags(meta),
+				})
+			}
+		}
+	}
+
+	if len(available) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**可接管**",
+		})
+		for _, option := range available {
+			elements = append(elements, map[string]any{
+				"tag": "action",
+				"actions": []map[string]any{
+					selectionOptionButton(prompt, option, daemonLifecycleID),
+				},
+			})
+			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": renderSystemInlineTags(meta),
+				})
+			}
+		}
+	}
+
+	if len(unavailable) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**其他状态**",
+		})
+		for _, option := range unavailable {
+			elements = append(elements, map[string]any{
+				"tag": "action",
+				"actions": []map[string]any{
+					selectionOptionButton(prompt, option, daemonLifecycleID),
+				},
+			})
+			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": renderSystemInlineTags(meta),
+				})
+			}
+		}
+	}
+
+	if hint := strings.TrimSpace(prompt.Hint); hint != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": renderSystemInlineTags(hint),
+		})
+	}
+	if len(elements) == 0 {
+		return nil
 	}
 	return elements
 }
@@ -862,7 +977,7 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 		"disabled": disabled,
 		"value":    value,
 	}
-	if prompt.Kind == control.SelectionPromptUseThread {
+	if prompt.Kind == control.SelectionPromptUseThread || prompt.Kind == control.SelectionPromptAttachWorkspace {
 		button["width"] = "fill"
 	}
 	return button
@@ -870,6 +985,19 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 
 func selectionOptionButtonText(prompt control.SelectionPrompt, option control.SelectionOption) string {
 	text := strings.TrimSpace(option.ButtonLabel)
+	if prompt.Kind == control.SelectionPromptAttachWorkspace {
+		summary := firstNonEmpty(strings.TrimSpace(option.Label), text, "工作区")
+		switch {
+		case option.IsCurrent:
+			return "当前 · " + summary
+		case option.Disabled:
+			return "不可接管 · " + summary
+		case text == "切换":
+			return "切换 · " + summary
+		default:
+			return "接管 · " + summary
+		}
+	}
 	if prompt.Kind != control.SelectionPromptUseThread {
 		if text == "" {
 			return "选择"

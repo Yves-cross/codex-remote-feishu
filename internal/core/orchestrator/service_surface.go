@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type HeadlessRestoreAttempt struct {
@@ -318,61 +319,158 @@ func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord)
 	}
 
 	currentWorkspace := s.surfaceCurrentWorkspaceKey(surface)
-	keys := make([]string, 0, len(grouped))
-	for workspaceKey := range grouped {
-		keys = append(keys, workspaceKey)
-	}
-	sort.Strings(keys)
-
-	options := make([]control.SelectionOption, 0, len(keys))
-	for i, workspaceKey := range keys {
-		instances := append([]*state.InstanceRecord(nil), grouped[workspaceKey]...)
+	available := make([]workspaceSelectionEntry, 0, len(grouped))
+	unavailable := make([]workspaceSelectionEntry, 0, len(grouped))
+	contextTitle := ""
+	contextText := ""
+	for workspaceKey, groupedInstances := range grouped {
+		workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
+		instances := append([]*state.InstanceRecord(nil), groupedInstances...)
 		s.sortWorkspaceAttachInstances(surface, workspaceKey, instances)
 
-		subtitleLines := []string{workspaceKey}
-		if s.workspaceHasVSCodeActivity(instances) {
-			subtitleLines = append(subtitleLines, "检测到 VS Code 当前有活动会话")
+		latestUsedAt := s.workspaceLatestVisibleThreadUsedAt(instances, workspaceKey)
+		ageText := ""
+		if !latestUsedAt.IsZero() {
+			ageText = humanizeRelativeTime(s.now(), latestUsedAt)
 		}
+		hasVSCodeActivity := s.workspaceHasVSCodeActivity(instances)
+		isCurrent := surface.AttachedInstanceID != "" && currentWorkspace != "" && currentWorkspace == workspaceKey
+		busy := s.workspaceBusyOwnerForSurface(surface, workspaceKey) != nil
+		unattachable := s.resolveWorkspaceAttachInstanceFromCandidates(surface, workspaceKey, instances) == nil
 
 		buttonLabel := ""
 		disabled := false
-		isCurrent := surface.AttachedInstanceID != "" && currentWorkspace != "" && currentWorkspace == workspaceKey
 		switch {
 		case isCurrent:
-			buttonLabel = "当前"
+		case busy:
 			disabled = true
-		case s.workspaceBusyOwnerForSurface(surface, workspaceKey) != nil:
-			buttonLabel = "已占用"
+		case unattachable:
 			disabled = true
-			subtitleLines = append(subtitleLines, "该工作区已被其他飞书会话接管")
-		case s.resolveWorkspaceAttachInstanceFromCandidates(surface, workspaceKey, instances) == nil:
-			buttonLabel = "不可用"
-			disabled = true
-			subtitleLines = append(subtitleLines, "当前工作区暂时不可接管")
 		case surface.AttachedInstanceID != "":
 			buttonLabel = "切换"
 		}
 
-		options = append(options, control.SelectionOption{
-			Index:       i + 1,
+		option := control.SelectionOption{
 			OptionID:    workspaceKey,
 			Label:       workspaceSelectionLabel(workspaceKey),
-			Subtitle:    strings.Join(subtitleLines, "\n"),
 			ButtonLabel: buttonLabel,
+			AgeText:     ageText,
+			MetaText:    workspaceSelectionMetaText(ageText, hasVSCodeActivity, busy, unattachable),
 			IsCurrent:   isCurrent,
 			Disabled:    disabled,
-		})
+		}
+		if isCurrent {
+			contextTitle = "当前工作区"
+			contextText = workspaceSelectionContextText(option.Label, ageText)
+			continue
+		}
+		entry := workspaceSelectionEntry{
+			option:       option,
+			latestUsedAt: latestUsedAt,
+		}
+		if disabled {
+			unavailable = append(unavailable, entry)
+			continue
+		}
+		available = append(available, entry)
+	}
+
+	sortWorkspaceSelectionEntries(available)
+	sortWorkspaceSelectionEntries(unavailable)
+
+	options := make([]control.SelectionOption, 0, len(available)+len(unavailable))
+	appendIndexed := func(entries []workspaceSelectionEntry) {
+		for _, entry := range entries {
+			entry.option.Index = len(options) + 1
+			options = append(options, entry.option)
+		}
+	}
+	appendIndexed(available)
+	appendIndexed(unavailable)
+
+	hint := ""
+	if contextTitle != "" && len(options) == 0 {
+		hint = "当前没有其他可接管工作区。"
 	}
 
 	return []control.UIEvent{{
 		Kind:             control.UIEventSelectionPrompt,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind:    control.SelectionPromptAttachWorkspace,
-			Title:   "工作区列表",
-			Options: options,
+			Kind:         control.SelectionPromptAttachWorkspace,
+			Layout:       "grouped_attach_workspace",
+			Title:        "工作区列表",
+			Hint:         hint,
+			ContextTitle: contextTitle,
+			ContextText:  contextText,
+			Options:      options,
 		},
 	}}
+}
+
+type workspaceSelectionEntry struct {
+	option       control.SelectionOption
+	latestUsedAt time.Time
+}
+
+func sortWorkspaceSelectionEntries(entries []workspaceSelectionEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		left := entries[i]
+		right := entries[j]
+		switch {
+		case left.latestUsedAt.IsZero() && right.latestUsedAt.IsZero():
+		case left.latestUsedAt.IsZero():
+			return false
+		case right.latestUsedAt.IsZero():
+			return true
+		case !left.latestUsedAt.Equal(right.latestUsedAt):
+			return left.latestUsedAt.After(right.latestUsedAt)
+		}
+		return strings.TrimSpace(left.option.OptionID) < strings.TrimSpace(right.option.OptionID)
+	})
+}
+
+func (s *Service) workspaceLatestVisibleThreadUsedAt(instances []*state.InstanceRecord, workspaceKey string) time.Time {
+	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
+	latest := time.Time{}
+	for _, inst := range instances {
+		for _, thread := range workspaceVisibleThreads(inst, workspaceKey) {
+			if thread == nil || !thread.LastUsedAt.After(latest) {
+				continue
+			}
+			latest = thread.LastUsedAt
+		}
+	}
+	return latest
+}
+
+func workspaceSelectionMetaText(ageText string, hasVSCodeActivity, busy, unavailable bool) string {
+	parts := make([]string, 0, 2)
+	if age := strings.TrimSpace(ageText); age != "" {
+		parts = append(parts, age)
+	}
+	switch {
+	case busy:
+		parts = append(parts, "当前被其他飞书会话接管")
+	case unavailable:
+		parts = append(parts, "当前暂不可接管")
+	case hasVSCodeActivity:
+		parts = append(parts, "有 VS Code 活动")
+	}
+	if len(parts) == 0 {
+		return "可接管"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func workspaceSelectionContextText(label, ageText string) string {
+	label = strings.TrimSpace(label)
+	parts := []string{label}
+	if age := strings.TrimSpace(ageText); age != "" {
+		parts[0] += " · " + age
+	}
+	parts = append(parts, "同工作区内继续工作请直接 /use 或 /new")
+	return strings.Join(parts, "\n")
 }
 
 func instanceWorkspaceSelectionKeys(inst *state.InstanceRecord) []string {

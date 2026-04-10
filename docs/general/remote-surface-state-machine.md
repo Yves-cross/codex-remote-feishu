@@ -225,9 +225,15 @@ surface 不是单一枚举，而是五层正交状态叠加。
 1. `presentWorkspaceSelection()` 优先按所有在线 instance 的可见 thread `CWD` 归并 workspace。
    1. 只有当某个 instance 当前完全没有可见 thread 时，才回退到该 instance 的 `WorkspaceKey/WorkspaceRoot`。
    2. 这样 broad headless pool 不会再把多个真实 workspace 压扁成一个实例级根目录。
-2. 卡片按钮走 `attach_workspace -> ActionAttachWorkspace`。
-3. `attachWorkspace()` 在 normal mode 下先做 `workspaceClaims`，再按“当前 instance / free instance / 当前 workspace 可见 thread 数 / exact workspace match”选择一个可接管的 online instance 落到该 workspace。
-4. attach / switch 成功后，统一进入 `R1 AttachedUnbound`，不再复用默认 thread 自动 pin。
+2. normal mode `/list` 的 Feishu 卡片当前走专用 `grouped_attach_workspace` 布局，不再复用通用 selection 模板。
+   1. 若 surface 当前已 attach workspace，会先在卡片顶部投影一个“当前工作区”摘要。
+   2. 当前工作区摘要只显示 `workspace label + 最近活跃时间 + /use / /new 提示`，不会再把当前 workspace 混进可点击列表。
+   3. 其余 workspace 按“可接管 / 其他状态”分组展示；按钮使用全宽动作前缀文案，例如 `接管 · web`、`切换 · web`、`不可接管 · ops`。
+   4. 每个 workspace 的第二行状态当前压缩为短元信息，例如 `2分前 · 有 VS Code 活动`、`1小时前 · 当前被其他飞书会话接管`。
+   5. 组内排序按该 workspace 下可见 thread 的最新活跃时间倒序；无时间时再回退到 `workspaceKey` 字典序。
+3. 卡片按钮走 `attach_workspace -> ActionAttachWorkspace`。
+4. `attachWorkspace()` 在 normal mode 下先做 `workspaceClaims`，再按“当前 instance / free instance / 当前 workspace 可见 thread 数 / exact workspace match”选择一个可接管的 online instance 落到该 workspace。
+5. attach / switch 成功后，统一进入 `R1 AttachedUnbound`，不再复用默认 thread 自动 pin。
 
 同时，`attachInstance()`、`attachSurfaceToKnownThread()` 与 `startHeadlessForResolvedThread()` 在 normal mode 下仍然会先走 `workspaceClaims`，再进入现有 `instanceClaims` / `threadClaims`。
 
@@ -238,6 +244,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 3. 同一个 instance 仍然只能被一个飞书 surface attach；也就是说 instance claim 还在，只是已经退回到 workspace claim 之后。
 4. 不会进入“workspace 仲裁层已经冲突，但仍然 attach 成功”的半 attach 状态。
 5. normal mode 的 `/list` attach/switch 不会自动抢默认 thread；用户会明确落到 `R1`，然后继续 `/use` 或点 thread 卡片。
+6. 如果当前 surface 已 attach 且没有其他可切换 workspace，卡片仍会保留“当前工作区”摘要，并在底部给出“当前没有其他可接管工作区”的短提示，不会出现空白卡片。
 
 ### 4.2 thread claim 仍是全局的，但在 normal mode 下退回 workspace 内仲裁
 

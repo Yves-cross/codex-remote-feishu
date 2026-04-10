@@ -534,13 +534,13 @@ func TestListWorkspacesMarksBusyClaimedWorkspaceDisabled(t *testing.T) {
 	if prompt.Kind != control.SelectionPromptAttachWorkspace || len(prompt.Options) != 2 {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
-	if prompt.Title != "工作区列表" {
+	if prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
 		t.Fatalf("expected workspace prompt title, got %#v", prompt)
 	}
 	for _, option := range prompt.Options {
 		switch option.OptionID {
 		case "/data/dl/droid":
-			if !option.Disabled || option.ButtonLabel != "已占用" || !strings.Contains(option.Subtitle, "该工作区已被其他飞书会话接管") {
+			if !option.Disabled || option.ButtonLabel != "" || !strings.Contains(option.MetaText, "当前被其他飞书会话接管") {
 				t.Fatalf("expected busy workspace to be disabled, got %#v", option)
 			}
 		case "/data/dl/web":
@@ -550,6 +550,87 @@ func TestListWorkspacesMarksBusyClaimedWorkspaceDisabled(t *testing.T) {
 		default:
 			t.Fatalf("unexpected workspace option: %#v", option)
 		}
+	}
+}
+
+func TestListWorkspacesShowsCurrentSummaryAndSortsAttachableFirst(t *testing.T) {
+	now := time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-droid",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-current": {ThreadID: "thread-current", Name: "当前工作", CWD: "/data/dl/droid", LastUsedAt: now.Add(-5 * time.Minute)},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-web",
+		DisplayName:             "web",
+		WorkspaceRoot:           "/data/dl/web",
+		WorkspaceKey:            "/data/dl/web",
+		ShortName:               "web",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-web",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-web": {ThreadID: "thread-web", Name: "整理样式", CWD: "/data/dl/web", LastUsedAt: now.Add(-2 * time.Minute)},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-ops",
+		DisplayName:   "ops",
+		WorkspaceRoot: "/data/dl/ops",
+		WorkspaceKey:  "/data/dl/ops",
+		ShortName:     "ops",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-ops": {ThreadID: "thread-ops", Name: "值班处理", CWD: "/data/dl/ops", LastUsedAt: now.Add(-1 * time.Hour)},
+		},
+	})
+
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachWorkspace,
+		SurfaceSessionID: "surface-current",
+		ChatID:           "chat-current",
+		ActorUserID:      "user-current",
+		WorkspaceKey:     "/data/dl/droid",
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachWorkspace,
+		SurfaceSessionID: "surface-busy",
+		ChatID:           "chat-busy",
+		ActorUserID:      "user-busy",
+		WorkspaceKey:     "/data/dl/ops",
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-current",
+		ChatID:           "chat-current",
+		ActorUserID:      "user-current",
+	})
+
+	if len(events) != 1 || events[0].SelectionPrompt == nil {
+		t.Fatalf("expected one selection prompt, got %#v", events)
+	}
+	prompt := events[0].SelectionPrompt
+	if prompt.Layout != "grouped_attach_workspace" || prompt.ContextTitle != "当前工作区" {
+		t.Fatalf("unexpected workspace prompt metadata: %#v", prompt)
+	}
+	if !strings.Contains(prompt.ContextText, "droid · 5分前") || !strings.Contains(prompt.ContextText, "/use 或 /new") {
+		t.Fatalf("expected current workspace summary, got %#v", prompt.ContextText)
+	}
+	if len(prompt.Options) != 2 {
+		t.Fatalf("expected current workspace to be summarized instead of listed, got %#v", prompt.Options)
+	}
+	if prompt.Options[0].OptionID != "/data/dl/web" || prompt.Options[0].Disabled || prompt.Options[0].ButtonLabel != "切换" || prompt.Options[0].MetaText != "2分前 · 有 VS Code 活动" {
+		t.Fatalf("expected attachable workspace first with compact meta, got %#v", prompt.Options[0])
+	}
+	if prompt.Options[1].OptionID != "/data/dl/ops" || !prompt.Options[1].Disabled || prompt.Options[1].MetaText != "1小时前 · 当前被其他飞书会话接管" {
+		t.Fatalf("expected busy workspace in unavailable section, got %#v", prompt.Options[1])
 	}
 }
 
@@ -584,7 +665,7 @@ func TestListWorkspacesUsesVisibleThreadCWDsForBroadHeadlessPool(t *testing.T) {
 		t.Fatalf("expected one workspace selection prompt, got %#v", events)
 	}
 	prompt := events[0].SelectionPrompt
-	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" {
+	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
 	if len(prompt.Options) != 2 {
@@ -1448,7 +1529,7 @@ func TestNormalModeListIncludesHeadlessWorkspace(t *testing.T) {
 		t.Fatalf("expected one workspace selection prompt for headless-only runtime, got %#v", events)
 	}
 	prompt := events[0].SelectionPrompt
-	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" {
+	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
 	if len(prompt.Options) != 1 || prompt.Options[0].OptionID != "/data/dl/runtime/headless" {

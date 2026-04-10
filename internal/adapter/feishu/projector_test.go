@@ -51,14 +51,23 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
-			Kind: control.SelectionPromptAttachWorkspace,
+			Kind:         control.SelectionPromptAttachWorkspace,
+			ContextTitle: "当前工作区",
+			ContextText:  "droid · 5分前\n同工作区内继续工作请直接 /use 或 /new",
 			Options: []control.SelectionOption{
 				{
 					Index:       1,
-					OptionID:    "/data/dl/droid",
-					Label:       "droid",
-					Subtitle:    "/data/dl/droid\n检测到 VS Code 当前有活动会话",
+					OptionID:    "/data/dl/web",
+					Label:       "web",
+					MetaText:    "2分前 · 有 VS Code 活动",
 					ButtonLabel: "切换",
+				},
+				{
+					Index:    2,
+					OptionID: "/data/dl/ops",
+					Label:    "ops",
+					MetaText: "1小时前 · 当前被其他飞书会话接管",
+					Disabled: true,
 				},
 			},
 		},
@@ -69,23 +78,46 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardTitle != "工作区列表" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if len(ops[0].CardElements) != 2 {
-		t.Fatalf("expected markdown + action button elements, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) != 8 {
+		t.Fatalf("expected grouped workspace selection elements, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[0]["content"] != "1. droid - 工作区 <text_tag color='neutral'>/data/dl/droid</text_tag>\n检测到 VS Code 当前有活动会话" {
+	if ops[0].CardElements[0]["content"] != "**当前工作区**" {
 		t.Fatalf("unexpected first element: %#v", ops[0].CardElements[0])
 	}
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	if ops[0].CardElements[1]["content"] != "droid · 5分前\n同工作区内继续工作请直接 /use 或 /new" {
+		t.Fatalf("unexpected context summary: %#v", ops[0].CardElements[1])
+	}
+	if ops[0].CardElements[2]["content"] != "**可接管**" {
+		t.Fatalf("unexpected available header: %#v", ops[0].CardElements[2])
+	}
+	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
 	if len(actionRow) != 1 {
-		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
+		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[3])
 	}
 	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "切换" {
+	if textValue["content"] != "切换 · web" || actionRow[0]["width"] != "fill" {
 		t.Fatalf("unexpected button label: %#v", actionRow[0])
 	}
 	value, _ := actionRow[0]["value"].(map[string]any)
-	if value["kind"] != "attach_workspace" || value["workspace_key"] != "/data/dl/droid" {
+	if value["kind"] != "attach_workspace" || value["workspace_key"] != "/data/dl/web" {
 		t.Fatalf("unexpected action payload: %#v", value)
+	}
+	if ops[0].CardElements[4]["content"] != "2分前 · 有 VS Code 活动" {
+		t.Fatalf("unexpected available meta: %#v", ops[0].CardElements[4])
+	}
+	if ops[0].CardElements[5]["content"] != "**其他状态**" {
+		t.Fatalf("unexpected unavailable header: %#v", ops[0].CardElements[5])
+	}
+	blockedRow, _ := ops[0].CardElements[6]["actions"].([]map[string]any)
+	if len(blockedRow) != 1 {
+		t.Fatalf("expected unavailable action button, got %#v", ops[0].CardElements[6])
+	}
+	blockedText, _ := blockedRow[0]["text"].(map[string]any)
+	if blockedText["content"] != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
+		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
+	}
+	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
+		t.Fatalf("unexpected unavailable meta: %#v", ops[0].CardElements[7])
 	}
 }
 
