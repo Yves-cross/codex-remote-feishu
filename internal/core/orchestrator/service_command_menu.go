@@ -54,12 +54,12 @@ func (s *Service) commandMenuStage(surface *state.SurfaceConsoleRecord) commandM
 func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecord, stage commandMenuStage) control.CommandCatalog {
 	sections := []control.CommandCatalogSection{
 		{
-			Title:   "常用操作",
-			Entries: s.commandMenuHomeEntries(stage),
-		},
-		{
 			Title:   "全部分组",
 			Entries: s.commandMenuGroupEntries(),
+		},
+		{
+			Title:   "常用操作",
+			Entries: s.commandMenuHomeEntries(stage),
 		},
 	}
 	return control.CommandCatalog{
@@ -96,11 +96,6 @@ func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleReco
 		Sections: []control.CommandCatalogSection{{
 			Title:   group.Title,
 			Entries: entries,
-		}},
-		RelatedButtons: []control.CommandCatalogButton{{
-			Label:       "返回首页",
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: "/menu",
 		}},
 	}
 }
@@ -195,21 +190,14 @@ func menuCommandText(view string) string {
 }
 
 func commandBackButtons(groupID string) []control.CommandCatalogButton {
-	buttons := []control.CommandCatalogButton{
-		{
-			Label:       "返回首页",
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: "/menu",
-		},
-	}
 	if group, ok := control.FeishuCommandGroupByID(groupID); ok {
-		buttons = append([]control.CommandCatalogButton{{
+		return []control.CommandCatalogButton{{
 			Label:       "返回" + group.Title,
 			Kind:        control.CommandCatalogButtonRunCommand,
 			CommandText: menuCommandText(groupID),
-		}}, buttons...)
+		}}
 	}
-	return buttons
+	return nil
 }
 
 func (s *Service) buildModeCatalog(surface *state.SurfaceConsoleRecord) control.CommandCatalog {

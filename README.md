@@ -294,6 +294,7 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 - `access`
 
 WebSetup 里的推荐菜单、飞书模板和 `/help` 当前都来自同一套命令定义；其中 `/help` 保持文本帮助，`/menu` / 参数卡走紧凑按钮卡片。
+另外，菜单卡片里不再重复放“返回首页”按钮；如果要回首页，直接点飞书 bot 菜单里的 `menu` 更快。
 
 关于 `.md` 预览：
 

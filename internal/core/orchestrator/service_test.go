@@ -4694,10 +4694,10 @@ func TestMenuActionDetachedHomepagePrioritizesListUseStatus(t *testing.T) {
 		t.Fatalf("expected command catalog, got %#v", events)
 	}
 	catalog := events[0].CommandCatalog
-	if len(catalog.Sections) < 2 || catalog.Sections[0].Title != "常用操作" {
+	if len(catalog.Sections) < 2 || catalog.Sections[0].Title != "全部分组" || catalog.Sections[1].Title != "常用操作" {
 		t.Fatalf("unexpected detached home catalog: %#v", catalog)
 	}
-	got := firstCommands(catalog.Sections[0].Entries)
+	got := firstCommands(catalog.Sections[1].Entries)
 	want := []string{"/list", "/use", "/status"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("detached home commands = %#v, want %#v", got, want)
@@ -4718,7 +4718,7 @@ func TestMenuActionNormalHomepageHidesFollow(t *testing.T) {
 		GatewayID:        "app-1",
 	})
 	catalog := events[0].CommandCatalog
-	got := firstCommands(catalog.Sections[0].Entries)
+	got := firstCommands(catalog.Sections[1].Entries)
 	want := []string{"/stop", "/new", "/reasoning", "/model", "/access"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normal home commands = %#v, want %#v", got, want)
@@ -4744,10 +4744,31 @@ func TestMenuActionVSCodeHomepageKeepsFollowBehindSettings(t *testing.T) {
 		GatewayID:        "app-1",
 	})
 	catalog := events[0].CommandCatalog
-	got := firstCommands(catalog.Sections[0].Entries)
+	got := firstCommands(catalog.Sections[1].Entries)
 	want := []string{"/stop", "/reasoning", "/model", "/access", "/follow"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("vscode home commands = %#v, want %#v", got, want)
+	}
+}
+
+func TestMenuSubmenuDoesNotShowReturnHomeButton(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		GatewayID:        "app-1",
+		Text:             "/menu send_settings",
+	})
+	if len(events) != 1 || events[0].CommandCatalog == nil {
+		t.Fatalf("expected command catalog, got %#v", events)
+	}
+	catalog := events[0].CommandCatalog
+	if len(catalog.RelatedButtons) != 0 {
+		t.Fatalf("submenu should not expose return-home related buttons: %#v", catalog.RelatedButtons)
 	}
 }
 
