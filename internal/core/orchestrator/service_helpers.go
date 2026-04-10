@@ -1087,3 +1087,7 @@ func rendersTextItem(itemKind string) bool {
 func isImageGenerationItem(itemKind string) bool {
 	return strings.TrimSpace(itemKind) == "image_generation"
 }
+
+func isDynamicToolCallItem(itemKind string) bool {
+	return strings.TrimSpace(itemKind) == "dynamic_tool_call"
+}

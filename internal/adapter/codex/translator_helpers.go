@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -195,6 +196,24 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 		); imageBase64 != "" {
 			metadata["imageBase64"] = imageBase64
 		}
+	case "dynamic_tool_call":
+		if tool := firstNonEmptyString(
+			lookupStringFromAny(item["tool"]),
+			lookupStringFromAny(item["name"]),
+		); tool != "" {
+			metadata["tool"] = tool
+		}
+		if success, ok := item["success"].(bool); ok {
+			metadata["success"] = success
+		}
+		if contentItems := extractDynamicToolContentItems(item); len(contentItems) > 0 {
+			metadata["contentItems"] = contentItems
+		}
+		if text, ok := metadata["text"].(string); !ok || strings.TrimSpace(text) == "" {
+			if text := extractDynamicToolSummaryText(item); text != "" {
+				metadata["text"] = text
+			}
+		}
 	}
 	return metadata
 }
@@ -301,24 +320,18 @@ func extractItemText(item map[string]any) string {
 	if text := lookupStringFromAny(item["text"]); text != "" {
 		return text
 	}
-	content, _ := item["content"].([]any)
-	if len(content) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(content))
-	for _, current := range content {
-		entry, _ := current.(map[string]any)
-		if entry == nil {
-			continue
-		}
-		if lookupStringFromAny(entry["type"]) != "text" {
-			continue
-		}
-		if text := lookupStringFromAny(entry["text"]); text != "" {
-			parts = append(parts, text)
-		}
-	}
-	return strings.Join(parts, "\n")
+	return extractTextFromContentArray(
+		firstNonNil(
+			item["content"],
+			item["contentItems"],
+			item["content_items"],
+			item["output"],
+			lookupAny(item, "result", "content"),
+			lookupAny(item, "result", "contentItems"),
+			lookupAny(item, "result", "content_items"),
+			lookupAny(item, "result", "output"),
+		),
+	)
 }
 
 func extractStringList(value any) []string {
@@ -333,6 +346,161 @@ func extractStringList(value any) []string {
 		}
 	}
 	return out
+}
+
+func extractDynamicToolContentItems(item map[string]any) []map[string]any {
+	source := firstNonNil(
+		item["contentItems"],
+		item["content_items"],
+		item["content"],
+		item["output"],
+		lookupAny(item, "result", "contentItems"),
+		lookupAny(item, "result", "content_items"),
+		lookupAny(item, "result", "content"),
+		lookupAny(item, "result", "output"),
+	)
+	if source == nil {
+		return nil
+	}
+	rawEntries := contentArrayValues(source)
+	if len(rawEntries) == 0 {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(rawEntries))
+	for _, current := range rawEntries {
+		entry, _ := current.(map[string]any)
+		if entry == nil {
+			continue
+		}
+		switch normalizeStructuredContentType(lookupStringFromAny(entry["type"])) {
+		case "text":
+			text := firstNonEmptyString(
+				lookupStringFromAny(entry["text"]),
+				lookupStringFromAny(entry["value"]),
+			)
+			if text == "" {
+				continue
+			}
+			items = append(items, map[string]any{
+				"type": "text",
+				"text": text,
+			})
+		case "image":
+			imageURL := firstNonEmptyString(
+				lookupStringFromAny(entry["image_url"]),
+				lookupStringFromAny(entry["imageUrl"]),
+				lookupStringFromAny(entry["url"]),
+			)
+			if imageURL == "" {
+				continue
+			}
+			record := map[string]any{
+				"type": "image",
+				"url":  imageURL,
+			}
+			if looksLikeDataURL(imageURL) {
+				record["imageBase64"] = imageURL
+			}
+			items = append(items, record)
+		}
+	}
+	return items
+}
+
+func extractDynamicToolSummaryText(item map[string]any) string {
+	if text := extractTextFromContentArray(
+		firstNonNil(
+			item["contentItems"],
+			item["content_items"],
+			item["content"],
+			item["output"],
+			lookupAny(item, "result", "contentItems"),
+			lookupAny(item, "result", "content_items"),
+			lookupAny(item, "result", "content"),
+			lookupAny(item, "result", "output"),
+		),
+	); text != "" {
+		return text
+	}
+	value := firstNonNil(item["output"], item["result"])
+	if value == nil {
+		return ""
+	}
+	if rendered := compactStructuredValue(value); rendered != "" {
+		return rendered
+	}
+	return ""
+}
+
+func extractTextFromContentArray(source any) string {
+	rawEntries := contentArrayValues(source)
+	if len(rawEntries) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(rawEntries))
+	for _, current := range rawEntries {
+		entry, _ := current.(map[string]any)
+		if entry == nil {
+			continue
+		}
+		switch normalizeStructuredContentType(lookupStringFromAny(entry["type"])) {
+		case "text":
+			if text := firstNonEmptyString(
+				lookupStringFromAny(entry["text"]),
+				lookupStringFromAny(entry["value"]),
+			); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func contentArrayValues(source any) []any {
+	switch typed := source.(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		out := make([]any, 0, len(typed))
+		for _, current := range typed {
+			out = append(out, current)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeStructuredContentType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	switch normalized {
+	case "text", "inputtext":
+		return "text"
+	case "image", "inputimage":
+		return "image"
+	default:
+		return normalized
+	}
+}
+
+func looksLikeDataURL(value string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "data:")
+}
+
+func compactStructuredValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any, []any:
+		encoded, err := json.Marshal(typed)
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(encoded))
+	default:
+		return ""
+	}
 }
 
 func extractRequestPayload(message map[string]any) map[string]any {

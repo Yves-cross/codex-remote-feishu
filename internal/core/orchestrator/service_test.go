@@ -9240,6 +9240,179 @@ func TestRemoteTurnImageGenerationProducesImmediateImageEventAndFinalText(t *tes
 	}
 }
 
+func TestRemoteTurnDynamicToolCallProducesSummaryAndImageEvents(t *testing.T) {
+	now := time.Date(2026, 4, 10, 12, 2, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "工具测试", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "执行工具",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "tool-1",
+		ItemKind: "dynamic_tool_call",
+		Metadata: map[string]any{
+			"tool": "demo_tool",
+			"text": "dynamic-ok",
+			"contentItems": []map[string]any{
+				{"type": "text", "text": "dynamic-ok"},
+				{"type": "image", "imageBase64": "data:image/png;base64,AAA"},
+			},
+		},
+	})
+
+	var sawText bool
+	var sawImage bool
+	for _, event := range events {
+		if event.Block != nil && strings.Contains(event.Block.Text, "工具 `demo_tool` 返回") {
+			sawText = true
+		}
+		if event.ImageOutput != nil && event.ImageOutput.ImageBase64 == "data:image/png;base64,AAA" && event.SourceMessageID == "msg-1" {
+			sawImage = true
+		}
+	}
+	if !sawText || !sawImage {
+		t.Fatalf("expected dynamic tool text summary and image output, got %#v", events)
+	}
+}
+
+func TestRemoteTurnDynamicToolCallImageOnlyProducesFallbackSummary(t *testing.T) {
+	now := time.Date(2026, 4, 10, 12, 3, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "工具测试", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "执行工具",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "tool-1",
+		ItemKind: "dynamic_tool_call",
+		Metadata: map[string]any{
+			"tool": "demo_tool",
+			"contentItems": []map[string]any{
+				{"type": "image", "imageBase64": "data:image/png;base64,AAA"},
+			},
+		},
+	})
+
+	var sawFallbackSummary bool
+	for _, event := range events {
+		if event.Block != nil && strings.Contains(event.Block.Text, "返回了 1 张图片") {
+			sawFallbackSummary = true
+		}
+	}
+	if !sawFallbackSummary {
+		t.Fatalf("expected fallback text summary for image-only dynamic tool output, got %#v", events)
+	}
+}
+
+func TestRemoteTurnDynamicToolCallRemoteImageLinkFallsBackToTextLink(t *testing.T) {
+	now := time.Date(2026, 4, 10, 12, 4, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "工具测试", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "执行工具",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "tool-1",
+		ItemKind: "dynamic_tool_call",
+		Metadata: map[string]any{
+			"tool": "demo_tool",
+			"contentItems": []map[string]any{
+				{"type": "image", "url": "https://example.com/demo.png"},
+			},
+		},
+	})
+
+	var sawLinkSummary bool
+	for _, event := range events {
+		if event.Block != nil &&
+			strings.Contains(event.Block.Text, "图片链接") &&
+			strings.Contains(event.Block.Text, "https://example.com/demo.png") {
+			sawLinkSummary = true
+		}
+		if event.ImageOutput != nil {
+			t.Fatalf("unexpected image upload event for remote-only url image: %#v", events)
+		}
+	}
+	if !sawLinkSummary {
+		t.Fatalf("expected text fallback for remote image link, got %#v", events)
+	}
+}
+
 func TestRemoteTurnImageGenerationOnlyTurnDoesNotForceSyntheticFinalText(t *testing.T) {
 	now := time.Date(2026, 4, 10, 12, 5, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

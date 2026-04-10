@@ -254,6 +254,49 @@ func TestObserveServerItemLifecycleAndDelta(t *testing.T) {
 	}
 }
 
+func TestObserveServerDynamicToolCallCompletedExtractsContentItems(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"tool-1","type":"dynamicToolCall","tool":"demo_tool","contentItems":[{"type":"inputText","text":"dynamic-ok"},{"type":"inputImage","imageUrl":"data:image/png;base64,AAA"}]}}}`))
+	if err != nil {
+		t.Fatalf("observe dynamic tool item completed: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventItemCompleted || event.ItemKind != "dynamic_tool_call" {
+		t.Fatalf("unexpected item completed event: %#v", event)
+	}
+	if event.Metadata["tool"] != "demo_tool" || event.Metadata["text"] != "dynamic-ok" {
+		t.Fatalf("unexpected dynamic tool metadata: %#v", event.Metadata)
+	}
+	contentItems, ok := event.Metadata["contentItems"].([]map[string]any)
+	if !ok || len(contentItems) != 2 {
+		t.Fatalf("expected structured content items, got %#v", event.Metadata["contentItems"])
+	}
+	if contentItems[1]["type"] != "image" || contentItems[1]["imageBase64"] != "data:image/png;base64,AAA" {
+		t.Fatalf("unexpected dynamic tool image payload: %#v", contentItems)
+	}
+}
+
+func TestObserveServerDynamicToolCallStructuredOutputFallsBackToSummaryText(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"tool-2","type":"dynamicToolCall","tool":"demo_tool","output":{"status":"ok","count":2}}}}`))
+	if err != nil {
+		t.Fatalf("observe dynamic tool structured output: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventItemCompleted || event.ItemKind != "dynamic_tool_call" {
+		t.Fatalf("unexpected item completed event: %#v", event)
+	}
+	if event.Metadata["text"] != `{"count":2,"status":"ok"}` {
+		t.Fatalf("expected compact structured summary, got %#v", event.Metadata)
+	}
+}
+
 func TestObserveServerCompletedLegacyAssistantMessageMapsToAgentMessage(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"item-1","type":"assistant_message","text":"hello"}}}`))
