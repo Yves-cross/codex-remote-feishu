@@ -432,19 +432,15 @@ type sessionValue struct {
 }
 
 func (s *Service) ensurePublicBase(ctx context.Context, localListenerURL string) (string, string, error) {
-	s.mu.Lock()
-	if strings.TrimSpace(s.publicBase.BaseURL) != "" {
-		baseURL := s.publicBase.BaseURL
-		kind := "local"
-		if s.provider != nil {
-			kind = s.provider.Kind()
+	if s.provider == nil {
+		s.mu.Lock()
+		if strings.TrimSpace(s.publicBase.BaseURL) != "" {
+			baseURL := s.publicBase.BaseURL
+			s.mu.Unlock()
+			return baseURL, "local", nil
 		}
 		s.mu.Unlock()
-		return baseURL, kind, nil
-	}
-	s.mu.Unlock()
 
-	if s.provider == nil {
 		s.mu.Lock()
 		s.publicBase = PublicBase{BaseURL: localListenerURL, StartedAt: s.now().UTC()}
 		s.mu.Unlock()

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestTryCloudflareProviderEnsurePublicBase(t *testing.T) {
@@ -55,6 +56,100 @@ func TestTryCloudflareProviderEnsurePublicBase(t *testing.T) {
 	snapshot := provider.Snapshot()
 	if !snapshot.Ready || snapshot.BaseURL != base.BaseURL {
 		t.Fatalf("snapshot = %#v, want ready base=%q", snapshot, base.BaseURL)
+	}
+}
+
+func TestTryCloudflareProviderKeepsTunnelAliveAfterStartupContextEnds(t *testing.T) {
+	metricsPort := reserveLocalPort(t)
+	readyServer := &http.Server{
+		Addr: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", metricsPort)),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/ready" {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+				return
+			}
+			http.NotFound(w, r)
+		}),
+	}
+	go func() {
+		_ = readyServer.ListenAndServe()
+	}()
+	t.Cleanup(func() {
+		_ = readyServer.Close()
+	})
+
+	probeFile := filepath.Join(t.TempDir(), "alive.txt")
+	provider := NewTryCloudflareProvider(TryCloudflareOptions{
+		BinaryPath:  "cloudflared",
+		MetricsPort: metricsPort,
+		CommandFactory: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+			script := fmt.Sprintf("printf 'https://example.trycloudflare.com\\n'; sleep 0.3; echo alive > %q; sleep 60", probeFile)
+			return exec.CommandContext(ctx, "bash", "-lc", script)
+		},
+	})
+	defer provider.Close()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	if _, err := provider.EnsurePublicBase(ctx, "http://127.0.0.1:9512"); err != nil {
+		t.Fatalf("EnsurePublicBase: %v", err)
+	}
+	cancel()
+
+	time.Sleep(700 * time.Millisecond)
+	content, err := os.ReadFile(probeFile)
+	if err != nil {
+		t.Fatalf("expected tunnel child process to outlive startup context, read probe file: %v", err)
+	}
+	if strings.TrimSpace(string(content)) != "alive" {
+		t.Fatalf("probe content = %q, want alive", string(content))
+	}
+}
+
+func TestTryCloudflareProviderClearsSnapshotWhenTunnelExits(t *testing.T) {
+	metricsPort := reserveLocalPort(t)
+	readyServer := &http.Server{
+		Addr: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", metricsPort)),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/ready" {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+				return
+			}
+			http.NotFound(w, r)
+		}),
+	}
+	go func() {
+		_ = readyServer.ListenAndServe()
+	}()
+	t.Cleanup(func() {
+		_ = readyServer.Close()
+	})
+
+	provider := NewTryCloudflareProvider(TryCloudflareOptions{
+		BinaryPath:  "cloudflared",
+		MetricsPort: metricsPort,
+		CommandFactory: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
+			return exec.CommandContext(ctx, "bash", "-lc", "printf 'https://example.trycloudflare.com\\n'; sleep 0.2")
+		},
+	})
+	defer provider.Close()
+
+	base, err := provider.EnsurePublicBase(t.Context(), "http://127.0.0.1:9512")
+	if err != nil {
+		t.Fatalf("EnsurePublicBase: %v", err)
+	}
+	if base.BaseURL == "" {
+		t.Fatalf("base = %#v, want non-empty base", base)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	snapshot := provider.Snapshot()
+	if snapshot.Ready || snapshot.BaseURL != "" {
+		t.Fatalf("snapshot = %#v, want cleared stale tunnel state", snapshot)
+	}
+	if !strings.Contains(snapshot.LastError, "exited") {
+		t.Fatalf("snapshot = %#v, want exit detail", snapshot)
 	}
 }
 

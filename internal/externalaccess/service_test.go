@@ -1,6 +1,7 @@
 package externalaccess
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -131,5 +132,54 @@ func TestServiceRejectsPathOutsideAllowlist(t *testing.T) {
 	service.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403 body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+type rotatingProvider struct {
+	calls int
+}
+
+func (p *rotatingProvider) Kind() string { return "fake" }
+
+func (p *rotatingProvider) EnsurePublicBase(context.Context, string) (PublicBase, error) {
+	p.calls++
+	return PublicBase{
+		BaseURL:   "https://example-" + string(rune('0'+p.calls)) + ".trycloudflare.com",
+		StartedAt: time.Unix(int64(p.calls), 0).UTC(),
+	}, nil
+}
+
+func (p *rotatingProvider) Snapshot() ProviderStatus {
+	return ProviderStatus{Kind: p.Kind(), Ready: true}
+}
+
+func (p *rotatingProvider) Close() error { return nil }
+
+func TestServiceIssueURLDoesNotCacheProviderBaseAcrossCalls(t *testing.T) {
+	provider := &rotatingProvider{}
+	service := NewService(Options{Provider: provider})
+
+	first, err := service.IssueURL(t.Context(), IssueRequest{
+		Purpose:   PurposeDebug,
+		TargetURL: "http://127.0.0.1:9501/",
+	}, "http://127.0.0.1:9512")
+	if err != nil {
+		t.Fatalf("IssueURL first: %v", err)
+	}
+	second, err := service.IssueURL(t.Context(), IssueRequest{
+		Purpose:   PurposeDebug,
+		TargetURL: "http://127.0.0.1:9501/",
+	}, "http://127.0.0.1:9512")
+	if err != nil {
+		t.Fatalf("IssueURL second: %v", err)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("provider.calls = %d, want 2", provider.calls)
+	}
+	if strings.HasPrefix(first.ExternalURL, "https://example-2.trycloudflare.com/") {
+		t.Fatalf("first external url unexpectedly reused second base: %q", first.ExternalURL)
+	}
+	if !strings.HasPrefix(second.ExternalURL, "https://example-2.trycloudflare.com/") {
+		t.Fatalf("second external url = %q, want refreshed provider base", second.ExternalURL)
 	}
 }

@@ -44,10 +44,14 @@ type TryCloudflareProvider struct {
 
 	mu         sync.Mutex
 	cmd        *exec.Cmd
+	cmdCancel  context.CancelFunc
 	configDir  string
+	readyURL   string
 	publicBase PublicBase
 	lastError  string
 	startWait  chan struct{}
+	doneCh     chan struct{}
+	stopping   bool
 }
 
 func NewTryCloudflareProvider(opts TryCloudflareOptions) *TryCloudflareProvider {
@@ -87,7 +91,7 @@ func (p *TryCloudflareProvider) Snapshot() ProviderStatus {
 		Kind:      p.Kind(),
 		BaseURL:   p.publicBase.BaseURL,
 		StartedAt: p.publicBase.StartedAt,
-		Ready:     p.cmd != nil && p.cmd.Process != nil,
+		Ready:     p.cmd != nil && p.cmd.Process != nil && p.doneCh != nil,
 		LastError: p.lastError,
 	}
 	return status
@@ -116,13 +120,20 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 		waitCh := p.startWait
 		p.mu.Unlock()
 
-		base, cmd, configDir, err := p.startPublicBase(ctx, localListenerURL)
+		base, cmd, cmdCancel, configDir, readyURL, err := p.startPublicBase(ctx, localListenerURL)
+		var doneCh chan struct{}
+		if err == nil {
+			doneCh = make(chan struct{})
+		}
 		p.mu.Lock()
 		if err == nil {
-			_ = p.closeLocked()
 			p.cmd = cmd
+			p.cmdCancel = cmdCancel
 			p.configDir = configDir
+			p.readyURL = readyURL
 			p.publicBase = base
+			p.doneCh = doneCh
+			p.stopping = false
 			p.lastError = ""
 		} else {
 			p.lastError = err.Error()
@@ -130,25 +141,28 @@ func (p *TryCloudflareProvider) EnsurePublicBase(ctx context.Context, localListe
 		close(waitCh)
 		p.startWait = nil
 		p.mu.Unlock()
+		if err == nil {
+			go p.watchCommand(cmd, configDir, doneCh)
+		}
 		return base, err
 	}
 }
 
-func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListenerURL string) (PublicBase, *exec.Cmd, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, p.launchTimeout)
+func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListenerURL string) (PublicBase, *exec.Cmd, context.CancelFunc, string, string, error) {
+	launchCtx, cancel := context.WithTimeout(ctx, p.launchTimeout)
 	defer cancel()
 
 	binaryPath, err := p.resolveBinaryPath()
 	if err != nil {
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 	metricsAddr, metricsPort, err := chooseMetricsAddr(p.metricsPort)
 	if err != nil {
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 	configDir, err := os.MkdirTemp("", "codex-remote-cloudflared-*")
 	if err != nil {
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 
 	args := []string{
@@ -157,7 +171,8 @@ func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListen
 		"--no-autoupdate",
 		"--metrics", metricsAddr,
 	}
-	cmd := p.commandFactory(ctx, binaryPath, args...)
+	procCtx, procCancel := context.WithCancel(context.Background())
+	cmd := p.commandFactory(procCtx, binaryPath, args...)
 	cmd.Env = append(os.Environ(),
 		"HOME="+configDir,
 		"XDG_CONFIG_HOME="+configDir,
@@ -174,13 +189,15 @@ func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListen
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		procCancel()
 		_ = os.RemoveAll(configDir)
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
+		procCancel()
 		_ = os.RemoveAll(configDir)
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 	urlCh := make(chan string, 2)
 	pump := func(reader io.Reader) {
@@ -198,8 +215,9 @@ func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListen
 	}
 
 	if err := cmd.Start(); err != nil {
+		procCancel()
 		_ = os.RemoveAll(configDir)
-		return PublicBase{}, nil, "", err
+		return PublicBase{}, nil, nil, "", "", err
 	}
 	go pump(stdout)
 	go pump(stderr)
@@ -207,18 +225,26 @@ func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListen
 	var publicURL string
 	for {
 		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
+		case <-launchCtx.Done():
+			procCancel()
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			_ = cmd.Wait()
 			_ = os.RemoveAll(configDir)
-			return PublicBase{}, nil, "", fmt.Errorf("start trycloudflare provider: %w", ctx.Err())
+			return PublicBase{}, nil, nil, "", "", fmt.Errorf("start trycloudflare provider: %w", launchCtx.Err())
 		case candidate := <-urlCh:
 			if candidate == "" {
 				continue
 			}
-			if err := waitReady(ctx, metricsPort); err != nil {
-				_ = cmd.Process.Kill()
+			if err := waitReady(launchCtx, metricsPort); err != nil {
+				procCancel()
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+				}
+				_ = cmd.Wait()
 				_ = os.RemoveAll(configDir)
-				return PublicBase{}, nil, "", err
+				return PublicBase{}, nil, nil, "", "", err
 			}
 			publicURL = candidate
 		}
@@ -226,7 +252,9 @@ func (p *TryCloudflareProvider) startPublicBase(ctx context.Context, localListen
 			break
 		}
 	}
-	return PublicBase{BaseURL: publicURL, StartedAt: p.now().UTC()}, cmd, configDir, nil
+
+	base := PublicBase{BaseURL: publicURL, StartedAt: p.now().UTC()}
+	return base, cmd, procCancel, configDir, fmt.Sprintf("http://127.0.0.1:%d/ready", metricsPort), nil
 }
 
 func (p *TryCloudflareProvider) Close() error {
@@ -237,27 +265,64 @@ func (p *TryCloudflareProvider) Close() error {
 		<-waitCh
 		p.mu.Lock()
 	}
-	defer p.mu.Unlock()
-	return p.closeLocked()
+	cmd := p.cmd
+	cancel := p.cmdCancel
+	doneCh := p.doneCh
+	p.stopping = true
+	p.mu.Unlock()
+
+	var errs []error
+	if cancel != nil {
+		cancel()
+	}
+	if cmd != nil && cmd.Process != nil {
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			errs = append(errs, err)
+		}
+	}
+	if doneCh != nil {
+		<-doneCh
+	}
+
+	p.mu.Lock()
+	if p.cmd == nil {
+		p.cmdCancel = nil
+		p.configDir = ""
+		p.readyURL = ""
+		p.publicBase = PublicBase{}
+		p.doneCh = nil
+		p.lastError = ""
+	}
+	p.stopping = false
+	p.mu.Unlock()
+	return errors.Join(errs...)
 }
 
-func (p *TryCloudflareProvider) closeLocked() error {
-	var errs []error
-	if p.cmd != nil && p.cmd.Process != nil {
-		if err := p.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			errs = append(errs, err)
+func (p *TryCloudflareProvider) watchCommand(cmd *exec.Cmd, configDir string, doneCh chan struct{}) {
+	err := cmd.Wait()
+	_ = os.RemoveAll(configDir)
+
+	p.mu.Lock()
+	if p.cmd == cmd {
+		stopping := p.stopping
+		p.cmd = nil
+		p.cmdCancel = nil
+		p.configDir = ""
+		p.readyURL = ""
+		p.publicBase = PublicBase{}
+		p.doneCh = nil
+		if stopping {
+			p.lastError = ""
+		} else if err != nil {
+			p.lastError = fmt.Sprintf("trycloudflare exited: %v", err)
+		} else {
+			p.lastError = "trycloudflare exited unexpectedly"
 		}
-		_, _ = p.cmd.Process.Wait()
+		p.stopping = false
 	}
-	if strings.TrimSpace(p.configDir) != "" {
-		if err := os.RemoveAll(p.configDir); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	p.cmd = nil
-	p.configDir = ""
-	p.publicBase = PublicBase{}
-	return errors.Join(errs...)
+	p.mu.Unlock()
+
+	close(doneCh)
 }
 
 func (p *TryCloudflareProvider) resolveBinaryPath() (string, error) {
