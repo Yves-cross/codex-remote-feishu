@@ -38,6 +38,11 @@ func TestDetect(t *testing.T) {
 			want: Decision{Role: RoleInstall, Args: []string{"-interactive"}},
 		},
 		{
+			name: "local upgrade role",
+			args: []string{"local-upgrade", "-slot", "local-test"},
+			want: Decision{Role: RoleLocalUpgrade, Args: []string{"-slot", "local-test"}},
+		},
+		{
 			name: "service role",
 			args: []string{"service", "status"},
 			want: Decision{Role: RoleService, Args: []string{"status"}},
@@ -169,6 +174,39 @@ func TestMainRunsInstall(t *testing.T) {
 	}
 	if strings.Join(gotArgs, "\x00") != strings.Join([]string{"-interactive"}, "\x00") {
 		t.Fatalf("install args = %#v", gotArgs)
+	}
+}
+
+func TestMainRunsLocalUpgrade(t *testing.T) {
+	var gotArgs []string
+	exitCode := Main(Options{
+		Args:   []string{"local-upgrade", "-slot", "local-test"},
+		Stdout: &bytes.Buffer{},
+		Stderr: &bytes.Buffer{},
+		Runners: RunnerSet{
+			RunDaemon: func(context.Context, string) error { t.Fatal("unexpected daemon run"); return nil },
+			RunInstall: func([]string, io.Reader, io.Writer, io.Writer, string) error {
+				t.Fatal("unexpected install run")
+				return nil
+			},
+			RunLocalUpgrade: func(args []string, _ io.Reader, _, _ io.Writer, version string) error {
+				gotArgs = append([]string(nil), args...)
+				if version != "dev" {
+					t.Fatalf("local upgrade version = %q, want dev", version)
+				}
+				return nil
+			},
+			RunWrapper: func(context.Context, []string, io.Reader, io.Writer, io.Writer, string) (int, error) {
+				t.Fatal("unexpected wrapper run")
+				return 0, nil
+			},
+		},
+	})
+	if exitCode != 0 {
+		t.Fatalf("Main exitCode = %d, want 0", exitCode)
+	}
+	if strings.Join(gotArgs, "\x00") != strings.Join([]string{"-slot", "local-test"}, "\x00") {
+		t.Fatalf("local upgrade args = %#v", gotArgs)
 	}
 }
 

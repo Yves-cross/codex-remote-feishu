@@ -1,0 +1,4 @@
+interface:
+  display_name: "本地升级"
+  short_description: "仓库内 pull/build/local-upgrade 流程"
+  default_prompt: "Use $local-upgrade when the user asks to pull latest code, rebuild, and upgrade the locally installed codex-remote daemon in this repository."

@@ -174,7 +174,7 @@ loginctl enable-linger "$USER"
 
 这条路径保持运行身份为当前用户，并继续使用当前 XDG 配置/状态目录。
 
-如果你已经在源码仓库里编译了一个新的本地 binary，现在不再通过额外脚本或 `install -upgrade-source-binary` 发起升级。正式入口统一是产品命令：
+如果你已经在源码仓库里编译了一个新的本地 binary，产品入口仍然是把它放到固定 artifact 路径，再发送产品命令：
 
 ```bash
 cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
@@ -205,6 +205,12 @@ cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
 - 在 `systemd_user` 模式下通过独立 transient unit 执行切换
 - 如果新版本启动或健康检查失败，自动回滚 binary 和 live config
 
+源码仓库里如果只是想本地拉最新、重新构建并直接发起同一套内置事务，可以使用：
+
+```bash
+./upgrade-local.sh
+```
+
 ## 仓库内联调入口
 
 源码仓库里不再保留单独的 `install.sh` 生命周期脚本。现在统一使用现有单 binary 入口：
@@ -212,6 +218,13 @@ cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
 - `./setup.sh`
   - 构建本地 `./bin/codex-remote`
   - 默认执行 `codex-remote install -bootstrap-only -start-daemon`
+- `./upgrade-local.sh`
+  - `git pull --ff-only`
+  - 构建本地 `./bin/codex-remote`
+  - 复制到固定 local-upgrade artifact 路径
+  - 调用 `./bin/codex-remote local-upgrade`
+- `./bin/codex-remote local-upgrade`
+  - 使用固定 local-upgrade artifact 路径触发同一套内置 local upgrade transaction
 - `./setup.ps1`
   - Windows 上的同等辅助脚本
 - `./bin/codex-remote install -bootstrap-only -start-daemon`

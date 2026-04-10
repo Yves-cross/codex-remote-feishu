@@ -136,12 +136,12 @@ func TestRunLocalBinaryUpgradeWithStatePathRejectsBusyPendingUpgrade(t *testing.
 	}
 }
 
-func TestRunMainUpgradeSourceBinaryStartsLocalUpgradeTransaction(t *testing.T) {
+func TestRunLocalUpgradeStartsLocalUpgradeTransaction(t *testing.T) {
 	baseDir := t.TempDir()
 	statePath := defaultInstallStatePath(baseDir)
 	currentBinary := seedBinary(t, filepath.Join(baseDir, "installed-bin", executableName(runtime.GOOS)), "stable-binary")
-	sourceBinary := seedBinary(t, filepath.Join(baseDir, "source-bin", executableName(runtime.GOOS)), "local-build")
-	helperBinary := seedBinary(t, filepath.Join(baseDir, "helper-bin", executableName(runtime.GOOS)), "helper-binary")
+	artifactBinary := seedBinary(t, filepath.Join(baseDir, ".local", "share", "codex-remote", "local-upgrade", executableName(runtime.GOOS)), "local-build")
+	helperBinary := seedBinary(t, filepath.Join(baseDir, "helper-bin", executableName(runtime.GOOS)), "cli-binary")
 
 	stateValue := InstallState{
 		BaseDir:           baseDir,
@@ -155,28 +155,29 @@ func TestRunMainUpgradeSourceBinaryStartsLocalUpgradeTransaction(t *testing.T) {
 	if err := WriteState(statePath, stateValue); err != nil {
 		t.Fatalf("WriteState: %v", err)
 	}
+	if got, want := LocalUpgradeArtifactPath(stateValue), artifactBinary; got != want {
+		t.Fatalf("artifact path = %q, want %q", got, want)
+	}
 
-	originalValidator := sourceBinaryValidator
 	originalExec := executablePath
 	originalStart := upgradeHelperStartDetachedCommandFunc
-	sourceBinaryValidator = func(string) error { return nil }
 	executablePath = func() (string, error) { return helperBinary, nil }
+	var startedBinary string
 	upgradeHelperStartDetachedCommandFunc = func(opts relayruntime.DetachedCommandOptions) (int, error) {
+		startedBinary = opts.BinaryPath
 		return 321, nil
 	}
 	defer func() {
-		sourceBinaryValidator = originalValidator
 		executablePath = originalExec
 		upgradeHelperStartDetachedCommandFunc = originalStart
 	}()
 
 	var stdout bytes.Buffer
-	if err := RunMain([]string{
+	if err := RunLocalUpgrade([]string{
 		"-base-dir", baseDir,
-		"-upgrade-source-binary", sourceBinary,
-		"-upgrade-slot", "local-test",
+		"-slot", "local-test",
 	}, strings.NewReader(""), &stdout, &bytes.Buffer{}, "vtest"); err != nil {
-		t.Fatalf("RunMain local upgrade: %v", err)
+		t.Fatalf("RunLocalUpgrade: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "slot: local-test") {
 		t.Fatalf("stdout = %q, want local-test slot", stdout.String())
@@ -187,5 +188,12 @@ func TestRunMainUpgradeSourceBinaryStartsLocalUpgradeTransaction(t *testing.T) {
 	}
 	if updated.PendingUpgrade == nil || updated.PendingUpgrade.TargetSlot != "local-test" {
 		t.Fatalf("pending upgrade = %#v, want local-test", updated.PendingUpgrade)
+	}
+	helperRaw, err := os.ReadFile(startedBinary)
+	if err != nil {
+		t.Fatalf("ReadFile helper: %v", err)
+	}
+	if string(helperRaw) != "stable-binary" {
+		t.Fatalf("helper binary content = %q, want stable-binary", string(helperRaw))
 	}
 }

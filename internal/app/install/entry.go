@@ -32,8 +32,6 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	baseDir := flagSet.String("base-dir", defaults.BaseDir, "base directory for config and install state")
 	installBinDir := flagSet.String("install-bin-dir", defaults.InstallBinDir, "target directory for installed binary; empty keeps source path")
 	binaryPath := flagSet.String("binary", defaultBinary, "codex-remote binary source path")
-	upgradeSourceBinary := flagSet.String("upgrade-source-binary", "", "import a local codex-remote binary into versionsRoot and execute the built-in upgrade transaction")
-	upgradeSlot := flagSet.String("upgrade-slot", "", "slot label for -upgrade-source-binary; empty derives local-<fingerprint>")
 	installSource := flagSet.String("install-source", "", "install source metadata: release or repo")
 	currentTrack := flagSet.String("current-track", "", "current upgrade track metadata: production, beta, or alpha")
 	currentVersion := flagSet.String("current-version", version, "current binary version metadata")
@@ -56,37 +54,6 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		if err == flag.ErrHelp {
 			return nil
 		}
-		return err
-	}
-
-	if strings.TrimSpace(*upgradeSourceBinary) != "" {
-		if *interactive {
-			return fmt.Errorf("-upgrade-source-binary cannot be combined with -interactive")
-		}
-		if *bootstrapOnly {
-			return fmt.Errorf("-upgrade-source-binary cannot be combined with -bootstrap-only")
-		}
-		if *startDaemon {
-			return fmt.Errorf("-upgrade-source-binary cannot be combined with -start-daemon")
-		}
-		if err := sourceBinaryValidator(*upgradeSourceBinary); err != nil {
-			return fmt.Errorf("validate upgrade binary source %q: %w", *upgradeSourceBinary, err)
-		}
-		helperBinary, err := executablePath()
-		if err != nil {
-			return err
-		}
-		statePath := defaultInstallStatePath(*baseDir)
-		slot, err := RunLocalBinaryUpgradeWithStatePath(LocalBinaryUpgradeOptions{
-			StatePath:    statePath,
-			SourceBinary: *upgradeSourceBinary,
-			Slot:         *upgradeSlot,
-			HelperBinary: helperBinary,
-		})
-		if err != nil {
-			return err
-		}
-		_, err = fmt.Fprintf(stdout, "local upgrade prepared from: %s\nslot: %s\nstate: %s\n", filepath.Clean(*upgradeSourceBinary), slot, statePath)
 		return err
 	}
 
@@ -184,6 +151,20 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		_, err = fmt.Fprintf(stdout, "logs: %s\n", status.LogPath)
 	}
 	return err
+}
+
+func resolveUpgradeHelperBinary(statePath string) (string, error) {
+	stateValue, err := LoadState(statePath)
+	if err == nil {
+		helperBinary := firstNonEmpty(
+			strings.TrimSpace(stateValue.CurrentBinaryPath),
+			strings.TrimSpace(stateValue.InstalledBinary),
+		)
+		if helperBinary != "" {
+			return helperBinary, nil
+		}
+	}
+	return executablePath()
 }
 
 func defaultBinaryPath(goos string) string {

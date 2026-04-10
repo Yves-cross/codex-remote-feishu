@@ -32,6 +32,15 @@ Trigger it for:
 - issue label/comment/body refinement
 - blocked issue handling and clarification follow-up
 
+For repository-local pull/build/local-daemon upgrades, also use `.codex/skills/local-upgrade/`.
+
+Trigger it for:
+
+- requests to "本地升级"
+- `upgrade-local.sh`
+- pull latest code, rebuild, and upgrade the locally installed daemon
+- requests to trigger the built-in local upgrade transaction from a repo build
+
 ## Documentation Convention
 
 For lifecycle design/reference docs under `docs/`:

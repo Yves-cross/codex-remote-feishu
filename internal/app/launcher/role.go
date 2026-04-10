@@ -9,6 +9,7 @@ const (
 	RoleVersion       Role = "version"
 	RoleDaemon        Role = "daemon"
 	RoleInstall       Role = "install"
+	RoleLocalUpgrade  Role = "local_upgrade"
 	RoleService       Role = "service"
 	RoleUpgradeHelper Role = "upgrade_helper"
 	RoleWrapper       Role = "wrapper"
@@ -36,6 +37,8 @@ func Detect(args []string) (Decision, error) {
 		return Decision{Role: RoleDaemon}, nil
 	case "install":
 		return Decision{Role: RoleInstall, Args: args[1:]}, nil
+	case "local-upgrade":
+		return Decision{Role: RoleLocalUpgrade, Args: args[1:]}, nil
 	case "service":
 		return Decision{Role: RoleService, Args: args[1:]}, nil
 	case "upgrade-helper":
