@@ -411,9 +411,6 @@ func requestAnswersFromMap(values map[string]interface{}) map[string][]string {
 }
 
 func (g *LiveGateway) surfaceForCardAction(messageID, chatID, operatorID string) string {
-	if operatorID != "" {
-		return surfaceIDForInbound(g.config.GatewayID, "", "p2p", operatorID)
-	}
 	if messageID != "" {
 		g.mu.Lock()
 		surfaceSessionID := g.messages[messageID]
@@ -421,6 +418,9 @@ func (g *LiveGateway) surfaceForCardAction(messageID, chatID, operatorID string)
 		if surfaceSessionID != "" {
 			return surfaceSessionID
 		}
+	}
+	if operatorID != "" {
+		return surfaceIDForInbound(g.config.GatewayID, "", "p2p", operatorID)
 	}
 	if chatID != "" {
 		return surfaceID(g.config.GatewayID, chatID, "")
@@ -483,20 +483,16 @@ func userIDFromLarkUserID(userID *larkim.UserId) string {
 	if userID == nil {
 		return ""
 	}
-	return chooseFirst(
-		stringPtr(userID.UserId),
-		stringPtr(userID.OpenId),
-		stringPtr(userID.UnionId),
-	)
+	return preferredFeishuUserID(stringPtr(userID.OpenId), stringPtr(userID.UserId), stringPtr(userID.UnionId))
 }
 
 func operatorUserID(operator *larkapplication.Operator) string {
 	if operator == nil || operator.OperatorId == nil {
 		return ""
 	}
-	return chooseFirst(
-		stringPtr(operator.OperatorId.UserId),
+	return preferredFeishuUserID(
 		stringPtr(operator.OperatorId.OpenId),
+		stringPtr(operator.OperatorId.UserId),
 		stringPtr(operator.OperatorId.UnionId),
 	)
 }
@@ -505,10 +501,7 @@ func operatorUserIDFromCard(operator *larkcallback.Operator) string {
 	if operator == nil {
 		return ""
 	}
-	return chooseFirst(
-		stringPtr(operator.UserID),
-		strings.TrimSpace(operator.OpenID),
-	)
+	return preferredFeishuUserID(strings.TrimSpace(operator.OpenID), stringPtr(operator.UserID), "")
 }
 
 func reactionKey(messageID, emojiType string) string {
@@ -544,6 +537,14 @@ func chooseFirst(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func preferredFeishuUserID(openID, userID, unionID string) string {
+	return chooseFirst(
+		strings.TrimSpace(openID),
+		strings.TrimSpace(userID),
+		strings.TrimSpace(unionID),
+	)
 }
 
 func stringMapValue(values map[string]interface{}, key string) string {

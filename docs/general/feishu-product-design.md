@@ -20,10 +20,23 @@
 
 当前实现：
 
-- P2P 会话：`feishu:user:<userId>`
-- 群聊/其他 chat：`feishu:chat:<chatId>`
+- P2P 会话：`feishu:<gatewayId>:user:<preferredActorId>`
+- 群聊/其他 chat：`feishu:<gatewayId>:chat:<chatId>`
 
-这个规则定义在 [gateway.go](../../internal/adapter/feishu/gateway.go) 的 `surfaceIDForInbound()` 中。
+其中 `preferredActorId` 的优先级当前是：
+
+- `open_id`
+- `user_id`
+- `union_id`
+
+卡片回调还有一个额外规则：
+
+- 若 callback 带着 `open_message_id`，会先回查该消息已记录的 `surfaceSessionId`
+- 只有当消息没有命中已记录 surface 时，才回退到 callback 自带的 operator id 重新推导 surface
+
+这样可以避免同一个私聊用户在“文本消息 / 菜单 / 卡片按钮”之间因为拿到的飞书 id 类型不同而裂成两个 surface。
+
+这个规则定义在 [gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go) 的 `surfaceIDForInbound()`、`surfaceForCardAction()` 与相关 user-id 解析函数中。
 
 ## 3. 当前支持的飞书入口
 

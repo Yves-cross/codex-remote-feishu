@@ -323,6 +323,16 @@ func TestSurfaceIDForInboundUsesChatScopeForGroup(t *testing.T) {
 	}
 }
 
+func TestSurfaceForCardActionPrefersRecordedMessageSurface(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-1", "feishu:app-1:user:ou_user")
+
+	got := gateway.surfaceForCardAction("om-card-1", "oc_1", "user_1")
+	if got != "feishu:app-1:user:ou_user" {
+		t.Fatalf("expected recorded surface to win, got %q", got)
+	}
+}
+
 func TestParseSurfaceRefSupportsLegacyAndGatewayAwareFormats(t *testing.T) {
 	newRef, ok := ParseSurfaceRef("feishu:app-1:chat:oc_1")
 	if !ok {
@@ -533,6 +543,41 @@ func TestParseCardActionTriggerEventBuildsPromptSelectionAction(t *testing.T) {
 	}
 	if action.PromptID != "prompt-1" || action.OptionID != "thread-1" {
 		t.Fatalf("unexpected prompt selection payload: %#v", action)
+	}
+}
+
+func TestParseCardActionTriggerEventPrefersRecordedSurfaceAndOpenID(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-open", "feishu:app-1:user:ou_user")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{
+				UserID: &userID,
+				OpenID: "ou_user",
+			},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":      "use_thread",
+					"thread_id": "thread-1",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-open",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:ou_user" {
+		t.Fatalf("unexpected card callback surface: %#v", action)
+	}
+	if action.ActorUserID != "ou_user" {
+		t.Fatalf("expected callback actor to prefer open id, got %#v", action)
 	}
 }
 
@@ -1343,6 +1388,67 @@ func TestParseMenuEventCarriesInboundMeta(t *testing.T) {
 	}
 	if !action.Inbound.MenuClickTime.Equal(time.UnixMilli(1710000002000).UTC()) {
 		t.Fatalf("unexpected menu click time: %#v", action.Inbound)
+	}
+}
+
+func TestParseMenuEventPrefersOpenIDOverUserID(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	event := &larkapplication.P2BotMenuV6{
+		Event: &larkapplication.P2BotMenuV6Data{
+			Operator: &larkapplication.Operator{
+				OperatorId: &larkapplication.UserId{
+					UserId: stringRef("user-1"),
+					OpenId: stringRef("ou_user"),
+				},
+			},
+			EventKey: stringRef("list"),
+		},
+	}
+
+	action, ok := gateway.parseMenuEvent(event)
+	if !ok {
+		t.Fatal("expected menu event to be parsed")
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:ou_user" {
+		t.Fatalf("expected menu surface to use open id, got %#v", action)
+	}
+	if action.ActorUserID != "ou_user" {
+		t.Fatalf("expected menu actor to use open id, got %#v", action)
+	}
+}
+
+func TestParseMessageEventPrefersOpenIDOverUserIDForP2P(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{
+					UserId: stringRef("user-1"),
+					OpenId: stringRef("ou_user"),
+				},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-msg-open"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("p2p"),
+				MessageType: stringRef("text"),
+				Content:     stringRef(`{"text":"你好"}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected message event to be parsed")
+	}
+	if action.SurfaceSessionID != "feishu:app-1:user:ou_user" {
+		t.Fatalf("expected p2p message surface to use open id, got %#v", action)
+	}
+	if action.ActorUserID != "ou_user" {
+		t.Fatalf("expected message actor to use open id, got %#v", action)
 	}
 }
 

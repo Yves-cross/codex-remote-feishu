@@ -63,6 +63,24 @@ surface 本身仍按 `gatewayID + chat/user` 区分，不同飞书 app 会形成
 1. 不同飞书 app 之间会竞争同一套 instance/thread 资源。
 2. instance attach 互斥、thread attach 互斥都是**跨 app 的全局规则**。
 
+### 2.3 飞书私聊 surface identity 当前依赖 preferred actor id
+
+飞书 P2P surface 当前不是“任意 user id 字符串都可互换”，而是 gateway-aware 的：
+
+1. surface id 形如 `feishu:<gatewayID>:user:<preferredActorId>`。
+2. `preferredActorId` 当前优先级固定为：
+   1. `open_id`
+   2. `user_id`
+   3. `union_id`
+3. 文本消息、bot menu、reaction actor、卡片 callback operator 都必须遵守同一优先级。
+4. 卡片 callback 还必须先尝试通过 `open_message_id -> 已记录的 surfaceSessionId` 回到原 surface；只有消息查不到时，才允许回退到 callback 自带 operator id 推导 surface。
+
+这个规则是当前状态机正确性的前置条件之一。否则同一个飞书私聊用户可能被裂成两个 surface：
+
+1. 一个 surface 已 attach workspace / thread。
+2. 另一个 surface 仍是 detached。
+3. 用户随后发送 `/detach`、`/use`、普通文本或继续点卡片时，会命中不同 surface，表现成“界面看起来已接管，但命令又说当前没有接管中的工作区”。
+
 ## 3. 当前状态机的五层结构与运行时 overlay
 
 surface 不是单一枚举，而是五层正交状态叠加。
