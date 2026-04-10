@@ -95,7 +95,7 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 	}
 
 	stateValue.CurrentVersion = stateValue.PendingUpgrade.TargetVersion
-	stateValue.CurrentSlot = stateValue.PendingUpgrade.TargetVersion
+	stateValue.CurrentSlot = firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))
 	stateValue.LastKnownLatestVersion = stateValue.PendingUpgrade.TargetVersion
 	stateValue.PendingUpgrade.Phase = PendingUpgradePhaseCommitted
 	return WriteState(statePath, stateValue)
@@ -219,14 +219,20 @@ func switchUpgradeBinary(stateValue *InstallState) error {
 	if stateValue == nil || stateValue.PendingUpgrade == nil {
 		return errors.New("pending upgrade is missing")
 	}
-	targetBinary := filepath.Join(strings.TrimSpace(stateValue.VersionsRoot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion), executableName(runtime.GOOS))
+	targetBinary := strings.TrimSpace(stateValue.PendingUpgrade.TargetBinaryPath)
+	if targetBinary == "" {
+		targetSlot := firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))
+		targetBinary = filepath.Join(strings.TrimSpace(stateValue.VersionsRoot), targetSlot, executableName(runtime.GOOS))
+	}
 	if _, err := os.Stat(targetBinary); err != nil {
 		return err
 	}
 	if err := copyFile(targetBinary, stateValue.CurrentBinaryPath); err != nil {
 		return err
 	}
-	_ = updateCurrentReleaseLink(stateValue.VersionsRoot, stateValue.PendingUpgrade.TargetVersion)
+	if stateValue.PendingUpgrade.Source == UpgradeSourceRelease {
+		_ = updateCurrentReleaseLink(stateValue.VersionsRoot, firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion)))
+	}
 	return nil
 }
 

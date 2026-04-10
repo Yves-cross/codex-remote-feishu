@@ -332,6 +332,20 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				Text:             action.Text,
 			},
 		}}
+	case control.ActionUpgradeCommand:
+		return []control.UIEvent{{
+			Kind:             control.UIEventDaemonCommand,
+			GatewayID:        surface.GatewayID,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			SourceMessageID:  action.MessageID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandUpgrade,
+				GatewayID:        surface.GatewayID,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				SourceMessageID:  action.MessageID,
+				Text:             action.Text,
+			},
+		}}
 	case control.ActionStartCommandCapture:
 		return s.startCommandCapture(surface, action)
 	case control.ActionCancelCommandCapture:

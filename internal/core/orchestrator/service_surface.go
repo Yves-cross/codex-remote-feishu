@@ -130,6 +130,7 @@ func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleReco
 		control.ActionAutoContinueCommand,
 		control.ActionModeCommand,
 		control.ActionDebugCommand,
+		control.ActionUpgradeCommand,
 		control.ActionDetach,
 		control.ActionKillInstance,
 		control.ActionRemovedCommand,

@@ -19,6 +19,21 @@ type LocalBinaryUpgradeOptions struct {
 	HelperBinary string
 }
 
+func LocalUpgradeArtifactPath(stateValue InstallState) string {
+	if strings.TrimSpace(stateValue.StatePath) != "" {
+		return filepath.Join(filepath.Dir(stateValue.StatePath), "local-upgrade", executableName(runtime.GOOS))
+	}
+	if strings.TrimSpace(stateValue.BaseDir) != "" {
+		layout := installLayoutForBaseDir(stateValue.BaseDir)
+		return filepath.Join(layout.StateDir, "local-upgrade", executableName(runtime.GOOS))
+	}
+	paths, err := relayruntime.DefaultPaths()
+	if err == nil && strings.TrimSpace(paths.StateDir) != "" {
+		return filepath.Join(paths.StateDir, "local-upgrade", executableName(runtime.GOOS))
+	}
+	return filepath.Join(os.TempDir(), "codex-remote-local-upgrade", executableName(runtime.GOOS))
+}
+
 func RunLocalBinaryUpgradeWithStatePath(opts LocalBinaryUpgradeOptions) (string, error) {
 	statePath := strings.TrimSpace(opts.StatePath)
 	if statePath == "" {
@@ -51,6 +66,10 @@ func RunLocalBinaryUpgradeWithStatePath(opts LocalBinaryUpgradeOptions) (string,
 	if err != nil {
 		return "", err
 	}
+	targetIdentity, err := relayruntime.BinaryIdentityForPath(opts.SourceBinary, "")
+	if err != nil {
+		return "", err
+	}
 	rollbackCandidate, err := PrepareRollbackCandidate(stateValue, resolvedSlot)
 	if err != nil {
 		return "", err
@@ -65,10 +84,13 @@ func RunLocalBinaryUpgradeWithStatePath(opts LocalBinaryUpgradeOptions) (string,
 	stateValue.RollbackCandidate = rollbackCandidate
 	stateValue.LastKnownLatestVersion = ""
 	stateValue.PendingUpgrade = &PendingUpgrade{
-		Phase:         PendingUpgradePhasePrepared,
-		TargetTrack:   stateValue.CurrentTrack,
-		TargetVersion: resolvedSlot,
-		RequestedAt:   &now,
+		Phase:            PendingUpgradePhasePrepared,
+		Source:           UpgradeSourceLocal,
+		TargetTrack:      stateValue.CurrentTrack,
+		TargetVersion:    firstNonEmpty(strings.TrimSpace(targetIdentity.Version), resolvedSlot),
+		TargetSlot:       resolvedSlot,
+		TargetBinaryPath: filepath.Join(strings.TrimSpace(stateValue.VersionsRoot), resolvedSlot, executableName(runtime.GOOS)),
+		RequestedAt:      &now,
 	}
 	if err := WriteState(statePath, stateValue); err != nil {
 		return "", err

@@ -12,7 +12,7 @@ import (
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
-func TestDebugUpgradeManualCheckPromptsIdleSurface(t *testing.T) {
+func TestUpgradeLatestManualCheckPromptsIdleSurface(t *testing.T) {
 	gateway := newLifecycleGateway()
 	app, statePath := newUpgradeTestApp(t, gateway)
 	app.upgradeLookup = func(context.Context, install.ReleaseTrack) (install.ReleaseInfo, error) {
@@ -20,12 +20,12 @@ func TestDebugUpgradeManualCheckPromptsIdleSurface(t *testing.T) {
 	}
 
 	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionDebugCommand,
+		Kind:             control.ActionUpgradeCommand,
 		SurfaceSessionID: "feishu:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
-		Text:             "/debug upgrade",
+		Text:             "/upgrade latest",
 	})
 
 	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
@@ -46,6 +46,12 @@ func TestDebugUpgradeManualCheckPromptsIdleSurface(t *testing.T) {
 	}
 	if stateValue.PendingUpgrade.TargetVersion != "v1.1.0" {
 		t.Fatalf("pending target version = %q, want v1.1.0", stateValue.PendingUpgrade.TargetVersion)
+	}
+	if stateValue.PendingUpgrade.Source != install.UpgradeSourceRelease {
+		t.Fatalf("pending source = %q, want release", stateValue.PendingUpgrade.Source)
+	}
+	if stateValue.PendingUpgrade.TargetSlot != "v1.1.0" {
+		t.Fatalf("pending target slot = %q, want v1.1.0", stateValue.PendingUpgrade.TargetSlot)
 	}
 	if stateValue.PendingUpgrade.Phase != install.PendingUpgradePhasePrompted {
 		t.Fatalf("pending phase = %q, want %q", stateValue.PendingUpgrade.Phase, install.PendingUpgradePhasePrompted)

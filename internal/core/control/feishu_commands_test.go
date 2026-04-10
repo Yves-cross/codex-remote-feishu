@@ -18,6 +18,26 @@ func TestParseFeishuTextActionRecognizesDebugCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesUpgradeCommand(t *testing.T) {
+	tests := []string{
+		"/upgrade",
+		"/upgrade latest",
+		"/upgrade local",
+	}
+	for _, input := range tests {
+		action, ok := ParseFeishuTextAction(input)
+		if !ok {
+			t.Fatalf("expected %q to be parsed", input)
+		}
+		if action.Kind != ActionUpgradeCommand {
+			t.Fatalf("input %q => kind %q, want %q", input, action.Kind, ActionUpgradeCommand)
+		}
+		if action.Text != input {
+			t.Fatalf("input %q => text %q, want raw command", input, action.Text)
+		}
+	}
+}
+
 func TestParseFeishuTextActionRecognizesAutoContinueCommand(t *testing.T) {
 	tests := []string{
 		"/autocontinue",
@@ -162,6 +182,24 @@ func TestFeishuCommandCatalogsIncludeMode(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("catalog %#v does not include /mode", catalog.Title)
+		}
+	}
+}
+
+func TestFeishuCommandCatalogsIncludeUpgrade(t *testing.T) {
+	for _, catalog := range []CommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+		found := false
+		for _, section := range catalog.Sections {
+			for _, entry := range section.Entries {
+				for _, command := range entry.Commands {
+					if command == "/upgrade latest" || command == "/upgrade" {
+						found = true
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("catalog %#v does not include /upgrade", catalog.Title)
 		}
 	}
 }

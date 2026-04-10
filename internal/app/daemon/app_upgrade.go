@@ -30,6 +30,18 @@ type parsedDebugCommand struct {
 	Track install.ReleaseTrack
 }
 
+type upgradeCommandMode string
+
+const (
+	upgradeCommandShowStatus upgradeCommandMode = "status"
+	upgradeCommandLatest     upgradeCommandMode = "latest"
+	upgradeCommandLocal      upgradeCommandMode = "local"
+)
+
+type parsedUpgradeCommand struct {
+	Mode upgradeCommandMode
+}
+
 type upgradeCheckRequest struct {
 	Track            install.ReleaseTrack
 	Manual           bool
@@ -88,34 +100,88 @@ func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.
 		}
 		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_track_updated", fmt.Sprintf("当前 track 已切到 %s。需要立即检查时，请发送 /debug upgrade。", parsed.Track))}
 	case debugCommandUpgrade:
-		if a.upgradeCheckInFlight {
-			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
-		}
-		if a.upgradeStartInFlight {
-			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
-		}
-		if stateValue.PendingUpgrade != nil && pendingUpgradeCandidate(stateValue.PendingUpgrade) {
-			return a.beginPendingUpgradeLocked(command, stateValue)
-		}
-		if pendingUpgradeBusy(stateValue.PendingUpgrade) {
-			return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
-		}
-		track := stateValue.CurrentTrack
-		if track == "" {
-			track = install.ReleaseTrackAlpha
-		}
-		a.upgradeCheckInFlight = true
-		go a.runUpgradeCheck(upgradeCheckRequest{
-			Track:            track,
-			Manual:           true,
-			GatewayID:        command.GatewayID,
-			SurfaceSessionID: command.SurfaceSessionID,
-			SourceMessageID:  command.SourceMessageID,
-		})
-		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_check_started", fmt.Sprintf("正在按 %s track 检查最新版本。", track))}
+		command.Text = "/upgrade latest"
+		return a.handleUpgradeLatestCommand(command, stateValue)
 	default:
 		return debugUsageEvents(command.SurfaceSessionID, "不支持的 /debug 子命令。")
 	}
+}
+
+func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+	parsed, err := parseUpgradeCommandText(command.Text)
+	if err != nil {
+		return upgradeUsageEvents(command.SurfaceSessionID, err.Error())
+	}
+
+	stateValue, _, err := a.loadUpgradeStateLocked(true)
+	if err != nil {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
+	}
+
+	switch parsed.Mode {
+	case upgradeCommandShowStatus:
+		return []control.UIEvent{{
+			Kind:             control.UIEventCommandCatalog,
+			SurfaceSessionID: command.SurfaceSessionID,
+			CommandCatalog:   buildUpgradeStatusCatalog(stateValue, a.upgradeCheckInFlight),
+		}}
+	case upgradeCommandLatest:
+		return a.handleUpgradeLatestCommand(command, stateValue)
+	case upgradeCommandLocal:
+		return a.handleUpgradeLocalCommand(command, stateValue)
+	default:
+		return upgradeUsageEvents(command.SurfaceSessionID, "不支持的 /upgrade 子命令。")
+	}
+}
+
+func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+	if a.upgradeCheckInFlight {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
+	}
+	if a.upgradeStartInFlight {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
+	}
+	if stateValue.PendingUpgrade != nil && pendingUpgradeCandidate(stateValue.PendingUpgrade) {
+		return a.beginPendingUpgradeLocked(command, stateValue)
+	}
+	if pendingUpgradeBusy(stateValue.PendingUpgrade) {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
+	}
+	track := stateValue.CurrentTrack
+	if track == "" {
+		track = install.ReleaseTrackAlpha
+	}
+	a.upgradeCheckInFlight = true
+	go a.runUpgradeCheck(upgradeCheckRequest{
+		Track:            track,
+		Manual:           true,
+		GatewayID:        command.GatewayID,
+		SurfaceSessionID: command.SurfaceSessionID,
+		SourceMessageID:  command.SourceMessageID,
+	})
+	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_started", fmt.Sprintf("正在按 %s track 检查最新版本。", track))}
+}
+
+func (a *App) handleUpgradeLocalCommand(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+	if a.upgradeCheckInFlight {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已有 release 检查在进行中，请稍后再试本地升级。")}
+	}
+	if a.upgradeStartInFlight || pendingUpgradeBusy(stateValue.PendingUpgrade) {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前已有升级事务在进行中，请稍后再试。")}
+	}
+	artifactPath := install.LocalUpgradeArtifactPath(stateValue)
+	if _, err := os.Stat(artifactPath); err != nil {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_artifact_missing", fmt.Sprintf("本地升级产物不存在：%s\n请先把新编译的 binary 放到这个固定路径，再发送 /upgrade local。", artifactPath))}
+	}
+	slot, err := install.RunLocalBinaryUpgradeWithStatePath(install.LocalBinaryUpgradeOptions{
+		StatePath:    stateValue.StatePath,
+		SourceBinary: artifactPath,
+		HelperBinary: stateValue.CurrentBinaryPath,
+	})
+	if err != nil {
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_failed", fmt.Sprintf("准备本地升级失败：%v", err))}
+	}
+	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_started", fmt.Sprintf("正在准备本地升级，目标 slot：%s。服务会短暂重启。", slot))}
 }
 
 func (a *App) runUpgradeCheck(request upgradeCheckRequest) {
@@ -168,6 +234,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 	currentVersion := strings.TrimSpace(stateValue.CurrentVersion)
 	if currentVersion != "" && latestVersion == currentVersion {
 		if pending := stateValue.PendingUpgrade; pending != nil &&
+			pending.Source == install.UpgradeSourceRelease &&
 			pending.TargetTrack == stateValue.CurrentTrack &&
 			pending.TargetVersion == latestVersion &&
 			pendingUpgradeCandidate(pending) {
@@ -186,8 +253,10 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 		requestedAt := completedAt
 		stateValue.PendingUpgrade = &install.PendingUpgrade{
 			Phase:         install.PendingUpgradePhaseAvailable,
+			Source:        install.UpgradeSourceRelease,
 			TargetTrack:   stateValue.CurrentTrack,
 			TargetVersion: latestVersion,
+			TargetSlot:    latestVersion,
 			RequestedAt:   &requestedAt,
 		}
 	}
@@ -456,6 +525,32 @@ func parseDebugCommandText(text string) (parsedDebugCommand, error) {
 	}
 }
 
+func parseUpgradeCommandText(text string) (parsedUpgradeCommand, error) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return parsedUpgradeCommand{}, fmt.Errorf("缺少 /upgrade 子命令。")
+	}
+	fields := strings.Fields(strings.ToLower(trimmed))
+	if len(fields) == 0 || fields[0] != "/upgrade" {
+		return parsedUpgradeCommand{}, fmt.Errorf("不支持的 /upgrade 子命令。")
+	}
+	switch len(fields) {
+	case 1:
+		return parsedUpgradeCommand{Mode: upgradeCommandShowStatus}, nil
+	case 2:
+		switch fields[1] {
+		case "latest":
+			return parsedUpgradeCommand{Mode: upgradeCommandLatest}, nil
+		case "local":
+			return parsedUpgradeCommand{Mode: upgradeCommandLocal}, nil
+		default:
+			return parsedUpgradeCommand{}, fmt.Errorf("`/upgrade` 只支持 `latest` 或 `local`。")
+		}
+	default:
+		return parsedUpgradeCommand{}, fmt.Errorf("`/upgrade` 只支持 `/upgrade`、`/upgrade latest`、`/upgrade local`。")
+	}
+}
+
 func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool) *control.CommandCatalog {
 	summaryLines := []string{
 		fmt.Sprintf("当前来源：%s", displayInstallSource(stateValue.InstallSource)),
@@ -484,9 +579,49 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 			Title: "命令",
 			Entries: []control.CommandCatalogEntry{
 				{Commands: []string{"/debug"}, Description: "查看当前升级状态和可用子命令。"},
-				{Commands: []string{"/debug upgrade"}, Description: "立即按当前 track 检查最新版本。"},
+				{Commands: []string{"/upgrade"}, Description: "查看正式升级入口和当前状态。"},
+				{Commands: []string{"/upgrade latest"}, Description: "立即按当前 track 检查或继续升级到最新 release。"},
+				{Commands: []string{"/upgrade local"}, Description: "使用固定本地 artifact 发起升级。"},
 				{Commands: []string{"/debug track"}, Description: "查看当前 track。"},
 				{Commands: []string{"/debug track alpha|beta|production"}, Description: "切换后续检查目标，不自动升级。"},
+			},
+		}},
+	}
+}
+
+func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bool) *control.CommandCatalog {
+	summaryLines := []string{
+		fmt.Sprintf("当前来源：%s", displayInstallSource(stateValue.InstallSource)),
+		fmt.Sprintf("当前 track：%s", firstNonEmpty(string(stateValue.CurrentTrack), "unknown")),
+		fmt.Sprintf("当前版本：%s", firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown")),
+		fmt.Sprintf("最近检查：%s", formatOptionalTime(stateValue.LastCheckAt)),
+		fmt.Sprintf("本地升级产物：%s", install.LocalUpgradeArtifactPath(stateValue)),
+	}
+	if latest := strings.TrimSpace(stateValue.LastKnownLatestVersion); latest != "" {
+		summaryLines = append(summaryLines, fmt.Sprintf("最近看到的最新版本：%s", latest))
+	}
+	if pending := describePendingUpgrade(stateValue.PendingUpgrade); pending != "" {
+		summaryLines = append(summaryLines, "待处理升级："+pending)
+	} else {
+		summaryLines = append(summaryLines, "待处理升级：无")
+	}
+	if checkInFlight {
+		summaryLines = append(summaryLines, "后台检查：进行中")
+	} else {
+		summaryLines = append(summaryLines, "后台检查：空闲")
+	}
+	return &control.CommandCatalog{
+		Title:       "Upgrade",
+		Summary:     strings.Join(summaryLines, "\n"),
+		Interactive: false,
+		Sections: []control.CommandCatalogSection{{
+			Title: "命令",
+			Entries: []control.CommandCatalogEntry{
+				{Commands: []string{"/upgrade"}, Description: "查看当前升级状态和固定本地 artifact 路径。"},
+				{Commands: []string{"/upgrade latest"}, Description: "检查或继续升级到当前 track 的最新 release。"},
+				{Commands: []string{"/upgrade local"}, Description: "使用固定本地 artifact 发起升级。"},
+				{Commands: []string{"/debug track"}, Description: "查看当前 track。"},
+				{Commands: []string{"/debug track alpha|beta|production"}, Description: "切换 release track，不自动升级。"},
 			},
 		}},
 	}
@@ -495,10 +630,10 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 func buildUpgradePromptCatalog(stateValue install.InstallState) *control.CommandCatalog {
 	targetVersion := ""
 	if stateValue.PendingUpgrade != nil {
-		targetVersion = strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion)
+		targetVersion = firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))
 	}
 	summary := fmt.Sprintf(
-		"检测到 %s track 有新版本可用。\n当前版本：%s\n目标版本：%s\n\n再次发送 /debug upgrade 继续升级流程。",
+		"检测到 %s track 有新版本可用。\n当前版本：%s\n目标版本：%s\n\n再次发送 /upgrade latest 继续升级流程。",
 		firstNonEmpty(string(stateValue.CurrentTrack), "unknown"),
 		firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown"),
 		firstNonEmpty(targetVersion, "unknown"),
@@ -510,10 +645,10 @@ func buildUpgradePromptCatalog(stateValue install.InstallState) *control.Command
 		Sections: []control.CommandCatalogSection{{
 			Title: "操作",
 			Entries: []control.CommandCatalogEntry{{
-				Commands:    []string{"/debug upgrade"},
+				Commands:    []string{"/upgrade latest"},
 				Description: "继续升级到当前 track 的最新版本。",
 				Buttons: []control.CommandCatalogButton{
-					{Label: "确认升级", CommandText: "/debug upgrade"},
+					{Label: "确认升级", CommandText: "/upgrade latest"},
 					{Label: "查看状态", CommandText: "/debug"},
 				},
 			}},
@@ -529,7 +664,7 @@ func buildTrackSummary(stateValue install.InstallState) string {
 	if latest := strings.TrimSpace(stateValue.LastKnownLatestVersion); latest != "" {
 		lines = append(lines, fmt.Sprintf("最近看到的最新版本：%s", latest))
 	}
-	lines = append(lines, "切换 track 不会自动触发升级；需要立即检查时请发送 /debug upgrade。")
+	lines = append(lines, "切换 track 不会自动触发升级；需要立即检查时请发送 /upgrade latest。")
 	return strings.Join(lines, "\n")
 }
 
@@ -545,7 +680,12 @@ func describePendingUpgrade(pending *install.PendingUpgrade) string {
 	if phase == "" {
 		phase = "unknown"
 	}
-	return fmt.Sprintf("%s (%s)", version, phase)
+	source := strings.TrimSpace(string(pending.Source))
+	target := firstNonEmpty(strings.TrimSpace(pending.TargetSlot), version)
+	if source == "" {
+		return fmt.Sprintf("%s (%s)", target, phase)
+	}
+	return fmt.Sprintf("%s/%s (%s)", source, target, phase)
 }
 
 func displayInstallSource(source install.InstallSource) string {
@@ -612,7 +752,24 @@ func debugUsageEvents(surfaceID, message string) []control.UIEvent {
 		SurfaceSessionID: surfaceID,
 		CommandCatalog: &control.CommandCatalog{
 			Title:       "Debug / Upgrade",
-			Summary:     "支持的命令：/debug、/debug upgrade、/debug track、/debug track alpha|beta|production",
+			Summary:     "支持的命令：/debug、/debug track、/debug track alpha|beta|production、/upgrade、/upgrade latest、/upgrade local",
+			Interactive: false,
+		},
+	})
+	return events
+}
+
+func upgradeUsageEvents(surfaceID, message string) []control.UIEvent {
+	events := []control.UIEvent{}
+	if strings.TrimSpace(message) != "" {
+		events = append(events, upgradeNoticeEvent(surfaceID, "upgrade_usage_error", message))
+	}
+	events = append(events, control.UIEvent{
+		Kind:             control.UIEventCommandCatalog,
+		SurfaceSessionID: surfaceID,
+		CommandCatalog: &control.CommandCatalog{
+			Title:       "Upgrade",
+			Summary:     "支持的命令：/upgrade、/upgrade latest、/upgrade local；track 维护命令仍使用 /debug track。",
 			Interactive: false,
 		},
 	})
@@ -626,6 +783,18 @@ func debugNoticeEvent(surfaceID, code, text string) control.UIEvent {
 		Notice: &control.Notice{
 			Code:  code,
 			Title: "Debug",
+			Text:  text,
+		},
+	}
+}
+
+func upgradeNoticeEvent(surfaceID, code, text string) control.UIEvent {
+	return control.UIEvent{
+		Kind:             control.UIEventNotice,
+		SurfaceSessionID: surfaceID,
+		Notice: &control.Notice{
+			Code:  code,
+			Title: "Upgrade",
 			Text:  text,
 		},
 	}

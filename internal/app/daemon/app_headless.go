@@ -21,6 +21,8 @@ func (a *App) handleDaemonCommand(command control.DaemonCommand) []control.UIEve
 		return a.killManagedHeadless(command)
 	case control.DaemonCommandDebug:
 		return a.handleDebugDaemonCommand(command)
+	case control.DaemonCommandUpgrade:
+		return a.handleUpgradeDaemonCommand(command)
 	case control.DaemonCommandVSCodeMigrate:
 		return a.handleVSCodeMigrateCommand(command)
 	default:

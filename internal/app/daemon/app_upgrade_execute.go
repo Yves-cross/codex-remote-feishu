@@ -23,7 +23,7 @@ type upgradeStartRequest struct {
 
 func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
 	if stateValue.PendingUpgrade == nil || strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion) == "" {
-		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_missing_candidate", "当前没有可继续的升级候选，请先发送 /debug upgrade 检查最新版本。")}
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_missing_candidate", "当前没有可继续的升级候选，请先发送 /upgrade latest 检查最新版本。")}
 	}
 	now := time.Now().UTC()
 	stateValue.PendingUpgrade.GatewayID = firstNonEmpty(strings.TrimSpace(command.GatewayID), a.service.SurfaceGatewayID(command.SurfaceSessionID))
@@ -35,7 +35,7 @@ func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValu
 		stateValue.PendingUpgrade.RequestedAt = &now
 	}
 	if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_prepare_failed", fmt.Sprintf("写入升级事务失败：%v", err))}
+		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级事务失败：%v", err))}
 	}
 	a.upgradeStartInFlight = true
 	go a.runPendingUpgradeStart(upgradeStartRequest{
@@ -44,7 +44,7 @@ func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValu
 		SurfaceSessionID: stateValue.PendingUpgrade.SurfaceSessionID,
 		SourceMessageID:  stateValue.PendingUpgrade.SourceMessageID,
 	})
-	return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_upgrade_prepare_started", fmt.Sprintf("正在准备升级到 %s，服务会短暂重启。", stateValue.PendingUpgrade.TargetVersion))}
+	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_started", fmt.Sprintf("正在准备升级到 %s，服务会短暂重启。", firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))))}
 }
 
 func (a *App) runPendingUpgradeStart(request upgradeStartRequest) {
@@ -77,6 +77,9 @@ func (a *App) runPendingUpgradeStart(request upgradeStartRequest) {
 	rollbackCandidate.Fingerprint = identity.BuildFingerprint
 	stateValue.RollbackCandidate = rollbackCandidate
 	stateValue.PendingUpgrade.Phase = install.PendingUpgradePhasePrepared
+	stateValue.PendingUpgrade.Source = install.UpgradeSourceRelease
+	stateValue.PendingUpgrade.TargetSlot = firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), targetVersion)
+	stateValue.PendingUpgrade.TargetBinaryPath = targetBinary
 
 	a.mu.Lock()
 	logPath := a.upgradeHelperLogPathLocked()
@@ -124,7 +127,7 @@ func (a *App) finishUpgradeStartFailure(request upgradeStartRequest, err error) 
 	}
 	if request.SurfaceSessionID != "" {
 		a.handleUIEvents(context.Background(), []control.UIEvent{
-			debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_prepare_failed", err.Error()),
+			upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", err.Error()),
 		})
 	}
 }
@@ -194,9 +197,9 @@ func buildUpgradeResultText(stateValue install.InstallState) string {
 	}
 	switch pending.Phase {
 	case install.PendingUpgradePhaseCommitted:
-		return fmt.Sprintf("已升级到 %s。", firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), strings.TrimSpace(pending.TargetVersion)))
+		return fmt.Sprintf("已升级到 %s。", firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), strings.TrimSpace(pending.TargetSlot), strings.TrimSpace(pending.TargetVersion)))
 	case install.PendingUpgradePhaseRolledBack:
-		return fmt.Sprintf("升级到 %s 失败，已自动回滚到 %s。", firstNonEmpty(strings.TrimSpace(pending.TargetVersion), "unknown"), firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown"))
+		return fmt.Sprintf("升级到 %s 失败，已自动回滚到 %s。", firstNonEmpty(strings.TrimSpace(pending.TargetSlot), strings.TrimSpace(pending.TargetVersion), "unknown"), firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown"))
 	default:
 		return "升级失败。"
 	}

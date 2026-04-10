@@ -19,6 +19,7 @@ const (
 	ActionShowCommandHelp      ActionKind = "surface.command.help"
 	ActionShowCommandMenu      ActionKind = "surface.command.menu"
 	ActionDebugCommand         ActionKind = "surface.command.debug"
+	ActionUpgradeCommand       ActionKind = "surface.command.upgrade"
 	ActionStartCommandCapture  ActionKind = "surface.command.capture.start"
 	ActionCancelCommandCapture ActionKind = "surface.command.capture.cancel"
 	ActionModelCommand         ActionKind = "surface.command.model"
@@ -370,6 +371,7 @@ const (
 	DaemonCommandStartHeadless DaemonCommandKind = "headless.start"
 	DaemonCommandKillHeadless  DaemonCommandKind = "headless.kill"
 	DaemonCommandDebug         DaemonCommandKind = "debug.command"
+	DaemonCommandUpgrade       DaemonCommandKind = "upgrade.command"
 	DaemonCommandVSCodeMigrate DaemonCommandKind = "vscode.migrate"
 )
 

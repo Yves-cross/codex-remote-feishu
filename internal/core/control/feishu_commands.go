@@ -23,6 +23,7 @@ const (
 	FeishuCommandHelp              = "help"
 	FeishuCommandMenu              = "menu"
 	FeishuCommandDebug             = "debug"
+	FeishuCommandUpgrade           = "upgrade"
 )
 
 type FeishuCommandArgumentKind string
@@ -510,14 +511,42 @@ var feishuCommandSpecs = []feishuCommandSpec{
 	},
 	{
 		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandUpgrade,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "升级",
+			CanonicalSlash:   "/upgrade",
+			CanonicalMenuKey: "upgrade",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			Description:      "查看升级状态；`/upgrade latest` 检查或继续 release 升级，`/upgrade local` 使用固定本地 artifact 发起升级。",
+			Examples:         []string{"/upgrade latest", "/upgrade local"},
+			Options: []FeishuCommandOption{
+				commandOption("/upgrade", "upgrade", "latest", "latest", "检查或继续升级到当前 track 的最新 release。"),
+				commandOption("/upgrade", "upgrade", "local", "local", "使用固定本地 artifact 发起升级。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/upgrade", kind: ActionUpgradeCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "upgrade", action: Action{Kind: ActionUpgradeCommand, Text: "/upgrade"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "upgrade_", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
+			{prefix: "upgrade-", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
 			ID:               FeishuCommandDebug,
 			GroupID:          FeishuCommandGroupMaintenance,
 			Title:            "调试",
 			CanonicalSlash:   "/debug",
 			CanonicalMenuKey: "debug",
 			ArgumentKind:     FeishuCommandArgumentText,
-			Description:      "查看升级状态、手动检查更新，或切换当前 release track。",
-			Examples:         []string{"/debug", "/debug upgrade", "/debug track beta"},
+			Description:      "查看调试状态，或切换当前 release track。",
+			Examples:         []string{"/debug", "/debug track beta"},
 			ShowInHelp:       true,
 			ShowInMenu:       true,
 		},
@@ -840,6 +869,16 @@ func buildMenuAutoContinueText(value string) (string, bool) {
 	switch mode {
 	case "on", "off":
 		return "/autocontinue " + mode, true
+	default:
+		return "", false
+	}
+}
+
+func buildMenuUpgradeText(value string) (string, bool) {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	switch mode {
+	case "latest", "local":
+		return "/upgrade " + mode, true
 	default:
 		return "", false
 	}

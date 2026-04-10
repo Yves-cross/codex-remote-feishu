@@ -82,8 +82,17 @@ func TestRunLocalBinaryUpgradeWithStatePathImportsBinaryAndStartsHelper(t *testi
 	if updated.PendingUpgrade == nil || updated.PendingUpgrade.Phase != PendingUpgradePhasePrepared {
 		t.Fatalf("pending upgrade = %#v, want prepared", updated.PendingUpgrade)
 	}
-	if updated.PendingUpgrade.TargetVersion != slot {
-		t.Fatalf("pending target version = %q, want %q", updated.PendingUpgrade.TargetVersion, slot)
+	if updated.PendingUpgrade.Source != UpgradeSourceLocal {
+		t.Fatalf("pending source = %q, want local", updated.PendingUpgrade.Source)
+	}
+	if updated.PendingUpgrade.TargetSlot != slot {
+		t.Fatalf("pending target slot = %q, want %q", updated.PendingUpgrade.TargetSlot, slot)
+	}
+	if updated.PendingUpgrade.TargetBinaryPath != targetBinary {
+		t.Fatalf("pending target binary = %q, want %q", updated.PendingUpgrade.TargetBinaryPath, targetBinary)
+	}
+	if updated.PendingUpgrade.TargetVersion == "" {
+		t.Fatalf("pending target version = empty, want non-empty")
 	}
 	if updated.RollbackCandidate == nil || strings.TrimSpace(updated.RollbackCandidate.BinaryPath) == "" {
 		t.Fatalf("rollback candidate = %#v, want binary backup", updated.RollbackCandidate)
@@ -173,7 +182,7 @@ func TestRunMainUpgradeSourceBinaryStartsLocalUpgradeTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadState: %v", err)
 	}
-	if updated.PendingUpgrade == nil || updated.PendingUpgrade.TargetVersion != "local-test" {
+	if updated.PendingUpgrade == nil || updated.PendingUpgrade.TargetSlot != "local-test" {
 		t.Fatalf("pending upgrade = %#v, want local-test", updated.PendingUpgrade)
 	}
 }

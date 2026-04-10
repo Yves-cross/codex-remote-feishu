@@ -22,6 +22,13 @@ const (
 	ReleaseTrackAlpha      ReleaseTrack = "alpha"
 )
 
+type UpgradeSource string
+
+const (
+	UpgradeSourceRelease UpgradeSource = "release"
+	UpgradeSourceLocal   UpgradeSource = "local"
+)
+
 type RollbackCandidate struct {
 	Version         string           `json:"version,omitempty"`
 	BinaryPath      string           `json:"binaryPath,omitempty"`
@@ -37,15 +44,18 @@ type ConfigSnapshot struct {
 }
 
 type PendingUpgrade struct {
-	Phase            string       `json:"phase,omitempty"`
-	TargetTrack      ReleaseTrack `json:"targetTrack,omitempty"`
-	TargetVersion    string       `json:"targetVersion,omitempty"`
-	GatewayID        string       `json:"gatewayID,omitempty"`
-	SurfaceSessionID string       `json:"surfaceSessionID,omitempty"`
-	ChatID           string       `json:"chatID,omitempty"`
-	ActorUserID      string       `json:"actorUserID,omitempty"`
-	SourceMessageID  string       `json:"sourceMessageID,omitempty"`
-	RequestedAt      *time.Time   `json:"requestedAt,omitempty"`
+	Phase            string        `json:"phase,omitempty"`
+	Source           UpgradeSource `json:"source,omitempty"`
+	TargetTrack      ReleaseTrack  `json:"targetTrack,omitempty"`
+	TargetVersion    string        `json:"targetVersion,omitempty"`
+	TargetSlot       string        `json:"targetSlot,omitempty"`
+	TargetBinaryPath string        `json:"targetBinaryPath,omitempty"`
+	GatewayID        string        `json:"gatewayID,omitempty"`
+	SurfaceSessionID string        `json:"surfaceSessionID,omitempty"`
+	ChatID           string        `json:"chatID,omitempty"`
+	ActorUserID      string        `json:"actorUserID,omitempty"`
+	SourceMessageID  string        `json:"sourceMessageID,omitempty"`
+	RequestedAt      *time.Time    `json:"requestedAt,omitempty"`
 }
 
 const (
@@ -267,4 +277,15 @@ func normalizeReleaseTrack(track ReleaseTrack) ReleaseTrack {
 
 func ParseReleaseTrack(value string) ReleaseTrack {
 	return normalizeReleaseTrack(ReleaseTrack(value))
+}
+
+func normalizeUpgradeSource(source UpgradeSource) UpgradeSource {
+	switch strings.ToLower(strings.TrimSpace(string(source))) {
+	case string(UpgradeSourceRelease):
+		return UpgradeSourceRelease
+	case string(UpgradeSourceLocal):
+		return UpgradeSourceLocal
+	default:
+		return ""
+	}
 }
