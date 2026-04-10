@@ -808,8 +808,27 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 	if relatedValue["kind"] != "run_command" || relatedValue["command_text"] != "/menu send_settings" {
 		t.Fatalf("unexpected related button payload: %#v", relatedValue)
 	}
-	if ops[0].cardEnvelope == cardEnvelopeV2 || ops[0].card != nil {
-		t.Fatalf("expected command catalog with form to stay on legacy path until #120, got %#v", ops[0])
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected command catalog with form to use V2 in #120, got %#v", ops[0])
+	}
+	renderedElements := renderedV2BodyElements(t, ops[0])
+	if renderedElements[3]["tag"] != "form" {
+		t.Fatalf("expected rendered V2 form element, got %#v", renderedElements)
+	}
+	renderedFormElements, _ := renderedElements[3]["elements"].([]map[string]any)
+	if len(renderedFormElements) != 2 {
+		t.Fatalf("expected rendered V2 form to keep input and submit button, got %#v", renderedElements[3])
+	}
+	if renderedFormElements[1]["action_type"] != nil || renderedFormElements[1]["form_action_type"] != "submit" {
+		t.Fatalf("expected command form submit button to use V2 form_action_type, got %#v", renderedFormElements[1])
+	}
+	renderedSubmitValue := renderedButtonCallbackValue(t, renderedFormElements[1])
+	if renderedSubmitValue["kind"] != "submit_command_form" || renderedSubmitValue["command"] != "/model" {
+		t.Fatalf("unexpected rendered command form payload: %#v", renderedSubmitValue)
+	}
+	renderedRelatedValue := renderedButtonCallbackValue(t, renderedElements[4])
+	if renderedRelatedValue["kind"] != "run_command" || renderedRelatedValue["command_text"] != "/menu send_settings" {
+		t.Fatalf("unexpected rendered related button payload: %#v", renderedRelatedValue)
 	}
 }
 
@@ -861,6 +880,9 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 	value, _ := actionRow[0]["value"].(map[string]any)
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected command catalog action to carry daemon lifecycle id, got %#v", value)
+	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected command catalog with form to use structured V2 send path, got %#v", ops[0])
 	}
 }
 
@@ -949,6 +971,24 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if feedbackValue["request_option_id"] != "captureFeedback" {
 		t.Fatalf("unexpected feedback payload: %#v", feedbackValue)
 	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected request prompt to use structured V2 send path, got %#v", ops[0])
+	}
+	renderedElements := renderedV2BodyElements(t, ops[0])
+	renderedButtons := renderedColumnButtons(t, renderedElements[1])
+	if len(renderedButtons) != 4 {
+		t.Fatalf("expected rendered V2 request prompt to keep 4 buttons, got %#v", renderedElements[1])
+	}
+	renderedAcceptValue := renderedButtonCallbackValue(t, renderedButtons[0])
+	renderedSessionValue := renderedButtonCallbackValue(t, renderedButtons[1])
+	renderedDeclineValue := renderedButtonCallbackValue(t, renderedButtons[2])
+	renderedFeedbackValue := renderedButtonCallbackValue(t, renderedButtons[3])
+	if renderedAcceptValue["request_option_id"] != "accept" || renderedSessionValue["request_option_id"] != "acceptForSession" {
+		t.Fatalf("unexpected rendered request accept payloads: %#v / %#v", renderedAcceptValue, renderedSessionValue)
+	}
+	if renderedDeclineValue["request_option_id"] != "decline" || renderedFeedbackValue["request_option_id"] != "captureFeedback" {
+		t.Fatalf("unexpected rendered request decline/feedback payloads: %#v / %#v", renderedDeclineValue, renderedFeedbackValue)
+	}
 }
 
 func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
@@ -968,6 +1008,9 @@ func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 	value, _ := actionRow[0]["value"].(map[string]any)
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected request prompt action to carry daemon lifecycle id, got %#v", value)
+	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected request prompt to use structured V2 send path, got %#v", ops[0])
 	}
 }
 
@@ -1026,6 +1069,35 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	submitValue, _ := form[2]["value"].(map[string]any)
 	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" {
 		t.Fatalf("unexpected request form payload: %#v", submitValue)
+	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected request_user_input prompt to use structured V2 send path, got %#v", ops[0])
+	}
+	renderedElements := renderedV2BodyElements(t, ops[0])
+	renderedButtons := renderedColumnButtons(t, renderedElements[2])
+	if len(renderedButtons) != 2 {
+		t.Fatalf("expected rendered direct-response button row, got %#v", renderedElements[2])
+	}
+	renderedValue := renderedButtonCallbackValue(t, renderedButtons[0])
+	renderedAnswers, _ := renderedValue["request_answers"].(map[string]any)
+	renderedModelAnswers, _ := renderedAnswers["model"].([]any)
+	if renderedValue["kind"] != "request_respond" || len(renderedModelAnswers) != 1 || renderedModelAnswers[0] != "gpt-5.4" {
+		t.Fatalf("unexpected rendered direct-response payload: %#v", renderedValue)
+	}
+	renderedForm := renderedElements[4]
+	if renderedForm["tag"] != "form" {
+		t.Fatalf("expected rendered V2 request form, got %#v", renderedForm)
+	}
+	renderedFormElements, _ := renderedForm["elements"].([]map[string]any)
+	if len(renderedFormElements) != 3 {
+		t.Fatalf("expected rendered request form to keep two inputs and submit button, got %#v", renderedForm)
+	}
+	if renderedFormElements[2]["action_type"] != nil || renderedFormElements[2]["form_action_type"] != "submit" {
+		t.Fatalf("expected rendered request form submit button to use V2 form_action_type, got %#v", renderedFormElements[2])
+	}
+	renderedSubmitValue := renderedButtonCallbackValue(t, renderedFormElements[2])
+	if renderedSubmitValue["kind"] != "submit_request_form" || renderedSubmitValue["request_id"] != "req-ui-1" {
+		t.Fatalf("unexpected rendered request form payload: %#v", renderedSubmitValue)
 	}
 }
 
@@ -2050,6 +2122,23 @@ func renderedButtonCallbackValue(t *testing.T, button map[string]any) map[string
 	}
 	value, _ := behaviors[0]["value"].(map[string]any)
 	return value
+}
+
+func renderedColumnButtons(t *testing.T, element map[string]any) []map[string]any {
+	t.Helper()
+	if element["tag"] != "column_set" {
+		t.Fatalf("expected rendered V2 column_set, got %#v", element)
+	}
+	columns, _ := element["columns"].([]map[string]any)
+	buttons := make([]map[string]any, 0, len(columns))
+	for _, column := range columns {
+		elements, _ := column["elements"].([]map[string]any)
+		if len(elements) != 1 || elements[0]["tag"] != "button" {
+			t.Fatalf("expected one button per V2 column, got %#v", column)
+		}
+		buttons = append(buttons, elements[0])
+	}
+	return buttons
 }
 
 func TestProjectImageOutputAsImageMessage(t *testing.T) {

@@ -167,3 +167,51 @@ func TestRenderOperationCardV2ConvertsLegacyMultiButtonRowToColumnSet(t *testing
 		t.Fatalf("expected button elements inside v2 columns, got %#v", elements[0])
 	}
 }
+
+func TestRenderOperationCardV2ConvertsLegacyFormSubmitButton(t *testing.T) {
+	payload := renderOperationCard(Operation{
+		Kind: OperationSendCard,
+		card: legacyCompatibleCardDocument("输入参数", "", cardThemeApproval, []map[string]any{{
+			"tag":  "form",
+			"name": "request_form_req_1",
+			"elements": []map[string]any{
+				{
+					"tag":  "input",
+					"name": "notes",
+				},
+				{
+					"tag":         "button",
+					"type":        "primary",
+					"action_type": "form_submit",
+					"name":        "submit",
+					"text": map[string]any{
+						"tag":     "plain_text",
+						"content": "提交答案",
+					},
+					"value": map[string]any{
+						"kind":       "submit_request_form",
+						"request_id": "req-1",
+					},
+				},
+			},
+		}}),
+	}, cardEnvelopeV2)
+
+	body, _ := payload["body"].(map[string]any)
+	elements, _ := body["elements"].([]map[string]any)
+	if len(elements) != 1 || elements[0]["tag"] != "form" {
+		t.Fatalf("expected v2 form container, got %#v", payload)
+	}
+	formElements, _ := elements[0]["elements"].([]map[string]any)
+	if len(formElements) != 2 {
+		t.Fatalf("expected input and submit button inside v2 form, got %#v", elements[0])
+	}
+	submitButton := formElements[1]
+	if submitButton["action_type"] != nil || submitButton["form_action_type"] != "submit" {
+		t.Fatalf("expected v2 submit button to use form_action_type, got %#v", submitButton)
+	}
+	behaviors, _ := submitButton["behaviors"].([]map[string]any)
+	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
+		t.Fatalf("expected v2 submit button callback behavior, got %#v", submitButton)
+	}
+}

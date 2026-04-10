@@ -82,7 +82,11 @@ func newLegacyCompatibleCardComponent(data map[string]any) cardComponent {
 			return cardActionRowComponent{actions: cloneCardMaps(actions)}
 		}
 	}
-	return newRawCardComponent(data)
+	legacy := cloneCardMap(data)
+	return cardRawComponent{
+		legacy: legacy,
+		v2:     adaptLegacyCardMapToV2(legacy),
+	}
 }
 
 func (c cardMarkdownComponent) renderCardComponent(_ cardEnvelopeVersion) map[string]any {
@@ -114,7 +118,7 @@ func (c cardActionRowComponent) renderCardComponent(version cardEnvelopeVersion)
 	}
 	buttons := make([]map[string]any, 0, len(c.actions))
 	for _, action := range c.actions {
-		button := renderV2ButtonFromLegacyAction(action)
+		button := adaptLegacyButtonToV2(action)
 		if len(button) == 0 {
 			continue
 		}
@@ -274,13 +278,56 @@ func cardMapSlice(value any) []map[string]any {
 	}
 }
 
-func renderV2ButtonFromLegacyAction(action map[string]any) map[string]any {
+func adaptLegacyCardMapToV2(data map[string]any) map[string]any {
+	if len(data) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(data))
+	for key, raw := range data {
+		out[key] = adaptLegacyCardAnyToV2(raw)
+	}
+	if strings.EqualFold(strings.TrimSpace(stringMapValue(out, "tag")), "button") {
+		return adaptLegacyButtonToV2(out)
+	}
+	return out
+}
+
+func adaptLegacyCardAnyToV2(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return adaptLegacyCardMapToV2(typed)
+	case []map[string]any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, adaptLegacyCardMapToV2(item))
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, adaptLegacyCardAnyToV2(item))
+		}
+		return out
+	default:
+		return typed
+	}
+}
+
+func adaptLegacyButtonToV2(action map[string]any) map[string]any {
 	button := cloneCardMap(action)
 	if len(button) == 0 {
 		return nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(stringMapValue(button, "tag")), "button") {
 		return button
+	}
+	switch strings.TrimSpace(stringMapValue(button, "action_type")) {
+	case "form_submit":
+		button["form_action_type"] = "submit"
+		delete(button, "action_type")
+	case "form_reset":
+		button["form_action_type"] = "reset"
+		delete(button, "action_type")
 	}
 	if _, ok := button["behaviors"]; !ok {
 		if value, ok := button["value"]; ok && value != nil {

@@ -167,10 +167,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardThemeKey:     cardThemeInfo,
 			CardElements:     elements,
 		}
-		if commandCatalogSupportsV2(*event.CommandCatalog) {
-			operation.cardEnvelope = cardEnvelopeV2
-			operation.card = legacyCompatibleCardDocument(title, body, cardThemeInfo, elements)
-		}
+		operation.cardEnvelope = cardEnvelopeV2
+		operation.card = legacyCompatibleCardDocument(title, body, cardThemeInfo, elements)
 		return []Operation{operation}
 	case control.UIEventRequestPrompt:
 		if event.RequestPrompt == nil {
@@ -180,15 +178,19 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if title == "" {
 			title = "需要确认"
 		}
+		body := requestPromptBody(*event.RequestPrompt)
+		elements := requestPromptElements(*event.RequestPrompt, event.DaemonLifecycleID)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
-			CardBody:         requestPromptBody(*event.RequestPrompt),
+			CardBody:         body,
 			CardThemeKey:     cardThemeApproval,
-			CardElements:     requestPromptElements(*event.RequestPrompt, event.DaemonLifecycleID),
+			CardElements:     elements,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             legacyCompatibleCardDocument(title, body, cardThemeApproval, elements),
 		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
@@ -1385,17 +1387,6 @@ func selectionOptionButtonText(prompt control.SelectionPrompt, option control.Se
 
 func commandCatalogBody(catalog control.CommandCatalog) string {
 	return renderSystemInlineTags(strings.TrimSpace(catalog.Summary))
-}
-
-func commandCatalogSupportsV2(catalog control.CommandCatalog) bool {
-	for _, section := range catalog.Sections {
-		for _, entry := range section.Entries {
-			if entry.Form != nil {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID string) []map[string]any {
