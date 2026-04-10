@@ -617,6 +617,8 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 非 final 的 `block.committed`：
 
 - 直接发纯文本
+- 对用户在飞书发起的正常 remote turn，若某段 `agent_message` 已收到 `item.completed`，会尽早作为过程文本投影，不必强等到 `turn.completed`
+- 这条“提前投影已完成 assistant item”的策略当前不扩展到 local UI turn，也不扩展到 auto-continue turn
 
 ### 7.3 最终回复
 
@@ -631,6 +633,8 @@ final `block.committed`：
 - 文件摘要会展示本轮修改文件数、总 `+/-` 行数，以及逐文件的 `+/-` 统计
 - 文件展示名优先使用“最短唯一后缀”，避免直接铺完整长路径；重命名会显示 `旧路径 → 新路径`
 - 当前最多展开前 6 个文件；超出的部分只提示“另有 N 个文件未展开”
+- 若 assistant 正文已经在过程阶段提前投影过，而完成时只剩 elapsed footer 这类轻量收尾信息，则不会再额外补一张重复正文或空洞结束卡
+- 若 assistant 正文已经在过程阶段提前投影过，但完成时还有文件修改摘要等新增信息，仍会补一张 final card 承载这些新增内容
 - 若本轮没有可展示的最终正文，但存在文件修改 summary，仍会补一张合成 final card，正文为 `已完成文件修改。`
 - final card 底部当前会追加一条 turn summary footer，至少显示本轮用时
 - 若协议链路后续带来可精确复用的 usage 字段，footer 才会继续追加 token 数；当前实现不会做猜测或估算

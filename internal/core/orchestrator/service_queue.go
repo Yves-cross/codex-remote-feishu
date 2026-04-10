@@ -536,14 +536,17 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 		return nil
 	}
 	if buf.ItemKind == "agent_message" {
-		return s.storePendingTurnText(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.ItemKind, buf.Text)
+		if s.shouldProjectCompletedAgentMessageEarly(instanceID, event.ThreadID, event.TurnID) {
+			events := s.renderTextItem(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.Text, false)
+			return s.storePendingTurnText(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.ItemKind, buf.Text, uiEventsContainCommittedBlock(events), events)
+		}
+		return s.storePendingTurnText(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.ItemKind, buf.Text, false, nil)
 	}
 	return s.renderTextItem(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.Text, false)
 }
 
-func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, itemKind, text string) []control.UIEvent {
+func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, itemKind, text string, projected bool, events []control.UIEvent) []control.UIEvent {
 	key := turnRenderKey(instanceID, threadID, turnID)
-	previous := s.pendingTurnText[key]
 	s.pendingTurnText[key] = &completedTextItem{
 		InstanceID: instanceID,
 		ThreadID:   threadID,
@@ -551,11 +554,9 @@ func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, ite
 		ItemID:     itemID,
 		ItemKind:   itemKind,
 		Text:       text,
+		Projected:  projected,
 	}
-	if previous == nil {
-		return nil
-	}
-	return s.renderTextItem(previous.InstanceID, previous.ThreadID, previous.TurnID, previous.ItemID, previous.Text, false)
+	return events
 }
 
 func (s *Service) flushPendingTurnText(instanceID, threadID, turnID string, final bool) []control.UIEvent {
@@ -572,6 +573,12 @@ func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID s
 		return nil
 	}
 	delete(s.pendingTurnText, key)
+	if pending.Projected {
+		if final && summary != nil {
+			return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, "final-turn-summary", "", true, summary, finalSummary)
+		}
+		return nil
+	}
 	return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, pending.ItemID, pending.Text, final, summary, finalSummary)
 }
 
@@ -598,6 +605,31 @@ func (s *Service) flushPendingTurnTextIfTurnContinues(instanceID string, event a
 	default:
 		return nil
 	}
+}
+
+func uiEventsContainCommittedBlock(events []control.UIEvent) bool {
+	for i := range events {
+		if events[i].Block != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) shouldProjectCompletedAgentMessageEarly(instanceID, threadID, turnID string) bool {
+	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
+	if binding == nil {
+		return false
+	}
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	if surface == nil {
+		return false
+	}
+	item := surface.QueueItems[binding.QueueItemID]
+	if item == nil {
+		return false
+	}
+	return item.SourceKind == state.QueueItemSourceUser
 }
 
 func (s *Service) normalizeTurnInitiator(instanceID string, event agentproto.Event) agentproto.Initiator {
