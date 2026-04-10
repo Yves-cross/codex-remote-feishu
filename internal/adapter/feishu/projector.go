@@ -372,6 +372,8 @@ func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessag
 			CardBody:         body,
 			CardThemeKey:     theme,
 			CardElements:     elements,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             legacyCompatibleCardDocument(title, body, theme, elements),
 		}, true
 	default:
 		return Operation{}, false

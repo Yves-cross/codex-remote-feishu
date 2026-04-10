@@ -75,9 +75,9 @@ func handleCardActionTrigger(ctx context.Context, action control.Action, handler
 }
 
 func shouldHandleCardActionAsync(action control.Action) bool {
-	// Current cards still use the legacy send envelope, and synchronous card
-	// replacement is disabled. Waiting for the full action path here can keep
-	// the callback open long enough for Feishu to redeliver the same click.
+	// Synchronous replacement is still disabled. Keeping card callbacks async
+	// avoids holding the Feishu callback open long enough for duplicate
+	// delivery on slower request paths.
 	if action.Inbound == nil {
 		return false
 	}

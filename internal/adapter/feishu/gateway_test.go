@@ -20,7 +20,7 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
-func TestApplySendCardRepliesToSourceMessage(t *testing.T) {
+func TestApplySendCardRepliesToSourceMessageWithV2EnvelopeByDefault(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	var (
 		replyMessageID string
@@ -72,8 +72,8 @@ func TestApplySendCardRepliesToSourceMessage(t *testing.T) {
 	if err := json.Unmarshal([]byte(replyContent), &payload); err != nil {
 		t.Fatalf("reply content is not valid json: %v", err)
 	}
-	if _, ok := payload["schema"]; ok {
-		t.Fatalf("expected normal send card to keep legacy envelope, got %#v", payload)
+	if payload["schema"] != "2.0" {
+		t.Fatalf("expected normal send card to default to v2 envelope, got %#v", payload)
 	}
 	header := payload["header"].(map[string]any)
 	title := header["title"].(map[string]any)
@@ -85,7 +85,7 @@ func TestApplySendCardRepliesToSourceMessage(t *testing.T) {
 	}
 }
 
-func TestApplySendCardFallsBackToCreateWhenReplyFails(t *testing.T) {
+func TestApplySendCardFallsBackToCreateWithV2EnvelopeByDefault(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	var (
 		replyCalls    int
@@ -146,8 +146,8 @@ func TestApplySendCardFallsBackToCreateWhenReplyFails(t *testing.T) {
 	if err := json.Unmarshal([]byte(createContent), &payload); err != nil {
 		t.Fatalf("fallback create content is not valid json: %v", err)
 	}
-	if _, ok := payload["schema"]; ok {
-		t.Fatalf("expected fallback send card to keep legacy envelope, got %#v", payload)
+	if payload["schema"] != "2.0" {
+		t.Fatalf("expected fallback send card to default to v2 envelope, got %#v", payload)
 	}
 	header := payload["header"].(map[string]any)
 	title := header["title"].(map[string]any)
@@ -159,7 +159,7 @@ func TestApplySendCardFallsBackToCreateWhenReplyFails(t *testing.T) {
 	}
 }
 
-func TestApplySendCardUsesV2EnvelopeWhenOperationRequestsIt(t *testing.T) {
+func TestApplySendCardCanStillForceLegacyEnvelope(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	var createContent string
 	gateway.createMessageFn = func(_ context.Context, receiveIDType, receiveID, msgType, content string) (*larkim.CreateMessageResp, error) {
@@ -191,7 +191,7 @@ func TestApplySendCardUsesV2EnvelopeWhenOperationRequestsIt(t *testing.T) {
 		CardTitle:        "系统提示",
 		CardBody:         "已完成切换。",
 		CardThemeKey:     cardThemeInfo,
-		cardEnvelope:     cardEnvelopeV2,
+		cardEnvelope:     cardEnvelopeLegacy,
 		card:             legacyCardDocument("系统提示", "已完成切换。", cardThemeInfo, nil),
 	}})
 	if err != nil {
@@ -201,13 +201,12 @@ func TestApplySendCardUsesV2EnvelopeWhenOperationRequestsIt(t *testing.T) {
 	if err := json.Unmarshal([]byte(createContent), &payload); err != nil {
 		t.Fatalf("create content is not valid json: %v", err)
 	}
-	if payload["schema"] != "2.0" {
-		t.Fatalf("expected v2 envelope, got %#v", payload)
+	if _, ok := payload["schema"]; ok {
+		t.Fatalf("expected explicit legacy override to keep legacy envelope, got %#v", payload)
 	}
-	body, _ := payload["body"].(map[string]any)
-	elements, _ := body["elements"].([]interface{})
+	elements, _ := payload["elements"].([]interface{})
 	if len(elements) != 1 {
-		t.Fatalf("expected one markdown element in v2 body, got %#v", payload)
+		t.Fatalf("expected one markdown element in legacy body, got %#v", payload)
 	}
 }
 

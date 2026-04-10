@@ -151,7 +151,11 @@ func (c cardActionRowComponent) renderCardComponent(version cardEnvelopeVersion)
 func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[string]any {
 	doc := operation.card
 	if doc == nil {
-		doc = legacyCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
+		if version == cardEnvelopeLegacy {
+			doc = legacyCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
+		} else {
+			doc = legacyCompatibleCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
+		}
 	}
 	if doc == nil {
 		return nil
@@ -160,10 +164,10 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 }
 
 func (operation Operation) ordinaryCardEnvelope() cardEnvelopeVersion {
-	if operation.cardEnvelope == cardEnvelopeV2 {
-		return cardEnvelopeV2
+	if operation.cardEnvelope == cardEnvelopeLegacy {
+		return cardEnvelopeLegacy
 	}
-	return cardEnvelopeLegacy
+	return cardEnvelopeV2
 }
 
 func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion) map[string]any {
