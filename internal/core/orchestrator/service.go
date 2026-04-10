@@ -368,6 +368,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.presentThreadSelection(surface, true)
 	case control.ActionShowScopedThreads:
 		return s.presentScopedThreadSelection(surface)
+	case control.ActionShowWorkspaceThreads:
+		return s.presentWorkspaceThreadSelection(surface, action.WorkspaceKey)
 	case control.ActionUseThread:
 		return s.useThread(surface, action.ThreadID, action.AllowCrossWorkspace)
 	case control.ActionConfirmKickThread:

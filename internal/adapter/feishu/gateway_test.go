@@ -615,6 +615,35 @@ func TestParseCardActionTriggerEventBuildsDirectUseThreadAction(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsShowWorkspaceThreadsAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-workspace", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":          "show_workspace_threads",
+					"workspace_key": "/data/dl/web",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-workspace",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected card callback to be parsed")
+	}
+	if action.Kind != control.ActionShowWorkspaceThreads || action.WorkspaceKey != "/data/dl/web" {
+		t.Fatalf("unexpected workspace threads action: %#v", action)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsRunCommandAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")

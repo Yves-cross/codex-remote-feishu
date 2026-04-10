@@ -5252,7 +5252,7 @@ func TestPresentAllThreadSelectionShowsAllSessionsByRecency(t *testing.T) {
 		t.Fatalf("expected selection prompt, got %#v", events)
 	}
 	prompt := events[0].SelectionPrompt
-	if prompt.Title != "全部会话" || prompt.Hint != "" {
+	if prompt.Title != "全部会话" || prompt.Hint != "" || prompt.Layout != "workspace_grouped_useall" {
 		t.Fatalf("unexpected all-session prompt metadata: %#v", prompt)
 	}
 	if prompt.ContextTitle != "当前工作区" || prompt.ContextKey != "/data/dl" || !strings.Contains(prompt.ContextText, "dl ·") {
@@ -5290,6 +5290,43 @@ func TestUseThreadSameAsCurrentStillAcknowledgesSelection(t *testing.T) {
 	})
 	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "selection_unchanged" {
 		t.Fatalf("expected unchanged selection notice, got %#v", events)
+	}
+}
+
+func TestShowWorkspaceThreadsDisplaysSingleWorkspaceAllSessions(t *testing.T) {
+	now := time.Date(2026, 4, 10, 13, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-web-1",
+		DisplayName:   "web",
+		WorkspaceRoot: "/data/dl/web",
+		WorkspaceKey:  "/data/dl/web",
+		ShortName:     "web",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "较早", CWD: "/data/dl/web", LastUsedAt: now.Add(-2 * time.Hour)},
+			"thread-2": {ThreadID: "thread-2", Name: "最新", CWD: "/data/dl/web", LastUsedAt: now.Add(-10 * time.Minute)},
+			"thread-3": {ThreadID: "thread-3", Name: "中间", CWD: "/data/dl/web", LastUsedAt: now.Add(-1 * time.Hour)},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionShowWorkspaceThreads,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		WorkspaceKey:     "/data/dl/web",
+	})
+
+	if len(events) != 1 || events[0].SelectionPrompt == nil {
+		t.Fatalf("expected workspace selection prompt, got %#v", events)
+	}
+	prompt := events[0].SelectionPrompt
+	if prompt.Layout != "workspace_grouped_useall" || prompt.Title != "web 全部会话" || len(prompt.Options) != 3 {
+		t.Fatalf("unexpected workspace-all prompt: %#v", prompt)
+	}
+	if prompt.Options[0].OptionID != "thread-2" || prompt.Options[1].OptionID != "thread-3" || prompt.Options[2].OptionID != "thread-1" {
+		t.Fatalf("expected workspace-all prompt to keep recency order, got %#v", prompt.Options)
 	}
 }
 

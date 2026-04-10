@@ -610,10 +610,13 @@ R5 NewThreadReady
 9. attached normal `/useall` 当前会显示 cross-workspace 的全部会话，并允许直接点击切到其他 workspace。
    1. 这类 global 卡片会先保留一个单独的“当前会话”区块。
    2. 若当前 surface 已 attach workspace，还会在其后插入一段“当前工作区”摘要，仅供参考，不再展开当前 workspace 的 thread 列表；同 workspace 内切换仍建议回 `/use`
-   3. 其余会话会按 workspace 分组展示，workspace 分组按该组内最新 thread 的最近活跃时间倒序。
-   4. 组内 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮
-   5. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里
-   6. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表
+   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后单独发出当前 workspace 的全量会话卡片
+   4. 其余会话会按 workspace 分组展示，workspace 分组按该组内最新 thread 的最近活跃时间倒序。
+   5. 组内 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮
+   6. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后单独发出该 workspace 的全量会话卡片
+   7. 单-workspace 全量卡片会保留同样的排序和“序号 + 相对时间 + 全宽按钮”样式，只是不再截断到 5 条
+   8. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里
+   9. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表
 10. 当 normal mode `/use` / `/useall` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。

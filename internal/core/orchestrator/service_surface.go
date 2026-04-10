@@ -893,6 +893,53 @@ func (s *Service) presentScopedThreadSelection(surface *state.SurfaceConsoleReco
 	return s.presentThreadSelectionMode(surface, threadSelectionDisplayScopedAll)
 }
 
+func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
+	if workspaceKey == "" {
+		return notice(surface, "workspace_not_found", "目标工作区不存在。请重新发送 /useall。")
+	}
+	views := s.threadViewsVisibleInNormalList(surface, s.mergedThreadViews(surface))
+	filtered := make([]*mergedThreadView, 0, len(views))
+	for _, view := range views {
+		if mergedThreadWorkspaceClaimKey(view) != workspaceKey {
+			continue
+		}
+		filtered = append(filtered, view)
+	}
+	if len(filtered) == 0 {
+		return notice(surface, "no_visible_threads", fmt.Sprintf("当前工作区 %s 还没有可恢复会话。", workspaceKey))
+	}
+	options := make([]control.SelectionOption, 0, len(filtered))
+	for i, view := range filtered {
+		status, disabled := s.threadSelectionStatus(surface, view, true)
+		summary := threadSelectionButtonLabel(view.Thread, view.ThreadID)
+		options = append(options, control.SelectionOption{
+			Index:               i + 1,
+			OptionID:            view.ThreadID,
+			Label:               summary,
+			Subtitle:            s.threadSelectionOptionSubtitle(surface, view, false, true),
+			ButtonLabel:         summary,
+			GroupKey:            workspaceKey,
+			GroupLabel:          workspaceSelectionLabel(workspaceKey),
+			AgeText:             humanizeRelativeTime(s.now(), threadLastUsedAt(view)),
+			MetaText:            s.threadSelectionMetaText(surface, view, status),
+			IsCurrent:           surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID),
+			Disabled:            disabled,
+			AllowCrossWorkspace: true,
+		})
+	}
+	return []control.UIEvent{{
+		Kind:             control.UIEventSelectionPrompt,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind:    control.SelectionPromptUseThread,
+			Layout:  "workspace_grouped_useall",
+			Title:   workspaceSelectionLabel(workspaceKey) + " 全部会话",
+			Options: options,
+		},
+	}}
+}
+
 func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode) []control.UIEvent {
 	if surface != nil && s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode && strings.TrimSpace(surface.AttachedInstanceID) == "" {
 		return notice(surface, "not_attached_vscode", "vscode 模式下请先 /list 选择一个 VS Code 实例，再使用 /use 或 /useall。")
@@ -945,6 +992,7 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SelectionPrompt: &control.SelectionPrompt{
 			Kind:         control.SelectionPromptUseThread,
+			Layout:       s.threadSelectionPromptLayout(presentation),
 			Title:        presentation.title,
 			ContextTitle: s.threadSelectionContextTitle(surface, presentation),
 			ContextText:  s.threadSelectionContextText(surface, presentation),
@@ -952,6 +1000,13 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 			Options:      options,
 		},
 	}}
+}
+
+func (s *Service) threadSelectionPromptLayout(presentation threadSelectionPresentation) string {
+	if presentation.title == "全部会话" && presentation.includeWorkspace {
+		return "workspace_grouped_useall"
+	}
+	return ""
 }
 
 func (s *Service) threadSelectionContextTitle(surface *state.SurfaceConsoleRecord, presentation threadSelectionPresentation) string {

@@ -38,6 +38,7 @@ const (
 	ActionShowThreads          ActionKind = "surface.button.show_threads"
 	ActionShowAllThreads       ActionKind = "surface.button.show_all_threads"
 	ActionShowScopedThreads    ActionKind = "surface.button.show_scoped_threads"
+	ActionShowWorkspaceThreads ActionKind = "surface.button.show_workspace_threads"
 	ActionUseThread            ActionKind = "surface.button.use_thread"
 	ActionConfirmKickThread    ActionKind = "surface.button.confirm_kick_thread"
 	ActionCancelKickThread     ActionKind = "surface.button.cancel_kick_thread"
@@ -122,6 +123,7 @@ type SelectionOption struct {
 type SelectionPrompt struct {
 	PromptID     string
 	Kind         SelectionPromptKind
+	Layout       string
 	CreatedAt    time.Time
 	ExpiresAt    time.Time
 	Title        string

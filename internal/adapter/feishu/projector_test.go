@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -163,6 +164,7 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSelectionPrompt,
 		SelectionPrompt: &control.SelectionPrompt{
+			Layout:       "workspace_grouped_useall",
 			Kind:         control.SelectionPromptUseThread,
 			Title:        "全部会话",
 			ContextTitle: "当前工作区",
@@ -238,7 +240,7 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 		textValue, _ := actions[0]["text"].(map[string]any)
 		buttonLabels = append(buttonLabels, textValue["content"].(string))
 	}
-	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 接管 · 别的会话 | 接管 · 另一个会话" {
+	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 查看当前工作区全部会话 | 接管 · 别的会话 | 接管 · 另一个会话" {
 		t.Fatalf("unexpected grouped button labels: %#v", buttonLabels)
 	}
 	var rendered []string
@@ -256,6 +258,61 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 		if !containsString(rendered, fragment) {
 			t.Fatalf("expected rendered grouped content to include %q, got %#v", fragment, rendered)
 		}
+	}
+}
+
+func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t *testing.T) {
+	projector := NewProjector()
+	options := []control.SelectionOption{
+		{
+			Index:       1,
+			OptionID:    "thread-current",
+			Label:       "当前会话",
+			ButtonLabel: "当前会话",
+			GroupKey:    "/data/dl/droid",
+			GroupLabel:  "droid",
+			MetaText:    "已接管",
+			IsCurrent:   true,
+		},
+	}
+	for i := 1; i <= 6; i++ {
+		options = append(options, control.SelectionOption{
+			Index:       i + 1,
+			OptionID:    fmt.Sprintf("thread-%d", i),
+			Label:       fmt.Sprintf("web-%d", i),
+			ButtonLabel: fmt.Sprintf("web-%d", i),
+			GroupKey:    "/data/dl/web",
+			GroupLabel:  "web",
+			AgeText:     "2分前",
+			MetaText:    fmt.Sprintf("%d分前", i),
+		})
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Layout:       "workspace_grouped_useall",
+			Kind:         control.SelectionPromptUseThread,
+			Title:        "全部会话",
+			ContextTitle: "当前工作区",
+			ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
+			ContextKey:   "/data/dl/droid",
+			Options:      options,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	var buttonLabels []string
+	for _, element := range ops[0].CardElements {
+		actions, _ := element["actions"].([]map[string]any)
+		if len(actions) == 0 {
+			continue
+		}
+		textValue, _ := actions[0]["text"].(map[string]any)
+		buttonLabels = append(buttonLabels, textValue["content"].(string))
+	}
+	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 查看当前工作区全部会话 | 接管 · web-1 | 接管 · web-2 | 接管 · web-3 | 接管 · web-4 | 接管 · web-5 | 查看web全部会话" {
+		t.Fatalf("unexpected grouped/limited button labels: %#v", buttonLabels)
 	}
 }
 

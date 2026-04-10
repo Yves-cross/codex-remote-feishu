@@ -91,6 +91,21 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			MessageID:        messageID,
 			Inbound:          meta,
 		}, true
+	case "show_workspace_threads":
+		workspaceKey := strings.TrimSpace(stringMapValue(value, "workspace_key"))
+		if workspaceKey == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionShowWorkspaceThreads,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			WorkspaceKey:     workspaceKey,
+			Inbound:          meta,
+		}, true
 	case "resume_headless_thread":
 		return control.Action{
 			Kind:             control.ActionRemovedCommand,
