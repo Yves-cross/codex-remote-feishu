@@ -41,6 +41,14 @@ Trigger it for:
 - pull latest code, rebuild, and upgrade the locally installed daemon
 - requests to trigger the built-in local upgrade transaction from a repo build
 
+For repository-local safe push after local commits, also use `.codex/skills/safe-push/`.
+
+Trigger it for:
+
+- requests to "推送", "push", or "提交并推送"
+- `git push` rejected because upstream/remote already moved ahead
+- requests to automatically fetch/rebase/retest/push this repository's current branch
+
 ## Documentation Convention
 
 For lifecycle design/reference docs under `docs/`:
@@ -212,6 +220,14 @@ When a change is intentionally committed during task work:
 - Push it to GitHub in the same turn by default.
 - Exception: when the user explicitly requests staged local-only commits between phases, follow `GitHub Issue Workflow` and do not push until the staged rollout is complete or the user asks for a push.
 - Do not leave a local-only commit behind unless the user explicitly asks not to push yet.
+- For the common happy path, prefer `./safe-push.sh` from the repo root instead of manually doing `fetch -> rebase -> retest -> push`.
+- `./safe-push.sh` is intentionally narrow:
+  - it requires a clean worktree
+  - it fetches the target branch
+  - if the remote branch moved ahead, it rebases onto it
+  - after a successful rebase, it reruns tests, defaulting to `go test ./...`
+  - only then does it push
+- If rebase conflicts or tests fail, stop and handle that manually; do not try to script conflict resolution into the helper.
 
 ## Proxy Environment
 
