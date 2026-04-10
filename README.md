@@ -274,7 +274,7 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 命令：
 
 - `/help`：查看当前可用命令、示例和说明
-- `menu` 或 `/menu`：打开阶段感知的命令菜单首页；未接管时优先 `/list`、`/use`、`/status`，工作态优先 `/stop`、`/new` 和发送设置
+- `/menu`：打开阶段感知的命令菜单首页；未接管时优先 `/list`、`/use`、`/status`，工作态优先 `/stop`、`/new` 和发送设置
 - `/list`：列出当前可手工接管的目标；`normal` 模式下是工作区，`vscode` 模式下是在线 VS Code 实例
 - 选择方式：`/menu` 和参数卡现在是按钮优先的紧凑卡片，主操作尽量一行一个按钮；`/help` 仍保持文本帮助
 - 如果看到旧卡片，请重新发送命令

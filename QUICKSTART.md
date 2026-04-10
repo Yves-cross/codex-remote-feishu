@@ -106,7 +106,7 @@ Both commands reuse the same built-in helper transaction and automatically roll 
 
 Then in Feishu:
 
-- send `/help` or `menu` first if you want to see the current command set without guessing; `/help` stays text-first, while `/menu` now reorders its homepage by stage and uses compact button cards
+- send `/help` or `/menu` first if you want to see the current command set without guessing; `/help` stays text-first, while `/menu` now reorders its homepage by stage and uses compact button cards
 - send `/list` if you want to explicitly attach one of the online VS Code instances
 - send `/use` if you want to jump straight into a recent visible session; `/threads` is still accepted as a legacy alias; use `/useall` for the full list
 - use the card buttons when they appear; if a card says it is stale or expired, resend the command instead of replying with a number

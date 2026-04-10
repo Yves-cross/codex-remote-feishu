@@ -502,7 +502,6 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			},
 		},
 		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "menu", kind: ActionShowCommandMenu},
 			{alias: "/menu", kind: ActionShowCommandMenu},
 		},
 		menuExact: []feishuCommandMatch{

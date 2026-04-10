@@ -903,11 +903,30 @@ func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
 }
 
 func formatElapsedDuration(value time.Duration) string {
-	seconds := value.Seconds()
-	if seconds < 0 {
-		seconds = 0
+	if value <= 0 {
+		return "0秒"
 	}
-	return fmt.Sprintf("%.1fs", seconds)
+	if value < time.Second {
+		return "<1秒"
+	}
+	totalSeconds := int(value.Round(time.Second) / time.Second)
+	if totalSeconds < 60 {
+		return fmt.Sprintf("%d秒", totalSeconds)
+	}
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	var b strings.Builder
+	if hours > 0 {
+		b.WriteString(fmt.Sprintf("%d小时", hours))
+	}
+	if minutes > 0 {
+		b.WriteString(fmt.Sprintf("%d分钟", minutes))
+	}
+	if seconds > 0 || b.Len() == 0 {
+		b.WriteString(fmt.Sprintf("%d秒", seconds))
+	}
+	return b.String()
 }
 
 func formatFileChangePath(file control.FileChangeSummaryEntry, labels map[string]string) string {

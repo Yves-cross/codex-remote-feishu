@@ -245,3 +245,10 @@ func TestParseFeishuTextActionRecognizesMenuSubcommands(t *testing.T) {
 		t.Fatalf("unexpected action text: %#v", action)
 	}
 }
+
+func TestParseFeishuTextActionRejectsBareMenuAlias(t *testing.T) {
+	action, ok := ParseFeishuTextAction("menu")
+	if ok {
+		t.Fatalf("expected bare menu text to be ignored, got %#v", action)
+	}
+}

@@ -931,7 +931,7 @@ func TestProjectFinalAssistantBlockAppendsElapsedAfterFileChangeSummary(t *testi
 	if len(ops[0].CardElements) != 4 {
 		t.Fatalf("expected file summary rows plus elapsed footer, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[3]["content"] != "**本轮用时** 3.4s" {
+	if ops[0].CardElements[3]["content"] != "**本轮用时** 3秒" {
 		t.Fatalf("unexpected elapsed footer: %#v", ops[0].CardElements[3])
 	}
 }
@@ -959,8 +959,28 @@ func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) 
 	if len(ops[0].CardElements) != 1 {
 		t.Fatalf("expected standalone elapsed footer, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[0]["content"] != "**本轮用时** 2.1s" {
+	if ops[0].CardElements[0]["content"] != "**本轮用时** 2秒" {
 		t.Fatalf("unexpected standalone elapsed footer: %#v", ops[0].CardElements[0])
+	}
+}
+
+func TestFormatElapsedDurationUsesHumanReadableUnits(t *testing.T) {
+	tests := []struct {
+		name  string
+		value time.Duration
+		want  string
+	}{
+		{name: "sub second", value: 400 * time.Millisecond, want: "<1秒"},
+		{name: "seconds only", value: 3400 * time.Millisecond, want: "3秒"},
+		{name: "minutes and seconds", value: 65*time.Second + 400*time.Millisecond, want: "1分钟5秒"},
+		{name: "hours minutes seconds", value: time.Hour + 2*time.Minute + 3*time.Second, want: "1小时2分钟3秒"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatElapsedDuration(tt.value); got != tt.want {
+				t.Fatalf("formatElapsedDuration(%s) = %q, want %q", tt.value, got, tt.want)
+			}
+		})
 	}
 }
 

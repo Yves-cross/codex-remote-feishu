@@ -382,7 +382,6 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 func TestParseTextActionRecognizesHelpAndMenuCommands(t *testing.T) {
 	tests := map[string]control.ActionKind{
 		"/help": control.ActionShowCommandHelp,
-		"menu":  control.ActionShowCommandMenu,
 		"/menu": control.ActionShowCommandMenu,
 	}
 	for input, want := range tests {
@@ -393,6 +392,9 @@ func TestParseTextActionRecognizesHelpAndMenuCommands(t *testing.T) {
 		if action.Kind != want {
 			t.Fatalf("input %q => kind %q, want %q", input, action.Kind, want)
 		}
+	}
+	if action, handled := parseTextAction("menu"); handled {
+		t.Fatalf("expected bare menu text to be ignored, got %#v", action)
 	}
 }
 
