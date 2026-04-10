@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-11`
-> Summary: 新增 Codex MCP app-server 协议基线文档并刷新索引。
+> Summary: 新增统一 Web 设计规范文档并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -120,6 +120,7 @@
 - [relay-error-reporting-protocol.md](./general/relay-error-reporting-protocol.md)
 - [relay-protocol-spec.md](./general/relay-protocol-spec.md)
 - [user-guide.md](./general/user-guide.md)
+- [web-design-guidelines.md](./general/web-design-guidelines.md)
 
 ### 6.2 `implemented`
 

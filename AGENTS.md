@@ -50,6 +50,28 @@ Trigger it for:
 - `git push` rejected because upstream/remote already moved ahead
 - requests to automatically fetch/rebase/retest/push this repository's current branch
 
+## Web Design Baseline
+
+For Web page design, layout, copy, or interaction changes, follow:
+
+- `docs/general/web-design-guidelines.md`
+
+Trigger it for:
+
+- `web/src/**` page or route changes
+- `internal/app/daemon/adminui/**` page or copy changes
+- setup / admin / install / onboarding / status page redesign
+- any change that adds or removes user-visible sections, steps, cards, or default-exposed technical details
+
+Default rules:
+
+- Every page must work on both desktop and mobile
+- User-visible copy should be written for ordinary users, not from a development or architecture point of view
+- Single-page flows must not become long scrolling dumps; future-step or low-priority information should be hidden, deferred, folded, or split
+- User-visible pages must not contain internal design-purpose text such as “设计目的” or “设计说明”
+
+If a Web change intentionally needs to extend or revise these rules, update `docs/general/web-design-guidelines.md` in the same change.
+
 ## Documentation Convention
 
 For lifecycle design/reference docs under `docs/`:
