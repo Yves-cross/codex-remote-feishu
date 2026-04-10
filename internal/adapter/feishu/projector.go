@@ -265,13 +265,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.ThreadSelection == nil {
 			return nil
 		}
-		body := fmt.Sprintf("当前输入目标已切换到：%s", event.ThreadSelection.Title)
-		if short := shortenThreadID(event.ThreadSelection.ThreadID); short != "" {
-			body += "\n\n会话 ID：" + short
-		}
-		if preview := strings.TrimSpace(event.ThreadSelection.Preview); preview != "" {
-			body += "\n\n最近信息：\n" + preview
-		}
+		body := projectThreadSelectionChangeBody(*event.ThreadSelection)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
@@ -284,6 +278,20 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 	default:
 		return nil
 	}
+}
+
+func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) string {
+	if strings.TrimSpace(selection.RouteMode) == "new_thread_ready" {
+		return "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。"
+	}
+	body := fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)
+	if short := shortenThreadID(selection.ThreadID); short != "" {
+		body += "\n\n会话 ID：" + short
+	}
+	if preview := strings.TrimSpace(selection.Preview); preview != "" {
+		body += "\n\n最近信息：\n" + preview
+	}
+	return body
 }
 
 func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {

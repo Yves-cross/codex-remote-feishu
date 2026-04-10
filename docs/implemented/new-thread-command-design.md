@@ -1,8 +1,8 @@
 # `/new` 新建会话命令设计
 
 > Type: `implemented`
-> Updated: `2026-04-06`
-> Summary: 记录当前已实现的 `/new` 行为：通过 `new_thread_ready` 清空远端上下文、保留工作目录与飞书侧 override、由首条普通文本创建新 thread，并用显式 surface correlation 回绑到正确的飞书 surface。
+> Updated: `2026-04-10`
+> Summary: 记录当前已实现的 `/new` 行为：通过 `new_thread_ready` 清空远端上下文、保留工作目录与飞书侧 override、由首条普通文本创建新 thread，并用显式 surface correlation 回绑到正确的飞书 surface；同时区分“已准备新建会话”和“已切换到现有会话”的飞书提示卡语义，避免把 ready 态误读成真实 thread 切换。
 
 ## 1. 文档定位
 
@@ -254,6 +254,7 @@
 3. next prompt `CreateThread = true`
 4. next prompt `CWD = PreparedThreadCWD`
 5. 成功 `/new` 后会投影明确 notice：`已清空当前远端上下文。下一条文本会创建新会话。`
+6. `/new` 触发的 thread-selection 提示当前不会再写成“当前输入目标已切换到…”，而是明确提示：`已准备新建会话。当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。`
 
 ## 9. 当前测试覆盖
 

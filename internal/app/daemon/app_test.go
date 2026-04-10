@@ -451,7 +451,7 @@ func TestDaemonNewThreadProjectsReadyState(t *testing.T) {
 
 	var sawReadyCard bool
 	for _, operation := range gateway.operations {
-		if operation.Kind == feishu.OperationSendCard && strings.Contains(operation.CardBody, "新建会话（等待首条消息）") {
+		if operation.Kind == feishu.OperationSendCard && strings.Contains(operation.CardBody, "已准备新建会话") {
 			sawReadyCard = true
 			break
 		}

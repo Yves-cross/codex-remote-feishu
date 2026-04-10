@@ -1895,6 +1895,26 @@ func TestProjectThreadSelectionChangeIncludesShortThreadID(t *testing.T) {
 	}
 }
 
+func TestProjectThreadSelectionChangeForNewThreadReadyAvoidsSwitchedWording(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventThreadSelectionChange,
+		ThreadSelection: &control.ThreadSelectionChanged{
+			RouteMode: "new_thread_ready",
+			Title:     "新建会话（等待首条消息）",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardBody != "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。" {
+		t.Fatalf("unexpected new-thread-ready card body: %#v", ops[0].CardBody)
+	}
+	if strings.Contains(ops[0].CardBody, "当前输入目标已切换到") {
+		t.Fatalf("new-thread-ready card should not look like a real thread switch: %#v", ops[0].CardBody)
+	}
+}
+
 func containsAll(body string, parts ...string) bool {
 	for _, part := range parts {
 		if !strings.Contains(body, part) {
