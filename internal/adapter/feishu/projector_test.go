@@ -1104,6 +1104,29 @@ func TestProjectUsageNoticePreservesAngleBracketsInInlineTags(t *testing.T) {
 	}
 }
 
+func TestProjectUsageNoticePreservesQuotesInInlineTags(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventNotice,
+		Notice: &control.Notice{
+			Code: "surface_override_usage",
+			Text: "请求层把 `\"/api/admin/*\"` 和 `\"/api/setup/*\"` 统一转成本地路径。",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if strings.Contains(ops[0].CardBody, "&#34;") || strings.Contains(ops[0].CardBody, "&#39;") {
+		t.Fatalf("expected inline code to preserve quotes, got %#v", ops[0].CardBody)
+	}
+	if !containsAll(ops[0].CardBody,
+		`<text_tag color='neutral'>"/api/admin/*"</text_tag>`,
+		`<text_tag color='neutral'>"/api/setup/*"</text_tag>`,
+	) {
+		t.Fatalf("unexpected usage notice body: %#v", ops[0].CardBody)
+	}
+}
+
 func TestProjectFinalAssistantBlockPreservesAngleBracketsInInlineCode(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

@@ -1993,6 +1993,8 @@ func formatInlineCodeTextTag(text string) string {
 	escaped := html.EscapeString(trimmed)
 	escaped = strings.ReplaceAll(escaped, "&lt;", "<")
 	escaped = strings.ReplaceAll(escaped, "&gt;", ">")
+	escaped = strings.ReplaceAll(escaped, "&#34;", "\"")
+	escaped = strings.ReplaceAll(escaped, "&#39;", "'")
 	return "<text_tag color='neutral'>" + escaped + "</text_tag>"
 }
 
