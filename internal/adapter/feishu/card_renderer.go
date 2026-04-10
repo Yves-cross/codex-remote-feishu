@@ -47,7 +47,7 @@ func newCardDocument(title, themeKey string, components ...cardComponent) *cardD
 	return doc
 }
 
-func legacyCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
+func rawCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
 	components := make([]cardComponent, 0, len(extraElements)+1)
 	if strings.TrimSpace(body) != "" {
 		components = append(components, cardMarkdownComponent{Content: body})
@@ -58,6 +58,11 @@ func legacyCardDocument(title, body, themeKey string, extraElements []map[string
 	return newCardDocument(title, themeKey, components...)
 }
 
+func legacyCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
+	return rawCardDocument(title, body, themeKey, extraElements)
+}
+
+// legacyCompatibleCardDocument is retained only for explicit compatibility and tests.
 func legacyCompatibleCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
 	components := make([]cardComponent, 0, len(extraElements)+1)
 	if strings.TrimSpace(body) != "" {
@@ -151,11 +156,7 @@ func (c cardActionRowComponent) renderCardComponent(version cardEnvelopeVersion)
 func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[string]any {
 	doc := operation.card
 	if doc == nil {
-		if version == cardEnvelopeLegacy {
-			doc = legacyCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
-		} else {
-			doc = legacyCompatibleCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
-		}
+		doc = rawCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
 	}
 	if doc == nil {
 		return nil
@@ -213,6 +214,82 @@ func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion) map[stri
 			},
 			"header":   header,
 			"elements": elements,
+		}
+	}
+}
+
+func cardPlainText(content string) map[string]any {
+	return map[string]any{
+		"tag":     "plain_text",
+		"content": strings.TrimSpace(content),
+	}
+}
+
+func cardCallbackButtonElement(label, buttonType string, value map[string]any, disabled bool, width string) map[string]any {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil
+	}
+	buttonType = strings.TrimSpace(buttonType)
+	if buttonType == "" {
+		buttonType = "default"
+	}
+	button := map[string]any{
+		"tag":      "button",
+		"type":     buttonType,
+		"text":     cardPlainText(label),
+		"disabled": disabled,
+	}
+	if strings.TrimSpace(width) != "" {
+		button["width"] = strings.TrimSpace(width)
+	}
+	if len(value) != 0 {
+		button["behaviors"] = []map[string]any{{
+			"type":  "callback",
+			"value": cloneCardMap(value),
+		}}
+	}
+	return button
+}
+
+func cardFormSubmitButtonElement(label string, value map[string]any) map[string]any {
+	button := cardCallbackButtonElement(label, "primary", value, false, "")
+	if len(button) == 0 {
+		return nil
+	}
+	button["name"] = "submit"
+	button["form_action_type"] = "submit"
+	return button
+}
+
+func cardButtonGroupElement(buttons []map[string]any) map[string]any {
+	filtered := make([]map[string]any, 0, len(buttons))
+	for _, button := range buttons {
+		if len(button) == 0 {
+			continue
+		}
+		filtered = append(filtered, cloneCardMap(button))
+	}
+	switch len(filtered) {
+	case 0:
+		return nil
+	case 1:
+		return filtered[0]
+	default:
+		columns := make([]map[string]any, 0, len(filtered))
+		for _, button := range filtered {
+			columns = append(columns, map[string]any{
+				"tag":            "column",
+				"width":          "auto",
+				"vertical_align": "top",
+				"elements":       []map[string]any{button},
+			})
+		}
+		return map[string]any{
+			"tag":                "column_set",
+			"flex_mode":          "flow",
+			"horizontal_spacing": "small",
+			"columns":            columns,
 		}
 	}
 }

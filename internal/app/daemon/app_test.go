@@ -178,23 +178,70 @@ func (g *timeoutThenRecordGateway) snapshot() ([]error, []feishu.Operation) {
 	return errs, ops
 }
 
-func operationHasActionValue(operation feishu.Operation, kind, key, want string) bool {
+func operationCardButtons(operation feishu.Operation) []map[string]any {
+	var buttons []map[string]any
 	for _, element := range operation.CardElements {
-		actions, ok := element["actions"].([]map[string]any)
-		if !ok {
-			continue
-		}
-		for _, action := range actions {
-			value, ok := action["value"].(map[string]any)
-			if !ok || value["kind"] != kind {
+		buttons = append(buttons, cardElementButtons(element)...)
+	}
+	return buttons
+}
+
+func cardElementButtons(element map[string]any) []map[string]any {
+	switch element["tag"] {
+	case "button":
+		return []map[string]any{element}
+	case "column_set":
+		columns, _ := element["columns"].([]map[string]any)
+		buttons := make([]map[string]any, 0, len(columns))
+		for _, column := range columns {
+			elements, _ := column["elements"].([]map[string]any)
+			if len(elements) == 0 {
 				continue
 			}
-			if key == "" {
-				return true
+			buttons = append(buttons, elements[0])
+		}
+		return buttons
+	case "action":
+		if actions, _ := element["actions"].([]map[string]any); len(actions) != 0 {
+			return actions
+		}
+		rawActions, _ := element["actions"].([]any)
+		buttons := make([]map[string]any, 0, len(rawActions))
+		for _, raw := range rawActions {
+			button, _ := raw.(map[string]any)
+			if len(button) != 0 {
+				buttons = append(buttons, button)
 			}
-			if value[key] == want {
-				return true
-			}
+		}
+		return buttons
+	default:
+		return nil
+	}
+}
+
+func cardButtonPayload(button map[string]any) map[string]any {
+	if value, _ := button["value"].(map[string]any); len(value) != 0 {
+		return value
+	}
+	behaviors, _ := button["behaviors"].([]map[string]any)
+	if len(behaviors) == 0 {
+		return nil
+	}
+	value, _ := behaviors[0]["value"].(map[string]any)
+	return value
+}
+
+func operationHasActionValue(operation feishu.Operation, kind, key, want string) bool {
+	for _, button := range operationCardButtons(operation) {
+		value := cardButtonPayload(button)
+		if len(value) == 0 || value["kind"] != kind {
+			continue
+		}
+		if key == "" {
+			return true
+		}
+		if value[key] == want {
+			return true
 		}
 	}
 	return false

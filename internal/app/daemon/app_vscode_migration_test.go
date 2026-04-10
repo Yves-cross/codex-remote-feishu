@@ -329,25 +329,9 @@ func findOperationByTitle(operations []feishu.Operation, title string) *feishu.O
 }
 
 func operationHasCommandButton(operation feishu.Operation, label, commandText string) bool {
-	for _, element := range operation.CardElements {
-		actions, ok := element["actions"].([]map[string]any)
-		if !ok {
-			rawActions, ok := element["actions"].([]any)
-			if !ok {
-				continue
-			}
-			for _, rawAction := range rawActions {
-				button, ok := rawAction.(map[string]any)
-				if ok && buttonMatchesCommand(button, label, commandText) {
-					return true
-				}
-			}
-			continue
-		}
-		for _, button := range actions {
-			if buttonMatchesCommand(button, label, commandText) {
-				return true
-			}
+	for _, button := range operationCardButtons(operation) {
+		if buttonMatchesCommand(button, label, commandText) {
+			return true
 		}
 	}
 	return false
@@ -359,7 +343,7 @@ func buttonMatchesCommand(button map[string]any, label, commandText string) bool
 	if content != label {
 		return false
 	}
-	value, _ := button["value"].(map[string]any)
+	value := cardButtonPayload(button)
 	actualCommand, _ := value["command_text"].(string)
 	return actualCommand == commandText
 }

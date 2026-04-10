@@ -55,6 +55,61 @@ func TestRenderOperationCardV2EnvelopeFromOperationFields(t *testing.T) {
 	}
 }
 
+func TestRenderOperationCardV2EnvelopeFromOperationFieldsPreservesNativeV2InteractiveElements(t *testing.T) {
+	payload := renderOperationCard(Operation{
+		Kind:         OperationSendCard,
+		CardTitle:    "需要确认",
+		CardThemeKey: cardThemeApproval,
+		CardElements: []map[string]any{
+			cardCallbackButtonElement("查看实例", "primary", map[string]any{
+				"kind":         "run_command",
+				"command_text": "/list",
+			}, false, ""),
+			map[string]any{
+				"tag":  "form",
+				"name": "request_form_req_1",
+				"elements": []map[string]any{
+					{
+						"tag":  "input",
+						"name": "notes",
+					},
+					cardFormSubmitButtonElement("提交答案", map[string]any{
+						"kind":       "submit_request_form",
+						"request_id": "req-1",
+					}),
+				},
+			},
+		},
+	}, cardEnvelopeV2)
+
+	if payload["schema"] != "2.0" {
+		t.Fatalf("expected v2 schema, got %#v", payload)
+	}
+	body, _ := payload["body"].(map[string]any)
+	elements, _ := body["elements"].([]map[string]any)
+	if len(elements) != 2 {
+		t.Fatalf("expected native v2 button and form, got %#v", elements)
+	}
+	if elements[0]["tag"] != "button" || elements[0]["value"] != nil {
+		t.Fatalf("expected native v2 button to stay button+behaviors, got %#v", elements[0])
+	}
+	behaviors, _ := elements[0]["behaviors"].([]map[string]any)
+	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
+		t.Fatalf("expected native v2 button behaviors callback, got %#v", elements[0])
+	}
+	value, _ := behaviors[0]["value"].(map[string]any)
+	if value["kind"] != "run_command" || value["command_text"] != "/list" {
+		t.Fatalf("unexpected native v2 button payload: %#v", value)
+	}
+	formElements, _ := elements[1]["elements"].([]map[string]any)
+	if len(formElements) != 2 {
+		t.Fatalf("expected native v2 form to keep input and submit button, got %#v", elements[1])
+	}
+	if formElements[1]["action_type"] != nil || formElements[1]["form_action_type"] != "submit" {
+		t.Fatalf("expected native v2 submit button to keep form_action_type, got %#v", formElements[1])
+	}
+}
+
 func TestRenderOperationCardPrefersStructuredDocument(t *testing.T) {
 	payload := renderOperationCard(Operation{
 		Kind:         OperationSendCard,

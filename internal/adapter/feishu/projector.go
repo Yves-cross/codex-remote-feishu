@@ -145,7 +145,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardThemeKey:     cardThemeInfo,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             legacyCompatibleCardDocument(title, "", cardThemeInfo, elements),
+			card:             rawCardDocument(title, "", cardThemeInfo, elements),
 		}}
 	case control.UIEventCommandCatalog:
 		if event.CommandCatalog == nil {
@@ -168,7 +168,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardElements:     elements,
 		}
 		operation.cardEnvelope = cardEnvelopeV2
-		operation.card = legacyCompatibleCardDocument(title, body, cardThemeInfo, elements)
+		operation.card = rawCardDocument(title, body, cardThemeInfo, elements)
 		return []Operation{operation}
 	case control.UIEventRequestPrompt:
 		if event.RequestPrompt == nil {
@@ -190,7 +190,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardThemeKey:     cardThemeApproval,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             legacyCompatibleCardDocument(title, body, cardThemeApproval, elements),
+			card:             rawCardDocument(title, body, cardThemeApproval, elements),
 		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
@@ -373,7 +373,7 @@ func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessag
 			CardThemeKey:     theme,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             legacyCompatibleCardDocument(title, body, theme, elements),
+			card:             rawCardDocument(title, body, theme, elements),
 		}, true
 	default:
 		return Operation{}, false
@@ -483,15 +483,12 @@ func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID s
 	}
 	elements := make([]map[string]any, 0, len(prompt.Options)*2+1)
 	for _, option := range prompt.Options {
-		button := map[string]any{
-			"tag": "action",
-			"actions": []map[string]any{
-				selectionOptionButton(prompt, option, daemonLifecycleID),
-			},
-		}
+		button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)})
 		line := selectionOptionBody(prompt.Kind, option)
 		if prompt.Kind == control.SelectionPromptUseThread {
-			elements = append(elements, button)
+			if len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if line != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -506,7 +503,9 @@ func selectionPromptElements(prompt control.SelectionPrompt, daemonLifecycleID s
 				"content": line,
 			})
 		}
-		elements = append(elements, button)
+		if len(button) != 0 {
+			elements = append(elements, button)
+		}
 	}
 	if hint := strings.TrimSpace(prompt.Hint); hint != "" {
 		elements = append(elements, map[string]any{
@@ -560,12 +559,9 @@ func attachInstanceSelectionPromptElements(prompt control.SelectionPrompt, daemo
 			"content": "**当前实例**",
 		})
 		for _, option := range current {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -581,12 +577,9 @@ func attachInstanceSelectionPromptElements(prompt control.SelectionPrompt, daemo
 			"content": "**可接管**",
 		})
 		for _, option := range available {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -602,12 +595,9 @@ func attachInstanceSelectionPromptElements(prompt control.SelectionPrompt, daemo
 			"content": "**其他状态**",
 		})
 		for _, option := range unavailable {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -672,12 +662,9 @@ func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daem
 			"content": "**当前工作区**",
 		})
 		for _, option := range current {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -693,12 +680,9 @@ func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daem
 			"content": "**可接管**",
 		})
 		for _, option := range available {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -714,12 +698,9 @@ func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daem
 			"content": "**其他状态**",
 		})
 		for _, option := range unavailable {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -784,12 +765,9 @@ func useThreadSelectionPromptElements(prompt control.SelectionPrompt, daemonLife
 			"content": "**" + useThreadSelectionGroupTitle(group) + "**",
 		})
 		for _, option := range options {
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					selectionOptionButton(prompt, option, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 			if line := selectionOptionBody(prompt.Kind, option); line != "" {
 				elements = append(elements, map[string]any{
 					"tag":     "markdown",
@@ -1027,12 +1005,9 @@ func useThreadWorkspaceGroupedElements(prompt control.SelectionPrompt, daemonLif
 		}
 		if contextKey := strings.TrimSpace(prompt.ContextKey); contextKey != "" {
 			label := "查看当前工作区全部会话"
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					workspaceThreadsButton(label, contextKey, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{workspaceThreadsButton(label, contextKey, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 		}
 	}
 
@@ -1084,12 +1059,9 @@ func useThreadWorkspaceGroupedElements(prompt control.SelectionPrompt, daemonLif
 		}
 		if !singleWorkspaceView && len(available) > 5 {
 			label := "查看" + firstNonEmpty(strings.TrimSpace(group.Label), strings.TrimSpace(group.Key)) + "全部会话"
-			elements = append(elements, map[string]any{
-				"tag": "action",
-				"actions": []map[string]any{
-					workspaceThreadsButton(label, group.Key, daemonLifecycleID),
-				},
-			})
+			if button := cardButtonGroupElement([]map[string]any{workspaceThreadsButton(label, group.Key, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
 		}
 	}
 
@@ -1119,12 +1091,7 @@ func useThreadWorkspaceGroupedElements(prompt control.SelectionPrompt, daemonLif
 }
 
 func useThreadActionElement(prompt control.SelectionPrompt, option control.SelectionOption, daemonLifecycleID string) map[string]any {
-	return map[string]any{
-		"tag": "action",
-		"actions": []map[string]any{
-			selectionOptionButton(prompt, option, daemonLifecycleID),
-		},
-	}
+	return selectionOptionButton(prompt, option, daemonLifecycleID)
 }
 
 func workspaceThreadsButton(label, workspaceKey, daemonLifecycleID string) map[string]any {
@@ -1132,16 +1099,7 @@ func workspaceThreadsButton(label, workspaceKey, daemonLifecycleID string) map[s
 		"kind":          "show_workspace_threads",
 		"workspace_key": strings.TrimSpace(workspaceKey),
 	}, daemonLifecycleID)
-	return map[string]any{
-		"tag":  "button",
-		"type": "default",
-		"text": map[string]any{
-			"tag":     "plain_text",
-			"content": strings.TrimSpace(label),
-		},
-		"value": value,
-		"width": "fill",
-	}
+	return cardCallbackButtonElement(label, "default", value, false, "fill")
 }
 
 func useThreadSelectionOptionGroup(option control.SelectionOption) useThreadOptionGroup {
@@ -1300,19 +1258,11 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 	} else {
 		buttonType = "primary"
 	}
-	button := map[string]any{
-		"tag":  "button",
-		"type": buttonType,
-		"text": map[string]any{
-			"tag":     "plain_text",
-			"content": text,
-		},
-		"disabled": disabled,
-		"value":    value,
-	}
+	width := ""
 	if prompt.Kind == control.SelectionPromptUseThread || prompt.Kind == control.SelectionPromptAttachWorkspace || prompt.Kind == control.SelectionPromptAttachInstance {
-		button["width"] = "fill"
+		width = "fill"
 	}
+	button := cardCallbackButtonElement(text, buttonType, value, disabled, width)
 	return button
 }
 
@@ -1421,10 +1371,9 @@ func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID st
 				})
 			}
 			if catalog.Interactive && len(entry.Buttons) > 0 {
-				elements = append(elements, map[string]any{
-					"tag":     "action",
-					"actions": commandCatalogButtons(entry.Buttons, daemonLifecycleID),
-				})
+				if group := cardButtonGroupElement(commandCatalogButtons(entry.Buttons, daemonLifecycleID)); len(group) != 0 {
+					elements = append(elements, group)
+				}
 			}
 			if catalog.Interactive && entry.Form != nil {
 				elements = append(elements, commandCatalogFormElement(*entry.Form, daemonLifecycleID))
@@ -1432,10 +1381,9 @@ func commandCatalogElements(catalog control.CommandCatalog, daemonLifecycleID st
 		}
 	}
 	if len(catalog.RelatedButtons) > 0 {
-		elements = append(elements, map[string]any{
-			"tag":     "action",
-			"actions": commandCatalogButtons(catalog.RelatedButtons, daemonLifecycleID),
-		})
+		if group := cardButtonGroupElement(commandCatalogButtons(catalog.RelatedButtons, daemonLifecycleID)); len(group) != 0 {
+			elements = append(elements, group)
+		}
 	}
 	return elements
 }
@@ -1479,17 +1427,7 @@ func commandCatalogFormElement(form control.CommandCatalogForm, daemonLifecycleI
 		"name": formName,
 		"elements": []map[string]any{
 			input,
-			{
-				"tag":         "button",
-				"type":        "primary",
-				"action_type": "form_submit",
-				"name":        "submit",
-				"text": map[string]any{
-					"tag":     "plain_text",
-					"content": firstNonEmpty(strings.TrimSpace(form.SubmitLabel), "执行"),
-				},
-				"value": submitValue,
-			},
+			cardFormSubmitButtonElement(firstNonEmpty(strings.TrimSpace(form.SubmitLabel), "执行"), submitValue),
 		},
 	}
 }
@@ -1501,10 +1439,9 @@ func commandCatalogCompactButtonElements(buttons []control.CommandCatalogButton,
 		if len(actions) == 0 {
 			continue
 		}
-		elements = append(elements, map[string]any{
-			"tag":     "action",
-			"actions": actions,
-		})
+		if group := cardButtonGroupElement(actions); len(group) != 0 {
+			elements = append(elements, group)
+		}
 	}
 	return elements
 }
@@ -1625,16 +1562,7 @@ func commandCatalogButtonsWithDefault(buttons []control.CommandCatalogButton, da
 		if style := strings.TrimSpace(button.Style); style != "" {
 			buttonType = style
 		}
-		actions = append(actions, map[string]any{
-			"tag":  "button",
-			"type": buttonType,
-			"text": map[string]any{
-				"tag":     "plain_text",
-				"content": label,
-			},
-			"disabled": button.Disabled,
-			"value":    stampActionValue(payload, daemonLifecycleID),
-		})
+		actions = append(actions, cardCallbackButtonElement(label, buttonType, stampActionValue(payload, daemonLifecycleID), button.Disabled, ""))
 	}
 	return actions
 }
@@ -1685,16 +1613,15 @@ func requestPromptElements(prompt control.RequestPrompt, daemonLifecycleID strin
 	if requestPromptContainsOption(options, "captureFeedback") {
 		hint = "如果想拒绝并补充处理意见，请点击“告诉 Codex 怎么改”后再发送下一条文字。"
 	}
-	return []map[string]any{
-		{
-			"tag":     "action",
-			"actions": actions,
-		},
-		{
-			"tag":     "markdown",
-			"content": hint,
-		},
+	elements := make([]map[string]any, 0, 2)
+	if group := cardButtonGroupElement(actions); len(group) != 0 {
+		elements = append(elements, group)
 	}
+	elements = append(elements, map[string]any{
+		"tag":     "markdown",
+		"content": hint,
+	})
+	return elements
 }
 
 func requestUserInputPromptElements(prompt control.RequestPrompt, daemonLifecycleID string) []map[string]any {
@@ -1714,10 +1641,9 @@ func requestUserInputPromptElements(prompt control.RequestPrompt, daemonLifecycl
 				actions = append(actions, button)
 			}
 			if len(actions) != 0 {
-				elements = append(elements, map[string]any{
-					"tag":     "action",
-					"actions": actions,
-				})
+				if group := cardButtonGroupElement(actions); len(group) != 0 {
+					elements = append(elements, group)
+				}
 			}
 		}
 	}
@@ -1740,20 +1666,12 @@ func requestPromptButton(prompt control.RequestPrompt, option control.RequestPro
 	if buttonType == "" {
 		buttonType = "default"
 	}
-	return map[string]any{
-		"tag":  "button",
-		"type": buttonType,
-		"text": map[string]any{
-			"tag":     "plain_text",
-			"content": label,
-		},
-		"value": stampActionValue(map[string]any{
-			"kind":              "request_respond",
-			"request_id":        prompt.RequestID,
-			"request_type":      strings.TrimSpace(prompt.RequestType),
-			"request_option_id": strings.TrimSpace(option.OptionID),
-		}, daemonLifecycleID),
-	}
+	return cardCallbackButtonElement(label, buttonType, stampActionValue(map[string]any{
+		"kind":              "request_respond",
+		"request_id":        prompt.RequestID,
+		"request_type":      strings.TrimSpace(prompt.RequestType),
+		"request_option_id": strings.TrimSpace(option.OptionID),
+	}, daemonLifecycleID), false, "")
 }
 
 func requestUserInputOptionButton(prompt control.RequestPrompt, question control.RequestPromptQuestion, option control.RequestPromptQuestionOption, daemonLifecycleID string) map[string]any {
@@ -1761,22 +1679,14 @@ func requestUserInputOptionButton(prompt control.RequestPrompt, question control
 	if label == "" {
 		return nil
 	}
-	return map[string]any{
-		"tag":  "button",
-		"type": "primary",
-		"text": map[string]any{
-			"tag":     "plain_text",
-			"content": label,
+	return cardCallbackButtonElement(label, "primary", stampActionValue(map[string]any{
+		"kind":         "request_respond",
+		"request_id":   prompt.RequestID,
+		"request_type": strings.TrimSpace(prompt.RequestType),
+		"request_answers": map[string]any{
+			strings.TrimSpace(question.ID): []any{label},
 		},
-		"value": stampActionValue(map[string]any{
-			"kind":         "request_respond",
-			"request_id":   prompt.RequestID,
-			"request_type": strings.TrimSpace(prompt.RequestType),
-			"request_answers": map[string]any{
-				strings.TrimSpace(question.ID): []any{label},
-			},
-		}, daemonLifecycleID),
-	}
+	}, daemonLifecycleID), false, "")
 }
 
 func stampActionValue(value map[string]any, daemonLifecycleID string) map[string]any {
@@ -1867,21 +1777,11 @@ func requestPromptFormElement(prompt control.RequestPrompt, daemonLifecycleID st
 		}
 		elements = append(elements, input)
 	}
-	elements = append(elements, map[string]any{
-		"tag":         "button",
-		"type":        "primary",
-		"action_type": "form_submit",
-		"name":        "submit",
-		"text": map[string]any{
-			"tag":     "plain_text",
-			"content": "提交答案",
-		},
-		"value": stampActionValue(map[string]any{
-			"kind":         "submit_request_form",
-			"request_id":   prompt.RequestID,
-			"request_type": strings.TrimSpace(prompt.RequestType),
-		}, daemonLifecycleID),
-	})
+	elements = append(elements, cardFormSubmitButtonElement("提交答案", stampActionValue(map[string]any{
+		"kind":         "submit_request_form",
+		"request_id":   prompt.RequestID,
+		"request_type": strings.TrimSpace(prompt.RequestType),
+	}, daemonLifecycleID)))
 	return map[string]any{
 		"tag":      "form",
 		"name":     "request_form_" + strings.TrimSpace(prompt.RequestID),

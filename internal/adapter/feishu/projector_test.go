@@ -45,15 +45,14 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[2]["content"] != "**可接管**" {
 		t.Fatalf("unexpected available header: %#v", ops[0].CardElements[2])
 	}
-	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[3])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[3])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "切换 · web" || actionRow[0]["width"] != "fill" {
+	if cardButtonLabel(t, actionRow[0]) != "切换 · web" || actionRow[0]["width"] != "fill" {
 		t.Fatalf("unexpected button label: %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "attach_instance" || value["instance_id"] != "inst-2" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
@@ -63,12 +62,11 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[5]["content"] != "**其他状态**" {
 		t.Fatalf("unexpected unavailable header: %#v", ops[0].CardElements[5])
 	}
-	blockedRow, _ := ops[0].CardElements[6]["actions"].([]map[string]any)
+	blockedRow := cardElementButtons(t, ops[0].CardElements[6])
 	if len(blockedRow) != 1 {
 		t.Fatalf("expected one unavailable action button, got %#v", ops[0].CardElements[6])
 	}
-	blockedText, _ := blockedRow[0]["text"].(map[string]any)
-	if blockedText["content"] != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
+	if cardButtonLabel(t, blockedRow[0]) != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
 		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
 	}
 	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
@@ -131,15 +129,14 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[2]["content"] != "**可接管**" {
 		t.Fatalf("unexpected available header: %#v", ops[0].CardElements[2])
 	}
-	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[3])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[3])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "切换 · web" || actionRow[0]["width"] != "fill" {
+	if cardButtonLabel(t, actionRow[0]) != "切换 · web" || actionRow[0]["width"] != "fill" {
 		t.Fatalf("unexpected button label: %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "attach_workspace" || value["workspace_key"] != "/data/dl/web" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
@@ -149,12 +146,11 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[5]["content"] != "**其他状态**" {
 		t.Fatalf("unexpected unavailable header: %#v", ops[0].CardElements[5])
 	}
-	blockedRow, _ := ops[0].CardElements[6]["actions"].([]map[string]any)
+	blockedRow := cardElementButtons(t, ops[0].CardElements[6])
 	if len(blockedRow) != 1 {
 		t.Fatalf("expected unavailable action button, got %#v", ops[0].CardElements[6])
 	}
-	blockedText, _ := blockedRow[0]["text"].(map[string]any)
-	if blockedText["content"] != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
+	if cardButtonLabel(t, blockedRow[0]) != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
 		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
 	}
 	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
@@ -193,18 +189,17 @@ func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 	if ops[0].CardElements[0]["content"] != "**可接管**" {
 		t.Fatalf("unexpected group header: %#v", ops[0].CardElements[0])
 	}
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[1])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
 	}
 	if actionRow[0]["width"] != "fill" {
 		t.Fatalf("expected thread button to fill width, got %#v", actionRow[0])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "接管 · 修复登录流程" {
+	if cardButtonLabel(t, actionRow[0]) != "接管 · 修复登录流程" {
 		t.Fatalf("unexpected button text: %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "use_thread" || value["thread_id"] != "thread-1" || value["allow_cross_workspace"] != true {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
@@ -235,15 +230,14 @@ func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *t
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[1])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[1])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "恢复 · picdetect" {
+	if cardButtonLabel(t, actionRow[0]) != "恢复 · picdetect" {
 		t.Fatalf("unexpected button text: %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "show_workspace_threads" || value["workspace_key"] != "/data/dl/picdetect" {
 		t.Fatalf("expected workspace selection to preserve special action, got %#v", value)
 	}
@@ -266,8 +260,8 @@ func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 			},
 		},
 	})
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
-	value, _ := actionRow[0]["value"].(map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[1])
+	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected selection prompt action to carry daemon lifecycle id, got %#v", value)
 	}
@@ -347,12 +341,12 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 	}
 	var buttonLabels []string
 	for _, element := range ops[0].CardElements {
-		actions, _ := element["actions"].([]map[string]any)
-		if len(actions) == 0 {
+		if element["tag"] != "button" && element["tag"] != "column_set" && element["tag"] != "action" {
 			continue
 		}
-		textValue, _ := actions[0]["text"].(map[string]any)
-		buttonLabels = append(buttonLabels, textValue["content"].(string))
+		for _, button := range cardElementButtons(t, element) {
+			buttonLabels = append(buttonLabels, cardButtonLabel(t, button))
+		}
 	}
 	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 查看当前工作区全部会话 | 接管 · 别的会话 | 接管 · 另一个会话" {
 		t.Fatalf("unexpected grouped button labels: %#v", buttonLabels)
@@ -418,12 +412,12 @@ func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t
 	}
 	var buttonLabels []string
 	for _, element := range ops[0].CardElements {
-		actions, _ := element["actions"].([]map[string]any)
-		if len(actions) == 0 {
+		if element["tag"] != "button" && element["tag"] != "column_set" && element["tag"] != "action" {
 			continue
 		}
-		textValue, _ := actions[0]["text"].(map[string]any)
-		buttonLabels = append(buttonLabels, textValue["content"].(string))
+		for _, button := range cardElementButtons(t, element) {
+			buttonLabels = append(buttonLabels, cardButtonLabel(t, button))
+		}
 	}
 	if strings.Join(buttonLabels, " | ") != "当前 · 当前会话 | 查看当前工作区全部会话 | 接管 · web-1 | 接管 · web-2 | 接管 · web-3 | 接管 · web-4 | 接管 · web-5 | 查看web全部会话" {
 		t.Fatalf("unexpected grouped/limited button labels: %#v", buttonLabels)
@@ -483,12 +477,12 @@ func TestProjectVSCodeRecentSelectionPromptShowsInstanceSummaryAndMore(t *testin
 	}
 	var buttonLabels []string
 	for _, element := range ops[0].CardElements {
-		actions, _ := element["actions"].([]map[string]any)
-		if len(actions) == 0 {
+		if element["tag"] != "button" && element["tag"] != "column_set" && element["tag"] != "action" {
 			continue
 		}
-		textValue, _ := actions[0]["text"].(map[string]any)
-		buttonLabels = append(buttonLabels, textValue["content"].(string))
+		for _, button := range cardElementButtons(t, element) {
+			buttonLabels = append(buttonLabels, cardButtonLabel(t, button))
+		}
 	}
 	if strings.Join(buttonLabels, " | ") != "当前 · 修复登录流程 | 接管 · 整理日志 | 查看全部 · 当前实例全部会话" {
 		t.Fatalf("unexpected vscode recent button labels: %#v", buttonLabels)
@@ -548,12 +542,12 @@ func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 	}
 	var buttonLabels []string
 	for _, element := range ops[0].CardElements {
-		actions, _ := element["actions"].([]map[string]any)
-		if len(actions) == 0 {
+		if element["tag"] != "button" && element["tag"] != "column_set" && element["tag"] != "action" {
 			continue
 		}
-		textValue, _ := actions[0]["text"].(map[string]any)
-		buttonLabels = append(buttonLabels, textValue["content"].(string))
+		for _, button := range cardElementButtons(t, element) {
+			buttonLabels = append(buttonLabels, cardButtonLabel(t, button))
+		}
 	}
 	if strings.Join(buttonLabels, " | ") != "当前 · 修复登录流程 | 接管 · 整理日志 | 不可接管 · 历史会话" {
 		t.Fatalf("unexpected vscode all button labels: %#v", buttonLabels)
@@ -662,15 +656,14 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	if len(ops[0].CardElements) != 3 {
 		t.Fatalf("expected section + entry + action row, got %#v", ops[0].CardElements)
 	}
-	actionRow, _ := ops[0].CardElements[2]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[2])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button, got %#v", ops[0].CardElements[2])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "查看实例" {
+	if cardButtonLabel(t, actionRow[0]) != "查看实例" {
 		t.Fatalf("unexpected button label: %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "run_command" || value["command_text"] != "/list" {
 		t.Fatalf("unexpected run command payload: %#v", value)
 	}
@@ -721,17 +714,15 @@ func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testin
 	if content, _ := ops[0].CardElements[1]["content"].(string); content != "" {
 		t.Fatalf("compact layout should not render entry markdown, got %#v", ops[0].CardElements[1])
 	}
-	firstRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
-	secondRow, _ := ops[0].CardElements[2]["actions"].([]map[string]any)
+	firstRow := cardElementButtons(t, ops[0].CardElements[1])
+	secondRow := cardElementButtons(t, ops[0].CardElements[2])
 	if len(firstRow) != 1 || len(secondRow) != 1 {
 		t.Fatalf("expected one button per stacked row, got %#v / %#v", firstRow, secondRow)
 	}
-	firstText, _ := firstRow[0]["text"].(map[string]any)
-	if firstText["content"] != "low" {
+	if cardButtonLabel(t, firstRow[0]) != "low" {
 		t.Fatalf("unexpected first stacked label: %#v", firstRow[0])
 	}
-	secondText, _ := secondRow[0]["text"].(map[string]any)
-	if secondText["content"] != "high（当前）" {
+	if cardButtonLabel(t, secondRow[0]) != "high（当前）" {
 		t.Fatalf("unexpected second stacked label: %#v", secondRow[0])
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
@@ -796,15 +787,15 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 	if input != "command_args" {
 		t.Fatalf("unexpected form field name: %#v", formElements[0])
 	}
-	if formElements[1]["action_type"] != "form_submit" {
-		t.Fatalf("expected form submit button, got %#v", formElements[1])
+	if formElements[1]["action_type"] != nil || formElements[1]["form_action_type"] != "submit" {
+		t.Fatalf("expected V2 form submit button, got %#v", formElements[1])
 	}
-	value, _ := formElements[1]["value"].(map[string]any)
+	value := cardButtonPayload(t, formElements[1])
 	if value["kind"] != "submit_command_form" || value["command"] != "/model" || value["field_name"] != "command_args" {
 		t.Fatalf("unexpected submit payload: %#v", value)
 	}
-	relatedRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
-	relatedValue, _ := relatedRow[0]["value"].(map[string]any)
+	relatedRow := cardElementButtons(t, ops[0].CardElements[3])
+	relatedValue := cardButtonPayload(t, relatedRow[0])
 	if relatedValue["kind"] != "run_command" || relatedValue["command_text"] != "/menu send_settings" {
 		t.Fatalf("unexpected related button payload: %#v", relatedValue)
 	}
@@ -856,7 +847,7 @@ func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 	})
 	formContainer := ops[0].CardElements[0]
 	formElements, _ := formContainer["elements"].([]map[string]any)
-	value, _ := formElements[1]["value"].(map[string]any)
+	value := cardButtonPayload(t, formElements[1])
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected form action to carry daemon lifecycle id, got %#v", value)
 	}
@@ -876,8 +867,8 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 			}},
 		},
 	})
-	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
-	value, _ := actionRow[0]["value"].(map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[0])
+	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected command catalog action to carry daemon lifecycle id, got %#v", value)
 	}
@@ -951,14 +942,14 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if len(ops[0].CardElements) != 2 {
 		t.Fatalf("expected action row and hint, got %#v", ops[0].CardElements)
 	}
-	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[0])
 	if len(actionRow) != 4 {
 		t.Fatalf("expected 4 request option buttons, got %#v", ops[0].CardElements[0])
 	}
-	acceptValue, _ := actionRow[0]["value"].(map[string]any)
-	sessionValue, _ := actionRow[1]["value"].(map[string]any)
-	declineValue, _ := actionRow[2]["value"].(map[string]any)
-	feedbackValue, _ := actionRow[3]["value"].(map[string]any)
+	acceptValue := cardButtonPayload(t, actionRow[0])
+	sessionValue := cardButtonPayload(t, actionRow[1])
+	declineValue := cardButtonPayload(t, actionRow[2])
+	feedbackValue := cardButtonPayload(t, actionRow[3])
 	if acceptValue["kind"] != "request_respond" || acceptValue["request_id"] != "req-1" || acceptValue["request_option_id"] != "accept" {
 		t.Fatalf("unexpected accept payload: %#v", acceptValue)
 	}
@@ -1004,8 +995,8 @@ func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 			},
 		},
 	})
-	actionRow, _ := ops[0].CardElements[0]["actions"].([]map[string]any)
-	value, _ := actionRow[0]["value"].(map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[0])
+	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
 		t.Fatalf("expected request prompt action to carry daemon lifecycle id, got %#v", value)
 	}
@@ -1052,11 +1043,11 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if len(ops[0].CardElements) < 4 {
 		t.Fatalf("expected question elements and form, got %#v", ops[0].CardElements)
 	}
-	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[1])
 	if len(actionRow) != 2 {
 		t.Fatalf("expected direct response buttons for first question, got %#v", ops[0].CardElements[1])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	requestAnswers, _ := value["request_answers"].(map[string]any)
 	modelAnswers, _ := requestAnswers["model"].([]any)
 	if value["kind"] != "request_respond" || len(modelAnswers) != 1 || modelAnswers[0] != "gpt-5.4" {
@@ -1066,7 +1057,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if len(form) != 3 {
 		t.Fatalf("expected two inputs and one submit button, got %#v", ops[0].CardElements[2])
 	}
-	submitValue, _ := form[2]["value"].(map[string]any)
+	submitValue := cardButtonPayload(t, form[2])
 	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" {
 		t.Fatalf("unexpected request form payload: %#v", submitValue)
 	}
@@ -1119,15 +1110,14 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	if ops[0].CardTitle != "强踢当前会话？" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	actionRow, _ := ops[0].CardElements[3]["actions"].([]map[string]any)
+	actionRow := cardElementButtons(t, ops[0].CardElements[3])
 	if len(actionRow) != 1 {
 		t.Fatalf("expected one action button for confirm row, got %#v", ops[0].CardElements[3])
 	}
-	textValue, _ := actionRow[0]["text"].(map[string]any)
-	if textValue["content"] != "强踢并占用" {
+	if cardButtonLabel(t, actionRow[0]) != "强踢并占用" {
 		t.Fatalf("expected custom button label, got %#v", actionRow[0])
 	}
-	value, _ := actionRow[0]["value"].(map[string]any)
+	value := cardButtonPayload(t, actionRow[0])
 	if value["kind"] != "kick_thread_confirm" || value["thread_id"] != "thread-1" {
 		t.Fatalf("unexpected kick confirm payload: %#v", value)
 	}
@@ -2083,6 +2073,63 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func cardElementButtons(t *testing.T, element map[string]any) []map[string]any {
+	t.Helper()
+	switch element["tag"] {
+	case "button":
+		return []map[string]any{element}
+	case "column_set":
+		columns, _ := element["columns"].([]map[string]any)
+		buttons := make([]map[string]any, 0, len(columns))
+		for _, column := range columns {
+			elements, _ := column["elements"].([]map[string]any)
+			if len(elements) == 0 {
+				continue
+			}
+			buttons = append(buttons, elements[0])
+		}
+		if len(buttons) == 0 {
+			t.Fatalf("expected buttons inside column_set, got %#v", element)
+		}
+		return buttons
+	case "action":
+		actions, _ := element["actions"].([]map[string]any)
+		if len(actions) == 0 {
+			t.Fatalf("expected buttons inside action row, got %#v", element)
+		}
+		return actions
+	default:
+		t.Fatalf("expected button, column_set, or action row, got %#v", element)
+		return nil
+	}
+}
+
+func cardButtonLabel(t *testing.T, button map[string]any) string {
+	t.Helper()
+	textValue, _ := button["text"].(map[string]any)
+	label, _ := textValue["content"].(string)
+	if label == "" {
+		t.Fatalf("expected button label, got %#v", button)
+	}
+	return label
+}
+
+func cardButtonPayload(t *testing.T, button map[string]any) map[string]any {
+	t.Helper()
+	if value, _ := button["value"].(map[string]any); len(value) != 0 {
+		return value
+	}
+	behaviors, _ := button["behaviors"].([]map[string]any)
+	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
+		t.Fatalf("expected callback payload on button, got %#v", button)
+	}
+	value, _ := behaviors[0]["value"].(map[string]any)
+	if len(value) == 0 {
+		t.Fatalf("expected callback value payload, got %#v", button)
+	}
+	return value
 }
 
 func renderedV2BodyElements(t *testing.T, operation Operation) []map[string]any {
