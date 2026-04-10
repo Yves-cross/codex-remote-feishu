@@ -39,6 +39,7 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 	case "text":
 		text, err := parseTextContent(stringPtr(message.Content))
 		if err != nil {
+			logInboundMessageParseFailed(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "parse_text_content", err)
 			return control.Action{}, false, err
 		}
 		commandAction, handled := parseTextAction(text)
@@ -61,9 +62,11 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 	case "post":
 		inputs, text, err := g.parsePostInputs(ctx, action.MessageID, stringPtr(message.Content))
 		if err != nil {
+			logInboundMessageParseFailed(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "parse_post_content", err)
 			return control.Action{}, false, err
 		}
 		if len(inputs) == 0 {
+			logInboundMessageIgnored(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "empty_post_inputs")
 			return control.Action{}, false, nil
 		}
 		action.Kind = control.ActionTextMessage
@@ -74,10 +77,12 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 	case "image":
 		imageKey, err := parseImageKey(stringPtr(message.Content))
 		if err != nil {
+			logInboundMessageParseFailed(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "parse_image_content", err)
 			return control.Action{}, false, err
 		}
 		path, mimeType, err := g.downloadImageFn(ctx, stringPtr(message.MessageId), imageKey)
 		if err != nil {
+			logInboundMessageParseFailed(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "download_image", err)
 			return control.Action{}, false, err
 		}
 		action.Kind = control.ActionImageMessage
@@ -85,9 +90,145 @@ func (g *LiveGateway) parseMessageEvent(ctx context.Context, event *larkim.P2Mes
 		action.MIMEType = mimeType
 		g.recordSurfaceMessage(action.MessageID, surfaceSessionID)
 		return action, true, nil
+	case "merge_forward":
+		text, err := g.parseMergeForwardEventContent(ctx, message)
+		if err != nil {
+			logInboundMessageParseFailed(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "parse_merge_forward_content", err)
+			return control.Action{}, false, err
+		}
+		merged := mergeForwardTextInput(text)
+		if merged.Text == "" {
+			logInboundMessageIgnored(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "empty_merge_forward_content")
+			return control.Action{}, false, nil
+		}
+		action.Kind = control.ActionTextMessage
+		action.Text = text
+		action.Inputs = append(g.quotedInputs(ctx, message), merged)
+		g.recordSurfaceMessage(action.MessageID, surfaceSessionID)
+		return action, true, nil
 	default:
+		logInboundMessageIgnored(g.config.GatewayID, surfaceSessionID, action.Inbound, message, "unsupported_message_type")
 		return control.Action{}, false, nil
 	}
+}
+
+func logInboundMessageIgnored(gatewayID, surfaceSessionID string, inbound *control.ActionInboundMeta, message *larkim.EventMessage, reason string) {
+	log.Printf(
+		"feishu inbound message ignored: gateway=%s surface=%s message=%s type=%s chat=%s chat_type=%s thread=%s root=%s parent=%s event=%s request=%s reason=%s preview=%q",
+		strings.TrimSpace(gatewayID),
+		strings.TrimSpace(surfaceSessionID),
+		strings.TrimSpace(stringPtr(message.MessageId)),
+		strings.ToLower(strings.TrimSpace(stringPtr(message.MessageType))),
+		strings.TrimSpace(stringPtr(message.ChatId)),
+		strings.TrimSpace(stringPtr(message.ChatType)),
+		strings.TrimSpace(stringPtr(message.ThreadId)),
+		strings.TrimSpace(stringPtr(message.RootId)),
+		strings.TrimSpace(stringPtr(message.ParentId)),
+		inboundMetaValue(inbound, func(meta *control.ActionInboundMeta) string { return meta.EventID }),
+		inboundMetaValue(inbound, func(meta *control.ActionInboundMeta) string { return meta.RequestID }),
+		strings.TrimSpace(reason),
+		inboundMessagePreview(message),
+	)
+}
+
+func logInboundMessageParseFailed(gatewayID, surfaceSessionID string, inbound *control.ActionInboundMeta, message *larkim.EventMessage, reason string, err error) {
+	log.Printf(
+		"feishu inbound message parse failed: gateway=%s surface=%s message=%s type=%s chat=%s chat_type=%s thread=%s root=%s parent=%s event=%s request=%s reason=%s err=%v preview=%q",
+		strings.TrimSpace(gatewayID),
+		strings.TrimSpace(surfaceSessionID),
+		strings.TrimSpace(stringPtr(message.MessageId)),
+		strings.ToLower(strings.TrimSpace(stringPtr(message.MessageType))),
+		strings.TrimSpace(stringPtr(message.ChatId)),
+		strings.TrimSpace(stringPtr(message.ChatType)),
+		strings.TrimSpace(stringPtr(message.ThreadId)),
+		strings.TrimSpace(stringPtr(message.RootId)),
+		strings.TrimSpace(stringPtr(message.ParentId)),
+		inboundMetaValue(inbound, func(meta *control.ActionInboundMeta) string { return meta.EventID }),
+		inboundMetaValue(inbound, func(meta *control.ActionInboundMeta) string { return meta.RequestID }),
+		strings.TrimSpace(reason),
+		err,
+		inboundMessagePreview(message),
+	)
+}
+
+func inboundMetaValue(meta *control.ActionInboundMeta, pick func(*control.ActionInboundMeta) string) string {
+	if meta == nil || pick == nil {
+		return ""
+	}
+	return strings.TrimSpace(pick(meta))
+}
+
+func inboundMessagePreview(message *larkim.EventMessage) string {
+	if message == nil {
+		return ""
+	}
+	messageType := strings.ToLower(strings.TrimSpace(stringPtr(message.MessageType)))
+	rawContent := strings.TrimSpace(stringPtr(message.Content))
+	switch messageType {
+	case "text":
+		text, err := parseTextContent(rawContent)
+		if err == nil {
+			return trimLogPreview(text)
+		}
+	case "post":
+		var content feishuPostContent
+		if err := json.Unmarshal([]byte(rawContent), &content); err == nil {
+			textParts := make([]string, 0, len(content.Content)+1)
+			if title := strings.TrimSpace(content.Title); title != "" {
+				textParts = append(textParts, title)
+			}
+			for _, paragraph := range content.Content {
+				var segment strings.Builder
+				for _, node := range paragraph {
+					switch strings.ToLower(strings.TrimSpace(node.Tag)) {
+					case "text":
+						segment.WriteString(node.Text)
+					case "a":
+						if text := strings.TrimSpace(node.Text); text != "" {
+							segment.WriteString(text)
+						}
+					case "at":
+						if text := strings.TrimSpace(node.Text); text != "" {
+							segment.WriteString(text)
+						}
+					case "emotion":
+						if emoji := strings.TrimSpace(node.EmojiType); emoji != "" {
+							segment.WriteString(":" + emoji + ":")
+						}
+					case "code_block":
+						if text := strings.TrimSpace(node.Text); text != "" {
+							segment.WriteString(text)
+						}
+					}
+				}
+				if text := strings.TrimSpace(segment.String()); text != "" {
+					textParts = append(textParts, text)
+				}
+			}
+			if len(textParts) > 0 {
+				return trimLogPreview(strings.Join(textParts, "\n\n"))
+			}
+		}
+	case "merge_forward":
+		text, err := parseMergeForwardContent(rawContent)
+		if err == nil {
+			return trimLogPreview(text)
+		}
+	}
+	return trimLogPreview(rawContent)
+}
+
+func trimLogPreview(text string) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	const maxPreviewRunes = 160
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxPreviewRunes {
+		return text
+	}
+	return string(runes[:maxPreviewRunes]) + "..."
 }
 
 func (g *LiveGateway) parseMessageRecalledEvent(event *larkim.P2MessageRecalledV1) (control.Action, bool) {
@@ -187,6 +328,264 @@ func parseImageKey(rawContent string) (string, error) {
 	return strings.TrimSpace(content.ImageKey), nil
 }
 
+func parseMergeForwardContent(rawContent string) (string, error) {
+	rawContent = strings.TrimSpace(rawContent)
+	if rawContent == "" {
+		return "", fmt.Errorf("empty merge_forward content")
+	}
+	if !looksLikeJSONObject(rawContent) {
+		return rawContent, nil
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(rawContent), &decoded); err != nil {
+		return "", err
+	}
+	lines := make([]string, 0, 8)
+	seen := map[string]struct{}{}
+	appendLine := func(text string) {
+		text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+		if text == "" {
+			return
+		}
+		if _, ok := seen[text]; ok {
+			return
+		}
+		seen[text] = struct{}{}
+		lines = append(lines, text)
+	}
+	collectMergeForwardLines(decoded, appendLine)
+	if len(lines) == 0 {
+		return "", fmt.Errorf("empty merge_forward content")
+	}
+	const maxLines = 24
+	if len(lines) > maxLines {
+		remaining := len(lines) - maxLines
+		lines = append(lines[:maxLines], fmt.Sprintf("...（其余 %d 条省略）", remaining))
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func (g *LiveGateway) parseMergeForwardEventContent(ctx context.Context, message *larkim.EventMessage) (string, error) {
+	if message == nil {
+		return "", fmt.Errorf("nil merge_forward message")
+	}
+	if g.fetchMessageFn != nil {
+		messageID := strings.TrimSpace(stringPtr(message.MessageId))
+		if messageID != "" {
+			referenced, err := g.fetchMessageFn(ctx, messageID)
+			if err == nil && referenced != nil && strings.EqualFold(strings.TrimSpace(referenced.MessageType), "merge_forward") {
+				text, err := g.summarizeMergeForwardGatewayMessage(ctx, referenced)
+				if err == nil {
+					return text, nil
+				}
+			}
+		}
+	}
+	return parseMergeForwardContent(stringPtr(message.Content))
+}
+
+func (g *LiveGateway) summarizeMergeForwardGatewayMessage(ctx context.Context, message *gatewayMessage) (string, error) {
+	if message == nil {
+		return "", fmt.Errorf("nil merge_forward message")
+	}
+	if len(message.Children) == 0 {
+		return parseMergeForwardContent(message.Content)
+	}
+	lines := make([]string, 0, len(message.Children)+1)
+	seen := map[string]struct{}{}
+	appendLine := func(text string) {
+		text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+		if text == "" {
+			return
+		}
+		if _, ok := seen[text]; ok {
+			return
+		}
+		seen[text] = struct{}{}
+		lines = append(lines, text)
+	}
+	if title := mergeForwardTitle(message.Content); title != "" {
+		appendLine(title)
+	}
+	for _, child := range message.Children {
+		text, err := g.summarizeGatewayMessage(ctx, child)
+		if err != nil {
+			continue
+		}
+		appendLine(text)
+	}
+	if len(lines) > 0 {
+		return strings.Join(lines, "\n"), nil
+	}
+	return parseMergeForwardContent(message.Content)
+}
+
+func (g *LiveGateway) summarizeGatewayMessage(ctx context.Context, message *gatewayMessage) (string, error) {
+	if message == nil || message.Deleted {
+		return "", fmt.Errorf("empty gateway message")
+	}
+	switch strings.ToLower(strings.TrimSpace(message.MessageType)) {
+	case "text":
+		return parseTextContent(message.Content)
+	case "post":
+		_, text, err := g.parsePostInputs(ctx, message.MessageID, message.Content)
+		if err != nil {
+			return "", err
+		}
+		return text, nil
+	case "image":
+		return "[图片]", nil
+	case "file":
+		if name := parseFileName(message.Content); name != "" {
+			return "[文件] " + name, nil
+		}
+		return "[文件]", nil
+	case "merge_forward":
+		return g.summarizeMergeForwardGatewayMessage(ctx, message)
+	default:
+		text, err := parseMergeForwardContent(message.Content)
+		if err == nil {
+			return text, nil
+		}
+		return "", fmt.Errorf("unsupported message type: %s", message.MessageType)
+	}
+}
+
+func mergeForwardTitle(rawContent string) string {
+	rawContent = strings.TrimSpace(rawContent)
+	if rawContent == "" || strings.EqualFold(rawContent, "Merged and Forwarded Message") {
+		return ""
+	}
+	if !looksLikeJSONObject(rawContent) {
+		return rawContent
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rawContent), &payload); err != nil {
+		return ""
+	}
+	return firstJSONString(payload, "title", "topic", "chat_name", "chat_title")
+}
+
+func collectMergeForwardLines(value any, appendLine func(string)) {
+	switch current := value.(type) {
+	case map[string]any:
+		title := firstJSONString(current, "title", "topic", "chat_name", "chat_title")
+		speaker := firstJSONString(current, "sender_name", "user_name", "name", "from_name", "sender")
+		text := firstJSONString(current, "text", "message", "summary", "description", "desc")
+		if text == "" {
+			content := strings.TrimSpace(firstJSONString(current, "content"))
+			if content != "" && !looksLikeJSONObject(content) {
+				text = content
+			}
+		}
+		if title != "" {
+			appendLine(title)
+		}
+		if text != "" {
+			if speaker != "" && !strings.EqualFold(speaker, text) {
+				appendLine(speaker + ": " + text)
+			} else {
+				appendLine(text)
+			}
+		} else if len(linesFromMessageIDs(current)) > 0 {
+			for _, line := range linesFromMessageIDs(current) {
+				appendLine(line)
+			}
+		}
+		for _, key := range []string{"items", "messages", "message_list", "children", "content"} {
+			child, ok := current[key]
+			if !ok {
+				continue
+			}
+			collectMergeForwardLines(child, appendLine)
+		}
+		for key, child := range current {
+			switch key {
+			case "title", "topic", "chat_name", "chat_title",
+				"sender_name", "user_name", "name", "from_name", "sender",
+				"text", "message", "summary", "description", "desc",
+				"content", "items", "messages", "message_list", "children",
+				"message_id_list":
+				continue
+			}
+			collectMergeForwardLines(child, appendLine)
+		}
+	case []any:
+		for _, item := range current {
+			collectMergeForwardLines(item, appendLine)
+		}
+	case string:
+		text := strings.TrimSpace(current)
+		if text == "" {
+			return
+		}
+		if looksLikeJSONObject(text) {
+			var nested any
+			if err := json.Unmarshal([]byte(text), &nested); err == nil {
+				collectMergeForwardLines(nested, appendLine)
+				return
+			}
+		}
+		appendLine(text)
+	}
+}
+
+func linesFromMessageIDs(payload map[string]any) []string {
+	raw, ok := payload["message_id_list"]
+	if !ok {
+		return nil
+	}
+	items, ok := raw.([]any)
+	if !ok || len(items) == 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf("包含 %d 条转发消息", len(items))}
+}
+
+func looksLikeJSONObject(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}") {
+		return true
+	}
+	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
+		return true
+	}
+	return false
+}
+
+func firstJSONString(values map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := values[key]
+		if !ok {
+			continue
+		}
+		switch current := value.(type) {
+		case string:
+			if text := strings.TrimSpace(current); text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func parseFileName(rawContent string) string {
+	var payload struct {
+		FileName string `json:"file_name"`
+		Name     string `json:"name"`
+	}
+	if err := json.Unmarshal([]byte(rawContent), &payload); err != nil {
+		return ""
+	}
+	if name := strings.TrimSpace(payload.FileName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(payload.Name)
+}
+
 func (g *LiveGateway) quotedInputs(ctx context.Context, message *larkim.EventMessage) []agentproto.Input {
 	if message == nil || g.fetchMessageFn == nil {
 		return nil
@@ -249,6 +648,16 @@ func (g *LiveGateway) inputsFromReferencedMessage(ctx context.Context, reference
 			return nil
 		}
 		return []agentproto.Input{{Type: agentproto.InputLocalImage, Path: path, MIMEType: mimeType}}
+	case "merge_forward":
+		text, err := g.summarizeMergeForwardGatewayMessage(ctx, referenced)
+		if err != nil {
+			log.Printf("feishu quote merge_forward parse ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		if wrapped := mergeForwardTextInput(text); wrapped.Text != "" {
+			return []agentproto.Input{wrapped}
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -262,6 +671,17 @@ func quotedTextInput(text string) agentproto.Input {
 	return agentproto.Input{
 		Type: agentproto.InputText,
 		Text: "<被引用内容>\n" + text + "\n</被引用内容>",
+	}
+}
+
+func mergeForwardTextInput(text string) agentproto.Input {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return agentproto.Input{}
+	}
+	return agentproto.Input{
+		Type: agentproto.InputText,
+		Text: "<转发聊天记录>\n" + text + "\n</转发聊天记录>",
 	}
 }
 
@@ -356,17 +776,54 @@ func (g *LiveGateway) fetchMessage(ctx context.Context, messageID string) (*gate
 	if resp.Data == nil || len(resp.Data.Items) == 0 || resp.Data.Items[0] == nil {
 		return nil, fmt.Errorf("get message failed: empty response")
 	}
-	item := resp.Data.Items[0]
-	content := ""
-	if item.Body != nil {
-		content = stringPtr(item.Body.Content)
+	items := make([]*gatewayMessage, 0, len(resp.Data.Items))
+	index := make(map[string]*gatewayMessage, len(resp.Data.Items))
+	for _, item := range resp.Data.Items {
+		if item == nil {
+			continue
+		}
+		content := ""
+		if item.Body != nil {
+			content = stringPtr(item.Body.Content)
+		}
+		msg := &gatewayMessage{
+			MessageID:      stringPtr(item.MessageId),
+			MessageType:    stringPtr(item.MsgType),
+			Content:        content,
+			Deleted:        boolPtr(item.Deleted),
+			UpperMessageID: stringPtr(item.UpperMessageId),
+		}
+		if item.Sender != nil {
+			msg.SenderID = stringPtr(item.Sender.Id)
+			msg.SenderType = stringPtr(item.Sender.SenderType)
+		}
+		items = append(items, msg)
+		if msg.MessageID != "" {
+			index[msg.MessageID] = msg
+		}
 	}
-	return &gatewayMessage{
-		MessageID:   stringPtr(item.MessageId),
-		MessageType: stringPtr(item.MsgType),
-		Content:     content,
-		Deleted:     boolPtr(item.Deleted),
-	}, nil
+	if len(items) == 0 {
+		return nil, fmt.Errorf("get message failed: empty response")
+	}
+	root := index[messageID]
+	if root == nil {
+		root = items[0]
+	}
+	for _, item := range items {
+		if item == nil || item == root {
+			continue
+		}
+		parentID := strings.TrimSpace(item.UpperMessageID)
+		if parentID == "" {
+			continue
+		}
+		parent := index[parentID]
+		if parent == nil {
+			continue
+		}
+		parent.Children = append(parent.Children, item)
+	}
+	return root, nil
 }
 
 func (g *LiveGateway) downloadImage(ctx context.Context, messageID, imageKey string) (string, string, error) {

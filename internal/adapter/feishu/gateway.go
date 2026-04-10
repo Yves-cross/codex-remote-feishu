@@ -48,10 +48,14 @@ type LiveGateway struct {
 }
 
 type gatewayMessage struct {
-	MessageID   string
-	MessageType string
-	Content     string
-	Deleted     bool
+	MessageID      string
+	MessageType    string
+	Content        string
+	Deleted        bool
+	UpperMessageID string
+	SenderID       string
+	SenderType     string
+	Children       []*gatewayMessage
 }
 
 type feishuTextContent struct {
