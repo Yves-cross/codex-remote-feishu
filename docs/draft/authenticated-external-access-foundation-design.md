@@ -74,6 +74,7 @@
 - 外部授权 URL 不能假设公网域名长期稳定。
 - consumer 第一阶段不能依赖 SSE。
 - daemon 启动 `cloudflared` 时必须隔离配置目录，避免用户现有 `.cloudflared` 污染 quick tunnel 行为。
+- 这条通道默认是**短时临时资源**：如果 external-access listener 连续 `5m` 没有收到任何入站或出站流量，应自动销毁 listener + provider，并回收这次临时公网入口。
 
 ## 5. 总体架构
 
@@ -343,6 +344,14 @@ type GrantStore interface {
 
 `POST /api/admin/external-access/link` 只用于本地调试和验证，consumer 正式接入还是应该直接调用 daemon 内部 service。
 
+`GET /api/admin/external-access/status` 至少还应该投影：
+
+- 当前 listener 是否存在
+- 当前 provider/public base 是否存在
+- 最近一次入站流量时间
+- 最近一次出站流量时间
+- 距离 idle auto-destroy 还剩多久
+
 ### 9.3 外部 URL 形态
 
 建议签发结果固定为：
@@ -496,6 +505,27 @@ proxy 层应该支持 WebSocket 透传，因为后续交互页面可能会用到
 - 代理层支持 HTTP / WebSocket
 - consumer 第一阶段不要依赖 SSE
 
+### 12.3 idle auto-destroy
+
+这条基座不是常驻公网入口，默认应在无流量时自动销毁。
+
+建议规则：
+
+- 以 listener 观察到的**入站或出站流量**为活跃信号
+- 只要任一方向出现流量，就刷新 `LastActivityAt`
+- 若连续 `5m` 没有任何入站或出站流量，则自动：
+  - 关闭 provider
+  - 关闭/回收 external-access listener runtime
+  - 清掉当前 public base 状态
+  - 让后续新的 `IssueURL()` 再次懒启动
+
+这里的“出站流量”不是只看是否签发过 URL，而是看真实代理转发链路上是否向 upstream 发出了请求或 websocket 数据。
+
+这样可以避免：
+
+- 出门临时开过一次 `/debug admin` 后，把 tunnel 长时间挂在公网
+- 没人使用时仍然持续占用 child process、随机域名和本地监听资源
+
 ## 13. trycloudflare provider 运行模型
 
 ### 13.1 启动方式
@@ -516,6 +546,16 @@ cloudflared tunnel \
 1. 解析到了 `https://*.trycloudflare.com` 公网基址
 2. `cloudflared` 子进程仍然活着
 3. metrics `/ready` 返回 `200`
+
+### 13.2.1 idle 回收语义
+
+即使 provider 仍然 `ready`，只要 external-access runtime 连续 `5m` 没有观察到入站或出站流量，也应主动回收，而不是保持常驻。
+
+这意味着：
+
+- `ready` 只表示“当前可用”，不表示“应该一直常驻”
+- provider 生命周期除了异常退出/显式关闭外，还要支持 idle timeout 驱动的正常回收
+- 后续新的 `IssueURL()` 或新的实际访问，再重新懒启动即可
 
 ### 13.3 配置隔离
 
@@ -574,12 +614,13 @@ consumer 统一走这条入口，不直接碰 provider。
 - `trycloudflare` provider
 - bundled `cloudflared` 解析
 - metrics `/ready` 健康检查
-- provider 状态观测与自动重启策略
+- provider 状态观测、idle auto-destroy 与自动重启策略
 
 完成后应能做到：
 
 - 内部 `IssueURL()` 在 tunnel 未启动时可懒启动
 - 成功拿到 `trycloudflare` 外链
+- 连续 `5m` 无入站/出站流量后自动销毁 tunnel，再次使用时可重新拉起
 
 ### 阶段 3
 
@@ -608,6 +649,7 @@ consumer 统一走这条入口，不直接碰 provider。
 - metrics `/ready` 健康检查
 - child process 配置目录隔离
 - `?t=` 在重复 GET / 预取场景下不会让真实用户首次点击直接失效
+- 连续 `5m` 无入站/出站流量后会自动销毁 listener/provider，并且后续可重新懒启动
 
 ## 17. 当前建议
 
