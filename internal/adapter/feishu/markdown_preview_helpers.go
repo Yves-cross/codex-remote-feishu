@@ -346,3 +346,16 @@ func isPreviewParentMissingError(err error) bool {
 		return false
 	}
 }
+
+func isPreviewDriveAccessDeniedError(err error) bool {
+	var apiErr *driveAPIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.Code {
+	case 99991672:
+		return true
+	default:
+		return false
+	}
+}

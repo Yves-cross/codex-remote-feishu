@@ -722,6 +722,39 @@ func TestDriveMarkdownPreviewerRewriteDoesNotRunCleanup(t *testing.T) {
 	}
 }
 
+func TestDriveMarkdownPreviewerSummaryReturnsPermissionRequiredFallback(t *testing.T) {
+	api := newFakePreviewAPI()
+	api.listFilesFunc = func(_ context.Context, folderToken string) ([]previewRemoteNode, error) {
+		if folderToken == "" {
+			return nil, &driveAPIError{Code: 99991672, Msg: "Access denied"}
+		}
+		return nil, nil
+	}
+
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
+	summary, err := previewer.Summary()
+	if err != nil {
+		t.Fatalf("Summary returned error: %v", err)
+	}
+	if summary.Status != "permission_required" {
+		t.Fatalf("expected permission_required fallback, got %#v", summary)
+	}
+	if !strings.Contains(summary.StatusMessage, "drive:drive") {
+		t.Fatalf("expected permission guidance, got %#v", summary)
+	}
+}
+
+func TestDriveMarkdownPreviewerSummaryReturnsAPIUnavailableFallback(t *testing.T) {
+	previewer := NewDriveMarkdownPreviewer(nil, MarkdownPreviewConfig{StatePath: filepath.Join(t.TempDir(), "preview.json")})
+	summary, err := previewer.Summary()
+	if err != nil {
+		t.Fatalf("Summary returned error: %v", err)
+	}
+	if summary.Status != "api_unavailable" {
+		t.Fatalf("expected api_unavailable fallback, got %#v", summary)
+	}
+}
+
 func TestDriveMarkdownPreviewerBackgroundCleanupRunsOnInterval(t *testing.T) {
 	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	deleted := make(chan string, 1)

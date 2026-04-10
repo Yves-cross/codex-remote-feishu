@@ -38,17 +38,20 @@ func (p *DriveMarkdownPreviewer) Summary() (PreviewDriveSummary, error) {
 	if p == nil {
 		return PreviewDriveSummary{}, nil
 	}
-	if p.api == nil {
-		return PreviewDriveSummary{}, fmt.Errorf("preview drive api is not available")
-	}
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	state := p.loadStateLocked()
+	if p.api == nil {
+		return previewAdminFallbackSummary(state, strings.TrimSpace(p.config.StatePath), "api_unavailable", "当前还没有可用的飞书云盘预览配置。"), nil
+	}
 	beforeToken, beforeURL := previewRootSnapshot(state)
 	summary, err := p.summarizeManagedInventoryLocked(context.Background(), state)
 	if err != nil {
+		if isPreviewDriveAccessDeniedError(err) {
+			return previewAdminFallbackSummary(state, strings.TrimSpace(p.config.StatePath), "permission_required", "当前机器人还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。"), nil
+		}
 		return PreviewDriveSummary{}, err
 	}
 	afterToken, afterURL := previewRootSnapshot(state)
@@ -133,4 +136,11 @@ func updatePreviewSummaryWindow(summary *PreviewDriveSummary, value time.Time) {
 		copyValue := value
 		summary.NewestLastUsedAt = &copyValue
 	}
+}
+
+func previewAdminFallbackSummary(state *previewState, statePath, status, message string) PreviewDriveSummary {
+	summary := summarizePreviewState(state, statePath)
+	summary.Status = strings.TrimSpace(status)
+	summary.StatusMessage = strings.TrimSpace(message)
+	return summary
 }

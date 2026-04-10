@@ -307,6 +307,8 @@ export interface ImageStagingCleanupResponse {
 
 export interface PreviewDriveSummary {
   statePath?: string;
+  status?: string;
+  statusMessage?: string;
   rootToken?: string;
   rootURL?: string;
   fileCount: number;

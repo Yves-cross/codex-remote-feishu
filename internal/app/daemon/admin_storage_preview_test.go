@@ -117,8 +117,15 @@ func TestPreviewDriveStatusAndCleanupReturnConflictWithoutAPI(t *testing.T) {
 	app, _ := newPreviewDriveAdminTestApp(t, cfg)
 
 	rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/storage/preview-drive/main", "")
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status status = %d, want 409 body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	var status previewDriveStatusResponse
+	if err := json.NewDecoder(rec.Body).Decode(&status); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if status.Summary.Status != "api_unavailable" {
+		t.Fatalf("unexpected preview status payload: %#v", status)
 	}
 
 	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/storage/preview-drive/main/cleanup", "")

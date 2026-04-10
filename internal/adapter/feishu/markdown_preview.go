@@ -108,6 +108,8 @@ type previewFileRecord struct {
 
 type PreviewDriveSummary struct {
 	StatePath            string     `json:"statePath,omitempty"`
+	Status               string     `json:"status,omitempty"`
+	StatusMessage        string     `json:"statusMessage,omitempty"`
 	RootToken            string     `json:"rootToken,omitempty"`
 	RootURL              string     `json:"rootURL,omitempty"`
 	FileCount            int        `json:"fileCount"`

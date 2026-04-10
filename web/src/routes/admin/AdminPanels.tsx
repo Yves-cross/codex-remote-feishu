@@ -528,11 +528,12 @@ export function AdminStoragePanel({
               {apps.map((app) => {
                 const preview = previews[app.id];
                 const summary = preview?.summary;
+                const previewState = previewStatusBadge(summary);
                 return (
                   <article key={app.id} className="info-card">
                     <div className="app-card-head">
                       <strong>{app.name || app.appId || app.id}</strong>
-                      <StatusBadge value={summary?.rootURL ? "已启用预览" : "尚未生成预览目录"} tone={summary?.rootURL ? "good" : "warn"} />
+                      <StatusBadge value={previewState.value} tone={previewState.tone} />
                     </div>
                     <p>{buildPreviewDetail(summary)}</p>
                     <div className="app-card-flags">
@@ -540,7 +541,7 @@ export function AdminStoragePanel({
                       <StatusBadge value={formatBytes(summary?.estimatedBytes ?? 0)} tone="neutral" />
                     </div>
                     <div className="button-row">
-                      <button className="secondary-button" type="button" onClick={() => onCleanupPreview(app.id)} disabled={!preview || busyAction !== ""}>
+                      <button className="secondary-button" type="button" onClick={() => onCleanupPreview(app.id)} disabled={!preview || !canCleanupPreview(summary) || busyAction !== ""}>
                         清理旧预览
                       </button>
                     </div>
@@ -928,6 +929,9 @@ function buildPreviewDetail(summary: PreviewDriveStatusResponse["summary"] | und
   if (!summary) {
     return "当前还没有拿到这个机器人的预览目录状态。";
   }
+  if (summary.statusMessage) {
+    return summary.statusMessage;
+  }
   if (!summary.rootURL) {
     return "这个机器人还没有生成过可打开的文档预览。";
   }
@@ -935,6 +939,27 @@ function buildPreviewDetail(summary: PreviewDriveStatusResponse["summary"] | und
     return `固定 inventory 根目录最近使用于 ${formatDateTime(summary.newestLastUsedAt)}。`;
   }
   return "固定 inventory 根目录已建立，暂时还没有最近使用记录。";
+}
+
+function previewStatusBadge(summary: PreviewDriveStatusResponse["summary"] | undefined): { value: string; tone: "good" | "warn" | "neutral" } {
+  switch (summary?.status) {
+    case "permission_required":
+      return { value: "需开通 Drive 权限", tone: "warn" };
+    case "api_unavailable":
+      return { value: "预览未配置", tone: "warn" };
+    default:
+      return summary?.rootURL ? { value: "已启用预览", tone: "good" } : { value: "尚未生成预览目录", tone: "warn" };
+  }
+}
+
+function canCleanupPreview(summary: PreviewDriveStatusResponse["summary"] | undefined): boolean {
+  if (!summary) {
+    return false;
+  }
+  if (summary.status) {
+    return false;
+  }
+  return Boolean(summary.rootURL);
 }
 
 function describeAppStorage(app: FeishuAppSummary): string {

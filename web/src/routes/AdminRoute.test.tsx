@@ -396,4 +396,36 @@ describe("AdminRoute", () => {
     expect(await screen.findByText(/固定的预览 inventory 根目录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "检查目录一致性" })).not.toBeInTheDocument();
   });
+
+  it("shows drive permission guidance instead of failing preview status loads", async () => {
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({
+          gatewayId: "bot-1",
+          name: "Main Bot",
+          summary: {
+            fileCount: 0,
+            scopeCount: 0,
+            estimatedBytes: 0,
+            unknownSizeFileCount: 0,
+            status: "permission_required",
+            statusMessage: "当前机器人还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。",
+          },
+        }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByText(/当前机器人还没有开通飞书云盘权限/)).toBeInTheDocument();
+    expect(screen.getByText("需开通 Drive 权限")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "清理旧预览" })).toBeDisabled();
+  });
 });
