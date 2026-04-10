@@ -45,6 +45,11 @@ func lookupStringFromAny(value any) string {
 	}
 }
 
+func lookupBoolFromAny(value any) bool {
+	current, _ := value.(bool)
+	return current
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -174,6 +179,41 @@ func requestPromptOptionsToControl(options []state.RequestPromptOptionRecord) []
 	return out
 }
 
+func requestPromptQuestionsToControl(questions []state.RequestPromptQuestionRecord) []control.RequestPromptQuestion {
+	if len(questions) == 0 {
+		return nil
+	}
+	out := make([]control.RequestPromptQuestion, 0, len(questions))
+	for _, question := range questions {
+		if strings.TrimSpace(question.ID) == "" {
+			continue
+		}
+		options := make([]control.RequestPromptQuestionOption, 0, len(question.Options))
+		for _, option := range question.Options {
+			label := strings.TrimSpace(option.Label)
+			if label == "" {
+				continue
+			}
+			options = append(options, control.RequestPromptQuestionOption{
+				Label:       label,
+				Description: strings.TrimSpace(option.Description),
+			})
+		}
+		out = append(out, control.RequestPromptQuestion{
+			ID:             strings.TrimSpace(question.ID),
+			Header:         strings.TrimSpace(question.Header),
+			Question:       strings.TrimSpace(question.Question),
+			AllowOther:     question.AllowOther,
+			Secret:         question.Secret,
+			Options:        options,
+			Placeholder:    strings.TrimSpace(question.Placeholder),
+			DefaultValue:   strings.TrimSpace(question.DefaultValue),
+			DirectResponse: question.DirectResponse,
+		})
+	}
+	return out
+}
+
 func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptOptionRecord {
 	var options []state.RequestPromptOptionRecord
 	seen := map[string]bool{}
@@ -229,6 +269,116 @@ func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptO
 	}
 	add("captureFeedback", "告诉 Codex 怎么改", "default")
 	return options
+}
+
+func metadataRequestQuestions(metadata map[string]any) []state.RequestPromptQuestionRecord {
+	if len(metadata) == 0 {
+		return nil
+	}
+	raw, ok := metadata["questions"]
+	if !ok {
+		return nil
+	}
+	var values []any
+	switch typed := raw.(type) {
+	case []any:
+		values = typed
+	case []map[string]any:
+		values = make([]any, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, item)
+		}
+	default:
+		return nil
+	}
+	questions := make([]state.RequestPromptQuestionRecord, 0, len(values))
+	directResponse := len(values) == 1
+	for _, value := range values {
+		record, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		questionID := firstNonEmpty(
+			lookupStringFromAny(record["id"]),
+			lookupStringFromAny(record["questionId"]),
+		)
+		if questionID == "" {
+			continue
+		}
+		options := make([]state.RequestPromptQuestionOptionRecord, 0)
+		rawOptions := record["options"]
+		if rawOptions == nil {
+			rawOptions = record["choices"]
+		}
+		switch typed := rawOptions.(type) {
+		case []any:
+			for _, item := range typed {
+				option, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				label := firstNonEmpty(
+					lookupStringFromAny(option["label"]),
+					lookupStringFromAny(option["title"]),
+					lookupStringFromAny(option["text"]),
+				)
+				if label == "" {
+					continue
+				}
+				options = append(options, state.RequestPromptQuestionOptionRecord{
+					Label:       label,
+					Description: firstNonEmpty(lookupStringFromAny(option["description"]), lookupStringFromAny(option["subtitle"])),
+				})
+			}
+		case []map[string]any:
+			for _, option := range typed {
+				label := firstNonEmpty(
+					lookupStringFromAny(option["label"]),
+					lookupStringFromAny(option["title"]),
+					lookupStringFromAny(option["text"]),
+				)
+				if label == "" {
+					continue
+				}
+				options = append(options, state.RequestPromptQuestionOptionRecord{
+					Label:       label,
+					Description: firstNonEmpty(lookupStringFromAny(option["description"]), lookupStringFromAny(option["subtitle"])),
+				})
+			}
+		}
+		header := firstNonEmpty(
+			lookupStringFromAny(record["header"]),
+			lookupStringFromAny(record["title"]),
+		)
+		questionText := firstNonEmpty(
+			lookupStringFromAny(record["question"]),
+			lookupStringFromAny(record["label"]),
+			lookupStringFromAny(record["prompt"]),
+		)
+		placeholder := firstNonEmpty(
+			lookupStringFromAny(record["placeholder"]),
+			lookupStringFromAny(record["inputPlaceholder"]),
+		)
+		if placeholder == "" && len(options) != 0 {
+			labels := make([]string, 0, len(options))
+			for _, option := range options {
+				labels = append(labels, option.Label)
+			}
+			placeholder = "可填写：" + strings.Join(labels, " / ")
+		}
+		questions = append(questions, state.RequestPromptQuestionRecord{
+			ID:             questionID,
+			Header:         header,
+			Question:       questionText,
+			AllowOther:     lookupBoolFromAny(record["isOther"]),
+			Secret:         lookupBoolFromAny(record["isSecret"]),
+			Options:        options,
+			Placeholder:    placeholder,
+			DefaultValue:   strings.TrimSpace(lookupStringFromAny(record["defaultValue"])),
+			DirectResponse: directResponse && len(options) != 0,
+		})
+	}
+	return questions
 }
 
 func approvalRequestSupportsSession(metadata map[string]any) bool {
@@ -303,6 +453,13 @@ func metadataRequestOptions(metadata map[string]any) []state.RequestPromptOption
 		})
 	}
 	return options
+}
+
+func pendingRequestNoticeText(request *state.RequestPromptRecord) string {
+	if request != nil && normalizeRequestType(request.RequestType) == "request_user_input" {
+		return "当前有待回答问题。请先在卡片上点击选项或提交表单。"
+	}
+	return "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。"
 }
 
 func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) control.UIEvent {

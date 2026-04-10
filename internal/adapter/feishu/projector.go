@@ -1600,7 +1600,11 @@ func requestPromptBody(prompt control.RequestPrompt) string {
 	}
 	body := strings.TrimSpace(prompt.Body)
 	if body == "" {
-		body = "本地 Codex 正在等待你的确认。"
+		if prompt.RequestType == "request_user_input" {
+			body = "本地 Codex 正在等待你补充参数或说明。"
+		} else {
+			body = "本地 Codex 正在等待你的确认。"
+		}
 	}
 	if body != "" {
 		if len(lines) > 0 {
@@ -1612,6 +1616,9 @@ func requestPromptBody(prompt control.RequestPrompt) string {
 }
 
 func requestPromptElements(prompt control.RequestPrompt, daemonLifecycleID string) []map[string]any {
+	if normalizeRequestPromptType(prompt.RequestType) == "request_user_input" && len(prompt.Questions) != 0 {
+		return requestUserInputPromptElements(prompt, daemonLifecycleID)
+	}
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -1644,6 +1651,40 @@ func requestPromptElements(prompt control.RequestPrompt, daemonLifecycleID strin
 	}
 }
 
+func requestUserInputPromptElements(prompt control.RequestPrompt, daemonLifecycleID string) []map[string]any {
+	elements := make([]map[string]any, 0, len(prompt.Questions)*3+1)
+	for index, question := range prompt.Questions {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": requestPromptQuestionMarkdown(index, question),
+		})
+		if question.DirectResponse && len(question.Options) != 0 {
+			actions := make([]map[string]any, 0, len(question.Options))
+			for _, option := range question.Options {
+				button := requestUserInputOptionButton(prompt, question, option, daemonLifecycleID)
+				if len(button) == 0 {
+					continue
+				}
+				actions = append(actions, button)
+			}
+			if len(actions) != 0 {
+				elements = append(elements, map[string]any{
+					"tag":     "action",
+					"actions": actions,
+				})
+			}
+		}
+	}
+	if requestPromptNeedsForm(prompt) {
+		elements = append(elements, requestPromptFormElement(prompt, daemonLifecycleID))
+	}
+	elements = append(elements, map[string]any{
+		"tag":     "markdown",
+		"content": requestPromptQuestionHint(prompt),
+	})
+	return elements
+}
+
 func requestPromptButton(prompt control.RequestPrompt, option control.RequestPromptOption, daemonLifecycleID string) map[string]any {
 	label := strings.TrimSpace(option.Label)
 	if label == "" {
@@ -1669,6 +1710,29 @@ func requestPromptButton(prompt control.RequestPrompt, option control.RequestPro
 	}
 }
 
+func requestUserInputOptionButton(prompt control.RequestPrompt, question control.RequestPromptQuestion, option control.RequestPromptQuestionOption, daemonLifecycleID string) map[string]any {
+	label := strings.TrimSpace(option.Label)
+	if label == "" {
+		return nil
+	}
+	return map[string]any{
+		"tag":  "button",
+		"type": "primary",
+		"text": map[string]any{
+			"tag":     "plain_text",
+			"content": label,
+		},
+		"value": stampActionValue(map[string]any{
+			"kind":         "request_respond",
+			"request_id":   prompt.RequestID,
+			"request_type": strings.TrimSpace(prompt.RequestType),
+			"request_answers": map[string]any{
+				strings.TrimSpace(question.ID): []any{label},
+			},
+		}, daemonLifecycleID),
+	}
+}
+
 func stampActionValue(value map[string]any, daemonLifecycleID string) map[string]any {
 	if len(value) == 0 {
 		return value
@@ -1687,6 +1751,125 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 		}
 	}
 	return false
+}
+
+func requestPromptQuestionMarkdown(index int, question control.RequestPromptQuestion) string {
+	lines := make([]string, 0, 6)
+	title := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question))
+	if title != "" {
+		lines = append(lines, fmt.Sprintf("**问题 %d** %s", index+1, title))
+	}
+	if question.Header != "" && strings.TrimSpace(question.Question) != "" && strings.TrimSpace(question.Question) != strings.TrimSpace(question.Header) {
+		lines = append(lines, strings.TrimSpace(question.Question))
+	}
+	if len(question.Options) != 0 {
+		lines = append(lines, "")
+		lines = append(lines, "可选项：")
+		for _, option := range question.Options {
+			line := "- " + strings.TrimSpace(option.Label)
+			if description := strings.TrimSpace(option.Description); description != "" {
+				line += "：" + description
+			}
+			lines = append(lines, line)
+		}
+	}
+	if question.AllowOther {
+		lines = append(lines, "")
+		lines = append(lines, "也可以直接填写其他答案。")
+	}
+	if question.Secret {
+		lines = append(lines, "")
+		lines = append(lines, "该答案按私密输入处理，不会在飞书卡片正文中回显。")
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func requestPromptNeedsForm(prompt control.RequestPrompt) bool {
+	for _, question := range prompt.Questions {
+		if len(question.Options) == 0 || question.AllowOther || !question.DirectResponse {
+			return true
+		}
+	}
+	return false
+}
+
+func requestPromptFormElement(prompt control.RequestPrompt, daemonLifecycleID string) map[string]any {
+	elements := make([]map[string]any, 0, len(prompt.Questions)+1)
+	for _, question := range prompt.Questions {
+		name := strings.TrimSpace(question.ID)
+		if name == "" {
+			continue
+		}
+		input := map[string]any{
+			"tag":  "input",
+			"name": name,
+		}
+		label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), name)
+		input["label"] = map[string]any{
+			"tag":     "plain_text",
+			"content": label,
+		}
+		input["label_position"] = "left"
+		if placeholder := strings.TrimSpace(question.Placeholder); placeholder != "" {
+			input["placeholder"] = map[string]any{
+				"tag":     "plain_text",
+				"content": placeholder,
+			}
+		}
+		if value := strings.TrimSpace(question.DefaultValue); value != "" {
+			input["default_value"] = value
+		}
+		elements = append(elements, input)
+	}
+	elements = append(elements, map[string]any{
+		"tag":         "button",
+		"type":        "primary",
+		"action_type": "form_submit",
+		"name":        "submit",
+		"text": map[string]any{
+			"tag":     "plain_text",
+			"content": "提交答案",
+		},
+		"value": stampActionValue(map[string]any{
+			"kind":         "submit_request_form",
+			"request_id":   prompt.RequestID,
+			"request_type": strings.TrimSpace(prompt.RequestType),
+		}, daemonLifecycleID),
+	})
+	return map[string]any{
+		"tag":      "form",
+		"name":     "request_form_" + strings.TrimSpace(prompt.RequestID),
+		"elements": elements,
+	}
+}
+
+func requestPromptQuestionHint(prompt control.RequestPrompt) string {
+	hasDirect := false
+	for _, question := range prompt.Questions {
+		if question.DirectResponse && len(question.Options) != 0 {
+			hasDirect = true
+			break
+		}
+	}
+	if hasDirect && requestPromptNeedsForm(prompt) {
+		return "可直接点击按钮回答单选题；如果需要补充文字或填写其他答案，请在下方表单里提交。"
+	}
+	if hasDirect {
+		return "点击按钮即可将答案直接回传给当前 turn。"
+	}
+	return "填写后点击“提交答案”，答案会直接回传给当前 turn。"
+}
+
+func normalizeRequestPromptType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case normalized == "", normalized == "approval":
+		return "approval"
+	case strings.HasPrefix(normalized, "approval"):
+		return "approval"
+	default:
+		return normalized
+	}
 }
 
 func finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []map[string]any {
@@ -2121,9 +2304,9 @@ func snapshotGateText(summary control.GateSummary) string {
 		return "正在等待一条文字处理意见；下一条文本不会发到当前会话"
 	case "pending_request":
 		if summary.PendingRequestCount > 1 {
-			return fmt.Sprintf("有 %d 个待确认请求；普通文本和图片会先被拦住", summary.PendingRequestCount)
+			return fmt.Sprintf("有 %d 个待处理请求；普通文本和图片会先被拦住", summary.PendingRequestCount)
 		}
-		return "有 1 个待确认请求；普通文本和图片会先被拦住"
+		return "有 1 个待处理请求；普通文本和图片会先被拦住"
 	default:
 		return ""
 	}

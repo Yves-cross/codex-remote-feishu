@@ -515,7 +515,7 @@ func (s *Service) startCommandCapture(surface *state.SurfaceConsoleRecord, actio
 		return notice(surface, "request_capture_waiting_text", "当前正在等待你发送一条文字处理意见，请先发送文本或重新处理确认卡片。")
 	}
 	if pending := activePendingRequest(surface); pending != nil {
-		return notice(surface, "request_pending", "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。")
+		return notice(surface, "request_pending", pendingRequestNoticeText(activePendingRequest(surface)))
 	}
 	switch action.CommandID {
 	case control.FeishuCommandModel:

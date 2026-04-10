@@ -184,8 +184,9 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		if requestID == "" {
 			return control.Action{}, false
 		}
+		requestAnswers := requestAnswersFromValue(value)
 		optionID := strings.TrimSpace(stringMapValue(value, "request_option_id"))
-		if optionID == "" {
+		if optionID == "" && len(requestAnswers) == 0 {
 			if value["approved"] != nil {
 				if boolMapValue(value, "approved") {
 					optionID = "accept"
@@ -204,6 +205,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			RequestID:        requestID,
 			RequestType:      strings.TrimSpace(stringMapValue(value, "request_type")),
 			RequestOptionID:  optionID,
+			RequestAnswers:   requestAnswers,
 			Approved:         boolMapValue(value, "approved"),
 			Inbound:          meta,
 		}, true
@@ -283,6 +285,33 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		action.MessageID = messageID
 		action.Inbound = meta
 		return action, true
+	case "submit_request_form":
+		requestID := strings.TrimSpace(stringMapValue(value, "request_id"))
+		if requestID == "" {
+			return control.Action{}, false
+		}
+		requestAnswers := requestAnswersFromFormValue(event.Event.Action.FormValue)
+		if len(requestAnswers) == 0 && strings.TrimSpace(event.Event.Action.InputValue) != "" {
+			fieldName := strings.TrimSpace(stringMapValue(value, "field_name"))
+			if fieldName != "" {
+				if requestAnswers == nil {
+					requestAnswers = map[string][]string{}
+				}
+				requestAnswers[fieldName] = []string{strings.TrimSpace(event.Event.Action.InputValue)}
+			}
+		}
+		return control.Action{
+			Kind:             control.ActionRespondRequest,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			RequestID:        requestID,
+			RequestType:      strings.TrimSpace(stringMapValue(value, "request_type")),
+			RequestAnswers:   requestAnswers,
+			Inbound:          meta,
+		}, true
 	default:
 		return control.Action{}, false
 	}
@@ -304,6 +333,81 @@ func formStringValue(values map[string]interface{}, key string) string {
 	default:
 		return fmt.Sprint(raw)
 	}
+}
+
+func requestAnswersFromValue(values map[string]interface{}) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	raw, ok := values["request_answers"]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch typed := raw.(type) {
+	case map[string]interface{}:
+		return requestAnswersFromMap(typed)
+	default:
+		return nil
+	}
+}
+
+func requestAnswersFromFormValue(values map[string]interface{}) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	answers := map[string][]string{}
+	for key := range values {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			continue
+		}
+		text := strings.TrimSpace(formStringValue(values, key))
+		if text == "" {
+			continue
+		}
+		answers[name] = []string{text}
+	}
+	if len(answers) == 0 {
+		return nil
+	}
+	return answers
+}
+
+func requestAnswersFromMap(values map[string]interface{}) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	answers := map[string][]string{}
+	for key, raw := range values {
+		name := strings.TrimSpace(key)
+		if name == "" || raw == nil {
+			continue
+		}
+		var out []string
+		switch typed := raw.(type) {
+		case string:
+			if text := strings.TrimSpace(typed); text != "" {
+				out = []string{text}
+			}
+		case []interface{}:
+			for _, item := range typed {
+				if text := strings.TrimSpace(fmt.Sprint(item)); text != "" {
+					out = append(out, text)
+				}
+			}
+		default:
+			if text := strings.TrimSpace(fmt.Sprint(typed)); text != "" {
+				out = []string{text}
+			}
+		}
+		if len(out) != 0 {
+			answers[name] = out
+		}
+	}
+	if len(answers) == 0 {
+		return nil
+	}
+	return answers
 }
 
 func (g *LiveGateway) surfaceForCardAction(messageID, chatID, operatorID string) string {

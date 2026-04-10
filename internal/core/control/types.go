@@ -82,6 +82,7 @@ type Action struct {
 	RequestID           string
 	RequestType         string
 	RequestOptionID     string
+	RequestAnswers      map[string][]string
 	Approved            bool
 	CommandID           string
 	InstanceID          string
@@ -275,6 +276,23 @@ type RequestPromptOption struct {
 	Style    string
 }
 
+type RequestPromptQuestionOption struct {
+	Label       string
+	Description string
+}
+
+type RequestPromptQuestion struct {
+	ID             string
+	Header         string
+	Question       string
+	AllowOther     bool
+	Secret         bool
+	Options        []RequestPromptQuestionOption
+	Placeholder    string
+	DefaultValue   string
+	DirectResponse bool
+}
+
 type RequestPrompt struct {
 	RequestID   string
 	RequestType string
@@ -283,6 +301,7 @@ type RequestPrompt struct {
 	ThreadID    string
 	ThreadTitle string
 	Options     []RequestPromptOption
+	Questions   []RequestPromptQuestion
 }
 
 type CommandCatalogButtonKind string

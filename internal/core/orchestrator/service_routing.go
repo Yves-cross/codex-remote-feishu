@@ -549,7 +549,7 @@ func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsol
 	}
 	if pending := activePendingRequest(surface); pending != nil {
 		_ = pending
-		return notice(surface, "request_pending", "当前有待确认请求。请先处理确认卡片，再切换输入目标。")
+		return notice(surface, "request_pending", pendingRequestNoticeText(activePendingRequest(surface)))
 	}
 	return nil
 }

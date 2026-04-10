@@ -216,15 +216,34 @@ type RequestPromptOptionRecord struct {
 	Style    string
 }
 
+type RequestPromptQuestionOptionRecord struct {
+	Label       string
+	Description string
+}
+
+type RequestPromptQuestionRecord struct {
+	ID             string
+	Header         string
+	Question       string
+	AllowOther     bool
+	Secret         bool
+	Options        []RequestPromptQuestionOptionRecord
+	Placeholder    string
+	DefaultValue   string
+	DirectResponse bool
+}
+
 type RequestPromptRecord struct {
 	RequestID   string
 	RequestType string
 	InstanceID  string
 	ThreadID    string
 	TurnID      string
+	ItemID      string
 	Title       string
 	Body        string
 	Options     []RequestPromptOptionRecord
+	Questions   []RequestPromptQuestionRecord
 	CreatedAt   time.Time
 }
 

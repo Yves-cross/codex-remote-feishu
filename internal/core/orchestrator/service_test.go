@@ -4496,6 +4496,167 @@ func TestRespondRequestAcceptForSessionDispatchesDecision(t *testing.T) {
 	}
 }
 
+func TestRequestUserInputPromptUsesQuestionsAndStoresState(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-ui-1",
+		Metadata: map[string]any{
+			"requestType": "request_user_input",
+			"title":       "需要补充输入",
+			"itemId":      "item-1",
+			"questions": []map[string]any{
+				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}}},
+				{"id": "notes", "header": "备注", "question": "补充说明", "isOther": true, "isSecret": true},
+			},
+		},
+	})
+	if len(events) != 1 || events[0].RequestPrompt == nil {
+		t.Fatalf("expected one request prompt event, got %#v", events)
+	}
+	prompt := events[0].RequestPrompt
+	if prompt.RequestType != "request_user_input" || len(prompt.Questions) != 2 {
+		t.Fatalf("unexpected request prompt: %#v", prompt)
+	}
+	if prompt.Questions[0].DirectResponse || !prompt.Questions[1].Secret {
+		t.Fatalf("unexpected request prompt questions: %#v", prompt.Questions)
+	}
+	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
+	if record == nil || record.ItemID != "item-1" || len(record.Questions) != 2 {
+		t.Fatalf("expected pending request state for request_user_input, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+}
+
+func TestRespondRequestUserInputOptionDispatchesAnswersAndClearsState(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-ui-1",
+		Metadata: map[string]any{
+			"requestType": "request_user_input",
+			"questions": []map[string]any{
+				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}, {"label": "gpt-5.3"}}},
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "om-card-1",
+		RequestID:        "req-ui-1",
+		RequestAnswers: map[string][]string{
+			"model": []string{"gpt-5.4"},
+		},
+	})
+	if len(events) != 1 || events[0].Command == nil {
+		t.Fatalf("expected one agent command event, got %#v", events)
+	}
+	answers, _ := events[0].Command.Request.Response["answers"].(map[string]any)
+	if _, ok := answers["model"]; !ok {
+		t.Fatalf("unexpected request user input response payload: %#v", events[0].Command.Request.Response)
+	}
+	if len(svc.root.Surfaces["surface-1"].PendingRequests) != 0 {
+		t.Fatalf("expected request state to clear immediately after submit, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+}
+
+func TestRespondRequestUserInputRejectsInvalidOptionAnswer(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-ui-1",
+		Metadata: map[string]any{
+			"requestType": "request_user_input",
+			"questions": []map[string]any{
+				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}}},
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-ui-1",
+		RequestAnswers: map[string][]string{
+			"model": []string{"not-valid"},
+		},
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
+		t.Fatalf("expected request_invalid notice, got %#v", events)
+	}
+	if len(svc.root.Surfaces["surface-1"].PendingRequests) != 1 {
+		t.Fatalf("expected invalid submit to keep pending request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+}
+
 func TestPendingRequestBlocksTextUntilHandled(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

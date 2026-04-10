@@ -867,6 +867,64 @@ func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 	}
 }
 
+func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventRequestPrompt,
+		RequestPrompt: &control.RequestPrompt{
+			RequestID:   "req-ui-1",
+			RequestType: "request_user_input",
+			Title:       "需要补充输入",
+			Body:        "本地 Codex 正在等待你补充参数或说明。",
+			ThreadTitle: "droid · 修复登录流程",
+			Questions: []control.RequestPromptQuestion{
+				{
+					ID:             "model",
+					Header:         "模型",
+					Question:       "请选择模型",
+					DirectResponse: true,
+					Options: []control.RequestPromptQuestionOption{
+						{Label: "gpt-5.4", Description: "推荐"},
+						{Label: "gpt-5.3"},
+					},
+				},
+				{
+					ID:          "notes",
+					Header:      "备注",
+					Question:    "补充说明",
+					AllowOther:  true,
+					Secret:      true,
+					Placeholder: "请填写补充说明",
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) < 4 {
+		t.Fatalf("expected question elements and form, got %#v", ops[0].CardElements)
+	}
+	actionRow, _ := ops[0].CardElements[1]["actions"].([]map[string]any)
+	if len(actionRow) != 2 {
+		t.Fatalf("expected direct response buttons for first question, got %#v", ops[0].CardElements[1])
+	}
+	value, _ := actionRow[0]["value"].(map[string]any)
+	requestAnswers, _ := value["request_answers"].(map[string]any)
+	modelAnswers, _ := requestAnswers["model"].([]any)
+	if value["kind"] != "request_respond" || len(modelAnswers) != 1 || modelAnswers[0] != "gpt-5.4" {
+		t.Fatalf("unexpected request option payload: %#v", value)
+	}
+	form, _ := ops[0].CardElements[3]["elements"].([]map[string]any)
+	if len(form) != 3 {
+		t.Fatalf("expected two inputs and one submit button, got %#v", ops[0].CardElements[2])
+	}
+	submitValue, _ := form[2]["value"].(map[string]any)
+	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" {
+		t.Fatalf("unexpected request form payload: %#v", submitValue)
+	}
+}
+
 func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
@@ -1194,7 +1252,7 @@ func TestProjectSnapshotShowsGateAndRetainedOfflineAttachment(t *testing.T) {
 	}
 	if !containsAll(ops[0].CardBody,
 		"**执行状态：** 实例离线，已保留接管关系；2 条排队消息会在恢复后继续",
-		"**输入门禁：** 有 2 个待确认请求；普通文本和图片会先被拦住",
+		"**输入门禁：** 有 2 个待处理请求；普通文本和图片会先被拦住",
 	) {
 		t.Fatalf("expected snapshot body to show gate and retained offline attachment, got %#v", ops[0].CardBody)
 	}

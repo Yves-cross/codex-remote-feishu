@@ -466,6 +466,38 @@ func extractRequestMetadata(requestType string, request, params map[string]any) 
 	return metadata
 }
 
+func extractRequestUserInputMetadata(message map[string]any) map[string]any {
+	params := lookupMap(message, "params")
+	metadata := map[string]any{
+		"requestType": "request_user_input",
+	}
+	if itemID := firstNonEmptyString(
+		lookupStringFromAny(params["itemId"]),
+		lookupString(params, "item", "id"),
+	); itemID != "" {
+		metadata["itemId"] = itemID
+	}
+	title := firstNonEmptyString(
+		lookupStringFromAny(params["title"]),
+		lookupStringFromAny(params["header"]),
+	)
+	if title == "" {
+		title = "需要补充输入"
+	}
+	metadata["title"] = title
+	if body := firstNonEmptyString(
+		lookupStringFromAny(params["message"]),
+		lookupStringFromAny(params["body"]),
+		lookupStringFromAny(params["description"]),
+	); body != "" {
+		metadata["body"] = body
+	}
+	if questions := extractRequestUserInputQuestions(params); len(questions) != 0 {
+		metadata["questions"] = questions
+	}
+	return metadata
+}
+
 func extractResolvedRequestMetadata(requestType string, request, params map[string]any) map[string]any {
 	metadata := map[string]any{}
 	if requestType != "" {
@@ -495,6 +527,116 @@ func extractRequestCommand(request, params map[string]any) string {
 		lookupString(params, "command", "text"),
 	)
 	return strings.TrimSpace(command)
+}
+
+func extractRequestUserInputQuestions(params map[string]any) []map[string]any {
+	source := firstNonNil(params["questions"], params["items"])
+	if source == nil {
+		return nil
+	}
+	var rawQuestions []any
+	switch typed := source.(type) {
+	case []any:
+		rawQuestions = typed
+	case []map[string]any:
+		rawQuestions = make([]any, 0, len(typed))
+		for _, item := range typed {
+			rawQuestions = append(rawQuestions, item)
+		}
+	default:
+		return nil
+	}
+	questions := make([]map[string]any, 0, len(rawQuestions))
+	for _, raw := range rawQuestions {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		questionID := firstNonEmptyString(
+			lookupStringFromAny(record["id"]),
+			lookupStringFromAny(record["questionId"]),
+		)
+		if questionID == "" {
+			continue
+		}
+		question := map[string]any{"id": questionID}
+		if header := firstNonEmptyString(
+			lookupStringFromAny(record["header"]),
+			lookupStringFromAny(record["title"]),
+		); header != "" {
+			question["header"] = header
+		}
+		if prompt := firstNonEmptyString(
+			lookupStringFromAny(record["question"]),
+			lookupStringFromAny(record["label"]),
+			lookupStringFromAny(record["prompt"]),
+		); prompt != "" {
+			question["question"] = prompt
+		}
+		if lookupBoolFromAny(record["isOther"]) {
+			question["isOther"] = true
+		}
+		if lookupBoolFromAny(record["isSecret"]) {
+			question["isSecret"] = true
+		}
+		if placeholder := firstNonEmptyString(
+			lookupStringFromAny(record["placeholder"]),
+			lookupStringFromAny(record["inputPlaceholder"]),
+		); placeholder != "" {
+			question["placeholder"] = placeholder
+		}
+		if defaultValue := firstNonEmptyString(lookupStringFromAny(record["defaultValue"])); defaultValue != "" {
+			question["defaultValue"] = defaultValue
+		}
+		if options := extractRequestUserInputQuestionOptions(record); len(options) != 0 {
+			question["options"] = options
+		}
+		questions = append(questions, question)
+	}
+	return questions
+}
+
+func extractRequestUserInputQuestionOptions(question map[string]any) []map[string]any {
+	source := firstNonNil(question["options"], question["choices"])
+	if source == nil {
+		return nil
+	}
+	var rawOptions []any
+	switch typed := source.(type) {
+	case []any:
+		rawOptions = typed
+	case []map[string]any:
+		rawOptions = make([]any, 0, len(typed))
+		for _, item := range typed {
+			rawOptions = append(rawOptions, item)
+		}
+	default:
+		return nil
+	}
+	options := make([]map[string]any, 0, len(rawOptions))
+	for _, raw := range rawOptions {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		label := firstNonEmptyString(
+			lookupStringFromAny(record["label"]),
+			lookupStringFromAny(record["title"]),
+			lookupStringFromAny(record["text"]),
+		)
+		if label == "" {
+			continue
+		}
+		option := map[string]any{"label": label}
+		if description := firstNonEmptyString(
+			lookupStringFromAny(record["description"]),
+			lookupStringFromAny(record["subtitle"]),
+		); description != "" {
+			option["description"] = description
+		}
+		options = append(options, option)
+	}
+	return options
 }
 
 func extractRequestOptions(request, params map[string]any) []map[string]any {

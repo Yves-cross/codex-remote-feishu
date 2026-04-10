@@ -2091,7 +2091,7 @@ func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []contro
 	}
 	if pending := activePendingRequest(surface); pending != nil {
 		_ = pending
-		return notice(surface, "request_pending", "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。")
+		return notice(surface, "request_pending", pendingRequestNoticeText(activePendingRequest(surface)))
 	}
 	if surface.RouteMode == state.RouteModeNewThreadReady {
 		if blocked := s.blockPreparedNewThreadReprepare(surface); blocked != nil {
@@ -2358,7 +2358,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		return s.consumeCapturedRequestFeedback(surface, action, text)
 	}
 	if pending := activePendingRequest(surface); pending != nil {
-		return notice(surface, "request_pending", "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。")
+		return notice(surface, "request_pending", pendingRequestNoticeText(pending))
 	}
 	if surface.ActiveCommandCapture != nil {
 		if text == "" {
@@ -2412,7 +2412,7 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	}
 	if pending := activePendingRequest(surface); pending != nil {
 		_ = pending
-		return notice(surface, "request_pending", "当前有待确认请求。请先处理确认卡片，再发送图片。")
+		return notice(surface, "request_pending", pendingRequestNoticeText(pending))
 	}
 	if surface.RouteMode == state.RouteModeNewThreadReady && s.preparedNewThreadHasPendingCreate(surface) {
 		return notice(surface, "new_thread_first_input_pending", "当前新会话的首条消息已经在排队或发送中；如需带图，请等它创建完成后再发送下一条。")

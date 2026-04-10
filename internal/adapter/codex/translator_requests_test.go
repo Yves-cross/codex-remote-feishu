@@ -74,6 +74,32 @@ func TestObserveServerRequestStartedNormalizesApprovalKindAndExtractsOptions(t *
 	}
 }
 
+func TestObserveServerRequestUserInputProducesQuestionMetadata(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-ui-1","method":"item/tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","questions":[{"id":"model","header":"模型","question":"请选择模型","options":[{"label":"gpt-5.4","description":"推荐"},{"label":"gpt-5.3"}]},{"id":"notes","header":"备注","question":"补充说明","isOther":true,"isSecret":true}]}}`))
+	if err != nil {
+		t.Fatalf("observe request user input: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-ui-1" {
+		t.Fatalf("unexpected request event: %#v", event)
+	}
+	if event.Metadata["requestType"] != "request_user_input" || event.Metadata["itemId"] != "item-1" {
+		t.Fatalf("unexpected request user input metadata: %#v", event.Metadata)
+	}
+	questions, ok := event.Metadata["questions"].([]map[string]any)
+	if !ok || len(questions) != 2 {
+		t.Fatalf("expected request questions metadata, got %#v", event.Metadata["questions"])
+	}
+	if questions[0]["id"] != "model" || questions[1]["isSecret"] != true {
+		t.Fatalf("unexpected request question payload: %#v", questions)
+	}
+}
+
 func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
@@ -157,6 +183,37 @@ func TestTranslateRequestRespondApprovalFallsBackToApprovedBool(t *testing.T) {
 	result, _ := payload["result"].(map[string]any)
 	if payload["id"] != "req-legacy" || result["decision"] != "accept" {
 		t.Fatalf("unexpected legacy request respond payload: %#v", payload)
+	}
+}
+
+func TestTranslateRequestRespondUserInputPreservesAnswerPayload(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: "req-ui-1",
+			Response: map[string]any{
+				"answers": map[string]any{
+					"model": map[string]any{"answers": []string{"gpt-5.4"}},
+					"notes": map[string]any{"answers": []string{"请用中文回复"}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate request respond: %v", err)
+	}
+	if len(payloads) != 1 {
+		t.Fatalf("expected one payload, got %d", len(payloads))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal request respond payload: %v", err)
+	}
+	result, _ := payload["result"].(map[string]any)
+	answers, _ := result["answers"].(map[string]any)
+	if payload["id"] != "req-ui-1" || len(answers) != 2 {
+		t.Fatalf("unexpected request user input response payload: %#v", payload)
 	}
 }
 

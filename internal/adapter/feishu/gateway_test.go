@@ -1082,6 +1082,79 @@ func TestParseCardActionTriggerEventFallsBackToApprovedBool(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsRequestRespondAnswers(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-4", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":       "request_respond",
+					"request_id": "req-ui-1",
+					"request_type": "request_user_input",
+					"request_answers": map[string]interface{}{
+						"model": []interface{}{"gpt-5.4"},
+					},
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-4",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected request_user_input button callback to be parsed")
+	}
+	if action.Kind != control.ActionRespondRequest || action.RequestID != "req-ui-1" {
+		t.Fatalf("unexpected action: %#v", action)
+	}
+	if got := action.RequestAnswers["model"]; len(got) != 1 || got[0] != "gpt-5.4" {
+		t.Fatalf("unexpected request answers payload: %#v", action.RequestAnswers)
+	}
+}
+
+func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":         "submit_request_form",
+					"request_id":   "req-ui-2",
+					"request_type": "request_user_input",
+				},
+				FormValue: map[string]interface{}{
+					"model": "gpt-5.4",
+					"notes": "请用中文回复",
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-5",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected request_user_input form callback to be parsed")
+	}
+	if action.Kind != control.ActionRespondRequest || action.RequestID != "req-ui-2" {
+		t.Fatalf("unexpected action: %#v", action)
+	}
+	if got := action.RequestAnswers["notes"]; len(got) != 1 || got[0] != "请用中文回复" {
+		t.Fatalf("unexpected form request answers: %#v", action.RequestAnswers)
+	}
+}
+
 func TestParseMessageRecalledEventBuildsRecallAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-msg-1", "feishu:app-1:user:user-1")

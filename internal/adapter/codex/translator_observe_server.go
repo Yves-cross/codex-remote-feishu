@@ -414,6 +414,23 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			Initiator:    t.initiatorForTurn(threadID, turnID),
 			Metadata:     metadata,
 		}}}, nil
+	case "item/tool/requestUserInput":
+		requestID := lookupStringFromAny(message["id"])
+		if requestID == "" {
+			return Result{}, nil
+		}
+		threadID := lookupString(message, "params", "threadId")
+		turnID := lookupString(message, "params", "turnId")
+		return Result{Events: []agentproto.Event{{
+			Kind:         agentproto.EventRequestStarted,
+			ThreadID:     threadID,
+			TurnID:       turnID,
+			RequestID:    requestID,
+			Status:       "pending",
+			TrafficClass: t.trafficClassForTurn(threadID, turnID),
+			Initiator:    t.initiatorForTurn(threadID, turnID),
+			Metadata:     extractRequestUserInputMetadata(message),
+		}}}, nil
 	case "serverRequest/resolved", "request/resolved":
 		params := lookupMap(message, "params")
 		request := extractRequestPayload(message)
