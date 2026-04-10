@@ -408,7 +408,7 @@ func (g *LiveGateway) summarizeMergeForwardGatewayMessage(ctx context.Context, m
 		appendLine(title)
 	}
 	for _, child := range message.Children {
-		text, err := g.summarizeGatewayMessage(ctx, child)
+		text, err := g.summarizeGatewayMessageWithSpeaker(ctx, child)
 		if err != nil {
 			continue
 		}
@@ -418,6 +418,18 @@ func (g *LiveGateway) summarizeMergeForwardGatewayMessage(ctx context.Context, m
 		return strings.Join(lines, "\n"), nil
 	}
 	return parseMergeForwardContent(message.Content)
+}
+
+func (g *LiveGateway) summarizeGatewayMessageWithSpeaker(ctx context.Context, message *gatewayMessage) (string, error) {
+	text, err := g.summarizeGatewayMessage(ctx, message)
+	if err != nil {
+		return "", err
+	}
+	label := gatewayMessageSpeakerLabel(message)
+	if label == "" {
+		return text, nil
+	}
+	return label + ": " + text, nil
 }
 
 func (g *LiveGateway) summarizeGatewayMessage(ctx context.Context, message *gatewayMessage) (string, error) {
@@ -448,6 +460,47 @@ func (g *LiveGateway) summarizeGatewayMessage(ctx context.Context, message *gate
 			return text, nil
 		}
 		return "", fmt.Errorf("unsupported message type: %s", message.MessageType)
+	}
+}
+
+func gatewayMessageSpeakerLabel(message *gatewayMessage) string {
+	if message == nil {
+		return ""
+	}
+	senderID := strings.TrimSpace(message.SenderID)
+	senderType := strings.ToLower(strings.TrimSpace(message.SenderType))
+	switch senderType {
+	case "user":
+		if senderID == "" {
+			return "用户"
+		}
+		return "用户(" + senderID + ")"
+	case "app":
+		if senderID == "" {
+			return "应用"
+		}
+		return "应用(" + senderID + ")"
+	case "anonymous":
+		if senderID == "" {
+			return "匿名"
+		}
+		return "匿名(" + senderID + ")"
+	case "unknown":
+		if senderID == "" {
+			return "未知发送者"
+		}
+		return "未知发送者(" + senderID + ")"
+	default:
+		if senderType != "" && senderID != "" {
+			return senderType + "(" + senderID + ")"
+		}
+		if senderID != "" {
+			return "发送者(" + senderID + ")"
+		}
+		if senderType != "" {
+			return senderType
+		}
+		return ""
 	}
 }
 
