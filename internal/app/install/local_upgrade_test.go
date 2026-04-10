@@ -91,6 +91,9 @@ func TestRunLocalBinaryUpgradeWithStatePathImportsBinaryAndStartsHelper(t *testi
 	if updated.PendingUpgrade.TargetBinaryPath != targetBinary {
 		t.Fatalf("pending target binary = %q, want %q", updated.PendingUpgrade.TargetBinaryPath, targetBinary)
 	}
+	if updated.PendingUpgrade.HelperUnitName != "" {
+		t.Fatalf("pending helper unit = %q, want empty for detached helper", updated.PendingUpgrade.HelperUnitName)
+	}
 	if updated.PendingUpgrade.TargetVersion == "" {
 		t.Fatalf("pending target version = empty, want non-empty")
 	}

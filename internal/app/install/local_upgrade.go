@@ -111,16 +111,21 @@ func RunLocalBinaryUpgradeWithStatePath(opts LocalBinaryUpgradeOptions) (string,
 		return "", err
 	}
 	logPath := localUpgradeLogPath(stateValue)
-	if err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
+	launchResult, err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
 		State:        stateValue,
 		HelperBinary: helperPath,
 		StatePath:    statePath,
 		LogPath:      logPath,
 		Env:          append([]string{}, os.Environ()...),
-	}); err != nil {
+	})
+	if err != nil {
 		stateValue.PendingUpgrade = nil
 		stateValue.RollbackCandidate = nil
 		_ = WriteState(statePath, stateValue)
+		return "", err
+	}
+	stateValue.PendingUpgrade.HelperUnitName = strings.TrimSpace(launchResult.UnitName)
+	if err := WriteState(statePath, stateValue); err != nil {
 		return "", err
 	}
 	return resolvedSlot, nil

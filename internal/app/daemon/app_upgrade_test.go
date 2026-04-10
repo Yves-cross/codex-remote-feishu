@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -182,6 +183,39 @@ func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
 	}
 	if updated.PendingUpgrade != nil {
 		t.Fatalf("expected pending upgrade result to be cleared, got %#v", updated.PendingUpgrade)
+	}
+}
+
+func TestCopyUpgradeHelperBinaryUsesCurrentBinaryPath(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, statePath := newUpgradeTestApp(t, gateway)
+
+	currentBinary := filepath.Join(filepath.Dir(statePath), "current-live")
+	otherBinary := filepath.Join(filepath.Dir(statePath), "daemon-self")
+	if err := os.WriteFile(currentBinary, []byte("current-live-binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile current: %v", err)
+	}
+	if err := os.WriteFile(otherBinary, []byte("daemon-self-binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile self: %v", err)
+	}
+	app.serverIdentity.BinaryPath = otherBinary
+
+	stateValue, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	stateValue.CurrentBinaryPath = currentBinary
+
+	helperPath, err := app.copyUpgradeHelperBinaryLocked(stateValue)
+	if err != nil {
+		t.Fatalf("copyUpgradeHelperBinaryLocked: %v", err)
+	}
+	raw, err := os.ReadFile(helperPath)
+	if err != nil {
+		t.Fatalf("ReadFile helper: %v", err)
+	}
+	if string(raw) != "current-live-binary" {
+		t.Fatalf("helper content = %q, want current-live-binary", string(raw))
 	}
 }
 

@@ -75,6 +75,11 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 		return err
 	}
 
+	stateValue.PendingUpgrade.Phase = PendingUpgradePhaseSwitching
+	if err := WriteState(statePath, stateValue); err != nil {
+		return err
+	}
+
 	if err := stopCurrentDaemon(ctx, stateValue, paths); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("stop current daemon: %w", err))
 	}

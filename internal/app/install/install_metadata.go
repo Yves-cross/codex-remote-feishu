@@ -50,6 +50,7 @@ type PendingUpgrade struct {
 	TargetVersion    string        `json:"targetVersion,omitempty"`
 	TargetSlot       string        `json:"targetSlot,omitempty"`
 	TargetBinaryPath string        `json:"targetBinaryPath,omitempty"`
+	HelperUnitName   string        `json:"helperUnitName,omitempty"`
 	GatewayID        string        `json:"gatewayID,omitempty"`
 	SurfaceSessionID string        `json:"surfaceSessionID,omitempty"`
 	ChatID           string        `json:"chatID,omitempty"`

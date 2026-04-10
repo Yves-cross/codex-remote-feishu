@@ -28,7 +28,7 @@ func TestStartUpgradeHelperProcessUsesDetachedCommandForDetachedService(t *testi
 		return "", nil
 	}
 
-	err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
+	result, err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
 		State: InstallState{
 			ServiceManager: ServiceManagerDetached,
 		},
@@ -40,6 +40,9 @@ func TestStartUpgradeHelperProcessUsesDetachedCommandForDetachedService(t *testi
 	})
 	if err != nil {
 		t.Fatalf("StartUpgradeHelperProcess: %v", err)
+	}
+	if result.UnitName != "" {
+		t.Fatalf("unit name = %q, want empty for detached helper", result.UnitName)
 	}
 	if detached.BinaryPath != "/tmp/helper" {
 		t.Fatalf("binary = %q, want /tmp/helper", detached.BinaryPath)
@@ -77,7 +80,7 @@ func TestStartUpgradeHelperProcessUsesSystemdRunForSystemdUser(t *testing.T) {
 		return "codex-remote-upgrade-helper-test.service", nil
 	}
 
-	err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
+	result, err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
 		State: InstallState{
 			ServiceManager: ServiceManagerSystemdUser,
 		},
@@ -89,6 +92,9 @@ func TestStartUpgradeHelperProcessUsesSystemdRunForSystemdUser(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("StartUpgradeHelperProcess: %v", err)
+	}
+	if result.UnitName != transient.UnitName {
+		t.Fatalf("result unit name = %q, want %q", result.UnitName, transient.UnitName)
 	}
 	if transient.BinaryPath != "/tmp/helper" {
 		t.Fatalf("binary = %q, want /tmp/helper", transient.BinaryPath)

@@ -30,30 +30,38 @@ type systemdUserTransientCommandOptions struct {
 	LogPath    string
 }
 
+type UpgradeHelperLaunchResult struct {
+	UnitName string
+}
+
 var upgradeHelperStartDetachedCommandFunc = relayruntime.StartDetachedCommand
 var upgradeHelperStartSystemdUserTransientFunc = startSystemdUserTransientCommand
 
-func StartUpgradeHelperProcess(ctx context.Context, opts UpgradeHelperLaunchOptions) error {
+func StartUpgradeHelperProcess(ctx context.Context, opts UpgradeHelperLaunchOptions) (UpgradeHelperLaunchResult, error) {
 	helperBinary := filepath.Clean(strings.TrimSpace(opts.HelperBinary))
 	if helperBinary == "" {
-		return fmt.Errorf("helper binary path is required")
+		return UpgradeHelperLaunchResult{}, fmt.Errorf("helper binary path is required")
 	}
 	statePath := filepath.Clean(strings.TrimSpace(opts.StatePath))
 	if statePath == "" {
-		return fmt.Errorf("state path is required")
+		return UpgradeHelperLaunchResult{}, fmt.Errorf("state path is required")
 	}
 
 	args := []string{"upgrade-helper", "-state-path", statePath}
 	if effectiveServiceManager(opts.State) == ServiceManagerSystemdUser && runtime.GOOS == "linux" {
+		unitName := uniqueUpgradeHelperUnitName()
 		_, err := upgradeHelperStartSystemdUserTransientFunc(ctx, systemdUserTransientCommandOptions{
-			UnitName:   uniqueUpgradeHelperUnitName(),
+			UnitName:   unitName,
 			BinaryPath: helperBinary,
 			Args:       args,
 			Env:        append([]string(nil), opts.Env...),
 			WorkDir:    strings.TrimSpace(opts.WorkDir),
 			LogPath:    strings.TrimSpace(opts.LogPath),
 		})
-		return err
+		if err != nil {
+			return UpgradeHelperLaunchResult{}, err
+		}
+		return UpgradeHelperLaunchResult{UnitName: unitName}, nil
 	}
 
 	_, err := upgradeHelperStartDetachedCommandFunc(relayruntime.DetachedCommandOptions{
@@ -64,7 +72,10 @@ func StartUpgradeHelperProcess(ctx context.Context, opts UpgradeHelperLaunchOpti
 		StdoutPath: strings.TrimSpace(opts.LogPath),
 		StderrPath: strings.TrimSpace(opts.LogPath),
 	})
-	return err
+	if err != nil {
+		return UpgradeHelperLaunchResult{}, err
+	}
+	return UpgradeHelperLaunchResult{}, nil
 }
 
 func startSystemdUserTransientCommand(ctx context.Context, opts systemdUserTransientCommandOptions) (string, error) {

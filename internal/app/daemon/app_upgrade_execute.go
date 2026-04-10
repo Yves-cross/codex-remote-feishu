@@ -89,7 +89,7 @@ func (a *App) runPendingUpgradeStart(request upgradeStartRequest) {
 		a.finishUpgradeStartFailure(request, fmt.Errorf("写入 prepared journal 失败：%w", err))
 		return
 	}
-	helperPath, err := a.copyUpgradeHelperBinaryLocked()
+	helperPath, err := a.copyUpgradeHelperBinaryLocked(stateValue)
 	if err != nil {
 		a.upgradeStartInFlight = false
 		a.mu.Unlock()
@@ -98,16 +98,21 @@ func (a *App) runPendingUpgradeStart(request upgradeStartRequest) {
 	}
 	a.mu.Unlock()
 
-	if err := install.StartUpgradeHelperProcess(context.Background(), install.UpgradeHelperLaunchOptions{
+	launchResult, err := install.StartUpgradeHelperProcess(context.Background(), install.UpgradeHelperLaunchOptions{
 		State:        stateValue,
 		HelperBinary: helperPath,
 		StatePath:    stateValue.StatePath,
 		LogPath:      logPath,
 		Env:          append([]string{}, os.Environ()...),
-	}); err != nil {
+	})
+	if err != nil {
 		a.finishUpgradeStartFailure(request, fmt.Errorf("启动 upgrade helper 失败：%w", err))
 		return
 	}
+	a.mu.Lock()
+	stateValue.PendingUpgrade.HelperUnitName = strings.TrimSpace(launchResult.UnitName)
+	_ = a.writeUpgradeStateLocked(stateValue)
+	a.mu.Unlock()
 
 	_ = targetBinary
 	a.mu.Lock()
@@ -132,17 +137,18 @@ func (a *App) finishUpgradeStartFailure(request upgradeStartRequest, err error) 
 	}
 }
 
-func (a *App) copyUpgradeHelperBinaryLocked() (string, error) {
+func (a *App) copyUpgradeHelperBinaryLocked(stateValue install.InstallState) (string, error) {
 	helperDir := filepath.Join(filepath.Dir(a.installStatePath()), "upgrade-helper")
 	if err := os.MkdirAll(helperDir, 0o755); err != nil {
 		return "", err
 	}
 	name := "codex-remote-upgrade-helper"
-	if ext := filepath.Ext(a.serverIdentity.BinaryPath); ext != "" {
+	sourceBinary := firstNonEmpty(strings.TrimSpace(stateValue.CurrentBinaryPath), strings.TrimSpace(a.serverIdentity.BinaryPath))
+	if ext := filepath.Ext(sourceBinary); ext != "" {
 		name += ext
 	}
 	helperPath := filepath.Join(helperDir, fmt.Sprintf("%s-%d", name, time.Now().UTC().UnixNano()))
-	if err := copyFileLocal(a.serverIdentity.BinaryPath, helperPath); err != nil {
+	if err := copyFileLocal(sourceBinary, helperPath); err != nil {
 		return "", err
 	}
 	return helperPath, nil
