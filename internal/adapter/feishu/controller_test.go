@@ -37,7 +37,7 @@ func TestMultiGatewayControllerRoutesApplyByGatewayID(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- controller.Start(ctx, func(context.Context, control.Action) {})
+		done <- controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
 	}()
 
 	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
@@ -113,7 +113,7 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 		}
 	}
 	go func() {
-		_ = controller.Start(ctx, func(context.Context, control.Action) {})
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
 	}()
 	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
 	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
@@ -167,7 +167,7 @@ func TestMultiGatewayControllerUpsertRestartsWorker(t *testing.T) {
 	}
 
 	go func() {
-		_ = controller.Start(ctx, func(context.Context, control.Action) {})
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
 	}()
 
 	first := waitForCreatedRuntime(t, &mu, &created, 0)
@@ -217,7 +217,7 @@ func TestMultiGatewayControllerStartsAndStopsPreviewMaintenance(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- controller.Start(ctx, func(context.Context, control.Action) {})
+		done <- controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
 	}()
 
 	waitFakeGatewayStarted(t, runtime)

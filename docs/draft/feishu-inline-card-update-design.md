@@ -22,6 +22,26 @@
 - final reply / 补充预览 / 普通 notice 这类结果型消息的文案改写
 - 非 Feishu surface 的 UI 形态
 
+## 1.1 当前实现状态
+
+截至 `2026-04-10`，第一阶段已经落了一条**窄同步回包**链路，但范围刻意收窄，没有把所有卡片都改成动态更新：
+
+- 已实现：
+  - `/menu` 首页 <-> 二级分组页原地替换
+  - 从 `/menu` 打开的 bare `/mode`、`/autocontinue`、`/reasoning`、`/access`、`/model` 参数卡原地替换
+  - 参数卡里的“返回上一层”原地替换
+  - `/use` -> `show_scoped_threads`
+  - `/useall` -> `show_workspace_threads`
+  - 上述展开视图中的返回动作：`show_threads`、`show_all_threads`
+- 明确还没做：
+  - apply 终态卡刷新
+  - request prompt / kick confirm 终态卡刷新
+  - `/list` / `/use` / `/useall` 接管成功后的终态卡刷新
+  - `/upgrade` / 迁移修复这类异步动作的延时更新
+  - 共享卡片、`update_multi=true`、历史消息 PATCH
+
+所以当前实现不是“飞书卡片全面可回写”，而是只先收敛**同上下文导航噪音**。
+
 ## 2. 背景结论
 
 ### 2.1 飞书能力结论
@@ -385,6 +405,11 @@
 - 上述动作全部不再新发卡片
 - 同一轮菜单导航始终只操作一张卡
 
+当前状态：
+
+- 已实现，但范围只覆盖上述导航与返回动作
+- 技术策略是 card callback 同步回包替换整张卡，不引入共享卡片或 PATCH
+
 ### 阶段 2
 
 再做一次性决策卡终态化：
@@ -427,4 +452,3 @@
 - 飞书卡片交互回调: https://open.feishu.cn/document/feishu-cards/card-callback-communication
 - 飞书卡片交互配置: https://open.feishu.cn/document/feishu-cards/configuring-card-interactions
 - 更新应用发送的消息: https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/patch
-

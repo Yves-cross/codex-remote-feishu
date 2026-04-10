@@ -79,7 +79,7 @@ func TestLiveGatewayStartStopsOnContextCancel(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- gateway.Start(ctx, func(context.Context, control.Action) {})
+		errCh <- gateway.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
 	}()
 
 	select {

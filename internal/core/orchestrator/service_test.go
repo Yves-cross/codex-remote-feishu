@@ -4973,7 +4973,7 @@ func TestMenuActionVSCodeHomepageKeepsFollowBehindSettings(t *testing.T) {
 	}
 }
 
-func TestMenuSubmenuDoesNotShowReturnHomeButton(t *testing.T) {
+func TestMenuSubmenuShowsReturnToPreviousLevelButton(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 
@@ -4989,8 +4989,8 @@ func TestMenuSubmenuDoesNotShowReturnHomeButton(t *testing.T) {
 		t.Fatalf("expected command catalog, got %#v", events)
 	}
 	catalog := events[0].CommandCatalog
-	if len(catalog.RelatedButtons) != 0 {
-		t.Fatalf("submenu should not expose return-home related buttons: %#v", catalog.RelatedButtons)
+	if len(catalog.RelatedButtons) != 1 || catalog.RelatedButtons[0].CommandText != "/menu" {
+		t.Fatalf("submenu should expose a back button to /menu, got %#v", catalog.RelatedButtons)
 	}
 }
 
@@ -5392,11 +5392,14 @@ func TestPresentScopedThreadSelectionShowsAllSessionsInCurrentWorkspace(t *testi
 		t.Fatalf("expected selection prompt, got %#v", events)
 	}
 	prompt := events[0].SelectionPrompt
-	if prompt.Title != "当前工作区全部会话" || len(prompt.Options) != 6 {
+	if prompt.Title != "当前工作区全部会话" || len(prompt.Options) != 7 {
 		t.Fatalf("expected all current-workspace sessions, got %#v", prompt)
 	}
 	if prompt.Options[0].OptionID != "thread-6" || prompt.Options[5].OptionID != "thread-1" {
 		t.Fatalf("expected scoped-all prompt to keep recency order, got %#v", prompt.Options)
+	}
+	if prompt.Options[6].ActionKind != "show_threads" || prompt.Options[6].ButtonLabel != "最近会话" {
+		t.Fatalf("expected trailing return-to-recent action, got %#v", prompt.Options[6])
 	}
 }
 
@@ -5496,11 +5499,14 @@ func TestShowWorkspaceThreadsDisplaysSingleWorkspaceAllSessions(t *testing.T) {
 		t.Fatalf("expected workspace selection prompt, got %#v", events)
 	}
 	prompt := events[0].SelectionPrompt
-	if prompt.Layout != "workspace_grouped_useall" || prompt.Title != "web 全部会话" || len(prompt.Options) != 3 {
+	if prompt.Layout != "workspace_grouped_useall" || prompt.Title != "web 全部会话" || len(prompt.Options) != 4 {
 		t.Fatalf("unexpected workspace-all prompt: %#v", prompt)
 	}
 	if prompt.Options[0].OptionID != "thread-2" || prompt.Options[1].OptionID != "thread-3" || prompt.Options[2].OptionID != "thread-1" {
 		t.Fatalf("expected workspace-all prompt to keep recency order, got %#v", prompt.Options)
+	}
+	if prompt.Options[3].ActionKind != "show_all_threads" || prompt.Options[3].ButtonLabel != "全部会话" {
+		t.Fatalf("expected trailing return-to-global action, got %#v", prompt.Options[3])
 	}
 }
 

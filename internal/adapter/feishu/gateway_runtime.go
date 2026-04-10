@@ -44,7 +44,11 @@ func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 	dispatch.OnP2CardActionTrigger(func(ctx context.Context, event *larkcallback.CardActionTriggerEvent) (*larkcallback.CardActionTriggerResponse, error) {
 		action, ok := g.parseCardActionTriggerEvent(event)
 		if ok {
-			handler(ctx, action)
+			if result := handler(ctx, action); result != nil {
+				if response := callbackCardResponse(result); response != nil {
+					return response, nil
+				}
+			}
 		}
 		return &larkcallback.CardActionTriggerResponse{}, nil
 	})
@@ -57,6 +61,22 @@ func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 		return nil
 	})
 	return newGatewayWSRunner(g.config, dispatch, g.emitState).Run(ctx)
+}
+
+func callbackCardResponse(result *ActionResult) *larkcallback.CardActionTriggerResponse {
+	if result == nil || result.ReplaceCurrentCard == nil {
+		return nil
+	}
+	card := result.ReplaceCurrentCard
+	if card.Kind != OperationSendCard {
+		return nil
+	}
+	return &larkcallback.CardActionTriggerResponse{
+		Card: &larkcallback.Card{
+			Type: "card_json",
+			Data: buildCard(card.CardTitle, card.CardBody, card.CardThemeKey, card.CardElements),
+		},
+	}
 }
 
 func (g *LiveGateway) SetStateHook(hook func(GatewayState, error)) {

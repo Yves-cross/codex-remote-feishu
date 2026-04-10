@@ -96,6 +96,11 @@ func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleReco
 			Title:   group.Title,
 			Entries: entries,
 		}},
+		RelatedButtons: []control.CommandCatalogButton{{
+			Label:       "返回上一层",
+			Kind:        control.CommandCatalogButtonRunCommand,
+			CommandText: menuCommandText(""),
+		}},
 	}
 }
 

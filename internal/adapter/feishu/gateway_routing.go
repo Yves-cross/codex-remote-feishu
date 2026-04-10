@@ -91,6 +91,26 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			MessageID:        messageID,
 			Inbound:          meta,
 		}, true
+	case "show_threads":
+		return control.Action{
+			Kind:             control.ActionShowThreads,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			Inbound:          meta,
+		}, true
+	case "show_all_threads":
+		return control.Action{
+			Kind:             control.ActionShowAllThreads,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			Inbound:          meta,
+		}, true
 	case "show_workspace_threads":
 		workspaceKey := strings.TrimSpace(stringMapValue(value, "workspace_key"))
 		if workspaceKey == "" {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -177,6 +178,14 @@ func (a *App) handleIngressOverload(instanceID string, connectionID uint64) {
 }
 
 func (a *App) HandleAction(ctx context.Context, action control.Action) {
+	_ = a.handleAction(ctx, action)
+}
+
+func (a *App) HandleGatewayAction(ctx context.Context, action control.Action) *feishu.ActionResult {
+	return a.handleAction(ctx, action)
+}
+
+func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.ActionResult {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.shuttingDown {
@@ -188,7 +197,7 @@ func (a *App) HandleAction(ctx context.Context, action control.Action) {
 			action.Kind,
 			action.MessageID,
 		)
-		return
+		return nil
 	}
 	action = a.classifyInboundAction(action)
 	before := a.service.SurfaceSnapshot(action.SurfaceSessionID)
@@ -219,10 +228,13 @@ func (a *App) HandleAction(ctx context.Context, action control.Action) {
 			Notice:           notice,
 		}})
 		a.syncSurfaceResumeStateLocked(nil)
-		return
+		return nil
 	}
 	events := a.service.ApplySurfaceAction(action)
-	a.handleUIEvents(ctx, events)
+	inlineResult := a.inlineCardActionResultLocked(action, events)
+	if inlineResult == nil {
+		a.handleUIEvents(ctx, events)
+	}
 	a.syncHeadlessRestoreHintAfterActionLocked(action, before)
 	var clearTargets map[string]bool
 	if a.shouldClearSurfaceResumeTargetLocked(action, before) {
@@ -235,10 +247,56 @@ func (a *App) HandleAction(ctx context.Context, action control.Action) {
 			state.NormalizeProductMode(state.ProductMode(after.ProductMode)) == state.ProductModeVSCode &&
 			(before == nil || state.NormalizeProductMode(state.ProductMode(before.ProductMode)) != state.ProductModeVSCode)
 		if !switchedIntoVSCode {
-			return
+			return inlineResult
 		}
 		promptEvents, _ := a.maybePromptVSCodeCompatibilityLocked(action.SurfaceSessionID)
-		a.handleUIEvents(ctx, promptEvents)
+		if inlineResult == nil {
+			a.handleUIEvents(ctx, promptEvents)
+		}
+	}
+	return inlineResult
+}
+
+func (a *App) inlineCardActionResultLocked(action control.Action, events []control.UIEvent) *feishu.ActionResult {
+	if !shouldInlineReplaceCurrentCard(action) || len(events) != 1 {
+		return nil
+	}
+	event := events[0]
+	if event.Command != nil || event.DaemonCommand != nil {
+		return nil
+	}
+	switch event.Kind {
+	case control.UIEventCommandCatalog, control.UIEventSelectionPrompt:
+	default:
+		return nil
+	}
+	event.DaemonLifecycleID = a.daemonLifecycleID
+	ops := a.projector.Project(a.service.SurfaceChatID(event.SurfaceSessionID), event)
+	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
+		return nil
+	}
+	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}
+}
+
+func shouldInlineReplaceCurrentCard(action control.Action) bool {
+	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
+		return false
+	}
+	switch action.Kind {
+	case control.ActionShowCommandMenu,
+		control.ActionShowThreads,
+		control.ActionShowAllThreads,
+		control.ActionShowScopedThreads,
+		control.ActionShowWorkspaceThreads:
+		return true
+	case control.ActionModeCommand,
+		control.ActionAutoContinueCommand,
+		control.ActionReasoningCommand,
+		control.ActionAccessCommand,
+		control.ActionModelCommand:
+		return len(strings.Fields(strings.TrimSpace(action.Text))) <= 1
+	default:
+		return false
 	}
 }
 

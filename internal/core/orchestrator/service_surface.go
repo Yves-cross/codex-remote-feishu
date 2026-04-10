@@ -100,6 +100,9 @@ type threadSelectionPresentation struct {
 	showScopedAllButton bool
 	scopedAllButtonText string
 	scopedAllStatus     string
+	returnActionKind    string
+	returnButtonText    string
+	returnStatus        string
 }
 
 func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleRecord {
@@ -1136,6 +1139,12 @@ func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleR
 			AllowCrossWorkspace: true,
 		})
 	}
+	options = append(options, control.SelectionOption{
+		Index:       len(options) + 1,
+		ButtonLabel: "全部会话",
+		Subtitle:    "回到跨工作区会话列表",
+		ActionKind:  "show_all_threads",
+	})
 	return []control.UIEvent{{
 		Kind:             control.UIEventSelectionPrompt,
 		SurfaceSessionID: surface.SurfaceSessionID,
@@ -1193,6 +1202,14 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 			ButtonLabel: presentation.scopedAllButtonText,
 			Subtitle:    presentation.scopedAllStatus,
 			ActionKind:  "show_scoped_threads",
+		})
+	}
+	if strings.TrimSpace(presentation.returnActionKind) != "" {
+		options = append(options, control.SelectionOption{
+			Index:       len(options) + 1,
+			ButtonLabel: presentation.returnButtonText,
+			Subtitle:    presentation.returnStatus,
+			ActionKind:  presentation.returnActionKind,
 		})
 	}
 	return []control.UIEvent{{
@@ -1346,6 +1363,9 @@ func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConso
 		case threadSelectionDisplayScopedAll:
 			presentation.title = "当前实例全部会话"
 			presentation.limit = len(views)
+			presentation.returnActionKind = "show_threads"
+			presentation.returnButtonText = "最近会话"
+			presentation.returnStatus = "回到当前实例最近 5 个会话"
 		default:
 			if len(views) > 5 {
 				presentation.showScopedAllButton = true
@@ -1376,6 +1396,9 @@ func (s *Service) resolveThreadSelectionPresentation(surface *state.SurfaceConso
 		if mode == threadSelectionDisplayScopedAll {
 			presentation.title = "当前工作区全部会话"
 			presentation.limit = len(views)
+			presentation.returnActionKind = "show_threads"
+			presentation.returnButtonText = "最近会话"
+			presentation.returnStatus = "回到当前工作区最近 5 个会话"
 			return presentation
 		}
 		if len(views) > 5 {

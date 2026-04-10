@@ -317,7 +317,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.setGatewayRuntime(gatewayCancel, gatewayDone)
 	go func() {
 		defer close(gatewayDone)
-		if err := a.gateway.Start(gatewayCtx, a.HandleAction); err != nil && err != context.Canceled {
+		if err := a.gateway.Start(gatewayCtx, a.HandleGatewayAction); err != nil && err != context.Canceled {
 			errCh <- err
 		}
 	}()

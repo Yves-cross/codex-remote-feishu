@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-10`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页，以及 bare `/mode` `/autocontinue` `/reasoning` `/access` `/model` `/debug` `/upgrade` 的统一参数卡表单；同时记录 `/use` / `/useall` 的 scoped/global 展示规则，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页，以及 bare `/mode` `/autocontinue` `/reasoning` `/access` `/model` `/debug` `/upgrade` 的统一参数卡表单；同时记录 `/use` / `/useall` 的 scoped/global 展示规则，以及 Feishu 同上下文卡片导航的原地替换行为与协议边界。
 
 ## 1. 文档定位
 
@@ -26,18 +26,20 @@
 9. [internal/core/orchestrator/service_autocontinue.go](../../internal/core/orchestrator/service_autocontinue.go)
 10. [internal/codexstate/sqlite_threads.go](../../internal/codexstate/sqlite_threads.go)
 11. [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
-12. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
-13. [internal/core/orchestrator/service_command_menu.go](../../internal/core/orchestrator/service_command_menu.go)
-14. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
-15. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
-16. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
-17. [internal/app/daemon/app_surface_resume_state.go](../../internal/app/daemon/app_surface_resume_state.go)
-18. [internal/app/daemon/surface_resume_state.go](../../internal/app/daemon/surface_resume_state.go)
-19. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
-20. [internal/app/daemon/surface_resume_state_test.go](../../internal/app/daemon/surface_resume_state_test.go)
-21. [internal/app/daemon/admin_vscode.go](../../internal/app/daemon/admin_vscode.go)
-22. [internal/app/daemon/app_vscode_migration.go](../../internal/app/daemon/app_vscode_migration.go)
-23. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
+12. [internal/adapter/feishu/gateway.go](../../internal/adapter/feishu/gateway.go)
+13. [internal/adapter/feishu/gateway_runtime.go](../../internal/adapter/feishu/gateway_runtime.go)
+14. [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
+15. [internal/core/orchestrator/service_command_menu.go](../../internal/core/orchestrator/service_command_menu.go)
+16. [internal/app/daemon/app_headless.go](../../internal/app/daemon/app_headless.go)
+17. [internal/app/daemon/app_headless_restore_hints.go](../../internal/app/daemon/app_headless_restore_hints.go)
+18. [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
+19. [internal/app/daemon/app_surface_resume_state.go](../../internal/app/daemon/app_surface_resume_state.go)
+20. [internal/app/daemon/surface_resume_state.go](../../internal/app/daemon/surface_resume_state.go)
+21. [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
+22. [internal/app/daemon/surface_resume_state_test.go](../../internal/app/daemon/surface_resume_state_test.go)
+23. [internal/app/daemon/admin_vscode.go](../../internal/app/daemon/admin_vscode.go)
+24. [internal/app/daemon/app_vscode_migration.go](../../internal/app/daemon/app_vscode_migration.go)
+25. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
 
 ## 2. 审计前提
 
@@ -514,6 +516,14 @@ surface 不是单一枚举，而是五层正交状态叠加。
    2. 服务端会直接重新打开新的 `/model` 表单卡
    3. 若 daemon 热更新前已经残留 `G4`，下一条文本会立即应用，不再要求再点一次 Apply
 8. 二级分组当前通过卡片按钮 + breadcrumb 返回首页实现，不依赖飞书后台把整棵导航树都铺成静态菜单。
+9. 同上下文菜单导航当前已经支持“替换当前卡片”而不是追加新卡，但只限窄范围：
+   1. `/menu` 首页 <-> 二级分组页
+   2. 从 `/menu` 分组页打开 bare `/mode`、`/autocontinue`、`/reasoning`、`/access`、`/model`
+   3. bare 参数卡里的“返回上一层”
+10. 这条原地替换链路当前只在动作来自带 `CardDaemonLifecycleID` 的飞书卡片时启用：
+   1. 网关通过 card callback 同步回包返回替换后的整张卡
+   2. 同样的命令如果由 slash 文本或飞书后台 bot 菜单触发，仍按普通 append-only UIEvent 新发卡片
+   3. `/help`、result/notice 类卡片不参与这条导航替换语义
 
 ### 4.15 auto-continue 调度只允许走显式 reply-anchor，不再伪造用户消息 pending/typing
 
@@ -625,7 +635,8 @@ R5 NewThreadReady
    1. `/use` = 最近 5 个
    2. `show_scoped_threads` = 当前工作区全部会话
    3. 两者都不显示 workspace 行，只显示接管状态
-   4. 卡片展示固定按“当前会话 / 可接管 / 其他状态 / 更多”分组；按钮文案优先表达动作，例如 `当前 · <摘要>`、`接管 · <摘要>`、`不可接管 · <摘要>`、`查看全部 · 当前工作区全部会话`
+   4. `show_scoped_threads` 展开后的卡片尾部会追加一个 `show_threads` 返回按钮，回到最近 5 个会话
+   5. 卡片展示固定按“当前会话 / 可接管 / 其他状态 / 更多”分组；按钮文案优先表达动作，例如 `当前 · <摘要>`、`接管 · <摘要>`、`不可接管 · <摘要>`、`查看全部 · 当前工作区全部会话`、`返回 · 最近会话`
 8. attached `vscode /use` / `/useall` 当前有两条额外约束：
    1. 只展示当前 attached instance 的可见 thread，不再走 merged global thread view。
    2. force-pick 后会保留 `RouteMode=follow_local`，后续 observed focus 变化仍可覆盖。
@@ -637,13 +648,14 @@ R5 NewThreadReady
 9. attached normal `/useall` 当前会显示 cross-workspace 的全部会话，并允许直接点击切到其他 workspace。
    1. 这类 global 卡片会先保留一个单独的“当前会话”区块。
    2. 若当前 surface 已 attach workspace，还会在其后插入一段“当前工作区”摘要，仅供参考，不再展开当前 workspace 的 thread 列表；同 workspace 内切换仍建议回 `/use`
-   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后单独发出当前 workspace 的全量会话卡片
+   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后切到当前 workspace 的全量会话卡片；该卡片尾部会追加一个 `show_all_threads` 返回按钮，回到 cross-workspace `/useall`
    4. 其余会话会按 workspace 分组展示，workspace 分组按该组内最新 thread 的最近活跃时间倒序。
    5. 组内 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮
-   6. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后单独发出该 workspace 的全量会话卡片
+   6. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后切到该 workspace 的全量会话卡片
    7. 单-workspace 全量卡片会保留同样的排序和“序号 + 相对时间 + 全宽按钮”样式，只是不再截断到 5 条
    8. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里
    9. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表
+   10. `show_workspace_threads` 与 `show_all_threads` 当前都属于 same-context 导航；若动作来自当前 daemon 生命周期生成的卡片，会直接原地替换当前卡，而不是再追加一张新卡
 10. 当 normal mode `/use` / `/useall` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
@@ -956,6 +968,8 @@ retained-offline overlay 额外规则：
 | `attach_workspace` | `ActionAttachWorkspace` | normal mode `/list` 的 workspace attach/switch 入口 |
 | `attach_instance` | `ActionAttachInstance` | 直达 attach |
 | `use_thread` | `ActionUseThread` | 直达 thread 切换 |
+| `show_threads` | `ActionShowThreads` | 从 scoped-all 视图返回最近 5 个会话 |
+| `show_all_threads` | `ActionShowAllThreads` | 从单-workspace 全量视图返回 cross-workspace `/useall` |
 | `resume_headless_thread` | `ActionRemovedCommand` | 历史兼容入口，统一回迁移提示 |
 | `kick_thread_confirm` | `ActionConfirmKickThread` | 强踢前再次校验实时状态 |
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
@@ -976,6 +990,18 @@ retained-offline overlay 额外规则：
 3. `/mode vscode`
 
 三者都映射到 `ActionModeCommand`，由服务端在当前 surface 上解释并决定是否执行切换。
+
+补充说明：
+
+1. 当前 Feishu gateway 只为一小组 card action 开放同步 `replace_current_card` 回包：
+   1. `ActionShowCommandMenu`
+   2. `ActionShowThreads`
+   3. `ActionShowAllThreads`
+   4. `ActionShowScopedThreads`
+   5. `ActionShowWorkspaceThreads`
+   6. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
+2. 只有当这些动作产出恰好一张 `CommandCatalog` 或 `SelectionPrompt`，且来源卡片带有当前 daemon 的 lifecycle 标识时，才会走原地替换。
+3. apply 终态、request prompt 终态、upgrade/debug 异步结果等仍然沿用 append-only 消息语义，不在这轮同步回包范围内。
 
 ## 8. 当前死状态审计结论
 
@@ -1012,6 +1038,7 @@ retained-offline overlay 额外规则：
 29. **normal mode daemon 重启后会静默掉回 detached、过早报失败，或与 headless restore 优先级互相打架**：已修复。当前恢复顺序已收敛为 exact visible thread > workspace fallback > headless restore；首轮 refresh 前会静默等待，成功后会清理 stale headless hint，失败路径也只保留单条 notice + backoff。
 30. **vscode mode daemon 重启后只保留 mode、不恢复实例，或者恢复链路误走 headless**：已修复。当前会按 exact `ResumeInstanceID` 恢复到原 VS Code 实例，回到 follow-local 语义；若还没有新的 VS Code 活动，会明确提示去 VS Code 再说一句话或手动 `/use`，并且会主动清理 stale headless hint。
 31. **vscode mode 进入或 daemon 重启恢复时，会在 legacy `settings.json` / stale managed shim 状态下继续尝试恢复，导致用户看起来进入了 vscode mode，但底层仍沿用旧接入方式或失效入口**：已修复。当前 detached-vscode 恢复会先做本机 VS Code 兼容性检查；命中旧 `settings.json` override 或 stale managed shim 时，会保持 detached，发迁移/修复卡片，并在点击后统一迁移到 managed shim，同时清掉旧 `chatgpt.cliExecutable`。
+32. **同一张 `/menu` 或 `/use` 导航卡每点一步就继续在消息流里堆新卡，导致用户停留在同一选择上下文却要反复找最新卡**：已修复。当前限定范围内的 same-context 导航已经改成 card callback 同步替换当前卡，不再制造额外历史噪音。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。
 

@@ -10,7 +10,11 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-type ActionHandler func(context.Context, control.Action)
+type ActionHandler func(context.Context, control.Action) *ActionResult
+
+type ActionResult struct {
+	ReplaceCurrentCard *Operation
+}
 
 type Gateway interface {
 	Start(context.Context, ActionHandler) error

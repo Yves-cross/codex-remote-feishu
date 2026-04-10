@@ -842,6 +842,92 @@ func TestParseCardActionTriggerEventBuildsAttachWorkspaceAction(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsThreadListNavigationActions(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    map[string]interface{}
+		wantKind control.ActionKind
+	}{
+		{
+			name: "show recent",
+			value: map[string]interface{}{
+				"kind": "show_threads",
+			},
+			wantKind: control.ActionShowThreads,
+		},
+		{
+			name: "show all",
+			value: map[string]interface{}{
+				"kind": "show_all_threads",
+			},
+			wantKind: control.ActionShowAllThreads,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+			gateway.recordSurfaceMessage("om-card-nav", "feishu:app-1:user:user-1")
+			userID := "user-1"
+			event := &larkcallback.CardActionTriggerEvent{
+				Event: &larkcallback.CardActionTriggerRequest{
+					Operator: &larkcallback.Operator{UserID: &userID},
+					Action:   &larkcallback.CallBackAction{Value: tt.value},
+					Context: &larkcallback.Context{
+						OpenChatID:    "oc_1",
+						OpenMessageID: "om-card-nav",
+					},
+				},
+			}
+
+			action, ok := gateway.parseCardActionTriggerEvent(event)
+			if !ok {
+				t.Fatal("expected card callback to be parsed")
+			}
+			if action.Kind != tt.wantKind {
+				t.Fatalf("unexpected action kind: %#v", action)
+			}
+			if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {
+				t.Fatalf("unexpected action routing: %#v", action)
+			}
+		})
+	}
+}
+
+func TestCallbackCardResponseBuildsReplacementCard(t *testing.T) {
+	response := callbackCardResponse(&ActionResult{
+		ReplaceCurrentCard: &Operation{
+			Kind:         OperationSendCard,
+			CardTitle:    "命令菜单",
+			CardBody:     "当前在发送设置。",
+			CardThemeKey: cardThemeInfo,
+			CardElements: []map[string]any{{
+				"tag":     "markdown",
+				"content": "**发送设置**",
+			}},
+		},
+	})
+	if response == nil || response.Card == nil {
+		t.Fatalf("expected callback replacement response, got %#v", response)
+	}
+	if response.Card.Type != "card_json" {
+		t.Fatalf("unexpected callback card type: %#v", response.Card)
+	}
+	data, ok := response.Card.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected callback card data map, got %#v", response.Card.Data)
+	}
+	header, _ := data["header"].(map[string]any)
+	title, _ := header["title"].(map[string]any)
+	if title["content"] != "命令菜单" {
+		t.Fatalf("unexpected callback card header: %#v", data)
+	}
+	elements, _ := data["elements"].([]map[string]any)
+	if len(elements) != 2 {
+		t.Fatalf("expected body markdown plus extra element, got %#v", elements)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsRemovedResumeHeadlessAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")

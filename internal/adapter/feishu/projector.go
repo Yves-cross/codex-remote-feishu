@@ -789,7 +789,8 @@ func useThreadVSCodeInstanceElements(prompt control.SelectionPrompt, daemonLifec
 	available := make([]control.SelectionOption, 0, len(prompt.Options))
 	unavailable := make([]control.SelectionOption, 0, len(prompt.Options))
 	for _, option := range prompt.Options {
-		if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+		switch strings.TrimSpace(option.ActionKind) {
+		case "show_scoped_threads", "show_threads":
 			more = append(more, option)
 			continue
 		}
@@ -929,10 +930,15 @@ func useThreadPromptUsesWorkspaceGrouping(prompt control.SelectionPrompt) bool {
 func useThreadWorkspaceGroupedElements(prompt control.SelectionPrompt, daemonLifecycleID string) []map[string]any {
 	elements := make([]map[string]any, 0, len(prompt.Options)*3+8)
 	currentOptions := make([]control.SelectionOption, 0, 1)
+	moreOptions := make([]control.SelectionOption, 0, 1)
 	groups := make([]useThreadWorkspaceGroup, 0)
 	groupIndex := map[string]int{}
 	for _, option := range prompt.Options {
-		if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+		switch strings.TrimSpace(option.ActionKind) {
+		case "show_scoped_threads":
+			continue
+		case "show_threads", "show_all_threads":
+			moreOptions = append(moreOptions, option)
 			continue
 		}
 		if option.IsCurrent {
@@ -1055,6 +1061,22 @@ func useThreadWorkspaceGroupedElements(prompt control.SelectionPrompt, daemonLif
 		}
 	}
 
+	if len(moreOptions) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**更多**",
+		})
+		for _, option := range moreOptions {
+			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
+			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": renderSystemInlineTags(meta),
+				})
+			}
+		}
+	}
+
 	if hint := strings.TrimSpace(prompt.Hint); hint != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -1091,7 +1113,8 @@ func workspaceThreadsButton(label, workspaceKey, daemonLifecycleID string) map[s
 }
 
 func useThreadSelectionOptionGroup(option control.SelectionOption) useThreadOptionGroup {
-	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+	switch strings.TrimSpace(option.ActionKind) {
+	case "show_scoped_threads", "show_threads", "show_all_threads":
 		return useThreadOptionGroupMore
 	}
 	if option.IsCurrent {
@@ -1179,10 +1202,15 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 func selectionOptionButton(prompt control.SelectionPrompt, option control.SelectionOption, daemonLifecycleID string) map[string]any {
 	text := selectionOptionButtonText(prompt, option)
 	value := map[string]any{}
-	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
+	switch strings.TrimSpace(option.ActionKind) {
+	case "show_scoped_threads":
 		value = map[string]any{"kind": "show_scoped_threads"}
-	} else if strings.TrimSpace(option.ActionKind) == "show_workspace_threads" {
+	case "show_workspace_threads":
 		value = map[string]any{"kind": "show_workspace_threads", "workspace_key": strings.TrimSpace(option.OptionID)}
+	case "show_threads":
+		value = map[string]any{"kind": "show_threads"}
+	case "show_all_threads":
+		value = map[string]any{"kind": "show_all_threads"}
 	}
 	switch prompt.Kind {
 	case control.SelectionPromptAttachInstance:
@@ -1289,6 +1317,14 @@ func selectionOptionButtonText(prompt control.SelectionPrompt, option control.Se
 	if strings.TrimSpace(option.ActionKind) == "show_scoped_threads" {
 		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "全部会话")
 		return "查看全部 · " + base
+	}
+	if strings.TrimSpace(option.ActionKind) == "show_threads" {
+		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "最近会话")
+		return "返回 · " + base
+	}
+	if strings.TrimSpace(option.ActionKind) == "show_all_threads" {
+		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "全部会话")
+		return "返回 · " + base
 	}
 	if strings.TrimSpace(option.ActionKind) == "show_workspace_threads" {
 		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "工作区全部会话")
