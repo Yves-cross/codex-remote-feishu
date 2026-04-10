@@ -1053,6 +1053,9 @@ func TestProjectNoticeAsSystemCard(t *testing.T) {
 	if ops[0].CardThemeKey != cardThemeSuccess {
 		t.Fatalf("unexpected card theme: %#v", ops[0])
 	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected notice to use structured V2 send path, got %#v", ops[0])
+	}
 }
 
 func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
@@ -1240,6 +1243,9 @@ func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
 	if !containsAll(ops[0].CardBody, "正在断开，等待当前 turn 收尾", "跟随当前 VS Code（等待中）") {
 		t.Fatalf("expected snapshot body to show follow waiting and abandoning, got %#v", ops[0].CardBody)
 	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected snapshot to use structured V2 send path, got %#v", ops[0])
+	}
 }
 
 func TestProjectSnapshotShowsNewThreadReadyTarget(t *testing.T) {
@@ -1346,6 +1352,9 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	}
 	if ops[0].CardBody != "已收到：\n\n```text\nREADME.md\nsrc\n```" {
 		t.Fatalf("unexpected card body: %#v", ops[0])
+	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected final block to use structured V2 send path, got %#v", ops[0])
 	}
 }
 
@@ -1892,6 +1901,9 @@ func TestProjectThreadSelectionChangeIncludesShortThreadID(t *testing.T) {
 	}
 	if ops[0].CardBody != "当前输入目标已切换到：dl · 新会话\n\n会话 ID：7fd1…b782\n\n最近信息：\n最近一条信息" {
 		t.Fatalf("unexpected card body: %#v", ops[0])
+	}
+	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
+		t.Fatalf("expected thread selection change to use structured V2 send path, got %#v", ops[0])
 	}
 }
 

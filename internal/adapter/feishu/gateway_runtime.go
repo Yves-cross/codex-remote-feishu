@@ -150,7 +150,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 		}
 		return nil
 	case OperationSendCard:
-		card, err := json.Marshal(renderOperationCard(operation, cardEnvelopeLegacy))
+		card, err := json.Marshal(renderOperationCard(operation, operation.ordinaryCardEnvelope()))
 		if err != nil {
 			return err
 		}

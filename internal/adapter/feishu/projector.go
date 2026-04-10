@@ -39,6 +39,7 @@ type Operation struct {
 	CardBody         string
 	CardThemeKey     string
 	CardElements     []map[string]any
+	cardEnvelope     cardEnvelopeVersion
 	card             *cardDocument
 }
 
@@ -93,6 +94,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        "当前状态",
 			CardBody:         formatSnapshot(*event.Snapshot),
 			CardThemeKey:     cardThemeInfo,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             legacyCardDocument("当前状态", formatSnapshot(*event.Snapshot), cardThemeInfo, nil),
 		}}
 	case control.UIEventNotice:
 		if event.Notice == nil {
@@ -110,6 +113,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        title,
 			CardBody:         projectNoticeBody(*event.Notice),
 			CardThemeKey:     noticeThemeKey(*event.Notice),
+			cardEnvelope:     cardEnvelopeV2,
+			card:             legacyCardDocument(title, projectNoticeBody(*event.Notice), noticeThemeKey(*event.Notice), nil),
 		}}
 	case control.UIEventSelectionPrompt:
 		if event.SelectionPrompt == nil {
@@ -275,6 +280,8 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        "系统提示",
 			CardBody:         body,
 			CardThemeKey:     cardThemeInfo,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             legacyCardDocument("系统提示", body, cardThemeInfo, nil),
 		}}
 	default:
 		return nil
@@ -322,6 +329,8 @@ func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMe
 		CardBody:         body,
 		CardThemeKey:     cardThemeFinal,
 		CardElements:     elements,
+		cardEnvelope:     cardEnvelopeV2,
+		card:             legacyCardDocument(finalCardTitle(sourceMessagePreview), body, cardThemeFinal, elements),
 	}}
 }
 

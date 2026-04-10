@@ -89,6 +89,13 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 	return renderCardDocument(doc, version)
 }
 
+func (operation Operation) ordinaryCardEnvelope() cardEnvelopeVersion {
+	if operation.cardEnvelope == cardEnvelopeV2 {
+		return cardEnvelopeV2
+	}
+	return cardEnvelopeLegacy
+}
+
 func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion) map[string]any {
 	if doc == nil {
 		return nil
