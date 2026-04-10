@@ -6,6 +6,35 @@ import { makeApp, makeAutostartDetect, makeBootstrap, makeManifest, makeRuntimeR
 import { installMockFetch } from "../test/http";
 
 describe("SetupRoute", () => {
+  it("toggles the shared setup step navigation and closes it after selecting a step", async () => {
+    window.history.replaceState({}, "", "/setup");
+
+    installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/apps": {
+        body: {
+          apps: [makeApp({ wizard: {} })],
+        },
+      },
+      "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    const toggle = screen.getByRole("button", { name: "打开步骤导航" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByRole("button", { name: /创建并连接飞书应用/ }));
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("starts connect flow from explicit mode selection and shows manual fields for existing apps", async () => {
     window.history.replaceState({}, "", "/setup");
 

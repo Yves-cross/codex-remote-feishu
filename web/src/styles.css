@@ -78,6 +78,32 @@ button {
   box-shadow: var(--shadow);
 }
 
+.shell-rail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shell-rail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.shell-rail-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.72rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f8fb;
+  cursor: pointer;
+}
+
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -767,6 +793,13 @@ button {
   gap: 0.75rem;
 }
 
+.wizard-rail-note {
+  padding: 0.95rem 1rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(244, 248, 251, 0.8);
+}
+
 .wizard-step-link {
   display: flex;
   justify-content: space-between;
@@ -1099,6 +1132,19 @@ button {
     position: static;
   }
 
+  .shell-rail-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .shell-scaffold .shell-rail-body {
+    display: none;
+  }
+
+  .shell-scaffold.rail-open .shell-rail-body {
+    display: flex;
+  }
+
   .stat-grid,
   .definition-list,
   .setup-two-column,
@@ -1117,6 +1163,26 @@ button {
     padding: 0.9rem;
   }
 
+  .side-rail,
+  .page-hero,
+  .panel {
+    border-radius: 1.35rem;
+  }
+
+  .shell-rail-header {
+    align-items: center;
+  }
+
+  .brand-lockup {
+    gap: 0.8rem;
+  }
+
+  .brand-mark {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 0.9rem;
+  }
+
   .page-hero,
   .gateway-card,
   .data-row,
@@ -1131,6 +1197,16 @@ button {
   .panel-actions,
   .attention-actions {
     align-items: flex-start;
+  }
+
+  .side-nav,
+  .wizard-step-nav {
+    gap: 0.65rem;
+  }
+
+  .side-nav a,
+  .wizard-step-link {
+    padding: 0.85rem 0.9rem;
   }
 
   .stat-grid,

@@ -14,6 +14,33 @@ import {
 import { installMockFetch } from "../test/http";
 
 describe("AdminRoute", () => {
+  it("toggles the shell section navigation and closes it after selecting a section", async () => {
+    const user = userEvent.setup();
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    const toggle = screen.getByRole("button", { name: "打开分区导航" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByRole("link", { name: "飞书机器人" }));
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("shows the admin error state when bootstrap loading fails", async () => {
     installMockFetch({
       "/api/admin/bootstrap-state": {

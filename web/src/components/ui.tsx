@@ -1,4 +1,58 @@
-import type { PropsWithChildren, ReactNode } from "react";
+import { useId, useState, type MouseEvent, type PropsWithChildren, type ReactNode } from "react";
+
+type ShellScaffoldProps = {
+  routeLabel: string;
+  subtitle: string;
+  railContent: ReactNode;
+  railToggleLabel: string;
+  railClassName?: string;
+  mainClassName?: string;
+  children: ReactNode;
+};
+
+export function ShellScaffold(props: ShellScaffoldProps) {
+  const { routeLabel, subtitle, railContent, railToggleLabel, railClassName, mainClassName, children } = props;
+  const [railOpen, setRailOpen] = useState(false);
+  const railBodyID = useId();
+
+  function handleRailBodyClick(event: MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest("a,button")) {
+      return;
+    }
+    setRailOpen(false);
+  }
+
+  return (
+    <div className={`app-shell shell-scaffold${railOpen ? " rail-open" : ""}`}>
+      <aside className={`side-rail${railClassName ? ` ${railClassName}` : ""}`}>
+        <div className="shell-rail-header">
+          <div className="brand-lockup">
+            <div className="brand-mark">CR</div>
+            <div>
+              <p className="brand-kicker">{routeLabel}</p>
+              <h1>Codex Remote</h1>
+            </div>
+          </div>
+          <button
+            className="shell-rail-toggle"
+            type="button"
+            aria-expanded={railOpen}
+            aria-controls={railBodyID}
+            onClick={() => setRailOpen((open) => !open)}
+          >
+            {railOpen ? `收起${railToggleLabel}` : `打开${railToggleLabel}`}
+          </button>
+        </div>
+        <div id={railBodyID} className="shell-rail-body" onClick={handleRailBodyClick}>
+          <p className="side-copy">{subtitle}</p>
+          {railContent}
+        </div>
+      </aside>
+      <main className={`main-stage${mainClassName ? ` ${mainClassName}` : ""}`}>{children}</main>
+    </div>
+  );
+}
 
 export function ShellFrame(props: {
   routeLabel: string;
@@ -10,16 +64,11 @@ export function ShellFrame(props: {
 }) {
   const { routeLabel, title, subtitle, nav, actions, children } = props;
   return (
-    <div className="app-shell">
-      <aside className="side-rail">
-        <div className="brand-lockup">
-          <div className="brand-mark">CR</div>
-          <div>
-            <p className="brand-kicker">{routeLabel}</p>
-            <h1>Codex Remote</h1>
-          </div>
-        </div>
-        <p className="side-copy">{subtitle}</p>
+    <ShellScaffold
+      routeLabel={routeLabel}
+      subtitle={subtitle}
+      railToggleLabel="分区导航"
+      railContent={
         <nav className="side-nav" aria-label="Page Sections">
           {nav.map((item) => (
             <a key={item.href} href={item.href}>
@@ -27,8 +76,8 @@ export function ShellFrame(props: {
             </a>
           ))}
         </nav>
-      </aside>
-      <main className="main-stage">
+      }
+    >
         <header className="page-hero">
           <div>
             <p className="page-kicker">{routeLabel}</p>
@@ -37,8 +86,7 @@ export function ShellFrame(props: {
           {actions ? <div className="hero-actions">{actions}</div> : null}
         </header>
         {children}
-      </main>
-    </div>
+    </ShellScaffold>
   );
 }
 

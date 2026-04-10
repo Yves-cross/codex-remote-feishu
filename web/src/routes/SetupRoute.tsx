@@ -17,7 +17,7 @@ import type {
   SetupCompleteResponse,
   VSCodeDetectResponse,
 } from "../lib/types";
-import { BlockingModal, ErrorState, LoadingState, Panel, StatusBadge } from "../components/ui";
+import { BlockingModal, ErrorState, LoadingState, Panel, ShellScaffold, StatusBadge } from "../components/ui";
 import {
   SetupStepContent,
   SetupStepPrimaryAction,
@@ -647,18 +647,13 @@ export function SetupRoute() {
 
   if (finishInfo && bootstrap && !bootstrap.session.trustedLoopback) {
     return (
-      <div className="app-shell wizard-shell">
-        <aside className="side-rail wizard-rail">
-          <div className="brand-lockup">
-            <div className="brand-mark">CR</div>
-            <div>
-              <p className="brand-kicker">Setup Completed</p>
-              <h1>Codex Remote</h1>
-            </div>
-          </div>
-          <p className="side-copy">当前 setup access 已关闭。远程 SSH 场景下，正式管理页仍然只允许 localhost 访问。</p>
-        </aside>
-        <main className="main-stage">
+      <ShellScaffold
+        routeLabel="Setup Completed"
+        subtitle="当前 setup access 已关闭。远程 SSH 场景下，正式管理页仍然只允许 localhost 访问。"
+        railToggleLabel="状态说明"
+        railClassName="wizard-rail"
+        railContent={<div className="wizard-rail-note">setup 已完成，后续请回到本地管理页继续操作。</div>}
+      >
           <Panel title="安装向导已完成" description={finishInfo.message}>
             <div className="wizard-link-row">
               <span>本地管理页地址</span>
@@ -667,23 +662,19 @@ export function SetupRoute() {
               </a>
             </div>
           </Panel>
-        </main>
-      </div>
+      </ShellScaffold>
     );
   }
 
   return (
     <>
-      <div className="app-shell wizard-shell">
-        <aside className="side-rail wizard-rail">
-          <div className="brand-lockup">
-            <div className="brand-mark">CR</div>
-            <div>
-              <p className="brand-kicker">Setup Wizard</p>
-              <h1>Codex Remote</h1>
-            </div>
-          </div>
-          <p className="side-copy">向导一次只展示当前步骤。左侧只保留步骤名和状态，不提前暴露后面的配置细节。</p>
+      <ShellScaffold
+        routeLabel="Setup Wizard"
+        subtitle="向导一次只展示当前步骤。左侧只保留步骤名和状态，不提前暴露后面的配置细节。"
+        railToggleLabel="步骤导航"
+        railClassName="wizard-rail"
+        mainClassName="wizard-stage"
+        railContent={
           <div className="wizard-step-nav" aria-label="Setup Steps">
             {wizardSteps.map((step) => {
               const state = stepState(step.id, resolvedCurrentStep, stepCompletion, bootstrap, activeApp, runtimeRequirementsReady);
@@ -699,9 +690,8 @@ export function SetupRoute() {
               );
             })}
           </div>
-        </aside>
-
-        <main className="main-stage wizard-stage">
+        }
+      >
           <header className="page-hero wizard-hero">
             <div>
               <p className="page-kicker">
@@ -817,8 +807,7 @@ export function SetupRoute() {
               </div>
             </Panel>
           ) : null}
-        </main>
-      </div>
+      </ShellScaffold>
 
       <BlockingModal open={Boolean(blockingError)} title={blockingError?.title || ""} message={blockingError?.message || ""} detail={blockingError?.detail} onConfirm={() => setBlockingError(null)} />
     </>
