@@ -129,6 +129,131 @@ describe("AdminRoute", () => {
     expect(screen.getByRole("button", { name: "重试应用" })).toBeInTheDocument();
   });
 
+  it("shows existing-app manual connect flow when adding a new bot from admin", async () => {
+    const user = userEvent.setup();
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByRole("button", { name: "新增机器人" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新增机器人" }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(await screen.findByText("已有应用怎么接")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存并验证" })).toBeInTheDocument();
+  });
+
+  it("creates a new admin bot through qr onboarding", async () => {
+    const user = userEvent.setup();
+    let appListCalls = 0;
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": { body: makeRuntimeStatus() },
+      "/api/admin/feishu/apps": () => {
+        appListCalls += 1;
+        if (appListCalls === 1) {
+          return { body: { apps: [makeApp()] } };
+        }
+        return {
+          body: {
+            apps: [
+              makeApp(),
+              makeApp({
+                id: "bot-qr",
+                name: "扫码 Bot",
+                appId: "cli_qr",
+                wizard: {
+                  credentialsSavedAt: "2026-04-10T09:00:00Z",
+                  connectionVerifiedAt: "2026-04-10T09:00:05Z",
+                },
+              }),
+            ],
+          },
+        };
+      },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+      "/api/admin/storage/preview-drive/bot-qr": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-qr", name: "扫码 Bot" }),
+      },
+      "/api/admin/feishu/onboarding/sessions": {
+        status: 201,
+        body: {
+          session: {
+            id: "session-admin-1",
+            status: "pending",
+            qrCodeDataUrl: "data:image/png;base64,abc",
+            verificationUrl: "https://example.test/qr",
+            pollIntervalSeconds: 2,
+          },
+        },
+      },
+      "/api/admin/feishu/onboarding/sessions/session-admin-1": {
+        body: {
+          session: {
+            id: "session-admin-1",
+            status: "ready",
+            qrCodeDataUrl: "data:image/png;base64,abc",
+            verificationUrl: "https://example.test/qr",
+            appId: "cli_qr",
+            displayName: "扫码 Bot",
+            pollIntervalSeconds: 2,
+          },
+        },
+      },
+      "/api/admin/feishu/onboarding/sessions/session-admin-1/complete": {
+        body: {
+          app: makeApp({
+            id: "bot-qr",
+            name: "扫码 Bot",
+            appId: "cli_qr",
+            wizard: {
+              credentialsSavedAt: "2026-04-10T09:00:00Z",
+              connectionVerifiedAt: "2026-04-10T09:00:05Z",
+            },
+          }),
+          result: {
+            connected: true,
+            duration: 1,
+          },
+          session: {
+            id: "session-admin-1",
+            status: "completed",
+            appId: "cli_qr",
+            displayName: "扫码 Bot",
+          },
+        },
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByRole("button", { name: "新增机器人" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新增机器人" }));
+    await user.click(screen.getByRole("radio", { name: /新建飞书应用/ }));
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(await screen.findByText("扫码创建飞书应用")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新二维码状态" }));
+    expect(await screen.findByText(/连接测试成功/)).toBeInTheDocument();
+  });
+
   it("applies managed shim for local plus remote ssh usage from the admin panel", async () => {
     const user = userEvent.setup();
     installMockFetch({

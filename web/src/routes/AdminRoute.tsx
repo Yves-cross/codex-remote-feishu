@@ -5,12 +5,15 @@ import type {
   AdminInstancesResponse,
   BootstrapState,
   FeishuAppMutation,
-  FeishuRuntimeApplyFailureDetails,
   FeishuAppResponse,
+  FeishuAppsResponse,
   FeishuAppSummary,
   FeishuAppVerifyResponse,
-  FeishuAppsResponse,
   FeishuManifestResponse,
+  FeishuOnboardingCompleteResponse,
+  FeishuOnboardingSession,
+  FeishuOnboardingSessionResponse,
+  FeishuRuntimeApplyFailureDetails,
   GatewayStatus,
   ImageStagingCleanupResponse,
   ImageStagingStatusResponse,
@@ -45,6 +48,7 @@ import {
 } from "./shared/helpers";
 import type { AppDraft, Notice, PreviewMap } from "./admin/types";
 import { newAppID } from "./admin/types";
+import type { FeishuConnectMode, FeishuConnectStage } from "./setup/types";
 
 export function AdminRoute() {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
@@ -59,6 +63,10 @@ export function AdminRoute() {
   const [previews, setPreviews] = useState<PreviewMap>({});
   const [selectedAppID, setSelectedAppID] = useState<string>(newAppID);
   const [draft, setDraft] = useState<AppDraft>(emptyDraft());
+  const [feishuConnectStage, setFeishuConnectStage] = useState<FeishuConnectStage>("mode_select");
+  const [feishuConnectMode, setFeishuConnectMode] = useState<FeishuConnectMode | null>(null);
+  const [onboardingSession, setOnboardingSession] = useState<FeishuOnboardingSession | null>(null);
+  const [onboardingNeedsManualRetry, setOnboardingNeedsManualRetry] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [error, setError] = useState<string>("");
   const [busyAction, setBusyAction] = useState("");
@@ -131,6 +139,10 @@ export function AdminRoute() {
     }
   }, [vscode?.sshSession]);
 
+  useEffect(() => {
+    resetFeishuConnectFlow(apps.length > 0 ? "existing" : "new");
+  }, [selectedAppID, apps.length]);
+
   async function runAction(label: string, work: () => Promise<void>, onError?: (err: unknown) => Promise<boolean>) {
     setBusyAction(label);
     setNotice(null);
@@ -158,6 +170,13 @@ export function AdminRoute() {
     setNotice(null);
   }
 
+  function resetFeishuConnectFlow(nextMode?: FeishuConnectMode) {
+    setFeishuConnectStage("mode_select");
+    setFeishuConnectMode(nextMode ?? (apps.length > 0 ? "existing" : "new"));
+    setOnboardingSession(null);
+    setOnboardingNeedsManualRetry(false);
+  }
+
   async function handleFeishuRuntimeApplyFailure(err: unknown, fallbackAppID: string): Promise<boolean> {
     if (!(err instanceof APIRequestError) || err.code !== "gateway_apply_failed") {
       return false;
@@ -180,6 +199,109 @@ export function AdminRoute() {
     return true;
   }
 
+  async function continueFeishuConnectModeSelection() {
+    if (!feishuConnectMode) {
+      setNotice({ tone: "danger", message: "请先选择你想怎么接入飞书应用。" });
+      return;
+    }
+    if (feishuConnectMode === "existing") {
+      setFeishuConnectStage("existing_manual");
+      setOnboardingSession(null);
+      setOnboardingNeedsManualRetry(false);
+      return;
+    }
+    await startFeishuOnboarding();
+  }
+
+  async function startFeishuOnboarding() {
+    await runAction("start-feishu-onboarding", async () => {
+      const response = await sendJSON<FeishuOnboardingSessionResponse>("/api/admin/feishu/onboarding/sessions", "POST");
+      setFeishuConnectMode("new");
+      setFeishuConnectStage("new_qr");
+      setOnboardingSession(response.session);
+      setOnboardingNeedsManualRetry(false);
+    });
+  }
+
+  async function refreshFeishuOnboarding(options?: { silent?: boolean }) {
+    if (!onboardingSession?.id) {
+      return;
+    }
+    try {
+      const response = await requestJSON<FeishuOnboardingSessionResponse>(`/api/admin/feishu/onboarding/sessions/${encodeURIComponent(onboardingSession.id)}`);
+      setOnboardingSession(response.session);
+      if (response.session.status === "pending") {
+        setOnboardingNeedsManualRetry(false);
+      }
+    } catch (err: unknown) {
+      if (options?.silent) {
+        return;
+      }
+      throw err;
+    }
+  }
+
+  async function retryOnboardingComplete() {
+    if (!onboardingSession?.id) {
+      setNotice({ tone: "danger", message: "当前还没有可用的扫码会话。请重新开始扫码。" });
+      return;
+    }
+    await runAction("complete-feishu-onboarding", async () => {
+      const response = await requestJSONAllowHTTPError<FeishuOnboardingCompleteResponse>(
+        `/api/admin/feishu/onboarding/sessions/${encodeURIComponent(onboardingSession.id)}/complete`,
+        { method: "POST" },
+      );
+      setOnboardingSession(response.data.session);
+      await loadAdminData(response.data.app.id);
+      if (!response.ok) {
+        const detail = `${response.data.result.errorCode || "verify_failed"} ${response.data.result.errorMessage || ""}`.trim();
+        setOnboardingNeedsManualRetry(true);
+        setNotice({ tone: "danger", message: `扫码创建的飞书应用已经拿到凭据，但连接测试失败：${detail}`.trim() });
+        return;
+      }
+      setOnboardingNeedsManualRetry(false);
+      setNotice({
+        tone: response.data.app.status?.state === "connected" ? "good" : "warn",
+        message: buildAdminFeishuVerifySuccessMessage(response.data.app, response.data.result.duration),
+      });
+      resetFeishuConnectFlow("existing");
+    });
+  }
+
+  async function saveAndVerifyNewApp() {
+    if (draft.appId.trim() === "") {
+      setNotice({ tone: "danger", message: "请先填写 App ID。" });
+      return;
+    }
+    if (draft.appSecret.trim() === "") {
+      setNotice({ tone: "danger", message: "请先填写 App Secret。" });
+      return;
+    }
+    await runAction("create-app", async () => {
+      const response = await sendJSON<FeishuAppResponse>("/api/admin/feishu/apps", "POST", {
+        id: blankToUndefined(draft.id),
+        name: blankToUndefined(draft.name),
+        appId: blankToUndefined(draft.appId),
+        appSecret: blankToUndefined(draft.appSecret),
+        enabled: draft.enabled,
+      });
+      const verifyResponse = await requestJSONAllowHTTPError<FeishuAppVerifyResponse>(`/api/admin/feishu/apps/${encodeURIComponent(response.app.id)}/verify`, {
+        method: "POST",
+      });
+      await loadAdminData(response.app.id);
+      if (!verifyResponse.ok) {
+        const detail = `${verifyResponse.data.result.errorCode || "verify_failed"} ${verifyResponse.data.result.errorMessage || ""}`.trim();
+        setNotice({ tone: "danger", message: `飞书应用已保存，但连接测试失败：${detail}`.trim() });
+        return;
+      }
+      resetFeishuConnectFlow("existing");
+      setNotice({
+        tone: verifyResponse.data.app.status?.state === "connected" ? "good" : "warn",
+        message: buildAdminFeishuVerifySuccessMessage(verifyResponse.data.app, verifyResponse.data.result.duration),
+      });
+    });
+  }
+
   async function saveApp() {
     if (activeApp?.readOnly && !draft.isNew) {
       return;
@@ -190,13 +312,13 @@ export function AdminRoute() {
         const payload = {
           id: draft.isNew ? blankToUndefined(draft.id) : undefined,
           name: blankToUndefined(draft.name),
-        appId: blankToUndefined(draft.appId),
-        appSecret: blankToUndefined(draft.appSecret),
-        enabled: draft.enabled,
-      };
-      const path = draft.isNew ? "/api/admin/feishu/apps" : `/api/admin/feishu/apps/${encodeURIComponent(selectedAppID)}`;
-      const method = draft.isNew ? "POST" : "PUT";
-      const response = await sendJSON<FeishuAppResponse>(path, method, payload);
+          appId: blankToUndefined(draft.appId),
+          appSecret: blankToUndefined(draft.appSecret),
+          enabled: draft.enabled,
+        };
+        const path = draft.isNew ? "/api/admin/feishu/apps" : `/api/admin/feishu/apps/${encodeURIComponent(selectedAppID)}`;
+        const method = draft.isNew ? "POST" : "PUT";
+        const response = await sendJSON<FeishuAppResponse>(path, method, payload);
         await loadAdminData(response.app.id);
         setNotice({
           tone: feishuMutationTone(response.mutation),
@@ -369,6 +491,32 @@ export function AdminRoute() {
     });
   }
 
+  useEffect(() => {
+    if (selectedAppID !== newAppID || feishuConnectStage !== "new_qr" || !onboardingSession?.id) {
+      return;
+    }
+    if (onboardingSession.status === "ready" && !onboardingNeedsManualRetry && busyAction !== "complete-feishu-onboarding") {
+      void retryOnboardingComplete();
+      return;
+    }
+    if (onboardingSession.status !== "pending") {
+      return;
+    }
+    const delay = Math.max(2_000, (onboardingSession.pollIntervalSeconds ?? 5) * 1_000);
+    const timer = window.setTimeout(() => {
+      void refreshFeishuOnboarding({ silent: true });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [
+    busyAction,
+    feishuConnectStage,
+    onboardingNeedsManualRetry,
+    onboardingSession?.id,
+    onboardingSession?.pollIntervalSeconds,
+    onboardingSession?.status,
+    selectedAppID,
+  ]);
+
   return (
     <ShellFrame
       routeLabel="Admin"
@@ -414,10 +562,27 @@ export function AdminRoute() {
             draft={draft}
             activeApp={activeApp}
             busyAction={busyAction}
+            connectStage={feishuConnectStage}
+            connectMode={feishuConnectMode}
+            onboardingSession={onboardingSession}
+            onboardingNeedsManualRetry={onboardingNeedsManualRetry}
             setupURLForApp={setupURLForApp}
             onBeginNewApp={beginNewApp}
             onSelectApp={selectApp}
             onDraftChange={setDraft}
+            onConnectModeChange={setFeishuConnectMode}
+            onContinueModeSelection={() => void continueFeishuConnectModeSelection()}
+            onVerifyNewAppManual={() => void saveAndVerifyNewApp()}
+            onBackToModeSelection={() => resetFeishuConnectFlow(feishuConnectMode ?? undefined)}
+            onRefreshOnboarding={() => void refreshFeishuOnboarding()}
+            onRestartOnboarding={() => void startFeishuOnboarding()}
+            onSwitchToExistingFlow={() => {
+              setFeishuConnectMode("existing");
+              setFeishuConnectStage("existing_manual");
+              setOnboardingSession(null);
+              setOnboardingNeedsManualRetry(false);
+            }}
+            onRetryOnboardingComplete={() => void retryOnboardingComplete()}
             onSaveApp={() => void saveApp()}
             onVerifyApp={() => void verifyApp()}
             onReconnectApp={() => void reconnectApp()}

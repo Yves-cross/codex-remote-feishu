@@ -3,6 +3,7 @@ import { FeishuAppFields } from "../shared/FeishuAppFields";
 import type { FeishuConnectMode, FeishuConnectStage, SetupDraft } from "./types";
 
 type FeishuConnectStepProps = {
+  surface?: "setup" | "admin";
   apps: FeishuAppSummary[];
   activeApp: FeishuAppSummary | null;
   draft: SetupDraft;
@@ -25,6 +26,7 @@ type FeishuConnectStepProps = {
 };
 
 export function FeishuConnectStep({
+  surface = "setup",
   apps,
   activeApp,
   draft,
@@ -45,6 +47,12 @@ export function FeishuConnectStep({
   onSwitchToExistingFlow,
   onRetryOnboardingComplete,
 }: FeishuConnectStepProps) {
+  const isSetupSurface = surface === "setup";
+  const verifyActionLabel = isSetupSurface ? "验证并继续" : "保存并验证";
+  const extraSetupNotice = isSetupSurface && apps.length > 1
+    ? [{ tone: "warn" as const, message: "当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。" }]
+    : [];
+
   function applyCredentialField(field: "appId" | "appSecret", value: string) {
     const pair = splitAppPair(value);
     if (pair) {
@@ -65,8 +73,8 @@ export function FeishuConnectStep({
         <FeishuAppFields
           className="wizard-form-stack"
           notices={[
-            ...(apps.length > 1 ? [{ tone: "warn" as const, message: "当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。" }] : []),
-            { tone: "warn" as const, message: "当前应用由运行时环境变量接管，setup 页面会直接对它做连接测试，但不会修改本地配置。" },
+            ...extraSetupNotice,
+            { tone: "warn" as const, message: isSetupSurface ? "当前应用由运行时环境变量接管，setup 页面会直接对它做连接测试，但不会修改本地配置。" : "当前应用由运行时环境变量接管，管理页只能做连接测试，不能修改本地配置。" },
           ]}
           values={draft}
           readOnly
@@ -81,11 +89,11 @@ export function FeishuConnectStep({
         <div className="wizard-info-stack">
           <div className="manifest-block">
             <h4>当前是只读接入</h4>
-            <p>这个飞书应用来自当前运行时环境变量。setup 只能做连接测试，不能修改本地配置。</p>
+            <p>{isSetupSurface ? "这个飞书应用来自当前运行时环境变量。setup 只能做连接测试，不能修改本地配置。" : "这个飞书应用来自当前运行时环境变量。管理页只能做连接测试，不能修改本地配置。"}</p>
           </div>
           <div className="wizard-inline-actions">
             <button className="primary-button" type="button" onClick={onVerifyManual} disabled={busyAction !== ""}>
-              测试并继续
+              {isSetupSurface ? "测试并继续" : "测试连接"}
             </button>
           </div>
         </div>
@@ -116,7 +124,9 @@ export function FeishuConnectStep({
             </div>
           </label>
         </div>
-        {apps.length > 1 ? <div className="notice-banner warn">当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。</div> : null}
+        {extraSetupNotice.map((notice) => (
+          <div key={notice.message} className={`notice-banner ${notice.tone}`}>{notice.message}</div>
+        ))}
         <div className="wizard-inline-actions">
           <button className="primary-button" type="button" onClick={onContinueModeSelection} disabled={busyAction !== "" || connectMode === null}>
             下一步
@@ -132,7 +142,7 @@ export function FeishuConnectStep({
         <FeishuAppFields
           className="wizard-form-stack"
           notices={[
-            ...(apps.length > 1 ? [{ tone: "warn" as const, message: "当前 setup 只继续处理一个应用。更多应用的新增、切换和运行管理请到本地管理页进行。" }] : []),
+            ...extraSetupNotice,
             { tone: "good" as const, message: "支持直接粘贴 `cli_xxx:secret_xxx`，页面会自动拆成 App ID / App Secret。" },
           ]}
           values={draft}
@@ -167,7 +177,7 @@ export function FeishuConnectStep({
               返回选择
             </button>
             <button className="primary-button" type="button" onClick={onVerifyManual} disabled={busyAction !== ""}>
-              验证并继续
+              {verifyActionLabel}
             </button>
           </div>
         </div>
@@ -182,7 +192,7 @@ export function FeishuConnectStep({
       <div className="wizard-form-stack">
         <div className="wizard-qr-card">
           <h4>扫码创建飞书应用</h4>
-          <p>请使用飞书手机客户端扫码完成应用创建与授权。拿到凭据后，页面会自动继续连接测试。</p>
+          <p>{isSetupSurface ? "请使用飞书手机客户端扫码完成应用创建与授权。拿到凭据后，页面会自动继续连接测试。" : "请使用飞书手机客户端扫码完成应用创建与授权。拿到凭据后，页面会自动保存并继续连接测试。"}</p>
           {onboardingSession?.qrCodeDataUrl ? (
             <img className="wizard-qr-image" src={onboardingSession.qrCodeDataUrl} alt="飞书应用创建二维码" />
           ) : (

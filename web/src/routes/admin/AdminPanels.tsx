@@ -2,6 +2,7 @@ import type {
   AdminInstanceSummary,
   BootstrapState,
   FeishuAppSummary,
+  FeishuOnboardingSession,
   GatewayStatus,
   ImageStagingStatusResponse,
   PreviewDriveStatusResponse,
@@ -10,11 +11,14 @@ import type {
 import { DefinitionList, Panel, StatCard, StatGrid, StatusBadge } from "../../components/ui";
 import { FeishuAppFields } from "../shared/FeishuAppFields";
 import { type VSCodeUsageScenario, vscodeHasDetectedBundle, vscodeIsReady } from "../shared/helpers";
+import { FeishuConnectStep } from "../setup/FeishuConnectStep";
+import type { FeishuConnectMode, FeishuConnectStage } from "../setup/types";
 import {
   appConnectionLabel,
   appConnectionTone,
   appSetupProgress,
   buildWizardRows,
+  emptyDraft,
   formatBytes,
   formatDateTime,
   instanceSourceLabel,
@@ -46,10 +50,22 @@ type AdminFeishuPanelProps = {
   draft: AppDraft;
   activeApp: FeishuAppSummary | null;
   busyAction: string;
+  connectStage: FeishuConnectStage;
+  connectMode: FeishuConnectMode | null;
+  onboardingSession: FeishuOnboardingSession | null;
+  onboardingNeedsManualRetry: boolean;
   setupURLForApp: (appID: string) => string;
   onBeginNewApp: () => void;
   onSelectApp: (app: FeishuAppSummary) => void;
   onDraftChange: React.Dispatch<React.SetStateAction<AppDraft>>;
+  onConnectModeChange: (value: FeishuConnectMode) => void;
+  onContinueModeSelection: () => void;
+  onVerifyNewAppManual: () => void;
+  onBackToModeSelection: () => void;
+  onRefreshOnboarding: () => void;
+  onRestartOnboarding: () => void;
+  onSwitchToExistingFlow: () => void;
+  onRetryOnboardingComplete: () => void;
   onSaveApp: () => void;
   onVerifyApp: () => void;
   onReconnectApp: () => void;
@@ -183,10 +199,22 @@ export function AdminFeishuPanel({
   draft,
   activeApp,
   busyAction,
+  connectStage,
+  connectMode,
+  onboardingSession,
+  onboardingNeedsManualRetry,
   setupURLForApp,
   onBeginNewApp,
   onSelectApp,
   onDraftChange,
+  onConnectModeChange,
+  onContinueModeSelection,
+  onVerifyNewAppManual,
+  onBackToModeSelection,
+  onRefreshOnboarding,
+  onRestartOnboarding,
+  onSwitchToExistingFlow,
+  onRetryOnboardingComplete,
   onSaveApp,
   onVerifyApp,
   onReconnectApp,
@@ -199,6 +227,8 @@ export function AdminFeishuPanel({
   const setupProgress = activeApp ? appSetupProgress(activeApp) : null;
   const needsSetup = Boolean(activeApp && setupProgress && !setupProgress.complete);
   const canToggleEnabled = Boolean(activeApp && !activeApp.readOnly && !pendingRuntimeRemoval);
+  const showNewAppWizard = draft.isNew && !activeApp;
+  const wizardDraft = showNewAppWizard ? draft : emptyDraft();
 
   return (
     <Panel
@@ -246,6 +276,11 @@ export function AdminFeishuPanel({
               <StatCard label="首次配置" value={setupProgress?.complete ? "已完成" : "未完成"} tone={setupProgress?.complete ? "accent" : "warn"} detail={setupProgress ? `已完成 ${setupProgress.completed} / ${setupProgress.total}` : "创建后会显示"} />
               <StatCard label="编辑权限" value={readOnly ? "只读" : "可编辑"} detail={pendingRuntimeRemoval ? "本地配置已删除，等待运行时移除" : readOnly ? "当前由启动参数接管" : "可在这里直接修改"} />
             </StatGrid>
+          ) : showNewAppWizard ? (
+            <div className="wizard-callout">
+              <h4>先选择接入方式</h4>
+              <p>新增机器人时，可以扫码新建飞书应用，也可以继续手动接入已有应用。</p>
+            </div>
           ) : (
             <div className="wizard-callout">
               <h4>先把机器人接进来</h4>
@@ -279,44 +314,71 @@ export function AdminFeishuPanel({
           ) : null}
           {activeApp?.status?.lastError ? <div className="notice-banner danger">最近错误：{activeApp.status.lastError}</div> : null}
 
-          <FeishuAppFields
-            className="form-grid"
-            values={draft}
-            readOnly={readOnly}
-            hasSecret={activeApp?.hasSecret}
-            nameLabel="机器人名称"
-            namePlaceholder="团队机器人"
-            nameFieldClassName="field"
-            appIDFieldClassName="field"
-            appIDHintClassName="form-hint form-grid-span-2"
-            secretFieldClassName="field form-grid-span-2"
-            onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
-            onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
-            onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
-          />
+          {showNewAppWizard ? (
+            <FeishuConnectStep
+              surface="admin"
+              apps={apps}
+              activeApp={null}
+              draft={wizardDraft}
+              connectStage={connectStage}
+              connectMode={connectMode}
+              onboardingSession={onboardingSession}
+              onboardingNeedsManualRetry={onboardingNeedsManualRetry}
+              busyAction={busyAction}
+              onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
+              onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
+              onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
+              onConnectModeChange={onConnectModeChange}
+              onContinueModeSelection={onContinueModeSelection}
+              onVerifyManual={onVerifyNewAppManual}
+              onBackToModeSelection={onBackToModeSelection}
+              onRefreshOnboarding={onRefreshOnboarding}
+              onRestartOnboarding={onRestartOnboarding}
+              onSwitchToExistingFlow={onSwitchToExistingFlow}
+              onRetryOnboardingComplete={onRetryOnboardingComplete}
+            />
+          ) : (
+            <>
+              <FeishuAppFields
+                className="form-grid"
+                values={draft}
+                readOnly={readOnly}
+                hasSecret={activeApp?.hasSecret}
+                nameLabel="机器人名称"
+                namePlaceholder="团队机器人"
+                nameFieldClassName="field"
+                appIDFieldClassName="field"
+                appIDHintClassName="form-hint form-grid-span-2"
+                secretFieldClassName="field form-grid-span-2"
+                onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
+                onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
+                onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
+              />
 
-          <label className="checkbox-row">
-            <input type="checkbox" checked={draft.enabled} disabled={readOnly} onChange={(event) => onDraftChange((current) => ({ ...current, enabled: event.target.checked }))} />
-            <span>启用这个机器人</span>
-          </label>
+              <label className="checkbox-row">
+                <input type="checkbox" checked={draft.enabled} disabled={readOnly} onChange={(event) => onDraftChange((current) => ({ ...current, enabled: event.target.checked }))} />
+                <span>启用这个机器人</span>
+              </label>
 
-          <div className="button-row">
-            <button className="primary-button" type="button" onClick={onSaveApp} disabled={busyAction !== "" || readOnly}>
-              {draft.isNew ? "保存机器人" : "保存更改"}
-            </button>
-            <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
-              测试连接
-            </button>
-            <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
-              重新连接
-            </button>
-            <button className="ghost-button" type="button" onClick={() => onToggleAppEnabled(!activeApp?.enabled)} disabled={!activeApp || !canToggleEnabled || busyAction !== ""}>
-              {activeApp?.enabled ? "停用机器人" : "启用机器人"}
-            </button>
-            <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || pendingRuntimeRemoval || busyAction !== ""}>
-              删除机器人
-            </button>
-          </div>
+              <div className="button-row">
+                <button className="primary-button" type="button" onClick={onSaveApp} disabled={busyAction !== "" || readOnly}>
+                  {draft.isNew ? "保存机器人" : "保存更改"}
+                </button>
+                <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
+                  测试连接
+                </button>
+                <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
+                  重新连接
+                </button>
+                <button className="ghost-button" type="button" onClick={() => onToggleAppEnabled(!activeApp?.enabled)} disabled={!activeApp || !canToggleEnabled || busyAction !== ""}>
+                  {activeApp?.enabled ? "停用机器人" : "启用机器人"}
+                </button>
+                <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || pendingRuntimeRemoval || busyAction !== ""}>
+                  删除机器人
+                </button>
+              </div>
+            </>
+          )}
 
           {draft.isNew ? (
             <details className="wizard-tech-detail">

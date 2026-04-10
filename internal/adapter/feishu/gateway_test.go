@@ -1091,8 +1091,8 @@ func TestParseCardActionTriggerEventBuildsRequestRespondAnswers(t *testing.T) {
 			Operator: &larkcallback.Operator{UserID: &userID},
 			Action: &larkcallback.CallBackAction{
 				Value: map[string]interface{}{
-					"kind":       "request_respond",
-					"request_id": "req-ui-1",
+					"kind":         "request_respond",
+					"request_id":   "req-ui-1",
 					"request_type": "request_user_input",
 					"request_answers": map[string]interface{}{
 						"model": []interface{}{"gpt-5.4"},

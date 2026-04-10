@@ -4847,28 +4847,28 @@ func TestThreadTitleUsesThreadWorkspaceSuffixOverInstanceShortName(t *testing.T)
 	}, &state.ThreadRecord{
 		ThreadID: "thread-1",
 		Name:     "修复 relay 队列背压",
-		CWD:      "/data/dl/fschannel3",
+		CWD:      "/data/dl/atlas-admin",
 	}, "thread-1")
 
-	if title != "fschannel3 · 修复 relay 队列背压" {
+	if title != "atlas-admin · 修复 relay 队列背压" {
 		t.Fatalf("expected thread cwd basename to drive title prefix, got %q", title)
 	}
 }
 
 func TestThreadTitleSkipsPlaceholderNameAndTruncatesPreview(t *testing.T) {
 	title := threadTitle(&state.InstanceRecord{
-		DisplayName:   "fschannel3",
-		WorkspaceKey:  "/data/dl/fschannel3",
-		ShortName:     "fschannel3",
-		WorkspaceRoot: "/data/dl/fschannel3",
+		DisplayName:   "atlas-admin",
+		WorkspaceKey:  "/data/dl/atlas-admin",
+		ShortName:     "atlas-admin",
+		WorkspaceRoot: "/data/dl/atlas-admin",
 	}, &state.ThreadRecord{
 		ThreadID: "thread-1",
 		Name:     "新会话",
 		Preview:  "0123456789012345678901234567890123456789XYZ",
-		CWD:      "/data/dl/fschannel3",
+		CWD:      "/data/dl/atlas-admin",
 	}, "thread-1")
 
-	if title != "fschannel3 · 0123456789012345678901234567890123456789..." {
+	if title != "atlas-admin · 0123456789012345678901234567890123456789..." {
 		t.Fatalf("expected placeholder name to fall back to truncated preview, got %q", title)
 	}
 }
@@ -4878,10 +4878,10 @@ func TestThreadSelectionButtonLabelUsesWorkspaceSuffixAndPreviewFallback(t *test
 		ThreadID: "thread-1",
 		Name:     "新会话",
 		Preview:  "01234567890123456789XYZ",
-		CWD:      "/data/dl/fschannel3",
+		CWD:      "/data/dl/atlas-admin",
 	}, "thread-1")
 
-	if label != "fschannel3 · 01234567890123456789..." {
+	if label != "atlas-admin · 01234567890123456789..." {
 		t.Fatalf("expected selection label to include workspace suffix and truncated preview, got %q", label)
 	}
 }

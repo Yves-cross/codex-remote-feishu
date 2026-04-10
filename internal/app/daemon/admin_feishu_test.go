@@ -227,6 +227,64 @@ func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	}
 }
 
+func TestAdminFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	gateway := &fakeAdminGatewayController{
+		verifyResult: feishu.VerifyResult{Connected: true, Duration: time.Second},
+	}
+	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+	app.feishuSetup = &fakeFeishuSetupClient{
+		startResult: feishuRegistrationStartResult{
+			DeviceCode:      "device-admin-1",
+			VerificationURL: "https://example.test/admin-qr",
+			ExpiresAt:       time.Now().Add(5 * time.Minute),
+		},
+		pollResults: []feishuRegistrationPollResult{{
+			Status:    feishuOnboardingStatusReady,
+			AppID:     "cli_admin_qr",
+			AppSecret: "secret_admin_qr",
+		}},
+		describeResult: feishuAppIdentity{DisplayName: "Admin 扫码 Bot"},
+	}
+
+	createRec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/onboarding/sessions", "")
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create onboarding status = %d, want 201 body=%s", createRec.Code, createRec.Body.String())
+	}
+	var createResp feishuOnboardingSessionResponse
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode onboarding create: %v", err)
+	}
+
+	getRec := performAdminRequest(t, app, http.MethodGet, "/api/admin/feishu/onboarding/sessions/"+createResp.Session.ID, "")
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get onboarding status = %d, want 200 body=%s", getRec.Code, getRec.Body.String())
+	}
+	var getResp feishuOnboardingSessionResponse
+	if err := json.NewDecoder(getRec.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode onboarding get: %v", err)
+	}
+	if getResp.Session.Status != feishuOnboardingStatusReady || getResp.Session.AppID != "cli_admin_qr" || getResp.Session.DisplayName != "Admin 扫码 Bot" {
+		t.Fatalf("unexpected onboarding get response: %#v", getResp.Session)
+	}
+
+	completeRec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/onboarding/sessions/"+createResp.Session.ID+"/complete", "")
+	if completeRec.Code != http.StatusOK {
+		t.Fatalf("complete onboarding status = %d, want 200 body=%s", completeRec.Code, completeRec.Body.String())
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath: %v", err)
+	}
+	if len(loaded.Config.Feishu.Apps) != 1 {
+		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
+	}
+	if loaded.Config.Feishu.Apps[0].Name != "Admin 扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.ConnectionVerifiedAt == nil {
+		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
+	}
+}
+
 func TestSetupFeishuOnboardingRetryDoesNotDuplicateAppAfterVerifyFailure(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	gateway := &fakeAdminGatewayController{
