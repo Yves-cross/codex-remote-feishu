@@ -155,6 +155,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 		ReplyToMessageID:      firstNonEmpty(item.ReplyToMessageID, item.SourceMessageID),
 		ReplyToMessagePreview: firstNonEmpty(item.ReplyToMessagePreview, item.SourceMessagePreview),
 		ThreadID:              item.FrozenThreadID,
+		ThreadCWD:             item.FrozenCWD,
 		Status:                string(item.Status),
 	}
 	originMessageID := firstNonEmpty(item.SourceMessageID, item.ReplyToMessageID)
@@ -243,7 +244,10 @@ func finalTurnSummaryForBinding(now time.Time, binding *remoteTurnBinding) *cont
 	if elapsed <= 0 {
 		return nil
 	}
-	return &control.FinalTurnSummary{Elapsed: elapsed}
+	return &control.FinalTurnSummary{
+		Elapsed:   elapsed,
+		ThreadCWD: strings.TrimSpace(binding.ThreadCWD),
+	}
 }
 
 func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {

@@ -1,8 +1,11 @@
 package feishu
 
 import (
+	"context"
 	"fmt"
 	"html"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -58,11 +61,19 @@ const (
 )
 
 const maxEmbeddedFileSummaryRows = 6
+const maxEmbeddedWorktreePaths = 3
 
-type Projector struct{}
+type gitWorktreeSummary struct {
+	Dirty bool
+	Files []string
+}
+
+type Projector struct {
+	readGitWorktree func(string) *gitWorktreeSummary
+}
 
 func NewProjector() *Projector {
-	return &Projector{}
+	return &Projector{readGitWorktree: inspectGitWorktreeSummary}
 }
 
 func (p *Projector) ProjectPreviewSupplements(gatewayID, surfaceSessionID, chatID, replyToMessageID string, supplements []PreviewSupplement) []Operation {
@@ -261,7 +272,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Block == nil {
 			return nil
 		}
-		return projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, event.SourceMessagePreview, *event.Block, event.FileChangeSummary, event.FinalTurnSummary)
+		return p.projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, event.SourceMessagePreview, *event.Block, event.FileChangeSummary, event.FinalTurnSummary)
 	case control.UIEventImageOutput:
 		if event.ImageOutput == nil {
 			return nil
@@ -313,7 +324,7 @@ func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) 
 	return body
 }
 
-func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {
+func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
 			Kind:             OperationSendText,
@@ -329,7 +340,7 @@ func projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMe
 	} else if block.Kind == render.BlockAssistantMarkdown {
 		body = renderSystemInlineTags(block.Text)
 	}
-	elements := finalBlockExtraElements(summary, finalSummary)
+	elements := p.finalBlockExtraElements(summary, finalSummary)
 	return []Operation{{
 		Kind:             OperationSendCard,
 		GatewayID:        gatewayID,
@@ -467,7 +478,7 @@ func fenced(language, text string) string {
 	return "```" + language + "\n" + text + "\n```"
 }
 
-func finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []map[string]any {
+func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []map[string]any {
 	var elements []map[string]any
 	if summary != nil && summary.FileCount > 0 && len(summary.Files) > 0 {
 		elements = append(elements, map[string]any{
@@ -507,6 +518,12 @@ func finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *c
 			"content": line,
 		})
 	}
+	if line := p.formatFinalWorktreeSummaryLine(finalSummary); line != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": line,
+		})
+	}
 	if len(elements) == 0 {
 		return nil
 	}
@@ -528,6 +545,33 @@ func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
 		}
 	}
 	return strings.Join(parts, "  ")
+}
+
+func (p *Projector) formatFinalWorktreeSummaryLine(summary *control.FinalTurnSummary) string {
+	if summary == nil || summary.Elapsed <= 0 {
+		return ""
+	}
+	cwd := strings.TrimSpace(summary.ThreadCWD)
+	if cwd == "" || p == nil || p.readGitWorktree == nil {
+		return ""
+	}
+	worktree := p.readGitWorktree(cwd)
+	if worktree == nil {
+		return ""
+	}
+	if !worktree.Dirty {
+		return "**工作区** " + formatNeutralTextTag("干净")
+	}
+	labels := shortestUniquePathSuffixes(worktree.Files)
+	limit := len(worktree.Files)
+	if limit > maxEmbeddedWorktreePaths {
+		limit = maxEmbeddedWorktreePaths
+	}
+	parts := []string{"**工作区**", formatNeutralTextTag("有改动")}
+	for index := 0; index < limit; index++ {
+		parts = append(parts, formatNeutralTextTag(fileChangeDisplayLabel(worktree.Files[index], labels)))
+	}
+	return strings.Join(parts, " ")
 }
 
 func formatElapsedDuration(value time.Duration) string {
@@ -555,6 +599,70 @@ func formatElapsedDuration(value time.Duration) string {
 		b.WriteString(fmt.Sprintf("%d秒", seconds))
 	}
 	return b.String()
+}
+
+func inspectGitWorktreeSummary(cwd string) *gitWorktreeSummary {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return nil
+	}
+	output, ok := runGitInspector(cwd, "status", "--porcelain", "--untracked-files=all")
+	if !ok {
+		return nil
+	}
+	files := parseGitStatusPaths(output)
+	return &gitWorktreeSummary{
+		Dirty: len(files) > 0,
+		Files: files,
+	}
+}
+
+func runGitInspector(cwd string, args ...string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = cwd
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(output)), true
+}
+
+func parseGitStatusPaths(output string) []string {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	seen := map[string]bool{}
+	files := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		line = strings.TrimRight(line, "\r")
+		if len(line) < 4 {
+			continue
+		}
+		path := strings.TrimSpace(line[3:])
+		if idx := strings.LastIndex(path, " -> "); idx >= 0 {
+			path = strings.TrimSpace(path[idx+4:])
+		}
+		path = normalizeFileSummaryPath(parseGitStatusPath(path))
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		files = append(files, path)
+	}
+	return files
+}
+
+func parseGitStatusPath(path string) string {
+	path = strings.TrimSpace(path)
+	if len(path) >= 2 && strings.HasPrefix(path, "\"") && strings.HasSuffix(path, "\"") {
+		if unquoted, err := strconv.Unquote(path); err == nil {
+			return unquoted
+		}
+	}
+	return path
 }
 
 func formatFileChangePath(file control.FileChangeSummaryEntry, labels map[string]string) string {

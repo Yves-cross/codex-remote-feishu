@@ -344,6 +344,121 @@ func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) 
 	}
 }
 
+func TestProjectFinalAssistantBlockAppendsCleanWorktreeSummary(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(cwd string) *gitWorktreeSummary {
+		if cwd != "/data/dl/droid" {
+			t.Fatalf("unexpected cwd: %q", cwd)
+		}
+		return &gitWorktreeSummary{}
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-3",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed:   2100 * time.Millisecond,
+			ThreadCWD: "/data/dl/droid",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 2 {
+		t.Fatalf("expected elapsed footer plus worktree footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[1]["content"] != "**工作区** <text_tag color='neutral'>干净</text_tag>" {
+		t.Fatalf("unexpected clean worktree footer: %#v", ops[0].CardElements[1])
+	}
+}
+
+func TestProjectFinalAssistantBlockAppendsDirtyWorktreeSummary(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(string) *gitWorktreeSummary {
+		return &gitWorktreeSummary{
+			Dirty: true,
+			Files: []string{
+				"internal/core/orchestrator/service.go",
+				"internal/adapter/feishu/service.go",
+				"README.md",
+				"docs/general/remote-surface-state-machine.md",
+			},
+		}
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-4",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed:   2100 * time.Millisecond,
+			ThreadCWD: "/data/dl/droid",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 2 {
+		t.Fatalf("expected elapsed footer plus worktree footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[1]["content"] != "**工作区** <text_tag color='neutral'>有改动</text_tag> <text_tag color='neutral'>orchestrator/service.go</text_tag> <text_tag color='neutral'>feishu/service.go</text_tag> <text_tag color='neutral'>README.md</text_tag>" {
+		t.Fatalf("unexpected dirty worktree footer: %#v", ops[0].CardElements[1])
+	}
+}
+
+func TestProjectFinalAssistantBlockSkipsWorktreeSummaryOutsideGitRepo(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(string) *gitWorktreeSummary { return nil }
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-5",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed:   2100 * time.Millisecond,
+			ThreadCWD: "/tmp/not-a-repo",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 1 {
+		t.Fatalf("expected only elapsed footer outside git repo, got %#v", ops[0].CardElements)
+	}
+}
+
+func TestParseGitStatusPaths(t *testing.T) {
+	got := parseGitStatusPaths(strings.Join([]string{
+		" M internal/core/orchestrator/service.go",
+		"R  docs/old/guide.md -> docs/new/guide.md",
+		"?? \"docs/my file.md\"",
+		"?? internal/core/orchestrator/service.go",
+	}, "\n"))
+	want := []string{
+		"internal/core/orchestrator/service.go",
+		"docs/new/guide.md",
+		"docs/my file.md",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parseGitStatusPaths() len = %d, want %d (%#v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("parseGitStatusPaths()[%d] = %q, want %q (%#v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestFormatElapsedDurationUsesHumanReadableUnits(t *testing.T) {
 	tests := []struct {
 		name  string

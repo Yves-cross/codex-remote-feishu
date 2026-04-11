@@ -400,8 +400,9 @@ type FinalTurnUsage struct {
 }
 
 type FinalTurnSummary struct {
-	Elapsed time.Duration
-	Usage   *FinalTurnUsage
+	Elapsed   time.Duration
+	ThreadCWD string
+	Usage     *FinalTurnUsage
 }
 
 type ImageOutput struct {

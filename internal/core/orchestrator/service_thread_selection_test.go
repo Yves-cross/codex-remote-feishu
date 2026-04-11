@@ -1065,6 +1065,9 @@ func TestTurnCompletedSynthesizesFinalBlockWhenOnlyElapsedExists(t *testing.T) {
 	if finalBlockEvent.FinalTurnSummary == nil || finalBlockEvent.FinalTurnSummary.Elapsed != 2100*time.Millisecond {
 		t.Fatalf("expected synthetic final block to carry elapsed summary, got %#v", finalBlockEvent)
 	}
+	if finalBlockEvent.FinalTurnSummary.ThreadCWD != "/data/dl/droid" {
+		t.Fatalf("expected synthetic final block to carry thread cwd, got %#v", finalBlockEvent.FinalTurnSummary)
+	}
 	if finalBlockEvent.FileChangeSummary != nil {
 		t.Fatalf("expected no file summary on elapsed-only synthetic block, got %#v", finalBlockEvent.FileChangeSummary)
 	}

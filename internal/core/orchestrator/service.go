@@ -61,6 +61,7 @@ type remoteTurnBinding struct {
 	ReplyToMessagePreview string
 	CommandID             string
 	ThreadID              string
+	ThreadCWD             string
 	TurnID                string
 	Status                string
 	StartedAt             time.Time
