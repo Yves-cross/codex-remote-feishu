@@ -121,19 +121,38 @@ func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []control.U
 	if err != nil {
 		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err))}
 	}
-	a.mu.Unlock()
-	issued, err := service.IssueURL(context.Background(), debugAdminIssueRequest(adminURL), localURL)
-	a.mu.Lock()
-	if err != nil {
-		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err))}
+	req := debugAdminIssueRequest(adminURL)
+	surfaceID := command.SurfaceSessionID
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		issued, err := service.IssueURL(ctx, req, localURL)
+
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.shuttingDown {
+			return
+		}
+		if err != nil {
+			a.handleUIEvents(context.Background(), []control.UIEvent{
+				debugNoticeEvent(surfaceID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err)),
+			})
+			return
+		}
+		text := fmt.Sprintf(
+			"临时管理页外链已生成：\n[打开管理页](%s)\n\n链接：`%s`\n有效期到：`%s`",
+			issued.ExternalURL,
+			issued.ExternalURL,
+			issued.ExpiresAt.UTC().Format(time.RFC3339),
+		)
+		a.handleUIEvents(context.Background(), []control.UIEvent{
+			debugNoticeEvent(surfaceID, "debug_admin_link_ready", text),
+		})
+	}()
+	return []control.UIEvent{
+		debugNoticeEvent(command.SurfaceSessionID, "debug_admin_prepare_started", "正在准备临时管理页外链。首次启动 tunnel 或重新拉起 external access 时，可能需要几十秒，请稍候。"),
 	}
-	text := fmt.Sprintf(
-		"临时管理页外链已生成：\n[打开管理页](%s)\n\n链接：`%s`\n有效期到：`%s`",
-		issued.ExternalURL,
-		issued.ExternalURL,
-		issued.ExpiresAt.UTC().Format(time.RFC3339),
-	)
-	return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_admin_link_ready", text)}
 }
 
 func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []control.UIEvent {

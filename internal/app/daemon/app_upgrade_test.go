@@ -11,6 +11,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/externalaccess"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -309,7 +310,7 @@ func TestDebugAdminCommandIssuesExternalAccessLink(t *testing.T) {
 				continue
 			}
 			if !strings.Contains(op.CardBody, "临时管理页外链已生成") || !strings.Contains(op.CardBody, "/g/") {
-				t.Fatalf("unexpected debug admin body: %#v", op.CardBody)
+				continue
 			}
 			return
 		}
@@ -317,6 +318,120 @@ func TestDebugAdminCommandIssuesExternalAccessLink(t *testing.T) {
 	}
 	t.Fatal("timed out waiting for debug admin link notice")
 }
+
+func TestDebugAdminCommandEmitsPreparingNoticeBeforeLinkReady(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, _ := newUpgradeTestApp(t, gateway)
+	defer app.Shutdown(nil)
+	app.ConfigureAdmin(AdminRuntimeOptions{
+		AdminListenHost: "127.0.0.1",
+		AdminListenPort: "9501",
+		AdminURL:        "http://127.0.0.1:9501/",
+		SetupURL:        "http://127.0.0.1:9501/setup",
+	})
+
+	provider := &blockingExternalAccessProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	startedCh := provider.started
+	app.externalAccessRuntime = ExternalAccessRuntimeConfig{
+		Settings: externalAccessSettingsView{
+			ListenHost:        "127.0.0.1",
+			ListenPort:        0,
+			DefaultLinkTTL:    10 * time.Second,
+			DefaultSessionTTL: 30 * time.Second,
+		},
+	}
+	app.externalAccess = externalaccess.NewService(externalaccess.Options{
+		Provider:          provider,
+		DefaultLinkTTL:    10 * time.Second,
+		DefaultSessionTTL: 30 * time.Second,
+	})
+
+	done := make(chan struct{})
+	go func() {
+		app.HandleAction(context.Background(), control.Action{
+			Kind:             control.ActionDebugCommand,
+			SurfaceSessionID: "feishu:chat:1",
+			ChatID:           "chat-1",
+			ActorUserID:      "user-1",
+			Text:             "/debug admin",
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("expected /debug admin handler to return after sending preparing notice")
+	}
+
+	select {
+	case <-startedCh:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for external access provider to start")
+	}
+
+	ops := gateway.snapshotOperations()
+	if len(ops) == 0 {
+		t.Fatal("expected preparing notice operation")
+	}
+	last := ops[len(ops)-1]
+	if last.CardTitle != "Debug" || !strings.Contains(last.CardBody, "正在准备临时管理页外链") {
+		t.Fatalf("expected preparing notice, got %#v", last)
+	}
+	if strings.Contains(last.CardBody, "/g/") {
+		t.Fatalf("preparing notice should not contain the final link yet: %#v", last.CardBody)
+	}
+
+	close(provider.release)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ops = gateway.snapshotOperations()
+		for _, op := range ops {
+			if op.CardTitle != "Debug" {
+				continue
+			}
+			if !strings.Contains(op.CardBody, "临时管理页外链已生成") || !strings.Contains(op.CardBody, "/g/") {
+				continue
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for debug admin link notice after preparing notice")
+}
+
+type blockingExternalAccessProvider struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *blockingExternalAccessProvider) Kind() string { return "blocking" }
+
+func (p *blockingExternalAccessProvider) EnsurePublicBase(ctx context.Context, _ string) (externalaccess.PublicBase, error) {
+	if p.started != nil {
+		close(p.started)
+		p.started = nil
+	}
+	select {
+	case <-p.release:
+		return externalaccess.PublicBase{
+			BaseURL:   "https://example.trycloudflare.com",
+			StartedAt: time.Now().UTC(),
+		}, nil
+	case <-ctx.Done():
+		return externalaccess.PublicBase{}, ctx.Err()
+	}
+}
+
+func (p *blockingExternalAccessProvider) Snapshot() externalaccess.ProviderStatus {
+	return externalaccess.ProviderStatus{Kind: p.Kind(), Ready: true}
+}
+
+func (p *blockingExternalAccessProvider) Close() error { return nil }
 
 type feishuOperationView struct {
 	SurfaceSessionID string
