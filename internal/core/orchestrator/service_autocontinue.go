@@ -63,6 +63,15 @@ func autoContinueWhipStartedNotice(surface *state.SurfaceConsoleRecord, count in
 	)
 }
 
+func autoContinueCompletedNotice(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	return autoContinueNotice(
+		surface,
+		"auto_continue_completed",
+		"AutoWhip",
+		"Codex 已经把活干完了，老板放过他吧",
+	)
+}
+
 func (s *Service) noteAutoContinueAction(surface *state.SurfaceConsoleRecord, action control.Action) {
 	if surface == nil {
 		return
@@ -229,7 +238,7 @@ func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.Surfac
 		return s.scheduleAutoContinue(surface, item, turnID, state.AutoContinueReasonIncompleteStop)
 	}
 	s.resetAutoContinueProgress(surface)
-	return nil
+	return autoContinueCompletedNotice(surface)
 }
 
 func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsoleRecord, now time.Time) []control.UIEvent {

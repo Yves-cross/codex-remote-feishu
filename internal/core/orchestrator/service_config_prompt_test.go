@@ -453,10 +453,19 @@ func TestAutoContinueStopsWhenFinalTextContainsStopPhrase(t *testing.T) {
 	surface := setupAutoContinueSurface(t, svc)
 
 	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
-	completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "这边都检查过了，老板不要再打我了，真的没有事情干了", nil)
+	events := completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "这边都检查过了，老板不要再打我了，真的没有事情干了", nil)
 
 	if surface.AutoContinue.PendingReason != "" || surface.AutoContinue.ConsecutiveCount != 0 {
 		t.Fatalf("expected stop phrase to keep autowhip idle, got %#v", surface.AutoContinue)
+	}
+	var sawCompletedNotice bool
+	for _, event := range events {
+		if event.Notice != nil && event.Notice.Code == "auto_continue_completed" {
+			sawCompletedNotice = event.Notice.Title == "AutoWhip" && event.Notice.Text == "Codex 已经把活干完了，老板放过他吧"
+		}
+	}
+	if !sawCompletedNotice {
+		t.Fatalf("expected completion notice when autowhip decides there is no more work, got %#v", events)
 	}
 }
 
@@ -557,6 +566,7 @@ func TestAutoContinueDispatchSkipsPendingProjectionButKeepsReplyAnchor(t *testin
 
 	finished := completeRemoteTurnWithFinalText(t, svc, "turn-2", "completed", "", "老板不要再打我了，真的没有事情干了", nil)
 	var sawReplyBlock bool
+	var sawCompletedNotice bool
 	for _, event := range finished {
 		if event.PendingInput != nil {
 			t.Fatalf("expected auto-continue completion to skip pending projection, got %#v", finished)
@@ -564,9 +574,15 @@ func TestAutoContinueDispatchSkipsPendingProjectionButKeepsReplyAnchor(t *testin
 		if event.Block != nil && event.SourceMessageID == "msg-1" {
 			sawReplyBlock = true
 		}
+		if event.Notice != nil && event.Notice.Code == "auto_continue_completed" {
+			sawCompletedNotice = event.Notice.Title == "AutoWhip" && event.Notice.Text == "Codex 已经把活干完了，老板放过他吧"
+		}
 	}
 	if !sawReplyBlock {
 		t.Fatalf("expected final auto-continue reply to stay anchored under original message, got %#v", finished)
+	}
+	if !sawCompletedNotice {
+		t.Fatalf("expected completion notice after auto-continue decides there is no more work, got %#v", finished)
 	}
 	if !surface.AutoContinue.Enabled || surface.AutoContinue.PendingReason != "" || surface.AutoContinue.ConsecutiveCount != 0 {
 		t.Fatalf("expected successful auto-continue completion to reset runtime state, got %#v", surface.AutoContinue)
