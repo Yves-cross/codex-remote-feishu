@@ -122,9 +122,9 @@ surface 不是单一枚举，而是五层正交状态叠加。
    1. normal mode 列 workspace，并走 workspace attach/switch。
    2. vscode mode 继续列在线 VS Code instance。
 7. `normal mode` 当前已经完成这一轮产品收窄：
-   1. detached `/use` 现在直接等同 detached `/useall`：都会展示 cross-workspace 的全部会话列表。
+   1. detached `/use` 现在直接等同 detached `/useall`：都会先展示 cross-workspace 最近 5 个 workspace 组，并可卡片内展开全部工作区。
    2. attached `/use` 现在只展示当前 workspace 的最近 5 个会话；若超过 5 个，会在卡片底部追加一个 `show_scoped_threads` 按钮进入“当前工作区全部会话”。
-   3. attached `/useall` 现在改成 cross-workspace 的全部会话列表；卡片里的 `use_thread` 按钮会显式携带 `allow_cross_workspace=true`，允许直接切到其他 workspace。
+   3. attached `/useall` 现在改成 cross-workspace 的 workspace-group 总览：默认只显示最近 5 个非当前 workspace 组，可进一步 `show_all_thread_workspaces` 展开全部；卡片里的 `use_thread` 按钮会显式携带 `allow_cross_workspace=true`，允许直接切到其他 workspace。
    4. `/new` 已变成 workspace-owned prepared state。
    5. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
 8. `vscode mode` 当前已经完成这一轮收窄：
@@ -333,8 +333,12 @@ surface 不是单一枚举，而是五层正交状态叠加。
    2. `attach_instance`
    3. `use_thread`
    4. `show_scoped_threads`
-   5. `kick_thread_confirm`
-   6. `kick_thread_cancel`
+   5. `show_workspace_threads`
+   6. `show_all_threads`
+   7. `show_all_thread_workspaces`
+   8. `show_recent_thread_workspaces`
+   9. `kick_thread_confirm`
+   10. `kick_thread_cancel`
 3. `use_thread` 会按卡片来源附带额外上下文：
    1. normal `/useall` 与 detached/global `/use` 会携带 `allow_cross_workspace=true`
    2. attached current-scope `/use` 不会带这个标记，因此仍只允许留在当前 workspace / 当前 instance 内
@@ -674,17 +678,19 @@ R5 NewThreadReady
    5. attached `vscode /use` 的卡片分组仍是“当前会话 / 可接管 / 其他状态 / 更多”，只是“更多”按钮文案会改成 `查看全部 · 当前实例全部会话`。
    6. attached `vscode /useall` 的标题当前已改成 `当前实例全部会话`，不再使用含糊的 `全部会话`。
    7. `当前实例全部会话` 卡片会保留“当前会话”区块；其余 thread 按最近活跃时间顺序平铺在“全部会话”区块里，并在按钮外用 `1. VS Code 当前焦点 · 2分前` 这类编号 + 元信息行帮助快速扫读长列表。
-9. attached normal `/useall` 当前会显示 cross-workspace 的全部会话，并允许直接点击切到其他 workspace。
+9. attached normal `/useall` 当前会显示 cross-workspace 的 workspace-group 总览，并允许直接点击切到其他 workspace。
    1. 这类 global 卡片会先保留一个单独的“当前会话”区块。
    2. 若当前 surface 已 attach workspace，还会在其后插入一段“当前工作区”摘要，仅供参考，不再展开当前 workspace 的 thread 列表；同 workspace 内切换仍建议回 `/use`
-   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后切到当前 workspace 的全量会话卡片；该卡片尾部会追加一个 `show_all_threads` 返回按钮，回到 cross-workspace `/useall`
-   4. 其余会话会按 workspace 分组展示，workspace 分组按该组内最新 thread 的最近活跃时间倒序。
-   5. 组内 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮
-   6. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后切到该 workspace 的全量会话卡片
-   7. 单-workspace 全量卡片会保留同样的排序和“序号 + 相对时间 + 全宽按钮”样式，只是不再截断到 5 条
-   8. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里
-   9. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表
-   10. `show_workspace_threads` 与 `show_all_threads` 当前都属于 same-context 导航；若动作来自当前 daemon 生命周期生成的卡片，会直接原地替换当前卡，而不是再追加一张新卡
+   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后切到当前 workspace 的全量会话卡片；该卡片尾部会追加一个 `show_all_threads` 返回按钮，回到 cross-workspace `/useall` 的默认总览。
+   4. detached/global `/use` 与 attached `/useall` 共享同一套 grouped 总览：默认只显示最近 5 个 workspace 组；若 surface 已 attach 当前 workspace，则“当前工作区”摘要不计入这 5 个名额。
+   5. workspace 组按该组内最新 thread 的最近活跃时间倒序。
+   6. 默认总览底部若还有未显示的 workspace 组，会追加一个 `show_all_thread_workspaces` 按钮，切到“全部工作区”视图；展开视图底部再追加一个 `show_recent_thread_workspaces` 按钮返回默认最近视图。
+   7. 每个 workspace 组内的 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮。
+   8. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后切到该 workspace 的全量会话卡片。
+   9. 单-workspace 全量卡片会保留同样的排序和“序号 + 相对时间 + 全宽按钮”样式，只是不再截断到 5 条。
+   10. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里。
+   11. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表。
+   12. `show_workspace_threads`、`show_all_threads`、`show_all_thread_workspaces` 与 `show_recent_thread_workspaces` 当前都属于 same-context 导航；若动作来自当前 daemon 生命周期生成的卡片，会直接原地替换当前卡，而不是再追加一张新卡。
 10. 当 normal mode `/use` / `/useall` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
@@ -952,7 +958,7 @@ transport degraded retained attachment
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 拒绝 | 拒绝 | 允许；若首条消息已 dispatching/running 则拒绝 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | `normal`: `/use`=`/useall`，都会展示 global 全量会话；`vscode`: 拒绝并提示先 `/list` | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 全量，卡片 `show_scoped_threads`=当前 workspace 全量；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 全量，卡片 `show_scoped_threads`=当前 workspace 全量；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/use` `/useall` | `normal`: `/use`=`/useall`，都会展示 global 最近 5 个 workspace 组，并可卡片内展开全部；`vscode`: 拒绝并提示先 `/list` | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 最近 5 个 workspace 组，卡片 `show_scoped_threads`=当前 workspace 全量，`show_all_thread_workspaces`=global 全量 workspace 组；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 最近 5 个 workspace 组，卡片 `show_scoped_threads`=当前 workspace 全量，`show_all_thread_workspaces`=global 全量 workspace 组；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | 允许；若仅有 unsent draft 会先丢弃 |
 | `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | 拒绝并提示迁移 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autocontinue` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
@@ -999,7 +1005,9 @@ retained-offline overlay 额外规则：
 | `attach_instance` | `ActionAttachInstance` | 直达 attach |
 | `use_thread` | `ActionUseThread` | 直达 thread 切换 |
 | `show_threads` | `ActionShowThreads` | 从 scoped-all 视图返回最近 5 个会话 |
-| `show_all_threads` | `ActionShowAllThreads` | 从单-workspace 全量视图返回 cross-workspace `/useall` |
+| `show_all_threads` | `ActionShowAllThreads` | 打开 `/useall` 的默认 cross-workspace 总览；也用于单-workspace 全量视图返回总览 |
+| `show_all_thread_workspaces` | `ActionShowAllThreadWorkspaces` | 把 `/useall` grouped 总览从“最近 5 个工作区”展开到“全部工作区” |
+| `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | 从“全部工作区”视图返回 `/useall` 默认最近 5 个工作区总览 |
 | `request_respond` | `ActionRespondRequest` | approval 与单题 `request_user_input` 的按钮回传入口 |
 | `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传 |
 | `resume_headless_thread` | `ActionRemovedCommand` | 历史兼容入口，统一回迁移提示 |
