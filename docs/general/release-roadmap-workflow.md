@@ -104,9 +104,17 @@ readiness 通过的条件是：
 3. 调用 release workflow，并 checkout 到目标发布分支
 4. 按 tracker 指定版本创建 release
 
+### 4.4 发布说明放在哪里
+
+- 对外的正式版本说明，主维护位置放在仓库根目录的 `CHANGELOG.md`
+- release workflow 会优先把 `CHANGELOG.md` 中当前版本的小节提取进 GitHub release notes
+- release tracker issue 负责版本号、轨道、发布分支、检查项和发版闸门，不负责承载完整 changelog 正文
+- tracker issue 里可以保留一段很短的发布摘要，或直接放 `CHANGELOG.md` / GitHub Release 的链接
+
 ## 5. 建议边界
 
 - tracker issue 负责承载版本元信息、检查项和发版闸门，不负责搬运每个功能 issue 的细节
+- `CHANGELOG.md` 负责用户视角的版本变化摘要，不需要在 tracker issue 和 `docs/` 目录里各写一份完整副本
 - 真正的工作拆分仍然在普通 issue 中完成
 - milestone 表达“计划范围”，release tracker 表达“发版动作”
 

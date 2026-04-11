@@ -1,12 +1,13 @@
 # Codex Remote Feishu
 
-`codex-remote-feishu` 把 VS Code 里的 Codex 会话桥接到飞书，让你可以在飞书里接管、切换 thread、继续对话、发图和停止当前 turn。
+`codex-remote-feishu` 把一台机器上的 Codex 工作现场带到飞书，让你可以在飞书里接管工作区、切换 thread、继续对话、发图和停止当前 turn。
 
 核心目标场景是：
 
-- 本机或远端 Linux 上运行 Codex / VS Code
-- 飞书里继续使用同一个 Codex instance
-- 保留 VS Code 原有 thread、模型配置和工作目录语义
+- 本机或远端 Linux 上运行 Codex
+- 默认直接在飞书里按工作区和已有会话继续当前工作
+- 只有在需要跟着编辑器当前焦点走时，才按需接入 VS Code
+- 尽量保留原有对话的 thread、模型配置和工作目录语义
 
 ## 组件
 
@@ -39,8 +40,9 @@
 
 ## 功能
 
-- 在飞书里列出在线 VS Code 实例并显式接管
+- 在飞书里列出可接管工作区，并直接继续已有对话或新开会话
 - 直接从最近或全部会话列表继续已有对话
+- 需要时切到 VS Code 跟随当前编辑器对话
 - 文本消息排队、typing reaction、stop 中断
 - 排队中的文字消息支持用点赞升级成对当前执行的跟进
 - 支持暂存图片，并在下一条文本里一起发给 Codex
@@ -53,7 +55,7 @@
 ## 安装前准备
 
 1. 确保真实 `codex` 在目标机器上可运行
-2. 安装 VS Code 的 ChatGPT / Codex 扩展
+2. 如果你需要和 VS Code 联动，再安装 VS Code 的 ChatGPT / Codex 扩展
 3. 准备飞书自建应用
 4. 只有在源码构建或仓库联调时才需要 Go 1.24+
 
@@ -116,9 +118,21 @@ Windows PowerShell:
 .\codex-remote.exe install -bootstrap-only -start-daemon
 ```
 
-启动后打开输出中的 `/setup` 链接，后续飞书配置、VS Code detect/apply 和 shim 重装都在 WebSetup / Admin UI 完成。
+启动后打开输出中的 `/setup` 链接，后续飞书配置、normal mode 使用准备、以及按需的 VS Code detect/apply 和 shim 重装都在 WebSetup / Admin UI 完成。
 
-## WebSetup 与 VS Code 接管
+## 当前用户升级方式
+
+如果你已经完成安装，后续要升级到当前 track 的最新版本，面向用户的推荐入口统一是：
+
+```text
+/upgrade latest
+```
+
+在已接入的飞书会话里发送这条命令即可。
+
+这条入口适合日常升级检查、继续上一次未完成的升级，以及把当前安装更新到最新 release。用户文档里不再要求你手动准备本地升级产物或执行仓库内 helper。
+
+## WebSetup 与按需接入 VS Code
 
 release 安装器现在只做 bootstrap：
 
@@ -130,10 +144,20 @@ release 安装器现在只做 bootstrap：
 真正的产品配置入口已经收敛到 WebSetup / Admin UI：
 
 - 飞书 App 新增、验证、启停
-- VS Code `detect`
-- `editor_settings` apply
-- `managed_shim` apply
-- 扩展升级后的 `reinstall-shim`
+- 运行环境检查
+- 自动启动
+- 按需执行 VS Code `detect`
+- 按需执行 `editor_settings` apply
+- 按需执行 `managed_shim` apply
+- 按需执行扩展升级后的 `reinstall-shim`
+
+当前默认推荐顺序是：
+
+1. 先完成飞书 App 接入和运行环境检查
+2. 直接开始在飞书里用默认 `normal` 模式工作
+3. 只有在你明确需要“飞书跟着 VS Code 当前焦点走”时，再回到页面接入 VS Code
+
+换句话说，VS Code 接入现在是可选增强，不再是开始使用前的默认前提。
 
 VS Code 两种接管方式的区别：
 
@@ -155,7 +179,7 @@ VS Code 两种接管方式的区别：
 
 它们是仓库 helper，不是 release 包产品入口。
 
-## Linux 常驻服务与内置升级
+## Linux 常驻服务与用户升级
 
 如果你希望 Linux 上的正式常驻实例由 `systemd --user` 托管，而不是依赖 detached daemon：
 
@@ -174,42 +198,13 @@ loginctl enable-linger "$USER"
 
 这条路径保持运行身份为当前用户，并继续使用当前 XDG 配置/状态目录。
 
-如果你已经在源码仓库里编译了一个新的本地 binary，产品入口仍然是把它放到固定 artifact 路径，再发送产品命令：
-
-```bash
-cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
-```
-
-然后在已接入的飞书会话里发送：
-
-```text
-/upgrade local
-```
-
-如果要检查或继续升级到当前 track 的最新 GitHub release，则发送：
+完成安装并接入飞书后，用户日常升级到当前 track 的最新版本，直接在飞书里发送：
 
 ```text
 /upgrade latest
 ```
 
-默认 Linux `systemd --user` 安装的本地 artifact 固定路径是：
-
-```text
-~/.local/share/codex-remote/local-upgrade/codex-remote
-```
-
-这两条入口都会复用同一套内置 upgrade transaction：
-
-- 准备目标 slot 与 rollback candidate
-- 复制当前 live binary 为 `upgrade-helper`
-- 在 `systemd_user` 模式下通过独立 transient unit 执行切换
-- 如果新版本启动或健康检查失败，自动回滚 binary 和 live config
-
-源码仓库里如果只是想本地拉最新、重新构建并直接发起同一套内置事务，可以使用：
-
-```bash
-./upgrade-local.sh
-```
+如果当前有新版本可用，系统会在后台完成升级；如果上一次升级中断，这条命令也会用于继续或检查当前升级状态。
 
 ## 仓库内联调入口
 
@@ -218,13 +213,6 @@ cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
 - `./setup.sh`
   - 构建本地 `./bin/codex-remote`
   - 默认执行 `codex-remote install -bootstrap-only -start-daemon`
-- `./upgrade-local.sh`
-  - `git pull --ff-only`
-  - 构建本地 `./bin/codex-remote`
-  - 复制到固定 local-upgrade artifact 路径
-  - 调用 `./bin/codex-remote local-upgrade`
-- `./bin/codex-remote local-upgrade`
-  - 使用固定 local-upgrade artifact 路径触发同一套内置 local upgrade transaction
 - `./setup.ps1`
   - Windows 上的同等辅助脚本
 - `./bin/codex-remote install -bootstrap-only -start-daemon`
@@ -271,11 +259,20 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 
 ## 飞书端使用
 
+当前默认推荐先用 `normal` 模式；大多数情况下，不需要先处理 VS Code 接入也可以开始工作。
+
+常见用法：
+
+- 继续当前项目：`/list` 接管工作区，再用 `/use` 继续已有会话，或用 `/new` 开一个干净的新会话
+- 直接回到最近对话：`/use`
+- 需要跟着编辑器当前焦点走：`/mode vscode` -> `/list` -> `/follow`
+- 先发截图再补说明：先发图片，下一条文字会把图片一起带给 Codex
+
 命令：
 
 - `/help`：查看当前可用命令、示例和说明
 - `/menu`：打开阶段感知的命令菜单首页；未接管时优先 `/list`、`/use`、`/status`，工作态优先 `/stop`、`/new` 和发送设置
-- `/list`：列出当前可手工接管的目标；`normal` 模式下是工作区，`vscode` 模式下是在线 VS Code 实例
+- `/list`：列出当前可手工接管的目标；`normal` 模式下是工作区，也是默认推荐入口；`vscode` 模式下才是在线 VS Code 实例
 - 选择方式：`/menu` 和参数卡现在是按钮优先的紧凑卡片，主操作尽量一行一个按钮；`/help` 仍保持文本帮助
 - 如果看到旧卡片，请重新发送命令
 - `/use`：列出最近可见会话；即使当前还没显式 attach，也可以直接从这里继续已有对话
@@ -283,7 +280,7 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d 
 - `/useall`：列出全部可见会话
 - 会话选择后：系统会切到目标会话；必要时会自动接管在线实例，或在后台恢复目标会话
 - `/status`：查看当前接管状态、队列和模型配置
-- `/follow`：切回跟随当前 VS Code thread
+- `/follow`：在 `vscode` 模式下切回跟随当前 VS Code thread
 - `/stop`：中断当前 turn，并清空尚未发出的飞书队列
 - 排队中的文字消息如果还没发出，也可以给这条消息点 `ThumbsUp`，把它升级成对当前执行的跟进
 - `/detach`：断开当前实例接管；如果当前正在后台恢复，也会一并取消
