@@ -727,6 +727,103 @@ func TestListWorkspacesShowsPersistedOnlyWorkspaceAsRecoverable(t *testing.T) {
 	}
 }
 
+func TestListWorkspacesShowsRecentFiveWithExpandAction(t *testing.T) {
+	now := time.Date(2026, 4, 10, 14, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	for i := 0; i < 6; i++ {
+		key := fmt.Sprintf("/data/dl/proj-%d", i)
+		svc.UpsertInstance(&state.InstanceRecord{
+			InstanceID:    fmt.Sprintf("inst-%d", i),
+			DisplayName:   fmt.Sprintf("proj-%d", i),
+			WorkspaceRoot: key,
+			WorkspaceKey:  key,
+			ShortName:     fmt.Sprintf("proj-%d", i),
+			Online:        true,
+			Threads: map[string]*state.ThreadRecord{
+				fmt.Sprintf("thread-%d", i): {
+					ThreadID:   fmt.Sprintf("thread-%d", i),
+					Name:       fmt.Sprintf("会话-%d", i),
+					CWD:        key,
+					LastUsedAt: now.Add(-time.Duration(i) * time.Minute),
+				},
+			},
+		})
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].SelectionPrompt == nil {
+		t.Fatalf("expected one workspace selection prompt, got %#v", events)
+	}
+	prompt := events[0].SelectionPrompt
+	if prompt.Title != "工作区列表" {
+		t.Fatalf("unexpected prompt title: %#v", prompt)
+	}
+	if len(prompt.Options) != 6 {
+		t.Fatalf("expected 5 workspaces plus expand action, got %#v", prompt.Options)
+	}
+	for i := 0; i < 5; i++ {
+		if prompt.Options[i].ActionKind == "show_all_workspaces" {
+			t.Fatalf("expand action appeared before recent workspaces: %#v", prompt.Options)
+		}
+	}
+	last := prompt.Options[5]
+	if last.ActionKind != "show_all_workspaces" || last.ButtonLabel != "全部工作区" || last.MetaText != "还有 1 个工作区未显示" {
+		t.Fatalf("unexpected expand option: %#v", last)
+	}
+}
+
+func TestShowAllWorkspacesExpandsListAndOffersReturn(t *testing.T) {
+	now := time.Date(2026, 4, 10, 14, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	for i := 0; i < 6; i++ {
+		key := fmt.Sprintf("/data/dl/proj-%d", i)
+		svc.UpsertInstance(&state.InstanceRecord{
+			InstanceID:    fmt.Sprintf("inst-%d", i),
+			DisplayName:   fmt.Sprintf("proj-%d", i),
+			WorkspaceRoot: key,
+			WorkspaceKey:  key,
+			ShortName:     fmt.Sprintf("proj-%d", i),
+			Online:        true,
+			Threads: map[string]*state.ThreadRecord{
+				fmt.Sprintf("thread-%d", i): {
+					ThreadID:   fmt.Sprintf("thread-%d", i),
+					Name:       fmt.Sprintf("会话-%d", i),
+					CWD:        key,
+					LastUsedAt: now.Add(-time.Duration(i) * time.Minute),
+				},
+			},
+		})
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionShowAllWorkspaces,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].SelectionPrompt == nil {
+		t.Fatalf("expected one workspace selection prompt, got %#v", events)
+	}
+	prompt := events[0].SelectionPrompt
+	if prompt.Title != "全部工作区" {
+		t.Fatalf("unexpected prompt title: %#v", prompt)
+	}
+	if len(prompt.Options) != 7 {
+		t.Fatalf("expected all workspaces plus return action, got %#v", prompt.Options)
+	}
+	last := prompt.Options[6]
+	if last.ActionKind != "show_recent_workspaces" || last.ButtonLabel != "最近工作区" || last.MetaText != "回到最近 5 个工作区" {
+		t.Fatalf("unexpected return option: %#v", last)
+	}
+}
+
 func TestAttachWorkspaceUsesThreadWorkspaceFromBroadHeadlessPool(t *testing.T) {
 	now := time.Date(2026, 4, 9, 19, 35, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

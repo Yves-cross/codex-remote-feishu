@@ -248,6 +248,58 @@ func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *t
 	}
 }
 
+func TestProjectWorkspaceSelectionPromptRendersExpandAction(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSelectionPrompt,
+		SelectionPrompt: &control.SelectionPrompt{
+			Kind:  control.SelectionPromptAttachWorkspace,
+			Title: "工作区列表",
+			Options: []control.SelectionOption{
+				{
+					Index:       1,
+					OptionID:    "/data/dl/web",
+					Label:       "web",
+					ButtonLabel: "切换",
+					MetaText:    "2分前 · 有 VS Code 活动",
+				},
+				{
+					Index:       2,
+					Label:       "全部工作区",
+					ButtonLabel: "全部工作区",
+					MetaText:    "还有 3 个工作区未显示",
+					ActionKind:  "show_all_workspaces",
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 6 {
+		t.Fatalf("expected workspace card to include more section, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[3]["content"] != "**更多**" {
+		t.Fatalf("expected more header, got %#v", ops[0].CardElements[3])
+	}
+	actionRow := cardElementButtons(t, ops[0].CardElements[4])
+	if len(actionRow) != 1 {
+		t.Fatalf("expected one expand action button, got %#v", ops[0].CardElements[4])
+	}
+	if cardButtonLabel(t, actionRow[0]) != "查看全部 · 全部工作区" {
+		t.Fatalf("unexpected expand button label: %#v", actionRow[0])
+	}
+	value := cardButtonPayload(t, actionRow[0])
+	if value["kind"] != "show_all_workspaces" {
+		t.Fatalf("unexpected expand payload: %#v", value)
+	}
+	renderedElements := renderedV2BodyElements(t, ops[0])
+	renderedValue := renderedButtonCallbackValue(t, renderedElements[4])
+	if renderedValue["kind"] != "show_all_workspaces" {
+		t.Fatalf("unexpected rendered expand payload: %#v", renderedValue)
+	}
+}
+
 func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

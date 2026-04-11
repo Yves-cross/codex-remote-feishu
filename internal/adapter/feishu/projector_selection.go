@@ -162,7 +162,13 @@ func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daem
 	available := make([]control.SelectionOption, 0, len(prompt.Options))
 	unavailable := make([]control.SelectionOption, 0, len(prompt.Options))
 	current := make([]control.SelectionOption, 0, 1)
+	more := make([]control.SelectionOption, 0, 1)
 	for _, option := range prompt.Options {
+		switch strings.TrimSpace(option.ActionKind) {
+		case "show_all_workspaces", "show_recent_workspaces":
+			more = append(more, option)
+			continue
+		}
 		switch {
 		case option.IsCurrent:
 			current = append(current, option)
@@ -237,6 +243,24 @@ func attachWorkspaceSelectionPromptElements(prompt control.SelectionPrompt, daem
 			"content": "**其他状态**",
 		})
 		for _, option := range unavailable {
+			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
+				elements = append(elements, button)
+			}
+			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
+				elements = append(elements, map[string]any{
+					"tag":     "markdown",
+					"content": renderSystemInlineTags(meta),
+				})
+			}
+		}
+	}
+
+	if len(more) > 0 {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**更多**",
+		})
+		for _, option := range more {
 			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
 				elements = append(elements, button)
 			}
@@ -734,6 +758,10 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 	switch strings.TrimSpace(option.ActionKind) {
 	case "show_scoped_threads":
 		value = map[string]any{"kind": "show_scoped_threads"}
+	case "show_all_workspaces":
+		value = map[string]any{"kind": "show_all_workspaces"}
+	case "show_recent_workspaces":
+		value = map[string]any{"kind": "show_recent_workspaces"}
 	case "show_workspace_threads":
 		value = map[string]any{"kind": "show_workspace_threads", "workspace_key": strings.TrimSpace(option.OptionID)}
 	case "show_threads":
@@ -807,6 +835,14 @@ func selectionOptionButton(prompt control.SelectionPrompt, option control.Select
 
 func selectionOptionButtonText(prompt control.SelectionPrompt, option control.SelectionOption) string {
 	text := strings.TrimSpace(option.ButtonLabel)
+	switch strings.TrimSpace(option.ActionKind) {
+	case "show_all_workspaces":
+		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "全部工作区")
+		return "查看全部 · " + base
+	case "show_recent_workspaces":
+		base := firstNonEmpty(strings.TrimSpace(option.ButtonLabel), strings.TrimSpace(option.Label), "最近工作区")
+		return "返回 · " + base
+	}
 	if prompt.Kind == control.SelectionPromptAttachInstance {
 		summary := firstNonEmpty(strings.TrimSpace(option.Label), text, "实例")
 		switch {

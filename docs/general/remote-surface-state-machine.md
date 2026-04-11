@@ -250,9 +250,11 @@ surface 不是单一枚举，而是五层正交状态叠加。
 2. normal mode `/list` 的 Feishu 卡片当前走专用 `grouped_attach_workspace` 布局，不再复用通用 selection 模板。
    1. 若 surface 当前已 attach workspace，会先在卡片顶部投影一个“当前工作区”摘要。
    2. 当前工作区摘要只显示 `workspace label + 最近活跃时间 + /use / /new 提示`，不会再把当前 workspace 混进可点击列表。
-   3. 其余 workspace 按“可接管 / 其他状态”分组展示；按钮使用全宽动作前缀文案，例如 `接管 · web`、`切换 · web`、`不可接管 · ops`。
-   4. 每个 workspace 的第二行状态当前压缩为短元信息，例如 `2分前 · 有 VS Code 活动`、`1小时前 · 当前被其他飞书会话接管`。
-   5. 组内排序按该 workspace 下可见 thread 的最新活跃时间倒序；无时间时再回退到 `workspaceKey` 字典序。
+   3. 默认只展示其余 workspace 中最近使用的 5 个；若超过 5 个，会在卡片底部追加一个 `show_all_workspaces` 按钮切到“全部工作区”视图。
+   4. “全部工作区”视图会保留同样的 current-summary 与分组样式，并在底部追加一个 `show_recent_workspaces` 按钮返回默认视图。
+   5. 其余 workspace 按“可接管 / 其他状态”分组展示；按钮使用全宽动作前缀文案，例如 `接管 · web`、`切换 · web`、`不可接管 · ops`。
+   6. 每个 workspace 的第二行状态当前压缩为短元信息，例如 `2分前 · 有 VS Code 活动`、`1小时前 · 当前被其他飞书会话接管`。
+   7. recent/all 视图里的 workspace 选择范围都按该 workspace 下可见 thread 的最新活跃时间倒序裁剪；无时间时再回退到 `workspaceKey` 字典序。
 3. normal mode `/list` 卡片按钮当前分成两类：
    1. workspace 仍有可接管 online instance 时，走 `attach_workspace -> ActionAttachWorkspace`。
    2. workspace 只剩可恢复的 persisted/offline thread、但当前没有可接管 online instance 时，走 `show_workspace_threads -> ActionShowWorkspaceThreads`，先展示该 workspace 的全部可恢复会话，再复用现有 `/use` 恢复链路。
@@ -991,6 +993,8 @@ retained-offline overlay 额外规则：
 | 卡片动作 | 服务端 action | 说明 |
 | --- | --- | --- |
 | `attach_workspace` | `ActionAttachWorkspace` | normal mode `/list` 的 workspace attach/switch 入口 |
+| `show_all_workspaces` | `ActionShowAllWorkspaces` | normal mode `/list` 默认最近 5 个视图里展开全部工作区 |
+| `show_recent_workspaces` | `ActionShowRecentWorkspaces` | 从“全部工作区”视图返回默认最近 5 个工作区 |
 | `show_workspace_threads` | `ActionShowWorkspaceThreads` | normal mode `/list` 中 recoverable-only workspace 的单-workspace 会话列表入口 |
 | `attach_instance` | `ActionAttachInstance` | 直达 attach |
 | `use_thread` | `ActionUseThread` | 直达 thread 切换 |
@@ -1023,11 +1027,13 @@ retained-offline overlay 额外规则：
 
 1. 当前 Feishu gateway 只为一小组 card action 开放同步 `replace_current_card` 回包：
    1. `ActionShowCommandMenu`
-   2. `ActionShowThreads`
-   3. `ActionShowAllThreads`
-   4. `ActionShowScopedThreads`
-   5. `ActionShowWorkspaceThreads`
-   6. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
+   2. `ActionShowAllWorkspaces`
+   3. `ActionShowRecentWorkspaces`
+   4. `ActionShowThreads`
+   5. `ActionShowAllThreads`
+   6. `ActionShowScopedThreads`
+   7. `ActionShowWorkspaceThreads`
+   8. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
 2. 只有当这些动作产出恰好一张 `CommandCatalog` 或 `SelectionPrompt`，且来源卡片带有当前 daemon 的 lifecycle 标识时，才会走原地替换。
 3. apply 终态、request prompt 终态、upgrade/debug 异步结果等仍然沿用 append-only 消息语义，不在这轮同步回包范围内。
 

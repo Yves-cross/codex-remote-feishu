@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -189,6 +190,16 @@ func (s *Service) instanceSelectionContextText(surface *state.SurfaceConsoleReco
 }
 
 func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	return s.presentWorkspaceSelectionMode(surface, false)
+}
+
+func (s *Service) presentAllWorkspaceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	return s.presentWorkspaceSelectionMode(surface, true)
+}
+
+const workspaceSelectionRecentLimit = 5
+
+func (s *Service) presentWorkspaceSelectionMode(surface *state.SurfaceConsoleRecord, expanded bool) []control.UIEvent {
 	grouped := map[string][]*state.InstanceRecord{}
 	for _, inst := range s.root.Instances {
 		if inst == nil || !inst.Online {
@@ -285,7 +296,19 @@ func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord)
 	sortWorkspaceSelectionEntries(available)
 	sortWorkspaceSelectionEntries(unavailable)
 
-	options := make([]control.SelectionOption, 0, len(available)+len(unavailable))
+	allEntries := append([]workspaceSelectionEntry(nil), available...)
+	allEntries = append(allEntries, unavailable...)
+	sortWorkspaceSelectionEntries(allEntries)
+	if !expanded && len(allEntries) > workspaceSelectionRecentLimit {
+		visible := map[string]bool{}
+		for _, entry := range allEntries[:workspaceSelectionRecentLimit] {
+			visible[strings.TrimSpace(entry.option.OptionID)] = true
+		}
+		available = filterWorkspaceSelectionEntriesByVisibleSet(available, visible)
+		unavailable = filterWorkspaceSelectionEntriesByVisibleSet(unavailable, visible)
+	}
+
+	options := make([]control.SelectionOption, 0, len(available)+len(unavailable)+1)
 	appendIndexed := func(entries []workspaceSelectionEntry) {
 		for _, entry := range entries {
 			entry.option.Index = len(options) + 1
@@ -295,9 +318,32 @@ func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord)
 	appendIndexed(available)
 	appendIndexed(unavailable)
 
+	if hiddenCount := len(allEntries) - workspaceSelectionRecentLimit; !expanded && hiddenCount > 0 {
+		options = append(options, control.SelectionOption{
+			Index:       len(options) + 1,
+			Label:       "全部工作区",
+			ButtonLabel: "全部工作区",
+			ActionKind:  "show_all_workspaces",
+			MetaText:    fmt.Sprintf("还有 %d 个工作区未显示", hiddenCount),
+		})
+	} else if expanded && len(allEntries) > workspaceSelectionRecentLimit {
+		options = append(options, control.SelectionOption{
+			Index:       len(options) + 1,
+			Label:       "最近工作区",
+			ButtonLabel: "最近工作区",
+			ActionKind:  "show_recent_workspaces",
+			MetaText:    fmt.Sprintf("回到最近 %d 个工作区", workspaceSelectionRecentLimit),
+		})
+	}
+
 	hint := ""
 	if contextTitle != "" && len(options) == 0 {
 		hint = "当前没有其他可接管工作区。"
+	}
+
+	title := "工作区列表"
+	if expanded {
+		title = "全部工作区"
 	}
 
 	return []control.UIEvent{{
@@ -306,13 +352,24 @@ func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord)
 		SelectionPrompt: &control.SelectionPrompt{
 			Kind:         control.SelectionPromptAttachWorkspace,
 			Layout:       "grouped_attach_workspace",
-			Title:        "工作区列表",
+			Title:        title,
 			Hint:         hint,
 			ContextTitle: contextTitle,
 			ContextText:  contextText,
 			Options:      options,
 		},
 	}}
+}
+
+func filterWorkspaceSelectionEntriesByVisibleSet(entries []workspaceSelectionEntry, visible map[string]bool) []workspaceSelectionEntry {
+	filtered := make([]workspaceSelectionEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !visible[strings.TrimSpace(entry.option.OptionID)] {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 type workspaceSelectionEntry struct {

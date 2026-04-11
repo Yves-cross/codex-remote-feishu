@@ -315,6 +315,10 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.attachInstance(surface, action.InstanceID)
 	case control.ActionAttachWorkspace:
 		return s.attachWorkspace(surface, action.WorkspaceKey)
+	case control.ActionShowAllWorkspaces:
+		return s.presentAllWorkspaceSelection(surface)
+	case control.ActionShowRecentWorkspaces:
+		return s.presentWorkspaceSelection(surface)
 	case control.ActionShowCommandHelp:
 		return []control.UIEvent{commandCatalogEvent(surface, control.FeishuCommandHelpCatalog())}
 	case control.ActionShowCommandMenu:

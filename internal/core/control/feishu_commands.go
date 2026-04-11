@@ -302,7 +302,7 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			CanonicalSlash:   "/list",
 			CanonicalMenuKey: "list",
 			ArgumentKind:     FeishuCommandArgumentNone,
-			Description:      "默认列出可用工作区；切到 `vscode` 模式后列出在线实例，并从 follow-first 路径接管。",
+			Description:      "默认列出最近 5 个可用工作区，并可卡片内展开全部；切到 `vscode` 模式后列出在线实例，并从 follow-first 路径接管。",
 			ShowInHelp:       true,
 			ShowInMenu:       true,
 		},

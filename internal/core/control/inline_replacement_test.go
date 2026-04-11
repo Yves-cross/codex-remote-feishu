@@ -34,6 +34,16 @@ func TestSupportsInlineCardReplacement(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "workspace list expand",
+			action: Action{Kind: ActionShowAllWorkspaces},
+			want:   true,
+		},
+		{
+			name:   "workspace list collapse",
+			action: Action{Kind: ActionShowRecentWorkspaces},
+			want:   true,
+		},
+		{
 			name:   "thread return action",
 			action: Action{Kind: ActionShowAllThreads},
 			want:   true,

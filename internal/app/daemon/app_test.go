@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -432,6 +433,58 @@ func TestHandleGatewayActionReplacesWorkspaceThreadCardForCardNavigation(t *test
 	}
 	if !operationHasActionValue(*result.ReplaceCurrentCard, "show_all_threads", "", "") {
 		t.Fatalf("expected replacement workspace card to include return action, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+}
+
+func TestHandleGatewayActionReplacesExpandedWorkspaceListCardForCardNavigation(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	for i := 0; i < 6; i++ {
+		key := fmt.Sprintf("/data/dl/proj-%d", i)
+		app.service.UpsertInstance(&state.InstanceRecord{
+			InstanceID:    fmt.Sprintf("inst-%d", i),
+			DisplayName:   fmt.Sprintf("proj-%d", i),
+			WorkspaceRoot: key,
+			WorkspaceKey:  key,
+			ShortName:     fmt.Sprintf("proj-%d", i),
+			Online:        true,
+			Threads: map[string]*state.ThreadRecord{
+				fmt.Sprintf("thread-%d", i): {
+					ThreadID:   fmt.Sprintf("thread-%d", i),
+					Name:       fmt.Sprintf("会话-%d", i),
+					CWD:        key,
+					LastUsedAt: time.Date(2026, 4, 10, 10, i, 0, 0, time.UTC),
+				},
+			},
+		})
+	}
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowAllWorkspaces,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement result, got %#v", result)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	if result.ReplaceCurrentCard.CardTitle != "全部工作区" {
+		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
+	}
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "show_recent_workspaces", "", "") {
+		t.Fatalf("expected expanded workspace card to include return action, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
 

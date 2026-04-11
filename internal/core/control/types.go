@@ -35,6 +35,8 @@ const (
 	ActionSelectPrompt         ActionKind = "surface.selection.prompt"
 	ActionAttachInstance       ActionKind = "surface.button.attach_instance"
 	ActionAttachWorkspace      ActionKind = "surface.button.attach_workspace"
+	ActionShowAllWorkspaces    ActionKind = "surface.button.show_all_workspaces"
+	ActionShowRecentWorkspaces ActionKind = "surface.button.show_recent_workspaces"
 	ActionShowThreads          ActionKind = "surface.button.show_threads"
 	ActionShowAllThreads       ActionKind = "surface.button.show_all_threads"
 	ActionShowScopedThreads    ActionKind = "surface.button.show_scoped_threads"
