@@ -288,10 +288,10 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
 当前 `scripts/release/build-artifacts.sh` 为每个平台构建：
 
 - 一个带版本号的 `codex-remote`
-- `README.md`
 - `QUICKSTART.md`
 - `CHANGELOG.md`
-- `deploy/`
+- `deploy/feishu/app-template.json`
+- `deploy/feishu/README.md`
 
 另外单独生成：
 

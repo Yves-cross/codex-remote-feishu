@@ -143,8 +143,9 @@ for platform in "${platforms[@]}"; do
     go build -trimpath -ldflags "-X main.version=${version}" \
     -o "${staging_dir}/codex-remote${extension}" ./cmd/codex-remote
 
-  cp README.md QUICKSTART.md CHANGELOG.md "${staging_dir}/"
-  cp -R deploy "${staging_dir}/"
+  cp QUICKSTART.md CHANGELOG.md "${staging_dir}/"
+  mkdir -p "${staging_dir}/deploy/feishu"
+  cp deploy/feishu/app-template.json deploy/feishu/README.md "${staging_dir}/deploy/feishu/"
 
   if [[ "${goos}" == "windows" ]]; then
     archive_path="${output_dir}/${package_name}.zip"
