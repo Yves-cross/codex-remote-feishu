@@ -22,7 +22,7 @@ describe("SetupRoute", () => {
 
     render(<SetupRoute />);
 
-    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "开始" })).toBeInTheDocument();
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((call) => call.rawURL.startsWith("./"))).toBe(true);
     expect(calls.some((call) => call.path === "/g/demo/api/setup/bootstrap-state")).toBe(true);
@@ -44,7 +44,7 @@ describe("SetupRoute", () => {
 
     render(<SetupRoute />);
 
-    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "开始" })).toBeInTheDocument();
 
     const user = userEvent.setup();
     const toggle = screen.getByRole("button", { name: "打开步骤导航" });
@@ -73,7 +73,7 @@ describe("SetupRoute", () => {
 
     render(<SetupRoute />);
 
-    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "开始" })).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: /接入已有应用/ }));

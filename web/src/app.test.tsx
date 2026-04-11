@@ -9,18 +9,18 @@ describe("App", () => {
     window.history.replaceState({}, "", "/g/demo/setup");
 
     installMockFetch({
-      "/api/setup/bootstrap-state": { body: makeBootstrap() },
-      "/api/setup/feishu/apps": {
+      "/g/demo/api/setup/bootstrap-state": { body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }) },
+      "/g/demo/api/setup/feishu/apps": {
         body: {
           apps: [makeApp({ wizard: {} })],
         },
       },
-      "/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
-      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+      "/g/demo/api/setup/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/g/demo/api/setup/vscode/detect": { body: makeVSCodeDetect() },
     });
 
     render(<App />);
 
-    expect(await screen.findByText("你想怎么接入飞书应用？")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "开始" })).toBeInTheDocument();
   });
 });

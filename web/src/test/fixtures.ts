@@ -12,44 +12,57 @@ import type {
   VSCodeDetectResponse,
 } from "../lib/types";
 
-export function makeBootstrap(overrides: Partial<BootstrapState> = {}): BootstrapState {
+type BootstrapOverrides =
+  Partial<Omit<BootstrapState, "session" | "config" | "relay" | "admin" | "feishu">> & {
+    session?: Partial<BootstrapState["session"]>;
+    config?: Partial<BootstrapState["config"]>;
+    relay?: Partial<BootstrapState["relay"]>;
+    admin?: Partial<BootstrapState["admin"]>;
+    feishu?: Partial<BootstrapState["feishu"]>;
+  };
+
+export function makeBootstrap(overrides: BootstrapOverrides = {}): BootstrapState {
+  const {
+    session: sessionOverrides,
+    config: configOverrides,
+    relay: relayOverrides,
+    admin: adminOverrides,
+    feishu: feishuOverrides,
+    ...rest
+  } = overrides;
+
   return {
-    phase: "ready",
-    setupRequired: true,
-    sshSession: false,
+    phase: rest.phase ?? "ready",
+    setupRequired: rest.setupRequired ?? true,
+    sshSession: rest.sshSession ?? false,
     session: {
-      authenticated: true,
-      trustedLoopback: true,
-      ...(overrides.session ?? {}),
+      authenticated: sessionOverrides?.authenticated ?? true,
+      trustedLoopback: sessionOverrides?.trustedLoopback ?? true,
     },
     config: {
-      path: "/tmp/codex-remote.json",
-      version: 1,
-      ...(overrides.config ?? {}),
+      path: configOverrides?.path ?? "/tmp/codex-remote.json",
+      version: configOverrides?.version ?? 1,
     },
     relay: {
-      listenHost: "127.0.0.1",
-      listenPort: "9500",
-      serverURL: "ws://127.0.0.1:9500/ws/agent",
-      ...(overrides.relay ?? {}),
+      listenHost: relayOverrides?.listenHost ?? "127.0.0.1",
+      listenPort: relayOverrides?.listenPort ?? "9500",
+      serverURL: relayOverrides?.serverURL ?? "ws://127.0.0.1:9500/ws/agent",
     },
     admin: {
-      listenHost: "127.0.0.1",
-      listenPort: "9501",
-      url: "http://127.0.0.1:9501",
-      setupURL: "/setup",
-      setupTokenRequired: false,
-      ...(overrides.admin ?? {}),
+      listenHost: adminOverrides?.listenHost ?? "127.0.0.1",
+      listenPort: adminOverrides?.listenPort ?? "9501",
+      url: adminOverrides?.url ?? "http://127.0.0.1:9501",
+      setupURL: adminOverrides?.setupURL ?? "/setup",
+      setupTokenRequired: adminOverrides?.setupTokenRequired ?? false,
+      setupTokenExpiresAt: adminOverrides?.setupTokenExpiresAt,
     },
     feishu: {
-      appCount: 1,
-      enabledAppCount: 1,
-      configuredAppCount: 1,
-      runtimeConfiguredApps: 1,
-      ...(overrides.feishu ?? {}),
+      appCount: feishuOverrides?.appCount ?? 1,
+      enabledAppCount: feishuOverrides?.enabledAppCount ?? 1,
+      configuredAppCount: feishuOverrides?.configuredAppCount ?? 1,
+      runtimeConfiguredApps: feishuOverrides?.runtimeConfiguredApps ?? 1,
     },
-    gateways: overrides.gateways ?? [],
-    ...overrides,
+    gateways: rest.gateways ?? [],
   };
 }
 
