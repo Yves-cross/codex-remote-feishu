@@ -13,6 +13,54 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
+func TestEventAffectsHeadlessRestoreHints(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		event agentproto.Event
+		want  bool
+	}{
+		{name: "item delta", event: agentproto.Event{Kind: agentproto.EventItemDelta}, want: false},
+		{name: "item completed", event: agentproto.Event{Kind: agentproto.EventItemCompleted}, want: true},
+		{name: "turn completed", event: agentproto.Event{Kind: agentproto.EventTurnCompleted}, want: true},
+		{name: "thread focused", event: agentproto.Event{Kind: agentproto.EventThreadFocused}, want: true},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := eventAffectsHeadlessRestoreHints(tc.event); got != tc.want {
+				t.Fatalf("eventAffectsHeadlessRestoreHints(%s) = %t, want %t", tc.event.Kind, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEventAffectsSurfaceResumeState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		event agentproto.Event
+		want  bool
+	}{
+		{name: "item delta", event: agentproto.Event{Kind: agentproto.EventItemDelta}, want: false},
+		{name: "item completed", event: agentproto.Event{Kind: agentproto.EventItemCompleted}, want: false},
+		{name: "thread discovered", event: agentproto.Event{Kind: agentproto.EventThreadDiscovered}, want: true},
+		{name: "threads snapshot", event: agentproto.Event{Kind: agentproto.EventThreadsSnapshot}, want: true},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := eventAffectsSurfaceResumeState(tc.event); got != tc.want {
+				t.Fatalf("eventAffectsSurfaceResumeState(%s) = %t, want %t", tc.event.Kind, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIngressPumpRoundRobinKeepsPerInstanceFIFO(t *testing.T) {
 	pump := newIngressPump()
 	for _, item := range []ingressWorkItem{
@@ -172,6 +220,121 @@ func TestAppRelayCallbacksUseIngressPump(t *testing.T) {
 		inst := app.service.Instance("inst-1")
 		return inst != nil && inst.Threads["thread-1"] != nil
 	})
+}
+
+func TestRefreshHeadlessRestoreHintsForInstanceLockedScopesToAttachedInstance(t *testing.T) {
+	t.Parallel()
+
+	app := newRestoreHintTestApp(t.TempDir())
+	seedHeadlessInstance(app, "inst-1", "thread-1")
+	seedHeadlessInstance(app, "inst-2", "thread-2")
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "chat-2",
+		ActorUserID:      "user-2",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "chat-2",
+		ActorUserID:      "user-2",
+		InstanceID:       "inst-2",
+	})
+
+	app.mu.Lock()
+	app.clearHeadlessRestoreHintLocked("surface-1")
+	app.clearHeadlessRestoreHintLocked("surface-2")
+	app.syncHeadlessRestoreStateLocked()
+	app.refreshHeadlessRestoreHintsForInstanceLocked("inst-1")
+	_, hint1 := app.headlessRestoreHints.Get("surface-1")
+	_, hint2 := app.headlessRestoreHints.Get("surface-2")
+	app.mu.Unlock()
+
+	if !hint1 {
+		t.Fatal("expected scoped hint refresh to repopulate attached surface")
+	}
+	if hint2 {
+		t.Fatal("expected scoped hint refresh to skip unrelated attached surface")
+	}
+}
+
+func TestSyncSurfaceResumeStateForInstanceLockedScopesToAttachedInstance(t *testing.T) {
+	t.Parallel()
+
+	app := newRestoreHintTestApp(t.TempDir())
+	seedHeadlessInstance(app, "inst-1", "thread-1")
+	seedHeadlessInstance(app, "inst-2", "thread-2")
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "chat-2",
+		ActorUserID:      "user-2",
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "chat-2",
+		ActorUserID:      "user-2",
+		InstanceID:       "inst-2",
+	})
+
+	app.mu.Lock()
+	if err := app.surfaceResumeState.Delete("surface-1"); err != nil {
+		app.mu.Unlock()
+		t.Fatalf("delete surface-1 resume state: %v", err)
+	}
+	if err := app.surfaceResumeState.Delete("surface-2"); err != nil {
+		app.mu.Unlock()
+		t.Fatalf("delete surface-2 resume state: %v", err)
+	}
+	app.syncSurfaceResumeStateForInstanceLocked("inst-1", nil)
+	_, entry1 := app.surfaceResumeState.Get("surface-1")
+	_, entry2 := app.surfaceResumeState.Get("surface-2")
+	app.mu.Unlock()
+
+	if !entry1 {
+		t.Fatal("expected scoped surface resume sync to repopulate attached surface")
+	}
+	if entry2 {
+		t.Fatal("expected scoped surface resume sync to skip unrelated attached surface")
+	}
 }
 
 func waitForDaemonCondition(t *testing.T, timeout time.Duration, check func() bool) {

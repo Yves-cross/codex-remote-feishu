@@ -53,6 +53,26 @@ func (a *App) refreshHeadlessRestoreHintsLocked() {
 	}
 }
 
+func (a *App) refreshHeadlessRestoreHintsForInstanceLocked(instanceID string) {
+	if a.headlessRestoreHints == nil {
+		return
+	}
+	instanceID = strings.TrimSpace(instanceID)
+	if instanceID == "" {
+		return
+	}
+	for _, surface := range a.service.Surfaces() {
+		if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) != instanceID {
+			continue
+		}
+		hint, ok := a.currentHeadlessRestoreHintLocked(surface.SurfaceSessionID)
+		if !ok {
+			continue
+		}
+		a.upsertHeadlessRestoreHintLocked(hint)
+	}
+}
+
 func (a *App) syncHeadlessRestoreHintAfterActionLocked(action control.Action, before *control.Snapshot) {
 	if a.headlessRestoreHints == nil {
 		return

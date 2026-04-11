@@ -401,6 +401,8 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	if a.shuttingDown {
 		return
 	}
+	refreshHeadlessRestoreHints := false
+	syncSurfaceResumeState := false
 	for _, event := range events {
 		now := time.Now().UTC()
 		log.Printf(
@@ -433,10 +435,44 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 		}
 		a.recordHeadlessRestoreOutcomeEventsLocked(uiEvents, now)
 		a.handleUIEvents(ctx, uiEvents)
+		if eventAffectsHeadlessRestoreHints(event) {
+			refreshHeadlessRestoreHints = true
+		}
+		if eventAffectsSurfaceResumeState(event) {
+			syncSurfaceResumeState = true
+		}
 	}
-	a.refreshHeadlessRestoreHintsLocked()
-	a.syncHeadlessRestoreStateLocked()
-	a.syncSurfaceResumeStateLocked(nil)
+	if refreshHeadlessRestoreHints {
+		a.refreshHeadlessRestoreHintsForInstanceLocked(instanceID)
+		a.syncHeadlessRestoreStateLocked()
+	}
+	if syncSurfaceResumeState {
+		a.syncSurfaceResumeStateForInstanceLocked(instanceID, nil)
+	}
+}
+
+func eventAffectsHeadlessRestoreHints(event agentproto.Event) bool {
+	switch event.Kind {
+	case agentproto.EventThreadsSnapshot,
+		agentproto.EventThreadDiscovered,
+		agentproto.EventThreadFocused,
+		agentproto.EventItemCompleted,
+		agentproto.EventTurnCompleted:
+		return true
+	default:
+		return false
+	}
+}
+
+func eventAffectsSurfaceResumeState(event agentproto.Event) bool {
+	switch event.Kind {
+	case agentproto.EventThreadsSnapshot,
+		agentproto.EventThreadDiscovered,
+		agentproto.EventThreadFocused:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentproto.CommandAck) {

@@ -124,6 +124,47 @@ func (a *App) syncSurfaceResumeStateLocked(clearTargets map[string]bool) {
 	a.syncSurfaceResumeRecoveryStateLocked()
 }
 
+func (a *App) syncSurfaceResumeStateForInstanceLocked(instanceID string, clearTargets map[string]bool) {
+	if a.surfaceResumeState == nil {
+		return
+	}
+	instanceID = strings.TrimSpace(instanceID)
+	if instanceID == "" {
+		return
+	}
+	now := time.Now().UTC()
+	touched := false
+	for _, surface := range a.service.Surfaces() {
+		if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) != instanceID {
+			continue
+		}
+		touched = true
+		clearResumeTarget := false
+		if clearTargets != nil {
+			clearResumeTarget = clearTargets[strings.TrimSpace(surface.SurfaceSessionID)]
+		}
+		entry, ok := a.currentSurfaceResumeEntryLocked(surface, clearResumeTarget)
+		if !ok {
+			if err := a.surfaceResumeState.Delete(strings.TrimSpace(surface.SurfaceSessionID)); err != nil {
+				log.Printf("clear surface resume state failed: surface=%s err=%v", surface.SurfaceSessionID, err)
+			}
+			continue
+		}
+		if current, ok := a.surfaceResumeState.Get(entry.SurfaceSessionID); ok && sameSurfaceResumeEntryContent(current, entry) {
+			continue
+		}
+		entry.UpdatedAt = now
+		if err := a.surfaceResumeState.Put(entry); err != nil {
+			log.Printf("persist surface resume state failed: surface=%s err=%v", entry.SurfaceSessionID, err)
+		}
+	}
+	if !touched {
+		return
+	}
+	a.syncVSCodeResumeNoticeStateLocked(nil)
+	a.syncSurfaceResumeRecoveryStateLocked()
+}
+
 func (a *App) currentSurfaceResumeEntryLocked(surface *state.SurfaceConsoleRecord, clearResumeTarget bool) (SurfaceResumeEntry, bool) {
 	if surface == nil {
 		return SurfaceResumeEntry{}, false
