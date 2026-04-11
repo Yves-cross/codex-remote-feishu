@@ -21,6 +21,6 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "开始" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "环境检查" })).toBeInTheDocument();
   });
 });
