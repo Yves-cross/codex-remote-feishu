@@ -1,78 +1,66 @@
-# Quick Start
+# 快速开始
 
-## Option 1: One-line install on macOS / Linux
+## 方式一：macOS / Linux 一条命令安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash
 ```
 
-This command will:
+这条命令会自动：
 
-1. Detect your platform
-2. Download the GitHub-built release archive
-3. Extract it under your local release cache
-4. Install `codex-remote` to a stable local path
-5. Start the local daemon and print the WebSetup URL
+1. 识别当前平台
+2. 下载 GitHub 构建好的 release 包
+3. 解压到本地 release 缓存目录
+4. 安装稳定路径下的 `codex-remote`
+5. 启动本地 daemon 并打印 WebSetup 地址
 
-To pin a specific version:
+如果你想固定到某个版本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --version v1.0.0
 ```
 
-To install the latest beta track instead of the latest production build:
+如果你想安装某个 prerelease track 的最新版本，例如 `beta`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --track beta
 ```
 
-## Option 2: Download a release archive
+## 方式二：下载 release 压缩包
 
-1. Download the archive matching your platform from GitHub Releases
-2. Extract it
-3. Run:
+1. 从 GitHub Releases 下载适合你平台的压缩包
+2. 解压
+3. 执行：
 
-macOS / Linux:
+macOS / Linux：
 
 ```bash
 ./codex-remote install -bootstrap-only -start-daemon
 ```
 
-Windows PowerShell:
+Windows PowerShell：
 
 ```powershell
 .\codex-remote.exe install -bootstrap-only -start-daemon
 ```
 
-## Finish setup in the Web UI
+## 在 WebSetup 里完成首次配置
 
-After the daemon starts, open the printed `/setup` URL.
+daemon 启动后，打开命令输出里的 `/setup` 地址。
 
-In WebSetup:
+推荐顺序：
 
-1. Add or verify your Feishu app credentials
-2. Let the page detect your VS Code environment
-3. Apply `editor_settings` or `managed_shim`
-4. Reinstall shim after extension upgrades when the page asks for it
+1. 添加或验证飞书应用凭据
+2. 看一下这台机器的运行环境检查结果
+3. 如有需要，开启自动启动
+4. 直接开始使用默认 `normal` 模式
+5. 只有在你明确需要“飞书跟着编辑器当前焦点走”时，再去处理 VS Code 接入
 
-## Repo-only helpers
+`v1.5.0` 的默认推荐路径是：先用 `normal` 模式，再按需启用 VS Code 跟随能力。
 
-If you are working from a source checkout instead of a release archive:
+## Linux `systemd --user` 常驻服务
 
-- `./setup.sh` or `./setup.ps1`
-  - builds a local binary
-  - bootstraps the daemon
-  - opens or prints the same WebSetup flow
-- `./bin/codex-remote install -bootstrap-only -start-daemon`
-  - reruns repo-local bootstrap directly from the built binary
-- `./bin/codex-remote daemon`
-  - runs the daemon in the foreground for targeted debugging
-
-These repo helpers are not part of the released product package.
-
-## Linux `systemd --user` service
-
-If you want the Linux daemon to be managed as a long-running user service instead of a detached process:
+如果你希望 Linux 上的 daemon 由长期运行的用户服务托管，而不是依赖 detached 进程：
 
 ```bash
 codex-remote service install-user
@@ -81,36 +69,44 @@ codex-remote service start
 codex-remote service status
 ```
 
-If you also want it to come back after reboot before opening a terminal session, enable lingering for your user:
+如果你希望系统重启后在没有手工打开终端的情况下也能恢复，需要额外执行：
 
 ```bash
 loginctl enable-linger "$USER"
 ```
 
-## Upgrade From A Local Build
+## 升级到当前 track 的最新版本
 
-If you already built a fresh local binary and want to roll the installed daemon forward through the built-in upgrade transaction, copy it to the fixed local artifact path first:
+对于已经接入完成的用户，当前推荐的升级入口统一是：
 
-```bash
-cp ./bin/codex-remote ~/.local/share/codex-remote/local-upgrade/codex-remote
+```text
+/upgrade latest
 ```
 
-Then send `/upgrade local` in Feishu. To check or continue an upgrade to the latest GitHub release on the current track, send `/upgrade latest`.
+在飞书里发送这条命令即可。它适合：
 
-Both commands reuse the same built-in helper transaction and automatically roll back if the new daemon does not recover to a healthy state.
+- 检查是否有可用新版本
+- 开始升级到当前 track 的最新 release
+- 继续上一次未完成的升级
 
-## Before you test in Feishu
+## 开始在飞书里使用
 
-- make sure the app has the bot message/event permissions from `deploy/feishu/README.md`
-- if you want local `.md` links to become Feishu preview links, also grant `drive:drive`
+在测试前先确认：
 
-Then in Feishu:
+- 飞书应用已经开通 `deploy/feishu/README.md` 里列出的基础消息 / 事件权限
+- 如果你希望本地 `.md` 链接自动变成飞书预览链接，还需要 `drive:drive`
 
-- send `/help` or `/menu` first if you want to see the current command set without guessing; `/help` stays text-first, while `/menu` now reorders its homepage by stage and uses compact button cards
-- send `/list` if you want to explicitly attach one of the online VS Code instances
-- send `/use` if you want to jump straight into a recent visible session; `/threads` is still accepted as a legacy alias; use `/useall` for the full list
-- use the card buttons when they appear; if a card says it is stale or expired, resend the command instead of replying with a number
-- final replies will show up under the source message that triggered them, which makes group chat context easier to follow
-- if a text is still queued while another reply is running, add a `ThumbsUp` to that queued text to turn it into a follow-up for the current turn
-- `/detach` drops the current attachment and also cancels a pending background recovery if one is in progress
-- remote execution defaults to full access; if you need confirmation mode temporarily, send `/access confirm`; bare `/access` and bare `/reasoning` will both return parameter cards
+然后在飞书里：
+
+- 默认先走 `normal` 模式：用 `/list` 选工作区，再 `/use` 继续已有会话，或者 `/new` 新开一个干净会话
+- 如果只是想快速回到最近对话，直接发 `/use`
+- 只有当你明确想让飞书跟着编辑器当前焦点变化时，才切到 `vscode` 模式
+- 如果你一时记不住命令，先发 `/help` 或 `/menu`
+- `/list` 在 `normal` 模式下显示工作区，在 `vscode` 模式下才显示在线 VS Code 实例
+- `/use` 用来继续最近可见会话；`/threads` 仍可作为旧别名使用；`/useall` 会显示全部可见会话
+- 优先使用卡片按钮；如果卡片提示已经过期，直接重发对应命令
+- 最终回复会回在触发它的那条消息下面，群聊里更容易看懂上下文
+- 如果一条文字还在排队，而当前已经有一条回复在执行，可以给这条排队文字点 `ThumbsUp`，把它升级成对当前执行回复的跟进
+- `/detach` 会断开当前接管，并取消正在等待的后台恢复
+- 如果你需要编辑器跟随行为，使用 `/mode vscode`，然后 `/list`，最后 `/follow`
+- 默认执行权限是 `full`；如果你暂时想改成确认模式，可以发送 `/access confirm`
