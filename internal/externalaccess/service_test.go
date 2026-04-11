@@ -103,6 +103,52 @@ func TestServiceRewritesLocationAndCookiePath(t *testing.T) {
 	}
 }
 
+func TestServiceAllowsRootBasePathAssets(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, `<!doctype html><script type="module" src="./assets/app.js"></script>`)
+		case "/assets/app.js":
+			w.Header().Set("Content-Type", "application/javascript")
+			_, _ = io.WriteString(w, `console.log("ok")`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+
+	service := NewService(Options{})
+	issued, err := service.IssueURL(t.Context(), IssueRequest{
+		Purpose:        PurposeDebug,
+		TargetURL:      upstream.URL + "/",
+		TargetBasePath: "/",
+	}, "http://127.0.0.1:9512")
+	if err != nil {
+		t.Fatalf("IssueURL: %v", err)
+	}
+	parsed, _ := url.Parse(issued.ExternalURL)
+
+	req := httptest.NewRequest(http.MethodGet, parsed.Path+"?"+parsed.RawQuery, nil)
+	rec := httptest.NewRecorder()
+	service.ServeHTTP(rec, req)
+	cookie := rec.Result().Cookies()[0]
+
+	req = httptest.NewRequest(http.MethodGet, parsed.Path+"assets/app.js", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	service.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("asset status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/javascript") {
+		t.Fatalf("content-type = %q, want application/javascript", got)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `console.log("ok")` {
+		t.Fatalf("asset body = %q", got)
+	}
+}
+
 func TestServiceRejectsPathOutsideAllowlist(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "should not reach")

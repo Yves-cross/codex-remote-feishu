@@ -617,10 +617,14 @@ func normalizeBasePath(value string) string {
 	if value == "" || value == "." {
 		return ""
 	}
-	if !strings.HasSuffix(value, "/") {
-		value += "/"
+	cleaned := path.Clean(value)
+	if cleaned == "." {
+		return ""
 	}
-	return path.Clean(value) + "/"
+	if cleaned == "/" {
+		return "/"
+	}
+	return ensureLeadingSlash(cleaned) + "/"
 }
 
 func deriveBasePath(targetPath string) string {
