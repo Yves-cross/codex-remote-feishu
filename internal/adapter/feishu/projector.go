@@ -66,6 +66,7 @@ const maxEmbeddedFileSummaryRows = 6
 const maxEmbeddedWorktreePaths = 3
 
 type gitWorktreeSummary struct {
+	Branch         string
 	Dirty          bool
 	Files          []string
 	ModifiedCount  int
@@ -108,7 +109,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Snapshot == nil {
 			return nil
 		}
-		body := formatSnapshot(*event.Snapshot, p.snapshotVersion)
+		body := p.formatSnapshot(*event.Snapshot)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
@@ -629,7 +630,9 @@ func inspectGitWorktreeSummary(cwd string) *gitWorktreeSummary {
 	if !ok {
 		return nil
 	}
-	return parseGitWorktreeSummary(output)
+	summary := parseGitWorktreeSummary(output)
+	summary.Branch = inspectGitBranch(cwd)
+	return summary
 }
 
 func runGitInspector(cwd string, args ...string) (string, bool) {
@@ -642,6 +645,20 @@ func runGitInspector(cwd string, args ...string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimSpace(string(output)), true
+}
+
+func inspectGitBranch(cwd string) string {
+	if output, ok := runGitInspector(cwd, "symbolic-ref", "--short", "HEAD"); ok {
+		if branch := strings.TrimSpace(output); branch != "" {
+			return branch
+		}
+	}
+	if output, ok := runGitInspector(cwd, "rev-parse", "--short", "HEAD"); ok {
+		if branch := strings.TrimSpace(output); branch != "" {
+			return branch
+		}
+	}
+	return ""
 }
 
 func parseGitStatusPaths(output string) []string {

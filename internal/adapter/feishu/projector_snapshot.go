@@ -15,6 +15,10 @@ const (
 )
 
 func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
+	return formatSnapshotWithGit(snapshot, daemonVersion, nil)
+}
+
+func formatSnapshotWithGit(snapshot control.Snapshot, daemonVersion string, readGitWorktree func(string) *gitWorktreeSummary) string {
 	lines := []string{}
 	lines = append(lines, snapshotField("当前模式", formatNeutralTextTag(displaySnapshotMode(snapshot.ProductMode))))
 	if daemonVersion = strings.TrimSpace(daemonVersion); daemonVersion != "" {
@@ -65,6 +69,7 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 			lines = append(lines, snapshotField("工作目录", formatNeutralTextTag(snapshot.NextPrompt.CWD)))
 		}
 	}
+	lines = append(lines, formatSnapshotGitFields(snapshot, readGitWorktree)...)
 	if autoContinue := snapshotAutoContinueText(snapshot.AutoContinue); autoContinue != "" {
 		lines = append(lines, snapshotField("autowhip", autoContinue))
 	}
@@ -85,6 +90,59 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func (p *Projector) formatSnapshot(snapshot control.Snapshot) string {
+	if p == nil {
+		return formatSnapshot(snapshot, "")
+	}
+	return formatSnapshotWithGit(snapshot, p.snapshotVersion, p.readGitWorktree)
+}
+
+func formatSnapshotGitFields(snapshot control.Snapshot, readGitWorktree func(string) *gitWorktreeSummary) []string {
+	if readGitWorktree == nil {
+		return nil
+	}
+	cwd := snapshotGitProbeCWD(snapshot)
+	if cwd == "" {
+		return nil
+	}
+	worktree := readGitWorktree(cwd)
+	if worktree == nil {
+		return nil
+	}
+	lines := make([]string, 0, 2)
+	if branch := strings.TrimSpace(worktree.Branch); branch != "" {
+		lines = append(lines, snapshotField("Git 分支", formatNeutralTextTag(branch)))
+	}
+	if status := formatSnapshotGitWorktreeStatus(worktree); status != "" {
+		lines = append(lines, snapshotField("Git 工作区", status))
+	}
+	return lines
+}
+
+func snapshotGitProbeCWD(snapshot control.Snapshot) string {
+	if cwd := strings.TrimSpace(snapshot.NextPrompt.CWD); cwd != "" {
+		return cwd
+	}
+	return strings.TrimSpace(snapshot.WorkspaceKey)
+}
+
+func formatSnapshotGitWorktreeStatus(summary *gitWorktreeSummary) string {
+	if summary == nil {
+		return ""
+	}
+	if !summary.Dirty {
+		return formatNeutralTextTag("干净")
+	}
+	parts := []string{formatNeutralTextTag("有改动")}
+	if summary.ModifiedCount > 0 {
+		parts = append(parts, formatNeutralTextTag(fmt.Sprintf("%d修改", summary.ModifiedCount)))
+	}
+	if summary.UntrackedCount > 0 {
+		parts = append(parts, formatNeutralTextTag(fmt.Sprintf("%d未跟踪", summary.UntrackedCount)))
+	}
+	return strings.Join(parts, " ")
 }
 
 func snapshotField(label, value string) string {

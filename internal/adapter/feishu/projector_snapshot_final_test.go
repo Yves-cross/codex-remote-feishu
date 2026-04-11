@@ -748,6 +748,87 @@ func TestProjectSnapshotDisplaysVersionLine(t *testing.T) {
 	}
 }
 
+func TestProjectSnapshotDisplaysGitBranchAndCleanWorktree(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(cwd string) *gitWorktreeSummary {
+		if cwd != "/data/dl/droid" {
+			t.Fatalf("unexpected cwd: %q", cwd)
+		}
+		return &gitWorktreeSummary{Branch: "feature/status-git"}
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			WorkspaceKey: "/data/dl/droid",
+			NextPrompt: control.PromptRouteSummary{
+				CWD: "/data/dl/droid",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"**Git 分支：** <text_tag color='neutral'>feature/status-git</text_tag>",
+		"**Git 工作区：** <text_tag color='neutral'>干净</text_tag>",
+	) {
+		t.Fatalf("unexpected snapshot git body: %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotDisplaysDirtyGitWorktreeSummary(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(cwd string) *gitWorktreeSummary {
+		if cwd != "/data/dl/droid" {
+			t.Fatalf("unexpected cwd: %q", cwd)
+		}
+		return &gitWorktreeSummary{
+			Branch:         "master",
+			Dirty:          true,
+			ModifiedCount:  3,
+			UntrackedCount: 1,
+		}
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			WorkspaceKey: "/data/dl/ignored",
+			NextPrompt: control.PromptRouteSummary{
+				CWD: "/data/dl/droid",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"**Git 分支：** <text_tag color='neutral'>master</text_tag>",
+		"**Git 工作区：** <text_tag color='neutral'>有改动</text_tag> <text_tag color='neutral'>3修改</text_tag> <text_tag color='neutral'>1未跟踪</text_tag>",
+	) {
+		t.Fatalf("unexpected snapshot git body: %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotSkipsGitSummaryOutsideGitRepo(t *testing.T) {
+	projector := NewProjector()
+	projector.readGitWorktree = func(string) *gitWorktreeSummary { return nil }
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			WorkspaceKey: "/tmp/not-a-repo",
+			NextPrompt: control.PromptRouteSummary{
+				CWD: "/tmp/not-a-repo",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if strings.Contains(ops[0].CardBody, "**Git 分支：**") || strings.Contains(ops[0].CardBody, "**Git 工作区：**") {
+		t.Fatalf("expected snapshot to skip git summary outside repo, got %#v", ops[0].CardBody)
+	}
+}
+
 func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
