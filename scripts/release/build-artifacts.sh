@@ -38,7 +38,8 @@ for platform in "${platforms[@]}"; do
     extension=".exe"
   fi
 
-  bash "${ROOT_DIR}/scripts/externalaccess/prepare-cloudflared-embed.sh" "${goos}" "${goarch}"
+  CLOUDFLARED_EMBED_ALLOW_DOWNLOAD=0 \
+    bash "${ROOT_DIR}/scripts/externalaccess/prepare-cloudflared-embed.sh" "${goos}" "${goarch}"
 
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
     go build -trimpath -ldflags "-X main.version=${version}" \
