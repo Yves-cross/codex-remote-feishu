@@ -269,6 +269,38 @@ func TestHandleGatewayActionReplacesMenuCardForCardNavigation(t *testing.T) {
 	}
 }
 
+func TestHandleGatewayActionRejectsOldNavigationCardAndShowsExpiredNotice(t *testing.T) {
+	gateway := &recordingGateway{}
+	startedAt := time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC)
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: startedAt,
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	before := len(gateway.operations)
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/menu send_settings",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: "older-life",
+		},
+	})
+
+	if result != nil {
+		t.Fatalf("expected old navigation card not to inline replace, got %#v", result)
+	}
+	delta := gateway.operations[before:]
+	assertSingleRejectedNotice(t, delta, "旧卡片已过期", "重新发送对应命令获取新卡片")
+	if !strings.Contains(delta[0].CardBody, "/menu") {
+		t.Fatalf("expected expired navigation card notice to mention /menu, got %#v", delta)
+	}
+}
+
 func TestHandleGatewayActionReplacesBareModeCardForCardNavigation(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{

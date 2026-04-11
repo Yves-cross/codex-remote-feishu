@@ -22,6 +22,16 @@ Trigger it for:
 - request capture, prompt/card routing, selection flow
 - `/new` or any change that adds or removes remote surface states
 
+For Feishu card UI navigation / callback state-machine changes, also use `.codex/skills/feishu-ui-state-machine-guardrail/`.
+
+Trigger it for:
+
+- Feishu card button / form callback payload changes
+- inline replace / append-only boundary changes
+- command menu / selection prompt / request prompt card navigation changes
+- `daemon_lifecycle_id`, old-card reject, callback freshness semantics
+- `projector` / `gateway` changes that alter what an existing Feishu card can still do
+
 For GitHub issue pickup, triage, refinement, implementation, or closure, also use `.codex/skills/issue-workflow-guardrail/`.
 
 Trigger it for:
@@ -99,6 +109,21 @@ For any change that modifies remote surface behavior or state transitions:
 4. If that audit reveals a bug-level issue, fix it and re-run the audit once more before committing.
 5. Do not run this loop after every tiny edit; run it once near commit unless a major assumption changed mid-implementation.
 6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/remote-surface-state-machine.md` under `待讨论取舍` before discussing it.
+
+## Feishu UI State Machine Document
+
+The canonical Feishu card UI state machine document is:
+
+- `docs/general/feishu-card-ui-state-machine.md`
+
+For any change that modifies Feishu card navigation, callback payloads, inline replace, or card freshness semantics:
+
+1. Implement and test first.
+2. After the implementation stabilizes and before committing, reopen the canonical Feishu UI state machine document and update it to match the current behavior.
+3. In that same pre-commit pass, explicitly audit for stale cards that still mutate state, same-context navigation that unexpectedly appends, payload schema drift between projector and gateway, and any callback path that leaves the user with a clickable but already-dead card.
+4. If that audit reveals a bug-level issue, fix it and re-run the audit once more before committing.
+5. If the same change also affects attach / use / follow / `/new` / request-gate product semantics, run the core remote surface state-machine loop in the same pass.
+6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/feishu-card-ui-state-machine.md` under `待讨论取舍` before discussing it.
 
 ## GitHub Issue Workflow
 

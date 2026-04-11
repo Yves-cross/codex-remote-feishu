@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-11`
-> Summary: 新增 release roadmap workflow 文档，并刷新文档索引。
+> Summary: 新增 Feishu 卡片 UI 状态机文档，并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -114,6 +114,7 @@
 - [codex-mcp-app-server-protocol.md](./general/codex-mcp-app-server-protocol.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [feishu-im-message-research.md](./general/feishu-im-message-research.md)
+- [feishu-card-ui-state-machine.md](./general/feishu-card-ui-state-machine.md)
 - [go-test-strategy.md](./general/go-test-strategy.md)
 - [install-deploy-design.md](./general/install-deploy-design.md)
 - [release-roadmap-workflow.md](./general/release-roadmap-workflow.md)
