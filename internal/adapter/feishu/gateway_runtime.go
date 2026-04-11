@@ -18,6 +18,11 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
+const (
+	maxFeishuCardBytes   = 20000
+	oversizedCardMessage = "内容太多了，后面的内容已省略。"
+)
+
 func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
 	dispatch := dispatcher.NewEventDispatcher("", "")
 	dispatch.OnP2MessageReceiveV1(func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
@@ -116,7 +121,7 @@ func callbackCardResponse(result *ActionResult) *larkcallback.CardActionTriggerR
 		Card: &larkcallback.Card{
 			// New-style card.action.trigger callback responses use `raw` for JSON cards.
 			Type: "raw",
-			Data: renderOperationCard(*card, cardEnvelopeV2),
+			Data: trimCardPayloadForInlineCallback(renderOperationCard(*card, cardEnvelopeV2)),
 		},
 	}
 }
@@ -171,7 +176,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 		}
 		return nil
 	case OperationSendCard:
-		card, err := json.Marshal(renderOperationCard(operation, operation.ordinaryCardEnvelope()))
+		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(operation, operation.ordinaryCardEnvelope()), maxFeishuCardBytes))
 		if err != nil {
 			return err
 		}
@@ -333,6 +338,216 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 	default:
 		return nil
 	}
+}
+
+func trimCardPayloadForInlineCallback(payload map[string]any) map[string]any {
+	return trimCardPayloadWithMeasure(payload, func(candidate map[string]any) bool {
+		response := &larkcallback.CardActionTriggerResponse{
+			Card: &larkcallback.Card{
+				Type: "raw",
+				Data: candidate,
+			},
+		}
+		size, err := jsonSize(response)
+		return err == nil && size <= maxFeishuCardBytes
+	})
+}
+
+func trimCardPayloadToFit(payload map[string]any, maxBytes int) map[string]any {
+	return trimCardPayloadWithMeasure(payload, func(candidate map[string]any) bool {
+		size, err := jsonSize(candidate)
+		return err == nil && size <= maxBytes
+	})
+}
+
+func trimCardPayloadWithMeasure(payload map[string]any, fits func(map[string]any) bool) map[string]any {
+	if len(payload) == 0 || fits == nil || fits(payload) {
+		return payload
+	}
+	elements, path, ok := extractCardPayloadElements(payload)
+	if !ok {
+		return payload
+	}
+	blocks := partitionCardPayloadBlocks(elements)
+	if len(blocks) == 0 {
+		return payload
+	}
+	for keep := len(blocks) - 1; keep >= 0; keep-- {
+		candidate := cloneCardMap(payload)
+		trimmed := flattenCardPayloadBlocks(trimTrailingHeaderBlocks(blocks[:keep]))
+		trimmed = append(trimmed, map[string]any{
+			"tag":     "markdown",
+			"content": oversizedCardMessage,
+		})
+		setCardPayloadElements(candidate, path, trimmed)
+		if fits(candidate) {
+			return candidate
+		}
+	}
+	return payload
+}
+
+type cardPayloadBlock struct {
+	Elements []map[string]any
+}
+
+func partitionCardPayloadBlocks(elements []map[string]any) []cardPayloadBlock {
+	blocks := make([]cardPayloadBlock, 0, len(elements))
+	current := make([]map[string]any, 0, 2)
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		block := cardPayloadBlock{Elements: make([]map[string]any, 0, len(current))}
+		for _, element := range current {
+			block.Elements = append(block.Elements, cloneCardMap(element))
+		}
+		blocks = append(blocks, block)
+		current = nil
+	}
+	for _, element := range elements {
+		switch {
+		case isCardSectionHeaderElement(element):
+			flush()
+			current = append(current, cloneCardMap(element))
+		case startsNewCardPayloadBlock(current, element):
+			flush()
+			current = append(current, cloneCardMap(element))
+		default:
+			current = append(current, cloneCardMap(element))
+		}
+	}
+	flush()
+	return blocks
+}
+
+func startsNewCardPayloadBlock(current []map[string]any, next map[string]any) bool {
+	if len(current) == 0 {
+		return true
+	}
+	if isCardSectionHeaderElement(next) {
+		return true
+	}
+	tag := strings.TrimSpace(cardStringValue(next["tag"]))
+	if tag == "" {
+		return false
+	}
+	if tag != "markdown" {
+		return true
+	}
+	first := current[0]
+	firstTag := strings.TrimSpace(cardStringValue(first["tag"]))
+	if firstTag == "" {
+		return false
+	}
+	if firstTag != "markdown" {
+		return false
+	}
+	if isCardSectionHeaderElement(first) {
+		return false
+	}
+	return true
+}
+
+func trimTrailingHeaderBlocks(blocks []cardPayloadBlock) []cardPayloadBlock {
+	trimmed := blocks
+	for len(trimmed) > 0 && isHeaderOnlyCardPayloadBlock(trimmed[len(trimmed)-1]) {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	return trimmed
+}
+
+func isHeaderOnlyCardPayloadBlock(block cardPayloadBlock) bool {
+	return len(block.Elements) == 1 && isCardSectionHeaderElement(block.Elements[0])
+}
+
+func flattenCardPayloadBlocks(blocks []cardPayloadBlock) []map[string]any {
+	total := 0
+	for _, block := range blocks {
+		total += len(block.Elements)
+	}
+	elements := make([]map[string]any, 0, total)
+	for _, block := range blocks {
+		for _, element := range block.Elements {
+			elements = append(elements, cloneCardMap(element))
+		}
+	}
+	return elements
+}
+
+func isCardSectionHeaderElement(element map[string]any) bool {
+	if strings.TrimSpace(cardStringValue(element["tag"])) != "markdown" {
+		return false
+	}
+	content := strings.TrimSpace(cardStringValue(element["content"]))
+	if content == "" || strings.Contains(content, "\n") {
+		return false
+	}
+	return strings.HasPrefix(content, "**") && strings.HasSuffix(content, "**")
+}
+
+func cardStringValue(raw any) string {
+	value, _ := raw.(string)
+	return value
+}
+
+func extractCardPayloadElements(payload map[string]any) ([]map[string]any, string, bool) {
+	if body, _ := payload["body"].(map[string]any); len(body) != 0 {
+		if elements, ok := cardPayloadElementsSlice(body["elements"]); ok {
+			return elements, "body.elements", true
+		}
+	}
+	if elements, ok := cardPayloadElementsSlice(payload["elements"]); ok {
+		return elements, "elements", true
+	}
+	return nil, "", false
+}
+
+func cardPayloadElementsSlice(raw any) ([]map[string]any, bool) {
+	switch typed := raw.(type) {
+	case []map[string]any:
+		return typed, true
+	case []any:
+		elements := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			element, ok := item.(map[string]any)
+			if !ok {
+				return nil, false
+			}
+			elements = append(elements, element)
+		}
+		return elements, true
+	default:
+		return nil, false
+	}
+}
+
+func setCardPayloadElements(payload map[string]any, path string, elements []map[string]any) {
+	cloned := make([]map[string]any, 0, len(elements))
+	for _, element := range elements {
+		cloned = append(cloned, cloneCardMap(element))
+	}
+	switch path {
+	case "body.elements":
+		body, _ := payload["body"].(map[string]any)
+		if len(body) == 0 {
+			body = map[string]any{}
+		} else {
+			body = cloneCardMap(body)
+		}
+		body["elements"] = cloned
+		payload["body"] = body
+	case "elements":
+		payload["elements"] = cloned
+	}
+}
+
+func jsonSize(value any) (int, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 func (g *LiveGateway) botTimeSensitive(ctx context.Context, userIDType string, timeSensitive bool, userIDs []string) (*larkimv2.BotTimeSentiveFeedCardResp, error) {

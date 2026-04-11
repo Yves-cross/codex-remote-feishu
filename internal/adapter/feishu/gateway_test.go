@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1155,6 +1157,125 @@ func TestCallbackCardResponseBuildsReplacementCard(t *testing.T) {
 	}
 }
 
+func TestCallbackCardResponseTrimsOversizedCardByWholeBlocks(t *testing.T) {
+	elements := []map[string]any{{
+		"tag":     "markdown",
+		"content": "**其他工作区**",
+	}}
+	for i := 1; i <= 260; i++ {
+		workspace := fmt.Sprintf("ws-%03d", i)
+		elements = append(elements,
+			cardCallbackButtonElement("查看全部 · "+workspace, "default", map[string]any{
+				"kind":          "show_workspace_threads",
+				"workspace_key": workspace,
+			}, false, "fill"),
+			map[string]any{
+				"tag":     "markdown",
+				"content": fmt.Sprintf("meta-%03d %s", i, strings.Repeat("x", 80)),
+			},
+		)
+	}
+	response := callbackCardResponse(&ActionResult{
+		ReplaceCurrentCard: &Operation{
+			Kind:         OperationSendCard,
+			CardTitle:    "全部会话",
+			CardThemeKey: cardThemeInfo,
+			CardElements: elements,
+		},
+	})
+	if response == nil || response.Card == nil {
+		t.Fatalf("expected callback replacement response, got %#v", response)
+	}
+	size, err := jsonSize(response)
+	if err != nil {
+		t.Fatalf("marshal callback response: %v", err)
+	}
+	if size > maxFeishuCardBytes {
+		t.Fatalf("expected callback response <= %d bytes, got %d", maxFeishuCardBytes, size)
+	}
+	bodyElements := mustBodyElementsFromCardData(t, response.Card.Data)
+	if got := markdownContent(bodyElements[len(bodyElements)-1]); got != oversizedCardMessage {
+		t.Fatalf("expected trailing truncation notice, got %#v", bodyElements[len(bodyElements)-1])
+	}
+	lastVisible := lastButtonLabel(bodyElements)
+	if lastVisible == "" {
+		t.Fatalf("expected at least one visible workspace block, got %#v", bodyElements)
+	}
+	lastIndex := parseWorkspaceIndexFromLabel(t, lastVisible)
+	if !containsMarkdownWithPrefix(bodyElements, fmt.Sprintf("meta-%03d ", lastIndex)) {
+		t.Fatalf("expected meta for last visible block %d, got %#v", lastIndex, bodyElements)
+	}
+	if containsButtonLabel(bodyElements, fmt.Sprintf("查看全部 · ws-%03d", lastIndex+1)) {
+		t.Fatalf("expected following block to be fully omitted, got %#v", bodyElements)
+	}
+}
+
+func TestApplySendCardTrimsOversizedCardByWholeBlocks(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var createContent string
+	gateway.createMessageFn = func(_ context.Context, _, _, _, content string) (*larkim.CreateMessageResp, error) {
+		createContent = content
+		return &larkim.CreateMessageResp{
+			ApiResp: &larkcore.ApiResp{},
+			CodeError: larkcore.CodeError{
+				Code: 0,
+				Msg:  "ok",
+			},
+		}, nil
+	}
+	elements := []map[string]any{{
+		"tag":     "markdown",
+		"content": "**工作区列表**",
+	}}
+	for i := 1; i <= 260; i++ {
+		workspace := fmt.Sprintf("ws-%03d", i)
+		elements = append(elements,
+			cardCallbackButtonElement("恢复 · "+workspace, "default", map[string]any{
+				"kind":          "show_workspace_threads",
+				"workspace_key": workspace,
+			}, false, "fill"),
+			map[string]any{
+				"tag":     "markdown",
+				"content": fmt.Sprintf("说明-%03d %s", i, strings.Repeat("x", 80)),
+			},
+		)
+	}
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:          OperationSendCard,
+		GatewayID:     "app-1",
+		ReceiveID:     "oc_1",
+		ReceiveIDType: "chat_id",
+		CardTitle:     "工作区列表",
+		CardThemeKey:  cardThemeInfo,
+		CardElements:  elements,
+	}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if len(createContent) > maxFeishuCardBytes {
+		t.Fatalf("expected send card payload <= %d bytes, got %d", maxFeishuCardBytes, len(createContent))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(createContent), &payload); err != nil {
+		t.Fatalf("send card payload is not valid json: %v", err)
+	}
+	bodyElements := mustBodyElementsFromCardData(t, payload)
+	if got := markdownContent(bodyElements[len(bodyElements)-1]); got != oversizedCardMessage {
+		t.Fatalf("expected trailing truncation notice, got %#v", bodyElements[len(bodyElements)-1])
+	}
+	lastVisible := lastButtonLabel(bodyElements)
+	if lastVisible == "" {
+		t.Fatalf("expected at least one kept workspace block, got %#v", bodyElements)
+	}
+	lastIndex := parseWorkspaceIndexFromRestoreLabel(t, lastVisible)
+	if !containsMarkdownWithPrefix(bodyElements, fmt.Sprintf("说明-%03d ", lastIndex)) {
+		t.Fatalf("expected description for last visible workspace block %d, got %#v", lastIndex, bodyElements)
+	}
+	if containsButtonLabel(bodyElements, fmt.Sprintf("恢复 · ws-%03d", lastIndex+1)) {
+		t.Fatalf("expected following workspace block to be fully omitted, got %#v", bodyElements)
+	}
+}
+
 func TestHandleCardActionTriggerReturnsImmediatelyForAsyncAction(t *testing.T) {
 	action := control.Action{
 		Kind: control.ActionDebugCommand,
@@ -1785,4 +1906,99 @@ func TestSendIMFileReturnsSendFailure(t *testing.T) {
 	if !errors.As(err, &sendErr) || sendErr.Code != IMFileSendErrorSendFailed {
 		t.Fatalf("expected send failure, got %#v", err)
 	}
+}
+
+func mustBodyElementsFromCardData(t *testing.T, raw any) []map[string]any {
+	t.Helper()
+	payload, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("expected card data map, got %#v", raw)
+	}
+	body, _ := payload["body"].(map[string]any)
+	if len(body) == 0 {
+		t.Fatalf("expected v2 card body, got %#v", payload)
+	}
+	elements, ok := cardPayloadElementsSlice(body["elements"])
+	if !ok {
+		t.Fatalf("expected card body elements, got %#v", body["elements"])
+	}
+	return elements
+}
+
+func markdownContent(element map[string]any) string {
+	if cardStringValue(element["tag"]) != "markdown" {
+		return ""
+	}
+	return cardStringValue(element["content"])
+}
+
+func lastButtonLabel(elements []map[string]any) string {
+	for i := len(elements) - 1; i >= 0; i-- {
+		if cardStringValue(elements[i]["tag"]) != "button" {
+			continue
+		}
+		text, _ := elements[i]["text"].(map[string]any)
+		if label := cardStringValue(text["content"]); label != "" {
+			return label
+		}
+	}
+	return ""
+}
+
+func containsButtonLabel(elements []map[string]any, want string) bool {
+	for _, element := range elements {
+		if cardStringValue(element["tag"]) != "button" {
+			continue
+		}
+		text, _ := element["text"].(map[string]any)
+		if cardStringValue(text["content"]) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsMarkdownWithPrefix(elements []map[string]any, prefix string) bool {
+	for _, element := range elements {
+		if strings.HasPrefix(markdownContent(element), prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsMarkdownExact(elements []map[string]any, want string) bool {
+	for _, element := range elements {
+		if markdownContent(element) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func lastMarkdownWithPrefix(elements []map[string]any, prefix string) string {
+	for i := len(elements) - 1; i >= 0; i-- {
+		if content := markdownContent(elements[i]); strings.HasPrefix(content, prefix) {
+			return content
+		}
+	}
+	return ""
+}
+
+func parseWorkspaceIndexFromLabel(t *testing.T, label string) int {
+	t.Helper()
+	var index int
+	if _, err := fmt.Sscanf(label, "查看全部 · ws-%03d", &index); err != nil {
+		t.Fatalf("parse workspace label %q: %v", label, err)
+	}
+	return index
+}
+
+func parseWorkspaceIndexFromRestoreLabel(t *testing.T, label string) int {
+	t.Helper()
+	var index int
+	if _, err := fmt.Sscanf(label, "恢复 · ws-%03d", &index); err != nil {
+		t.Fatalf("parse workspace label %q: %v", label, err)
+	}
+	return index
 }
