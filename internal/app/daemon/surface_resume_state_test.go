@@ -32,8 +32,11 @@ func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 		ProductMode:        "vscode",
 		ResumeInstanceID:   "inst-1",
 		ResumeThreadID:     "thread-1",
+		ResumeThreadTitle:  " 修复登录流程 ",
+		ResumeThreadCWD:    " /data/dl/work/../droid/ ",
 		ResumeWorkspaceKey: " /data/dl/work/../droid/ ",
 		ResumeRouteMode:    "follow_local",
+		ResumeHeadless:     true,
 		UpdatedAt:          updatedAt,
 	}); err != nil {
 		t.Fatalf("put surface resume entry: %v", err)
@@ -53,11 +56,45 @@ func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 	if entry.ProductMode != "vscode" || entry.ResumeInstanceID != "inst-1" || entry.ResumeThreadID != "thread-1" {
 		t.Fatalf("unexpected resume target fields: %#v", entry)
 	}
+	if entry.ResumeThreadTitle != "修复登录流程" || entry.ResumeThreadCWD != "/data/dl/droid" || !entry.ResumeHeadless {
+		t.Fatalf("unexpected normalized headless metadata: %#v", entry)
+	}
 	if entry.ResumeWorkspaceKey != "/data/dl/droid" || entry.ResumeRouteMode != "follow_local" {
 		t.Fatalf("unexpected normalized workspace or route: %#v", entry)
 	}
 	if !entry.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected updatedAt: %s", entry.UpdatedAt)
+	}
+}
+
+func TestDaemonHeadlessAttachPersistsResumeMetadataIntoSurfaceResumeState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	app := newRestoreHintTestApp(stateDir)
+	seedHeadlessInstance(app, "inst-headless-1", "thread-1")
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-headless-1",
+	})
+
+	entry := app.SurfaceResumeState("surface-1")
+	if entry == nil {
+		t.Fatal("expected surface resume entry after headless attach")
+	}
+	if entry.ResumeInstanceID != "inst-headless-1" || entry.ResumeThreadID != "thread-1" {
+		t.Fatalf("unexpected persisted headless resume target: %#v", entry)
+	}
+	if !strings.Contains(entry.ResumeThreadTitle, "修复登录流程") || entry.ResumeThreadCWD != "/data/dl/droid" {
+		t.Fatalf("expected persisted headless thread metadata, got %#v", entry)
+	}
+	if !entry.ResumeHeadless {
+		t.Fatalf("expected persisted resume entry to mark headless recovery, got %#v", entry)
 	}
 }
 

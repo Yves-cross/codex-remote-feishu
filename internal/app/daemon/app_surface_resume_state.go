@@ -14,8 +14,11 @@ import (
 type surfaceResumeTarget struct {
 	ResumeInstanceID   string
 	ResumeThreadID     string
+	ResumeThreadTitle  string
+	ResumeThreadCWD    string
 	ResumeWorkspaceKey string
 	ResumeRouteMode    string
+	ResumeHeadless     bool
 }
 
 const surfaceResumeRetryBackoff = 30 * time.Second
@@ -183,13 +186,19 @@ func (a *App) currentSurfaceResumeEntryLocked(surface *state.SurfaceConsoleRecor
 		if target, ok := a.currentSurfaceResumeTargetLocked(surface); ok {
 			entry.ResumeInstanceID = target.ResumeInstanceID
 			entry.ResumeThreadID = target.ResumeThreadID
+			entry.ResumeThreadTitle = target.ResumeThreadTitle
+			entry.ResumeThreadCWD = target.ResumeThreadCWD
 			entry.ResumeWorkspaceKey = target.ResumeWorkspaceKey
 			entry.ResumeRouteMode = target.ResumeRouteMode
+			entry.ResumeHeadless = target.ResumeHeadless
 		} else if previous, ok := a.surfaceResumeState.Get(entry.SurfaceSessionID); ok {
 			entry.ResumeInstanceID = previous.ResumeInstanceID
 			entry.ResumeThreadID = previous.ResumeThreadID
+			entry.ResumeThreadTitle = previous.ResumeThreadTitle
+			entry.ResumeThreadCWD = previous.ResumeThreadCWD
 			entry.ResumeWorkspaceKey = previous.ResumeWorkspaceKey
 			entry.ResumeRouteMode = previous.ResumeRouteMode
+			entry.ResumeHeadless = previous.ResumeHeadless
 		}
 	}
 	normalized, ok := normalizeSurfaceResumeEntry(entry)
@@ -206,18 +215,39 @@ func (a *App) currentSurfaceResumeTargetLocked(surface *state.SurfaceConsoleReco
 		workspaceKey = state.ResolveWorkspaceKey(snapshot.WorkspaceKey)
 	}
 	if strings.TrimSpace(surface.AttachedInstanceID) != "" {
-		return surfaceResumeTarget{
+		target := surfaceResumeTarget{
 			ResumeInstanceID:   strings.TrimSpace(surface.AttachedInstanceID),
 			ResumeThreadID:     strings.TrimSpace(surface.SelectedThreadID),
 			ResumeWorkspaceKey: state.ResolveWorkspaceKey(workspaceKey, surface.ClaimedWorkspaceKey, surface.PreparedThreadCWD),
 			ResumeRouteMode:    strings.TrimSpace(string(surface.RouteMode)),
-		}, true
+		}
+		if snapshot != nil {
+			target.ResumeHeadless = snapshot.Attachment.Managed && strings.EqualFold(strings.TrimSpace(snapshot.Attachment.Source), "headless")
+			target.ResumeThreadTitle = strings.TrimSpace(snapshot.Attachment.SelectedThreadTitle)
+		}
+		if target.ResumeThreadID != "" {
+			if inst := a.service.Instance(target.ResumeInstanceID); inst != nil {
+				if thread := inst.Threads[target.ResumeThreadID]; thread != nil {
+					if target.ResumeThreadTitle == "" {
+						target.ResumeThreadTitle = strings.TrimSpace(thread.Name)
+					}
+					target.ResumeThreadCWD = state.ResolveWorkspaceKey(thread.CWD)
+				}
+			}
+			if target.ResumeThreadTitle == "" {
+				target.ResumeThreadTitle = target.ResumeThreadID
+			}
+		}
+		return target, true
 	}
 	if pending := surface.PendingHeadless; pending != nil {
 		return surfaceResumeTarget{
 			ResumeThreadID:     strings.TrimSpace(pending.ThreadID),
+			ResumeThreadTitle:  firstNonEmpty(strings.TrimSpace(pending.ThreadTitle), strings.TrimSpace(pending.ThreadID)),
+			ResumeThreadCWD:    state.ResolveWorkspaceKey(pending.ThreadCWD),
 			ResumeWorkspaceKey: state.ResolveWorkspaceKey(workspaceKey, pending.ThreadCWD),
 			ResumeRouteMode:    string(state.RouteModePinned),
+			ResumeHeadless:     true,
 		}, true
 	}
 	if surface.RouteMode == state.RouteModeNewThreadReady {

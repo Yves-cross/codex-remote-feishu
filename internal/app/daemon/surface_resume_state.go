@@ -24,8 +24,11 @@ type SurfaceResumeEntry struct {
 	ProductMode        string    `json:"productMode,omitempty"`
 	ResumeInstanceID   string    `json:"resumeInstanceID,omitempty"`
 	ResumeThreadID     string    `json:"resumeThreadID,omitempty"`
+	ResumeThreadTitle  string    `json:"resumeThreadTitle,omitempty"`
+	ResumeThreadCWD    string    `json:"resumeThreadCWD,omitempty"`
 	ResumeWorkspaceKey string    `json:"resumeWorkspaceKey,omitempty"`
 	ResumeRouteMode    string    `json:"resumeRouteMode,omitempty"`
+	ResumeHeadless     bool      `json:"resumeHeadless,omitempty"`
 	UpdatedAt          time.Time `json:"updatedAt,omitempty"`
 }
 
@@ -168,6 +171,8 @@ func normalizeSurfaceResumeEntry(entry SurfaceResumeEntry) (SurfaceResumeEntry, 
 	entry.ProductMode = string(state.NormalizeProductMode(state.ProductMode(strings.TrimSpace(entry.ProductMode))))
 	entry.ResumeInstanceID = strings.TrimSpace(entry.ResumeInstanceID)
 	entry.ResumeThreadID = strings.TrimSpace(entry.ResumeThreadID)
+	entry.ResumeThreadTitle = strings.TrimSpace(entry.ResumeThreadTitle)
+	entry.ResumeThreadCWD = state.NormalizeWorkspaceKey(entry.ResumeThreadCWD)
 	entry.ResumeWorkspaceKey = state.NormalizeWorkspaceKey(entry.ResumeWorkspaceKey)
 	entry.ResumeRouteMode = strings.TrimSpace(entry.ResumeRouteMode)
 	if entry.SurfaceSessionID == "" {
@@ -187,6 +192,9 @@ func sameSurfaceResumeEntryContent(left, right SurfaceResumeEntry) bool {
 		strings.TrimSpace(left.ProductMode) == strings.TrimSpace(right.ProductMode) &&
 		strings.TrimSpace(left.ResumeInstanceID) == strings.TrimSpace(right.ResumeInstanceID) &&
 		strings.TrimSpace(left.ResumeThreadID) == strings.TrimSpace(right.ResumeThreadID) &&
+		strings.TrimSpace(left.ResumeThreadTitle) == strings.TrimSpace(right.ResumeThreadTitle) &&
+		state.NormalizeWorkspaceKey(left.ResumeThreadCWD) == state.NormalizeWorkspaceKey(right.ResumeThreadCWD) &&
 		state.NormalizeWorkspaceKey(left.ResumeWorkspaceKey) == state.NormalizeWorkspaceKey(right.ResumeWorkspaceKey) &&
-		strings.TrimSpace(left.ResumeRouteMode) == strings.TrimSpace(right.ResumeRouteMode)
+		strings.TrimSpace(left.ResumeRouteMode) == strings.TrimSpace(right.ResumeRouteMode) &&
+		left.ResumeHeadless == right.ResumeHeadless
 }

@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-10`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页，以及 bare `/mode` `/autocontinue` `/reasoning` `/access` `/model` `/debug` `/upgrade` 的统一参数卡表单；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 的飞书回传路径，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Updated: `2026-04-11`
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页，以及 bare `/mode` `/autocontinue` `/reasoning` `/access` `/model` `/debug` `/upgrade` 的统一参数卡表单；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 的飞书回传路径、`surface resume state` 对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -98,12 +98,13 @@ surface 不是单一枚举，而是五层正交状态叠加。
 2. `ProductMode` 当前已经进入 daemon 级 `surface resume state`：
    1. 进程内已有 surface 会保留它。
    2. daemon 重启后，startup 会先从 `surface resume state` materialize latent surface，并恢复之前的 `ProductMode`。
-   3. `normal` mode surface 随后会按 persisted resume target 继续尝试恢复：
+   3. `surface resume state` 当前不仅记录 `ProductMode` / instance / thread / workspace / route，还会记录 headless 恢复所需的 thread title / thread cwd / headless 标记；独立 `headless restore hint` 文件仍存在，但当前已经退化为兼容性的派生镜像，而不是唯一来源。
+   4. `normal` mode surface 随后会按 persisted resume target 继续尝试恢复：
       1. 优先 exact visible thread 恢复。
       2. visible thread 当前不可见时，可降级回原 workspace 的 attached-unbound 语义。
       3. 若还带有 headless restore hint，则只有在 visible/workspace 路径没有恢复成功时，才继续交给 headless auto-restore。
       4. 若持久化目标里包含 `ResumeThreadID`，则在 daemon 启动后的首轮 `threads.refresh -> threads.snapshot` 完成前，会先保持 detached 并静默等待，避免过早降级或过早报失败。
-   4. `vscode` mode surface 会按 persisted `ResumeInstanceID` 继续尝试恢复：
+   5. `vscode` mode surface 会按 persisted `ResumeInstanceID` 继续尝试恢复：
       1. 先做本机 VS Code 兼容性检查：
          1. 若检测到旧版 `settings.json` override，或当前 managed shim 已失效，则保持 detached，并发迁移/修复卡片。
          2. 若兼容性检查通过，才继续 exact-instance 恢复。
@@ -159,7 +160,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
       2. 兼容性检查通过后，exact instance 恢复成功会进入 `R3 FollowWaiting` 或 `R4 FollowBound`。
       3. 若目标 instance 还没重新连回，会保持 `R0 Detached` 并静默等待。
       4. 不做 workspace fallback，也不会进入 headless 恢复。
-   6. 若该 surface 还带有持久化的 headless restore hint，daemon 只会在 `normal` mode 的 visible/workspace 恢复链路之后，再继续评估 normal-mode 的 headless auto-restore；`vscode` mode 会主动清理这类 stale hint。
+   6. 若该 surface 还带有持久化的 headless restore hint，daemon 只会在 `normal` mode 的 visible/workspace 恢复链路之后，再继续评估 normal-mode 的 headless auto-restore；但这些 hint 当前已经可以直接从 `surface resume state` 中的 headless 元数据重新派生。`vscode` mode 会主动清理这类 stale hint。
 2. 这种 latent surface 在 route 维度上仍然是 `R0 Detached`，不是新的 route state。
 3. 当前 startup 阶段不会因为 resume target 元数据而在 materialize 当下直接进入 `R1~R5`；是否进入后台恢复、是否转入 `G1 PendingHeadlessStarting`，仍取决于 daemon 后续恢复调度，而不是 materialize 本身。
 
@@ -855,7 +856,7 @@ daemon startup 的 vscode resume 额外规则：
    3. `threads.snapshot`
    4. `thread.discovered`
    5. `thread.focused`
-2. daemon startup 时会先根据 `surface resume state` materialize latent detached surface，并恢复 `ProductMode`；headless restore hint 只负责后续的 headless auto-restore 资格与目标。
+2. daemon startup 时会先根据 `surface resume state` materialize latent detached surface，并恢复 `ProductMode`；`surface resume state` 当前也携带 headless 恢复所需的 thread 元数据。独立 `headless restore hint` 文件仍只负责后续 headless auto-restore 的兼容性派生与持久化镜像，不再是唯一真相源。
 3. 后台恢复前置条件：
    1. surface 当前是 `normal` mode
    2. surface 当前没有显式 attach

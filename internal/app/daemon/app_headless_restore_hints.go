@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func (a *App) configureHeadlessRestoreHintsLocked(stateDir string) {
@@ -65,7 +66,7 @@ func (a *App) refreshHeadlessRestoreHintsForInstanceLocked(instanceID string) {
 		if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) != instanceID {
 			continue
 		}
-		hint, ok := a.currentHeadlessRestoreHintLocked(surface.SurfaceSessionID)
+		hint, ok := a.currentHeadlessRestoreHintFromLiveSurfaceLocked(surface.SurfaceSessionID)
 		if !ok {
 			continue
 		}
@@ -77,7 +78,7 @@ func (a *App) syncHeadlessRestoreHintAfterActionLocked(action control.Action, be
 	if a.headlessRestoreHints == nil {
 		return
 	}
-	hint, ok := a.currentHeadlessRestoreHintLocked(action.SurfaceSessionID)
+	hint, ok := a.currentHeadlessRestoreHintFromLiveSurfaceLocked(action.SurfaceSessionID)
 	if ok {
 		a.upsertHeadlessRestoreHintLocked(hint)
 		a.syncHeadlessRestoreStateLocked()
@@ -117,39 +118,38 @@ func (a *App) shouldClearHeadlessRestoreHintLocked(action control.Action, before
 }
 
 func (a *App) currentHeadlessRestoreHintLocked(surfaceID string) (HeadlessRestoreHint, bool) {
-	snapshot := a.service.SurfaceSnapshot(surfaceID)
-	if snapshot == nil {
-		return HeadlessRestoreHint{}, false
+	if hint, ok := a.currentHeadlessRestoreHintFromLiveSurfaceLocked(surfaceID); ok {
+		return hint, true
 	}
-	hint := HeadlessRestoreHint{
-		SurfaceSessionID: strings.TrimSpace(surfaceID),
-		GatewayID:        strings.TrimSpace(a.service.SurfaceGatewayID(surfaceID)),
-		ChatID:           strings.TrimSpace(a.service.SurfaceChatID(surfaceID)),
-		ActorUserID:      strings.TrimSpace(a.service.SurfaceActorUserID(surfaceID)),
-	}
-	switch {
-	case snapshotHasPendingHeadlessTarget(snapshot):
-		hint.ThreadID = strings.TrimSpace(snapshot.PendingHeadless.ThreadID)
-		hint.ThreadTitle = strings.TrimSpace(snapshot.PendingHeadless.ThreadTitle)
-		hint.ThreadCWD = strings.TrimSpace(snapshot.PendingHeadless.ThreadCWD)
-	case snapshotHasAttachedHeadlessTarget(snapshot):
-		hint.ThreadID = strings.TrimSpace(snapshot.Attachment.SelectedThreadID)
-		hint.ThreadTitle = strings.TrimSpace(snapshot.Attachment.SelectedThreadTitle)
-		if hint.ThreadTitle == "" {
-			hint.ThreadTitle = hint.ThreadID
-		}
-		if inst := a.service.Instance(snapshot.Attachment.InstanceID); inst != nil {
-			if thread := inst.Threads[hint.ThreadID]; thread != nil {
-				hint.ThreadCWD = strings.TrimSpace(thread.CWD)
-				if hint.ThreadTitle == hint.ThreadID && strings.TrimSpace(thread.Name) != "" {
-					hint.ThreadTitle = strings.TrimSpace(thread.Name)
-				}
+	if a.surfaceResumeState != nil {
+		if entry, ok := a.surfaceResumeState.Get(surfaceID); ok {
+			if hint, ok := headlessRestoreHintFromSurfaceResumeEntry(entry); ok {
+				return hint, true
 			}
 		}
-	default:
-		return HeadlessRestoreHint{}, false
 	}
-	return hint, true
+	return HeadlessRestoreHint{}, false
+}
+
+func (a *App) currentHeadlessRestoreHintFromLiveSurfaceLocked(surfaceID string) (HeadlessRestoreHint, bool) {
+	if surface := a.surfaceByIDLocked(surfaceID); surface != nil {
+		target, ok := a.currentSurfaceResumeTargetLocked(surface)
+		if !ok {
+			return HeadlessRestoreHint{}, false
+		}
+		entry := SurfaceResumeEntry{
+			SurfaceSessionID:  strings.TrimSpace(surface.SurfaceSessionID),
+			GatewayID:         strings.TrimSpace(surface.GatewayID),
+			ChatID:            strings.TrimSpace(surface.ChatID),
+			ActorUserID:       strings.TrimSpace(surface.ActorUserID),
+			ResumeThreadID:    target.ResumeThreadID,
+			ResumeThreadTitle: target.ResumeThreadTitle,
+			ResumeThreadCWD:   target.ResumeThreadCWD,
+			ResumeHeadless:    target.ResumeHeadless,
+		}
+		return headlessRestoreHintFromSurfaceResumeEntry(entry)
+	}
+	return HeadlessRestoreHint{}, false
 }
 
 func (a *App) upsertHeadlessRestoreHintLocked(hint HeadlessRestoreHint) {
@@ -187,6 +187,22 @@ func sameHeadlessRestoreHintContent(left, right HeadlessRestoreHint) bool {
 		strings.TrimSpace(left.ThreadID) == strings.TrimSpace(right.ThreadID) &&
 		strings.TrimSpace(left.ThreadTitle) == strings.TrimSpace(right.ThreadTitle) &&
 		strings.TrimSpace(left.ThreadCWD) == strings.TrimSpace(right.ThreadCWD)
+}
+
+func headlessRestoreHintFromSurfaceResumeEntry(entry SurfaceResumeEntry) (HeadlessRestoreHint, bool) {
+	if !entry.ResumeHeadless {
+		return HeadlessRestoreHint{}, false
+	}
+	hint := HeadlessRestoreHint{
+		SurfaceSessionID: strings.TrimSpace(entry.SurfaceSessionID),
+		GatewayID:        strings.TrimSpace(entry.GatewayID),
+		ChatID:           strings.TrimSpace(entry.ChatID),
+		ActorUserID:      strings.TrimSpace(entry.ActorUserID),
+		ThreadID:         strings.TrimSpace(entry.ResumeThreadID),
+		ThreadTitle:      firstNonEmpty(strings.TrimSpace(entry.ResumeThreadTitle), strings.TrimSpace(entry.ResumeThreadID)),
+		ThreadCWD:        state.NormalizeWorkspaceKey(entry.ResumeThreadCWD),
+	}
+	return normalizeHeadlessRestoreHint(hint)
 }
 
 func snapshotHasPendingHeadlessTarget(snapshot *control.Snapshot) bool {

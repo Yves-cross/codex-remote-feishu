@@ -144,6 +144,37 @@ func TestDaemonPersistsHeadlessRestoreHintAcrossRestart(t *testing.T) {
 	}
 }
 
+func TestDaemonDerivesHeadlessRestoreHintFromSurfaceResumeState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+		SurfaceSessionID:   "surface-1",
+		GatewayID:          "app-1",
+		ChatID:             "chat-1",
+		ActorUserID:        "user-1",
+		ProductMode:        "normal",
+		ResumeThreadID:     "thread-1",
+		ResumeThreadTitle:  "修复登录流程",
+		ResumeThreadCWD:    "/data/dl/droid",
+		ResumeWorkspaceKey: "/data/dl/droid",
+		ResumeRouteMode:    "pinned",
+		ResumeHeadless:     true,
+	})
+
+	app := newRestoreHintTestApp(stateDir)
+	hint := app.HeadlessRestoreHint("surface-1")
+	if hint == nil {
+		t.Fatal("expected derived headless restore hint from surface resume state")
+	}
+	if hint.ThreadID != "thread-1" || hint.ThreadTitle != "修复登录流程" || hint.ThreadCWD != "/data/dl/droid" {
+		t.Fatalf("unexpected derived restore hint: %#v", hint)
+	}
+	if len(app.headlessRestoreState) != 1 {
+		t.Fatalf("expected in-memory headless restore state derived from surface resume state, got %#v", app.headlessRestoreState)
+	}
+}
+
 func TestDaemonClearsHeadlessRestoreHintOnDetach(t *testing.T) {
 	t.Parallel()
 
