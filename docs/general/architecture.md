@@ -238,6 +238,7 @@ normal 模式下的 workspace 排他接管
   -> 本地 Feishu MCP tool description 要求 Codex 先读取该文件
   -> tool call 显式带回 surface_session_id
   -> daemon local tool service 校验并解析 surface context
+  -> `feishu_send_im_file` 可继续用显式 `surface_session_id` 把本地文件发送回当前 Feishu surface
 ```
 
 ### 6.2 本地 VS Code 交互

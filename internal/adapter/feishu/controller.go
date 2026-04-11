@@ -46,6 +46,7 @@ type GatewayStatus struct {
 
 type gatewayRuntime interface {
 	Gateway
+	IMFileSender
 	Client() *lark.Client
 	SetStateHook(func(GatewayState, error))
 }
@@ -164,6 +165,56 @@ func (c *MultiGatewayController) Apply(ctx context.Context, operations []Operati
 		}
 	}
 	return nil
+}
+
+func (c *MultiGatewayController) SendIMFile(ctx context.Context, req IMFileSendRequest) (IMFileSendResult, error) {
+	result := IMFileSendResult{
+		GatewayID:        normalizeGatewayID(req.GatewayID),
+		SurfaceSessionID: strings.TrimSpace(req.SurfaceSessionID),
+	}
+
+	c.mu.RLock()
+	workerCount := len(c.workers)
+	soleGatewayID := ""
+	if workerCount == 1 {
+		for gatewayID := range c.workers {
+			soleGatewayID = gatewayID
+		}
+	}
+	c.mu.RUnlock()
+
+	gatewayID := normalizeGatewayID(req.GatewayID)
+	if gatewayID == "" {
+		if workerCount != 1 {
+			return result, &IMFileSendError{
+				Code: IMFileSendErrorGatewayNotRunning,
+				Err:  fmt.Errorf("send file failed: missing gateway id"),
+			}
+		}
+		gatewayID = soleGatewayID
+	}
+
+	req.GatewayID = gatewayID
+	result.GatewayID = gatewayID
+
+	c.mu.RLock()
+	worker := c.workers[gatewayID]
+	c.mu.RUnlock()
+	if worker == nil || worker.runtime == nil {
+		return result, &IMFileSendError{
+			Code: IMFileSendErrorGatewayNotRunning,
+			Err:  fmt.Errorf("send file failed: gateway %s is not running", gatewayID),
+		}
+	}
+	result, err := worker.runtime.SendIMFile(ctx, req)
+	if err != nil {
+		c.updateWorkerError(gatewayID, err)
+		return result, err
+	}
+	if result.GatewayID == "" {
+		result.GatewayID = gatewayID
+	}
+	return result, nil
 }
 
 func (c *MultiGatewayController) RewriteFinalBlock(ctx context.Context, req FinalBlockPreviewRequest) (result FinalBlockPreviewResult, err error) {

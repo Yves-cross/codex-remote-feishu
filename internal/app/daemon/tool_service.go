@@ -1,10 +1,12 @@
 package daemon
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -13,13 +15,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/adminauth"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const feishuSurfaceResolverToolName = "feishu_resolve_surface_context"
+const feishuSendIMFileToolName = "feishu_send_im_file"
 
 const feishuSurfaceResolverDescription = "Resolve the current Feishu remote surface context. Before calling this tool, read .codex-remote/surface-context.json from the current workspace root and pass surface_session_id exactly as found. If the file is missing, invalid, or you are not in normal remote workspace mode, do not guess."
+const feishuSendIMFileDescription = "Send a local file to the current Feishu remote surface as an IM file message. Before calling this tool, read .codex-remote/surface-context.json from the current workspace root and pass surface_session_id exactly as found. Use a real local file path and do not guess a surface, chat, or remote URL."
 
 type toolServiceInfo struct {
 	URL         string    `json:"url"`
@@ -57,6 +62,23 @@ type toolError struct {
 
 type toolErrorPayload struct {
 	Error toolError `json:"error"`
+}
+
+type resolvedToolSurfaceContext struct {
+	SurfaceSessionID   string
+	Platform           string
+	GatewayID          string
+	ChatID             string
+	ActorUserID        string
+	ProductMode        string
+	AttachedInstanceID string
+	SelectedThreadID   string
+	RouteMode          string
+	WorkspaceKey       string
+	WorkspaceRoot      string
+	InstanceSource     string
+	InstanceManaged    bool
+	Attached           bool
 }
 
 func (a *App) SetToolRuntime(cfg ToolRuntimeConfig) {
@@ -161,21 +183,42 @@ func (a *App) requireToolAuth(next func(http.ResponseWriter, *http.Request)) htt
 
 func (a *App) handleToolManifest(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, toolManifestResponse{
-		Tools: []toolDefinition{{
-			Name:        feishuSurfaceResolverToolName,
-			Description: feishuSurfaceResolverDescription,
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"surface_session_id": map[string]any{
-						"type":        "string",
-						"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
+		Tools: []toolDefinition{
+			{
+				Name:        feishuSurfaceResolverToolName,
+				Description: feishuSurfaceResolverDescription,
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"surface_session_id": map[string]any{
+							"type":        "string",
+							"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
+						},
 					},
+					"required":             []string{"surface_session_id"},
+					"additionalProperties": false,
 				},
-				"required":             []string{"surface_session_id"},
-				"additionalProperties": false,
 			},
-		}},
+			{
+				Name:        feishuSendIMFileToolName,
+				Description: feishuSendIMFileDescription,
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"surface_session_id": map[string]any{
+							"type":        "string",
+							"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
+						},
+						"path": map[string]any{
+							"type":        "string",
+							"description": "Existing local file path to send as a Feishu IM file message",
+						},
+					},
+					"required":             []string{"surface_session_id", "path"},
+					"additionalProperties": false,
+				},
+			},
+		},
 	})
 }
 
@@ -196,6 +239,13 @@ func (a *App) handleToolCall(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, toolCallResponse{Result: result})
+	case feishuSendIMFileToolName:
+		result, apiErr := a.sendIMFileTool(r.Context(), req.Arguments)
+		if apiErr != nil {
+			writeToolError(w, http.StatusBadRequest, *apiErr)
+			return
+		}
+		writeJSON(w, http.StatusOK, toolCallResponse{Result: result})
 	default:
 		writeToolError(w, http.StatusNotFound, toolError{
 			Code:    "tool_not_found",
@@ -206,16 +256,127 @@ func (a *App) handleToolCall(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) resolveSurfaceContextTool(arguments map[string]any) (map[string]any, *toolError) {
 	surfaceID, _ := arguments["surface_session_id"].(string)
-	surfaceID = strings.TrimSpace(surfaceID)
-	if surfaceID == "" {
+	a.mu.Lock()
+	resolved, apiErr := a.resolveToolSurfaceContextLocked(surfaceID)
+	a.mu.Unlock()
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	result := map[string]any{
+		"surface_session_id":   resolved.SurfaceSessionID,
+		"platform":             resolved.Platform,
+		"gateway_id":           resolved.GatewayID,
+		"chat_id":              resolved.ChatID,
+		"actor_user_id":        resolved.ActorUserID,
+		"product_mode":         resolved.ProductMode,
+		"attached_instance_id": resolved.AttachedInstanceID,
+		"selected_thread_id":   resolved.SelectedThreadID,
+		"route_mode":           resolved.RouteMode,
+	}
+	if resolved.WorkspaceKey != "" {
+		result["workspace_key"] = resolved.WorkspaceKey
+	}
+	if resolved.WorkspaceRoot != "" {
+		result["workspace_root"] = resolved.WorkspaceRoot
+		result["instance_source"] = resolved.InstanceSource
+		result["instance_managed"] = resolved.InstanceManaged
+	}
+	log.Printf("tool call: tool=%s surface=%s status=ok", feishuSurfaceResolverToolName, surfaceID)
+	return result, nil
+}
+
+func (a *App) sendIMFileTool(ctx context.Context, arguments map[string]any) (map[string]any, *toolError) {
+	surfaceID, _ := arguments["surface_session_id"].(string)
+	path, _ := arguments["path"].(string)
+	path = strings.TrimSpace(path)
+	if path == "" {
 		return nil, &toolError{
-			Code:    "surface_session_id_required",
-			Message: "surface_session_id is required",
+			Code:    "path_required",
+			Message: "path is required",
+		}
+	}
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil, &toolError{
+			Code:    "file_not_found",
+			Message: "path does not exist",
+		}
+	case err != nil:
+		return nil, &toolError{
+			Code:    "file_access_failed",
+			Message: "failed to access local file",
+		}
+	case info.IsDir():
+		return nil, &toolError{
+			Code:    "invalid_file_path",
+			Message: "path must point to a file",
 		}
 	}
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	resolved, apiErr := a.resolveToolSurfaceContextLocked(surfaceID)
+	a.mu.Unlock()
+	if apiErr != nil {
+		return nil, apiErr
+	}
+	if !resolved.Attached {
+		return nil, &toolError{
+			Code:    "surface_not_attached",
+			Message: "surface is not attached to a workspace",
+		}
+	}
+
+	sender, ok := a.gateway.(feishu.IMFileSender)
+	if !ok {
+		return nil, &toolError{
+			Code:    "tool_unavailable",
+			Message: "Feishu IM file sending is not available in this runtime",
+		}
+	}
+	result, err := sender.SendIMFile(ctx, feishu.IMFileSendRequest{
+		GatewayID:        resolved.GatewayID,
+		SurfaceSessionID: resolved.SurfaceSessionID,
+		ChatID:           resolved.ChatID,
+		ActorUserID:      resolved.ActorUserID,
+		Path:             path,
+	})
+	if err != nil {
+		var sendErr *feishu.IMFileSendError
+		if errors.As(err, &sendErr) {
+			switch sendErr.Code {
+			case feishu.IMFileSendErrorUploadFailed:
+				return nil, &toolError{Code: "upload_failed", Message: sendErr.Error()}
+			case feishu.IMFileSendErrorSendFailed, feishu.IMFileSendErrorMissingReceiveTarget:
+				return nil, &toolError{Code: "send_failed", Message: sendErr.Error(), Retryable: true}
+			case feishu.IMFileSendErrorGatewayNotRunning:
+				return nil, &toolError{Code: "send_failed", Message: sendErr.Error(), Retryable: true}
+			}
+		}
+		return nil, &toolError{
+			Code:      "send_failed",
+			Message:   err.Error(),
+			Retryable: true,
+		}
+	}
+	log.Printf("tool call: tool=%s surface=%s path=%s status=ok message=%s", feishuSendIMFileToolName, resolved.SurfaceSessionID, path, result.MessageID)
+	return map[string]any{
+		"surface_session_id": result.SurfaceSessionID,
+		"gateway_id":         result.GatewayID,
+		"file_name":          result.FileName,
+		"file_key":           result.FileKey,
+		"message_id":         result.MessageID,
+	}, nil
+}
+
+func (a *App) resolveToolSurfaceContextLocked(surfaceID string) (resolvedToolSurfaceContext, *toolError) {
+	surfaceID = strings.TrimSpace(surfaceID)
+	if surfaceID == "" {
+		return resolvedToolSurfaceContext{}, &toolError{
+			Code:    "surface_session_id_required",
+			Message: "surface_session_id is required",
+		}
+	}
 
 	var surfaceRecord *state.SurfaceConsoleRecord
 	for _, current := range a.service.Surfaces() {
@@ -225,40 +386,39 @@ func (a *App) resolveSurfaceContextTool(arguments map[string]any) (map[string]an
 		}
 	}
 	if surfaceRecord == nil {
-		return nil, &toolError{
+		return resolvedToolSurfaceContext{}, &toolError{
 			Code:    "surface_not_found",
 			Message: "surface_session_id does not exist",
 		}
 	}
 	if state.NormalizeProductMode(surfaceRecord.ProductMode) != state.ProductModeNormal {
-		return nil, &toolError{
+		return resolvedToolSurfaceContext{}, &toolError{
 			Code:    "surface_mode_unsupported",
 			Message: "Feishu MCP tools are only available in normal mode",
 		}
 	}
 
-	snapshot := a.service.SurfaceSnapshot(surfaceID)
-	result := map[string]any{
-		"surface_session_id":   surfaceID,
-		"platform":             strings.TrimSpace(surfaceRecord.Platform),
-		"gateway_id":           strings.TrimSpace(surfaceRecord.GatewayID),
-		"chat_id":              strings.TrimSpace(surfaceRecord.ChatID),
-		"actor_user_id":        strings.TrimSpace(surfaceRecord.ActorUserID),
-		"product_mode":         string(state.NormalizeProductMode(surfaceRecord.ProductMode)),
-		"attached_instance_id": strings.TrimSpace(surfaceRecord.AttachedInstanceID),
-		"selected_thread_id":   strings.TrimSpace(surfaceRecord.SelectedThreadID),
-		"route_mode":           strings.TrimSpace(string(surfaceRecord.RouteMode)),
+	resolved := resolvedToolSurfaceContext{
+		SurfaceSessionID:   surfaceID,
+		Platform:           strings.TrimSpace(surfaceRecord.Platform),
+		GatewayID:          strings.TrimSpace(surfaceRecord.GatewayID),
+		ChatID:             strings.TrimSpace(surfaceRecord.ChatID),
+		ActorUserID:        strings.TrimSpace(surfaceRecord.ActorUserID),
+		ProductMode:        string(state.NormalizeProductMode(surfaceRecord.ProductMode)),
+		AttachedInstanceID: strings.TrimSpace(surfaceRecord.AttachedInstanceID),
+		SelectedThreadID:   strings.TrimSpace(surfaceRecord.SelectedThreadID),
+		RouteMode:          strings.TrimSpace(string(surfaceRecord.RouteMode)),
 	}
-	if snapshot != nil {
-		result["workspace_key"] = strings.TrimSpace(snapshot.WorkspaceKey)
+	if snapshot := a.service.SurfaceSnapshot(surfaceID); snapshot != nil {
+		resolved.WorkspaceKey = strings.TrimSpace(snapshot.WorkspaceKey)
 	}
-	if inst := a.service.Instance(strings.TrimSpace(surfaceRecord.AttachedInstanceID)); inst != nil {
-		result["workspace_root"] = strings.TrimSpace(inst.WorkspaceRoot)
-		result["instance_source"] = strings.TrimSpace(inst.Source)
-		result["instance_managed"] = inst.Managed
+	if inst := a.service.Instance(resolved.AttachedInstanceID); inst != nil {
+		resolved.Attached = true
+		resolved.WorkspaceRoot = strings.TrimSpace(inst.WorkspaceRoot)
+		resolved.InstanceSource = strings.TrimSpace(inst.Source)
+		resolved.InstanceManaged = inst.Managed
 	}
-	log.Printf("tool call: tool=%s surface=%s status=ok", feishuSurfaceResolverToolName, surfaceID)
-	return result, nil
+	return resolved, nil
 }
 
 func writeToolError(w http.ResponseWriter, status int, apiErr toolError) {

@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -140,6 +141,58 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 	}
 }
 
+func TestMultiGatewayControllerRoutesSendIMFileByGatewayID(t *testing.T) {
+	controller := NewMultiGatewayController()
+	runtimes := map[string]*fakeGatewayRuntime{}
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		runtimes[cfg.GatewayID] = runtime
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, gatewayID := range []string{"app-1", "app-2"} {
+		if err := controller.UpsertApp(ctx, GatewayAppConfig{
+			GatewayID: gatewayID,
+			AppID:     "cli_" + gatewayID,
+			AppSecret: "secret_" + gatewayID,
+			Enabled:   true,
+		}); err != nil {
+			t.Fatalf("UpsertApp(%s): %v", gatewayID, err)
+		}
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
+
+	result, err := controller.SendIMFile(context.Background(), IMFileSendRequest{
+		GatewayID:        "app-2",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "oc_2",
+		Path:             "/tmp/report.pdf",
+	})
+	if err != nil {
+		t.Fatalf("SendIMFile: %v", err)
+	}
+	if len(runtimes["app-1"].sendIMFileCalls) != 0 {
+		t.Fatalf("unexpected app-1 send calls: %#v", runtimes["app-1"].sendIMFileCalls)
+	}
+	if len(runtimes["app-2"].sendIMFileCalls) != 1 {
+		t.Fatalf("unexpected app-2 send calls: %#v", runtimes["app-2"].sendIMFileCalls)
+	}
+	got := runtimes["app-2"].sendIMFileCalls[0]
+	if got.SurfaceSessionID != "surface-2" || got.ChatID != "oc_2" || got.Path != "/tmp/report.pdf" {
+		t.Fatalf("unexpected send request: %#v", got)
+	}
+	if result.GatewayID != "app-2" || result.MessageID != "msg-app-2" || result.FileName != "report.pdf" {
+		t.Fatalf("unexpected send result: %#v", result)
+	}
+}
+
 func TestMultiGatewayControllerUpsertRestartsWorker(t *testing.T) {
 	controller := NewMultiGatewayController()
 	var (
@@ -263,9 +316,11 @@ type fakeGatewayRuntime struct {
 	startedCh chan struct{}
 	stoppedCh chan struct{}
 
-	mu         sync.Mutex
-	stateHook  func(GatewayState, error)
-	applyCalls [][]Operation
+	mu              sync.Mutex
+	stateHook       func(GatewayState, error)
+	applyCalls      [][]Operation
+	sendIMFileCalls []IMFileSendRequest
+	sendIMFileFn    func(context.Context, IMFileSendRequest) (IMFileSendResult, error)
 }
 
 func newFakeGatewayRuntime(gatewayID string) *fakeGatewayRuntime {
@@ -295,6 +350,23 @@ func (f *fakeGatewayRuntime) Apply(_ context.Context, operations []Operation) er
 	defer f.mu.Unlock()
 	f.applyCalls = append(f.applyCalls, append([]Operation(nil), operations...))
 	return nil
+}
+
+func (f *fakeGatewayRuntime) SendIMFile(ctx context.Context, req IMFileSendRequest) (IMFileSendResult, error) {
+	f.mu.Lock()
+	f.sendIMFileCalls = append(f.sendIMFileCalls, req)
+	fn := f.sendIMFileFn
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, req)
+	}
+	return IMFileSendResult{
+		GatewayID:        f.gatewayID,
+		SurfaceSessionID: req.SurfaceSessionID,
+		FileName:         filepath.Base(req.Path),
+		FileKey:          "file-key-" + f.gatewayID,
+		MessageID:        "msg-" + f.gatewayID,
+	}, nil
 }
 
 func (f *fakeGatewayRuntime) Client() *lark.Client { return nil }

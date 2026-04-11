@@ -44,6 +44,7 @@ type LiveGateway struct {
 	downloadImageFn    func(context.Context, string, string) (string, string, error)
 	uploadImagePathFn  func(context.Context, string) (string, error)
 	uploadImageBytesFn func(context.Context, []byte) (string, error)
+	uploadFilePathFn   func(context.Context, string) (string, string, error)
 	fetchMessageFn     func(context.Context, string) (*gatewayMessage, error)
 	createMessageFn    func(context.Context, string, string, string, string) (*larkim.CreateMessageResp, error)
 	replyMessageFn     func(context.Context, string, string, string) (*larkim.ReplyMessageResp, error)
@@ -99,6 +100,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway.downloadImageFn = gateway.downloadImage
 	gateway.uploadImagePathFn = gateway.uploadImagePath
 	gateway.uploadImageBytesFn = gateway.uploadImageBytes
+	gateway.uploadFilePathFn = gateway.uploadFilePath
 	gateway.fetchMessageFn = gateway.fetchMessage
 	gateway.createMessageFn = gateway.createMessage
 	gateway.replyMessageFn = gateway.replyMessage
