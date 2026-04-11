@@ -36,19 +36,34 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增机器人" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((call) => call.rawURL.startsWith("./"))).toBe(true);
     expect(calls.some((call) => call.path === "/g/demo/api/admin/bootstrap-state")).toBe(true);
   });
 
-  it("does not duplicate the grant prefix in setup links", async () => {
+  it("keeps app repair inside admin instead of linking back to setup", async () => {
     window.history.replaceState({}, "", "/g/demo/admin");
+    const user = userEvent.setup();
 
     installMockFetch({
       "/g/demo/api/admin/bootstrap-state": { body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }) },
       "/g/demo/api/admin/runtime-status": { body: makeRuntimeStatus() },
-      "/g/demo/api/admin/feishu/apps": { body: { apps: [makeApp({ wizard: {} })] } },
+      "/g/demo/api/admin/feishu/apps": {
+        body: {
+          apps: [
+            makeApp({
+              wizard: {
+                connectionVerifiedAt: "2026-04-10T09:00:00Z",
+                eventsConfirmedAt: "2026-04-10T09:01:00Z",
+                callbacksConfirmedAt: "2026-04-10T09:02:00Z",
+                menusConfirmedAt: "2026-04-10T09:03:00Z",
+                publishedAt: "2026-04-10T09:04:00Z",
+              },
+            }),
+          ],
+        },
+      },
       "/g/demo/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
       "/g/demo/api/admin/vscode/detect": { body: makeVSCodeDetect() },
       "/g/demo/api/admin/instances": { body: { instances: [] } },
@@ -56,12 +71,31 @@ describe("AdminRoute", () => {
       "/g/demo/api/admin/storage/preview-drive/bot-1": {
         body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
       },
+      "/g/demo/api/admin/feishu/apps/bot-1/wizard": (call) => {
+        expect(JSON.parse(String(call.init?.body))).toEqual({ scopesExported: true });
+        return {
+          body: {
+            app: makeApp({
+              wizard: {
+                connectionVerifiedAt: "2026-04-10T09:00:00Z",
+                scopesExportedAt: "2026-04-10T09:00:30Z",
+                eventsConfirmedAt: "2026-04-10T09:01:00Z",
+                callbacksConfirmedAt: "2026-04-10T09:02:00Z",
+                menusConfirmedAt: "2026-04-10T09:03:00Z",
+                publishedAt: "2026-04-10T09:04:00Z",
+              },
+            }),
+          },
+        };
+      },
     });
 
     render(<AdminRoute />);
 
-    const link = await screen.findByRole("link", { name: "继续完成首次配置" });
-    expect(link.getAttribute("href")).toBe("./setup?app=bot-1");
+    expect(await screen.findByText("导入基础权限")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "继续完成首次配置" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "我已完成" }));
+    expect(await screen.findByText("已记录：基础权限已处理。")).toBeInTheDocument();
   });
 
   it("toggles the shell section navigation and closes it after selecting a section", async () => {
@@ -87,7 +121,7 @@ describe("AdminRoute", () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-    await user.click(screen.getByRole("link", { name: "飞书机器人" }));
+    await user.click(screen.getByRole("link", { name: "飞书应用" }));
     expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
@@ -136,7 +170,7 @@ describe("AdminRoute", () => {
     render(<AdminRoute />);
 
     expect(await screen.findAllByText("当前由启动参数接管，只能查看状态，不能在管理页修改。")).not.toHaveLength(0);
-    expect(screen.getByLabelText("机器人名称")).toBeDisabled();
+    expect(screen.getByLabelText("飞书应用名称")).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存更改" })).toBeDisabled();
   });
 
@@ -202,11 +236,11 @@ describe("AdminRoute", () => {
     await user.click(screen.getByRole("button", { name: "保存更改" }));
 
     expect(await screen.findByText("更改已保存到本地配置，但运行时还没应用成功。页面已刷新为“未生效”状态，请重试应用。")).toBeInTheDocument();
-    expect(screen.getAllByText("未生效").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("待同步").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "重试应用" })).toBeInTheDocument();
   });
 
-  it("shows existing-app manual connect flow when adding a new bot from admin", async () => {
+  it("shows existing-app manual connect flow when adding a new app from admin", async () => {
     const user = userEvent.setup();
     installMockFetch({
       "/api/admin/bootstrap-state": { body: makeBootstrap() },
@@ -223,11 +257,12 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增机器人" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "新增机器人" }));
+    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新增飞书应用" }));
+    await user.click(screen.getByRole("radio", { name: /接入已有飞书应用/ }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
 
-    expect(await screen.findByText("已有应用怎么接")).toBeInTheDocument();
+    expect(await screen.findByText("已有飞书应用怎么接")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存并验证" })).toBeInTheDocument();
   });
 
@@ -321,8 +356,8 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增机器人" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "新增机器人" }));
+    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新增飞书应用" }));
     await user.click(screen.getByRole("radio", { name: /新建飞书应用/ }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
 
@@ -443,7 +478,7 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByText(/固定的预览 inventory 根目录/)).toBeInTheDocument();
+    expect(await screen.findByText(/每条飞书应用都会在自己的飞书云盘里维护固定的预览目录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "检查目录一致性" })).not.toBeInTheDocument();
   });
 
@@ -466,7 +501,7 @@ describe("AdminRoute", () => {
             estimatedBytes: 0,
             unknownSizeFileCount: 0,
             status: "permission_required",
-            statusMessage: "当前机器人还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。",
+            statusMessage: "当前飞书应用还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。",
           },
         }),
       },
@@ -474,7 +509,7 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByText(/当前机器人还没有开通飞书云盘权限/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/当前飞书应用还没有开通飞书云盘权限/)).not.toHaveLength(0);
     expect(screen.getByText("需开通 Drive 权限")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清理旧预览" })).toBeDisabled();
   });

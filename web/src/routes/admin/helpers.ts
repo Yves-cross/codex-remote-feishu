@@ -1,4 +1,4 @@
-import type { AdminInstanceSummary, FeishuAppSummary, VSCodeDetectResponse } from "../../lib/types";
+import type { AdminInstanceSummary, FeishuAppSummary, PreviewDriveStatusResponse, VSCodeDetectResponse } from "../../lib/types";
 import { vscodeHasDetectedBundle, vscodeIsReady } from "../shared/helpers";
 import type { AppDraft, WizardRow } from "./types";
 import { newAppID } from "./types";
@@ -56,6 +56,257 @@ export function buildWizardRows(app: FeishuAppSummary): WizardRow[] {
     { label: "菜单已确认", done: Boolean(app.wizard?.menusConfirmedAt), timestamp: app.wizard?.menusConfirmedAt },
     { label: "应用已发布", done: Boolean(app.wizard?.publishedAt), timestamp: app.wizard?.publishedAt },
   ];
+}
+
+export type SurfaceTone = "neutral" | "good" | "warn" | "danger";
+
+export function appPendingCount(app: FeishuAppSummary, previewSummary?: PreviewDriveStatusResponse["summary"]): number {
+  const missingCoreItems = [
+    !app.wizard?.connectionVerifiedAt,
+    !app.wizard?.scopesExportedAt,
+    !app.wizard?.eventsConfirmedAt,
+    !app.wizard?.callbacksConfirmedAt,
+    !app.wizard?.menusConfirmedAt,
+    !app.wizard?.publishedAt,
+  ].filter(Boolean).length;
+  const previewNeedsWork = previewSummary?.status === "permission_required" ? 1 : 0;
+  return missingCoreItems + previewNeedsWork;
+}
+
+export function appSurfaceStatus(
+  app: FeishuAppSummary,
+  previewSummary?: PreviewDriveStatusResponse["summary"],
+): { label: string; tone: SurfaceTone; detail: string } {
+  const externalManaged = Boolean(app.readOnly || app.runtimeOnly || app.runtimeOverride);
+  const missingCoreItems = [
+    !app.wizard?.scopesExportedAt,
+    !app.wizard?.eventsConfirmedAt,
+    !app.wizard?.callbacksConfirmedAt,
+    !app.wizard?.menusConfirmedAt,
+    !app.wizard?.publishedAt,
+  ].filter(Boolean).length;
+  const previewNeedsWork = previewSummary?.status === "permission_required";
+
+  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
+    return {
+      label: "待移除",
+      tone: "warn",
+      detail: app.runtimeApply.error || "本地配置已经删除，但运行时里还没移除干净。",
+    };
+  }
+  if (app.runtimeApply?.pending) {
+    return {
+      label: "待同步",
+      tone: "warn",
+      detail: app.runtimeApply.error || "本地配置已经更新，但运行时里还没应用成功。",
+    };
+  }
+  if (!app.enabled) {
+    return {
+      label: "已停用",
+      tone: "neutral",
+      detail: "当前不会继续接收飞书消息。",
+    };
+  }
+  if (app.status?.state === "auth_failed") {
+    return {
+      label: externalManaged ? "外部接管，需处理" : "需处理",
+      tone: "danger",
+      detail: app.status.lastError || "当前凭证校验失败，请先处理连接问题。",
+    };
+  }
+  if (externalManaged) {
+    if (app.status?.state === "degraded") {
+      return {
+        label: "外部接管，待关注",
+        tone: "warn",
+        detail: app.status.lastError || "当前由外部配置接管，但最近连接状态不稳定。",
+      };
+    }
+    return {
+      label: "外部接管",
+      tone: app.status?.state === "connected" ? "good" : "neutral",
+      detail:
+        app.readOnlyReason ||
+        (app.status?.lastConnectedAt ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}` : "当前由运行时参数或外部配置接管。"),
+    };
+  }
+  if (!app.wizard?.connectionVerifiedAt) {
+    return {
+      label: "待验证",
+      tone: "warn",
+      detail: app.appId || app.hasSecret ? "先完成一次连接验证，确认这份凭证可用。" : "先填写 App ID 和 App Secret。",
+    };
+  }
+  if (app.status?.state === "degraded") {
+    return {
+      label: "可用，待关注",
+      tone: "warn",
+      detail: app.status.lastError || "最近连接状态不稳定，建议重新检查一下。",
+    };
+  }
+  if (missingCoreItems > 0 || previewNeedsWork) {
+    const pendingCount = missingCoreItems + (previewNeedsWork ? 1 : 0);
+    return {
+      label: "可用，待补全",
+      tone: "warn",
+      detail: `基础接入已经可用，当前还有 ${pendingCount} 项建议补齐。`,
+    };
+  }
+  if (app.status?.lastConnectedAt) {
+    return {
+      label: "可用",
+      tone: "good",
+      detail: `最近连接 ${formatDateTime(app.status.lastConnectedAt)}`,
+    };
+  }
+  return {
+    label: "可用",
+    tone: "good",
+    detail: "当前没有明显需要处理的问题。",
+  };
+}
+
+export function appConnectionStatus(app: FeishuAppSummary): { label: string; tone: SurfaceTone; detail: string } {
+  if (!app.enabled) {
+    return { label: "已停用", tone: "neutral", detail: "当前不会继续接收飞书消息。" };
+  }
+  if (app.status?.state === "auth_failed") {
+    return {
+      label: "连接失败",
+      tone: "danger",
+      detail: app.status.lastError || "凭证或飞书侧配置有问题，请先处理。",
+    };
+  }
+  if (app.status?.state === "connected") {
+    return {
+      label: "连接正常",
+      tone: "good",
+      detail: app.status.lastConnectedAt ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}` : "已经建立连接。",
+    };
+  }
+  if (app.status?.state === "degraded") {
+    return {
+      label: "连接不稳定",
+      tone: "warn",
+      detail: app.status.lastError || "最近连接不稳定，建议重新检查。",
+    };
+  }
+  if (app.wizard?.connectionVerifiedAt) {
+    return {
+      label: "已验证",
+      tone: "warn",
+      detail: "这份凭证已经验证过，但当前还没看到稳定连接。",
+    };
+  }
+  if (app.appId || app.hasSecret) {
+    return {
+      label: "待验证",
+      tone: "warn",
+      detail: "先完成一次连接验证，确认这份凭证可用。",
+    };
+  }
+  return {
+    label: "未填写",
+    tone: "neutral",
+    detail: "还没有填写这条飞书应用的凭证。",
+  };
+}
+
+export function appInteractionStatus(app: FeishuAppSummary): { label: string; tone: SurfaceTone; detail: string } {
+  if (!app.wizard?.connectionVerifiedAt) {
+    return {
+      label: "等待连接验证",
+      tone: "warn",
+      detail: "先完成连接验证，再继续补齐权限、事件、回调、菜单和发布。",
+    };
+  }
+  const missing: string[] = [];
+  if (!app.wizard?.scopesExportedAt) {
+    missing.push("基础权限");
+  }
+  if (!app.wizard?.eventsConfirmedAt) {
+    missing.push("事件订阅");
+  }
+  if (!app.wizard?.callbacksConfirmedAt) {
+    missing.push("卡片回调");
+  }
+  if (!app.wizard?.menusConfirmedAt) {
+    missing.push("飞书应用菜单");
+  }
+  if (!app.wizard?.publishedAt) {
+    missing.push("发布验收");
+  }
+  if (missing.length === 0) {
+    return {
+      label: "基础对话与交互已就绪",
+      tone: "good",
+      detail: "基础收发消息、事件、卡片回调和菜单相关能力都已经补齐。",
+    };
+  }
+  return {
+    label: `还需处理 ${missing.length} 项`,
+    tone: "warn",
+    detail: `待补齐：${missing.join("、")}`,
+  };
+}
+
+export function appPreviewStatus(previewSummary?: PreviewDriveStatusResponse["summary"]): { label: string; tone: SurfaceTone; detail: string } {
+  if (!previewSummary) {
+    return {
+      label: "状态未获取",
+      tone: "warn",
+      detail: "当前还没有拿到这条飞书应用的预览目录摘要。",
+    };
+  }
+  if (previewSummary.status === "permission_required") {
+    return {
+      label: "待开通 Drive 权限",
+      tone: "warn",
+      detail: normalizeLegacyFeishuCopy(previewSummary.statusMessage || "如需 Markdown 预览，请先开通 drive:drive 权限。"),
+    };
+  }
+  if (previewSummary.status === "api_unavailable") {
+    return {
+      label: "当前未配置",
+      tone: "neutral",
+      detail: normalizeLegacyFeishuCopy(previewSummary.statusMessage || "Markdown 预览是可选增强项，不影响基础对话。"),
+    };
+  }
+  if (previewSummary.rootURL) {
+    return {
+      label: "已可用",
+      tone: "good",
+      detail: previewSummary.newestLastUsedAt
+        ? `最近使用 ${formatDateTime(previewSummary.newestLastUsedAt)}`
+        : "固定预览目录已经建立。",
+    };
+  }
+  return {
+    label: "尚未生成",
+    tone: "neutral",
+    detail: "需要实际生成过 Markdown 预览后，这里才会出现目录摘要。",
+  };
+}
+
+export function appSourceLabel(app: FeishuAppSummary): string {
+  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
+    return "本地已删除，待运行时移除";
+  }
+  if (app.runtimeOverride) {
+    return "启动参数接管";
+  }
+  if (app.runtimeOnly) {
+    return "仅运行时存在";
+  }
+  if (app.persisted) {
+    return "本地配置";
+  }
+  return "未说明";
+}
+
+export function normalizeLegacyFeishuCopy(value: string): string {
+  return value.replaceAll("机器人", "飞书应用");
 }
 
 export function statusTone(state?: string): "neutral" | "good" | "warn" | "danger" {

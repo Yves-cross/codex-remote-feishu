@@ -1,7 +1,9 @@
+import type { Dispatch, SetStateAction } from "react";
 import type {
   AdminInstanceSummary,
   BootstrapState,
   FeishuAppSummary,
+  FeishuManifest,
   FeishuOnboardingCompleteResponse,
   FeishuOnboardingSession,
   GatewayStatus,
@@ -15,9 +17,12 @@ import { type VSCodeUsageScenario, vscodeHasDetectedBundle, vscodeIsReady } from
 import { FeishuConnectStep } from "../setup/FeishuConnectStep";
 import type { FeishuConnectMode, FeishuConnectStage } from "../setup/types";
 import {
-  appConnectionLabel,
-  appConnectionTone,
-  appSetupProgress,
+  appConnectionStatus,
+  appInteractionStatus,
+  appPendingCount,
+  appPreviewStatus,
+  appSourceLabel,
+  appSurfaceStatus,
   buildWizardRows,
   emptyDraft,
   formatBytes,
@@ -25,7 +30,9 @@ import {
   instanceSourceLabel,
   instanceStatusLabel,
   instanceStatusTone,
+  normalizeLegacyFeishuCopy,
   statusTone,
+  SurfaceTone,
   vscodeModeLabel,
 } from "./helpers";
 import type { AppDraft, Notice, PreviewMap } from "./types";
@@ -40,26 +47,27 @@ type AdminOverviewPanelProps = {
   vscode: VSCodeDetectResponse | null;
   vscodeError: string;
   notice: Notice | null;
-  setupURL: string;
+  onBeginNewApp: () => void;
   onInspectApp: (app: FeishuAppSummary) => void;
-  setupURLForApp: (appID: string) => string;
 };
 
 type AdminFeishuPanelProps = {
   apps: FeishuAppSummary[];
+  manifest: FeishuManifest;
+  basicScopesJSON: string;
   selectedAppID: string;
   draft: AppDraft;
   activeApp: FeishuAppSummary | null;
+  activePreview: PreviewDriveStatusResponse["summary"] | undefined;
   busyAction: string;
   connectStage: FeishuConnectStage;
   connectMode: FeishuConnectMode | null;
   onboardingSession: FeishuOnboardingSession | null;
   onboardingCompletion: FeishuOnboardingCompleteResponse | null;
   onboardingNeedsManualRetry: boolean;
-  setupURLForApp: (appID: string) => string;
   onBeginNewApp: () => void;
   onSelectApp: (app: FeishuAppSummary) => void;
-  onDraftChange: React.Dispatch<React.SetStateAction<AppDraft>>;
+  onDraftChange: Dispatch<SetStateAction<AppDraft>>;
   onConnectModeChange: (value: FeishuConnectMode) => void;
   onContinueModeSelection: () => void;
   onVerifyNewAppManual: () => void;
@@ -75,6 +83,12 @@ type AdminFeishuPanelProps = {
   onRetryRuntimeApply: () => void;
   onToggleAppEnabled: (enabled: boolean) => void;
   onDeleteApp: () => void;
+  onCopyBasicScopesJSON: () => void;
+  onConfirmScopes: () => void;
+  onConfirmEvents: () => void;
+  onConfirmCallbacks: () => void;
+  onConfirmMenus: () => void;
+  onCheckPublish: () => void;
 };
 
 type AdminInstancesPanelProps = {
@@ -118,8 +132,21 @@ type AttentionItem = {
   detail: string;
   tone: "warn" | "danger";
   actionLabel: string;
-  href?: string;
   onAction?: () => void;
+  href?: string;
+};
+
+type CapabilityTodo = {
+  key: string;
+  title: string;
+  detail: string;
+  tone: "warn" | "danger";
+  actions?: Array<{
+    key: string;
+    label: string;
+    tone?: "primary" | "secondary" | "ghost";
+    onClick: () => void;
+  }>;
 };
 
 export function AdminOverviewPanel({
@@ -131,21 +158,20 @@ export function AdminOverviewPanel({
   vscode,
   vscodeError,
   notice,
-  setupURL,
+  onBeginNewApp,
   onInspectApp,
-  setupURLForApp,
 }: AdminOverviewPanelProps) {
   const enabledApps = apps.filter((app) => app.enabled).length;
-  const connectedApps = apps.filter((app) => app.enabled && app.status?.state === "connected").length;
+  const healthyApps = apps.filter((app) => appSurfaceStatus(app, previews[app.id]?.summary).tone === "good").length;
   const onlineInstances = instances.filter((instance) => instance.online).length;
   const previewFileCount = apps.reduce((sum, app) => sum + (previews[app.id]?.summary.fileCount ?? 0), 0);
   const staleImageCount = Math.max(imageStaging.fileCount - imageStaging.activeFileCount, 0);
-  const attentionItems = buildAttentionItems(apps, staleImageCount, vscode, vscodeError, onInspectApp, setupURL, setupURLForApp);
+  const attentionItems = buildAttentionItems(apps, previews, staleImageCount, vscode, vscodeError, onInspectApp, onBeginNewApp);
 
   return (
-    <Panel id="overview" title="总览" description="先看这里，确认现在是否有需要处理的事情。">
+    <Panel id="overview" title="运行概览" description="先确认当前机器和飞书应用是否已经处于可用状态。">
       <StatGrid>
-        <StatCard label="机器人" value={apps.length} tone="accent" detail={`在线 ${connectedApps} / 已启用 ${enabledApps}`} />
+        <StatCard label="飞书应用" value={apps.length} tone="accent" detail={`可用 ${healthyApps} / 已启用 ${enabledApps}`} />
         <StatCard label="需要处理" value={attentionItems.length} tone={attentionItems.length > 0 ? "warn" : "accent"} detail={attentionItems.length > 0 ? "建议先处理这些项目" : "当前没有明显待处理项"} />
         <StatCard label="工作实例" value={instances.length} detail={`在线 ${onlineInstances}`} />
         <StatCard label="文档与图片" value={imageStaging.fileCount + previewFileCount} detail={`图片 ${imageStaging.fileCount} · 预览 ${previewFileCount}`} />
@@ -156,10 +182,10 @@ export function AdminOverviewPanel({
       <div className="section-block">
         <div className="section-heading">
           <div>
-            <h4>需要关注</h4>
-            <p>这里只列出建议优先处理的项目。</p>
+            <h4>建议优先处理</h4>
+            <p>这里只列当前最容易影响使用体验的事项。</p>
           </div>
-          <StatusBadge value={bootstrap.phase === "ready" ? "本机服务正常" : "本机服务未完成准备"} tone={bootstrap.phase === "ready" ? "good" : "warn"} />
+          <StatusBadge value={bootstrap.phase === "ready" ? "本机服务正常" : "本机服务待处理"} tone={bootstrap.phase === "ready" ? "good" : "warn"} />
         </div>
 
         {attentionItems.length > 0 ? (
@@ -188,7 +214,7 @@ export function AdminOverviewPanel({
         ) : (
           <div className="inline-note">
             <StatusBadge value="已就绪" tone="good" />
-            <span>当前没有明显异常，可以直接去下面继续管理机器人、实例或文档预览。</span>
+            <span>当前没有明显异常，可以继续管理飞书应用、实例、文档预览和 VS Code。</span>
           </div>
         )}
       </div>
@@ -198,16 +224,18 @@ export function AdminOverviewPanel({
 
 export function AdminFeishuPanel({
   apps,
+  manifest,
+  basicScopesJSON,
   selectedAppID,
   draft,
   activeApp,
+  activePreview,
   busyAction,
   connectStage,
   connectMode,
   onboardingSession,
   onboardingCompletion,
   onboardingNeedsManualRetry,
-  setupURLForApp,
   onBeginNewApp,
   onSelectApp,
   onDraftChange,
@@ -226,94 +254,114 @@ export function AdminFeishuPanel({
   onRetryRuntimeApply,
   onToggleAppEnabled,
   onDeleteApp,
+  onCopyBasicScopesJSON,
+  onConfirmScopes,
+  onConfirmEvents,
+  onConfirmCallbacks,
+  onConfirmMenus,
+  onCheckPublish,
 }: AdminFeishuPanelProps) {
   const pendingRuntimeRemoval = Boolean(activeApp?.runtimeApply?.pending && activeApp.runtimeApply.action === "remove" && !activeApp.persisted);
   const readOnly = Boolean((activeApp?.readOnly || pendingRuntimeRemoval) && !draft.isNew);
-  const setupProgress = activeApp ? appSetupProgress(activeApp) : null;
-  const needsSetup = Boolean(activeApp && setupProgress && !setupProgress.complete);
   const canToggleEnabled = Boolean(activeApp && !activeApp.readOnly && !pendingRuntimeRemoval);
   const showNewAppWizard = draft.isNew && !activeApp;
   const wizardDraft = showNewAppWizard ? draft : emptyDraft();
+  const surfaceStatus = activeApp ? appSurfaceStatus(activeApp, activePreview) : null;
+  const connectionStatus = activeApp ? appConnectionStatus(activeApp) : null;
+  const interactionStatus = activeApp ? appInteractionStatus(activeApp) : null;
+  const previewStatus = appPreviewStatus(activePreview);
+  const pendingCount = activeApp ? appPendingCount(activeApp, activePreview) : 0;
+  const todoItems = activeApp
+    ? buildCapabilityTodos(activeApp, activePreview, {
+        onVerifyApp,
+        onCopyBasicScopesJSON,
+        onConfirmScopes,
+        onConfirmEvents,
+        onConfirmCallbacks,
+        onConfirmMenus,
+        onCheckPublish,
+      })
+    : [];
 
   return (
     <Panel
       id="feishu"
-      title="飞书机器人"
-      description="新增、编辑、停用和重连机器人。首次接入的机器人也可以从这里继续配置。"
+      title="飞书应用"
+      description="新增、接入和维护飞书应用。接入后可在这里持续查看状态、修复连接和补齐能力。"
       actions={
         <button className="secondary-button" type="button" onClick={onBeginNewApp} disabled={busyAction !== ""}>
-          新增机器人
+          新增飞书应用
         </button>
       }
     >
       <div className="setup-two-column">
         <div className="app-list-grid">
           {apps.map((app) => {
-            const progress = appSetupProgress(app);
+            const status = appSurfaceStatus(app, undefined);
+            const previewPending = appPendingCount(app) > 0;
             return (
               <button key={app.id} type="button" className={`app-card${selectedAppID === app.id ? " selected" : ""}`} onClick={() => onSelectApp(app)}>
                 <div className="app-card-head">
                   <strong>{app.name || app.appId || app.id}</strong>
-                  <StatusBadge value={appConnectionLabel(app)} tone={appConnectionTone(app)} />
+                  <StatusBadge value={status.label} tone={status.tone} />
                 </div>
                 <p>{app.appId || "还没有填写 App ID"}</p>
                 <div className="app-card-flags">
                   <StatusBadge value={app.enabled ? "已启用" : "已停用"} tone={app.enabled ? "good" : "neutral"} />
-                  <StatusBadge value={progress.complete ? "已完成首次配置" : "需继续配置"} tone={progress.complete ? "good" : "warn"} />
-                  {app.runtimeApply?.pending ? <StatusBadge value={app.runtimeApply.action === "remove" ? "待移除" : "待重试"} tone="warn" /> : null}
+                  {previewPending ? <StatusBadge value={`待补全 ${appPendingCount(app)} 项`} tone="warn" /> : null}
                   {app.readOnly ? <StatusBadge value="只读" tone="warn" /> : null}
                 </div>
-                <p>{buildAppCardDetail(app, progress.remaining)}</p>
+                <p>{status.detail}</p>
               </button>
             );
           })}
           <button type="button" className={`app-card app-card-create${selectedAppID === newAppID ? " selected" : ""}`} onClick={onBeginNewApp}>
-            <strong>新增机器人</strong>
-            <p>添加一个新的飞书机器人，用于不同团队或不同入口。</p>
+            <strong>接入飞书应用</strong>
+            <p>扫码新建一个飞书应用，或者把已有应用凭证接入到当前机器。</p>
           </button>
         </div>
 
         <div className="wizard-editor">
-          {activeApp ? (
-            <StatGrid>
-              <StatCard label="连接状态" value={appConnectionLabel(activeApp)} tone={appConnectionTone(activeApp) === "good" ? "accent" : "warn"} detail={activeApp.status?.lastConnectedAt ? `最近连接 ${formatDateTime(activeApp.status.lastConnectedAt)}` : "还没有连接记录"} />
-              <StatCard label="最近验证" value={activeApp.verifiedAt ? formatDateTime(activeApp.verifiedAt) : "尚未验证"} detail={activeApp.wizard?.connectionVerifiedAt ? "已通过连接测试" : "建议先测试连接"} />
-              <StatCard label="首次配置" value={setupProgress?.complete ? "已完成" : "未完成"} tone={setupProgress?.complete ? "accent" : "warn"} detail={setupProgress ? `已完成 ${setupProgress.completed} / ${setupProgress.total}` : "创建后会显示"} />
-              <StatCard label="编辑权限" value={readOnly ? "只读" : "可编辑"} detail={pendingRuntimeRemoval ? "本地配置已删除，等待运行时移除" : readOnly ? "当前由启动参数接管" : "可在这里直接修改"} />
-            </StatGrid>
+          {activeApp && surfaceStatus ? (
+            <article className="info-card app-status-hero">
+              <div className="app-card-head">
+                <div>
+                  <strong>{activeApp.name || activeApp.appId || activeApp.id}</strong>
+                  <p>{activeApp.appId || "还没有填写 App ID"}</p>
+                </div>
+                <StatusBadge value={surfaceStatus.label} tone={surfaceStatus.tone} />
+              </div>
+              <div className="app-card-flags">
+                <StatusBadge value={activeApp.enabled ? "当前已启用" : "当前已停用"} tone={activeApp.enabled ? "good" : "neutral"} />
+                <StatusBadge value={appSourceLabel(activeApp)} tone="neutral" />
+                {activeApp.readOnly ? <StatusBadge value="外部接管" tone="warn" /> : null}
+                {pendingCount > 0 ? <StatusBadge value={`待补全 ${pendingCount} 项`} tone="warn" /> : null}
+              </div>
+              <p>{surfaceStatus.detail}</p>
+            </article>
           ) : showNewAppWizard ? (
             <div className="wizard-callout">
               <h4>先选择接入方式</h4>
-              <p>新增机器人时，可以扫码新建飞书应用，也可以继续手动接入已有应用。</p>
+              <p>新增飞书应用时，可以扫码新建，也可以继续手动接入已有应用。</p>
             </div>
           ) : (
             <div className="wizard-callout">
-              <h4>先把机器人接进来</h4>
-              <p>这里先保存名称、App ID 和 App Secret。保存成功后，就能测试连接并进入首次配置流程。</p>
+              <h4>先把飞书应用接进来</h4>
+              <p>这里先保存名称、App ID 和 App Secret。保存后就能在当前页面继续做连接验证和能力补齐。</p>
             </div>
           )}
 
-          {activeApp?.readOnly ? <div className="notice-banner warn">{activeApp.readOnlyReason || "这个机器人由当前启动参数接管，只能查看状态，不能在管理页修改。"}</div> : null}
+          {activeApp?.readOnly ? <div className="notice-banner warn">{activeApp.readOnlyReason || "当前飞书应用由外部配置接管，只能在这里查看状态，不能直接修改。"} </div> : null}
           {activeApp?.runtimeApply?.pending ? (
             <div className="notice-banner warn">
               {activeApp.runtimeApply.action === "remove" && !activeApp.persisted
-                ? "这个机器人已经从本地配置删除，但运行时移除还没成功。请重试应用，直到它从列表里消失。"
-                : "最近一次保存已经写入本地配置，但运行时应用失败。请重试应用，直到状态恢复。"}
+                ? "这条飞书应用已经从本地配置删除，但运行时移除还没成功。请重试移除，直到它从列表里消失。"
+                : "最近一次保存已经写入本地配置，但运行时应用失败。请先重试应用，直到状态恢复。"}
               {activeApp.runtimeApply.error ? <div>最近错误：{activeApp.runtimeApply.error}</div> : null}
               <div className="button-row">
                 <button className="secondary-button" type="button" onClick={onRetryRuntimeApply} disabled={busyAction !== ""}>
                   {activeApp.runtimeApply.action === "remove" ? "重试移除" : "重试应用"}
                 </button>
-              </div>
-            </div>
-          ) : null}
-          {activeApp && needsSetup ? (
-            <div className="notice-banner warn">
-              这个机器人还没完成首次配置。完成后才能稳定接收消息、菜单和文档预览。
-              <div className="button-row">
-                <a className="secondary-button" href={setupURLForApp(activeApp.id)}>
-                  继续完成首次配置
-                </a>
               </div>
             </div>
           ) : null}
@@ -345,96 +393,193 @@ export function AdminFeishuPanel({
               onContinueOnboardingNotice={onContinueOnboardingNotice}
             />
           ) : (
-            <>
-              <FeishuAppFields
-                className="form-grid"
-                values={draft}
-                readOnly={readOnly}
-                hasSecret={activeApp?.hasSecret}
-                nameLabel="机器人名称"
-                namePlaceholder="团队机器人"
-                nameFieldClassName="field"
-                appIDFieldClassName="field"
-                appIDHintClassName="form-hint form-grid-span-2"
-                secretFieldClassName="field form-grid-span-2"
-                onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
-                onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
-                onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
-              />
+            <div className="checklist-grid">
+              <div className="checklist-column">
+                <div className="manifest-block">
+                  <h4>接入信息</h4>
+                  <FeishuAppFields
+                    className="form-grid"
+                    values={draft}
+                    readOnly={readOnly}
+                    hasSecret={activeApp?.hasSecret}
+                    nameLabel="飞书应用名称"
+                    namePlaceholder="团队飞书应用"
+                    nameFieldClassName="field"
+                    appIDFieldClassName="field"
+                    appIDHintClassName="form-hint form-grid-span-2"
+                    secretFieldClassName="field form-grid-span-2"
+                    onNameChange={(value) => onDraftChange((current) => ({ ...current, name: value }))}
+                    onAppIDChange={(value) => onDraftChange((current) => ({ ...current, appId: value }))}
+                    onAppSecretChange={(value) => onDraftChange((current) => ({ ...current, appSecret: value }))}
+                  />
 
-              <label className="checkbox-row">
-                <input type="checkbox" checked={draft.enabled} disabled={readOnly} onChange={(event) => onDraftChange((current) => ({ ...current, enabled: event.target.checked }))} />
-                <span>启用这个机器人</span>
-              </label>
+                  <label className="checkbox-row">
+                    <input type="checkbox" checked={draft.enabled} disabled={readOnly} onChange={(event) => onDraftChange((current) => ({ ...current, enabled: event.target.checked }))} />
+                    <span>启用这条飞书应用</span>
+                  </label>
 
-              <div className="button-row">
-                <button className="primary-button" type="button" onClick={onSaveApp} disabled={busyAction !== "" || readOnly}>
-                  {draft.isNew ? "保存机器人" : "保存更改"}
-                </button>
-                <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
-                  测试连接
-                </button>
-                <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
-                  重新连接
-                </button>
-                <button className="ghost-button" type="button" onClick={() => onToggleAppEnabled(!activeApp?.enabled)} disabled={!activeApp || !canToggleEnabled || busyAction !== ""}>
-                  {activeApp?.enabled ? "停用机器人" : "启用机器人"}
-                </button>
-                <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || pendingRuntimeRemoval || busyAction !== ""}>
-                  删除机器人
-                </button>
+                  <div className="button-row">
+                    <button className="primary-button" type="button" onClick={onSaveApp} disabled={busyAction !== "" || readOnly}>
+                      {draft.isNew ? "保存飞书应用" : "保存更改"}
+                    </button>
+                    <button className="secondary-button" type="button" onClick={onVerifyApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
+                      测试连接
+                    </button>
+                    <button className="secondary-button" type="button" onClick={onReconnectApp} disabled={!activeApp || busyAction !== "" || pendingRuntimeRemoval}>
+                      重新连接
+                    </button>
+                    <button className="ghost-button" type="button" onClick={() => onToggleAppEnabled(!activeApp?.enabled)} disabled={!activeApp || !canToggleEnabled || busyAction !== ""}>
+                      {activeApp?.enabled ? "停用飞书应用" : "启用飞书应用"}
+                    </button>
+                    <button className="danger-button" type="button" onClick={onDeleteApp} disabled={!activeApp || activeApp.readOnly || pendingRuntimeRemoval || busyAction !== ""}>
+                      删除飞书应用
+                    </button>
+                  </div>
+                </div>
+
+                <details className="wizard-tech-detail">
+                  <summary>查看接入说明</summary>
+                  <div className="detail-stack">
+                    <div className="manifest-block">
+                      <h4>基础权限导入</h4>
+                      <p className="form-hint">这组权限用于基础对话与交互；增强项权限不放在这里一起要求。</p>
+                      <textarea className="code-textarea" readOnly value={basicScopesJSON} />
+                    </div>
+
+                    <div className="manifest-block">
+                      <h4>事件订阅</h4>
+                      <ul className="token-list">
+                        {manifest.events.map((item) => (
+                          <li key={item.event}>
+                            <code>{item.event}</code>
+                            <span>{item.purpose || "当前实现会使用到这条事件。"} </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="manifest-block">
+                      <h4>卡片回调</h4>
+                      <ul className="token-list">
+                        {manifest.callbacks.map((item) => (
+                          <li key={item.callback}>
+                            <code>{item.callback}</code>
+                            <span>{item.purpose || "当前实现会使用到这条卡片回调。"} </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="manifest-block">
+                      <h4>飞书应用菜单</h4>
+                      <ul className="token-list">
+                        {manifest.menus.map((item) => (
+                          <li key={item.key}>
+                            <code>{item.key}</code>
+                            <span>{item.name}{item.description ? ` · ${item.description}` : ""}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </details>
               </div>
-            </>
-          )}
 
-          {draft.isNew ? (
-            <details className="wizard-tech-detail">
-              <summary>高级选项</summary>
-              <div className="detail-stack">
-                <label className="field">
-                  <span>内部标识（可选）</span>
-                  <input value={draft.id} placeholder="main-bot" onChange={(event) => onDraftChange((current) => ({ ...current, id: event.target.value }))} />
-                </label>
-                <p className="form-hint">一般保持留空即可。只有需要稳定区分多个机器人时，再手动指定这个值。</p>
-              </div>
-            </details>
-          ) : null}
+              <div className="checklist-column">
+                {activeApp && connectionStatus && interactionStatus ? (
+                  <div className="card-grid">
+                    <StatusSummaryCard title="当前状态" status={surfaceStatus!} />
+                    <StatusSummaryCard title="连接验证" status={connectionStatus} />
+                    <StatusSummaryCard title="基础对话与交互" status={interactionStatus} />
+                    <StatusSummaryCard title="Markdown 预览" status={previewStatus} />
+                  </div>
+                ) : null}
 
-          {activeApp ? (
-            <details className="wizard-tech-detail">
-              <summary>查看技术详情</summary>
-              <div className="detail-stack">
-                <DefinitionList
-                  items={[
-                    { label: "内部标识", value: activeApp.id },
-                    { label: "是否已保存 Secret", value: activeApp.hasSecret ? "是" : "否" },
-                    { label: "配置来源", value: describeAppStorage(activeApp) },
-                    { label: "最近验证时间", value: activeApp.verifiedAt ? formatDateTime(activeApp.verifiedAt) : "尚未记录" },
-                  ]}
-                />
-                <div className="wizard-progress">
-                  {buildWizardRows(activeApp).map((item) => (
-                    <div key={item.label} className="wizard-step">
-                      <StatusBadge value={item.done ? "已完成" : "未完成"} tone={item.done ? "good" : "warn"} />
-                      <div>
-                        <strong>{item.label}</strong>
-                        <p>{item.timestamp ? formatDateTime(item.timestamp) : "尚未记录"}</p>
+                {activeApp?.readOnly ? (
+                  <div className="manifest-block">
+                    <h4>当前是只读接管路径</h4>
+                    <p>这条飞书应用当前由外部配置接管。本页会继续展示连接状态和预览状态，但不会在这里记录本地手工补齐进度。</p>
+                  </div>
+                ) : null}
+
+                {!activeApp?.readOnly ? (
+                  <div className="manifest-block">
+                    <h4>建议处理</h4>
+                    <p className="form-hint">这些动作都可以直接在 admin 里完成，不需要再跳回 setup。</p>
+                    {todoItems.length > 0 ? (
+                      <div className="todo-list">
+                        {todoItems.map((item) => (
+                          <article key={item.key} className={`todo-card ${item.tone}`}>
+                            <div className="todo-card-head">
+                              <div>
+                                <strong>{item.title}</strong>
+                                <p>{item.detail}</p>
+                              </div>
+                              <StatusBadge value={item.tone === "danger" ? "优先处理" : "待补全"} tone={item.tone} />
+                            </div>
+                            {item.actions?.length ? (
+                              <div className="button-row">
+                                {item.actions.map((action) => (
+                                  <button
+                                    key={action.key}
+                                    className={`${action.tone ?? "secondary"}-button`}
+                                    type="button"
+                                    onClick={action.onClick}
+                                    disabled={busyAction !== ""}
+                                  >
+                                    {action.label}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="inline-note">
+                        <StatusBadge value="已补齐" tone="good" />
+                        <span>当前没有明显需要继续处理的接入项。</span>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeApp ? (
+                  <details className="wizard-tech-detail">
+                    <summary>查看技术详情</summary>
+                    <div className="detail-stack">
+                      <DefinitionList
+                        items={[
+                          { label: "内部标识", value: activeApp.id },
+                          { label: "是否已保存 Secret", value: activeApp.hasSecret ? "是" : "否" },
+                          { label: "配置来源", value: appSourceLabel(activeApp) },
+                          { label: "最近验证时间", value: activeApp.verifiedAt ? formatDateTime(activeApp.verifiedAt) : "尚未记录" },
+                        ]}
+                      />
+                      <div className="wizard-progress">
+                        {buildWizardRows(activeApp).map((item) => (
+                          <div key={item.label} className="wizard-step">
+                            <StatusBadge value={item.done ? "已记录" : "未记录"} tone={item.done ? "good" : "warn"} />
+                            <div>
+                              <strong>{item.label}</strong>
+                              <p>{item.timestamp ? formatDateTime(item.timestamp) : "尚未记录"}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </details>
+                ) : null}
               </div>
-            </details>
-          ) : null}
+            </div>
+          )}
         </div>
       </div>
     </Panel>
   );
 }
 
-export function AdminInstancesPanel({
-  instances,
-}: AdminInstancesPanelProps) {
+export function AdminInstancesPanel({ instances }: AdminInstancesPanelProps) {
   return (
     <Panel id="instances" title="工作实例" description="查看本机当前可接入的工作实例。后台恢复实例由系统自动管理，不再在这里手工创建或删除。">
       <div className="manifest-block">
@@ -450,7 +595,7 @@ export function AdminInstancesPanel({
         <div className="section-heading">
           <div>
             <h4>当前实例</h4>
-            <p>这里只显示本机当前可见的 VS Code 实例，方便确认哪个在线、哪个可被飞书接管。</p>
+            <p>这里只显示本机当前可见的 VS Code 实例，方便确认哪个在线、哪个可以继续接入使用。</p>
           </div>
         </div>
 
@@ -519,7 +664,7 @@ export function AdminStoragePanel({
           <div className="section-heading">
             <div>
               <h4>文档预览</h4>
-              <p>每个机器人会在自己的飞书云盘里维护固定的预览 inventory 根目录，清理只会作用于这个目录内的内容。</p>
+              <p>每条飞书应用都会在自己的飞书云盘里维护固定的预览目录，清理只会作用于这个目录里的内容。</p>
             </div>
           </div>
 
@@ -560,7 +705,7 @@ export function AdminStoragePanel({
                       ) : (
                         <div className="inline-note">
                           <StatusBadge value="未获取到状态" tone="warn" />
-                          <span>当前还没有拿到这个机器人的预览目录摘要。</span>
+                          <span>当前还没有拿到这条飞书应用的预览目录摘要。</span>
                         </div>
                       )}
                     </details>
@@ -570,8 +715,8 @@ export function AdminStoragePanel({
             </div>
           ) : (
             <div className="inline-note">
-              <StatusBadge value="暂无机器人" tone="neutral" />
-              <span>先配置至少一个机器人，后续生成文档预览时才会出现对应的预览目录。</span>
+              <StatusBadge value="暂无飞书应用" tone="neutral" />
+              <span>先配置至少一条飞书应用，后续生成文档预览时才会出现对应的预览目录。</span>
             </div>
           )}
         </div>
@@ -726,12 +871,12 @@ export function AdminTechnicalPanel({ bootstrap, gatewayRows, activeApp, scopesJ
 
         {activeApp ? (
           <details className="wizard-tech-detail">
-            <summary>当前选中机器人详情</summary>
+            <summary>当前选中飞书应用详情</summary>
             <DefinitionList
               items={[
                 { label: "内部标识", value: activeApp.id },
                 { label: "App ID", value: activeApp.appId || "未配置" },
-                { label: "状态来源", value: describeAppStorage(activeApp) },
+                { label: "状态来源", value: appSourceLabel(activeApp) },
                 { label: "只读原因", value: activeApp.readOnlyReason || "无" },
               ]}
             />
@@ -739,12 +884,12 @@ export function AdminTechnicalPanel({ bootstrap, gatewayRows, activeApp, scopesJ
         ) : null}
 
         <details className="wizard-tech-detail">
-          <summary>权限导入 JSON</summary>
+          <summary>完整权限导入 JSON</summary>
           <textarea className="code-textarea" readOnly value={scopesJSON} />
         </details>
 
         <details className="wizard-tech-detail">
-          <summary>机器人连接原始状态</summary>
+          <summary>飞书应用连接原始状态</summary>
           {gatewayRows.length > 0 ? (
             <div className="wizard-progress">
               {gatewayRows.map((gateway) => (
@@ -760,7 +905,7 @@ export function AdminTechnicalPanel({ bootstrap, gatewayRows, activeApp, scopesJ
           ) : (
             <div className="inline-note">
               <StatusBadge value="暂无原始状态" tone="neutral" />
-              <span>当前没有可显示的机器人连接状态。</span>
+              <span>当前没有可显示的飞书应用连接状态。</span>
             </div>
           )}
         </details>
@@ -769,70 +914,94 @@ export function AdminTechnicalPanel({ bootstrap, gatewayRows, activeApp, scopesJ
   );
 }
 
+function StatusSummaryCard(props: { title: string; status: { label: string; tone: SurfaceTone; detail: string } }) {
+  return (
+    <article className="info-card">
+      <div className="app-card-head">
+        <strong>{props.title}</strong>
+        <StatusBadge value={props.status.label} tone={props.status.tone} />
+      </div>
+      <p>{props.status.detail}</p>
+    </article>
+  );
+}
+
 function buildAttentionItems(
   apps: FeishuAppSummary[],
+  previews: PreviewMap,
   staleImageCount: number,
   vscode: VSCodeDetectResponse | null,
   vscodeError: string,
   onInspectApp: (app: FeishuAppSummary) => void,
-  setupURL: string,
-  setupURLForApp: (appID: string) => string,
+  onBeginNewApp: () => void,
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
 
   if (apps.length === 0) {
     items.push({
       key: "no-apps",
-      title: "还没有配置任何飞书机器人",
-      detail: "先接入至少一个机器人，后续才能在飞书里附着实例、切换线程和发送文档预览。",
+      title: "还没有接入任何飞书应用",
+      detail: "先接入至少一条飞书应用，后续才能在飞书里附着实例、切换线程和发送文档预览。",
       tone: "warn",
-      actionLabel: "打开配置页",
-      href: setupURL,
+      actionLabel: "接入飞书应用",
+      onAction: onBeginNewApp,
     });
   }
 
   apps.forEach((app) => {
-    const progress = appSetupProgress(app);
-    if (app.enabled && app.status?.state === "auth_failed") {
+    const status = appSurfaceStatus(app, previews[app.id]?.summary);
+    const pendingCount = appPendingCount(app, previews[app.id]?.summary);
+    if (app.runtimeApply?.pending) {
       items.push({
-        key: `app-auth-${app.id}`,
-        title: `${app.name || app.appId || app.id} 连接失败`,
-        detail: app.status.lastError || "请检查 App ID、App Secret，以及飞书平台上的机器人能力配置。",
+        key: `runtime-${app.id}`,
+        title: `${app.name || app.appId || app.id} 还没同步到运行时`,
+        detail: app.runtimeApply.error || "本地配置已经变更，但运行时还没应用成功。",
+        tone: "warn",
+        actionLabel: "查看飞书应用",
+        onAction: () => onInspectApp(app),
+      });
+      return;
+    }
+    if (status.tone === "danger") {
+      items.push({
+        key: `danger-${app.id}`,
+        title: `${app.name || app.appId || app.id} 需要处理`,
+        detail: status.detail,
         tone: "danger",
-        actionLabel: "查看机器人",
+        actionLabel: "查看飞书应用",
         onAction: () => onInspectApp(app),
       });
       return;
     }
-    if (app.enabled && !app.wizard?.connectionVerifiedAt) {
+    if (!app.wizard?.connectionVerifiedAt) {
       items.push({
-        key: `app-verify-${app.id}`,
-        title: `${app.name || app.appId || app.id} 还没完成连接测试`,
-        detail: "建议先测试连接，确认机器人已经可以和本机服务建立连接。",
+        key: `verify-${app.id}`,
+        title: `${app.name || app.appId || app.id} 还没完成连接验证`,
+        detail: "建议先测试连接，确认这份凭证已经可以和本机服务建立连接。",
         tone: "warn",
-        actionLabel: "查看机器人",
+        actionLabel: "查看飞书应用",
         onAction: () => onInspectApp(app),
       });
       return;
     }
-    if (app.enabled && !progress.complete) {
+    if (pendingCount > 0) {
       items.push({
-        key: `app-setup-${app.id}`,
-        title: `${app.name || app.appId || app.id} 还没完成首次配置`,
-        detail: `还差 ${progress.remaining} 步。建议继续完成权限、事件订阅、菜单和发布等设置。`,
+        key: `pending-${app.id}`,
+        title: `${app.name || app.appId || app.id} 还有 ${pendingCount} 项待补全`,
+        detail: "基础接入已经可用，但还有一些能力建议继续补齐。",
         tone: "warn",
-        actionLabel: "继续配置",
-        href: setupURLForApp(app.id),
+        actionLabel: "查看飞书应用",
+        onAction: () => onInspectApp(app),
       });
       return;
     }
-    if (app.enabled && app.status?.state === "degraded") {
+    if (app.status?.state === "degraded") {
       items.push({
-        key: `app-degraded-${app.id}`,
-        title: `${app.name || app.appId || app.id} 当前状态异常`,
-        detail: app.status.lastError || "最近连接状态不稳定，建议查看机器人详情并尝试重新连接。",
+        key: `degraded-${app.id}`,
+        title: `${app.name || app.appId || app.id} 最近连接不稳定`,
+        detail: app.status.lastError || "建议打开这条飞书应用，查看连接状态并尝试重新连接。",
         tone: "warn",
-        actionLabel: "查看机器人",
+        actionLabel: "查看飞书应用",
         onAction: () => onInspectApp(app),
       });
     }
@@ -872,29 +1041,90 @@ function buildAttentionItems(
   return items;
 }
 
-function buildAppCardDetail(app: FeishuAppSummary, remainingSetupSteps: number): string {
-  if (app.runtimeApply?.pending && app.runtimeApply.error) {
-    if (app.runtimeApply.action === "remove" && !app.persisted) {
-      return `已从本地配置删除，运行时移除失败：${app.runtimeApply.error}`;
-    }
-    return `已保存到本地配置，但运行时应用失败：${app.runtimeApply.error}`;
-  }
-  if (app.status?.lastError) {
-    return app.status.lastError;
-  }
-  if (!app.enabled) {
-    return "当前已停用，不会继续接收飞书消息。";
-  }
+function buildCapabilityTodos(
+  app: FeishuAppSummary,
+  previewSummary: PreviewDriveStatusResponse["summary"] | undefined,
+  actions: {
+    onVerifyApp: () => void;
+    onCopyBasicScopesJSON: () => void;
+    onConfirmScopes: () => void;
+    onConfirmEvents: () => void;
+    onConfirmCallbacks: () => void;
+    onConfirmMenus: () => void;
+    onCheckPublish: () => void;
+  },
+): CapabilityTodo[] {
+  const items: CapabilityTodo[] = [];
+
   if (!app.wizard?.connectionVerifiedAt) {
-    return "还没有完成连接测试。";
+    items.push({
+      key: "verify",
+      title: "先完成连接验证",
+      detail: "这会确认当前填写的 App ID 和 App Secret 确实可用。没有这一步，后面的能力补齐都不可靠。",
+      tone: app.status?.state === "auth_failed" ? "danger" : "warn",
+      actions: [{ key: "verify", label: "测试连接", tone: "primary", onClick: actions.onVerifyApp }],
+    });
+    return items;
   }
-  if (remainingSetupSteps > 0) {
-    return `首次配置还差 ${remainingSetupSteps} 步。`;
+
+  if (!app.wizard?.scopesExportedAt) {
+    items.push({
+      key: "scopes",
+      title: "导入基础权限",
+      detail: "基础对话与交互需要一组基础权限。处理完以后，回来点击“我已完成”。",
+      tone: "warn",
+      actions: [
+        { key: "copy", label: "复制基础权限 JSON", tone: "secondary", onClick: actions.onCopyBasicScopesJSON },
+        { key: "confirm", label: "我已完成", tone: "primary", onClick: actions.onConfirmScopes },
+      ],
+    });
   }
-  if (app.status?.lastConnectedAt) {
-    return `最近连接于 ${formatDateTime(app.status.lastConnectedAt)}。`;
+  if (!app.wizard?.eventsConfirmedAt) {
+    items.push({
+      key: "events",
+      title: "补齐事件订阅",
+      detail: "没有这一步，文本消息、撤回、reaction 等入口不会完整工作。处理完以后回来确认。",
+      tone: "warn",
+      actions: [{ key: "confirm", label: "我已完成", tone: "primary", onClick: actions.onConfirmEvents }],
+    });
   }
-  return "当前没有额外问题。";
+  if (!app.wizard?.callbacksConfirmedAt) {
+    items.push({
+      key: "callbacks",
+      title: "补齐卡片回调",
+      detail: "没有这一步，飞书里的卡片按钮会点了没反应。处理完以后回来确认。",
+      tone: "warn",
+      actions: [{ key: "confirm", label: "我已完成", tone: "primary", onClick: actions.onConfirmCallbacks }],
+    });
+  }
+  if (!app.wizard?.menusConfirmedAt) {
+    items.push({
+      key: "menus",
+      title: "补齐飞书应用菜单",
+      detail: "没有这一步，飞书应用里的快捷入口不会按当前实现生效。处理完以后回来确认。",
+      tone: "warn",
+      actions: [{ key: "confirm", label: "我已完成", tone: "primary", onClick: actions.onConfirmMenus }],
+    });
+  }
+  if (!app.wizard?.publishedAt) {
+    items.push({
+      key: "publish",
+      title: "做一次发布验收",
+      detail: "前面的配置只是准备阶段，真正生效还需要在飞书后台完成发布，然后回来检查。",
+      tone: "warn",
+      actions: [{ key: "publish", label: "检查发布状态", tone: "primary", onClick: actions.onCheckPublish }],
+    });
+  }
+  if (previewSummary?.status === "permission_required") {
+    items.push({
+      key: "drive",
+      title: "按需开通 Markdown 预览权限",
+      detail: previewSummary.statusMessage || "如需 Markdown 预览，请先为这条飞书应用开通 drive:drive 权限。",
+      tone: "warn",
+    });
+  }
+
+  return items;
 }
 
 function buildInstanceDetail(instance: AdminInstanceSummary): string {
@@ -927,13 +1157,13 @@ function buildInstanceDetail(instance: AdminInstanceSummary): string {
 
 function buildPreviewDetail(summary: PreviewDriveStatusResponse["summary"] | undefined): string {
   if (!summary) {
-    return "当前还没有拿到这个机器人的预览目录状态。";
+    return "当前还没有拿到这条飞书应用的预览目录状态。";
   }
   if (summary.statusMessage) {
-    return summary.statusMessage;
+    return normalizeLegacyFeishuCopy(summary.statusMessage);
   }
   if (!summary.rootURL) {
-    return "这个机器人还没有生成过可打开的文档预览。";
+    return "这条飞书应用还没有生成过可打开的文档预览。";
   }
   if (summary.newestLastUsedAt) {
     return `固定 inventory 根目录最近使用于 ${formatDateTime(summary.newestLastUsedAt)}。`;
@@ -960,20 +1190,4 @@ function canCleanupPreview(summary: PreviewDriveStatusResponse["summary"] | unde
     return false;
   }
   return Boolean(summary.rootURL);
-}
-
-function describeAppStorage(app: FeishuAppSummary): string {
-  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
-    return "本地已删除，待运行时移除";
-  }
-  if (app.runtimeOverride) {
-    return "启动参数覆盖";
-  }
-  if (app.runtimeOnly) {
-    return "仅运行时存在";
-  }
-  if (app.persisted) {
-    return "本地配置";
-  }
-  return "未说明";
 }

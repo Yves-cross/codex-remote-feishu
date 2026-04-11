@@ -6,6 +6,7 @@ import type {
   AdminInstancesResponse,
   BootstrapState,
   FeishuAppMutation,
+  FeishuAppPublishCheckResponse,
   FeishuAppResponse,
   FeishuAppsResponse,
   FeishuAppSummary,
@@ -126,12 +127,27 @@ export function AdminRoute() {
 
   const activeApp = selectedAppID === newAppID ? null : apps.find((app) => app.id === selectedAppID) ?? null;
   const scopesJSON = useMemo(() => JSON.stringify(manifest?.scopesImport ?? { scopes: { tenant: [], user: [] } }, null, 2), [manifest]);
+  const basicScopesJSON = useMemo(() => {
+    const allTenantScopes = manifest?.scopesImport?.scopes?.tenant ?? [];
+    const basicTenantScopes = allTenantScopes.filter(
+      (scope) => scope !== "drive:drive" && scope !== "im:datasync.feed_card.time_sensitive:write",
+    );
+    return JSON.stringify(
+      {
+        scopes: {
+          tenant: basicTenantScopes,
+          user: manifest?.scopesImport?.scopes?.user ?? [],
+        },
+      },
+      null,
+      2,
+    );
+  }, [manifest]);
   const gatewayRows = useMemo(() => {
     const source = runtime?.gateways?.length ? runtime.gateways : bootstrap?.gateways ?? [];
     return source;
   }, [bootstrap?.gateways, runtime?.gateways]);
   const setupURL = relativeLocalPath(bootstrap?.admin.setupURL || "/setup");
-  const setupURLForApp = (appID: string) => buildAppSetupURL(setupURL, appID);
   const vscodePrimaryLabel = vscodePrimaryActionLabel(vscode, vscodeScenario);
   const vscodeCanContinue = Boolean(vscode) && (vscode?.sshSession ? vscodeHasDetectedBundle(vscode) : vscodeScenario !== null && (vscodeScenario === "remote_only" || vscodeHasDetectedBundle(vscode)));
 
@@ -337,7 +353,7 @@ export function AdminRoute() {
         await loadAdminData(response.app.id);
         setNotice({
           tone: feishuMutationTone(response.mutation),
-          message: response.mutation?.message || (draft.isNew ? "飞书机器人已创建。" : "飞书机器人配置已更新。"),
+          message: response.mutation?.message || (draft.isNew ? "飞书应用已创建。" : "飞书应用配置已更新。"),
         });
       },
       async (err) => handleFeishuRuntimeApplyFailure(err, draft.isNew ? blankToUndefined(draft.id) || selectedAppID : selectedAppID),
@@ -374,7 +390,7 @@ export function AdminRoute() {
     await runAction("reconnect-app", async () => {
       await sendJSON<FeishuAppResponse>(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/reconnect`, "POST");
       await loadAdminData(activeApp.id);
-      setNotice({ tone: "good", message: "机器人已请求重新连接。" });
+      setNotice({ tone: "good", message: "已请求重新连接这条飞书应用。" });
     });
   }
 
@@ -386,7 +402,7 @@ export function AdminRoute() {
       const endpoint = enabled ? "enable" : "disable";
       await sendJSON<FeishuAppResponse>(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/${endpoint}`, "POST");
       await loadAdminData(activeApp.id);
-      setNotice({ tone: enabled ? "good" : "warn", message: enabled ? "机器人已启用。" : "机器人已停用。" });
+      setNotice({ tone: enabled ? "good" : "warn", message: enabled ? "飞书应用已启用。" : "飞书应用已停用。" });
     }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
   }
 
@@ -400,7 +416,7 @@ export function AdminRoute() {
     await runAction("delete-app", async () => {
       await requestVoid(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}`, { method: "DELETE" });
       await loadAdminData(newAppID);
-      setNotice({ tone: "good", message: "机器人已删除。" });
+      setNotice({ tone: "good", message: "飞书应用已删除。" });
     }, async (err) => handleFeishuRuntimeApplyFailure(err, activeApp.id));
   }
 
@@ -506,6 +522,54 @@ export function AdminRoute() {
     });
   }
 
+  async function copyBasicScopesJSON() {
+    await runAction("copy-basic-scopes", async () => {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("当前浏览器环境不支持剪贴板写入。");
+      }
+      await navigator.clipboard.writeText(basicScopesJSON);
+      setNotice({ tone: "good", message: "基础权限 JSON 已复制。" });
+    });
+  }
+
+  async function updateWizardState(
+    payload: Partial<{
+      scopesExported: boolean;
+      eventsConfirmed: boolean;
+      callbacksConfirmed: boolean;
+      menusConfirmed: boolean;
+      published: boolean;
+    }>,
+    successMessage: string,
+  ) {
+    if (!activeApp) {
+      return;
+    }
+    await runAction("update-feishu-wizard", async () => {
+      const response = await sendJSON<FeishuAppResponse>(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/wizard`, "PATCH", payload);
+      await loadAdminData(response.app.id);
+      setNotice({ tone: "good", message: successMessage });
+    });
+  }
+
+  async function checkPublish() {
+    if (!activeApp) {
+      return;
+    }
+    await runAction("check-feishu-publish", async () => {
+      const response = await requestJSONAllowHTTPError<FeishuAppPublishCheckResponse>(`/api/admin/feishu/apps/${encodeURIComponent(activeApp.id)}/publish-check`, {
+        method: "POST",
+      });
+      await loadAdminData(activeApp.id);
+      if (response.ok) {
+        setNotice({ tone: "good", message: "已确认飞书应用发布完成。" });
+        return;
+      }
+      const issues = response.data.issues?.length ? response.data.issues.join("；") : "当前还不能确认已经发布完成。";
+      setNotice({ tone: "warn", message: `发布验收还没通过：${issues}` });
+    });
+  }
+
   useEffect(() => {
     if (selectedAppID !== newAppID || feishuConnectStage !== "new_qr" || !onboardingSession?.id) {
       return;
@@ -535,11 +599,11 @@ export function AdminRoute() {
   return (
     <ShellFrame
       routeLabel="Admin"
-      title="本地管理页"
-      subtitle="在这里管理飞书机器人、工作实例、文档预览和 VS Code 接入。"
+      title="本地管理"
+      subtitle="查看当前可用状态，管理飞书应用、工作实例、文档预览和 VS Code。"
       nav={[
-        { label: "总览", href: "#overview" },
-        { label: "飞书机器人", href: "#feishu" },
+        { label: "运行概览", href: "#overview" },
+        { label: "飞书应用", href: "#feishu" },
         { label: "工作实例", href: "#instances" },
         { label: "文档与图片", href: "#storage" },
         { label: "VS Code", href: "#vscode" },
@@ -551,7 +615,7 @@ export function AdminRoute() {
         </button>
       }
     >
-      {!bootstrap && !error ? <LoadingState title="正在加载管理页" description="读取机器人、实例、文档预览和 VS Code 状态。" /> : null}
+      {!bootstrap && !error ? <LoadingState title="正在加载管理页" description="读取飞书应用、实例、文档预览和 VS Code 状态。" /> : null}
       {error ? <ErrorState title="无法加载管理页状态" description="页面已经打开，但后台状态读取失败。" detail={error} /> : null}
       {bootstrap && runtime && manifest && imageStaging ? (
         <>
@@ -564,8 +628,10 @@ export function AdminRoute() {
             vscode={vscode}
             vscodeError={vscodeError}
             notice={notice}
-            setupURL={setupURL}
-            setupURLForApp={setupURLForApp}
+            onBeginNewApp={() => {
+              beginNewApp();
+              window.location.hash = "feishu";
+            }}
             onInspectApp={(app) => {
               selectApp(app);
               window.location.hash = "feishu";
@@ -573,16 +639,18 @@ export function AdminRoute() {
           />
           <AdminFeishuPanel
             apps={apps}
+            manifest={manifest}
+            basicScopesJSON={basicScopesJSON}
             selectedAppID={selectedAppID}
             draft={draft}
             activeApp={activeApp}
+            activePreview={activeApp ? previews[activeApp.id]?.summary : undefined}
             busyAction={busyAction}
             connectStage={feishuConnectStage}
             connectMode={feishuConnectMode}
             onboardingSession={onboardingSession}
             onboardingCompletion={onboardingCompletion}
             onboardingNeedsManualRetry={onboardingNeedsManualRetry}
-            setupURLForApp={setupURLForApp}
             onBeginNewApp={beginNewApp}
             onSelectApp={selectApp}
             onDraftChange={setDraft}
@@ -607,6 +675,12 @@ export function AdminRoute() {
             onRetryRuntimeApply={() => void retryRuntimeApply()}
             onToggleAppEnabled={(enabled) => void toggleAppEnabled(enabled)}
             onDeleteApp={() => void deleteApp()}
+            onCopyBasicScopesJSON={() => void copyBasicScopesJSON()}
+            onConfirmScopes={() => void updateWizardState({ scopesExported: true }, "已记录：基础权限已处理。")}
+            onConfirmEvents={() => void updateWizardState({ eventsConfirmed: true }, "已记录：事件订阅已处理。")}
+            onConfirmCallbacks={() => void updateWizardState({ callbacksConfirmed: true }, "已记录：卡片回调已处理。")}
+            onConfirmMenus={() => void updateWizardState({ menusConfirmed: true }, "已记录：飞书应用菜单已处理。")}
+            onCheckPublish={() => void checkPublish()}
           />
           <AdminInstancesPanel
             instances={instances}
@@ -647,12 +721,6 @@ function feishuMutationTone(mutation?: FeishuAppMutation): Notice["tone"] {
     default:
       return "good";
   }
-}
-
-function buildAppSetupURL(baseURL: string, appID: string): string {
-  const url = new URL(baseURL, window.location.href);
-  url.searchParams.set("app", appID);
-  return relativeLocalPath(url.toString());
 }
 
 function parseFeishuRuntimeApplyFailureDetails(value: unknown): FeishuRuntimeApplyFailureDetails | null {
