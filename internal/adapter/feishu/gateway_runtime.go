@@ -101,9 +101,11 @@ func shouldAcknowledgeGatewayActionImmediately(action control.Action) bool {
 }
 
 func shouldAcknowledgeCardActionImmediately(action control.Action) bool {
-	if action.Inbound != nil &&
-		strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "" &&
-		control.SupportsInlineCardReplacement(action) {
+	policy, ok := control.InlineCardReplacementPolicy(action)
+	if ok &&
+		policy.ReplaceCurrentCard &&
+		action.Inbound != nil &&
+		(!policy.RequiresDaemonFreshness || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "") {
 		return false
 	}
 	return shouldAcknowledgeGatewayActionImmediately(action)

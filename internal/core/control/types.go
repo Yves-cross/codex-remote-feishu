@@ -458,28 +458,29 @@ type DaemonCommand struct {
 }
 
 type UIEvent struct {
-	Kind                   UIEventKind
-	GatewayID              string
-	SurfaceSessionID       string
-	DaemonLifecycleID      string
-	SourceMessageID        string
-	SourceMessagePreview   string
-	Snapshot               *Snapshot
-	SelectionPrompt        *SelectionPrompt
-	FeishuSelectionView    *FeishuSelectionView
-	FeishuSelectionContext *FeishuUISelectionContext
-	CommandCatalog         *CommandCatalog
-	FeishuCommandView      *FeishuCommandView
-	FeishuCommandContext   *FeishuUICommandContext
-	RequestPrompt          *RequestPrompt
-	FeishuRequestContext   *FeishuUIRequestContext
-	PendingInput           *PendingInputState
-	Notice                 *Notice
-	ThreadSelection        *ThreadSelectionChanged
-	Block                  *render.Block
-	ImageOutput            *ImageOutput
-	FileChangeSummary      *FileChangeSummary
-	FinalTurnSummary       *FinalTurnSummary
-	Command                *agentproto.Command
-	DaemonCommand          *DaemonCommand
+	Kind                     UIEventKind
+	GatewayID                string
+	SurfaceSessionID         string
+	DaemonLifecycleID        string
+	SourceMessageID          string
+	SourceMessagePreview     string
+	InlineReplaceCurrentCard bool
+	Snapshot                 *Snapshot
+	SelectionPrompt          *SelectionPrompt
+	FeishuSelectionView      *FeishuSelectionView
+	FeishuSelectionContext   *FeishuUISelectionContext
+	CommandCatalog           *CommandCatalog
+	FeishuCommandView        *FeishuCommandView
+	FeishuCommandContext     *FeishuUICommandContext
+	RequestPrompt            *RequestPrompt
+	FeishuRequestContext     *FeishuUIRequestContext
+	PendingInput             *PendingInputState
+	Notice                   *Notice
+	ThreadSelection          *ThreadSelectionChanged
+	Block                    *render.Block
+	ImageOutput              *ImageOutput
+	FileChangeSummary        *FileChangeSummary
+	FinalTurnSummary         *FinalTurnSummary
+	Command                  *agentproto.Command
+	DaemonCommand            *DaemonCommand
 }

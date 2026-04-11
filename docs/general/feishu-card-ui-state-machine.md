@@ -52,6 +52,7 @@
   - 负责 old-card / old-message 生命周期判定
   - 负责在 ingress 层把 pure navigation 先分流到 Feishu UI controller，而不是直接落进主 `ApplySurfaceAction()` reducer
   - 负责只在安全条件下把同上下文导航转成 `ReplaceCurrentCard`
+  - 当前只有当 action 命中 `FeishuUIIntent` 生命周期策略、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard` 时，才会真正发 inline replace
 - `orchestrator / Feishu UI controller`
   - 负责 `show_*`、`/menu`、bare config-card 这类 pure navigation 的 controller 分流与事件构建
   - 负责通过阶段 1 暴露的 `Feishu*Context` query/policy 边界生成 UI-owned read model 与 request 事件
@@ -160,16 +161,17 @@
 
 ### 5.1 同步 replace 的必要条件
 
-当前 `gateway` 只会在同时满足下面两条时，同步等待 handler 结果并返回 callback replace：
+当前 `gateway` 只会在同时满足下面三条时，同步等待 handler 结果并返回 callback replace：
 
 1. callback payload 带有非空 `daemon_lifecycle_id`
-2. `control.SupportsInlineCardReplacement(action) == true`
+2. action 命中 `control.InlineCardReplacementPolicy(action)`
+3. daemon 侧产出的单个 `UIEvent` 显式标记 `InlineReplaceCurrentCard == true`
 
 少任一条，都不会同步等待 replace。
 
 ### 5.2 当前被视为 pure navigation 的动作
 
-`control.SupportsInlineCardReplacement(...)` 当前包含：
+`control.InlineCardReplacementPolicy(...)` 当前等价覆盖的 pure navigation 动作是：
 
 - `ActionShowCommandMenu`
 - bare `/mode`
@@ -186,12 +188,22 @@
 - `ActionShowScopedThreads`
 - `ActionShowWorkspaceThreads`
 
+当前语义补充：
+
+- 这批动作的 owner 已经从“daemon/gateway 里的散落动作白名单”收束成“`FeishuUIIntent` -> lifecycle policy -> controller replaceable event”三段。
+- 当前所有可 replace 的 Feishu UI 导航，都采用同一套 lifecycle 策略：
+  - daemon freshness：`daemon_lifecycle`
+  - view/session 策略：`surface_state_rederived`
+  - 不要求额外 view token
+- 这意味着同 daemon 生命周期里的旧卡/并发点击，如果仍属于 pure navigation，不会因为“旧 view”被拒绝；它们会基于**当前** surface state 重新生成卡片。
+
 ### 5.3 当前明确保持 append-only 的动作
 
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
 - 参数应用，例如 `/mode vscode`、`/autowhip on`
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
+- `/help` 这类静态帮助/目录卡，即使底层仍是 `CommandCatalog`，当前也不属于 replaceable UI navigation
 - request approve / request submit 的处理结果
 - 各类 notice、final reply、补充预览、状态类卡片
 
@@ -209,7 +221,7 @@
 
 ### 6.2 当前一个重要边界
 
-**没有 `daemon_lifecycle_id` 的卡片 callback，不会被判成 old card。**
+**没有 `daemon_lifecycle_id` 的卡片 callback，不会被判成 old card，也不会进入同步 inline replace。**
 
 当前行为是：
 
@@ -219,11 +231,30 @@
 
 这是当前实现的兼容性边界，不是未来一定要保留的产品结论。
 
+### 6.3 daemon freshness 与 view/session freshness 的当前边界
+
+当前实现已经显式区分两层概念：
+
+- daemon freshness
+  - 通过 `daemon_lifecycle_id` 判定
+  - 负责拒绝“来自旧 daemon 生命周期”的旧卡
+- view/session freshness
+  - 当前**没有**单独的 per-card view token
+  - replaceable pure navigation 统一采用 `surface_state_rederived` 策略
+  - 即：只要 callback 仍在当前 daemon 生命周期内，就直接用**当前** surface state 重建卡片，而不是尝试恢复点击时那一版旧 view
+
+因此当前的 same-daemon 并发点击 / 旧 view 点击策略是：
+
+- pure navigation：允许，按当前 surface state 重建
+- 产品动作：不走 inline replace，仍按 append-only 产品语义处理
+- old daemon card：直接拒绝并提示重开卡片
+
 ## 7. 当前回归基线
 
 ### 7.1 当前关键实现文件
 
 - [internal/core/control/feishu_ui_intent.go](../../internal/core/control/feishu_ui_intent.go)
+- [internal/core/control/feishu_ui_lifecycle.go](../../internal/core/control/feishu_ui_lifecycle.go)
 - [internal/core/control/feishu_ui_boundary.go](../../internal/core/control/feishu_ui_boundary.go)
 - [internal/core/control/feishu_selection_view.go](../../internal/core/control/feishu_selection_view.go)
 - [internal/core/control/feishu_command_view.go](../../internal/core/control/feishu_command_view.go)
@@ -245,7 +276,7 @@
 ### 7.2 当前关键测试基线
 
 - [internal/core/control/inline_replacement_test.go](../../internal/core/control/inline_replacement_test.go)
-  - 锁定 pure navigation 与 append-only 的动作集合
+  - 锁定 pure navigation 的 lifecycle policy、daemon freshness 与 append-only 的动作集合
 - [internal/core/control/feishu_ui_intent_test.go](../../internal/core/control/feishu_ui_intent_test.go)
   - 锁定哪些动作会被分流到 Feishu UI controller，哪些 mixed/product-owned 动作仍留在主 reducer
 - [internal/adapter/feishu/projector_test.go](../../internal/adapter/feishu/projector_test.go)
@@ -257,7 +288,7 @@
 - [internal/core/orchestrator/service_local_request_test.go](../../internal/core/orchestrator/service_local_request_test.go)
   - 锁定 `UIEvent` 现在会携带显式 `Feishu*Context` query/policy 元数据；selection/command view 的 UI owner 已切到 read model，但用户可见行为保持不变
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
-  - 锁定 daemon ingress 分流后的 inline replace 结果，以及 old-card 导航/命令被拒绝而不是继续 replace
+  - 锁定 daemon ingress 分流后的 inline replace 结果、`/help` 保持 append-only、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)
   - 锁定 old / old-card 生命周期分类与拒绝文案映射
 - [internal/core/orchestrator/service_config_prompt_test.go](../../internal/core/orchestrator/service_config_prompt_test.go)

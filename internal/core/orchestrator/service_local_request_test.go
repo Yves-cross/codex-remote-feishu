@@ -1301,6 +1301,9 @@ func TestMenuActionBuildsInteractiveCommandCatalogEvent(t *testing.T) {
 	if events[0].FeishuCommandContext.Surface.InlineReplaceFreshness != "daemon_lifecycle" || !events[0].FeishuCommandContext.Surface.InlineReplaceRequiresFreshness {
 		t.Fatalf("unexpected inline replace context: %#v", events[0].FeishuCommandContext.Surface)
 	}
+	if events[0].FeishuCommandContext.Surface.InlineReplaceViewSession != "surface_state_rederived" || events[0].FeishuCommandContext.Surface.InlineReplaceRequiresViewState {
+		t.Fatalf("unexpected inline replace view/session context: %#v", events[0].FeishuCommandContext.Surface)
+	}
 }
 
 func TestMenuActionDetachedHomepagePrioritizesListUseStatus(t *testing.T) {

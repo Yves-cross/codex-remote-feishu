@@ -2,6 +2,29 @@ package control
 
 import "testing"
 
+func TestInlineCardReplacementPolicy(t *testing.T) {
+	policy, ok := InlineCardReplacementPolicy(Action{
+		Kind: ActionShowCommandMenu,
+		Text: "/menu send_settings",
+	})
+	if !ok {
+		t.Fatal("expected inline replacement policy for menu navigation")
+	}
+	if !policy.ReplaceCurrentCard || !policy.RequiresDaemonFreshness || policy.DaemonFreshness != FeishuUIInlineReplaceFreshnessDaemonLifecycle {
+		t.Fatalf("unexpected daemon freshness policy: %#v", policy)
+	}
+	if policy.RequiresViewSession || policy.ViewSessionStrategy != FeishuUIInlineReplaceViewSessionSurfaceState {
+		t.Fatalf("unexpected view/session policy: %#v", policy)
+	}
+
+	if _, ok := InlineCardReplacementPolicy(Action{
+		Kind: ActionModeCommand,
+		Text: "/mode vscode",
+	}); ok {
+		t.Fatal("expected parameter apply to stay append-only")
+	}
+}
+
 func TestSupportsInlineCardReplacement(t *testing.T) {
 	tests := []struct {
 		name   string

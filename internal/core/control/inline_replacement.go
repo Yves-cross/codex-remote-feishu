@@ -2,35 +2,11 @@ package control
 
 import "strings"
 
-// SupportsInlineCardReplacement reports whether this action is a pure
-// same-context navigation step that can safely replace the triggering card.
+// SupportsInlineCardReplacement is kept as a compatibility wrapper while the
+// runtime moves to the explicit Feishu UI lifecycle policy.
 func SupportsInlineCardReplacement(action Action) bool {
-	switch action.Kind {
-	case ActionShowCommandMenu:
-		return true
-	case ActionModeCommand:
-		return isBareInlineCommand(action.Text, "/mode")
-	case ActionAutoContinueCommand:
-		return isBareInlineCommand(action.Text, "/autowhip") || isBareInlineCommand(action.Text, "/autocontinue")
-	case ActionReasoningCommand:
-		return isBareInlineCommand(action.Text, "/reasoning")
-	case ActionAccessCommand:
-		return isBareInlineCommand(action.Text, "/access")
-	case ActionModelCommand:
-		return isBareInlineCommand(action.Text, "/model")
-	case ActionShowAllWorkspaces,
-		ActionShowRecentWorkspaces,
-		ActionShowAllThreadWorkspaces,
-		ActionShowRecentThreadWorkspaces:
-		return true
-	case ActionShowThreads,
-		ActionShowAllThreads,
-		ActionShowScopedThreads,
-		ActionShowWorkspaceThreads:
-		return true
-	default:
-		return false
-	}
+	policy, ok := InlineCardReplacementPolicy(action)
+	return ok && policy.ReplaceCurrentCard
 }
 
 func isBareInlineCommand(text, command string) bool {

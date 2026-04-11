@@ -10,8 +10,10 @@ import (
 func (s *Service) buildFeishuUISurfaceContext(surface *state.SurfaceConsoleRecord) control.FeishuUISurfaceContext {
 	if surface == nil {
 		return control.FeishuUISurfaceContext{
-			InlineReplaceFreshness:         "daemon_lifecycle",
+			InlineReplaceFreshness:         control.FeishuUIInlineReplaceFreshnessDaemonLifecycle,
 			InlineReplaceRequiresFreshness: true,
+			InlineReplaceViewSession:       control.FeishuUIInlineReplaceViewSessionSurfaceState,
+			InlineReplaceRequiresViewState: false,
 			CallbackPayloadOwner:           control.FeishuUICallbackPayloadOwnerAdapter,
 		}
 	}
@@ -24,8 +26,10 @@ func (s *Service) buildFeishuUISurfaceContext(surface *state.SurfaceConsoleRecor
 		RouteMode:                      string(surface.RouteMode),
 		SelectedThreadID:               strings.TrimSpace(surface.SelectedThreadID),
 		Gate:                           snapshotGateSummary(surface),
-		InlineReplaceFreshness:         "daemon_lifecycle",
+		InlineReplaceFreshness:         control.FeishuUIInlineReplaceFreshnessDaemonLifecycle,
 		InlineReplaceRequiresFreshness: true,
+		InlineReplaceViewSession:       control.FeishuUIInlineReplaceViewSessionSurfaceState,
+		InlineReplaceRequiresViewState: false,
 		CallbackPayloadOwner:           control.FeishuUICallbackPayloadOwnerAdapter,
 	}
 	if surface.ActiveRequestCapture != nil {
@@ -179,10 +183,11 @@ func (s *Service) selectionPromptEvent(surface *state.SurfaceConsoleRecord, prom
 
 func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuSelectionView) control.UIEvent {
 	return control.UIEvent{
-		Kind:                   control.UIEventSelectionPrompt,
-		SurfaceSessionID:       surface.SurfaceSessionID,
-		FeishuSelectionView:    &view,
-		FeishuSelectionContext: s.buildFeishuSelectionContextFromView(surface, view),
+		Kind:                     control.UIEventSelectionPrompt,
+		SurfaceSessionID:         surface.SurfaceSessionID,
+		InlineReplaceCurrentCard: true,
+		FeishuSelectionView:      &view,
+		FeishuSelectionContext:   s.buildFeishuSelectionContextFromView(surface, view),
 	}
 }
 

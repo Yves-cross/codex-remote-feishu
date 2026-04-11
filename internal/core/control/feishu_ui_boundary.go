@@ -35,6 +35,8 @@ type FeishuUISurfaceContext struct {
 	RouteMutationBlockedBy         string
 	InlineReplaceFreshness         string
 	InlineReplaceRequiresFreshness bool
+	InlineReplaceViewSession       string
+	InlineReplaceRequiresViewState bool
 	CallbackPayloadOwner           FeishuUICallbackPayloadOwner
 }
 

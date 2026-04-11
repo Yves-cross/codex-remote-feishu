@@ -32,23 +32,23 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 	case ActionShowCommandMenu:
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowCommandMenu, RawText: action.Text}, true
 	case ActionModeCommand:
-		if SupportsInlineCardReplacement(action) {
+		if isBareInlineCommand(action.Text, "/mode") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowModeCatalog, RawText: action.Text}, true
 		}
 	case ActionAutoContinueCommand:
-		if SupportsInlineCardReplacement(action) {
+		if isBareInlineCommand(action.Text, "/autowhip") || isBareInlineCommand(action.Text, "/autocontinue") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowAutoContinueCatalog, RawText: action.Text}, true
 		}
 	case ActionReasoningCommand:
-		if SupportsInlineCardReplacement(action) {
+		if isBareInlineCommand(action.Text, "/reasoning") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowReasoningCatalog, RawText: action.Text}, true
 		}
 	case ActionAccessCommand:
-		if SupportsInlineCardReplacement(action) {
+		if isBareInlineCommand(action.Text, "/access") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowAccessCatalog, RawText: action.Text}, true
 		}
 	case ActionModelCommand:
-		if SupportsInlineCardReplacement(action) {
+		if isBareInlineCommand(action.Text, "/model") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowModelCatalog, RawText: action.Text}, true
 		}
 	case ActionShowRecentWorkspaces:

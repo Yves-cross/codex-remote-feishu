@@ -270,12 +270,7 @@ func (a *App) inlineCardActionResultLocked(action control.Action, events []contr
 		return nil
 	}
 	event := events[0]
-	if event.Command != nil || event.DaemonCommand != nil {
-		return nil
-	}
-	switch event.Kind {
-	case control.UIEventCommandCatalog, control.UIEventSelectionPrompt:
-	default:
+	if !event.InlineReplaceCurrentCard || event.Command != nil || event.DaemonCommand != nil {
 		return nil
 	}
 	event.DaemonLifecycleID = a.daemonLifecycleID
@@ -287,10 +282,14 @@ func (a *App) inlineCardActionResultLocked(action control.Action, events []contr
 }
 
 func shouldInlineReplaceCurrentCard(action control.Action) bool {
-	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
+	policy, ok := control.InlineCardReplacementPolicy(action)
+	if !ok || !policy.ReplaceCurrentCard {
 		return false
 	}
-	return control.SupportsInlineCardReplacement(action)
+	if !policy.RequiresDaemonFreshness {
+		return true
+	}
+	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
 }
 
 func (a *App) ensureSurfaceRouteForNotice(action control.Action) {

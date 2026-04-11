@@ -366,6 +366,79 @@ func TestHandleGatewayActionKeepsParameterApplyAppendOnly(t *testing.T) {
 	}
 }
 
+func TestHandleGatewayActionKeepsHelpAppendOnlyEvenWithDaemonLifecycle(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandHelp,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/help",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result != nil {
+		t.Fatalf("expected help card to stay append-only, got %#v", result)
+	}
+	if len(gateway.operations) != 1 || gateway.operations[0].CardTitle != "Slash 命令帮助" {
+		t.Fatalf("expected appended help card, got %#v", gateway.operations)
+	}
+}
+
+func TestHandleGatewayActionRerendersMenuFromCurrentSurfaceStateWithoutViewSessionToken(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: "/data/dl/proj",
+		WorkspaceKey:  "/data/dl/proj",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/menu",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement result, got %#v", result)
+	}
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/stop") {
+		t.Fatalf("expected rerendered menu to reflect current attached state, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+	if operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/list") {
+		t.Fatalf("expected stale detached menu actions not to survive current-state rerender, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+}
+
 func TestHandleGatewayActionReplacesScopedThreadCardForCardNavigation(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
