@@ -160,6 +160,9 @@ func explicitActionCommand(action control.Action) string {
 }
 
 func rejectedInboundActionLabel(action control.Action) (label, command string) {
+	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
+		return rejectedInboundIntentLabel(*intent)
+	}
 	switch action.Kind {
 	case control.ActionListInstances:
 		return "查看实例", "/list"
@@ -175,8 +178,6 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "已移除命令", control.LegacyActionCommand(action.Text)
 	case control.ActionShowCommandHelp:
 		return "查看帮助", "/help"
-	case control.ActionShowCommandMenu:
-		return "打开命令菜单", "/menu"
 	case control.ActionDebugCommand:
 		return "查看调试升级状态", "/debug"
 	case control.ActionUpgradeCommand:
@@ -193,14 +194,6 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "选择提示卡动作", ""
 	case control.ActionAttachInstance:
 		return "接管实例", "/list"
-	case control.ActionShowThreads:
-		return "查看最近会话", "/use"
-	case control.ActionShowAllThreads:
-		return "查看全部会话", "/useall"
-	case control.ActionShowAllThreadWorkspaces:
-		return "展开全部工作区会话", "/useall"
-	case control.ActionShowRecentThreadWorkspaces:
-		return "返回最近工作区会话", "/useall"
 	case control.ActionUseThread:
 		return "切换会话", "/use"
 	case control.ActionConfirmKickThread:
@@ -211,6 +204,35 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "跟随当前", "/follow"
 	case control.ActionDetach:
 		return "解除接管", "/detach"
+	default:
+		return "", ""
+	}
+}
+
+func rejectedInboundIntentLabel(intent control.FeishuUIIntent) (label, command string) {
+	switch intent.Kind {
+	case control.FeishuUIIntentShowCommandMenu:
+		return "打开命令菜单", "/menu"
+	case control.FeishuUIIntentShowModeCatalog:
+		return "查看模式设置", "/mode"
+	case control.FeishuUIIntentShowAutoContinueCatalog:
+		return "查看 AutoWhip 设置", "/autowhip"
+	case control.FeishuUIIntentShowReasoningCatalog:
+		return "查看推理强度设置", "/reasoning"
+	case control.FeishuUIIntentShowAccessCatalog:
+		return "查看执行权限设置", "/access"
+	case control.FeishuUIIntentShowModelCatalog:
+		return "查看模型设置", "/model"
+	case control.FeishuUIIntentShowRecentWorkspaces, control.FeishuUIIntentShowAllWorkspaces:
+		return "查看工作区列表", "/list"
+	case control.FeishuUIIntentShowThreads, control.FeishuUIIntentShowScopedThreads:
+		return "查看会话列表", "/use"
+	case control.FeishuUIIntentShowAllThreads,
+		control.FeishuUIIntentShowAllThreadWorkspaces,
+		control.FeishuUIIntentShowRecentThreadWorkspaces:
+		return "查看全部会话", "/useall"
+	case control.FeishuUIIntentShowWorkspaceThreads:
+		return "展开该工作区下的会话列表", ""
 	default:
 		return "", ""
 	}

@@ -1,8 +1,8 @@
 package control
 
 // FeishuUIDTOwner identifies which layer currently owns the DTO shape exposed
-// to the Feishu adapter. Phase 1 keeps these as Feishu-oriented transition DTOs
-// while the query/policy boundary is made explicit.
+// to the Feishu adapter. Some UI events still intentionally cross the boundary
+// as Feishu-facing DTOs instead of neutral read models.
 type FeishuUIDTOwner string
 
 const (
@@ -41,7 +41,7 @@ type FeishuUISurfaceContext struct {
 }
 
 // FeishuUISelectionContext describes the stable query/policy inputs that back a
-// selection prompt while the DTO itself remains a Feishu-owned transition type.
+// selection prompt while the rendered DTO itself remains Feishu-facing.
 type FeishuUISelectionContext struct {
 	DTOOwner     FeishuUIDTOwner
 	Surface      FeishuUISurfaceContext
@@ -55,7 +55,7 @@ type FeishuUISelectionContext struct {
 }
 
 // FeishuUICommandContext describes the stable query/policy inputs that back a
-// command catalog while the catalog DTO remains Feishu-owned in this phase.
+// command catalog while some command cards still remain Feishu-facing DTOs.
 type FeishuUICommandContext struct {
 	DTOOwner    FeishuUIDTOwner
 	Surface     FeishuUISurfaceContext
@@ -70,7 +70,7 @@ type FeishuUICommandContext struct {
 }
 
 // FeishuUIRequestContext describes the stable query/policy inputs that back a
-// request prompt while the prompt DTO remains a Feishu transition type.
+// request prompt while the request card still remains Feishu-facing.
 type FeishuUIRequestContext struct {
 	DTOOwner    FeishuUIDTOwner
 	Surface     FeishuUISurfaceContext

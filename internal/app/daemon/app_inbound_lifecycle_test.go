@@ -87,6 +87,25 @@ func TestRejectedInboundActionDetailShowsMenuFallback(t *testing.T) {
 	}
 }
 
+func TestRejectedInboundActionDetailUsesIntentLabelForWorkspaceListNavigation(t *testing.T) {
+	got := rejectedInboundActionDetail(control.Action{
+		Kind: control.ActionShowAllWorkspaces,
+	})
+	if got != "查看工作区列表（对应 /list）" {
+		t.Fatalf("rejectedInboundActionDetail() = %q, want %q", got, "查看工作区列表（对应 /list）")
+	}
+}
+
+func TestRejectedInboundActionDetailUsesIntentLabelForWorkspaceThreadExpansion(t *testing.T) {
+	got := rejectedInboundActionDetail(control.Action{
+		Kind:         control.ActionShowWorkspaceThreads,
+		WorkspaceKey: "/data/dl/web",
+	})
+	if got != "展开该工作区下的会话列表" {
+		t.Fatalf("rejectedInboundActionDetail() = %q, want %q", got, "展开该工作区下的会话列表")
+	}
+}
+
 func TestRejectedInboundActionDetailMapsLegacyResumeCardToRemovedCommand(t *testing.T) {
 	got := rejectedInboundActionDetail(control.Action{
 		Kind: control.ActionRemovedCommand,

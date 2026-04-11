@@ -1,5 +1,7 @@
 package control
 
+import "strings"
+
 const (
 	FeishuUIInlineReplaceFreshnessDaemonLifecycle = "daemon_lifecycle"
 	FeishuUIInlineReplaceViewSessionSurfaceState  = "surface_state_rederived"
@@ -29,4 +31,15 @@ func InlineCardReplacementPolicy(action Action) (FeishuUIInlineReplacePolicy, bo
 		RequiresViewSession:     false,
 		ViewSessionStrategy:     FeishuUIInlineReplaceViewSessionSurfaceState,
 	}, true
+}
+
+func AllowsInlineCardReplacement(action Action) bool {
+	policy, ok := InlineCardReplacementPolicy(action)
+	if !ok || !policy.ReplaceCurrentCard {
+		return false
+	}
+	if !policy.RequiresDaemonFreshness {
+		return true
+	}
+	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
 }

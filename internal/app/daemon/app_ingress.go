@@ -266,7 +266,7 @@ func (a *App) applyIngressActionLocked(action control.Action) []control.UIEvent 
 }
 
 func (a *App) inlineCardActionResultLocked(action control.Action, events []control.UIEvent) *feishu.ActionResult {
-	if !shouldInlineReplaceCurrentCard(action) || len(events) != 1 {
+	if !control.AllowsInlineCardReplacement(action) || len(events) != 1 {
 		return nil
 	}
 	event := events[0]
@@ -279,17 +279,6 @@ func (a *App) inlineCardActionResultLocked(action control.Action, events []contr
 		return nil
 	}
 	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}
-}
-
-func shouldInlineReplaceCurrentCard(action control.Action) bool {
-	policy, ok := control.InlineCardReplacementPolicy(action)
-	if !ok || !policy.ReplaceCurrentCard {
-		return false
-	}
-	if !policy.RequiresDaemonFreshness {
-		return true
-	}
-	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
 }
 
 func (a *App) ensureSurfaceRouteForNotice(action control.Action) {

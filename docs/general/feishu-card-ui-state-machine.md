@@ -88,20 +88,21 @@
 补充规则：
 
 - `control.RequestPrompt` 当前仍是**产品层拥有语义、Feishu 层拥有序列化**的 shared DTO。
-- `control.CommandCatalog` 仍保留为当前 card renderer 的过渡 DTO，但 phase 4 之后不再是 `/menu` 与 bare config cards 跨 `UIEvent` 边界的主载体：
-  - `/help`、静态帮助目录、legacy 测试样例仍可直接使用 `CommandCatalog`
+- `control.CommandCatalog` 仍保留为当前 card renderer 的过渡 DTO，但已经不再是 `/menu` 与 bare config cards 跨 `UIEvent` 边界的主载体：
+  - `/help`、静态帮助目录、daemon upgrade / vscode migration cards、legacy 测试样例仍可直接使用 `CommandCatalog`
   - `/menu` 与 bare config cards 现在跨边界携带的是 `control.FeishuCommandView`
   - projector 在 adapter 层把它投影成当前卡片 renderer 仍可消费的 `CommandCatalog`
-- `control.SelectionPrompt` 仍然存在，但 phase 3 之后不再是 workspace/thread selection 跨 `UIEvent` 边界的主载体：
+- `control.SelectionPrompt` 仍然存在，但已经不再是 workspace/thread selection 跨 `UIEvent` 边界的主载体：
   - workspace/thread selection 现在跨边界携带的是 `control.FeishuSelectionView`
   - projector 在 adapter 层把它投影成当前卡片 renderer 仍可消费的 `SelectionPrompt`
   - 其他 selection 场景，例如 instance selection、kick-thread confirm，仍可直接使用 `SelectionPrompt`
-- 当前阶段 1 已把它们显式定义为 **Feishu-oriented transition DTO**：
-  - DTO 形状暂未迁出
-  - 但 `UIEvent` 现在已经携带独立的 `FeishuSelectionContext` / `FeishuCommandContext` / `FeishuRequestContext`
-  - 当前阶段 2 的 Feishu UI controller 已通过这层 boundary 分流 pure navigation；后续继续扩 controller 时，默认仍应优先依赖这些 query/context 元数据，而不是继续直接读 orchestrator 内部字段
-  - 当前阶段 3 把 selection cards 进一步拆成 “read model -> `FeishuSelectionView` -> adapter projection -> `SelectionPrompt`” 四段；后续修改 `/list` / `/use` / `/useall` 的分组、文案、recent/all 视图时，默认应落在 adapter projection 或 selection view 结构层，而不是回到 selection query 函数里继续混改
-  - 当前阶段 4 又把 command/config cards 拆成 “read model -> `FeishuCommandView` -> adapter projection -> `CommandCatalog`” 四段；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认也应落在 adapter projection 或 command view 结构层，而不是回到 orchestrator query 函数里继续混改
+- 这些 DTO 当前都已经显式标注 owner，并与 query/policy context 分离：
+  - DTO 形状暂未全部迁出
+  - `UIEvent` 已经携带独立的 `FeishuSelectionContext` / `FeishuCommandContext` / `FeishuRequestContext`
+  - Feishu UI controller 已通过这层 boundary 分流 pure navigation；后续继续扩 controller 时，默认仍应优先依赖这些 query/context 元数据，而不是继续直接读 orchestrator 内部字段
+  - selection cards 现在是 “read model -> `FeishuSelectionView` -> adapter projection -> `SelectionPrompt`” 四段；后续修改 `/list` / `/use` / `/useall` 的分组、文案、recent/all 视图时，默认应落在 adapter projection 或 selection view 结构层，而不是回到 selection query 函数里继续混改
+  - command/config cards 现在是 “read model -> `FeishuCommandView` -> adapter projection -> `CommandCatalog`” 四段；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认也应落在 adapter projection 或 command view 结构层，而不是回到 orchestrator query 函数里继续混改
+- `ActionShow*` 与 bare config `Action*Command` 当前若仍存在，属于 gateway / parser 的 transport compatibility 层；live path 会先归并到 `FeishuUIIntent`，不再代表主产品 reducer owner。
 - 如果只是换卡片样式、按钮 payload、inline replace 策略，优先更新本文。
 - 如果改了 DTO 里的可选项语义、route 约束或 request gate 行为，必须同时更新 core 状态机文档。
 
@@ -271,7 +272,6 @@
 - [internal/core/orchestrator/service_surface_thread_selection.go](../../internal/core/orchestrator/service_surface_thread_selection.go)
 - [internal/app/daemon/app_ingress.go](../../internal/app/daemon/app_ingress.go)
 - [internal/app/daemon/app_inbound_lifecycle.go](../../internal/app/daemon/app_inbound_lifecycle.go)
-- [internal/core/control/inline_replacement.go](../../internal/core/control/inline_replacement.go)
 
 ### 7.2 当前关键测试基线
 
@@ -290,7 +290,7 @@
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
   - 锁定 daemon ingress 分流后的 inline replace 结果、`/help` 保持 append-only、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)
-  - 锁定 old / old-card 生命周期分类与拒绝文案映射
+  - 锁定 old / old-card 生命周期分类，以及 reject detail 已按当前 UI intent / command 语义收束
 - [internal/core/orchestrator/service_config_prompt_test.go](../../internal/core/orchestrator/service_config_prompt_test.go)
 - [internal/core/orchestrator/service_headless_thread_test.go](../../internal/core/orchestrator/service_headless_thread_test.go)
 - [internal/core/orchestrator/service_thread_selection_test.go](../../internal/core/orchestrator/service_thread_selection_test.go)

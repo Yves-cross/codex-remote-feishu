@@ -1006,6 +1006,11 @@ retained-offline overlay 额外规则：
 
 当前 Feishu 卡片动作与服务端 action 对应关系如下：
 
+补充说明：
+
+1. 这张表描述的是 gateway / parser 边界上的 transport action 映射，不等于最终 owner。
+2. `show_*` 与 bare config `Action*Command` 当前在 live path 中会先被归并成 `FeishuUIIntent`，再进入 Feishu UI controller；它们保留对应 `ActionKind` 主要是为了统一文本命令、菜单和卡片 callback 的 transport 兼容面。
+
 | 卡片动作 | 服务端 action | 说明 |
 | --- | --- | --- |
 | `attach_workspace` | `ActionAttachWorkspace` | normal mode `/list` 的 workspace attach/switch 入口 |
@@ -1043,7 +1048,7 @@ retained-offline overlay 额外规则：
 
 补充说明：
 
-1. 当前 Feishu gateway 只为一小组 card action 开放同步 `replace_current_card` 回包：
+1. 当前 Feishu gateway 只为一小组 pure-navigation action 开放同步 `replace_current_card` 回包：
    1. `ActionShowCommandMenu`
    2. `ActionShowAllWorkspaces`
    3. `ActionShowRecentWorkspaces`
@@ -1052,8 +1057,8 @@ retained-offline overlay 额外规则：
    6. `ActionShowScopedThreads`
    7. `ActionShowWorkspaceThreads`
    8. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
-2. 只有当这些动作产出恰好一张 `CommandCatalog` 或 `SelectionPrompt`，且来源卡片带有当前 daemon 的 lifecycle 标识时，才会走原地替换。
-3. apply 终态、request prompt 终态、upgrade/debug 异步结果等仍然沿用 append-only 消息语义，不在这轮同步回包范围内。
+2. 只有当这些动作命中 `InlineCardReplacementPolicy(...)`、来源卡片带有当前 daemon 的 lifecycle 标识、且 Feishu UI controller 只返回一个显式标记 `InlineReplaceCurrentCard` 的 `UIEvent` 时，才会走原地替换。
+3. `/help` 这类静态目录卡、apply 终态、request prompt 终态、upgrade/debug 异步结果等仍然沿用 append-only 消息语义，不在这轮同步回包范围内。
 
 ## 8. 当前死状态审计结论
 

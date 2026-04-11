@@ -1,5 +1,7 @@
 package control
 
+import "strings"
+
 type FeishuUIIntentKind string
 
 const (
@@ -69,4 +71,9 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentThreadWorkspaces}, true
 	}
 	return nil, false
+}
+
+func isBareInlineCommand(text, command string) bool {
+	fields := strings.Fields(strings.TrimSpace(text))
+	return len(fields) == 1 && strings.EqualFold(fields[0], strings.TrimSpace(command))
 }

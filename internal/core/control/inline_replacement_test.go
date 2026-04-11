@@ -25,7 +25,7 @@ func TestInlineCardReplacementPolicy(t *testing.T) {
 	}
 }
 
-func TestSupportsInlineCardReplacement(t *testing.T) {
+func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 	tests := []struct {
 		name   string
 		action Action
@@ -95,9 +95,25 @@ func TestSupportsInlineCardReplacement(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := SupportsInlineCardReplacement(tt.action); got != tt.want {
-				t.Fatalf("SupportsInlineCardReplacement(%#v) = %v, want %v", tt.action, got, tt.want)
+			_, ok := InlineCardReplacementPolicy(tt.action)
+			if ok != tt.want {
+				t.Fatalf("InlineCardReplacementPolicy(%#v) ok = %v, want %v", tt.action, ok, tt.want)
 			}
 		})
+	}
+}
+
+func TestAllowsInlineCardReplacementRequiresDaemonFreshness(t *testing.T) {
+	action := Action{
+		Kind: ActionShowCommandMenu,
+		Text: "/menu send_settings",
+	}
+	if AllowsInlineCardReplacement(action) {
+		t.Fatal("expected unstamped navigation to stay async")
+	}
+
+	action.Inbound = &ActionInboundMeta{CardDaemonLifecycleID: "life-1"}
+	if !AllowsInlineCardReplacement(action) {
+		t.Fatal("expected stamped navigation to allow inline replacement")
 	}
 }
