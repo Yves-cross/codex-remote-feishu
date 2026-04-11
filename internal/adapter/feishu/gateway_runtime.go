@@ -68,7 +68,7 @@ func handleGatewayEventAction(ctx context.Context, action control.Action, handle
 }
 
 func handleCardActionTrigger(ctx context.Context, action control.Action, handler ActionHandler) (*larkcallback.CardActionTriggerResponse, error) {
-	if shouldAcknowledgeGatewayActionImmediately(action) {
+	if shouldAcknowledgeCardActionImmediately(action) {
 		go handler(context.Background(), action)
 		return &larkcallback.CardActionTriggerResponse{}, nil
 	}
@@ -93,6 +93,15 @@ func shouldAcknowledgeGatewayActionImmediately(action control.Action) bool {
 		// control flows do not get redelivered by Feishu.
 		return true
 	}
+}
+
+func shouldAcknowledgeCardActionImmediately(action control.Action) bool {
+	if action.Inbound != nil &&
+		strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "" &&
+		control.SupportsInlineCardReplacement(action) {
+		return false
+	}
+	return shouldAcknowledgeGatewayActionImmediately(action)
 }
 
 func callbackCardResponse(result *ActionResult) *larkcallback.CardActionTriggerResponse {

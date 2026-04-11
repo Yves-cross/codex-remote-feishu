@@ -1112,6 +1112,108 @@ func TestHandleCardActionTriggerReturnsImmediatelyForAsyncAction(t *testing.T) {
 	}
 }
 
+func TestHandleCardActionTriggerWaitsForInlineReplacementAction(t *testing.T) {
+	action := control.Action{
+		Kind: control.ActionShowCommandMenu,
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: "life-1",
+		},
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	resultCh := make(chan *larkcallback.CardActionTriggerResponse, 1)
+	errCh := make(chan error, 1)
+	handler := func(context.Context, control.Action) *ActionResult {
+		close(started)
+		<-release
+		return &ActionResult{
+			ReplaceCurrentCard: &Operation{
+				Kind:         OperationSendCard,
+				CardTitle:    "命令菜单",
+				CardBody:     "已切到发送设置。",
+				CardThemeKey: cardThemeInfo,
+			},
+		}
+	}
+
+	go func() {
+		resp, err := handleCardActionTrigger(context.Background(), action, handler)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		resultCh <- resp
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected handler to start synchronously")
+	}
+	select {
+	case <-resultCh:
+		t.Fatal("expected callback to wait for handler result")
+	case err := <-errCh:
+		t.Fatalf("handleCardActionTrigger returned error: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("handleCardActionTrigger returned error: %v", err)
+	case resp := <-resultCh:
+		if resp == nil || resp.Card == nil {
+			t.Fatalf("expected replacement callback response, got %#v", resp)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected callback to return after handler finished")
+	}
+}
+
+func TestHandleCardActionTriggerKeepsParameterApplyAsync(t *testing.T) {
+	action := control.Action{
+		Kind: control.ActionModeCommand,
+		Text: "/mode vscode",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: "life-1",
+		},
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+	handler := func(context.Context, control.Action) *ActionResult {
+		close(started)
+		<-release
+		close(done)
+		return nil
+	}
+
+	begin := time.Now()
+	resp, err := handleCardActionTrigger(context.Background(), action, handler)
+	if err != nil {
+		t.Fatalf("handleCardActionTrigger returned error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected empty callback response")
+	}
+	if elapsed := time.Since(begin); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected async callback ack, took %s", elapsed)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected background handler to start")
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("expected background handler to finish")
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsRemovedResumeHeadlessAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")

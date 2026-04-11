@@ -234,7 +234,7 @@ func operationHasActionValue(operation feishu.Operation, kind, key, want string)
 	return false
 }
 
-func TestHandleGatewayActionAppendsMenuCardForCardNavigation(t *testing.T) {
+func TestHandleGatewayActionReplacesMenuCardForCardNavigation(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
 		PID:       42,
@@ -254,73 +254,82 @@ func TestHandleGatewayActionAppendsMenuCardForCardNavigation(t *testing.T) {
 		},
 	})
 
-	if result != nil {
-		t.Fatalf("expected append-only behavior without inline replacement, got %#v", result)
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement result, got %#v", result)
 	}
-	if len(gateway.operations) != 1 {
-		t.Fatalf("expected one appended gateway operation, got %#v", gateway.operations)
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if gateway.operations[0].CardTitle != "命令菜单" {
-		t.Fatalf("unexpected appended card: %#v", gateway.operations[0])
+	if result.ReplaceCurrentCard.CardTitle != "命令菜单" {
+		t.Fatalf("unexpected replacement card: %#v", result.ReplaceCurrentCard)
 	}
-	if !operationHasActionValue(gateway.operations[0], "run_command", "command_text", "/menu") {
-		t.Fatalf("expected appended submenu card to include back-to-home command, got %#v", gateway.operations[0].CardElements)
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/menu") {
+		t.Fatalf("expected replacement submenu card to include back-to-home command, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
 
-func TestHandleGatewayActionAppendsScopedThreadCardForCardNavigation(t *testing.T) {
+func TestHandleGatewayActionReplacesBareModeCardForCardNavigation(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
 		PID:       42,
 		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
 	})
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
-	app.service.UpsertInstance(&state.InstanceRecord{
-		InstanceID:    "inst-1",
-		DisplayName:   "dl",
-		WorkspaceRoot: "/data/dl",
-		WorkspaceKey:  "/data/dl",
-		ShortName:     "dl",
-		Online:        true,
-		Threads: map[string]*state.ThreadRecord{
-			"thread-1": {ThreadID: "thread-1", Name: "会话1", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 1, 0, 0, time.UTC)},
-			"thread-2": {ThreadID: "thread-2", Name: "会话2", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 2, 0, 0, time.UTC)},
-			"thread-3": {ThreadID: "thread-3", Name: "会话3", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 3, 0, 0, time.UTC)},
-			"thread-4": {ThreadID: "thread-4", Name: "会话4", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 4, 0, 0, time.UTC)},
-			"thread-5": {ThreadID: "thread-5", Name: "会话5", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 5, 0, 0, time.UTC)},
-			"thread-6": {ThreadID: "thread-6", Name: "会话6", CWD: "/data/dl", LastUsedAt: time.Date(2026, 4, 10, 10, 6, 0, 0, time.UTC)},
-		},
-	})
-	app.service.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		InstanceID:       "inst-1",
-	})
 
 	result := app.HandleGatewayAction(context.Background(), control.Action{
-		Kind:             control.ActionShowScopedThreads,
+		Kind:             control.ActionModeCommand,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
+		Text:             "/mode",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement result, got %#v", result)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	if result.ReplaceCurrentCard.CardTitle != "切换模式" {
+		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
+	}
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/menu maintenance") {
+		t.Fatalf("expected replacement mode card to include return action, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+}
+
+func TestHandleGatewayActionKeepsParameterApplyAppendOnly(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionAutoContinueCommand,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/autocontinue on",
 		Inbound: &control.ActionInboundMeta{
 			CardDaemonLifecycleID: app.daemonLifecycleID,
 		},
 	})
 
 	if result != nil {
-		t.Fatalf("expected append-only behavior without inline replacement, got %#v", result)
+		t.Fatalf("expected append-only behavior for parameter apply, got %#v", result)
 	}
 	if len(gateway.operations) != 1 {
 		t.Fatalf("expected one appended gateway operation, got %#v", gateway.operations)
 	}
-	if gateway.operations[0].CardTitle != "当前工作区全部会话" {
-		t.Fatalf("unexpected appended card title: %#v", gateway.operations[0])
-	}
-	if !operationHasActionValue(gateway.operations[0], "show_threads", "", "") {
-		t.Fatalf("expected appended scoped-all card to include return action, got %#v", gateway.operations[0].CardElements)
+	if gateway.operations[0].CardTitle != "系统提示" {
+		t.Fatalf("unexpected appended card: %#v", gateway.operations[0])
 	}
 }
 
