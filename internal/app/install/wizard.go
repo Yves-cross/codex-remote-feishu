@@ -92,7 +92,6 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Relay 配置说明：")
 	fmt.Fprintln(out, "- 如果 relayd 跑在本机，保持默认 ws://127.0.0.1:9500/ws/agent 即可。")
-	fmt.Fprintln(out, "- 如果 relayd 跑在 Docker 并映射到本机端口，同样可保持默认值。")
 	fmt.Fprintln(out, "- 只有在 relayd 跑在其他机器时，才需要改成对应地址。")
 	relayURL, err := promptString(reader, out, "Relay WebSocket 地址", opts.RelayServerURL)
 	if err != nil {

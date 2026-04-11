@@ -228,34 +228,11 @@ loginctl enable-linger "$USER"
 
 如果本机还只有旧的 `config.env` / `wrapper.env` / `services.env`，bootstrap 或启动时会自动迁移到 `config.json`，并把旧文件备份成 `*.migrated-<timestamp>.bak`。
 
-## Docker 部署
+## 不再支持 Docker 部署
 
-如果你只想把 `relayd` 容器化，可以使用：
+当前项目不再提供 Docker 部署入口。
 
-- [deploy/docker/Dockerfile](./deploy/docker/Dockerfile)
-- [deploy/docker/compose.yml](./deploy/docker/compose.yml)
-- [deploy/docker/.env.example](./deploy/docker/.env.example)
-
-release 包内会附带：
-
-- [QUICKSTART.md](./QUICKSTART.md)
-- [CHANGELOG.md](./CHANGELOG.md)
-- [deploy/docker/Dockerfile](./deploy/docker/Dockerfile)
-- [deploy/docker/compose.yml](./deploy/docker/compose.yml)
-- [deploy/feishu/app-template.json](./deploy/feishu/app-template.json)
-
-用法：
-
-```bash
-cp deploy/docker/.env.example deploy/docker/.env
-docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d --build
-```
-
-注意：
-
-- Docker 只部署 `codex-remote daemon`
-- `codex-remote` 的 wrapper role 仍然运行在 VS Code 所在机器
-- wrapper 连接容器时，默认仍使用 `ws://127.0.0.1:9500/ws/agent`
+原因是 Docker 场景下对任意文件和目录访问的配置体验太差，而当前产品已经是 Go 单二进制，直接本机安装和运行的成本已经很低，继续维护 Docker 形态的实际收益不大。
 
 ## 飞书端使用
 

@@ -45,7 +45,6 @@ cmd/
   relay-install/
 
 deploy/
-  docker/
   feishu/
 
 docs/
@@ -132,13 +131,6 @@ go build ./cmd/...
 ```bash
 ./bin/codex-remote install -bootstrap-only -start-daemon
 ./bin/codex-remote daemon
-```
-
-Docker relayd：
-
-```bash
-cp deploy/docker/.env.example deploy/docker/.env
-docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env up -d --build
 ```
 
 release 安装器 smoke test：

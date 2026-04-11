@@ -13,7 +13,6 @@
 - `codex-remote install` 的 bootstrap 语义
 - WebSetup / Admin UI 的职责边界
 - 仓库 helper 与产品入口的区分
-- Docker relayd 部署
 
 ## 2. 当前产品入口
 
@@ -97,6 +96,12 @@ Windows PowerShell:
   - 需要前台观察 daemon 启动或日志时使用
 
 仓库中不再保留单独的 `install.sh` 生命周期脚本。
+
+### 2.5 不再支持 Docker 部署
+
+当前产品不再提供 Docker 部署模型。
+
+原因不是二进制无法容器化，而是这类场景下对任意文件和目录访问的配置体验很差；与此同时，当前实现已经收敛为 Go 单二进制，直接本机安装和运行的复杂度已经足够低，继续维护 Docker 入口的收益不高。
 
 ## 3. `codex-remote install` 的当前语义
 
@@ -337,28 +342,7 @@ release smoke test 必须覆盖真实产品路径：
 - 正式 release 归档只构建一次，不在 smoke 里重复全量打包
 - 若 smoke 还要验证 `--track beta|alpha` 的 release API 解析，只补一份“当前 runner 平台”的轻量 fixture，而不是再做一轮全平台构建
 
-## 7. Docker 模型
-
-Docker 只部署 `codex-remote daemon`。
-
-不放进容器的部分：
-
-- `codex-remote` 的 wrapper role
-- 真实 `codex`
-- VS Code 扩展 bundle
-
-原因：
-
-- wrapper 必须和 VS Code / Codex 进程在同一侧
-- daemon 作为常驻服务，容器化收益更高
-
-当前资产：
-
-- [deploy/docker/Dockerfile](../../deploy/docker/Dockerfile)
-- [deploy/docker/compose.yml](../../deploy/docker/compose.yml)
-- [deploy/docker/.env.example](../../deploy/docker/.env.example)
-
-## 8. 飞书配置模板
+## 7. 飞书配置模板
 
 当前仓库提供：
 
