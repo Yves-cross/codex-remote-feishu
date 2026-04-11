@@ -614,15 +614,15 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	if !containsAll(ops[0].CardBody,
 		"**当前模式：** <text_tag color='neutral'>vscode</text_tag>",
 		"**接管对象类型：** <text_tag color='neutral'>VS Code 实例</text_tag>",
-		"如果现在从飞书发送一条消息：",
-		"**模型：** <text_tag color='neutral'>gpt-5.4</text_tag>（飞书临时覆盖）",
-		"**推理强度：** <text_tag color='neutral'>medium</text_tag>（会话配置）",
-		"**执行权限：** <text_tag color='neutral'>confirm</text_tag>（飞书临时覆盖）",
-		"**飞书临时覆盖：** 模型 <text_tag color='neutral'>gpt-5.4</text_tag>，权限 <text_tag color='neutral'>confirm</text_tag>",
+		"**下条飞书消息：** 模型 <text_tag color='neutral'>gpt-5.4</text_tag>，推理 <text_tag color='neutral'>medium</text_tag>，权限 <text_tag color='neutral'>confirm</text_tag>",
+		"**工作目录：** <text_tag color='neutral'>/data/dl/droid</text_tag>",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0])
 	}
-	if strings.Contains(ops[0].CardBody, "已知会话：") || strings.Contains(ops[0].CardBody, "在线实例：") {
+	if strings.Contains(ops[0].CardBody, "已知会话：") ||
+		strings.Contains(ops[0].CardBody, "在线实例：") ||
+		strings.Contains(ops[0].CardBody, "飞书临时覆盖") ||
+		strings.Contains(ops[0].CardBody, "底层真实配置") {
 		t.Fatalf("status card should not include list sections, got %#v", ops[0].CardBody)
 	}
 }
@@ -681,6 +681,12 @@ func TestProjectSnapshotShowsAttachedWorkspaceWithoutThread(t *testing.T) {
 				DisplayName: "droid",
 				RouteMode:   "unbound",
 			},
+			NextPrompt: control.PromptRouteSummary{
+				CWD:                      "/data/dl/droid",
+				EffectiveModel:           "gpt-5.4",
+				EffectiveReasoningEffort: "medium",
+				EffectiveAccessMode:      "confirm",
+			},
 		},
 	})
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
@@ -691,8 +697,12 @@ func TestProjectSnapshotShowsAttachedWorkspaceWithoutThread(t *testing.T) {
 		"**接管对象类型：** <text_tag color='neutral'>工作区</text_tag>",
 		"**已接管：** droid",
 		"**当前输入目标：** 未绑定会话",
+		"**下条飞书消息：** 模型 <text_tag color='neutral'>gpt-5.4</text_tag>，推理 <text_tag color='neutral'>medium</text_tag>，权限 <text_tag color='neutral'>confirm</text_tag>",
 	) {
 		t.Fatalf("unexpected snapshot body with attached workspace: %#v", ops[0].CardBody)
+	}
+	if strings.Contains(ops[0].CardBody, "**工作目录：**") {
+		t.Fatalf("snapshot body should hide duplicate prompt cwd, got %#v", ops[0].CardBody)
 	}
 }
 
@@ -766,7 +776,7 @@ func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if !strings.Contains(ops[0].CardBody, "**执行权限：** <text_tag color='neutral'>full</text_tag>（飞书默认）") {
+	if !strings.Contains(ops[0].CardBody, "权限 <text_tag color='neutral'>full</text_tag>") {
 		t.Fatalf("expected compact full access token in snapshot body, got %#v", ops[0].CardBody)
 	}
 }
@@ -800,11 +810,31 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
-		"**模型：** <text_tag color='neutral'>gpt-5.4</text_tag>（飞书默认）",
-		"**推理强度：** <text_tag color='neutral'>xhigh</text_tag>（飞书默认）",
-		"**执行权限：** <text_tag color='neutral'>full</text_tag>（飞书默认）",
+		"**下条飞书消息：** 模型 <text_tag color='neutral'>gpt-5.4</text_tag>，推理 <text_tag color='neutral'>xhigh</text_tag>，权限 <text_tag color='neutral'>full</text_tag>",
+		"**工作目录：** <text_tag color='neutral'>/data/dl/droid</text_tag>",
 	) {
 		t.Fatalf("unexpected snapshot body: %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotDisplaysUnknownEffectivePromptValues(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:  "inst-1",
+				DisplayName: "droid",
+				RouteMode:   "unbound",
+			},
+			NextPrompt: control.PromptRouteSummary{},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !strings.Contains(ops[0].CardBody, "**下条飞书消息：** 模型 <text_tag color='neutral'>未知</text_tag>，推理 <text_tag color='neutral'>未知</text_tag>，权限 <text_tag color='neutral'>未知</text_tag>") {
+		t.Fatalf("expected unknown effective prompt values, got %#v", ops[0].CardBody)
 	}
 }
 

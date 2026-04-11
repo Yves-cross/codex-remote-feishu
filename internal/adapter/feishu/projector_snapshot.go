@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const (
@@ -59,34 +60,10 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 			lines = append(lines, snapshotField("实例 PID", formatNeutralTextTag(fmt.Sprintf("%d", snapshot.Attachment.PID))))
 		}
 		lines = append(lines, "")
-		lines = append(lines, "**如果现在从飞书发送一条消息：**")
-		if snapshot.NextPrompt.CWD != "" {
+		lines = append(lines, snapshotField("下条飞书消息", formatSnapshotEffectivePrompt(snapshot.NextPrompt)))
+		if snapshotShouldShowPromptCWD(snapshot.WorkspaceKey, snapshot.NextPrompt.CWD) {
 			lines = append(lines, snapshotField("工作目录", formatNeutralTextTag(snapshot.NextPrompt.CWD)))
 		}
-		lines = append(lines, snapshotField("模型", fmt.Sprintf("%s（%s）", formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.EffectiveModel, snapshot.NextPrompt.EffectiveModelSource)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveModelSource))))
-		lines = append(lines, snapshotField("推理强度", fmt.Sprintf("%s（%s）", formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.EffectiveReasoningEffort, snapshot.NextPrompt.EffectiveReasoningEffortSource)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveReasoningEffortSource))))
-		lines = append(lines, snapshotField("执行权限", fmt.Sprintf("%s（%s）", formatNeutralTextTag(agentproto.DisplayAccessModeShort(snapshot.NextPrompt.EffectiveAccessMode)), snapshotConfigSourceLabel(snapshot.NextPrompt.EffectiveAccessModeSource))))
-		overrideParts := []string{}
-		if snapshot.NextPrompt.OverrideModel != "" {
-			overrideParts = append(overrideParts, "模型 "+formatNeutralTextTag(snapshot.NextPrompt.OverrideModel))
-		}
-		if snapshot.NextPrompt.OverrideReasoningEffort != "" {
-			overrideParts = append(overrideParts, "推理 "+formatNeutralTextTag(snapshot.NextPrompt.OverrideReasoningEffort))
-		}
-		if snapshot.NextPrompt.OverrideAccessMode != "" {
-			overrideParts = append(overrideParts, "权限 "+formatNeutralTextTag(agentproto.DisplayAccessModeShort(snapshot.NextPrompt.OverrideAccessMode)))
-		}
-		if len(overrideParts) == 0 {
-			lines = append(lines, snapshotField("飞书临时覆盖", "无"))
-		} else {
-			lines = append(lines, snapshotField("飞书临时覆盖", strings.Join(overrideParts, "，")))
-		}
-		lines = append(lines, snapshotField("底层真实配置", fmt.Sprintf("模型 %s（%s）；推理 %s（%s）",
-			formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.BaseModel, snapshot.NextPrompt.BaseModelSource)),
-			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseModelSource),
-			formatNeutralTextTag(displaySnapshotValue(snapshot.NextPrompt.BaseReasoningEffort, snapshot.NextPrompt.BaseReasoningEffortSource)),
-			snapshotConfigSourceLabel(snapshot.NextPrompt.BaseReasoningEffortSource),
-		)))
 	}
 	if autoContinue := snapshotAutoContinueText(snapshot.AutoContinue); autoContinue != "" {
 		lines = append(lines, snapshotField("autowhip", autoContinue))
@@ -135,11 +112,38 @@ func displaySnapshotMode(mode string) string {
 	}
 }
 
-func displaySnapshotValue(value, source string) string {
+func displaySnapshotValue(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "未知"
 	}
 	return value
+}
+
+func displaySnapshotAccessMode(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "未知"
+	}
+	return agentproto.DisplayAccessModeShort(value)
+}
+
+func formatSnapshotEffectivePrompt(summary control.PromptRouteSummary) string {
+	return strings.Join([]string{
+		"模型 " + formatNeutralTextTag(displaySnapshotValue(summary.EffectiveModel)),
+		"推理 " + formatNeutralTextTag(displaySnapshotValue(summary.EffectiveReasoningEffort)),
+		"权限 " + formatNeutralTextTag(displaySnapshotAccessMode(summary.EffectiveAccessMode)),
+	}, "，")
+}
+
+func snapshotShouldShowPromptCWD(workspaceKey, cwd string) bool {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return false
+	}
+	workspaceKey = strings.TrimSpace(workspaceKey)
+	if workspaceKey == "" {
+		return true
+	}
+	return state.NormalizeWorkspaceKey(workspaceKey) != state.NormalizeWorkspaceKey(cwd)
 }
 
 func snapshotGateText(summary control.GateSummary) string {
@@ -219,21 +223,6 @@ func snapshotDispatchText(summary control.DispatchSummary) string {
 		return fmt.Sprintf("当前 %d 条排队", summary.QueuedCount)
 	}
 	return "空闲"
-}
-
-func snapshotConfigSourceLabel(source string) string {
-	switch source {
-	case "thread":
-		return "会话配置"
-	case "cwd_default":
-		return "工作目录默认配置"
-	case "surface_override":
-		return "飞书临时覆盖"
-	case "surface_default":
-		return "飞书默认"
-	default:
-		return "未知"
-	}
 }
 
 func displayAttachmentObjectType(value string) string {
