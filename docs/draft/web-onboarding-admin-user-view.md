@@ -2,7 +2,7 @@
 
 > Type: `draft`
 > Updated: `2026-04-11`
-> Summary: 为用户视角流程补齐各页面的示例文案，明确标题、副标题、状态提示与主要按钮应该怎么写。
+> Summary: 为用户视角流程补齐各页面的示例文案，并补上一份可直接打开的 HTML mock 方便评审。
 
 ## 1. 文档定位
 
@@ -26,6 +26,10 @@
 如果要看技术拆解，请回到：
 
 - [web-onboarding-admin-workflow-prd.md](./web-onboarding-admin-workflow-prd.md)
+
+如果想直接看页面原型，请打开：
+
+- [web-onboarding-admin-user-mock.html](./web-onboarding-admin-user-mock.html)
 
 ## 2. 用户应该怎么理解这个产品
 
