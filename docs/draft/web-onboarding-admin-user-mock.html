@@ -49,6 +49,14 @@
         margin: 0;
       }
 
+      code {
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: rgba(55, 43, 30, 0.08);
+        font-family: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", monospace;
+        font-size: 0.92em;
+      }
+
       button,
       input {
         font: inherit;
@@ -457,6 +465,20 @@
         color: var(--text);
       }
 
+      .code-block {
+        margin: 16px 0 0;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(55, 43, 30, 0.08);
+        background: rgba(246, 241, 232, 0.88);
+        overflow: auto;
+        color: #3d3328;
+        font-size: 13px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       .qr-box {
         display: grid;
         justify-items: center;
@@ -548,9 +570,29 @@
 
     <script>
       const defaultRoute = "setup/env";
+      const basicScopesImport = JSON.stringify(
+        {
+          scopes: {
+            tenant: [
+              "im:message",
+              "im:message.group_at_msg:readonly",
+              "im:message.p2p_msg:readonly",
+              "im:message.reactions:read",
+              "im:message.reactions:write_only",
+              "im:message:send_as_bot",
+              "im:resource",
+            ],
+            user: [],
+          },
+        },
+        null,
+        2,
+      );
       const state = {
         setupSource: "new",
         adminSource: "new",
+        setupBasicReady: false,
+        adminBasicReady: false,
         existingAppName: "",
         existingAppId: "",
         existingAppSecret: "",
@@ -591,8 +633,10 @@
       function selectSource(scope, value) {
         if (scope === "setup") {
           state.setupSource = value;
+          state.setupBasicReady = false;
         } else {
           state.adminSource = value;
+          state.adminBasicReady = false;
         }
         render();
       }
@@ -997,7 +1041,7 @@
 
           <div class="callout ok">
             <strong>现在可以继续</strong>
-            <p>我们已经确认这个飞书应用可以正常接入。接下来会继续检查它现在是不是已经能开始使用。</p>
+            <p>我们已经确认这个飞书应用可以正常接入。接下来会继续检查它是不是已经把基础对话与交互准备好了。</p>
           </div>
 
           <div class="footer">
@@ -1018,13 +1062,13 @@
         });
       }
 
-      function capabilityCards() {
+      function capabilityCards(basicReady) {
         return `
           <div class="grid three">
             <article class="card">
-              <span class="pill ok">已通过</span>
+              <span class="pill ${basicReady ? "ok" : "danger"}">${basicReady ? "已通过" : "必须先处理"}</span>
               <h3 style="margin-top: 14px;">基础对话与交互</h3>
-              <p>让这个飞书应用能正常收发消息，在单聊和群聊里工作，处理图片与引用内容，并显示基础聊天过程反馈。</p>
+              <p>${basicReady ? "让这个飞书应用能正常收发消息，在单聊和群聊里工作，处理图片与引用内容，并显示基础聊天过程反馈。" : "先补齐机器人能力、基础权限、事件订阅和卡片回调。没有这一组之前，还不能开始正常对话。"}</p>
             </article>
             <article class="card">
               <span class="pill warn">可稍后处理</span>
@@ -1042,10 +1086,13 @@
 
       function renderSetupCapability() {
         const backRoute = state.setupSource === "detected" ? "setup/detected" : "setup/connected";
+        const basicReady = state.setupSource === "detected" || state.setupBasicReady;
         return shell({
           kicker: "Setup",
           title: "Codex Remote",
-          status: [statusChip("现在已经可以开始使用", "ok"), statusChip("还有待补全项", "warn")],
+          status: basicReady
+            ? [statusChip("现在已经可以开始使用", "ok"), statusChip("还有待补全项", "warn")]
+            : [statusChip("还不能开始使用", "danger"), statusChip("先处理基础对话与交互", "warn")],
           navTitle: "开通流程",
           navItems: setupNav("capability"),
           body: `
@@ -1054,16 +1101,111 @@
               <p>基础项需要先准备好；增强项如果现在还没补齐，也可以以后再处理。</p>
             </section>
 
-            <div class="callout ok">
-              <strong>现在已经可以开始使用</strong>
-              <p>还有一些增强项可以稍后补齐，不影响你现在开始对话。</p>
+            <div class="callout ${basicReady ? "ok" : "danger"}">
+              <strong>${basicReady ? "现在已经可以开始使用" : "还差一组必须先处理的内容"}</strong>
+              <p>${basicReady ? "还有一些增强项可以稍后补齐，不影响你现在开始对话。" : "先把飞书应用的基础对话与交互准备好。处理完这一组以后，再回来重新检查。"}</p>
             </div>
 
-            ${capabilityCards()}
+            ${capabilityCards(basicReady)}
 
             <div class="footer">
               ${button("返回上一步", `data-go="${backRoute}"`)}
-              ${button("继续", 'data-go="setup/autostart"', true)}
+              ${basicReady ? button("继续", 'data-go="setup/autostart"', true) : button("去处理这一组", 'data-go="setup/basic-guidance"', true)}
+            </div>
+          `,
+        });
+      }
+
+      function renderSetupBasicGuidance() {
+        return shell({
+          kicker: "Setup",
+          title: "Codex Remote",
+          status: [statusChip("还不能开始使用", "danger"), statusChip("正在处理基础对话与交互", "warn")],
+          navTitle: "开通流程",
+          navItems: setupNav("capability"),
+          body: `
+            <section class="hero">
+              <h1>先把基础对话与交互准备好</h1>
+              <p>这一步做完以后，这个飞书应用才能正常收发消息、响应卡片按钮，并作为日常入口开始使用。</p>
+            </section>
+
+            <div class="callout warn">
+              <strong>这一步处理完以后，就可以回来重新检查</strong>
+              <p>下面这一页只保留当前必须做的内容。单聊状态提醒和 Markdown 预览都可以等你先用起来以后再补。</p>
+            </div>
+
+            <div class="grid two">
+              <section class="card">
+                <h2>1. 打开飞书后台</h2>
+                <p>进入这个飞书应用的管理后台，后面的几项都在这里完成。</p>
+                <div class="footer" style="margin-top: 16px;">
+                  ${button("打开飞书后台", 'data-action="open-feishu-console"')}
+                </div>
+              </section>
+
+              <section class="card">
+                <h2>2. 确认机器人能力</h2>
+                <ul class="list">
+                  <li>
+                    <strong>接收文本消息</strong>
+                    <span>让用户直接给飞书应用发送文字命令和普通对话。</span>
+                  </li>
+                  <li>
+                    <strong>接收图片消息</strong>
+                    <span>让用户可以把图片发给飞书应用处理。</span>
+                  </li>
+                  <li>
+                    <strong>发送文本、卡片、reaction</strong>
+                    <span>让飞书应用能回复文字、展示按钮卡片，并对消息加上状态 reaction。</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section class="card">
+                <h2>3. 导入基础权限</h2>
+                <p>打开“权限管理”，进入“批量导入/导出权限”，把下面这份配置粘进去，然后点击“保存并申请开通”。</p>
+                <pre class="code-block">${basicScopesImport}</pre>
+                <div class="footer" style="margin-top: 16px;">
+                  ${button("复制权限配置", 'data-action="copy-basic-permissions"')}
+                </div>
+              </section>
+
+              <section class="card">
+                <h2>4. 保存事件与回调</h2>
+                <ul class="list">
+                  <li>
+                    <strong>事件订阅方式</strong>
+                    <span>选择“长连接”，然后开启 <code>im.message.receive_v1</code>、<code>im.message.recalled_v1</code>、<code>im.message.reaction.created_v1</code>、<code>application.bot.menu_v6</code>。</span>
+                  </li>
+                  <li>
+                    <strong>回调订阅方式</strong>
+                    <span>也选择“长连接”，并配置 <code>card.action.trigger</code>。</span>
+                  </li>
+                  <li>
+                    <strong>HTTP 回调地址</strong>
+                    <span>当前版本不需要额外填写。</span>
+                  </li>
+                </ul>
+              </section>
+            </div>
+
+            <section class="card">
+              <h2>这一步做完以后，你会得到什么</h2>
+              <ul class="list">
+                <li>
+                  <strong>现在就能开始对话</strong>
+                  <span>飞书应用可以正常收发文本和图片，也能把卡片按钮点起来。</span>
+                </li>
+                <li>
+                  <strong>增强项以后再补</strong>
+                  <span>单聊状态提醒和 Markdown 预览不影响你现在开始使用。</span>
+                </li>
+              </ul>
+            </section>
+
+            <div class="footer">
+              ${button("返回能力检查", 'data-go="setup/capability"')}
+              ${button("我已经处理好了，重新检查", 'data-action="setup-basic-ready"', true)}
             </div>
           `,
         });
@@ -1535,6 +1677,8 @@
             return renderSetupConnected();
           case "setup/capability":
             return renderSetupCapability();
+          case "setup/basic-guidance":
+            return renderSetupBasicGuidance();
           case "setup/autostart":
             return renderAutostart();
           case "setup/vscode":
@@ -1599,6 +1743,18 @@
             return;
           case "refresh-qr":
             showFlash("ok", "二维码已刷新。");
+            return;
+          case "open-feishu-console":
+            window.open("https://open.feishu.cn/app", "_blank", "noopener");
+            showFlash("ok", "已打开飞书后台。");
+            return;
+          case "copy-basic-permissions":
+            showFlash("ok", "基础权限配置已经准备好，可以粘贴到飞书后台。");
+            return;
+          case "setup-basic-ready":
+            state.setupBasicReady = true;
+            showFlash("ok", "已经重新检查基础对话与交互。");
+            go("setup/capability");
             return;
           case "autostart-enable":
             state.autostartDecision = "enabled";
