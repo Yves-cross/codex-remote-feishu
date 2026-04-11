@@ -498,6 +498,8 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - `turn.completed` 只负责在 surface 上记录 pending autowhip runtime
 - 真正 enqueue 发生在后续 `Tick()`
 - enqueue 前会再次检查 surface 是否仍可发送：attached、非 abandoning、无 request gate、`DispatchMode=normal`、无 live remote work
+- `incomplete_stop` 不会在 schedule 瞬间回显；真正开始补打时，会发一条短 `AutoWhip` 系统提示：`Codex疑似偷懒,已抽打 N次`
+- `retryable_failure` 会在记录 backoff 时立刻发一条短 `AutoWhip` 系统提示：`上游不稳定，第 N/M 次，Xs后重试`
 
 ### 5.6 待确认请求优先级
 

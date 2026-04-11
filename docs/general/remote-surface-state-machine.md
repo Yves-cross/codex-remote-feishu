@@ -234,6 +234,9 @@ surface 不是单一枚举，而是五层正交状态叠加。
 4. autowhip queue item 的 reply anchor 与 pending projection 当前已显式拆开：
    1. 最终回复仍挂回原用户消息
    2. queue / typing / reaction 不再回写到原用户消息
+5. autowhip 的系统提示当前分两类：
+   1. `retryable_failure` 在进入 `A2 Scheduled` 时立刻发一条 `AutoWhip` notice，提示第几次和多久后重试
+   2. `incomplete_stop` 不会在 schedule 瞬间发 notice，而是在真正从 `A2 Scheduled` 转成实际补打时发一条 `AutoWhip` notice：`Codex疑似偷懒,已抽打 N次`
 
 ## 4. 当前已实现的不变量
 
@@ -750,6 +753,7 @@ E3 Running
 9. 当前 backoff 固定为：
    1. `incomplete_stop`（文本未出现收工口令）: `3s -> 10s -> 30s`，最多 3 次
    2. `retryable_failure`: `10s -> 30s -> 90s -> 300s`，最多 4 次
+10. autowhip 当前不会伪造用户消息回显，也不会补 `THINKING` / `ThumbsUp` / `ThumbsDown` reaction；额外可见性只来自上面的 `AutoWhip` notice。
 
 ### 5.3 本地 VS Code 仲裁
 

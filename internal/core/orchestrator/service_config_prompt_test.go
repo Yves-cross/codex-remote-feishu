@@ -486,13 +486,20 @@ func TestAutoContinueSchedulesRetryableFailureBackoff(t *testing.T) {
 		t.Fatalf("expected first retryable-failure counters, got %#v", surface.AutoContinue)
 	}
 	var sawTurnFailedNotice bool
+	var sawRetryScheduledNotice bool
 	for _, event := range events {
 		if event.Notice != nil && event.Notice.Code == "turn_failed" {
 			sawTurnFailedNotice = true
 		}
+		if event.Notice != nil && event.Notice.Code == "auto_continue_retry_scheduled" {
+			sawRetryScheduledNotice = event.Notice.Title == "AutoWhip" && event.Notice.Text == "上游不稳定，第 1/4 次，10秒后重试"
+		}
 	}
 	if !sawTurnFailedNotice {
 		t.Fatalf("expected turn failure notice, got %#v", events)
+	}
+	if !sawRetryScheduledNotice {
+		t.Fatalf("expected retry schedule notice, got %#v", events)
 	}
 }
 
@@ -517,6 +524,7 @@ func TestAutoContinueDispatchSkipsPendingProjectionButKeepsReplyAnchor(t *testin
 		t.Fatalf("unexpected auto-continue queue item: %#v", autoItem)
 	}
 	var prompt *agentproto.Command
+	var sawWhipStartedNotice bool
 	for _, event := range tickEvents {
 		if event.PendingInput != nil {
 			t.Fatalf("expected auto-continue enqueue/dispatch to skip pending projection, got %#v", tickEvents)
@@ -524,9 +532,15 @@ func TestAutoContinueDispatchSkipsPendingProjectionButKeepsReplyAnchor(t *testin
 		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
 			prompt = event.Command
 		}
+		if event.Notice != nil && event.Notice.Code == "auto_continue_whip_started" {
+			sawWhipStartedNotice = event.Notice.Title == "AutoWhip" && event.Notice.Text == "Codex疑似偷懒,已抽打 1次"
+		}
 	}
 	if prompt == nil || len(prompt.Prompt.Inputs) != 1 || prompt.Prompt.Inputs[0].Text != autoContinuePromptText {
 		t.Fatalf("expected auto-continue prompt send, got %#v", tickEvents)
+	}
+	if !sawWhipStartedNotice {
+		t.Fatalf("expected whip start notice, got %#v", tickEvents)
 	}
 
 	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{

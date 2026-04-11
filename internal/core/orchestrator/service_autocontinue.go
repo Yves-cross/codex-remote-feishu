@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,6 +12,56 @@ import (
 
 const autoContinuePromptText = "你看还有没有别的任务需要完成，有就继续做，没有就说\"老板不要再打我了，真的没有事情干了\""
 const autoContinueStopPhrase = "老板不要再打我了，真的没有事情干了"
+
+func autoContinueNotice(surface *state.SurfaceConsoleRecord, code, title, text string) []control.UIEvent {
+	if surface == nil {
+		return nil
+	}
+	return []control.UIEvent{{
+		Kind:             control.UIEventNotice,
+		GatewayID:        surface.GatewayID,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Notice: &control.Notice{
+			Code:  code,
+			Title: title,
+			Text:  text,
+		},
+	}}
+}
+
+func formatAutoContinueDelay(value time.Duration) string {
+	if value <= 0 {
+		return "0秒"
+	}
+	totalSeconds := int(value.Round(time.Second) / time.Second)
+	if totalSeconds < 60 {
+		return fmt.Sprintf("%d秒", totalSeconds)
+	}
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	if seconds == 0 {
+		return fmt.Sprintf("%d分钟", minutes)
+	}
+	return fmt.Sprintf("%d分%d秒", minutes, seconds)
+}
+
+func autoContinueRetryScheduledNotice(surface *state.SurfaceConsoleRecord, count, max int, delay time.Duration) []control.UIEvent {
+	return autoContinueNotice(
+		surface,
+		"auto_continue_retry_scheduled",
+		"AutoWhip",
+		fmt.Sprintf("上游不稳定，第 %d/%d 次，%s后重试", count, max, formatAutoContinueDelay(delay)),
+	)
+}
+
+func autoContinueWhipStartedNotice(surface *state.SurfaceConsoleRecord, count int) []control.UIEvent {
+	return autoContinueNotice(
+		surface,
+		"auto_continue_whip_started",
+		"AutoWhip",
+		fmt.Sprintf("Codex疑似偷懒,已抽打 %d次", count),
+	)
+}
 
 func (s *Service) noteAutoContinueAction(surface *state.SurfaceConsoleRecord, action control.Action) {
 	if surface == nil {
@@ -133,6 +184,9 @@ func (s *Service) scheduleAutoContinue(surface *state.SurfaceConsoleRecord, item
 	if count == max {
 		// The final scheduled retry is still allowed; the next attempt will emit the stop notice.
 	}
+	if reason == state.AutoContinueReasonRetryableFailure {
+		return autoContinueRetryScheduledNotice(surface, count, max, delay)
+	}
 	return nil
 }
 
@@ -202,8 +256,14 @@ func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsole
 
 	replyToMessageID := surface.AutoContinue.PendingReplyToMessageID
 	replyToMessagePreview := surface.AutoContinue.PendingReplyToMessagePreview
+	reason := surface.AutoContinue.PendingReason
+	count := surface.AutoContinue.ConsecutiveCount
 	s.clearAutoContinuePending(surface)
-	return s.enqueueAutoContinueQueueItem(
+	events := make([]control.UIEvent, 0, 2)
+	if reason == state.AutoContinueReasonIncompleteStop {
+		events = append(events, autoContinueWhipStartedNotice(surface, count)...)
+	}
+	events = append(events, s.enqueueAutoContinueQueueItem(
 		surface,
 		replyToMessageID,
 		replyToMessagePreview,
@@ -213,5 +273,6 @@ func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsole
 		routeMode,
 		surface.PromptOverride,
 		false,
-	)
+	)...)
+	return events
 }
