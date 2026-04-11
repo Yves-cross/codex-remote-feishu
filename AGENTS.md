@@ -252,6 +252,16 @@ When a change is intentionally committed during task work:
   - only then does it push
 - If rebase conflicts or tests fail, stop and handle that manually; do not try to script conflict resolution into the helper.
 
+## File Length Gate Rule
+
+For repository file-length enforcement:
+
+- `bash scripts/check/go-file-length.sh` is a mandatory repository gate, not an advisory reminder.
+- Do not bypass this gate with `git commit --no-verify`, by disabling hooks, or by treating an unrelated oversized file as acceptable background debt.
+- If a commit is blocked by an existing oversized file, the default next step is to split or otherwise reduce the offending file until the check passes.
+- If fixing one oversized file reveals another existing oversized file, continue resolving the newly exposed blocker instead of bypassing the gate.
+- Do not leave the repository in a state where future commits still require skipping the file-length check.
+
 ## Proxy Environment
 
 This repository is often developed on hosts where `http_proxy` / `https_proxy` are set globally.
