@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 )
 
@@ -41,6 +42,50 @@ func TestEnsureReleaseBinaryDownloadsAndExtractsPackage(t *testing.T) {
 	}
 	if got, want := binaryPath, filepath.Join(versionsRoot, version, executableName(goos)); got != want {
 		t.Fatalf("binary path = %q, want %q", got, want)
+	}
+	raw, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatalf("ReadFile binary: %v", err)
+	}
+	if string(raw) != "release-binary" {
+		t.Fatalf("binary contents = %q", string(raw))
+	}
+}
+
+func TestEnsureReleaseBinaryFallsBackWhenRenameHitsCrossDeviceLink(t *testing.T) {
+	version := "v1.2.3"
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+	assetName := releaseAssetName(version, goos, goarch)
+	packageDir := releasePackageDir(version, goos, goarch)
+	archivePath := filepath.Join(t.TempDir(), assetName)
+	writeReleaseArchive(t, archivePath, packageDir, executableName(goos), "release-binary")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if filepath.Base(r.URL.Path) != assetName {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, archivePath)
+	}))
+	defer server.Close()
+
+	originalRename := releaseBinaryRename
+	releaseBinaryRename = func(oldPath, newPath string) error {
+		return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: syscall.EXDEV}
+	}
+	t.Cleanup(func() {
+		releaseBinaryRename = originalRename
+	})
+
+	versionsRoot := filepath.Join(t.TempDir(), "releases")
+	binaryPath, err := EnsureReleaseBinary(context.Background(), ReleaseBinaryOptions{
+		BaseURL:      server.URL,
+		Version:      version,
+		VersionsRoot: versionsRoot,
+	})
+	if err != nil {
+		t.Fatalf("EnsureReleaseBinary: %v", err)
 	}
 	raw, err := os.ReadFile(binaryPath)
 	if err != nil {

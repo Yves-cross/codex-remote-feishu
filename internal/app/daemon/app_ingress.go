@@ -532,7 +532,6 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	}
 	uiEvents := a.service.Tick(now)
 	uiEvents = append(uiEvents, a.maybeFlushUpgradeResultLocked(now)...)
-	uiEvents = append(uiEvents, a.maybePromptPendingUpgradeLocked(now)...)
 	a.recordHeadlessRestoreOutcomeEventsLocked(uiEvents, now)
 	a.handleUIEvents(ctx, uiEvents)
 	a.syncManagedHeadlessLocked(now)
@@ -540,7 +539,6 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.reapIdleHeadless(now)
 	a.syncManagedHeadlessLocked(now)
 	a.ensureMinIdleManagedHeadlessLocked(now)
-	a.maybeStartAutoUpgradeCheckLocked(now)
 	vscodeBlocked := false
 	if a.vscodeStartupCheckDue || a.vscodeCompatibility.Checked {
 		a.vscodeStartupCheckDue = false

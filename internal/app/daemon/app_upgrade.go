@@ -328,7 +328,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
 			log.Printf("upgrade check write state failed: %v", err)
 		}
-		return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_candidate_pending", fmt.Sprintf("发现新版本 %s，但当前窗口不空闲，已记录候选升级，待空闲 surface 再提示。", latestVersion))}
+		return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_candidate_pending", fmt.Sprintf("发现新版本 %s，但当前窗口不空闲，已记录候选升级。等当前窗口空闲后，再次发送 /upgrade latest 继续升级。", latestVersion))}
 	}
 
 	events := a.promptPendingUpgradeOnBestSurfaceLocked(stateValue, completedAt)
@@ -619,11 +619,7 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 	} else {
 		summaryLines = append(summaryLines, "待处理升级：无")
 	}
-	if checkInFlight {
-		summaryLines = append(summaryLines, "后台检查：进行中")
-	} else {
-		summaryLines = append(summaryLines, "后台检查：空闲")
-	}
+	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
 	currentTrack := strings.TrimSpace(string(stateValue.CurrentTrack))
 	return &control.CommandCatalog{
 		Title:        "Debug / Upgrade",
@@ -680,11 +676,7 @@ func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bo
 	} else {
 		summaryLines = append(summaryLines, "待处理升级：无")
 	}
-	if checkInFlight {
-		summaryLines = append(summaryLines, "后台检查：进行中")
-	} else {
-		summaryLines = append(summaryLines, "后台检查：空闲")
-	}
+	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
 	return &control.CommandCatalog{
 		Title:        "Upgrade",
 		Summary:      strings.Join(summaryLines, "\n"),
@@ -790,6 +782,13 @@ func formatOptionalTime(value *time.Time) string {
 		return "从未检查"
 	}
 	return value.UTC().Format(time.RFC3339)
+}
+
+func upgradeCheckSummaryLine(checkInFlight bool) string {
+	if checkInFlight {
+		return "升级检查：进行中"
+	}
+	return "升级检查：仅手动触发"
 }
 
 func pendingUpgradeBusy(pending *install.PendingUpgrade) bool {

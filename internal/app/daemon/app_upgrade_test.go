@@ -101,7 +101,7 @@ func TestDebugTrackSwitchPersistsAndClearsCandidate(t *testing.T) {
 	}
 }
 
-func TestAutoUpgradeCheckPromptsMostRecentIdleSurface(t *testing.T) {
+func TestTickDoesNotAutoCheckOrPromptUpgrade(t *testing.T) {
 	gateway := newLifecycleGateway()
 	app, statePath := newUpgradeTestApp(t, gateway)
 	app.upgradeStartupDelay = 0
@@ -125,24 +125,17 @@ func TestAutoUpgradeCheckPromptsMostRecentIdleSurface(t *testing.T) {
 
 	app.onTick(context.Background(), time.Now().UTC())
 
-	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
-		for _, op := range ops {
-			if op.CardTitle == "发现可升级版本" && op.SurfaceSessionID == "feishu:chat:2" {
-				return true
-			}
-		}
-		return false
-	})
-
 	updated, err := install.LoadState(statePath)
 	if err != nil {
 		t.Fatalf("LoadState updated: %v", err)
 	}
-	if updated.PendingUpgrade == nil {
-		t.Fatal("expected pending upgrade after auto check")
+	if updated.PendingUpgrade != nil {
+		t.Fatalf("expected no pending upgrade from tick-only path, got %#v", updated.PendingUpgrade)
 	}
-	if updated.PendingUpgrade.SurfaceSessionID != "feishu:chat:2" {
-		t.Fatalf("pending prompt surface = %q, want feishu:chat:2", updated.PendingUpgrade.SurfaceSessionID)
+	for _, op := range gateway.snapshotOperations() {
+		if op.CardTitle == "发现可升级版本" {
+			t.Fatalf("expected no automatic upgrade prompt, got %#v", op)
+		}
 	}
 }
 
@@ -185,6 +178,60 @@ func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
 	}
 	if updated.PendingUpgrade != nil {
 		t.Fatalf("expected pending upgrade result to be cleared, got %#v", updated.PendingUpgrade)
+	}
+}
+
+func TestFinishUpgradeStartFailureClearsPendingUpgrade(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, statePath := newUpgradeTestApp(t, gateway)
+
+	stateValue, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	stateValue.PendingUpgrade = &install.PendingUpgrade{
+		Phase:            install.PendingUpgradePhasePrompted,
+		Source:           install.UpgradeSourceRelease,
+		TargetTrack:      install.ReleaseTrackProduction,
+		TargetVersion:    "v1.1.0",
+		TargetSlot:       "v1.1.0",
+		GatewayID:        "main",
+		SurfaceSessionID: "feishu:chat:3",
+		ChatID:           "chat-3",
+		ActorUserID:      "user-3",
+	}
+	if err := install.WriteState(statePath, stateValue); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	app.service.MaterializeSurface("feishu:chat:3", "main", "chat-3", "user-3")
+
+	app.finishUpgradeStartFailure(upgradeStartRequest{
+		GatewayID:        "main",
+		SurfaceSessionID: "feishu:chat:3",
+	}, context.DeadlineExceeded)
+
+	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
+		for _, op := range ops {
+			if op.CardTitle == "Upgrade" && op.SurfaceSessionID == "feishu:chat:3" {
+				return true
+			}
+		}
+		return false
+	})
+
+	updated, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState updated: %v", err)
+	}
+	if updated.PendingUpgrade != nil {
+		t.Fatalf("expected failed upgrade candidate to be cleared, got %#v", updated.PendingUpgrade)
+	}
+
+	beforeTickOps := len(gateway.snapshotOperations())
+	app.onTick(context.Background(), time.Now().UTC())
+	afterTickOps := len(gateway.snapshotOperations())
+	if afterTickOps != beforeTickOps {
+		t.Fatalf("expected no extra upgrade result notice after tick, before=%d after=%d", beforeTickOps, afterTickOps)
 	}
 }
 
@@ -242,6 +289,9 @@ func TestBuildDebugStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
 	if got := catalog.Sections[0].Entries[0].Buttons[1].CommandText; got != "/debug admin" {
 		t.Fatalf("expected debug catalog to expose admin link button, got %#v", catalog.Sections[0].Entries[0].Buttons)
 	}
+	if !strings.Contains(catalog.Summary, "升级检查：仅手动触发") {
+		t.Fatalf("expected debug catalog summary to reflect manual-only checks, got %#v", catalog.Summary)
+	}
 }
 
 func TestBuildUpgradeStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
@@ -261,6 +311,9 @@ func TestBuildUpgradeStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
 	}
 	if !strings.Contains(catalog.Summary, "本地升级产物：") {
 		t.Fatalf("expected upgrade summary to keep artifact path, got %#v", catalog.Summary)
+	}
+	if !strings.Contains(catalog.Summary, "升级检查：仅手动触发") {
+		t.Fatalf("expected upgrade catalog summary to reflect manual-only checks, got %#v", catalog.Summary)
 	}
 }
 

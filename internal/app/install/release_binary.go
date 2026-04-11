@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -21,6 +23,8 @@ type ReleaseBinaryOptions struct {
 	VersionsRoot string
 	Client       *http.Client
 }
+
+var releaseBinaryRename = os.Rename
 
 func EnsureReleaseBinary(ctx context.Context, opts ReleaseBinaryOptions) (string, error) {
 	version := strings.TrimSpace(opts.Version)
@@ -72,7 +76,7 @@ func EnsureReleaseBinary(ctx context.Context, opts ReleaseBinaryOptions) (string
 	if err := os.RemoveAll(targetDir); err != nil {
 		return "", err
 	}
-	if err := os.Rename(packageDir, targetDir); err != nil {
+	if err := moveReleasePackageDir(packageDir, targetDir); err != nil {
 		return "", err
 	}
 	return targetBinary, nil
@@ -182,4 +186,56 @@ func extractTarGz(archivePath, targetDir string) error {
 			}
 		}
 	}
+}
+
+func moveReleasePackageDir(sourceDir, targetDir string) error {
+	if err := releaseBinaryRename(sourceDir, targetDir); err == nil {
+		return nil
+	} else if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	return copyReleasePackageDir(sourceDir, targetDir)
+}
+
+func copyReleasePackageDir(sourceDir, targetDir string) error {
+	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+		destPath := targetDir
+		if rel != "." {
+			destPath = filepath.Join(targetDir, rel)
+		}
+		if info.IsDir() {
+			return os.MkdirAll(destPath, info.Mode().Perm())
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported package entry %s", path)
+		}
+		return copyReleaseFile(path, destPath, info.Mode().Perm())
+	})
+}
+
+func copyReleaseFile(sourcePath, targetPath string, mode os.FileMode) error {
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+		return err
+	}
+	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	defer targetFile.Close()
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
+		return err
+	}
+	return targetFile.Chmod(mode)
 }

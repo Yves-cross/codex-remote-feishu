@@ -126,8 +126,8 @@ func (a *App) finishUpgradeStartFailure(request upgradeStartRequest, err error) 
 	a.upgradeStartInFlight = false
 
 	stateValue, ok, loadErr := a.loadUpgradeStateLocked(true)
-	if loadErr == nil && ok && stateValue.PendingUpgrade != nil && pendingUpgradeCandidate(stateValue.PendingUpgrade) {
-		stateValue.PendingUpgrade.Phase = install.PendingUpgradePhasePrompted
+	if loadErr == nil && ok && stateValue.PendingUpgrade != nil {
+		stateValue.PendingUpgrade = nil
 		_ = a.writeUpgradeStateLocked(stateValue)
 	}
 	if request.SurfaceSessionID != "" {
