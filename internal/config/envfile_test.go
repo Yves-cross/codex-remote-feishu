@@ -12,60 +12,22 @@ func unsetUnifiedConfigOverride(t *testing.T) {
 	t.Setenv(UnifiedConfigEnvPath, "")
 }
 
-func TestLoadWrapperConfigMigratesLegacyUnifiedEnvToJSON(t *testing.T) {
+func TestLoadWrapperConfigRejectsLegacyEnvFiles(t *testing.T) {
 	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
 
 	legacyPath := filepath.Join(xdgHome, "codex-remote", "config.env")
-	if err := WriteEnvFile(legacyPath, map[string]string{
-		"RELAY_SERVER_URL":               "ws://127.0.0.1:9600/ws/agent",
-		"CODEX_REAL_BINARY":              "/opt/codex",
-		"CODEX_REMOTE_WRAPPER_NAME_MODE": "workspace_basename",
-		DebugRelayFlowEnv:                "true",
-		DebugRelayRawEnv:                 "true",
-	}); err != nil {
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	if err := os.WriteFile(legacyPath, []byte("RELAY_SERVER_URL=ws://127.0.0.1:9600/ws/agent\n"), 0o600); err != nil {
 		t.Fatalf("write legacy env: %v", err)
 	}
 
-	cfg, err := LoadWrapperConfig()
-	if err != nil {
-		t.Fatalf("LoadWrapperConfig: %v", err)
-	}
-
-	configPath := filepath.Join(xdgHome, "codex-remote", "config.json")
-	if cfg.ConfigPath != configPath {
-		t.Fatalf("ConfigPath = %q, want %q", cfg.ConfigPath, configPath)
-	}
-	if cfg.RelayServerURL != "ws://127.0.0.1:9600/ws/agent" {
-		t.Fatalf("RelayServerURL = %q", cfg.RelayServerURL)
-	}
-	if cfg.CodexRealBinary != "/opt/codex" {
-		t.Fatalf("CodexRealBinary = %q", cfg.CodexRealBinary)
-	}
-	if !cfg.DebugRelayFlow {
-		t.Fatal("expected DebugRelayFlow to be true")
-	}
-	if !cfg.DebugRelayRaw {
-		t.Fatal("expected DebugRelayRaw to be true")
-	}
-
-	raw, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("read config.json: %v", err)
-	}
-	if !strings.Contains(string(raw), "\"serverURL\": \"ws://127.0.0.1:9600/ws/agent\"") {
-		t.Fatalf("unexpected migrated config: %s", raw)
-	}
-	if !strings.Contains(string(raw), "\"previewRootFolderName\": \"Codex Remote Previews\"") {
-		t.Fatalf("expected preview root folder default in migrated config: %s", raw)
-	}
-	backups, err := filepath.Glob(legacyPath + ".migrated-*.bak")
-	if err != nil {
-		t.Fatalf("glob backups: %v", err)
-	}
-	if len(backups) != 1 {
-		t.Fatalf("expected one migrated backup, got %v", backups)
+	_, err := LoadWrapperConfig()
+	if err == nil || !strings.Contains(err.Error(), "legacy env config files are no longer supported") {
+		t.Fatalf("expected legacy env config rejection, got %v", err)
 	}
 }
 
@@ -175,18 +137,10 @@ func TestLoadersPreferJSONOverLegacySplitFiles(t *testing.T) {
 	if err := WriteAppConfig(configPath, cfg); err != nil {
 		t.Fatalf("write config.json: %v", err)
 	}
-	if err := WriteEnvFile(filepath.Join(xdgHome, "codex-remote", "wrapper.env"), map[string]string{
-		"RELAY_SERVER_URL":  "ws://127.0.0.1:9810/ws/agent",
-		"CODEX_REAL_BINARY": "/legacy/codex",
-	}); err != nil {
+	if err := os.WriteFile(filepath.Join(xdgHome, "codex-remote", "wrapper.env"), []byte("RELAY_SERVER_URL=ws://127.0.0.1:9810/ws/agent\nCODEX_REAL_BINARY=/legacy/codex\n"), 0o600); err != nil {
 		t.Fatalf("write wrapper.env: %v", err)
 	}
-	if err := WriteEnvFile(filepath.Join(xdgHome, "codex-remote", "services.env"), map[string]string{
-		"RELAY_PORT":        "9810",
-		"RELAY_API_PORT":    "9811",
-		"FEISHU_APP_ID":     "cli_legacy",
-		"FEISHU_APP_SECRET": "secret_legacy",
-	}); err != nil {
+	if err := os.WriteFile(filepath.Join(xdgHome, "codex-remote", "services.env"), []byte("RELAY_PORT=9810\nRELAY_API_PORT=9811\nFEISHU_APP_ID=cli_legacy\nFEISHU_APP_SECRET=secret_legacy\n"), 0o600); err != nil {
 		t.Fatalf("write services.env: %v", err)
 	}
 
@@ -213,71 +167,44 @@ func TestLoadersPreferJSONOverLegacySplitFiles(t *testing.T) {
 	}
 }
 
-func TestLoadersMigrateLegacySplitFilesAndUpdateInstallState(t *testing.T) {
+func TestLoadAppConfigAtPathRejectsLegacyEnvPath(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
+	path := filepath.Join(t.TempDir(), "wrapper.env")
+	if err := os.WriteFile(path, []byte("RELAY_SERVER_URL=ws://127.0.0.1:9900/ws/agent\n"), 0o600); err != nil {
+		t.Fatalf("write wrapper env: %v", err)
+	}
+
+	_, err := LoadAppConfigAtPath(path)
+	if err == nil || !strings.Contains(err.Error(), "legacy env config file") {
+		t.Fatalf("expected legacy env path rejection, got %v", err)
+	}
+}
+
+func TestLoadersRejectLegacySplitFilesWhenJSONMissing(t *testing.T) {
 	unsetUnifiedConfigOverride(t)
 	baseDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(baseDir, ".config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(baseDir, ".local", "share"))
 
 	configDir := filepath.Join(baseDir, ".config", "codex-remote")
 	wrapperPath := filepath.Join(configDir, "wrapper.env")
 	servicesPath := filepath.Join(configDir, "services.env")
-	if err := WriteEnvFile(wrapperPath, map[string]string{
-		"RELAY_SERVER_URL":  "ws://127.0.0.1:9900/ws/agent",
-		"CODEX_REAL_BINARY": "/legacy/codex",
-	}); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	if err := os.WriteFile(wrapperPath, []byte("RELAY_SERVER_URL=ws://127.0.0.1:9900/ws/agent\nCODEX_REAL_BINARY=/legacy/codex\n"), 0o600); err != nil {
 		t.Fatalf("write wrapper env: %v", err)
 	}
-	if err := WriteEnvFile(servicesPath, map[string]string{
-		"RELAY_PORT":        "9900",
-		"RELAY_API_PORT":    "9901",
-		"FEISHU_APP_ID":     "cli_legacy",
-		"FEISHU_APP_SECRET": "secret_legacy",
-	}); err != nil {
+	if err := os.WriteFile(servicesPath, []byte("RELAY_PORT=9900\nRELAY_API_PORT=9901\nFEISHU_APP_ID=cli_legacy\nFEISHU_APP_SECRET=secret_legacy\n"), 0o600); err != nil {
 		t.Fatalf("write services env: %v", err)
 	}
 
-	statePath := filepath.Join(baseDir, ".local", "share", "codex-remote", "install-state.json")
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
-		t.Fatalf("mkdir install state dir: %v", err)
+	_, err := LoadServicesConfig()
+	if err == nil || !strings.Contains(err.Error(), "legacy env config files are no longer supported") {
+		t.Fatalf("expected legacy split file rejection, got %v", err)
 	}
-	stateRaw := `{"configPath":"` + filepath.Join(configDir, "config.env") + `","wrapperConfigPath":"` + wrapperPath + `","servicesConfigPath":"` + servicesPath + `"}`
-	if err := os.WriteFile(statePath, []byte(stateRaw), 0o644); err != nil {
-		t.Fatalf("write install-state.json: %v", err)
-	}
-
-	wrapperCfg, err := LoadWrapperConfig()
-	if err != nil {
-		t.Fatalf("LoadWrapperConfig: %v", err)
-	}
-	servicesCfg, err := LoadServicesConfig()
-	if err != nil {
-		t.Fatalf("LoadServicesConfig: %v", err)
-	}
-
-	configPath := filepath.Join(configDir, "config.json")
-	if wrapperCfg.ConfigPath != configPath || servicesCfg.ConfigPath != configPath {
-		t.Fatalf("unexpected config paths: wrapper=%q services=%q want=%q", wrapperCfg.ConfigPath, servicesCfg.ConfigPath, configPath)
-	}
-	if servicesCfg.FeishuAppID != "cli_legacy" || servicesCfg.FeishuAppSecret != "secret_legacy" {
-		t.Fatalf("unexpected migrated feishu values: %q/%q", servicesCfg.FeishuAppID, servicesCfg.FeishuAppSecret)
-	}
-
-	updatedState, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read install-state.json: %v", err)
-	}
-	if strings.Count(string(updatedState), configPath) != 3 {
-		t.Fatalf("expected all state paths updated to %q, got %s", configPath, updatedState)
-	}
-
 	for _, legacyPath := range []string{wrapperPath, servicesPath} {
-		backups, err := filepath.Glob(legacyPath + ".migrated-*.bak")
-		if err != nil {
-			t.Fatalf("glob backups for %s: %v", legacyPath, err)
-		}
-		if len(backups) != 1 {
-			t.Fatalf("expected one backup for %s, got %v", legacyPath, backups)
+		if !strings.Contains(err.Error(), legacyPath) {
+			t.Fatalf("expected error to mention %s, got %v", legacyPath, err)
 		}
 	}
 }

@@ -94,11 +94,8 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	integrations = normalizeIntegrations(integrations)
 
 	configPath := filepath.Join(configDir, "config.json")
-	legacyConfigPath := filepath.Join(configDir, "config.env")
-	legacyWrapperConfigPath := filepath.Join(configDir, "wrapper.env")
-	legacyServicesConfigPath := filepath.Join(configDir, "services.env")
 	statePath := layout.StatePath
-	existing, err := config.LoadAppConfigAtPath(configPath, legacyConfigPath, legacyWrapperConfigPath, legacyServicesConfigPath)
+	existing, err := config.LoadAppConfigAtPath(configPath)
 	if err != nil {
 		return InstallState{}, err
 	}

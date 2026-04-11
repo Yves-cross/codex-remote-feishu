@@ -215,9 +215,18 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatalf("mkdir config dir: %v", err)
 	}
-	servicesPath := filepath.Join(configDir, "services.env")
-	if err := os.WriteFile(servicesPath, []byte("RELAY_PORT=9500\nRELAY_API_PORT=9501\nFEISHU_APP_ID=cli_existing\nFEISHU_APP_SECRET=secret_existing\nFEISHU_USE_SYSTEM_PROXY=false\n"), 0o600); err != nil {
-		t.Fatalf("seed services env: %v", err)
+	configPath := filepath.Join(configDir, "config.json")
+	cfg := config.DefaultAppConfig()
+	enabled := true
+	cfg.Feishu.Apps = []config.FeishuAppConfig{{
+		ID:        "main",
+		Name:      "Main",
+		AppID:     "cli_existing",
+		AppSecret: "secret_existing",
+		Enabled:   &enabled,
+	}}
+	if err := config.WriteAppConfig(configPath, cfg); err != nil {
+		t.Fatalf("seed config.json: %v", err)
 	}
 
 	service := NewService()
@@ -233,15 +242,14 @@ func TestBootstrapPreservesExistingFeishuSecretsWhenFlagsAreEmpty(t *testing.T) 
 		t.Fatalf("bootstrap: %v", err)
 	}
 
-	cfg := loadAppConfigForTest(t, state.ConfigPath)
-	app := config.SelectRuntimeFeishuApp(cfg.Feishu.Apps)
+	loadedCfg := loadAppConfigForTest(t, state.ConfigPath)
+	app := config.SelectRuntimeFeishuApp(loadedCfg.Feishu.Apps)
 	if app.AppID != "cli_existing" {
 		t.Fatalf("expected app id to be preserved, got %#v", app)
 	}
 	if app.AppSecret != "secret_existing" {
 		t.Fatalf("expected app secret to be preserved, got %#v", app)
 	}
-	assertMigratedBackupExists(t, servicesPath)
 }
 
 func TestBootstrapPreservesExistingDebugRelayFlowFlag(t *testing.T) {
@@ -384,7 +392,7 @@ func TestBootstrapRejectsMismatchedDeprecatedBinaryFlags(t *testing.T) {
 	}
 }
 
-func TestBootstrapMergesLegacySplitConfigFiles(t *testing.T) {
+func TestBootstrapRejectsLegacySplitConfigFiles(t *testing.T) {
 	baseDir := t.TempDir()
 	configDir := filepath.Join(baseDir, ".config", "codex-remote")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
@@ -408,17 +416,9 @@ func TestBootstrapMergesLegacySplitConfigFiles(t *testing.T) {
 		CodexRealBinary: "/usr/local/bin/codex",
 		Integrations:    []WrapperIntegrationMode{IntegrationEditorSettings},
 	})
-	if err != nil {
-		t.Fatalf("bootstrap: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "legacy env config files are no longer supported") {
+		t.Fatalf("expected legacy split config rejection, got state=%#v err=%v", state, err)
 	}
-
-	cfg := loadAppConfigForTest(t, state.ConfigPath)
-	app := config.SelectRuntimeFeishuApp(cfg.Feishu.Apps)
-	if app.AppID != "cli_old" || app.AppSecret != "secret_old" {
-		t.Fatalf("expected legacy services values in unified config, got %#v", app)
-	}
-	assertMigratedBackupExists(t, wrapperPath)
-	assertMigratedBackupExists(t, servicesPath)
 }
 
 func seedBinary(t *testing.T, path, content string) string {
@@ -439,17 +439,6 @@ func loadAppConfigForTest(t *testing.T, path string) config.AppConfig {
 		t.Fatalf("LoadAppConfigAtPath(%s): %v", path, err)
 	}
 	return loaded.Config
-}
-
-func assertMigratedBackupExists(t *testing.T, legacyPath string) {
-	t.Helper()
-	backups, err := filepath.Glob(legacyPath + ".migrated-*.bak")
-	if err != nil {
-		t.Fatalf("glob backups for %s: %v", legacyPath, err)
-	}
-	if len(backups) != 1 {
-		t.Fatalf("expected one migrated backup for %s, got %v", legacyPath, backups)
-	}
 }
 
 func TestBootstrapPreservesReleaseInstallMetadata(t *testing.T) {

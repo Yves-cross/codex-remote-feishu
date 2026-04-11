@@ -1,8 +1,6 @@
 package config
 
 import (
-	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -43,73 +41,6 @@ const (
 	TryCloudflareBinaryEnv        = "CODEX_REMOTE_TRYCLOUDFLARE_BINARY"
 	TryCloudflareLaunchTimeoutEnv = "CODEX_REMOTE_TRYCLOUDFLARE_LAUNCH_TIMEOUT"
 )
-
-func LoadEnvFile(path string) (map[string]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	values := map[string]string{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			return nil, fmt.Errorf("invalid env line: %q", line)
-		}
-		values[strings.TrimSpace(key)] = strings.TrimSpace(value)
-	}
-	return values, scanner.Err()
-}
-
-func WriteEnvFile(path string, values map[string]string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	builder := strings.Builder{}
-	keys := []string{
-		"RELAY_SERVER_URL",
-		"RELAY_HOST",
-		"CODEX_REAL_BINARY",
-		"CODEX_REMOTE_WRAPPER_NAME_MODE",
-		"CODEX_REMOTE_WRAPPER_INTEGRATION_MODE",
-		"RELAY_PORT",
-		"RELAY_API_HOST",
-		"RELAY_API_PORT",
-		"FEISHU_APP_ID",
-		"FEISHU_APP_SECRET",
-		"FEISHU_USE_SYSTEM_PROXY",
-		DebugRelayFlowEnv,
-		DebugRelayRawEnv,
-	}
-	written := map[string]bool{}
-	for _, key := range keys {
-		value, ok := values[key]
-		if !ok {
-			continue
-		}
-		builder.WriteString(key)
-		builder.WriteString("=")
-		builder.WriteString(value)
-		builder.WriteString("\n")
-		written[key] = true
-	}
-	for key, value := range values {
-		if written[key] {
-			continue
-		}
-		builder.WriteString(key)
-		builder.WriteString("=")
-		builder.WriteString(value)
-		builder.WriteString("\n")
-	}
-	return os.WriteFile(path, []byte(builder.String()), 0o600)
-}
 
 func LoadWrapperConfig() (WrapperConfig, error) {
 	loaded, err := LoadAppConfig()

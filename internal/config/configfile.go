@@ -177,16 +177,12 @@ func DefaultAppConfig() AppConfig {
 }
 
 func LoadAppConfig() (LoadedAppConfig, error) {
-	targetPath := DefaultConfigPath()
-	return loadAppConfig(targetPath, defaultLegacyCandidates(targetPath))
+	return LoadAppConfigAtPath(DefaultConfigPath())
 }
 
-func LoadAppConfigAtPath(targetPath string, legacyCandidates ...string) (LoadedAppConfig, error) {
+func LoadAppConfigAtPath(targetPath string) (LoadedAppConfig, error) {
 	targetPath = chooseNonEmpty(targetPath, xdgConfigPath("codex-remote", "config.json"))
-	if len(legacyCandidates) == 0 {
-		legacyCandidates = defaultLegacyCandidates(targetPath)
-	}
-	return loadAppConfig(targetPath, legacyCandidates)
+	return loadAppConfig(targetPath)
 }
 
 func WriteAppConfig(path string, cfg AppConfig) error {
@@ -235,278 +231,64 @@ func SelectRuntimeFeishuApp(apps []FeishuAppConfig) FeishuAppConfig {
 	return FeishuAppConfig{}
 }
 
-func loadAppConfig(targetPath string, legacyCandidates []string) (LoadedAppConfig, error) {
+func loadAppConfig(targetPath string) (LoadedAppConfig, error) {
 	targetPath = strings.TrimSpace(targetPath)
 	if targetPath == "" {
 		return LoadedAppConfig{}, fmt.Errorf("config path is required")
 	}
+	if isLegacyConfigFilename(filepath.Base(targetPath)) {
+		return LoadedAppConfig{}, unsupportedLegacyConfigPathError(targetPath)
+	}
 
 	if fileExists(targetPath) {
-		cfg, kind, err := readConfigFile(targetPath)
+		cfg, err := readConfigFile(targetPath)
 		if err != nil {
 			return LoadedAppConfig{}, err
 		}
-		if kind == configFileJSON {
-			return LoadedAppConfig{Path: targetPath, Config: cfg}, nil
-		}
-		return migrateLegacyConfig(targetPath, cfg, []string{targetPath})
+		return LoadedAppConfig{Path: targetPath, Config: cfg}, nil
 	}
-
-	legacyValues, usedPaths, err := loadLegacyConfigValues(legacyCandidates)
-	if err != nil {
-		return LoadedAppConfig{}, err
+	if legacyPaths := detectLegacyConfigFiles(filepath.Dir(targetPath)); len(legacyPaths) > 0 {
+		return LoadedAppConfig{}, unsupportedLegacyConfigFilesError(legacyPaths)
 	}
-	if len(usedPaths) == 0 {
-		return LoadedAppConfig{Path: targetPath, Config: DefaultAppConfig()}, nil
-	}
-	cfg := legacyValuesToAppConfig(legacyValues)
-	return migrateLegacyConfig(targetPath, cfg, usedPaths)
+	return LoadedAppConfig{Path: targetPath, Config: DefaultAppConfig()}, nil
 }
 
-type configFileKind int
-
-const (
-	configFileUnknown configFileKind = iota
-	configFileJSON
-	configFileLegacyEnv
-)
-
-func readConfigFile(path string) (AppConfig, configFileKind, error) {
+func readConfigFile(path string) (AppConfig, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return AppConfig{}, configFileUnknown, err
+		return AppConfig{}, err
 	}
 	var cfg AppConfig
-	jsonErr := json.Unmarshal(raw, &cfg)
-	if jsonErr == nil {
-		return cfg.normalized(), configFileJSON, nil
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		if isLegacyConfigFilename(filepath.Base(path)) {
+			return AppConfig{}, unsupportedLegacyConfigPathError(path)
+		}
+		return AppConfig{}, fmt.Errorf("parse json config %s: %w", path, err)
 	}
-	trimmed := strings.TrimSpace(string(raw))
-	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		return AppConfig{}, configFileJSON, fmt.Errorf("parse json config %s: %w", path, jsonErr)
-	}
-	values, err := LoadEnvFile(path)
-	if err != nil {
-		return AppConfig{}, configFileLegacyEnv, err
-	}
-	return legacyValuesToAppConfig(values), configFileLegacyEnv, nil
+	return cfg.normalized(), nil
 }
 
-func defaultLegacyCandidates(targetPath string) []string {
-	candidates := []string{targetPath}
-	if dir := filepath.Dir(strings.TrimSpace(targetPath)); dir != "" && dir != "." {
-		candidates = append(candidates,
-			filepath.Join(dir, "config.env"),
-			filepath.Join(dir, "wrapper.env"),
-			filepath.Join(dir, "services.env"),
-		)
+func detectLegacyConfigFiles(dir string) []string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" || dir == "." {
+		return nil
 	}
-	candidates = append(candidates,
-		os.Getenv("CODEX_REMOTE_WRAPPER_CONFIG"),
-		os.Getenv("CODEX_REMOTE_SERVICES_CONFIG"),
-		xdgConfigPath("codex-remote", "config.env"),
-		xdgConfigPath("codex-remote", "wrapper.env"),
-		xdgConfigPath("codex-remote", "services.env"),
-	)
-	return dedupePaths(candidates)
+	candidates := []string{
+		filepath.Join(dir, "config.env"),
+		filepath.Join(dir, "wrapper.env"),
+		filepath.Join(dir, "services.env"),
+	}
+	found := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if fileExists(candidate) {
+			found = append(found, candidate)
+		}
+	}
+	return found
 }
 
-func loadLegacyConfigValues(candidates []string) (map[string]string, []string, error) {
-	merged := map[string]string{}
-	used := []string{}
-	for _, candidate := range dedupePaths(candidates) {
-		if !fileExists(candidate) {
-			continue
-		}
-		values, err := LoadEnvFile(candidate)
-		if err != nil {
-			return nil, nil, fmt.Errorf("load legacy env %s: %w", candidate, err)
-		}
-		used = append(used, candidate)
-		for key, value := range values {
-			if _, exists := merged[key]; exists {
-				continue
-			}
-			merged[key] = value
-		}
-	}
-	return merged, used, nil
-}
-
-func legacyValuesToAppConfig(values map[string]string) AppConfig {
-	cfg := DefaultAppConfig()
-
-	if value := strings.TrimSpace(values["RELAY_SERVER_URL"]); value != "" {
-		cfg.Relay.ServerURL = value
-	}
-	if value := strings.TrimSpace(values["RELAY_HOST"]); value != "" {
-		cfg.Relay.ListenHost = value
-	}
-	cfg.Relay.ListenPort = chooseInt(values["RELAY_PORT"], cfg.Relay.ListenPort)
-
-	if value := strings.TrimSpace(values["RELAY_API_HOST"]); value != "" {
-		cfg.Admin.ListenHost = value
-	}
-	cfg.Admin.ListenPort = chooseInt(values["RELAY_API_PORT"], cfg.Admin.ListenPort)
-
-	if value := strings.TrimSpace(values["CODEX_REAL_BINARY"]); value != "" {
-		cfg.Wrapper.CodexRealBinary = value
-	}
-	if value := strings.TrimSpace(values["CODEX_REMOTE_WRAPPER_NAME_MODE"]); value != "" {
-		cfg.Wrapper.NameMode = value
-	}
-	if value := strings.TrimSpace(values["CODEX_REMOTE_WRAPPER_INTEGRATION_MODE"]); value != "" {
-		cfg.Wrapper.IntegrationMode = value
-	}
-
-	cfg.Feishu.UseSystemProxy = chooseBool(values["FEISHU_USE_SYSTEM_PROXY"], "", false)
-	appID := strings.TrimSpace(values["FEISHU_APP_ID"])
-	appSecret := strings.TrimSpace(values["FEISHU_APP_SECRET"])
-	if appID != "" || appSecret != "" {
-		cfg.Feishu.Apps = []FeishuAppConfig{{
-			ID:        "legacy-default",
-			Name:      "Legacy Default",
-			AppID:     appID,
-			AppSecret: appSecret,
-			Enabled:   boolPtr(true),
-		}}
-	}
-
-	cfg.Debug.RelayFlow = chooseBool(values[DebugRelayFlowEnv], "", false)
-	cfg.Debug.RelayRaw = chooseBool(values[DebugRelayRawEnv], "", false)
-
-	return cfg.normalized()
-}
-
-func migrateLegacyConfig(targetPath string, cfg AppConfig, usedPaths []string) (LoadedAppConfig, error) {
-	targetPath = strings.TrimSpace(targetPath)
-	usedPaths = dedupePaths(usedPaths)
-	targetBackupPath := ""
-	targetMatched := false
-
-	for _, legacyPath := range usedPaths {
-		if samePathString(legacyPath, targetPath) {
-			targetMatched = true
-			break
-		}
-	}
-	if targetMatched {
-		var err error
-		targetBackupPath, err = archiveLegacyPath(targetPath)
-		if err != nil {
-			return LoadedAppConfig{}, err
-		}
-	}
-
-	if err := WriteAppConfig(targetPath, cfg); err != nil {
-		if targetBackupPath != "" {
-			_ = os.Rename(targetBackupPath, targetPath)
-		}
-		return LoadedAppConfig{}, err
-	}
-
-	for _, legacyPath := range usedPaths {
-		if samePathString(legacyPath, targetPath) {
-			continue
-		}
-		if _, err := archiveLegacyPath(legacyPath); err != nil {
-			return LoadedAppConfig{}, err
-		}
-	}
-	if err := syncInstallStateConfigPath(targetPath, usedPaths); err != nil {
-		return LoadedAppConfig{}, err
-	}
-	return LoadedAppConfig{Path: targetPath, Config: cfg.normalized()}, nil
-}
-
-func archiveLegacyPath(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" || !fileExists(path) {
-		return "", nil
-	}
-	backupPath := fmt.Sprintf("%s.migrated-%s.bak", path, time.Now().UTC().Format("20060102T150405Z"))
-	if err := os.Rename(path, backupPath); err != nil {
-		return "", err
-	}
-	return backupPath, nil
-}
-
-func syncInstallStateConfigPath(targetPath string, legacyPaths []string) error {
-	legacySet := map[string]bool{}
-	for _, path := range legacyPaths {
-		legacySet[filepath.Clean(path)] = true
-	}
-
-	for _, statePath := range candidateInstallStatePaths(targetPath) {
-		if !fileExists(statePath) {
-			continue
-		}
-		raw, err := os.ReadFile(statePath)
-		if err != nil {
-			return err
-		}
-		var state map[string]any
-		if err := json.Unmarshal(raw, &state); err != nil {
-			return fmt.Errorf("parse install state %s: %w", statePath, err)
-		}
-
-		updated := false
-		for _, field := range []string{"configPath", "wrapperConfigPath", "servicesConfigPath"} {
-			value, _ := state[field].(string)
-			if !shouldUpdateInstallStateField(value, targetPath, legacySet) {
-				continue
-			}
-			state[field] = targetPath
-			updated = true
-		}
-		if !updated {
-			continue
-		}
-		raw, err = json.MarshalIndent(state, "", "  ")
-		if err != nil {
-			return err
-		}
-		raw = append(raw, '\n')
-		if err := os.WriteFile(statePath, raw, 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func candidateInstallStatePaths(targetPath string) []string {
-	candidates := []string{xdgDataPath("codex-remote", "install-state.json")}
-	if baseDir, ok := baseDirForConfigPath(targetPath); ok {
-		candidates = append(candidates, filepath.Join(baseDir, ".local", "share", "codex-remote", "install-state.json"))
-	}
-	return dedupePaths(candidates)
-}
-
-func baseDirForConfigPath(path string) (string, bool) {
-	dir := filepath.Dir(filepath.Clean(path))
-	if filepath.Base(dir) != "codex-remote" {
-		return "", false
-	}
-	configParent := filepath.Dir(dir)
-	if filepath.Base(configParent) != ".config" {
-		return "", false
-	}
-	return filepath.Dir(configParent), true
-}
-
-func shouldUpdateInstallStateField(currentValue, targetPath string, legacySet map[string]bool) bool {
-	currentValue = strings.TrimSpace(currentValue)
-	if currentValue == "" {
-		return false
-	}
-	cleanCurrent := filepath.Clean(currentValue)
-	if legacySet[cleanCurrent] {
-		return true
-	}
-	if filepath.Dir(cleanCurrent) != filepath.Dir(filepath.Clean(targetPath)) {
-		return false
-	}
-	switch filepath.Base(cleanCurrent) {
+func isLegacyConfigFilename(name string) bool {
+	switch strings.TrimSpace(name) {
 	case "config.env", "wrapper.env", "services.env":
 		return true
 	default:
@@ -514,38 +296,20 @@ func shouldUpdateInstallStateField(currentValue, targetPath string, legacySet ma
 	}
 }
 
-func dedupePaths(paths []string) []string {
-	seen := map[string]bool{}
-	deduped := make([]string, 0, len(paths))
+func unsupportedLegacyConfigPathError(path string) error {
+	return fmt.Errorf("legacy env config file %s is no longer supported; move settings into config.json", filepath.Clean(path))
+}
+
+func unsupportedLegacyConfigFilesError(paths []string) error {
+	cleaned := make([]string, 0, len(paths))
 	for _, path := range paths {
 		path = strings.TrimSpace(path)
 		if path == "" {
 			continue
 		}
-		cleaned := filepath.Clean(path)
-		if seen[cleaned] {
-			continue
-		}
-		seen[cleaned] = true
-		deduped = append(deduped, cleaned)
+		cleaned = append(cleaned, filepath.Clean(path))
 	}
-	return deduped
-}
-
-func samePathString(left, right string) bool {
-	return filepath.Clean(left) == filepath.Clean(right)
-}
-
-func xdgDataPath(parts ...string) string {
-	base := os.Getenv("XDG_DATA_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		base = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(append([]string{base}, parts...)...)
+	return fmt.Errorf("legacy env config files are no longer supported; remove or migrate them to config.json: %s", strings.Join(cleaned, ", "))
 }
 
 func chooseInt(value string, fallback int) int {
