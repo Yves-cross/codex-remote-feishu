@@ -13,12 +13,12 @@ on:
           - beta
           - alpha
       version:
-        description: Explicit version to release, e.g. v1.0.0. Leave empty to auto-calculate.
+        description: Explicit version to release, e.g. v1.0.0. Required for production; optional for beta/alpha.
         required: false
         default: ""
         type: string
       bump:
-        description: Version bump strategy
+        description: Version bump strategy when version is auto-calculated
         required: true
         default: auto
         type: choice
@@ -30,6 +30,23 @@ on:
       draft:
         description: Create the GitHub release as a draft
         required: true
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      track:
+        required: true
+        type: string
+      version:
+        required: false
+        default: ""
+        type: string
+      bump:
+        required: false
+        default: auto
+        type: string
+      draft:
+        required: false
         default: false
         type: boolean
 
@@ -89,6 +106,10 @@ jobs:
           if [[ -n '${{ inputs.version }}' ]]; then
             version='${{ inputs.version }}'
           else
+            if [[ "${track}" == "production" ]]; then
+              echo "Production releases require an explicit version input." >&2
+              exit 1
+            fi
             version="$(RELEASE_TRACK="${track}" BUMP_OVERRIDE='${{ inputs.bump }}' bash scripts/release/next-version.sh)"
           fi
           if [[ ! "${version}" =~ ^v[0-9] ]]; then

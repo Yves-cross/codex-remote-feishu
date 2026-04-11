@@ -1,0 +1,57 @@
+name: Release From Tracker
+
+on:
+  issues:
+    types:
+      - closed
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: release-tracker-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: ${{ contains(join(github.event.issue.labels.*.name, ','), 'release:tracker') }}
+    runs-on: ubuntu-latest
+    outputs:
+      track: ${{ steps.readiness.outputs.track }}
+      version: ${{ steps.readiness.outputs.version }}
+      should_release: ${{ steps.flag.outputs.should_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate tracker readiness
+        id: readiness
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          bash scripts/check/release-readiness.sh \
+            --issue "${{ github.event.issue.number }}" \
+            --require-closed
+
+      - name: Mark release as approved
+        id: flag
+        run: echo "should_release=true" >> "${GITHUB_OUTPUT}"
+
+  release:
+    needs: plan
+    if: ${{ needs.plan.outputs.should_release == 'true' }}
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+    with:
+      track: ${{ needs.plan.outputs.track }}
+      version: ${{ needs.plan.outputs.version }}
+      bump: auto
+      draft: false
+    secrets: inherit
+
