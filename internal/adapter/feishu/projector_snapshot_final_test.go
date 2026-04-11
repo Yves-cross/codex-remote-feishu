@@ -380,7 +380,9 @@ func TestProjectFinalAssistantBlockAppendsDirtyWorktreeSummary(t *testing.T) {
 	projector := NewProjector()
 	projector.readGitWorktree = func(string) *gitWorktreeSummary {
 		return &gitWorktreeSummary{
-			Dirty: true,
+			Dirty:          true,
+			ModifiedCount:  3,
+			UntrackedCount: 1,
 			Files: []string{
 				"internal/core/orchestrator/service.go",
 				"internal/adapter/feishu/service.go",
@@ -408,7 +410,7 @@ func TestProjectFinalAssistantBlockAppendsDirtyWorktreeSummary(t *testing.T) {
 	if len(ops[0].CardElements) != 2 {
 		t.Fatalf("expected elapsed footer plus worktree footer, got %#v", ops[0].CardElements)
 	}
-	if ops[0].CardElements[1]["content"] != "**工作区** <text_tag color='neutral'>有改动</text_tag> <text_tag color='neutral'>orchestrator/service.go</text_tag> <text_tag color='neutral'>feishu/service.go</text_tag> <text_tag color='neutral'>README.md</text_tag>" {
+	if ops[0].CardElements[1]["content"] != "**工作区** <text_tag color='neutral'>有改动</text_tag> <text_tag color='neutral'>3修改</text_tag> <text_tag color='neutral'>1未跟踪</text_tag> <text_tag color='neutral'>orchestrator/service.go</text_tag> <text_tag color='neutral'>feishu/service.go</text_tag> <text_tag color='neutral'>README.md</text_tag>" {
 		t.Fatalf("unexpected dirty worktree footer: %#v", ops[0].CardElements[1])
 	}
 }
@@ -455,6 +457,36 @@ func TestParseGitStatusPaths(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("parseGitStatusPaths()[%d] = %q, want %q (%#v)", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestParseGitWorktreeSummary(t *testing.T) {
+	got := parseGitWorktreeSummary(strings.Join([]string{
+		" M internal/core/orchestrator/service.go",
+		"A  docs/new/guide.md",
+		"R  docs/old/guide.md -> docs/new/renamed.md",
+		"?? \"docs/my file.md\"",
+		"?? internal/core/orchestrator/service.go",
+	}, "\n"))
+	if got == nil {
+		t.Fatal("expected git worktree summary")
+	}
+	if !got.Dirty || got.ModifiedCount != 3 || got.UntrackedCount != 2 {
+		t.Fatalf("unexpected summary counts: %#v", got)
+	}
+	wantFiles := []string{
+		"internal/core/orchestrator/service.go",
+		"docs/new/guide.md",
+		"docs/new/renamed.md",
+		"docs/my file.md",
+	}
+	if len(got.Files) != len(wantFiles) {
+		t.Fatalf("summary files len = %d, want %d (%#v)", len(got.Files), len(wantFiles), got.Files)
+	}
+	for i := range wantFiles {
+		if got.Files[i] != wantFiles[i] {
+			t.Fatalf("summary files[%d] = %q, want %q (%#v)", i, got.Files[i], wantFiles[i], got.Files)
 		}
 	}
 }

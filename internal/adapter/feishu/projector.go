@@ -66,8 +66,10 @@ const maxEmbeddedFileSummaryRows = 6
 const maxEmbeddedWorktreePaths = 3
 
 type gitWorktreeSummary struct {
-	Dirty bool
-	Files []string
+	Dirty          bool
+	Files          []string
+	ModifiedCount  int
+	UntrackedCount int
 }
 
 type Projector struct {
@@ -570,6 +572,12 @@ func (p *Projector) formatFinalWorktreeSummaryLine(summary *control.FinalTurnSum
 		limit = maxEmbeddedWorktreePaths
 	}
 	parts := []string{"**工作区**", formatNeutralTextTag("有改动")}
+	if worktree.ModifiedCount > 0 {
+		parts = append(parts, formatNeutralTextTag(fmt.Sprintf("%d修改", worktree.ModifiedCount)))
+	}
+	if worktree.UntrackedCount > 0 {
+		parts = append(parts, formatNeutralTextTag(fmt.Sprintf("%d未跟踪", worktree.UntrackedCount)))
+	}
 	for index := 0; index < limit; index++ {
 		parts = append(parts, formatNeutralTextTag(fileChangeDisplayLabel(worktree.Files[index], labels)))
 	}
@@ -612,11 +620,7 @@ func inspectGitWorktreeSummary(cwd string) *gitWorktreeSummary {
 	if !ok {
 		return nil
 	}
-	files := parseGitStatusPaths(output)
-	return &gitWorktreeSummary{
-		Dirty: len(files) > 0,
-		Files: files,
-	}
+	return parseGitWorktreeSummary(output)
 }
 
 func runGitInspector(cwd string, args ...string) (string, bool) {
@@ -632,9 +636,17 @@ func runGitInspector(cwd string, args ...string) (string, bool) {
 }
 
 func parseGitStatusPaths(output string) []string {
+	return parseGitWorktreeSummary(output).Files
+}
+
+func parseGitWorktreeSummary(output string) *gitWorktreeSummary {
 	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
 	seen := map[string]bool{}
 	files := make([]string, 0, len(lines))
+	modifiedSeen := map[string]bool{}
+	untrackedSeen := map[string]bool{}
+	modifiedCount := 0
+	untrackedCount := 0
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -643,18 +655,35 @@ func parseGitStatusPaths(output string) []string {
 		if len(line) < 4 {
 			continue
 		}
+		status := line[:2]
 		path := strings.TrimSpace(line[3:])
 		if idx := strings.LastIndex(path, " -> "); idx >= 0 {
 			path = strings.TrimSpace(path[idx+4:])
 		}
 		path = normalizeFileSummaryPath(parseGitStatusPath(path))
-		if path == "" || seen[path] {
+		if path == "" {
 			continue
 		}
-		seen[path] = true
-		files = append(files, path)
+		if status == "??" {
+			if !untrackedSeen[path] {
+				untrackedSeen[path] = true
+				untrackedCount++
+			}
+		} else if !modifiedSeen[path] {
+			modifiedSeen[path] = true
+			modifiedCount++
+		}
+		if !seen[path] {
+			seen[path] = true
+			files = append(files, path)
+		}
 	}
-	return files
+	return &gitWorktreeSummary{
+		Dirty:          len(files) > 0,
+		Files:          files,
+		ModifiedCount:  modifiedCount,
+		UntrackedCount: untrackedCount,
+	}
 }
 
 func parseGitStatusPath(path string) string {
