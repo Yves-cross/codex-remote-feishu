@@ -158,13 +158,15 @@ func completeRemoteTurnWithFinalText(t *testing.T, svc *Service, turnID, status,
 		}); len(events) != 0 {
 			t.Fatalf("expected no UI events while collecting remote final text, got %#v", events)
 		}
-		_ = svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 			Kind:     agentproto.EventItemCompleted,
 			ThreadID: "thread-1",
 			TurnID:   turnID,
 			ItemID:   "item-" + turnID,
 			ItemKind: "agent_message",
-		})
+		}); len(events) != 0 {
+			t.Fatalf("expected no UI events before remote turn completion, got %#v", events)
+		}
 	}
 	return svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:         agentproto.EventTurnCompleted,

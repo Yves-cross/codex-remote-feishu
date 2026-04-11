@@ -673,14 +673,8 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"text": "您好"},
 	})
-	var sawProcess bool
-	for _, event := range mid {
-		if event.Block != nil && !event.Block.Final && event.Block.Text == "您好" && event.SurfaceSessionID == "surface-1" {
-			sawProcess = true
-		}
-	}
-	if !sawProcess {
-		t.Fatalf("expected completed assistant text to project on queued surface, got %#v", mid)
+	if len(mid) != 0 {
+		t.Fatalf("expected assistant text to stay buffered until turn completion, got %#v", mid)
 	}
 
 	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -697,6 +691,9 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 	for _, event := range finished {
 		if event.Block != nil && event.Block.Final {
 			sawFinal = true
+			if event.SurfaceSessionID != "surface-1" || event.Block.Text != "您好" {
+				t.Fatalf("expected final block on queued surface, got %#v", event)
+			}
 		}
 		if event.PendingInput != nil && event.PendingInput.TypingOff {
 			sawTypingOff = true
@@ -705,8 +702,8 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 			}
 		}
 	}
-	if sawFinal {
-		t.Fatalf("expected no duplicate final block after early projection, got %#v", finished)
+	if !sawFinal {
+		t.Fatalf("expected final block on queued surface, got %#v", finished)
 	}
 	if !sawTypingOff {
 		t.Fatalf("expected typing-off on queued surface, got %#v", finished)
@@ -763,8 +760,8 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 		ItemID:   "msg-1",
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"text": "已完成修改。"},
-	}); len(events) == 0 {
-		t.Fatalf("expected completed assistant text to project before final file summary, got %#v", events)
+	}); len(events) != 0 {
+		t.Fatalf("expected assistant final text to stay buffered until turn completion, got %#v", events)
 	}
 
 	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -778,7 +775,7 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 	var finalBlockEvent *control.UIEvent
 	for i := range finished {
 		event := finished[i]
-		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成文件修改。" {
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成修改。" {
 			finalBlockEvent = &finished[i]
 		}
 	}
@@ -799,7 +796,7 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 	}
 }
 
-func TestTurnCompletedDoesNotDuplicateProjectedAssistantTextForElapsedOnlySummary(t *testing.T) {
+func TestTurnCompletedEmbedsElapsedIntoFinalAssistantBlock(t *testing.T) {
 	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -835,8 +832,8 @@ func TestTurnCompletedDoesNotDuplicateProjectedAssistantTextForElapsedOnlySummar
 		ItemID:   "msg-1",
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"text": "已完成。"},
-	}); len(events) == 0 {
-		t.Fatalf("expected completed assistant text to project before turn completion, got %#v", events)
+	}); len(events) != 0 {
+		t.Fatalf("expected assistant final text to stay buffered until turn completion, got %#v", events)
 	}
 
 	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -847,10 +844,24 @@ func TestTurnCompletedDoesNotDuplicateProjectedAssistantTextForElapsedOnlySummar
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	for _, event := range finished {
-		if event.Block != nil && event.Block.Final {
-			t.Fatalf("expected no duplicate final block when only elapsed summary remains, got %#v", finished)
+	var finalBlockEvent *control.UIEvent
+	for i := range finished {
+		event := finished[i]
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成。" {
+			finalBlockEvent = &finished[i]
 		}
+	}
+	if finalBlockEvent == nil {
+		t.Fatalf("expected final assistant block, got %#v", finished)
+	}
+	if finalBlockEvent.FinalTurnSummary == nil {
+		t.Fatalf("expected final assistant block to embed elapsed summary, got %#v", finalBlockEvent)
+	}
+	if finalBlockEvent.FinalTurnSummary.Elapsed != 3400*time.Millisecond {
+		t.Fatalf("unexpected elapsed payload: %#v", finalBlockEvent.FinalTurnSummary)
+	}
+	if finalBlockEvent.FileChangeSummary != nil {
+		t.Fatalf("expected no file summary on elapsed-only final block, got %#v", finalBlockEvent.FileChangeSummary)
 	}
 }
 

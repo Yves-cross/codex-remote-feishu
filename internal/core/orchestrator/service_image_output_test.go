@@ -500,8 +500,8 @@ func TestRemoteTurnImageGenerationProducesImmediateImageEventAndFinalText(t *tes
 		ItemID:   "msg-2",
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"text": "已生成图片。"},
-	}); len(events) == 0 {
-		t.Fatalf("expected assistant text to project after image output, got %#v", events)
+	}); len(events) != 0 {
+		t.Fatalf("expected final assistant text to remain buffered until turn completion, got %#v", events)
 	}
 
 	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -511,10 +511,14 @@ func TestRemoteTurnImageGenerationProducesImmediateImageEventAndFinalText(t *tes
 		Status:    "completed",
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
+	var sawFinal bool
 	for _, event := range finished {
-		if event.Block != nil && event.Block.Final {
-			t.Fatalf("expected no duplicate final assistant text after image output, got %#v", finished)
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已生成图片。" {
+			sawFinal = true
 		}
+	}
+	if !sawFinal {
+		t.Fatalf("expected final assistant text after image output, got %#v", finished)
 	}
 }
 

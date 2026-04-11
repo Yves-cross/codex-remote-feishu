@@ -85,7 +85,6 @@ type completedTextItem struct {
 	ItemID     string
 	ItemKind   string
 	Text       string
-	Projected  bool
 }
 
 type turnFileChangeSummary struct {

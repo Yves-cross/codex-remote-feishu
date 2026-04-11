@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-11`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括 canonical slash/menu 命令面、阶段感知 `/menu` 首页、统一参数卡表单、auto-continue、图文/引用入站、旧生命周期动作判定、卡片交互、queued 点赞 steering、`image_generation`/`dynamic_tool_call` 富结果回显、已完成 assistant item 的提前过程文本投影，以及最终回复 reply 与文件修改摘要。
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，包括 canonical slash/menu 命令面、阶段感知 `/menu` 首页、统一参数卡表单、auto-continue、图文/引用入站、旧生命周期动作判定、卡片交互、queued 点赞 steering、`image_generation`/`dynamic_tool_call` 富结果回显，以及最终回复 reply 与文件修改摘要。
 
 ## 1. 文档定位
 
@@ -649,8 +649,7 @@ final `block.committed`：
 - 若能拿到 reply anchor 对应的原用户消息预览，则标题会变成 `最后答复：<原消息预览>`
 - 若当前 turn 带有可用的飞书源消息 `SourceMessageID`，会优先 reply 到触发消息
 - 若 reply 失败、目标消息已不存在或不可回复，则回退到独立发卡
-- 若同一 turn 的 assistant 正文已经在过程阶段完整投影，而完成时只新增 elapsed footer，则不再额外补一张重复或空洞的 final card
-- 若过程阶段已经投影过正文，但完成时又新增了文件修改摘要等真正的收尾信息，仍会补 final card 承载这些新增内容
+- assistant 正文在 turn 完成前保持缓冲；最终回复会在完成时统一投影成 final card
 - 若该 turn 带有文件修改 summary，会把摘要直接追加在 final assistant card 底部，而不是额外再发一张独立卡片
 - 文件摘要会展示本轮修改文件数、总 `+/-` 行数，以及逐文件的 `+/-` 统计
 - 文件展示名优先使用“最短唯一后缀”，避免直接铺完整长路径；重命名会显示 `旧路径 → 新路径`
