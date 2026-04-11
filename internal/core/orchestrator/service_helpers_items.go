@@ -1,0 +1,88 @@
+package orchestrator
+
+import (
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
+)
+
+func turnRenderKey(instanceID, threadID, turnID string) string {
+	return instanceID + "\x00" + threadID + "\x00" + turnID
+}
+
+func threadStateForInstance(inst *state.InstanceRecord) string {
+	if !inst.Online {
+		return "offline"
+	}
+	if inst.ActiveTurnID != "" {
+		return "running"
+	}
+	return "idle"
+}
+
+func itemBufferKey(instanceID, threadID, turnID, itemID string) string {
+	return strings.Join([]string{instanceID, threadID, turnID, itemID}, "::")
+}
+
+func (s *Service) ensureItemBuffer(instanceID, threadID, turnID, itemID, itemKind string) *itemBuffer {
+	key := itemBufferKey(instanceID, threadID, turnID, itemID)
+	if existing := s.itemBuffers[key]; existing != nil {
+		if existing.ItemKind == "" {
+			existing.ItemKind = itemKind
+		}
+		return existing
+	}
+	buf := &itemBuffer{
+		InstanceID: instanceID,
+		ThreadID:   threadID,
+		TurnID:     turnID,
+		ItemID:     itemID,
+		ItemKind:   itemKind,
+	}
+	s.itemBuffers[key] = buf
+	return buf
+}
+
+func deleteMatchingItemBuffers(buffers map[string]*itemBuffer, instanceID, threadID, turnID string) {
+	for key, buf := range buffers {
+		if buf == nil {
+			continue
+		}
+		if buf.InstanceID != instanceID {
+			continue
+		}
+		if threadID != "" && buf.ThreadID != threadID {
+			continue
+		}
+		if turnID != "" && buf.TurnID != turnID {
+			continue
+		}
+		delete(buffers, key)
+	}
+}
+
+func tracksTextItem(itemKind string) bool {
+	switch itemKind {
+	case "agent_message", "plan", "reasoning", "reasoning_summary", "reasoning_content", "command_execution_output":
+		return true
+	default:
+		return false
+	}
+}
+
+func rendersTextItem(itemKind string) bool {
+	switch itemKind {
+	case "agent_message", "plan":
+		return true
+	default:
+		return false
+	}
+}
+
+func isImageGenerationItem(itemKind string) bool {
+	return strings.TrimSpace(itemKind) == "image_generation"
+}
+
+func isDynamicToolCallItem(itemKind string) bool {
+	return strings.TrimSpace(itemKind) == "dynamic_tool_call"
+}
