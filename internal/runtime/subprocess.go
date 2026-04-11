@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type DetachedCommandOptions struct {
@@ -33,10 +34,11 @@ func StartDetachedCommand(opts DetachedCommandOptions) (int, error) {
 		defer stderr.Close()
 	}
 
-	binaryPath := filepath.Clean(opts.BinaryPath)
+	binaryPath := strings.TrimSpace(opts.BinaryPath)
 	if binaryPath == "" {
 		return 0, os.ErrNotExist
 	}
+	binaryPath = filepath.Clean(binaryPath)
 	cmd := exec.Command(binaryPath, opts.Args...)
 	cmd.Stdin = devNull
 	cmd.Stdout = stdout
