@@ -215,7 +215,7 @@ func (s *Service) buildModeCatalog(surface *state.SurfaceConsoleRecord) control.
 			},
 		}},
 	}}
-	if form := commandCatalogForm(control.FeishuCommandMode, ""); form != nil {
+	if form := control.FeishuCommandFormWithDefault(control.FeishuCommandMode, ""); form != nil {
 		sections = append(sections, control.CommandCatalogSection{
 			Title: "手动输入",
 			Entries: []control.CommandCatalogEntry{{
@@ -249,7 +249,7 @@ func (s *Service) buildAutoContinueCatalog(surface *state.SurfaceConsoleRecord) 
 			},
 		}},
 	}}
-	if form := commandCatalogForm(control.FeishuCommandAutoContinue, ""); form != nil {
+	if form := control.FeishuCommandFormWithDefault(control.FeishuCommandAutoContinue, ""); form != nil {
 		sections = append(sections, control.CommandCatalogSection{
 			Title: "手动输入",
 			Entries: []control.CommandCatalogEntry{{
@@ -281,7 +281,7 @@ func (s *Service) buildReasoningCatalog(surface *state.SurfaceConsoleRecord) con
 			Buttons: choiceButtonsFromOptions(def.Options, summary.OverrideReasoningEffort, ""),
 		}},
 	}}
-	if form := commandCatalogForm(control.FeishuCommandReasoning, ""); form != nil {
+	if form := control.FeishuCommandFormWithDefault(control.FeishuCommandReasoning, ""); form != nil {
 		sections = append(sections, control.CommandCatalogSection{
 			Title: "手动输入",
 			Entries: []control.CommandCatalogEntry{{
@@ -313,7 +313,7 @@ func (s *Service) buildAccessCatalog(surface *state.SurfaceConsoleRecord) contro
 			Buttons: choiceButtonsFromOptions(def.Options, summary.OverrideAccessMode, ""),
 		}},
 	}}
-	if form := commandCatalogForm(control.FeishuCommandAccess, ""); form != nil {
+	if form := control.FeishuCommandFormWithDefault(control.FeishuCommandAccess, ""); form != nil {
 		sections = append(sections, control.CommandCatalogSection{
 			Title: "手动输入",
 			Entries: []control.CommandCatalogEntry{{
@@ -344,7 +344,7 @@ func (s *Service) buildModelCatalog(surface *state.SurfaceConsoleRecord) control
 		choiceCommandButton("gpt-5.4-mini", "/model gpt-5.4-mini", summary.OverrideModel == "gpt-5.4-mini", ""),
 	}
 	manualEntry := control.CommandCatalogEntry{
-		Form: commandCatalogForm(control.FeishuCommandModel, ""),
+		Form: control.FeishuCommandFormWithDefault(control.FeishuCommandModel, ""),
 	}
 	if strings.TrimSpace(summary.OverrideModel) != "" || strings.TrimSpace(summary.OverrideReasoningEffort) != "" {
 		manualEntry.Buttons = append(manualEntry.Buttons, choiceCommandButton("清除覆盖", "/model clear", false, ""))
@@ -405,17 +405,6 @@ func recoveryEntry(commandID string) control.CommandCatalogEntry {
 			CommandText: def.CanonicalSlash,
 		}},
 	}
-}
-
-func commandCatalogForm(commandID, defaultValue string) *control.CommandCatalogForm {
-	form, ok := control.FeishuCommandForm(commandID)
-	if !ok || form == nil {
-		return nil
-	}
-	cloned := *form
-	cloned.Field = form.Field
-	cloned.Field.DefaultValue = strings.TrimSpace(defaultValue)
-	return &cloned
 }
 
 func commandBreadcrumbs(groupID, title string) []control.CommandCatalogBreadcrumb {

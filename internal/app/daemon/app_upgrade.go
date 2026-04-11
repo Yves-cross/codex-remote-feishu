@@ -657,7 +657,7 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 				Entries: []control.CommandCatalogEntry{{
 					Commands:    []string{"/debug"},
 					Description: "输入 `/debug` 后面的参数，例如 `track beta`。",
-					Form:        commandCatalogForm(control.FeishuCommandDebug, ""),
+					Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandDebug, ""),
 				}},
 			},
 		},
@@ -706,7 +706,7 @@ func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bo
 				Entries: []control.CommandCatalogEntry{{
 					Commands:    []string{"/upgrade"},
 					Description: "输入 `/upgrade` 后面的参数，例如 `latest` 或 `local`。",
-					Form:        commandCatalogForm(control.FeishuCommandUpgrade, ""),
+					Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandUpgrade, ""),
 				}},
 			},
 		},
@@ -852,17 +852,6 @@ func upgradeUsageEvents(surfaceID, message string) []control.UIEvent {
 		CommandCatalog:   buildUpgradeStatusCatalog(install.InstallState{}, false),
 	})
 	return events
-}
-
-func commandCatalogForm(commandID, defaultValue string) *control.CommandCatalogForm {
-	form, ok := control.FeishuCommandForm(commandID)
-	if !ok || form == nil {
-		return nil
-	}
-	cloned := *form
-	cloned.Field = form.Field
-	cloned.Field.DefaultValue = strings.TrimSpace(defaultValue)
-	return &cloned
 }
 
 func runCommandButton(label, commandText, style string, disabled bool) control.CommandCatalogButton {

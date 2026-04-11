@@ -222,7 +222,7 @@ func (s *Service) threadSelectionSummary(surface *state.SurfaceConsoleRecord, vi
 func vscodeThreadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
 	source := threadDisplayBody(thread, 20)
 	if source == "" {
-		source = shortenThreadID(fallback)
+		source = control.ShortenThreadID(fallback)
 	}
 	if source == "" {
 		source = "未命名会话"

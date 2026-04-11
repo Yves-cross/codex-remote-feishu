@@ -22,25 +22,6 @@ func normalizeRequestType(value string) string {
 	}
 }
 
-func normalizeRequestOptionID(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	switch normalized {
-	case "accept", "allow", "approve", "yes":
-		return "accept"
-	case "acceptforsession", "allowforsession", "allowthissession", "session":
-		return "acceptForSession"
-	case "decline", "deny", "reject", "no":
-		return "decline"
-	case "capturefeedback", "feedback", "tellcodexwhattodo", "tellcodexwhattododifferently":
-		return "captureFeedback"
-	default:
-		return strings.TrimSpace(value)
-	}
-}
-
 func requestOptionIDFromApproved(approved bool) string {
 	if approved {
 		return "accept"
@@ -61,7 +42,7 @@ func requestHasOption(request *state.RequestPromptRecord, optionID string) bool 
 		}
 	}
 	for _, option := range request.Options {
-		if normalizeRequestOptionID(option.OptionID) == optionID {
+		if control.NormalizeRequestOptionID(option.OptionID) == optionID {
 			return true
 		}
 	}
@@ -69,7 +50,7 @@ func requestHasOption(request *state.RequestPromptRecord, optionID string) bool 
 }
 
 func decisionForRequestOption(optionID string) string {
-	switch normalizeRequestOptionID(optionID) {
+	switch control.NormalizeRequestOptionID(optionID) {
 	case "accept":
 		return "accept"
 	case "acceptForSession":
@@ -167,7 +148,7 @@ func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptO
 	var options []state.RequestPromptOptionRecord
 	seen := map[string]bool{}
 	add := func(optionID, label, style string) {
-		optionID = normalizeRequestOptionID(optionID)
+		optionID = control.NormalizeRequestOptionID(optionID)
 		if optionID == "" || seen[optionID] {
 			return
 		}
@@ -333,7 +314,7 @@ func metadataRequestQuestions(metadata map[string]any) []state.RequestPromptQues
 func approvalRequestSupportsSession(metadata map[string]any) bool {
 	if len(metadataRequestOptions(metadata)) != 0 {
 		for _, option := range metadataRequestOptions(metadata) {
-			if normalizeRequestOptionID(option.OptionID) == "acceptForSession" {
+			if control.NormalizeRequestOptionID(option.OptionID) == "acceptForSession" {
 				return true
 			}
 		}
@@ -380,7 +361,7 @@ func metadataRequestOptions(metadata map[string]any) []state.RequestPromptOption
 			lookupStringFromAny(record["value"]),
 			lookupStringFromAny(record["action"]),
 		)
-		optionID = normalizeRequestOptionID(optionID)
+		optionID = control.NormalizeRequestOptionID(optionID)
 		if optionID == "" {
 			continue
 		}

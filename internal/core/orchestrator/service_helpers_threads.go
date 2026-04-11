@@ -197,9 +197,9 @@ func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallbac
 			return short
 		}
 		if short == "" {
-			return shortenThreadID(fallback)
+			return control.ShortenThreadID(fallback)
 		}
-		return fmt.Sprintf("%s · %s", short, shortenThreadID(fallback))
+		return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
 	}
 	if body := threadDisplayBody(thread, 40); body != "" {
 		if short == "" {
@@ -212,20 +212,20 @@ func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallbac
 		switch {
 		case base == "", base == ".", base == string(filepath.Separator), base == short:
 			if short == "" {
-				return shortenThreadID(fallback)
+				return control.ShortenThreadID(fallback)
 			}
-			return fmt.Sprintf("%s · %s", short, shortenThreadID(fallback))
+			return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
 		default:
-			return fmt.Sprintf("%s · %s · %s", short, base, shortenThreadID(fallback))
+			return fmt.Sprintf("%s · %s · %s", short, base, control.ShortenThreadID(fallback))
 		}
 	}
 	if fallback == "" {
 		return short
 	}
 	if short == "" {
-		return shortenThreadID(fallback)
+		return control.ShortenThreadID(fallback)
 	}
-	return fmt.Sprintf("%s · %s", short, shortenThreadID(fallback))
+	return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
 }
 
 func threadWorkspaceLabel(inst *state.InstanceRecord, thread *state.ThreadRecord) string {
@@ -294,7 +294,7 @@ func displayThreadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, 
 	if inst == nil || fallback == "" {
 		return title
 	}
-	shortID := shortenThreadID(fallback)
+	shortID := control.ShortenThreadID(fallback)
 	if strings.Contains(title, shortID) {
 		return title
 	}
@@ -334,7 +334,7 @@ func threadPreview(thread *state.ThreadRecord) string {
 func threadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
 	source := threadDisplayBody(thread, 20)
 	if source == "" {
-		source = shortenThreadID(fallback)
+		source = control.ShortenThreadID(fallback)
 	}
 	if source == "" {
 		source = "未命名会话"
@@ -379,7 +379,7 @@ func threadSelectionSubtitle(thread *state.ThreadRecord, threadID string) string
 	if thread != nil && thread.CWD != "" {
 		return thread.CWD
 	}
-	if short := shortenThreadID(threadID); short != "" {
+	if short := control.ShortenThreadID(threadID); short != "" {
 		return "会话 ID " + short
 	}
 	return ""
@@ -438,30 +438,6 @@ func sortVisibleThreads(threads []*state.ThreadRecord) {
 			return left.ThreadID < right.ThreadID
 		}
 	})
-}
-
-func shortenThreadID(threadID string) string {
-	parts := strings.Split(threadID, "-")
-	if len(parts) >= 2 {
-		head := strings.TrimSpace(parts[1])
-		tail := strings.TrimSpace(parts[len(parts)-1])
-		if len(tail) > 4 {
-			tail = tail[len(tail)-4:]
-		}
-		switch {
-		case head == "":
-		case tail == "":
-			return head
-		case head == tail:
-			return head
-		default:
-			return head + "…" + tail
-		}
-	}
-	if len(threadID) <= 10 {
-		return threadID
-	}
-	return threadID[len(threadID)-8:]
 }
 
 func previewSnippet(text string) string {

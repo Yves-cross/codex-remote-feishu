@@ -219,7 +219,7 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []control.UIEvent) {
 	switch requestType {
 	case "approval":
-		optionID := normalizeRequestOptionID(firstNonEmpty(action.RequestOptionID, requestOptionIDFromApproved(action.Approved)))
+		optionID := control.NormalizeRequestOptionID(firstNonEmpty(action.RequestOptionID, requestOptionIDFromApproved(action.Approved)))
 		if optionID == "" {
 			return nil, false, notice(surface, "request_invalid", "这个确认按钮缺少有效的处理选项。")
 		}

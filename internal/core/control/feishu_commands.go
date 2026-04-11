@@ -874,6 +874,17 @@ func FeishuCommandForm(commandID string) (*CommandCatalogForm, bool) {
 	}, true
 }
 
+func FeishuCommandFormWithDefault(commandID, defaultValue string) *CommandCatalogForm {
+	form, ok := FeishuCommandForm(commandID)
+	if !ok || form == nil {
+		return nil
+	}
+	cloned := *form
+	cloned.Field = form.Field
+	cloned.Field.DefaultValue = strings.TrimSpace(defaultValue)
+	return &cloned
+}
+
 func commandOption(commandText, menuKey, value, label, description string) FeishuCommandOption {
 	return FeishuCommandOption{
 		Value:       value,

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 func chooseAny(values ...any) any {
@@ -838,7 +839,7 @@ func extractRequestOptions(request, params map[string]any) []map[string]any {
 		if !ok {
 			continue
 		}
-		optionID := normalizeRequestOptionID(firstNonEmptyString(
+		optionID := control.NormalizeRequestOptionID(firstNonEmptyString(
 			lookupStringFromAny(record["id"]),
 			lookupStringFromAny(record["optionId"]),
 			lookupStringFromAny(record["decision"]),
@@ -878,21 +879,4 @@ func firstNonNil(values ...any) any {
 		}
 	}
 	return nil
-}
-
-func normalizeRequestOptionID(value string) string {
-	normalized := strings.ToLower(strings.TrimSpace(value))
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	switch normalized {
-	case "accept", "allow", "approve", "yes":
-		return "accept"
-	case "acceptforsession", "allowforsession", "allowthissession", "session":
-		return "acceptForSession"
-	case "decline", "deny", "reject", "no":
-		return "decline"
-	default:
-		return strings.TrimSpace(value)
-	}
 }

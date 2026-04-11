@@ -35,7 +35,7 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 		switch {
 		case snapshot.Attachment.SelectedThreadTitle != "":
 			lines = append(lines, snapshotField("当前输入目标", compactSnapshotStatusText(snapshot.Attachment.SelectedThreadTitle, snapshotStatusTitleLimit)))
-			if short := shortenThreadID(snapshot.Attachment.SelectedThreadID); short != "" {
+			if short := control.ShortenThreadID(snapshot.Attachment.SelectedThreadID); short != "" {
 				lines = append(lines, snapshotField("会话 ID", short))
 			}
 		case snapshot.Attachment.SelectedThreadID != "":
@@ -289,28 +289,4 @@ func containsAny(value string, parts ...string) bool {
 		}
 	}
 	return false
-}
-
-func shortenThreadID(threadID string) string {
-	parts := strings.Split(threadID, "-")
-	if len(parts) >= 2 {
-		head := strings.TrimSpace(parts[1])
-		tail := strings.TrimSpace(parts[len(parts)-1])
-		if len(tail) > 4 {
-			tail = tail[len(tail)-4:]
-		}
-		switch {
-		case head == "":
-		case tail == "":
-			return head
-		case head == tail:
-			return head
-		default:
-			return head + "…" + tail
-		}
-	}
-	if len(threadID) <= 10 {
-		return threadID
-	}
-	return threadID[len(threadID)-8:]
 }

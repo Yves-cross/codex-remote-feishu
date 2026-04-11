@@ -328,7 +328,7 @@ func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) 
 		return "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。"
 	}
 	body := fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)
-	if short := shortenThreadID(selection.ThreadID); short != "" {
+	if short := control.ShortenThreadID(selection.ThreadID); short != "" {
 		body += "\n\n会话 ID：" + short
 	}
 	if preview := strings.TrimSpace(selection.Preview); preview != "" {
