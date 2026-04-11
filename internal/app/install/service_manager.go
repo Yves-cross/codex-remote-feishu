@@ -66,6 +66,10 @@ func defaultInstallStatePath(baseDir string) string {
 	return installLayoutForBaseDir(baseDir).StatePath
 }
 
+func defaultConfigPath(baseDir string) string {
+	return filepath.Join(installLayoutForBaseDir(baseDir).ConfigDir, "config.json")
+}
+
 func baseDirFromConfigPath(path string) (string, bool) {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "" {

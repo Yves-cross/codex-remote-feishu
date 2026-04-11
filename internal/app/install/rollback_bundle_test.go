@@ -23,13 +23,11 @@ func TestPrepareRollbackCandidateSnapshotsBinaryAndConfig(t *testing.T) {
 	}
 
 	candidate, err := PrepareRollbackCandidate(InstallState{
-		StatePath:          statePath,
-		CurrentBinaryPath:  binaryPath,
-		CurrentVersion:     "v1.0.0",
-		InstallSource:      InstallSourceRelease,
-		ConfigPath:         configPath,
-		WrapperConfigPath:  configPath,
-		ServicesConfigPath: configPath,
+		StatePath:         statePath,
+		CurrentBinaryPath: binaryPath,
+		CurrentVersion:    "v1.0.0",
+		InstallSource:     InstallSourceRelease,
+		ConfigPath:        configPath,
 	}, "v1.1.0")
 	if err != nil {
 		t.Fatalf("PrepareRollbackCandidate: %v", err)

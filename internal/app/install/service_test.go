@@ -38,9 +38,6 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if state.ConfigPath != filepath.Join(baseDir, ".config", "codex-remote", "config.json") {
 		t.Fatalf("unexpected config path: %s", state.ConfigPath)
 	}
-	if state.WrapperConfigPath != state.ConfigPath || state.ServicesConfigPath != state.ConfigPath {
-		t.Fatalf("expected wrapper/services config paths to match unified config path")
-	}
 
 	cfg := loadAppConfigForTest(t, state.ConfigPath)
 	if cfg.Relay.ServerURL != "ws://127.0.0.1:9500/ws/agent" {

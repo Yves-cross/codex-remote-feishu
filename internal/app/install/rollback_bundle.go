@@ -88,19 +88,9 @@ func restoreConfigSnapshots(snapshots []ConfigSnapshot) error {
 }
 
 func liveConfigPaths(stateValue InstallState) []string {
-	seen := map[string]bool{}
-	paths := make([]string, 0, 3)
-	for _, path := range []string{stateValue.ConfigPath, stateValue.WrapperConfigPath, stateValue.ServicesConfigPath} {
-		trimmed := strings.TrimSpace(path)
-		if trimmed == "" {
-			continue
-		}
-		cleaned := filepath.Clean(trimmed)
-		if seen[cleaned] {
-			continue
-		}
-		seen[cleaned] = true
-		paths = append(paths, cleaned)
+	trimmed := strings.TrimSpace(stateValue.ConfigPath)
+	if trimmed == "" {
+		return nil
 	}
-	return paths
+	return []string{filepath.Clean(trimmed)}
 }

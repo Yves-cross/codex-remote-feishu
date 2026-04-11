@@ -39,8 +39,6 @@ type Options struct {
 type InstallState struct {
 	BaseDir                string                   `json:"baseDir,omitempty"`
 	ConfigPath             string                   `json:"configPath,omitempty"`
-	WrapperConfigPath      string                   `json:"wrapperConfigPath"`
-	ServicesConfigPath     string                   `json:"servicesConfigPath"`
 	StatePath              string                   `json:"statePath"`
 	ServiceManager         ServiceManager           `json:"serviceManager,omitempty"`
 	ServiceUnitPath        string                   `json:"serviceUnitPath,omitempty"`
@@ -139,8 +137,6 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	state := InstallState{
 		BaseDir:                opts.BaseDir,
 		ConfigPath:             configPath,
-		WrapperConfigPath:      configPath,
-		ServicesConfigPath:     configPath,
 		StatePath:              statePath,
 		ServiceManager:         opts.ServiceManager,
 		InstalledBinary:        installedBinary,
