@@ -746,7 +746,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 			hasListCard = true
 		case operation.Kind == feishu.OperationAddReaction && operation.MessageID == "msg-1":
 			hasTyping = true
-		case operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "最后答复"):
+		case operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "✅ 最后答复"):
 			hasFinalReplyCard = operation.CardBody == "已收到：\n\n```text\nREADME.md\n```"
 		}
 	}
@@ -1027,7 +1027,7 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 
 	var finalBody string
 	for _, operation := range gateway.operations {
-		if operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "最后答复") {
+		if operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "✅ 最后答复") {
 			finalBody = operation.CardBody
 		}
 	}
@@ -1116,7 +1116,7 @@ func TestDaemonProjectsPreviewSupplementsAfterFinalReply(t *testing.T) {
 			continue
 		}
 		switch {
-		case strings.HasPrefix(operation.CardTitle, "最后答复"):
+		case strings.HasPrefix(operation.CardTitle, "✅ 最后答复"):
 			finalBody = operation.CardBody
 		case operation.CardTitle == "补充预览":
 			supplementBody = operation.CardBody
@@ -1207,7 +1207,7 @@ func TestDaemonContinuesFinalReplyAfterPreviewTimeout(t *testing.T) {
 
 	var finalBody string
 	for _, operation := range gateway.operations {
-		if operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "最后答复") {
+		if operation.Kind == feishu.OperationSendCard && strings.HasPrefix(operation.CardTitle, "✅ 最后答复") {
 			finalBody = operation.CardBody
 		}
 	}
