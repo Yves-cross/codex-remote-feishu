@@ -60,6 +60,30 @@ func TestSystemdUserStopAndWaitReturnsTimeoutWhenServiceStaysActive(t *testing.T
 	}
 }
 
+func TestSystemdUserStopAndWaitParsesShowOutputByPropertyName(t *testing.T) {
+	originalRunner := systemctlUserRunner
+	defer func() { systemctlUserRunner = originalRunner }()
+
+	showCount := 0
+	systemctlUserRunner = func(_ context.Context, args ...string) (string, error) {
+		if len(args) > 0 && args[0] == "stop" {
+			return "", nil
+		}
+		if len(args) > 0 && args[0] == "show" {
+			showCount++
+			if showCount == 1 {
+				return "MainPID=123\nActiveState=deactivating\n", nil
+			}
+			return "MainPID=0\nActiveState=inactive\n", nil
+		}
+		return "", nil
+	}
+
+	if err := systemdUserStopAndWait(context.Background(), InstallState{}, 50*time.Millisecond, time.Millisecond); err != nil {
+		t.Fatalf("systemdUserStopAndWait: %v", err)
+	}
+}
+
 func TestStopCurrentDaemonDoesNotClearPIDFilesWhenTerminateFails(t *testing.T) {
 	originalSleep := upgradeHelperSleepFunc
 	originalReadPID := upgradeHelperReadPIDFunc

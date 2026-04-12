@@ -218,17 +218,39 @@ func systemdUserStopAndWait(ctx context.Context, state InstallState, timeout, po
 }
 
 func systemdUserReadUnitState(ctx context.Context, state InstallState) (systemdUserUnitState, error) {
-	output, err := systemctlUserRunner(ctx, "show", "--property=ActiveState", "--property=MainPID", "--value", systemdUserUnitName(state))
+	output, err := systemctlUserRunner(ctx, "show", "--property=ActiveState", "--property=MainPID", systemdUserUnitName(state))
 	if err != nil {
 		return systemdUserUnitState{}, err
 	}
 	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(output), "\r\n", "\n"), "\n")
 	current := systemdUserUnitState{}
-	if len(lines) > 0 {
-		current.ActiveState = strings.TrimSpace(lines[0])
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "=") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "ActiveState":
+			current.ActiveState = strings.TrimSpace(value)
+		case "MainPID":
+			current.MainPID = strings.TrimSpace(value)
+		}
 	}
-	if len(lines) > 1 {
-		current.MainPID = strings.TrimSpace(lines[1])
+	// Keep backward compatibility with stubs that return value-only lines.
+	if current.ActiveState == "" {
+		if len(lines) > 0 {
+			current.ActiveState = strings.TrimSpace(lines[0])
+		}
+		if len(lines) > 1 && current.MainPID == "" {
+			current.MainPID = strings.TrimSpace(lines[1])
+		}
 	}
 	if current.ActiveState == "" {
 		return systemdUserUnitState{}, fmt.Errorf("empty ActiveState")
