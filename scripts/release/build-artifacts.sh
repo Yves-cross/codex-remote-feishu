@@ -67,6 +67,14 @@ resolve_build_branch() {
   printf '%s\n' "dev"
 }
 
+resolve_build_flavor() {
+  if [[ -n "${CODEX_REMOTE_BUILD_FLAVOR:-}" ]]; then
+    printf '%s\n' "${CODEX_REMOTE_BUILD_FLAVOR}"
+    return
+  fi
+  printf '%s\n' "dev"
+}
+
 version=""
 output_dir="dist"
 skip_admin_ui_build=0
@@ -111,6 +119,7 @@ if [[ -z "${version}" ]]; then
 fi
 
 build_branch="$(resolve_build_branch)"
+build_flavor="$(resolve_build_flavor)"
 
 if [[ "${skip_admin_ui_build}" == "1" ]]; then
   if [[ ! -f "${ROOT_DIR}/internal/app/daemon/adminui/dist/index.html" ]]; then
@@ -159,7 +168,7 @@ for platform in "${platforms[@]}"; do
     bash "${ROOT_DIR}/scripts/externalaccess/prepare-cloudflared-embed.sh" "${goos}" "${goarch}"
 
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-    go build -trimpath -ldflags "-X main.version=${version} -X main.branch=${build_branch}" \
+    go build -trimpath -ldflags "-X main.version=${version} -X main.branch=${build_branch} -X github.com/kxn/codex-remote-feishu/internal/buildinfo.FlavorValue=${build_flavor}" \
     -o "${staging_dir}/codex-remote${extension}" ./cmd/codex-remote
 
   cp README.md QUICKSTART.md CHANGELOG.md "${staging_dir}/"
