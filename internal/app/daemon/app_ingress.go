@@ -397,17 +397,19 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	syncSurfaceResumeState := false
 	for _, event := range events {
 		now := time.Now().UTC()
-		log.Printf(
-			"agent event: instance=%s kind=%s thread=%s turn=%s item=%s initiator=%s traffic=%s status=%s",
-			instanceID,
-			event.Kind,
-			event.ThreadID,
-			event.TurnID,
-			event.ItemID,
-			event.Initiator.Kind,
-			event.TrafficClass,
-			event.Status,
-		)
+		if shouldLogAgentEvent(event) {
+			log.Printf(
+				"agent event: instance=%s kind=%s thread=%s turn=%s item=%s initiator=%s traffic=%s status=%s",
+				instanceID,
+				event.Kind,
+				event.ThreadID,
+				event.TurnID,
+				event.ItemID,
+				event.Initiator.Kind,
+				event.TrafficClass,
+				event.Status,
+			)
+		}
 		uiEvents := a.service.ApplyAgentEvent(instanceID, event)
 		if event.Kind == agentproto.EventThreadsSnapshot {
 			a.markStartupThreadsRefreshSettledLocked(instanceID)
@@ -433,6 +435,15 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	}
 	if syncSurfaceResumeState {
 		a.syncSurfaceResumeStateForInstanceLocked(instanceID, nil)
+	}
+}
+
+func shouldLogAgentEvent(event agentproto.Event) bool {
+	switch event.Kind {
+	case agentproto.EventItemDelta:
+		return false
+	default:
+		return true
 	}
 }
 
@@ -552,7 +563,6 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	recoveryEvents := a.maybeRecoverHeadlessSurfacesLocked(now)
 	a.recordHeadlessRestoreOutcomeEventsLocked(recoveryEvents, now)
 	a.handleUIEvents(ctx, recoveryEvents)
-	a.syncSurfaceResumeStateLocked(nil)
 	a.syncFeishuTimeSensitiveLocked(ctx)
 	a.maybeShutdownExternalAccessIdleLocked(now)
 }

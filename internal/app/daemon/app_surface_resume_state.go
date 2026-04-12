@@ -171,6 +171,61 @@ func (a *App) syncSurfaceResumeStateForInstanceLocked(instanceID string, clearTa
 	a.syncHeadlessRestoreStateLocked()
 }
 
+func (a *App) syncSurfaceResumeStateForSurfacesLocked(surfaceIDs []string, clearTargets map[string]bool) {
+	if a.surfaceResumeState == nil || len(surfaceIDs) == 0 {
+		return
+	}
+	surfacesByID := map[string]*state.SurfaceConsoleRecord{}
+	for _, surface := range a.service.Surfaces() {
+		if surface == nil {
+			continue
+		}
+		surfacesByID[strings.TrimSpace(surface.SurfaceSessionID)] = surface
+	}
+	now := time.Now().UTC()
+	touched := false
+	for _, surfaceID := range surfaceIDs {
+		surfaceID = strings.TrimSpace(surfaceID)
+		if surfaceID == "" {
+			continue
+		}
+		surface := surfacesByID[surfaceID]
+		if surface == nil {
+			if err := a.surfaceResumeState.Delete(surfaceID); err != nil {
+				log.Printf("clear surface resume state failed: surface=%s err=%v", surfaceID, err)
+			}
+			touched = true
+			continue
+		}
+		clearResumeTarget := false
+		if clearTargets != nil {
+			clearResumeTarget = clearTargets[surfaceID]
+		}
+		entry, ok := a.currentSurfaceResumeEntryLocked(surface, clearResumeTarget)
+		if !ok {
+			if err := a.surfaceResumeState.Delete(surfaceID); err != nil {
+				log.Printf("clear surface resume state failed: surface=%s err=%v", surfaceID, err)
+			}
+			touched = true
+			continue
+		}
+		if current, ok := a.surfaceResumeState.Get(entry.SurfaceSessionID); ok && sameSurfaceResumeEntryContent(current, entry) {
+			continue
+		}
+		entry.UpdatedAt = now
+		if err := a.surfaceResumeState.Put(entry); err != nil {
+			log.Printf("persist surface resume state failed: surface=%s err=%v", entry.SurfaceSessionID, err)
+		}
+		touched = true
+	}
+	if !touched {
+		return
+	}
+	a.syncVSCodeResumeNoticeStateLocked(nil)
+	a.syncSurfaceResumeRecoveryStateLocked()
+	a.syncHeadlessRestoreStateLocked()
+}
+
 func (a *App) currentSurfaceResumeEntryLocked(surface *state.SurfaceConsoleRecord, clearResumeTarget bool) (SurfaceResumeEntry, bool) {
 	if surface == nil {
 		return SurfaceResumeEntry{}, false
@@ -224,6 +279,7 @@ func (a *App) currentSurfaceResumeTargetLocked(surface *state.SurfaceConsoleReco
 			ResumeWorkspaceKey: state.ResolveWorkspaceKey(workspaceKey, surface.ClaimedWorkspaceKey, surface.PreparedThreadCWD),
 			ResumeRouteMode:    strings.TrimSpace(string(surface.RouteMode)),
 		}
+		threadName := ""
 		if snapshot != nil {
 			target.ResumeHeadless = snapshot.Attachment.Managed && strings.EqualFold(strings.TrimSpace(snapshot.Attachment.Source), "headless")
 			target.ResumeThreadTitle = strings.TrimSpace(snapshot.Attachment.SelectedThreadTitle)
@@ -231,15 +287,11 @@ func (a *App) currentSurfaceResumeTargetLocked(surface *state.SurfaceConsoleReco
 		if target.ResumeThreadID != "" {
 			if inst := a.service.Instance(target.ResumeInstanceID); inst != nil {
 				if thread := inst.Threads[target.ResumeThreadID]; thread != nil {
-					if target.ResumeThreadTitle == "" {
-						target.ResumeThreadTitle = strings.TrimSpace(thread.Name)
-					}
+					threadName = strings.TrimSpace(thread.Name)
 					target.ResumeThreadCWD = state.ResolveWorkspaceKey(thread.CWD)
 				}
 			}
-			if target.ResumeThreadTitle == "" {
-				target.ResumeThreadTitle = target.ResumeThreadID
-			}
+			target.ResumeThreadTitle = storedResumeThreadTitle(target.ResumeThreadTitle, target.ResumeThreadID, target.ResumeThreadCWD, target.ResumeWorkspaceKey, threadName)
 		}
 		return target, true
 	}
@@ -329,6 +381,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 	sort.Strings(surfaceIDs)
 	allowMissingTargetFailure := a.initialThreadsRefreshRoundCompleteLocked()
 	events := []control.UIEvent{}
+	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		recovery := a.surfaceResumeRecovery[surfaceID]
 		if recovery == nil {
@@ -350,6 +403,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 		case orchestrator.SurfaceResumeStatusThreadAttached, orchestrator.SurfaceResumeStatusWorkspaceAttached:
 			a.clearSurfaceResumeBackoffLocked(surfaceID)
 			events = append(events, restoreEvents...)
+			updatedSurfaceIDs = append(updatedSurfaceIDs, surfaceID)
 		case orchestrator.SurfaceResumeStatusFailed:
 			a.setSurfaceResumeBackoffLocked(surfaceID, result.FailureCode, now)
 			if recovery.Entry.ResumeHeadless {
@@ -365,6 +419,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 			}
 		}
 	}
+	a.syncSurfaceResumeStateForSurfacesLocked(updatedSurfaceIDs, nil)
 	return events
 }
 
@@ -378,6 +433,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 	}
 	sort.Strings(surfaceIDs)
 	events := []control.UIEvent{}
+	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		recovery := a.surfaceResumeRecovery[surfaceID]
 		if recovery == nil || state.NormalizeProductMode(state.ProductMode(recovery.Entry.ProductMode)) != state.ProductModeVSCode {
@@ -391,6 +447,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 		case orchestrator.SurfaceResumeStatusInstanceAttached:
 			a.clearSurfaceResumeBackoffLocked(surfaceID)
 			events = append(events, restoreEvents...)
+			updatedSurfaceIDs = append(updatedSurfaceIDs, surfaceID)
 		case orchestrator.SurfaceResumeStatusFailed:
 			a.setSurfaceResumeBackoffLocked(surfaceID, result.FailureCode, now)
 			notice := orchestrator.NoticeForVSCodeSurfaceResumeFailure(result.FailureCode)
@@ -403,6 +460,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 			}
 		}
 	}
+	a.syncSurfaceResumeStateForSurfacesLocked(updatedSurfaceIDs, nil)
 	return events
 }
 

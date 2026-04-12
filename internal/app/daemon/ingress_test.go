@@ -38,6 +38,30 @@ func TestEventAffectsSurfaceResumeState(t *testing.T) {
 	}
 }
 
+func TestShouldLogAgentEvent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		event agentproto.Event
+		want  bool
+	}{
+		{name: "item delta", event: agentproto.Event{Kind: agentproto.EventItemDelta}, want: false},
+		{name: "item completed", event: agentproto.Event{Kind: agentproto.EventItemCompleted}, want: true},
+		{name: "threads snapshot", event: agentproto.Event{Kind: agentproto.EventThreadsSnapshot}, want: true},
+		{name: "system error", event: agentproto.Event{Kind: agentproto.EventSystemError}, want: true},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldLogAgentEvent(tc.event); got != tc.want {
+				t.Fatalf("shouldLogAgentEvent(%s) = %t, want %t", tc.event.Kind, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIngressPumpRoundRobinKeepsPerInstanceFIFO(t *testing.T) {
 	pump := newIngressPump()
 	for _, item := range []ingressWorkItem{
