@@ -310,3 +310,19 @@ func TestRunLocalUpgradeUsesWorkspaceBindingWhenFlagsOmitted(t *testing.T) {
 		t.Fatal("expected helper launcher to run")
 	}
 }
+
+func TestRunLocalUpgradeRequiresExplicitTargetWithoutWorkspaceBinding(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	var stdout bytes.Buffer
+	err := RunLocalUpgrade([]string{
+		"-slot", "binding-test",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{}, "vtest")
+	if err == nil {
+		t.Fatal("RunLocalUpgrade() error = nil, want missing target error")
+	}
+	if !strings.Contains(err.Error(), "requires a bound repo target or explicit -instance/-base-dir/-state-path") {
+		t.Fatalf("RunLocalUpgrade() error = %v", err)
+	}
+}
