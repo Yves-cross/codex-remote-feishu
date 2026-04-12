@@ -50,7 +50,7 @@
   - 负责决定 callback 是同步等待 replace，还是立即 ack 后异步处理
 - `daemon`
   - 负责 old-card / old-message 生命周期判定
-  - 负责在 ingress 层把 pure navigation 先分流到 Feishu UI controller，而不是直接落进主 `ApplySurfaceAction()` reducer
+  - 负责在 ingress 层统一把动作交给主 `ApplySurfaceAction()` 入口；`FeishuUIIntent` 分流发生在 service 内，避免绕开 request/path-picker 等产品门禁
   - 负责只在安全条件下把同上下文导航转成 `ReplaceCurrentCard`
   - 当前只有当 action 命中 **inline-replace allow-list**（并非所有 `FeishuUIIntent`）、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard` 时，才会真正发 inline replace
 - `orchestrator / Feishu UI controller`
@@ -318,7 +318,7 @@
 - [internal/core/orchestrator/service_local_request_test.go](../../internal/core/orchestrator/service_local_request_test.go)
   - 锁定 `UIEvent` 现在会携带显式 `Feishu*Context` query/policy 元数据；selection/command view 的 UI owner 已切到 read model，但用户可见行为保持不变
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
-  - 锁定 daemon ingress 分流后的 inline replace 结果、`/help` 保持 append-only、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
+  - 锁定 daemon ingress 统一入口下的 inline replace 结果、`/help` 保持 append-only、active path picker 会阻断 competing `/menu`、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)
   - 锁定 old / old-card 生命周期分类，以及 reject detail 已按当前 UI intent / command 语义收束
 - [internal/core/orchestrator/service_config_prompt_test.go](../../internal/core/orchestrator/service_config_prompt_test.go)

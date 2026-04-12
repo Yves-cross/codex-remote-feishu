@@ -259,9 +259,6 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 }
 
 func (a *App) applyIngressActionLocked(action control.Action) []control.UIEvent {
-	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
-		return a.service.ApplyFeishuUIIntent(action, *intent)
-	}
 	return a.service.ApplySurfaceAction(action)
 }
 

@@ -299,6 +299,17 @@ func clearSurfacePathPicker(surface *state.SurfaceConsoleRecord) {
 	surface.ActivePathPicker = nil
 }
 
+func (s *Service) pruneExpiredPathPicker(surface *state.SurfaceConsoleRecord) {
+	if s == nil || surface == nil || surface.ActivePathPicker == nil {
+		return
+	}
+	expiresAt := surface.ActivePathPicker.ExpiresAt
+	if expiresAt.IsZero() || expiresAt.After(s.now()) {
+		return
+	}
+	clearSurfacePathPicker(surface)
+}
+
 func confirmedPathPickerSelection(record *state.ActivePathPickerRecord) (string, error) {
 	selectedPath := currentSelectedPath(record)
 	if strings.TrimSpace(selectedPath) == "" {

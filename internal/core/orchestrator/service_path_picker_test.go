@@ -313,6 +313,44 @@ func TestPathPickerExpiresAndClearsGate(t *testing.T) {
 	}
 }
 
+func TestPathPickerExpiredGateAutoClearsOnRouteAction(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "demo",
+		WorkspaceRoot: root,
+		WorkspaceKey:  root,
+		Threads:       map[string]*state.ThreadRecord{},
+		Online:        true,
+	})
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:        control.PathPickerModeDirectory,
+		RootPath:    root,
+		ExpireAfter: time.Second,
+	})
+	view := singlePathPickerEvent(t, events)
+	if view == nil {
+		t.Fatal("expected picker view")
+	}
+	now = now.Add(2 * time.Second)
+	listEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	})
+	if len(listEvents) != 1 || listEvents[0].FeishuSelectionView == nil {
+		t.Fatalf("expected /list to proceed after picker expiry, got %#v", listEvents)
+	}
+	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+		t.Fatalf("expected expired picker gate to be cleared on route action")
+	}
+}
+
 func TestPathPickerBlocksRouteMutationUntilCancelled(t *testing.T) {
 	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

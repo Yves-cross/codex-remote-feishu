@@ -297,6 +297,7 @@ func (s *Service) SetPersistedThreadCatalog(catalog PersistedThreadCatalog) {
 
 func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	surface := s.ensureSurface(action)
+	s.pruneExpiredPathPicker(surface)
 	if surface.ActiveCommandCapture != nil {
 		switch action.Kind {
 		case control.ActionTextMessage, control.ActionStartCommandCapture, control.ActionCancelCommandCapture:
