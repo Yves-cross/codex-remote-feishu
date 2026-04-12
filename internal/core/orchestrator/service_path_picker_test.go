@@ -10,6 +10,21 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
+type fakePathPickerConsumer struct {
+	confirmed []control.PathPickerResult
+	cancelled []control.PathPickerResult
+}
+
+func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+	f.confirmed = append(f.confirmed, result)
+	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
+}
+
+func (f *fakePathPickerConsumer) PathPickerCancelled(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+	f.cancelled = append(f.cancelled, result)
+	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
+}
+
 func pathPickerViewFromEvent(t *testing.T, event control.UIEvent) *control.FeishuPathPickerView {
 	t.Helper()
 	if event.Kind != control.UIEventFeishuPathPicker || event.FeishuPathPickerView == nil {
@@ -344,5 +359,131 @@ func TestPathPickerBlocksRouteMutationUntilCancelled(t *testing.T) {
 	})
 	if len(listEvents) != 1 || listEvents[0].FeishuSelectionView == nil {
 		t.Fatalf("expected /list to work again after cancel, got %#v", listEvents)
+	}
+}
+
+func TestPathPickerBlocksOtherFeishuCardsWhileActive(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:     control.PathPickerModeDirectory,
+		RootPath: root,
+	})
+	view := singlePathPickerEvent(t, events)
+	_ = view
+	blockedEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		Text:             "/mode",
+	})
+	if len(blockedEvents) != 1 || blockedEvents[0].Notice == nil || blockedEvents[0].Notice.Code != "path_picker_active" {
+		t.Fatalf("expected picker gate to block other feishu cards, got %#v", blockedEvents)
+	}
+}
+
+func TestPathPickerConfirmHandsValidatedResultToConsumer(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	consumer := &fakePathPickerConsumer{}
+	svc.RegisterPathPickerConsumer("fake", consumer)
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:         control.PathPickerModeFile,
+		RootPath:     root,
+		ConsumerKind: "fake",
+		ConsumerMeta: map[string]string{"flow": "send_file"},
+	})
+	view := singlePathPickerEvent(t, events)
+	_ = svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+		PickerEntry:      "file.txt",
+	})
+	confirmEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+	})
+	if len(confirmEvents) != 1 || confirmEvents[0].Notice == nil || confirmEvents[0].Notice.Code != "consumer_confirmed" {
+		t.Fatalf("expected consumer confirm event, got %#v", confirmEvents)
+	}
+	if len(consumer.confirmed) != 1 {
+		t.Fatalf("expected one consumer confirm call, got %#v", consumer.confirmed)
+	}
+	result := consumer.confirmed[0]
+	if result.SelectedPath != filepath.Join(root, "file.txt") || result.RootPath != root || result.Mode != control.PathPickerModeFile {
+		t.Fatalf("unexpected consumer confirm result: %#v", result)
+	}
+	if result.ConsumerMeta["flow"] != "send_file" || result.OwnerUserID != "user-1" {
+		t.Fatalf("unexpected consumer confirm metadata: %#v", result)
+	}
+	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+		t.Fatalf("expected confirm to clear active picker before consumer handoff")
+	}
+}
+
+func TestPathPickerCancelHandsControlToConsumer(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	consumer := &fakePathPickerConsumer{}
+	svc.RegisterPathPickerConsumer("fake", consumer)
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:         control.PathPickerModeDirectory,
+		RootPath:     root,
+		ConsumerKind: "fake",
+	})
+	view := singlePathPickerEvent(t, events)
+	cancelEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerCancel,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+	})
+	if len(cancelEvents) != 1 || cancelEvents[0].Notice == nil || cancelEvents[0].Notice.Code != "consumer_cancelled" {
+		t.Fatalf("expected consumer cancel event, got %#v", cancelEvents)
+	}
+	if len(consumer.cancelled) != 1 || consumer.cancelled[0].RootPath != root {
+		t.Fatalf("unexpected consumer cancel result: %#v", consumer.cancelled)
+	}
+}
+
+func TestPathPickerWithoutConsumerStaysBusinessAgnostic(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:     control.PathPickerModeDirectory,
+		RootPath: root,
+	})
+	view := singlePathPickerEvent(t, events)
+	confirmEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+	})
+	if len(confirmEvents) != 1 || confirmEvents[0].Notice == nil || confirmEvents[0].Notice.Code != "path_picker_confirmed" {
+		t.Fatalf("expected generic confirm notice without business coupling, got %#v", confirmEvents)
 	}
 }

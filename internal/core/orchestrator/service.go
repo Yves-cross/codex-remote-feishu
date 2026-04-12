@@ -18,30 +18,31 @@ type Config struct {
 }
 
 type Service struct {
-	now               func() time.Time
-	config            Config
-	root              *state.Root
-	renderer          *renderer.Planner
-	nextQueueItemID   int
-	nextImageID       int
-	nextPromptID      int
-	nextPathPickerID  int
-	nextHeadlessID    int
-	handoffUntil      map[string]time.Time
-	pausedUntil       map[string]time.Time
-	abandoningUntil   map[string]time.Time
-	itemBuffers       map[string]*itemBuffer
-	turnPlanSnapshots map[string]*turnPlanSnapshotRecord
-	threadRefreshes   map[string]bool
-	pendingTurnText   map[string]*completedTextItem
-	turnFileChanges   map[string]*turnFileChangeSummary
-	pendingRemote     map[string]*remoteTurnBinding
-	activeRemote      map[string]*remoteTurnBinding
-	pendingSteers     map[string]*pendingSteerBinding
-	instanceClaims    map[string]*instanceClaimRecord
-	workspaceClaims   map[string]*workspaceClaimRecord
-	threadClaims      map[string]*threadClaimRecord
-	persistedThreads  PersistedThreadCatalog
+	now                 func() time.Time
+	config              Config
+	root                *state.Root
+	renderer            *renderer.Planner
+	nextQueueItemID     int
+	nextImageID         int
+	nextPromptID        int
+	nextPathPickerID    int
+	nextHeadlessID      int
+	handoffUntil        map[string]time.Time
+	pausedUntil         map[string]time.Time
+	abandoningUntil     map[string]time.Time
+	itemBuffers         map[string]*itemBuffer
+	turnPlanSnapshots   map[string]*turnPlanSnapshotRecord
+	threadRefreshes     map[string]bool
+	pendingTurnText     map[string]*completedTextItem
+	turnFileChanges     map[string]*turnFileChangeSummary
+	pendingRemote       map[string]*remoteTurnBinding
+	activeRemote        map[string]*remoteTurnBinding
+	pendingSteers       map[string]*pendingSteerBinding
+	instanceClaims      map[string]*instanceClaimRecord
+	workspaceClaims     map[string]*workspaceClaimRecord
+	threadClaims        map[string]*threadClaimRecord
+	persistedThreads    PersistedThreadCatalog
+	pathPickerConsumers map[string]PathPickerConsumer
 }
 
 type itemBuffer struct {
@@ -132,6 +133,11 @@ type PersistedThreadCatalog interface {
 	ThreadByID(threadID string) (*state.ThreadRecord, error)
 }
 
+type PathPickerConsumer interface {
+	PathPickerConfirmed(*Service, *state.SurfaceConsoleRecord, control.PathPickerResult) []control.UIEvent
+	PathPickerCancelled(*Service, *state.SurfaceConsoleRecord, control.PathPickerResult) []control.UIEvent
+}
+
 const (
 	requestCaptureModeDeclineWithFeedback = "decline_with_feedback"
 	defaultModel                          = "gpt-5.4"
@@ -158,24 +164,25 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		planner = renderer.NewPlanner()
 	}
 	return &Service{
-		now:               now,
-		config:            cfg,
-		root:              state.NewRoot(),
-		renderer:          planner,
-		handoffUntil:      map[string]time.Time{},
-		pausedUntil:       map[string]time.Time{},
-		abandoningUntil:   map[string]time.Time{},
-		itemBuffers:       map[string]*itemBuffer{},
-		turnPlanSnapshots: map[string]*turnPlanSnapshotRecord{},
-		threadRefreshes:   map[string]bool{},
-		pendingTurnText:   map[string]*completedTextItem{},
-		turnFileChanges:   map[string]*turnFileChangeSummary{},
-		pendingRemote:     map[string]*remoteTurnBinding{},
-		activeRemote:      map[string]*remoteTurnBinding{},
-		pendingSteers:     map[string]*pendingSteerBinding{},
-		instanceClaims:    map[string]*instanceClaimRecord{},
-		workspaceClaims:   map[string]*workspaceClaimRecord{},
-		threadClaims:      map[string]*threadClaimRecord{},
+		now:                 now,
+		config:              cfg,
+		root:                state.NewRoot(),
+		renderer:            planner,
+		handoffUntil:        map[string]time.Time{},
+		pausedUntil:         map[string]time.Time{},
+		abandoningUntil:     map[string]time.Time{},
+		itemBuffers:         map[string]*itemBuffer{},
+		turnPlanSnapshots:   map[string]*turnPlanSnapshotRecord{},
+		threadRefreshes:     map[string]bool{},
+		pendingTurnText:     map[string]*completedTextItem{},
+		turnFileChanges:     map[string]*turnFileChangeSummary{},
+		pendingRemote:       map[string]*remoteTurnBinding{},
+		activeRemote:        map[string]*remoteTurnBinding{},
+		pendingSteers:       map[string]*pendingSteerBinding{},
+		instanceClaims:      map[string]*instanceClaimRecord{},
+		workspaceClaims:     map[string]*workspaceClaimRecord{},
+		threadClaims:        map[string]*threadClaimRecord{},
+		pathPickerConsumers: map[string]PathPickerConsumer{},
 	}
 }
 

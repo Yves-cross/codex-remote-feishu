@@ -89,26 +89,8 @@ func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRe
 		control.ActionPathPickerConfirm,
 		control.ActionPathPickerCancel:
 		return nil
-	case control.ActionListInstances,
-		control.ActionAttachInstance,
-		control.ActionAttachWorkspace,
-		control.ActionShowAllWorkspaces,
-		control.ActionShowRecentWorkspaces,
-		control.ActionShowThreads,
-		control.ActionShowAllThreads,
-		control.ActionShowScopedThreads,
-		control.ActionShowWorkspaceThreads,
-		control.ActionShowAllThreadWorkspaces,
-		control.ActionShowRecentThreadWorkspaces,
-		control.ActionUseThread,
-		control.ActionConfirmKickThread,
-		control.ActionCancelKickThread,
-		control.ActionFollowLocal,
-		control.ActionNewThread,
-		control.ActionDetach:
-		return notice(surface, "path_picker_active", "当前正在进行路径选择，请先在卡片里确认或取消；如需查看状态，可继续使用 /status。")
 	default:
-		return nil
+		return notice(surface, "path_picker_active", "当前正在进行路径选择，请先在卡片里确认或取消；如需查看状态，可继续使用 /status。")
 	}
 }
 

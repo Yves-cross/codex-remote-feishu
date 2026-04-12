@@ -19,6 +19,21 @@ func (s *Service) OpenPathPicker(action control.Action, req control.PathPickerRe
 	return s.openPathPicker(surface, action.ActorUserID, req)
 }
 
+func (s *Service) RegisterPathPickerConsumer(kind string, consumer PathPickerConsumer) {
+	if s == nil {
+		return
+	}
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return
+	}
+	if consumer == nil {
+		delete(s.pathPickerConsumers, kind)
+		return
+	}
+	s.pathPickerConsumers[kind] = consumer
+}
+
 func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) []control.UIEvent {
 	if surface == nil {
 		return nil
@@ -161,17 +176,19 @@ func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, p
 	if err != nil {
 		return notice(surface, "path_picker_selection_missing", err.Error())
 	}
+	result := pathPickerResultFromRecord(record, selectedPath)
 	clearSurfacePathPicker(surface)
-	return notice(surface, "path_picker_confirmed", fmt.Sprintf("已确认路径：`%s`。", selectedPath))
+	return s.dispatchPathPickerConfirmed(surface, result)
 }
 
 func (s *Service) handlePathPickerCancel(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []control.UIEvent {
-	_, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
+	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
 	}
+	result := pathPickerResultFromRecord(record, currentSelectedPath(record))
 	clearSurfacePathPicker(surface)
-	return notice(surface, "path_picker_cancelled", "已取消路径选择。")
+	return s.dispatchPathPickerCancelled(surface, result)
 }
 
 func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*state.ActivePathPickerRecord, []control.UIEvent) {
@@ -321,6 +338,62 @@ func currentSelectedPath(record *state.ActivePathPickerRecord) string {
 		return strings.TrimSpace(record.CurrentPath)
 	}
 	return strings.TrimSpace(record.SelectedPath)
+}
+
+func pathPickerResultFromRecord(record *state.ActivePathPickerRecord, selectedPath string) control.PathPickerResult {
+	if record == nil {
+		return control.PathPickerResult{}
+	}
+	return control.PathPickerResult{
+		PickerID:     strings.TrimSpace(record.PickerID),
+		Mode:         control.PathPickerMode(record.Mode),
+		RootPath:     strings.TrimSpace(record.RootPath),
+		CurrentPath:  strings.TrimSpace(record.CurrentPath),
+		SelectedPath: strings.TrimSpace(selectedPath),
+		OwnerUserID:  strings.TrimSpace(record.OwnerUserID),
+		ConsumerKind: strings.TrimSpace(record.ConsumerKind),
+		ConsumerMeta: cloneStringMap(record.ConsumerMeta),
+		CreatedAt:    record.CreatedAt,
+		ExpiresAt:    record.ExpiresAt,
+	}
+}
+
+func (s *Service) dispatchPathPickerConfirmed(surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+	consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind)
+	if ok {
+		if events := consumer.PathPickerConfirmed(s, surface, result); len(events) != 0 {
+			return events
+		}
+	}
+	if strings.TrimSpace(result.ConsumerKind) != "" && !ok {
+		return notice(surface, "path_picker_consumer_missing", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。")
+	}
+	return notice(surface, "path_picker_confirmed", fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath))
+}
+
+func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+	consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind)
+	if ok {
+		if events := consumer.PathPickerCancelled(s, surface, result); len(events) != 0 {
+			return events
+		}
+	}
+	if strings.TrimSpace(result.ConsumerKind) != "" && !ok {
+		return notice(surface, "path_picker_consumer_missing", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。")
+	}
+	return notice(surface, "path_picker_cancelled", "已取消路径选择。")
+}
+
+func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, bool) {
+	if s == nil {
+		return nil, false
+	}
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return nil, false
+	}
+	consumer := s.pathPickerConsumers[kind]
+	return consumer, consumer != nil
 }
 
 func canConfirmPathPicker(record *state.ActivePathPickerRecord) bool {

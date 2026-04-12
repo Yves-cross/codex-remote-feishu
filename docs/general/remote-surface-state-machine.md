@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-11`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 的飞书回传路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Updated: `2026-04-12`
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 的飞书回传路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -40,6 +40,7 @@
 23. [internal/app/daemon/admin_vscode.go](../../internal/app/daemon/admin_vscode.go)
 24. [internal/app/daemon/app_vscode_migration.go](../../internal/app/daemon/app_vscode_migration.go)
 25. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
+26. [internal/core/orchestrator/service_path_picker.go](../../internal/core/orchestrator/service_path_picker.go)
 
 ## 2. 审计前提
 
@@ -194,8 +195,18 @@ surface 不是单一枚举，而是五层正交状态叠加。
 | `G2 PendingRequest` | `PendingRequests` 非空 | 普通文本/图片会被待处理请求卡片门禁挡住；请求可以是 approval，也可以是 `request_user_input` |
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
 | `G4 CommandCapture` | `ActiveCommandCapture != nil` | 仅保留旧 `/model` 历史兼容：当前 UI 不再创建新 capture；若 surface 上残留旧 capture，下一条普通文本会被直接转换成 `/model <输入>` |
-| `G5 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autowhip` 继续正常，其余动作被挡 |
-| `G6 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到 legacy `settings.json` override 或 stale managed shim | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发迁移/修复卡片 |
+| `G5 PathPicker` | `ActivePathPicker != nil` | 当前存在一个仍有效的飞书路径选择器；core 只关心“gate 是否存在、是否阻断 competing UI / route mutation、confirm/cancel 后如何交给 consumer”，不关心目录浏览细节 |
+| `G6 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autowhip` 继续正常，其余动作被挡 |
+| `G7 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到 legacy `settings.json` override 或 stale managed shim | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发迁移/修复卡片 |
+
+补充说明：
+
+1. `ActivePathPicker` 当前是一个 coarse-grained modal overlay：
+   1. root / current / selected path、owner、expiresAt、consumer 元数据都挂在 surface 上的 `ActivePathPicker` 记录里。
+   2. core 不引入新的 route mode，也不追踪“当前浏览到了第几层目录”这类 UI 细节。
+   3. core 只在两类地方感知它：
+      1. route-mutation / competing Feishu card flow gate
+      2. confirm / cancel / expire / unauthorized 后的 gate 清理与 consumer handoff
 
 ### 3.5 草稿状态
 
@@ -459,6 +470,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 4. request gate：
    1. `PendingRequest`
    2. `RequestCapture`
+   3. `ActivePathPicker`
 5. dispatch / queue：
    1. `Dispatching`
    2. `Running`
@@ -700,11 +712,12 @@ R5 NewThreadReady
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
    3. 当前 instance claim 会先释放，再 attach 到新目标。
-9. 当 surface 处于 `PendingRequest` 或 `RequestCapture` 时：
+9. 当 surface 处于 `PendingRequest`、`RequestCapture` 或 `ActivePathPicker` 时：
    1. same-instance `/use`
    2. `/follow`
    3. follow-local 自动重绑定
    当前都会被冻结，避免 UI 宣布的新目标和下一条普通输入的实际落点不一致。
+   4. 若是 `ActivePathPicker`，当前还会额外把 `/list`、`/menu`、bare config cards、`/detach` 等 competing Feishu card flow 一并挡住，只保留 picker 自身回调与 `/status`。
 10. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
 11. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
    1. 当前可见 thread 若只存在于 VS Code instance，不会被自动 attach 到 VS Code。
@@ -992,8 +1005,9 @@ transport degraded retained attachment
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 则走按钮或表单提交 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |
+| `G5 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片、revoke/reaction；`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel / expire / unauthorized 会先清 gate，再把结果交给 consumer 或默认 notice |
 | `E6 Abandoning` | 只允许 `/status`、`/autowhip`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
-| `G6 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发迁移/修复卡片；surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理 |
+| `G7 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发迁移/修复卡片；surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理 |
 
 retained-offline overlay 额外规则：
 

@@ -1,8 +1,8 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-11`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter。
+> Updated: `2026-04-12`
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议，以及 active picker 的 same-daemon freshness / append-only confirm-cancel 边界。
 
 ## 1. 文档定位
 
@@ -58,6 +58,7 @@
   - 负责通过阶段 1 暴露的 `Feishu*Context` query/policy 边界生成 UI-owned read model 与 request 事件
   - 对 workspace/thread selection，当前先产出 `FeishuSelectionView` read model，再连同 `FeishuSelectionContext` 穿过 `UIEvent` 边界
   - 对 `/menu` 与 bare `/mode` `/autowhip` `/reasoning` `/access` `/model`，当前先产出 `FeishuCommandView` read model，再连同 `FeishuCommandContext` 穿过 `UIEvent` 边界
+  - 对飞书文件/目录选择器，当前先产出 `FeishuPathPickerView` read model，再连同 `FeishuPathPickerContext` 穿过 `UIEvent` 边界；进入目录、返回上一级、文件选择属于 controller 内 pure navigation，confirm/cancel 则转到 picker consumer handoff
 - `projector`
   - 负责把 `control.UIEvent` 渲染成 Feishu 卡片
   - 负责把当前需要的 callback payload 字段写进卡片按钮/表单
@@ -66,6 +67,8 @@
     负责把 `FeishuSelectionView` 投影成当前仍被卡片 renderer 消费的 `FeishuDirectSelectionPrompt`
     [internal/adapter/feishu/projector_command_view.go](../../internal/adapter/feishu/projector_command_view.go)
     负责把 `FeishuCommandView` 投影成当前仍被卡片 renderer 消费的 `FeishuDirectCommandCatalog`
+    [internal/adapter/feishu/projector_path_picker.go](../../internal/adapter/feishu/projector_path_picker.go)
+    负责把 `FeishuPathPickerView` 投影成当前复用路径选择器卡片
 - `orchestrator`
   - 负责 attach / use / follow / request gate / capture / new-thread 等产品状态
   - 负责 mixed/product-owned 动作仍然进入主 reducer 的那部分产品语义
@@ -79,6 +82,8 @@
 | `show_all_workspaces` / `show_recent_workspaces` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理工作区列表展开/收起；不改变 attach 状态 |
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理最近会话与“当前工作区全部会话”的视图切换；真正接管 thread 不在这里发生 |
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理 `/useall` 里的 workspace-group 展开/返回；不直接改变 selected thread |
+| `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡 |
+| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议、owner/freshness 校验、是否 replace 仍属 Feishu UI；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
 | `request approve` / `request_user_input` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
@@ -96,6 +101,9 @@
   - workspace/thread selection 现在跨边界携带的是 `control.FeishuSelectionView`
   - projector 在 adapter 层把它投影成当前卡片 renderer 仍可消费的 `FeishuDirectSelectionPrompt`
   - 其他 selection 场景，例如 instance selection、kick-thread confirm，仍可直接使用 `FeishuDirectSelectionPrompt`
+- `control.FeishuPathPickerView` 当前已经是路径选择器跨 `UIEvent` 边界的主载体：
+  - projector 直接以它为 owner 生成 `path_picker_*` callback payload
+  - 当前不会再把目录浏览过程编码回 `FeishuDirectSelectionPrompt`
 - 这些 DTO 当前都已经显式标注 owner，并与 query/policy context 分离：
   - DTO 形状暂未全部迁出
   - `UIEvent` 已经携带独立的 `FeishuSelectionContext` / `FeishuCommandContext` / `FeishuRequestContext`
@@ -131,6 +139,11 @@
 | `use_thread` | `thread_id`、`allow_cross_workspace` | 选择 thread，必要时允许跨 workspace |
 | `show_workspace_threads` | `workspace_key` | 展开某个 workspace 下的全部会话 |
 | `run_command` | `command_text` 或 `command` | 把卡片按钮退化成文本命令解析 |
+| `path_picker_enter` | `picker_id`、`entry_name` | 进入当前 active picker 里的一个子目录 |
+| `path_picker_up` | `picker_id` | 回到当前 active picker 的上一级目录 |
+| `path_picker_select` | `picker_id`、`entry_name` | 在当前 active picker 里选择一个文件或目录 |
+| `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff |
+| `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice |
 | `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers` | 响应 approval 或 `request_user_input` |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
 | `submit_request_form` | `request_id`、`request_type`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径 |
@@ -188,6 +201,9 @@
 - `ActionShowAllThreads`
 - `ActionShowScopedThreads`
 - `ActionShowWorkspaceThreads`
+- `ActionPathPickerEnter`
+- `ActionPathPickerUp`
+- `ActionPathPickerSelect`
 
 当前语义补充：
 
@@ -203,6 +219,7 @@
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
 - 参数应用，例如 `/mode vscode`、`/autowhip on`
+- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但最终结果交给 picker consumer，因此默认保持 append-only
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
 - `/help` 这类静态帮助/目录卡，即使底层仍是 `FeishuDirectCommandCatalog`，当前也不属于 replaceable UI navigation
 - request approve / request submit 的处理结果
@@ -240,9 +257,13 @@
   - 通过 `daemon_lifecycle_id` 判定
   - 负责拒绝“来自旧 daemon 生命周期”的旧卡
 - view/session freshness
-  - 当前**没有**单独的 per-card view token
-  - replaceable pure navigation 统一采用 `surface_state_rederived` 策略
+  - workspace/thread selection 与 `/menu` / bare config cards 当前**没有**单独的 per-card view token
+  - 这些 replaceable pure navigation 统一采用 `surface_state_rederived` 策略
   - 即：只要 callback 仍在当前 daemon 生命周期内，就直接用**当前** surface state 重建卡片，而不是尝试恢复点击时那一版旧 view
+  - path picker 当前在这条规则上额外有一个 coarse-grained `picker_id`
+    - 它不是每一步导航都变化的 per-view token
+    - 但它要求 callback 必须命中当前 surface 上仍然 active 的 picker 生命周期
+    - 同 daemon 生命周期里的旧 picker 卡片如果 `picker_id` 不匹配，会直接收到 `path_picker_expired`，不会继续替换当前 active picker
 
 因此当前的 same-daemon 并发点击 / 旧 view 点击策略是：
 
@@ -259,14 +280,17 @@
 - [internal/core/control/feishu_ui_boundary.go](../../internal/core/control/feishu_ui_boundary.go)
 - [internal/core/control/feishu_selection_view.go](../../internal/core/control/feishu_selection_view.go)
 - [internal/core/control/feishu_command_view.go](../../internal/core/control/feishu_command_view.go)
+- [internal/core/control/feishu_path_picker.go](../../internal/core/control/feishu_path_picker.go)
 - [internal/adapter/feishu/gateway_runtime.go](../../internal/adapter/feishu/gateway_runtime.go)
 - [internal/adapter/feishu/card_action_payload.go](../../internal/adapter/feishu/card_action_payload.go)
 - [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
 - [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
 - [internal/adapter/feishu/projector_selection_view.go](../../internal/adapter/feishu/projector_selection_view.go)
 - [internal/adapter/feishu/projector_command_view.go](../../internal/adapter/feishu/projector_command_view.go)
+- [internal/adapter/feishu/projector_path_picker.go](../../internal/adapter/feishu/projector_path_picker.go)
 - [internal/core/orchestrator/service_feishu_ui_context.go](../../internal/core/orchestrator/service_feishu_ui_context.go)
 - [internal/core/orchestrator/service_feishu_ui_controller.go](../../internal/core/orchestrator/service_feishu_ui_controller.go)
+- [internal/core/orchestrator/service_path_picker.go](../../internal/core/orchestrator/service_path_picker.go)
 - [internal/core/orchestrator/service_feishu_command_view.go](../../internal/core/orchestrator/service_feishu_command_view.go)
 - [internal/core/orchestrator/service_surface_selection.go](../../internal/core/orchestrator/service_surface_selection.go)
 - [internal/core/orchestrator/service_surface_thread_selection.go](../../internal/core/orchestrator/service_surface_thread_selection.go)
@@ -281,10 +305,16 @@
   - 锁定哪些动作会被分流到 Feishu UI controller，哪些 mixed/product-owned 动作仍留在主 reducer
 - [internal/adapter/feishu/projector_test.go](../../internal/adapter/feishu/projector_test.go)
   - 锁定 `FeishuDirectSelectionPrompt` / `FeishuSelectionView` / `FeishuCommandView` / `FeishuDirectCommandCatalog` / `FeishuDirectRequestPrompt` 的 lifecycle stamp、projection 结果与 callback payload 结构
+- [internal/adapter/feishu/projector_path_picker_test.go](../../internal/adapter/feishu/projector_path_picker_test.go)
+  - 锁定 `FeishuPathPickerView` 的按钮 payload、`daemon_lifecycle_id` stamp 与 enter/select 按钮区分
 - [internal/adapter/feishu/gateway_test.go](../../internal/adapter/feishu/gateway_test.go)
   - 锁定 callback payload 解析、同步等待 replace 的触发条件、无 lifecycle 导航仍异步 ack
+- [internal/adapter/feishu/gateway_path_picker_test.go](../../internal/adapter/feishu/gateway_path_picker_test.go)
+  - 锁定 `path_picker_*` callback payload 能正确回到 `control.Action`
 - [internal/core/orchestrator/service_test.go](../../internal/core/orchestrator/service_test.go)
   - 锁定 workspace selection read model 保留全量语义条目，再由 projection 决定 recent/all 可见范围
+- [internal/core/orchestrator/service_path_picker_test.go](../../internal/core/orchestrator/service_path_picker_test.go)
+  - 锁定路径规范化、root 边界、symlink escape、owner / expire / active picker gate、consumer handoff
 - [internal/core/orchestrator/service_local_request_test.go](../../internal/core/orchestrator/service_local_request_test.go)
   - 锁定 `UIEvent` 现在会携带显式 `Feishu*Context` query/policy 元数据；selection/command view 的 UI owner 已切到 read model，但用户可见行为保持不变
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
@@ -303,9 +333,11 @@
 
 1. projector 发出的 `kind` / 额外字段，gateway 是否还能完整解析
 2. 某个同上下文导航动作是否意外从 replace 退回 append，或反之
-3. old card 是否还能继续命中产品状态变更
-4. 没有 `daemon_lifecycle_id` 的 callback 是否被错误地当成可同步 replace
-5. request prompt / selection prompt 是否把产品状态机职责偷渡进 Feishu UI 层
+3. path picker 的 `picker_id` / `entry_name` 是否与 gateway 解析和 active picker freshness 仍然一致
+4. old card 是否还能继续命中产品状态变更
+5. active picker confirm / cancel 是否意外变成 replace，掩盖了真正的 consumer 结果
+6. 没有 `daemon_lifecycle_id` 的 callback 是否被错误地当成可同步 replace
+7. request prompt / selection prompt / path picker 是否把产品状态机职责偷渡进 Feishu UI 层
 
 ## 待讨论取舍
 
