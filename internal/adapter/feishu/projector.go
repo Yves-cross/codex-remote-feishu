@@ -432,7 +432,7 @@ func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessag
 }
 
 func finalCardTitle(sourceMessagePreview string) string {
-	const baseTitle = "最后答复"
+	const baseTitle = "✅ 最后答复"
 	preview := truncateFinalTitlePreview(sourceMessagePreview)
 	if preview == "" {
 		return baseTitle

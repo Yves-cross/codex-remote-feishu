@@ -159,7 +159,7 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后答复：请帮我处理这个问题" {
+	if ops[0].CardTitle != "✅ 最后答复：请帮我处理这个问题" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
 	if ops[0].ReplyToMessageID != "msg-1" {
@@ -251,7 +251,7 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后答复" {
+	if ops[0].CardTitle != "✅ 最后答复" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
 	if ops[0].ReplyToMessageID != "msg-2" {
@@ -591,7 +591,7 @@ func TestProjectFinalAssistantBlockTruncatesChineseTitlePreview(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后答复：一二三四五六七八九十..." {
+	if ops[0].CardTitle != "✅ 最后答复：一二三四五六七八九十..." {
 		t.Fatalf("unexpected chinese preview title: %#v", ops[0])
 	}
 }
@@ -611,7 +611,7 @@ func TestProjectFinalAssistantBlockTruncatesEnglishTitlePreview(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "最后答复：please help me align the return format for this API..." {
+	if ops[0].CardTitle != "✅ 最后答复：please help me align the return format for this API..." {
 		t.Fatalf("unexpected english preview title: %#v", ops[0])
 	}
 }
