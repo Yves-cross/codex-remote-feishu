@@ -166,6 +166,7 @@ type SurfaceConsoleRecord struct {
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
 	ActiveCommandCapture *CommandCaptureRecord
+	ActivePathPicker     *ActivePathPickerRecord
 	LastSelection        *SelectionAnnouncementRecord
 	AutoContinue         AutoContinueRuntimeRecord
 }

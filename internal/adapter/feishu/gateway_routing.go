@@ -352,6 +352,49 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			RequestAnswers:   requestAnswers,
 			Inbound:          meta,
 		}, true
+	case cardActionKindPathPickerEnter, cardActionKindPathPickerSelect:
+		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
+		entryName := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyEntryName))
+		if pickerID == "" || entryName == "" {
+			return control.Action{}, false
+		}
+		actionKind := control.ActionPathPickerEnter
+		if actionPayloadKind(value) == cardActionKindPathPickerSelect {
+			actionKind = control.ActionPathPickerSelect
+		}
+		return control.Action{
+			Kind:             actionKind,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			PickerID:         pickerID,
+			PickerEntry:      entryName,
+			Inbound:          meta,
+		}, true
+	case cardActionKindPathPickerUp, cardActionKindPathPickerConfirm, cardActionKindPathPickerCancel:
+		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
+		if pickerID == "" {
+			return control.Action{}, false
+		}
+		actionKind := control.ActionPathPickerUp
+		switch actionPayloadKind(value) {
+		case cardActionKindPathPickerConfirm:
+			actionKind = control.ActionPathPickerConfirm
+		case cardActionKindPathPickerCancel:
+			actionKind = control.ActionPathPickerCancel
+		}
+		return control.Action{
+			Kind:             actionKind,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			PickerID:         pickerID,
+			Inbound:          meta,
+		}, true
 	default:
 		return control.Action{}, false
 	}

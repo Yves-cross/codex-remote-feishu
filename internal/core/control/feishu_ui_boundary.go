@@ -6,9 +6,10 @@ package control
 type FeishuUIDTOwner string
 
 const (
-	FeishuUIDTOwnerDirectDTO FeishuUIDTOwner = "feishu_direct_dto"
-	FeishuUIDTOwnerSelection FeishuUIDTOwner = "feishu_selection_view"
-	FeishuUIDTOwnerCommand   FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerDirectDTO  FeishuUIDTOwner = "feishu_direct_dto"
+	FeishuUIDTOwnerSelection  FeishuUIDTOwner = "feishu_selection_view"
+	FeishuUIDTOwnerCommand    FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerPathPicker FeishuUIDTOwner = "feishu_path_picker_view"
 )
 
 // FeishuUICallbackPayloadOwner identifies the layer that owns callback payload
@@ -79,4 +80,17 @@ type FeishuUIRequestContext struct {
 	ThreadID    string
 	ThreadTitle string
 	Title       string
+}
+
+// FeishuUIPathPickerContext describes the stable query/policy inputs backing
+// the reusable Feishu path picker card.
+type FeishuUIPathPickerContext struct {
+	DTOOwner     FeishuUIDTOwner
+	Surface      FeishuUISurfaceContext
+	PickerID     string
+	Mode         PathPickerMode
+	Title        string
+	RootPath     string
+	CurrentPath  string
+	SelectedPath string
 }

@@ -19,6 +19,11 @@ const (
 	FeishuUIIntentShowWorkspaceThreads       FeishuUIIntentKind = "show_workspace_threads"
 	FeishuUIIntentShowAllThreadWorkspaces    FeishuUIIntentKind = "show_all_thread_workspaces"
 	FeishuUIIntentShowRecentThreadWorkspaces FeishuUIIntentKind = "show_recent_thread_workspaces"
+	FeishuUIIntentPathPickerEnter            FeishuUIIntentKind = "path_picker_enter"
+	FeishuUIIntentPathPickerUp               FeishuUIIntentKind = "path_picker_up"
+	FeishuUIIntentPathPickerSelect           FeishuUIIntentKind = "path_picker_select"
+	FeishuUIIntentPathPickerConfirm          FeishuUIIntentKind = "path_picker_confirm"
+	FeishuUIIntentPathPickerCancel           FeishuUIIntentKind = "path_picker_cancel"
 )
 
 // FeishuUIIntent classifies same-context Feishu navigation handled by the
@@ -27,6 +32,8 @@ type FeishuUIIntent struct {
 	Kind         FeishuUIIntentKind
 	RawText      string
 	WorkspaceKey string
+	PickerID     string
+	PickerEntry  string
 }
 
 func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
@@ -69,6 +76,16 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowAllThreadWorkspaces}, true
 	case ActionShowRecentThreadWorkspaces:
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentThreadWorkspaces}, true
+	case ActionPathPickerEnter:
+		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerEnter, PickerID: action.PickerID, PickerEntry: action.PickerEntry}, true
+	case ActionPathPickerUp:
+		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerUp, PickerID: action.PickerID}, true
+	case ActionPathPickerSelect:
+		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerSelect, PickerID: action.PickerID, PickerEntry: action.PickerEntry}, true
+	case ActionPathPickerConfirm:
+		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerConfirm, PickerID: action.PickerID}, true
+	case ActionPathPickerCancel:
+		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerCancel, PickerID: action.PickerID}, true
 	}
 	return nil, false
 }

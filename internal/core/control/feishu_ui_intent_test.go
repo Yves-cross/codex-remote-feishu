@@ -39,6 +39,16 @@ func TestFeishuUIIntentFromAction(t *testing.T) {
 			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceThreads, WorkspaceKey: "/data/dl/web"},
 		},
 		{
+			name:   "path picker enter",
+			action: Action{Kind: ActionPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},
+			want:   &FeishuUIIntent{Kind: FeishuUIIntentPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},
+		},
+		{
+			name:   "path picker confirm",
+			action: Action{Kind: ActionPathPickerConfirm, PickerID: "picker-1"},
+			want:   &FeishuUIIntent{Kind: FeishuUIIntentPathPickerConfirm, PickerID: "picker-1"},
+		},
+		{
 			name:   "attach stays product owned",
 			action: Action{Kind: ActionAttachWorkspace, WorkspaceKey: "/data/dl/web"},
 			want:   nil,

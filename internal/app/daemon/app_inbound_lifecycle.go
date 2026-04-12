@@ -204,6 +204,8 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "跟随当前", "/follow"
 	case control.ActionDetach:
 		return "解除接管", "/detach"
+	case control.ActionPathPickerEnter, control.ActionPathPickerUp, control.ActionPathPickerSelect, control.ActionPathPickerConfirm, control.ActionPathPickerCancel:
+		return "路径选择器卡片动作", ""
 	default:
 		return "", ""
 	}
@@ -233,6 +235,16 @@ func rejectedInboundIntentLabel(intent control.FeishuUIIntent) (label, command s
 		return "查看全部会话", "/useall"
 	case control.FeishuUIIntentShowWorkspaceThreads:
 		return "展开该工作区下的会话列表", ""
+	case control.FeishuUIIntentPathPickerEnter:
+		return "进入目录", ""
+	case control.FeishuUIIntentPathPickerUp:
+		return "返回上一级目录", ""
+	case control.FeishuUIIntentPathPickerSelect:
+		return "选择路径", ""
+	case control.FeishuUIIntentPathPickerConfirm:
+		return "确认路径选择", ""
+	case control.FeishuUIIntentPathPickerCancel:
+		return "取消路径选择", ""
 	default:
 		return "", ""
 	}

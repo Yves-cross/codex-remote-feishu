@@ -83,3 +83,86 @@ func parseWorkspaceIndexFromRestoreLabel(t *testing.T, label string) int {
 	}
 	return index
 }
+
+func cardActionsFromElements(elements []map[string]any) []map[string]any {
+	var actions []map[string]any
+	for _, element := range elements {
+		switch cardStringValue(element["tag"]) {
+		case "button":
+			actions = append(actions, element)
+		case "action":
+			for _, button := range cardButtonArray(element["actions"]) {
+				actions = append(actions, button)
+			}
+		case "column_set":
+			for _, button := range cardButtonsFromColumnSet(element) {
+				actions = append(actions, button)
+			}
+		}
+	}
+	return actions
+}
+
+func cardButtonArray(raw any) []map[string]any {
+	switch typed := raw.(type) {
+	case []any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			button, ok := item.(map[string]any)
+			if ok {
+				out = append(out, button)
+			}
+		}
+		return out
+	case []map[string]any:
+		return typed
+	default:
+		return nil
+	}
+}
+
+func cardValueMap(action map[string]any) map[string]any {
+	if action == nil {
+		return nil
+	}
+	if typed, ok := action["value"].(map[string]any); ok {
+		return typed
+	}
+	if typed, ok := action["behaviors"].([]map[string]any); ok && len(typed) != 0 {
+		if value, ok := typed[0]["value"].(map[string]any); ok {
+			return value
+		}
+	}
+	if typed, ok := action["behaviors"].([]any); ok && len(typed) != 0 {
+		if behavior, ok := typed[0].(map[string]any); ok {
+			if value, ok := behavior["value"].(map[string]any); ok {
+				return value
+			}
+		}
+	}
+	return nil
+}
+
+func cardButtonsFromColumnSet(element map[string]any) []map[string]any {
+	rawColumns, _ := element["columns"].([]map[string]any)
+	if len(rawColumns) == 0 {
+		if typed, ok := element["columns"].([]any); ok {
+			rawColumns = make([]map[string]any, 0, len(typed))
+			for _, item := range typed {
+				column, ok := item.(map[string]any)
+				if ok {
+					rawColumns = append(rawColumns, column)
+				}
+			}
+		}
+	}
+	var buttons []map[string]any
+	for _, column := range rawColumns {
+		for _, button := range cardButtonArray(column["elements"]) {
+			if cardStringValue(button["tag"]) == "button" {
+				buttons = append(buttons, button)
+			}
+		}
+	}
+	return buttons
+}

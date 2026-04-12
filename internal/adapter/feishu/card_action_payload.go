@@ -19,6 +19,8 @@ const (
 	cardActionPayloadKeyCommandLegacy        = "command"
 	cardActionPayloadKeyFieldName            = "field_name"
 	cardActionPayloadKeyApproved             = "approved"
+	cardActionPayloadKeyPickerID             = "picker_id"
+	cardActionPayloadKeyEntryName            = "entry_name"
 	cardActionPayloadKeyDaemonLifecycleID    = "daemon_lifecycle_id"
 	cardActionPayloadDefaultCommandFieldName = "command_args"
 	cardActionKindAttachInstance             = "attach_instance"
@@ -42,6 +44,11 @@ const (
 	cardActionKindCancelCommandCapture       = "cancel_command_capture"
 	cardActionKindSubmitCommandForm          = "submit_command_form"
 	cardActionKindSubmitRequestForm          = "submit_request_form"
+	cardActionKindPathPickerEnter            = "path_picker_enter"
+	cardActionKindPathPickerUp               = "path_picker_up"
+	cardActionKindPathPickerSelect           = "path_picker_select"
+	cardActionKindPathPickerConfirm          = "path_picker_confirm"
+	cardActionKindPathPickerCancel           = "path_picker_cancel"
 )
 
 func actionPayloadKind(value map[string]any) string {
@@ -153,4 +160,15 @@ func actionPayloadSubmitRequestForm(requestID, requestType string) map[string]an
 		cardActionPayloadKeyRequestID:   strings.TrimSpace(requestID),
 		cardActionPayloadKeyRequestType: strings.TrimSpace(requestType),
 	}
+}
+
+func actionPayloadPathPicker(kind, pickerID, entryName string) map[string]any {
+	payload := map[string]any{
+		cardActionPayloadKeyKind:     strings.TrimSpace(kind),
+		cardActionPayloadKeyPickerID: strings.TrimSpace(pickerID),
+	}
+	if strings.TrimSpace(entryName) != "" {
+		payload[cardActionPayloadKeyEntryName] = strings.TrimSpace(entryName)
+	}
+	return payload
 }

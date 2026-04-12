@@ -49,6 +49,11 @@ const (
 	ActionFollowLocal                ActionKind = "surface.button.follow_local"
 	ActionDetach                     ActionKind = "surface.button.detach"
 	ActionVSCodeMigrate              ActionKind = "surface.button.vscode_migrate"
+	ActionPathPickerEnter            ActionKind = "surface.path_picker.enter"
+	ActionPathPickerUp               ActionKind = "surface.path_picker.up"
+	ActionPathPickerSelect           ActionKind = "surface.path_picker.select"
+	ActionPathPickerConfirm          ActionKind = "surface.path_picker.confirm"
+	ActionPathPickerCancel           ActionKind = "surface.path_picker.cancel"
 )
 
 type InboundLifecycleVerdict string
@@ -92,6 +97,8 @@ type Action struct {
 	InstanceID          string
 	WorkspaceKey        string
 	ThreadID            string
+	PickerID            string
+	PickerEntry         string
 	AllowCrossWorkspace bool
 	LocalPath           string
 	MIMEType            string
@@ -436,6 +443,7 @@ const (
 	UIEventFeishuDirectSelectionPrompt UIEventKind = "selection.prompt"
 	UIEventFeishuDirectCommandCatalog  UIEventKind = "command.catalog"
 	UIEventFeishuDirectRequestPrompt   UIEventKind = "request.prompt"
+	UIEventFeishuPathPicker            UIEventKind = "path.picker"
 	UIEventPendingInput                UIEventKind = "pending.input.state"
 	UIEventNotice                      UIEventKind = "notice"
 	UIEventPlanUpdated                 UIEventKind = "plan.updated"
@@ -486,6 +494,8 @@ type UIEvent struct {
 	FeishuCommandContext        *FeishuUICommandContext
 	FeishuDirectRequestPrompt   *FeishuDirectRequestPrompt
 	FeishuRequestContext        *FeishuUIRequestContext
+	FeishuPathPickerView        *FeishuPathPickerView
+	FeishuPathPickerContext     *FeishuUIPathPickerContext
 	PendingInput                *PendingInputState
 	Notice                      *Notice
 	PlanUpdate                  *PlanUpdate

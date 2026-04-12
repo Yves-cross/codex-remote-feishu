@@ -243,6 +243,28 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, body, cardThemeApproval, elements),
 		}}
+	case control.UIEventFeishuPathPicker:
+		if event.FeishuPathPickerView == nil {
+			return nil
+		}
+		view := *event.FeishuPathPickerView
+		title := strings.TrimSpace(view.Title)
+		if title == "" {
+			title = "选择路径"
+		}
+		elements := pathPickerElements(view, event.DaemonLifecycleID)
+		return []Operation{{
+			Kind:             OperationSendCard,
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			CardTitle:        title,
+			CardBody:         "",
+			CardThemeKey:     cardThemeInfo,
+			CardElements:     elements,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             rawCardDocument(title, "", cardThemeInfo, elements),
+		}}
 	case control.UIEventPendingInput:
 		if event.PendingInput == nil {
 			return nil

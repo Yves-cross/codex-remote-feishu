@@ -25,6 +25,7 @@ type Service struct {
 	nextQueueItemID   int
 	nextImageID       int
 	nextPromptID      int
+	nextPathPickerID  int
 	nextHeadlessID    int
 	handoffUntil      map[string]time.Time
 	pausedUntil       map[string]time.Time

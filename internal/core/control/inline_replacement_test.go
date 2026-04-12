@@ -87,6 +87,11 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:   "path picker navigation",
+			action: Action{Kind: ActionPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},
+			want:   true,
+		},
+		{
 			name:   "workspace attach action",
 			action: Action{Kind: ActionAttachWorkspace},
 			want:   false,
@@ -115,5 +120,16 @@ func TestAllowsInlineCardReplacementRequiresDaemonFreshness(t *testing.T) {
 	action.Inbound = &ActionInboundMeta{CardDaemonLifecycleID: "life-1"}
 	if !AllowsInlineCardReplacement(action) {
 		t.Fatal("expected stamped navigation to allow inline replacement")
+	}
+}
+
+func TestAllowsInlineCardReplacementForPathPickerNavigation(t *testing.T) {
+	action := Action{
+		Kind:     ActionPathPickerEnter,
+		PickerID: "picker-1",
+		Inbound:  &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	}
+	if !AllowsInlineCardReplacement(action) {
+		t.Fatal("expected inline replacement for path picker navigation")
 	}
 }
