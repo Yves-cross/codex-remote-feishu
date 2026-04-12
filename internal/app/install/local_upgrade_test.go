@@ -137,6 +137,7 @@ func TestRunLocalBinaryUpgradeWithStatePathRejectsBusyPendingUpgrade(t *testing.
 }
 
 func TestRunLocalUpgradeStartsLocalUpgradeTransaction(t *testing.T) {
+	t.Setenv(repoRootEnvVar, t.TempDir())
 	baseDir := t.TempDir()
 	statePath := defaultInstallStatePath(baseDir)
 	currentBinary := seedBinary(t, filepath.Join(baseDir, "installed-bin", executableName(runtime.GOOS)), "stable-binary")
@@ -245,6 +246,65 @@ func TestRunLocalUpgradeDebugInstanceUsesDebugStatePath(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), statePath) {
 		t.Fatalf("stdout = %q, want debug state path", stdout.String())
+	}
+	if startedBinary == "" {
+		t.Fatal("expected helper launcher to run")
+	}
+}
+
+func TestRunLocalUpgradeUsesWorkspaceBindingWhenFlagsOmitted(t *testing.T) {
+	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
+	statePath := defaultInstallStatePathForInstance(baseDir, "master")
+	currentBinary := seedBinary(t, filepath.Join(baseDir, "installed-bin", executableName(runtime.GOOS)), "stable-binary")
+	artifactBinary := seedBinary(t, filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "local-upgrade", executableName(runtime.GOOS)), "local-build")
+	helperBinary := seedBinary(t, filepath.Join(baseDir, "helper-bin", executableName(runtime.GOOS)), "cli-binary")
+
+	stateValue := InstallState{
+		InstanceID:        "master",
+		BaseDir:           baseDir,
+		StatePath:         statePath,
+		CurrentTrack:      ReleaseTrackAlpha,
+		CurrentVersion:    "dev-old",
+		CurrentBinaryPath: currentBinary,
+		InstalledBinary:   currentBinary,
+		VersionsRoot:      filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "releases"),
+	}
+	if err := WriteState(statePath, stateValue); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	if got, want := LocalUpgradeArtifactPath(stateValue), artifactBinary; got != want {
+		t.Fatalf("artifact path = %q, want %q", got, want)
+	}
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: "master",
+		BaseDir:    baseDir,
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding: %v", err)
+	}
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	originalExec := executablePath
+	originalStart := upgradeHelperStartDetachedCommandFunc
+	executablePath = func() (string, error) { return helperBinary, nil }
+	var startedBinary string
+	upgradeHelperStartDetachedCommandFunc = func(opts relayruntime.DetachedCommandOptions) (int, error) {
+		startedBinary = opts.BinaryPath
+		return 321, nil
+	}
+	defer func() {
+		executablePath = originalExec
+		upgradeHelperStartDetachedCommandFunc = originalStart
+	}()
+
+	var stdout bytes.Buffer
+	if err := RunLocalUpgrade([]string{
+		"-slot", "binding-test",
+	}, strings.NewReader(""), &stdout, &bytes.Buffer{}, "vtest"); err != nil {
+		t.Fatalf("RunLocalUpgrade: %v", err)
+	}
+	if !strings.Contains(stdout.String(), statePath) {
+		t.Fatalf("stdout = %q, want bound state path", stdout.String())
 	}
 	if startedBinary == "" {
 		t.Fatal("expected helper launcher to run")

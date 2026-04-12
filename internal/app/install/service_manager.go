@@ -114,9 +114,12 @@ func systemdUserUnitPath(baseDir string) string {
 }
 
 func systemdUserUnitPathForInstance(baseDir, instanceID string) string {
-	baseDir = filepath.Clean(strings.TrimSpace(baseDir))
-	if baseDir == "" {
+	unitBaseDir := filepath.Clean(strings.TrimSpace(baseDir))
+	if homeDir, err := serviceUserHomeDir(); err == nil && strings.TrimSpace(homeDir) != "" {
+		unitBaseDir = filepath.Clean(strings.TrimSpace(homeDir))
+	}
+	if unitBaseDir == "" {
 		return ""
 	}
-	return filepath.Join(baseDir, ".config", "systemd", "user", systemdUserServiceNameForInstance(instanceID))
+	return filepath.Join(unitBaseDir, ".config", "systemd", "user", systemdUserServiceNameForInstance(instanceID))
 }

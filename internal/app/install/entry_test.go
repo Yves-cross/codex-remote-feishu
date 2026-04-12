@@ -123,3 +123,96 @@ func TestRunMainRejectsUnrunnableBinarySource(t *testing.T) {
 		t.Fatalf("RunMain invalid binary error = %v, want validation failure", err)
 	}
 }
+
+func TestRunMainUsesWorkspaceBindingBaseDirWhenFlagsOmitted(t *testing.T) {
+	repoRoot := t.TempDir()
+	boundBaseDir := t.TempDir()
+	binaryPath := filepath.Join(repoRoot, "bin", "codex-remote")
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
+		t.Fatalf("mkdir binary dir: %v", err)
+	}
+	if err := os.WriteFile(binaryPath, []byte("binary"), 0o755); err != nil {
+		t.Fatalf("write binary: %v", err)
+	}
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: "master",
+		BaseDir:    boundBaseDir,
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding: %v", err)
+	}
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	originalValidator := sourceBinaryValidator
+	sourceBinaryValidator = func(string) error { return nil }
+	defer func() { sourceBinaryValidator = originalValidator }()
+
+	if err := RunMain([]string{
+		"-bootstrap-only",
+		"-binary", binaryPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, "vtest"); err != nil {
+		t.Fatalf("RunMain bootstrap-only: %v", err)
+	}
+
+	statePath := defaultInstallStatePathForInstance(boundBaseDir, "master")
+	state, err := LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if state.BaseDir != boundBaseDir {
+		t.Fatalf("BaseDir = %q, want %q", state.BaseDir, boundBaseDir)
+	}
+	if state.InstanceID != "master" {
+		t.Fatalf("InstanceID = %q, want master", state.InstanceID)
+	}
+}
+
+func TestRunMainReusesExistingInstalledBinaryDirWhenInstallBinDirOmitted(t *testing.T) {
+	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
+	statePath := defaultInstallStatePathForInstance(baseDir, defaultInstanceID)
+	customInstallDir := filepath.Join(baseDir, "systemd-dev", "bin")
+	existingBinaryPath := seedBinary(t, filepath.Join(customInstallDir, executableName("linux")), "old-binary")
+	sourceBinaryPath := seedBinary(t, filepath.Join(repoRoot, "bin", executableName("linux")), "new-binary")
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: defaultInstanceID,
+		BaseDir:    baseDir,
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding: %v", err)
+	}
+	if err := WriteState(statePath, InstallState{
+		InstanceID:        defaultInstanceID,
+		BaseDir:           baseDir,
+		StatePath:         statePath,
+		InstalledBinary:   existingBinaryPath,
+		CurrentBinaryPath: existingBinaryPath,
+	}); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	originalValidator := sourceBinaryValidator
+	sourceBinaryValidator = func(string) error { return nil }
+	defer func() { sourceBinaryValidator = originalValidator }()
+
+	if err := RunMain([]string{
+		"-bootstrap-only",
+		"-binary", sourceBinaryPath,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, "vtest"); err != nil {
+		t.Fatalf("RunMain bootstrap-only: %v", err)
+	}
+
+	updated, err := LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if updated.InstalledBinary != existingBinaryPath {
+		t.Fatalf("InstalledBinary = %q, want %q", updated.InstalledBinary, existingBinaryPath)
+	}
+	raw, err := os.ReadFile(existingBinaryPath)
+	if err != nil {
+		t.Fatalf("ReadFile(existing binary): %v", err)
+	}
+	if string(raw) != "new-binary" {
+		t.Fatalf("installed binary content = %q, want new-binary", string(raw))
+	}
+}

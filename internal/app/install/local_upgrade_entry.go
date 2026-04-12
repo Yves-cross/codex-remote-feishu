@@ -17,8 +17,8 @@ func RunLocalUpgrade(args []string, _ io.Reader, stdout, _ io.Writer, _ string) 
 	flagSet := flag.NewFlagSet("local-upgrade", flag.ContinueOnError)
 	flagSet.SetOutput(stdout)
 
-	instanceIDFlag := flagSet.String("instance", defaultInstanceID, "install instance id")
-	baseDir := flagSet.String("base-dir", defaults.BaseDir, "base directory for config and install state")
+	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty auto-resolves to workspace binding or stable")
+	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to workspace binding or platform default")
 	statePathFlag := flagSet.String("state-path", "", "path to install-state.json; empty derives from -base-dir")
 	slot := flagSet.String("slot", "", "slot label for the local upgrade; empty derives local-<fingerprint>")
 	if err := flagSet.Parse(args); err != nil {
@@ -27,14 +27,14 @@ func RunLocalUpgrade(args []string, _ io.Reader, stdout, _ io.Writer, _ string) 
 		}
 		return err
 	}
-	instanceID, err := parseInstanceID(*instanceIDFlag)
-	if err != nil {
-		return err
-	}
 
 	statePath := strings.TrimSpace(*statePathFlag)
 	if statePath == "" {
-		statePath = defaultInstallStatePathForInstance(*baseDir, instanceID)
+		selection, err := resolveInstallInstanceSelection(*instanceIDFlag, *baseDir, defaults.BaseDir, defaults.GOOS)
+		if err != nil {
+			return err
+		}
+		statePath = selection.StatePath
 	}
 	stateValue, err := loadServiceState(statePath)
 	if err != nil {

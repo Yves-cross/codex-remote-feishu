@@ -22,8 +22,8 @@ func RunService(args []string, _ io.Reader, stdout, _ io.Writer, _ string) error
 	if err != nil {
 		return err
 	}
-	baseDir := flagSet.String("base-dir", defaults.BaseDir, "base directory for config and install state")
-	instanceIDFlag := flagSet.String("instance", defaultInstanceID, "install instance id")
+	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to workspace binding or platform default")
+	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty auto-resolves to workspace binding or stable")
 	statePath := flagSet.String("state-path", "", "path to install-state.json; empty derives from -base-dir and -instance")
 	if err := flagSet.Parse(args[1:]); err != nil {
 		if err == flag.ErrHelp {
@@ -31,13 +31,13 @@ func RunService(args []string, _ io.Reader, stdout, _ io.Writer, _ string) error
 		}
 		return err
 	}
-	instanceID, err := parseInstanceID(*instanceIDFlag)
-	if err != nil {
-		return err
-	}
 	resolvedStatePath := strings.TrimSpace(*statePath)
 	if resolvedStatePath == "" {
-		resolvedStatePath = defaultInstallStatePathForInstance(*baseDir, instanceID)
+		selection, err := resolveInstallInstanceSelection(*instanceIDFlag, *baseDir, defaults.BaseDir, defaults.GOOS)
+		if err != nil {
+			return err
+		}
+		resolvedStatePath = selection.StatePath
 	}
 
 	ctx := context.Background()
