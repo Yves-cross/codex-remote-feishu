@@ -1,6 +1,9 @@
 package relayruntime
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
 type runtimeDetachedLaunchOptions struct {
 	BinaryPath string
@@ -21,6 +24,15 @@ func startRuntimeDetachedProcess(opts runtimeDetachedLaunchOptions) (int, error)
 	if opts.ConfigPath != "" {
 		env = append(env, "CODEX_REMOTE_CONFIG="+opts.ConfigPath)
 	}
+	if value := xdgEnvForPath(opts.Paths.ConfigDir); value != "" {
+		env = append(env, "XDG_CONFIG_HOME="+value)
+	}
+	if value := xdgEnvForPath(opts.Paths.DataDir); value != "" {
+		env = append(env, "XDG_DATA_HOME="+value)
+	}
+	if value := xdgEnvForPath(opts.Paths.StateDir); value != "" {
+		env = append(env, "XDG_STATE_HOME="+value)
+	}
 
 	return StartDetachedCommand(DetachedCommandOptions{
 		BinaryPath: opts.BinaryPath,
@@ -30,4 +42,15 @@ func startRuntimeDetachedProcess(opts runtimeDetachedLaunchOptions) (int, error)
 		StdoutPath: opts.LogPath,
 		StderrPath: opts.LogPath,
 	})
+}
+
+func xdgEnvForPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	dir := filepath.Dir(path)
+	if dir == "." || dir == string(filepath.Separator) {
+		return ""
+	}
+	return dir
 }
