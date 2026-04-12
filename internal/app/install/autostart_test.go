@@ -89,6 +89,7 @@ func TestApplyAutostartInstallsAndEnablesSystemdUserService(t *testing.T) {
 func TestDetectAutostartReportsConfiguredDisabledState(t *testing.T) {
 	baseDir := t.TempDir()
 	statePath := defaultInstallStatePath(baseDir)
+	stubServiceUserHome(t, baseDir)
 	state := InstallState{
 		BaseDir:         baseDir,
 		ConfigPath:      filepath.Join(baseDir, ".config", "codex-remote", "config.json"),
@@ -101,6 +102,9 @@ func TestDetectAutostartReportsConfiguredDisabledState(t *testing.T) {
 		BaseDir:        baseDir,
 		ServiceManager: state.ServiceManager,
 	})
+	if !strings.HasPrefix(state.ServiceUnitPath, baseDir+string(filepath.Separator)) {
+		t.Fatalf("ServiceUnitPath = %q, want temp-dir-scoped path under %q", state.ServiceUnitPath, baseDir)
+	}
 	if err := os.MkdirAll(filepath.Dir(state.ServiceUnitPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(unit dir): %v", err)
 	}

@@ -29,6 +29,7 @@ func TestRunMainRejectsInteractiveBootstrapOnly(t *testing.T) {
 }
 
 func TestRunMainBootstrapOnlyPreservesExistingRelayURLWhenFlagOmitted(t *testing.T) {
+	t.Setenv(repoRootEnvVar, t.TempDir())
 	baseDir := t.TempDir()
 	installBinDir := filepath.Join(baseDir, "installed-bin")
 	configPath := filepath.Join(baseDir, ".config", "codex-remote", "config.json")
@@ -69,6 +70,7 @@ func TestRunMainBootstrapOnlyPreservesExistingRelayURLWhenFlagOmitted(t *testing
 }
 
 func TestRunMainDefaultsBinaryToCurrentExecutable(t *testing.T) {
+	t.Setenv(repoRootEnvVar, t.TempDir())
 	baseDir := t.TempDir()
 	installBinDir := filepath.Join(baseDir, "installed-bin")
 	selfBinary := filepath.Join(baseDir, "self", executableName("linux"))
@@ -105,6 +107,7 @@ func TestRunMainDefaultsBinaryToCurrentExecutable(t *testing.T) {
 }
 
 func TestRunMainRejectsUnrunnableBinarySource(t *testing.T) {
+	t.Setenv(repoRootEnvVar, t.TempDir())
 	baseDir := t.TempDir()
 	binaryPath := filepath.Join(baseDir, "bin", executableName("linux"))
 	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {

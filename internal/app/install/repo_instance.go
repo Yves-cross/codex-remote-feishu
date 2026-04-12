@@ -30,6 +30,13 @@ type repoInstallBinding struct {
 	ServiceUnitPath string `json:"serviceUnitPath,omitempty"`
 }
 
+type repoInstallBindingSource string
+
+const (
+	repoInstallBindingSourceFile   repoInstallBindingSource = "binding_file"
+	repoInstallBindingSourceLegacy repoInstallBindingSource = "legacy_binding"
+)
+
 type installInstanceSelection struct {
 	InstanceID      string
 	BaseDir         string
@@ -229,44 +236,49 @@ func repoInstallBindingPath(repoRoot string) string {
 }
 
 func readRepoInstallBinding(repoRoot string) (repoInstallBinding, bool, error) {
+	binding, _, ok, err := readRepoInstallBindingWithSource(repoRoot)
+	return binding, ok, err
+}
+
+func readRepoInstallBindingWithSource(repoRoot string) (repoInstallBinding, repoInstallBindingSource, bool, error) {
 	if strings.TrimSpace(repoRoot) == "" {
-		return repoInstallBinding{}, false, nil
+		return repoInstallBinding{}, "", false, nil
 	}
 	raw, err := os.ReadFile(repoInstallBindingPath(repoRoot))
 	if err != nil {
 		if os.IsNotExist(err) {
 			instanceID, ok, legacyErr := readLegacyRepoInstallInstance(repoRoot)
 			if legacyErr != nil {
-				return repoInstallBinding{}, false, legacyErr
+				return repoInstallBinding{}, "", false, legacyErr
 			}
 			if !ok {
-				return repoInstallBinding{}, false, nil
+				return repoInstallBinding{}, "", false, nil
 			}
 			return repoInstallBinding{
 				Version:    repoLocalBindingVersion,
 				InstanceID: instanceID,
-			}, true, nil
+			}, repoInstallBindingSourceLegacy, true, nil
 		}
-		return repoInstallBinding{}, false, err
+		return repoInstallBinding{}, "", false, err
 	}
 
 	var binding repoInstallBinding
 	if err := json.Unmarshal(raw, &binding); err != nil {
-		return repoInstallBinding{}, false, fmt.Errorf("invalid repo-local install binding: %w", err)
+		return repoInstallBinding{}, "", false, fmt.Errorf("invalid repo-local install binding: %w", err)
 	}
 	if binding.Version == 0 {
 		binding.Version = repoLocalBindingVersion
 	}
 	if binding.Version != repoLocalBindingVersion {
-		return repoInstallBinding{}, false, fmt.Errorf("unsupported repo-local install binding version %d", binding.Version)
+		return repoInstallBinding{}, "", false, fmt.Errorf("unsupported repo-local install binding version %d", binding.Version)
 	}
 	instanceID, err := parseInstanceID(binding.InstanceID)
 	if err != nil {
-		return repoInstallBinding{}, false, fmt.Errorf("invalid repo-local install binding instance: %w", err)
+		return repoInstallBinding{}, "", false, fmt.Errorf("invalid repo-local install binding instance: %w", err)
 	}
 	binding.InstanceID = instanceID
 	binding.BaseDir = normalizeBindingBaseDir(binding.BaseDir)
-	return binding, true, nil
+	return binding, repoInstallBindingSourceFile, true, nil
 }
 
 func readRepoInstallInstance(repoRoot string) (string, bool, error) {
