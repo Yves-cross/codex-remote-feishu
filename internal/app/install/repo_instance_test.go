@@ -169,6 +169,46 @@ func TestResolveInstallInstanceSelectionCreatesDedicatedRepoInstanceWhenStableEx
 	}
 }
 
+func TestResolveInstallInstanceSelectionCreatesDedicatedRepoInstanceWhenStablePortsBusy(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv(repoRootEnvVar, repoRoot)
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	wd := t.TempDir()
+	if err := os.Chdir(wd); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(originalWD); err != nil {
+			t.Fatalf("restore wd error = %v", err)
+		}
+	}()
+
+	originalPortAvailable := instancePortAvailableFunc
+	instancePortAvailableFunc = func(port int) bool {
+		switch port {
+		case 9500, 9501, 9502, 9512, 17501:
+			return false
+		default:
+			return true
+		}
+	}
+	defer func() { instancePortAvailableFunc = originalPortAvailable }()
+
+	selection, err := resolveInstallInstanceSelection("", t.TempDir())
+	if err != nil {
+		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
+	}
+	if selection.InstanceID != deriveRepoInstanceID(repoRoot) {
+		t.Fatalf("InstanceID = %q, want %q", selection.InstanceID, deriveRepoInstanceID(repoRoot))
+	}
+	if !selection.WriteBinding {
+		t.Fatalf("expected binding write action, got %#v", selection)
+	}
+}
+
 func TestResolveInstallInstanceSelectionExplicitStableClearsRepoBinding(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)

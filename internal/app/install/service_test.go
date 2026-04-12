@@ -10,6 +10,15 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
+func stubInstancePortAvailability(t *testing.T, fn func(int) bool) {
+	t.Helper()
+	original := instancePortAvailableFunc
+	instancePortAvailableFunc = fn
+	t.Cleanup(func() {
+		instancePortAvailableFunc = original
+	})
+}
+
 func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	baseDir := t.TempDir()
 	settingsPath := filepath.Join(baseDir, "Code", "User", "settings.json")
@@ -120,6 +129,7 @@ func TestBootstrapSystemdUserPersistsLinuxServiceMetadata(t *testing.T) {
 func TestBootstrapDebugInstanceUsesIsolatedPathsAndPorts(t *testing.T) {
 	baseDir := t.TempDir()
 	binaryPath := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin")
+	stubInstancePortAvailability(t, func(int) bool { return true })
 
 	service := NewService()
 	state, err := service.Bootstrap(Options{
@@ -166,6 +176,48 @@ func TestBootstrapDebugInstanceUsesIsolatedPathsAndPorts(t *testing.T) {
 	}
 	if cfg.Debug.Pprof == nil || cfg.Debug.Pprof.ListenPort != 17601 {
 		t.Fatalf("Debug.Pprof = %#v, want listen port 17601", cfg.Debug.Pprof)
+	}
+}
+
+func TestBootstrapAllocatesFallbackPortsWhenPreferredBundleBusy(t *testing.T) {
+	baseDir := t.TempDir()
+	binaryPath := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin")
+	stubInstancePortAvailability(t, func(port int) bool {
+		switch port {
+		case 9500, 9501, 9502, 9512, 17501:
+			return false
+		default:
+			return true
+		}
+	})
+
+	service := NewService()
+	state, err := service.Bootstrap(Options{
+		BaseDir:    baseDir,
+		BinaryPath: binaryPath,
+	})
+	if err != nil {
+		t.Fatalf("bootstrap with fallback ports: %v", err)
+	}
+
+	cfg := loadAppConfigForTest(t, state.ConfigPath)
+	if cfg.Relay.ListenPort != 9520 {
+		t.Fatalf("Relay.ListenPort = %d, want 9520", cfg.Relay.ListenPort)
+	}
+	if cfg.Relay.ServerURL != "ws://127.0.0.1:9520/ws/agent" {
+		t.Fatalf("Relay.ServerURL = %q, want ws://127.0.0.1:9520/ws/agent", cfg.Relay.ServerURL)
+	}
+	if cfg.Admin.ListenPort != 9521 {
+		t.Fatalf("Admin.ListenPort = %d, want 9521", cfg.Admin.ListenPort)
+	}
+	if cfg.Tool.ListenPort != 9522 {
+		t.Fatalf("Tool.ListenPort = %d, want 9522", cfg.Tool.ListenPort)
+	}
+	if cfg.ExternalAccess.ListenPort != 9532 {
+		t.Fatalf("ExternalAccess.ListenPort = %d, want 9532", cfg.ExternalAccess.ListenPort)
+	}
+	if cfg.Debug.Pprof == nil || cfg.Debug.Pprof.ListenPort != 17521 {
+		t.Fatalf("Debug.Pprof = %#v, want listen port 17521", cfg.Debug.Pprof)
 	}
 }
 

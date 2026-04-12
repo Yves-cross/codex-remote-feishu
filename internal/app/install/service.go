@@ -122,7 +122,9 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 		emptyIntegrationMode = "none"
 	}
 
-	applyInstanceConfigDefaults(&cfg, instanceID, !configExists)
+	if err := applyInstanceConfigDefaults(&cfg, instanceID, !configExists); err != nil {
+		return InstallState{}, err
+	}
 	cfg.Relay.ServerURL = firstNonEmpty(opts.RelayServerURL, cfg.Relay.ServerURL)
 	cfg.Wrapper.CodexRealBinary = choosePreservedValue(codexRealBinary, cfg.Wrapper.CodexRealBinary)
 	cfg.Wrapper.NameMode = firstNonEmpty(cfg.Wrapper.NameMode, "workspace_basename")
