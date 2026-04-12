@@ -131,7 +131,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.PlanUpdate == nil {
 			return nil
 		}
-		title := "计划更新"
+		title := "当前计划"
 		body := planUpdateBody(*event.PlanUpdate)
 		elements := planUpdateElements(*event.PlanUpdate)
 		return []Operation{{

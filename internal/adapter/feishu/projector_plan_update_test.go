@@ -30,11 +30,14 @@ func TestProjectPlanUpdateCard(t *testing.T) {
 		t.Fatalf("expected one card operation, got %#v", ops)
 	}
 	op := ops[0]
-	if op.CardTitle != "计划更新" || op.ReplyToMessageID != "om_1" {
+	if op.CardTitle != "当前计划" || op.ReplyToMessageID != "om_1" {
 		t.Fatalf("unexpected plan update card envelope: %#v", op)
 	}
-	if len(op.CardElements) != 4 {
-		t.Fatalf("expected explanation plus three step rows, got %#v", op.CardElements)
+	if op.CardBody != "先把协议和去重打通。" {
+		t.Fatalf("expected explanation in card body, got %#v", op)
+	}
+	if len(op.CardElements) != 3 {
+		t.Fatalf("expected three step rows, got %#v", op.CardElements)
 	}
 	rendered := make([]string, 0, len(op.CardElements))
 	for _, element := range op.CardElements {
@@ -43,9 +46,6 @@ func TestProjectPlanUpdateCard(t *testing.T) {
 		}
 	}
 	joined := strings.Join(rendered, "\n")
-	if !strings.Contains(joined, "**说明** 先把协议和去重打通。") {
-		t.Fatalf("expected explanation row, got %q", joined)
-	}
 	if !strings.Contains(joined, "☑ 已完成 接入结构化 plan") {
 		t.Fatalf("expected completed step row, got %q", joined)
 	}
@@ -67,6 +67,9 @@ func TestProjectPlanUpdateWithoutStepsShowsFallback(t *testing.T) {
 	})
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("expected one card operation, got %#v", ops)
+	}
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected empty body without explanation, got %#v", ops[0])
 	}
 	if len(ops[0].CardElements) != 1 {
 		t.Fatalf("expected one fallback row, got %#v", ops[0].CardElements)
