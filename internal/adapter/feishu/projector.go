@@ -577,15 +577,21 @@ func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
 	}
 	parts := []string{fmt.Sprintf("**本轮用时** %s", formatElapsedDuration(summary.Elapsed))}
 	if usage := summary.Usage; usage != nil {
-		total := usage.TotalTokens
-		if total <= 0 {
-			total = usage.InputTokens + usage.OutputTokens
-		}
-		if total > 0 {
-			parts = append(parts, fmt.Sprintf("**Token** %d", total))
-		}
+		parts = append(parts,
+			fmt.Sprintf("**输入** %d", usage.InputTokens),
+			fmt.Sprintf("**缓存** %s", formatCachedUsageSummary(usage.CachedInputTokens, usage.InputTokens)),
+			fmt.Sprintf("**输出** %d", usage.OutputTokens),
+			fmt.Sprintf("**推理** %d", usage.ReasoningOutputTokens),
+		)
 	}
 	return strings.Join(parts, "  ")
+}
+
+func formatCachedUsageSummary(cachedInput, input int) string {
+	if input <= 0 {
+		return fmt.Sprintf("%d", cachedInput)
+	}
+	return fmt.Sprintf("%d (%.1f%%)", cachedInput, float64(cachedInput)*100/float64(input))
 }
 
 func formatElapsedDuration(value time.Duration) string {

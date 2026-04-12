@@ -347,6 +347,66 @@ func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) 
 	}
 }
 
+func TestProjectFinalAssistantBlockShowsTurnUsageFooter(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-usage",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 2100 * time.Millisecond,
+			Usage: &control.FinalTurnUsage{
+				InputTokens:           150,
+				CachedInputTokens:     90,
+				OutputTokens:          50,
+				ReasoningOutputTokens: 20,
+				TotalTokens:           200,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 1 {
+		t.Fatalf("expected standalone usage footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[0]["content"] != "**本轮用时** 2秒  **输入** 150  **缓存** 90 (60.0%)  **输出** 50  **推理** 20" {
+		t.Fatalf("unexpected usage footer: %#v", ops[0].CardElements[0])
+	}
+}
+
+func TestProjectFinalAssistantBlockShowsZeroInputWithoutCacheRatio(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-zero-usage",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 2100 * time.Millisecond,
+			Usage: &control.FinalTurnUsage{
+				InputTokens:           0,
+				CachedInputTokens:     0,
+				OutputTokens:          12,
+				ReasoningOutputTokens: 3,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardElements[0]["content"] != "**本轮用时** 2秒  **输入** 0  **缓存** 0  **输出** 12  **推理** 3" {
+		t.Fatalf("unexpected zero-input usage footer: %#v", ops[0].CardElements[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockAppendsCleanWorktreeSummary(t *testing.T) {
 	projector := NewProjector()
 	projector.readGitWorktree = func(cwd string) *gitWorktreeSummary {
