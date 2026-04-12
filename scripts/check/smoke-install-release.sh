@@ -268,7 +268,7 @@ expected_dir="${install_root}/${version}"
 [[ -d "${expected_dir}" ]]
 [[ -x "${expected_dir}/codex-remote" ]]
 [[ -f "${expected_dir}/QUICKSTART.md" ]]
-[[ -d "${expected_dir}/deploy" ]]
+# Release archives intentionally ship only end-user runtime assets.
 [[ ! -e "${expected_dir}/setup.sh" ]]
 [[ ! -e "${expected_dir}/setup.ps1" ]]
 [[ ! -e "${expected_dir}/install.sh" ]]
