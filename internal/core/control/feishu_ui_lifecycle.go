@@ -20,7 +20,7 @@ type FeishuUIInlineReplacePolicy struct {
 }
 
 func InlineCardReplacementPolicy(action Action) (FeishuUIInlineReplacePolicy, bool) {
-	if _, ok := FeishuUIIntentFromAction(action); !ok {
+	if !inlineReplaceableFeishuUIIntentAction(action) {
 		return FeishuUIInlineReplacePolicy{}, false
 	}
 	return FeishuUIInlineReplacePolicy{
@@ -31,6 +31,35 @@ func InlineCardReplacementPolicy(action Action) (FeishuUIInlineReplacePolicy, bo
 		RequiresViewSession:     false,
 		ViewSessionStrategy:     FeishuUIInlineReplaceViewSessionSurfaceState,
 	}, true
+}
+
+func inlineReplaceableFeishuUIIntentAction(action Action) bool {
+	intent, ok := FeishuUIIntentFromAction(action)
+	if !ok || intent == nil {
+		return false
+	}
+	switch intent.Kind {
+	case FeishuUIIntentShowCommandMenu,
+		FeishuUIIntentShowModeCatalog,
+		FeishuUIIntentShowAutoContinueCatalog,
+		FeishuUIIntentShowReasoningCatalog,
+		FeishuUIIntentShowAccessCatalog,
+		FeishuUIIntentShowModelCatalog,
+		FeishuUIIntentShowRecentWorkspaces,
+		FeishuUIIntentShowAllWorkspaces,
+		FeishuUIIntentShowThreads,
+		FeishuUIIntentShowAllThreads,
+		FeishuUIIntentShowScopedThreads,
+		FeishuUIIntentShowWorkspaceThreads,
+		FeishuUIIntentShowAllThreadWorkspaces,
+		FeishuUIIntentShowRecentThreadWorkspaces,
+		FeishuUIIntentPathPickerEnter,
+		FeishuUIIntentPathPickerUp,
+		FeishuUIIntentPathPickerSelect:
+		return true
+	default:
+		return false
+	}
 }
 
 func AllowsInlineCardReplacement(action Action) bool {

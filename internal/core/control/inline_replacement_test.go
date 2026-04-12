@@ -92,6 +92,16 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "path picker confirm stays append-only",
+			action: Action{Kind: ActionPathPickerConfirm, PickerID: "picker-1"},
+			want:   false,
+		},
+		{
+			name:   "path picker cancel stays append-only",
+			action: Action{Kind: ActionPathPickerCancel, PickerID: "picker-1"},
+			want:   false,
+		},
+		{
 			name:   "workspace attach action",
 			action: Action{Kind: ActionAttachWorkspace},
 			want:   false,

@@ -241,7 +241,7 @@ func TestOpenPathPickerRejectsStalePickerID(t *testing.T) {
 	}
 }
 
-func TestPathPickerRejectsNonOwnerAndClearsGate(t *testing.T) {
+func TestPathPickerRejectsNonOwnerAndPreservesGate(t *testing.T) {
 	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -270,8 +270,18 @@ func TestPathPickerRejectsNonOwnerAndClearsGate(t *testing.T) {
 	if len(rejectEvents) != 1 || rejectEvents[0].Notice == nil || rejectEvents[0].Notice.Code != "path_picker_unauthorized" {
 		t.Fatalf("expected unauthorized notice, got %#v", rejectEvents)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
-		t.Fatalf("expected unauthorized action to clear active picker")
+	if svc.root.Surfaces["surface-1"].ActivePathPicker == nil {
+		t.Fatalf("expected unauthorized action to preserve active picker")
+	}
+
+	ownerCancelEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerCancel,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+	})
+	if len(ownerCancelEvents) != 1 || ownerCancelEvents[0].Notice == nil || ownerCancelEvents[0].Notice.Code != "path_picker_cancelled" {
+		t.Fatalf("expected owner cancel to still succeed after unauthorized attempt, got %#v", ownerCancelEvents)
 	}
 }
 

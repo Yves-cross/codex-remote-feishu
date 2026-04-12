@@ -1,7 +1,7 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-12`
+> Updated: `2026-04-13`
 > Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议，以及 active picker 的 same-daemon freshness / append-only confirm-cancel 边界。
 
 ## 1. 文档定位
@@ -52,7 +52,7 @@
   - 负责 old-card / old-message 生命周期判定
   - 负责在 ingress 层把 pure navigation 先分流到 Feishu UI controller，而不是直接落进主 `ApplySurfaceAction()` reducer
   - 负责只在安全条件下把同上下文导航转成 `ReplaceCurrentCard`
-  - 当前只有当 action 命中 `FeishuUIIntent` 生命周期策略、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard` 时，才会真正发 inline replace
+  - 当前只有当 action 命中 **inline-replace allow-list**（并非所有 `FeishuUIIntent`）、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard` 时，才会真正发 inline replace
 - `orchestrator / Feishu UI controller`
   - 负责 `show_*`、`/menu`、bare config-card 这类 pure navigation 的 controller 分流与事件构建
   - 负责通过阶段 1 暴露的 `Feishu*Context` query/policy 边界生成 UI-owned read model 与 request 事件
@@ -83,7 +83,7 @@
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理最近会话与“当前工作区全部会话”的视图切换；真正接管 thread 不在这里发生 |
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理 `/useall` 里的 workspace-group 展开/返回；不直接改变 selected thread |
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡 |
-| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议、owner/freshness 校验、是否 replace 仍属 Feishu UI；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
+| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
 | `request approve` / `request_user_input` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
@@ -219,7 +219,7 @@
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
 - 参数应用，例如 `/mode vscode`、`/autowhip on`
-- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但最终结果交给 picker consumer，因此默认保持 append-only
+- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理，最终结果交给 picker consumer，保持 append-only
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
 - `/help` 这类静态帮助/目录卡，即使底层仍是 `FeishuDirectCommandCatalog`，当前也不属于 replaceable UI navigation
 - request approve / request submit 的处理结果

@@ -205,8 +205,7 @@ func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, p
 	}
 	actorUserID = strings.TrimSpace(firstNonEmpty(actorUserID, surface.ActorUserID))
 	if ownerUserID := strings.TrimSpace(record.OwnerUserID); ownerUserID != "" && actorUserID != "" && ownerUserID != actorUserID {
-		clearSurfacePathPicker(surface)
-		return nil, notice(surface, "path_picker_unauthorized", "这个路径选择器只允许发起者本人操作，已自动失效，请重新发起。")
+		return nil, notice(surface, "path_picker_unauthorized", "这个路径选择器只允许发起者本人操作，请让发起者继续完成或取消。")
 	}
 	return record, nil
 }

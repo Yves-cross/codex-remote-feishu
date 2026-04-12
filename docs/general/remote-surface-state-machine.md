@@ -1,7 +1,7 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-12`
+> Updated: `2026-04-13`
 > Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 的飞书回传路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
@@ -206,7 +206,8 @@ surface 不是单一枚举，而是五层正交状态叠加。
    2. core 不引入新的 route mode，也不追踪“当前浏览到了第几层目录”这类 UI 细节。
    3. core 只在两类地方感知它：
       1. route-mutation / competing Feishu card flow gate
-      2. confirm / cancel / expire / unauthorized 后的 gate 清理与 consumer handoff
+      2. confirm / cancel / expire 的 gate 清理与 consumer handoff
+      3. unauthorized 只回拒绝 notice，不清当前 gate
 
 ### 3.5 草稿状态
 
@@ -1005,7 +1006,7 @@ transport degraded retained attachment
 | `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 则走按钮或表单提交 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |
-| `G5 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片、revoke/reaction；`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel / expire / unauthorized 会先清 gate，再把结果交给 consumer 或默认 notice |
+| `G5 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片、revoke/reaction；`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel / expire 会先清 gate，再把结果交给 consumer 或默认 notice；unauthorized 只回拒绝 notice，不清当前 gate |
 | `E6 Abandoning` | 只允许 `/status`、`/autowhip`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
 | `G7 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发迁移/修复卡片；surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理 |
 
