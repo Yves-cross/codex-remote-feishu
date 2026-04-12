@@ -1866,125 +1866,26 @@ func TestProjectFinalAssistantBlockPreservesAngleBracketsInInlineCode(t *testing
 		t.Fatalf("unexpected final inline-tag body: %#v", ops[0].CardBody)
 	}
 }
-func containsAll(body string, parts ...string) bool {
-	for _, part := range parts {
-		if !strings.Contains(body, part) {
-			return false
-		}
+func TestProjectImageOutputAsImageMessage(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventImageOutput,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ImageOutput: &control.ImageOutput{
+			ThreadID:  "thread-1",
+			TurnID:    "turn-1",
+			ItemID:    "img-1",
+			SavedPath: "/tmp/generated.png",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendImage {
+		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	return true
-}
-
-func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
+	if ops[0].ReplyToMessageID != "om-source-1" {
+		t.Fatalf("expected image output to reply to source message, got %#v", ops[0])
 	}
-	return false
-}
-
-func cardElementButtons(t *testing.T, element map[string]any) []map[string]any {
-	t.Helper()
-	switch element["tag"] {
-	case "button":
-		return []map[string]any{element}
-	case "column_set":
-		columns, _ := element["columns"].([]map[string]any)
-		buttons := make([]map[string]any, 0, len(columns))
-		for _, column := range columns {
-			elements, _ := column["elements"].([]map[string]any)
-			if len(elements) == 0 {
-				continue
-			}
-			buttons = append(buttons, elements[0])
-		}
-		if len(buttons) == 0 {
-			t.Fatalf("expected buttons inside column_set, got %#v", element)
-		}
-		return buttons
-	default:
-		t.Fatalf("expected button or column_set, got %#v", element)
-		return nil
+	if ops[0].ImagePath != "/tmp/generated.png" || ops[0].ImageBase64 != "" {
+		t.Fatalf("unexpected image output operation payload: %#v", ops[0])
 	}
-}
-
-func assertNoLegacyCardModelMarkers(t *testing.T, values []map[string]any) {
-	t.Helper()
-	for _, value := range values {
-		assertNoLegacyCardModelMarkersAny(t, value)
-	}
-}
-
-func assertNoLegacyCardModelMarkersAny(t *testing.T, value any) {
-	t.Helper()
-	switch typed := value.(type) {
-	case map[string]any:
-		if tag, _ := typed["tag"].(string); tag == "action" {
-			t.Fatalf("unexpected legacy action container in production card model: %#v", typed)
-		}
-		if actionType, ok := typed["action_type"]; ok && actionType != nil {
-			t.Fatalf("unexpected legacy action_type in production card model: %#v", typed)
-		}
-		for _, child := range typed {
-			assertNoLegacyCardModelMarkersAny(t, child)
-		}
-	case []map[string]any:
-		for _, child := range typed {
-			assertNoLegacyCardModelMarkersAny(t, child)
-		}
-	case []any:
-		for _, child := range typed {
-			assertNoLegacyCardModelMarkersAny(t, child)
-		}
-	}
-}
-
-func cardButtonLabel(t *testing.T, button map[string]any) string {
-	t.Helper()
-	textValue, _ := button["text"].(map[string]any)
-	label, _ := textValue["content"].(string)
-	if label == "" {
-		t.Fatalf("expected button label, got %#v", button)
-	}
-	return label
-}
-
-func cardButtonPayload(t *testing.T, button map[string]any) map[string]any {
-	t.Helper()
-	if value, _ := button["value"].(map[string]any); len(value) != 0 {
-		return value
-	}
-	behaviors, _ := button["behaviors"].([]map[string]any)
-	if len(behaviors) != 1 || behaviors[0]["type"] != "callback" {
-		t.Fatalf("expected callback payload on button, got %#v", button)
-	}
-	value, _ := behaviors[0]["value"].(map[string]any)
-	if len(value) == 0 {
-		t.Fatalf("expected callback value payload, got %#v", button)
-	}
-	return value
-}
-
-func renderedV2BodyElements(t *testing.T, operation Operation) []map[string]any {
-	t.Helper()
-	if operation.cardEnvelope != cardEnvelopeV2 || operation.card == nil {
-		t.Fatalf("expected structured V2 operation, got %#v", operation)
-	}
-	payload := renderOperationCard(operation, operation.ordinaryCardEnvelope())
-	if payload["schema"] != "2.0" {
-		t.Fatalf("expected V2 schema, got %#v", payload)
-	}
-	body, _ := payload["body"].(map[string]any)
-	elements, _ := body["elements"].([]map[string]any)
-	return elements
-}
-
-func containsRenderedTag(elements []map[string]any, tag string) bool {
-	for _, element := range elements {
-		if element["tag"] == tag {
-			return true
-		}
-	}
-	return false
 }

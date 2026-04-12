@@ -16,21 +16,27 @@ For remote surface state-machine changes, also use `.codex/skills/remote-state-m
 
 Trigger it for:
 
-- `attach` / `detach` / `/use` / `/follow`
-- headless launch, resume, cancel, timeout
-- queue routing, dispatch mode, local pause/handoff
-- request capture, prompt/card routing, selection flow
-- `/new` or any change that adds or removes remote surface states
+- changes to remote-surface state-machine logic carriers, not merely because nearby keywords or files appear
+- attach / detach / `/use` / `/follow` / `/new` state predicates or transition logic
+- headless launch / resume / cancel / timeout / recovery state progression logic
+- queue routing / dispatch mode / local pause-handoff decision logic
+- request capture / prompt gate / modal gate / staged input / selection-flow enter-exit logic
+- selected-thread / attached-instance / input-routing decisions that determine whether and where the next user action can proceed
+- command-availability matrix logic, or any change that adds or removes remote surface states
+- do not trigger it for pure copy, styling, logging, tests, or refactors that do not touch those logic carriers
 
 For Feishu card UI navigation / callback state-machine changes, also use `.codex/skills/feishu-ui-state-machine-guardrail/`.
 
 Trigger it for:
 
-- Feishu card button / form callback payload changes
-- inline replace / append-only boundary changes
-- command menu / selection prompt / request prompt card navigation changes
-- `daemon_lifecycle_id`, old-card reject, callback freshness semantics
-- `projector` / `gateway` changes that alter what an existing Feishu card can still do
+- changes to Feishu card state-machine logic carriers, not merely because card-related files or keywords appear
+- card callback payload schema or parsing logic
+- card owner / kind / action routing logic
+- inline replace vs append-only decision logic
+- command menu / selection prompt / request prompt card navigation logic
+- `daemon_lifecycle_id`, old-card reject, lifecycle stamping, or callback freshness decision logic
+- projector / gateway logic that determines whether an existing card can still act or what state mutation its callback performs
+- do not trigger it for pure copy, styling, logging, tests, or refactors that do not touch those logic carriers
 
 For GitHub issue pickup, triage, refinement, implementation, or closure, also use `.codex/skills/issue-workflow-guardrail/`.
 
@@ -110,6 +116,11 @@ For any change that modifies remote surface behavior or state transitions:
 5. Do not run this loop after every tiny edit; run it once near commit unless a major assumption changed mid-implementation.
 6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/remote-surface-state-machine.md` under `待讨论取舍` before discussing it.
 
+Trigger boundary note:
+
+- This loop is triggered by touching remote-surface state-machine logic carriers, even when the developer did not intend a product behavior change.
+- It is not triggered by pure copy, styling, logging, tests, or refactors that leave the state predicates, transition conditions, command matrix, and routing decisions unchanged.
+
 ## Feishu UI State Machine Document
 
 The canonical Feishu card UI state machine document is:
@@ -124,6 +135,11 @@ For any change that modifies Feishu card navigation, callback payloads, inline r
 4. If that audit reveals a bug-level issue, fix it and re-run the audit once more before committing.
 5. If the same change also affects attach / use / follow / `/new` / request-gate product semantics, run the core remote surface state-machine loop in the same pass.
 6. If a remaining issue needs product tradeoff input rather than an engineering fix, append it to the end of `docs/general/feishu-card-ui-state-machine.md` under `待讨论取舍` before discussing it.
+
+Trigger boundary note:
+
+- This loop is triggered by touching Feishu card UI state-machine logic carriers, even when the developer did not intend a visible UX change.
+- It is not triggered by pure copy, styling, logging, tests, or refactors that leave callback schema, routing decisions, freshness checks, and replace-vs-append decisions unchanged.
 
 ## GitHub Issue Workflow
 

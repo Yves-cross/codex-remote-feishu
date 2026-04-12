@@ -1,11 +1,24 @@
 ---
 name: feishu-ui-state-machine-guardrail
-description: Audit and update this repository's canonical Feishu card UI state machine after changing card navigation, callback payloads, inline replace behavior, lifecycle stamping, or old-card handling. Use after implementation stabilizes and before committing.
+description: Audit and update this repository's canonical Feishu card UI state machine after changing Feishu card state-machine logic carriers such as callback schema/parsing, card action routing, inline replace vs append-only decisions, lifecycle stamping, or old-card handling. Use after implementation stabilizes and before committing.
 ---
 
 # Feishu UI State Machine Guardrail
 
 Treat [docs/general/feishu-card-ui-state-machine.md](../../../docs/general/feishu-card-ui-state-machine.md) as the canonical reference for current Feishu card UI / callback-layer behavior.
+
+Trigger this skill when the change touches Feishu card state-machine logic carriers, even if the intended UX behavior was "not supposed to change".
+
+Typical triggers:
+
+- callback payload schema or parsing logic
+- card owner / kind / action routing logic
+- inline replace vs append-only decision logic
+- command menu / selection prompt / request prompt navigation logic
+- lifecycle stamping, old-card reject, or callback freshness decision logic
+- projector / gateway logic that determines whether an existing card can still act or what state mutation it performs
+
+Do not trigger this skill for pure copy, styling, logging, tests, or refactors that leave those logic carriers unchanged.
 
 Use this skill once per implementation pass, after the code and tests are mostly stable and before committing. Do not trigger it after every tiny edit.
 

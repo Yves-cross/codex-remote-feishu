@@ -1,11 +1,24 @@
 ---
 name: remote-state-machine-guardrail
-description: Audit and update this repository's canonical remote surface state machine after implementing changes to orchestrator routing, attach/detach, /use, /follow, headless lifecycle, queue/dispatch, request-capture, card-action routing, or any code that changes which commands are valid in a state. Use after implementation stabilizes and before committing. Reopen `docs/general/remote-surface-state-machine.md`, sync the current behavior, audit dead or half-dead user states, fix bug-grade issues found by that audit, and append unresolved product tradeoffs under `待讨论取舍`.
+description: Audit and update this repository's canonical remote surface state machine after implementing changes to remote-surface state-machine logic carriers such as attach/detach/use/follow state predicates, routing decisions, headless lifecycle progression, queue/dispatch gating, request-capture gates, or command-availability logic. Use after implementation stabilizes and before committing. Reopen `docs/general/remote-surface-state-machine.md`, sync the current behavior, audit dead or half-dead user states, fix bug-grade issues found by that audit, and append unresolved product tradeoffs under `待讨论取舍`.
 ---
 
 # Remote State Machine Guardrail
 
 Treat [docs/general/remote-surface-state-machine.md](../../../docs/general/remote-surface-state-machine.md) as the canonical reference for current remote surface behavior.
+
+Trigger this skill when the change touches remote-surface state-machine logic carriers, even if the intended product behavior was "not supposed to change".
+
+Typical triggers:
+
+- attach / detach / `/use` / `/follow` / `/new` state predicates or transition logic
+- selected-thread / attached-instance / input-routing decisions
+- queue / dispatch / pause-handoff gating logic
+- headless launch / resume / cancel / timeout / recovery progression logic
+- request capture / prompt gate / modal gate / staged-input enter-exit logic
+- command-availability matrix logic
+
+Do not trigger this skill for pure copy, styling, logging, tests, or refactors that leave those logic carriers unchanged.
 
 Use this skill once per implementation pass, after the code and tests are mostly stable and before committing. Do not trigger it after every tiny edit.
 
