@@ -74,18 +74,19 @@ type gitWorktreeSummary struct {
 
 type Projector struct {
 	readGitWorktree func(string) *gitWorktreeSummary
-	snapshotVersion string
+	readGitBranch   func(string) string
+	snapshotBinary  string
 }
 
 func NewProjector() *Projector {
-	return &Projector{readGitWorktree: inspectGitWorktreeSummary}
+	return &Projector{readGitWorktree: inspectGitWorktreeSummary, readGitBranch: inspectGitBranchLabel}
 }
 
-func (p *Projector) SetSnapshotVersion(version string) {
+func (p *Projector) SetSnapshotBinary(value string) {
 	if p == nil {
 		return
 	}
-	p.snapshotVersion = strings.TrimSpace(version)
+	p.snapshotBinary = strings.TrimSpace(value)
 }
 
 func (p *Projector) ProjectPreviewSupplements(gatewayID, surfaceSessionID, chatID, replyToMessageID string, supplements []PreviewSupplement) []Operation {
@@ -108,7 +109,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.Snapshot == nil {
 			return nil
 		}
-		body := formatSnapshot(*event.Snapshot, p.snapshotVersion)
+		body := formatSnapshot(*event.Snapshot, p.snapshotBinary, p.snapshotCurrentDirectory(event.Snapshot))
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,

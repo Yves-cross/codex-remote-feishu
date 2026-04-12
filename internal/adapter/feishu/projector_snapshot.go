@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -14,14 +15,14 @@ const (
 	snapshotStatusPreviewLimit = 24
 )
 
-func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
+func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory string) string {
 	lines := []string{}
 	lines = append(lines, snapshotField("当前模式", formatNeutralTextTag(displaySnapshotMode(snapshot.ProductMode))))
-	if daemonVersion = strings.TrimSpace(daemonVersion); daemonVersion != "" {
-		lines = append(lines, snapshotField("当前版本", formatNeutralTextTag(daemonVersion)))
+	if daemonBinary = strings.TrimSpace(daemonBinary); daemonBinary != "" {
+		lines = append(lines, snapshotField("当前二进制", formatNeutralTextTag(daemonBinary)))
 	}
-	if strings.TrimSpace(snapshot.WorkspaceKey) != "" {
-		lines = append(lines, snapshotField("当前 workspace", formatNeutralTextTag(snapshot.WorkspaceKey)))
+	if currentDirectory = strings.TrimSpace(currentDirectory); currentDirectory != "" {
+		lines = append(lines, snapshotField("当前目录", currentDirectory))
 	}
 	if snapshot.Attachment.InstanceID == "" {
 		lines = append(lines, snapshotField("接管对象类型", "无"))
@@ -61,7 +62,7 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 		}
 		lines = append(lines, "")
 		lines = append(lines, snapshotField("下条飞书消息", formatSnapshotEffectivePrompt(snapshot.NextPrompt)))
-		if snapshotShouldShowPromptCWD(snapshot.WorkspaceKey, snapshot.NextPrompt.CWD) {
+		if snapshotShouldShowPromptCWD(snapshotCurrentDirectory(snapshot), snapshot.NextPrompt.CWD) {
 			lines = append(lines, snapshotField("工作目录", formatNeutralTextTag(snapshot.NextPrompt.CWD)))
 		}
 	}
@@ -85,6 +86,51 @@ func formatSnapshot(snapshot control.Snapshot, daemonVersion string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func (p *Projector) snapshotCurrentDirectory(snapshot *control.Snapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	path := snapshotCurrentDirectory(*snapshot)
+	if path == "" {
+		return ""
+	}
+	if p == nil || p.readGitBranch == nil {
+		return formatSnapshotCurrentDirectory(path, "")
+	}
+	return formatSnapshotCurrentDirectory(path, strings.TrimSpace(p.readGitBranch(snapshotGitInspectPath(*snapshot))))
+}
+
+func snapshotCurrentDirectory(snapshot control.Snapshot) string {
+	return firstNonEmpty(
+		strings.TrimSpace(snapshot.NextPrompt.CWD),
+		strings.TrimSpace(snapshot.PendingHeadless.ThreadCWD),
+		strings.TrimSpace(snapshot.WorkspaceKey),
+	)
+}
+
+func snapshotGitInspectPath(snapshot control.Snapshot) string {
+	path := snapshotCurrentDirectory(snapshot)
+	if path == "" || !filepath.IsAbs(path) {
+		return ""
+	}
+	return path
+}
+
+func formatSnapshotCurrentDirectory(path, gitBranch string) string {
+	path = strings.TrimSpace(path)
+	gitBranch = strings.TrimSpace(gitBranch)
+	switch {
+	case path != "" && gitBranch != "":
+		return formatNeutralTextTag(path) + " · Git " + formatNeutralTextTag(gitBranch)
+	case path != "":
+		return formatNeutralTextTag(path)
+	case gitBranch != "":
+		return "Git " + formatNeutralTextTag(gitBranch)
+	default:
+		return ""
+	}
 }
 
 func snapshotField(label, value string) string {
