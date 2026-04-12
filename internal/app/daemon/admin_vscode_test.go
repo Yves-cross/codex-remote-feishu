@@ -197,19 +197,19 @@ func TestVSCodeDetectAndApplyManagedShimUseWindowsEntrypoint(t *testing.T) {
 	if _, err := os.Stat(windowsRealBinary); err != nil {
 		t.Fatalf("expected .real.exe backup after windows shim apply: %v", err)
 	}
-	if readFileString(t, windowsEntrypoint) != "wrapper-binary" {
-		t.Fatalf("expected windows entrypoint to match wrapper binary")
+	if readFileString(t, windowsEntrypoint) == "wrapper-binary" {
+		t.Fatalf("expected windows entrypoint to be tiny shim, not copied main binary")
 	}
-	if readFileString(t, linuxEntrypoint) != "wrapper-binary" {
-		t.Fatalf("expected stale linux entrypoint to remain unchanged")
+	if readFileString(t, linuxEntrypoint) == "wrapper-binary" {
+		t.Fatalf("expected recorded linux entrypoint to be migrated to tiny shim")
 	}
 
 	loaded, err := config.LoadAppConfigAtPath(configPath)
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath: %v", err)
 	}
-	if loaded.Config.Wrapper.CodexRealBinary != windowsRealBinary {
-		t.Fatalf("expected codexRealBinary to point at windows managed shim backup, got %q", loaded.Config.Wrapper.CodexRealBinary)
+	if loaded.Config.Wrapper.CodexRealBinary != "codex" {
+		t.Fatalf("expected shared codex path to stay unchanged, got %q", loaded.Config.Wrapper.CodexRealBinary)
 	}
 
 	state, err := install.LoadState(installStatePath)
