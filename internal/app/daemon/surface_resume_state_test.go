@@ -421,6 +421,58 @@ func TestDaemonTickDoesNotRewriteSurfaceResumeStateWithoutStateChange(t *testing
 	}
 }
 
+func TestDaemonHeadlessRecoveryTickPersistsUpdatedResumeStateForRecoveredSurface(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+		SurfaceSessionID:   "surface-1",
+		GatewayID:          "app-1",
+		ChatID:             "chat-1",
+		ActorUserID:        "user-1",
+		ProductMode:        "normal",
+		ResumeThreadID:     "thread-1",
+		ResumeThreadTitle:  "修复登录流程",
+		ResumeThreadCWD:    "/data/dl/droid",
+		ResumeWorkspaceKey: filepath.Join("/data/dl/.local/state", "codex-remote"),
+		ResumeRouteMode:    "pinned",
+		ResumeHeadless:     true,
+	})
+
+	app := newRestoreHintTestApp(stateDir)
+	app.startHeadless = func(relayruntime.HeadlessLaunchOptions) (int, error) {
+		return 4321, nil
+	}
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-headless-pool",
+			DisplayName:   "headless",
+			WorkspaceRoot: filepath.Join("/data/dl/.local/state", "codex-remote"),
+			WorkspaceKey:  filepath.Join("/data/dl/.local/state", "codex-remote"),
+			ShortName:     "headless",
+			Source:        "headless",
+			Managed:       true,
+			PID:           4321,
+		},
+	})
+	app.onEvents(context.Background(), "inst-headless-pool", []agentproto.Event{{
+		Kind:    agentproto.EventThreadsSnapshot,
+		Threads: nil,
+	}})
+
+	entry := app.SurfaceResumeState("surface-1")
+	if entry == nil {
+		t.Fatal("expected surface resume entry after headless recovery attempt")
+	}
+	if !entry.ResumeHeadless || entry.ResumeInstanceID != "inst-headless-pool" || entry.ResumeThreadID != "thread-1" || entry.ResumeThreadCWD != "/data/dl/droid" || entry.ResumeWorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected persisted headless resume metadata after targeted sync, got %#v", entry)
+	}
+	if !strings.Contains(entry.ResumeThreadTitle, "修复登录流程") {
+		t.Fatalf("expected persisted thread title to keep recovered thread context, got %#v", entry)
+	}
+}
+
 func TestDaemonNormalResumePrefersVisibleThreadOverHeadlessFallback(t *testing.T) {
 	t.Parallel()
 

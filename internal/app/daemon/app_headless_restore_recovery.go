@@ -57,6 +57,7 @@ func (a *App) maybeRecoverHeadlessSurfacesLocked(now time.Time) []control.UIEven
 	sort.Strings(surfaceIDs)
 	allowMissingThreadFailure := a.initialThreadsRefreshRoundCompleteLocked()
 	events := []control.UIEvent{}
+	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		state := a.headlessRestoreState[surfaceID]
 		if state == nil {
@@ -71,8 +72,12 @@ func (a *App) maybeRecoverHeadlessSurfacesLocked(now time.Time) []control.UIEven
 			ThreadCWD:   strings.TrimSpace(state.Entry.ResumeThreadCWD),
 		}, allowMissingThreadFailure)
 		a.applyHeadlessRestoreAttemptResultLocked(surfaceID, result, now)
+		if result.Status == orchestrator.HeadlessRestoreStatusAttached || result.Status == orchestrator.HeadlessRestoreStatusStarting {
+			updatedSurfaceIDs = append(updatedSurfaceIDs, surfaceID)
+		}
 		events = append(events, restoreEvents...)
 	}
+	a.syncSurfaceResumeStateForSurfacesLocked(updatedSurfaceIDs, nil)
 	return events
 }
 
