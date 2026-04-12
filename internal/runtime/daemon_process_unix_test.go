@@ -62,6 +62,55 @@ func TestStartDetachedDaemonSurvivesParentExit(t *testing.T) {
 	}
 }
 
+func TestStartDetachedDaemonPropagatesXDGEnvFromPaths(t *testing.T) {
+	if os.Getenv("GO_WANT_DETACHED_ENV_HELPER") == "1" {
+		helperRunDetachedEnv(t)
+		return
+	}
+
+	tempDir := t.TempDir()
+	outputFile := filepath.Join(tempDir, "env.txt")
+	script := filepath.Join(tempDir, "child.sh")
+	scriptBody := "#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n%s\\n%s\\n' \"$XDG_CONFIG_HOME\" \"$XDG_DATA_HOME\" \"$XDG_STATE_HOME\" > \"$ENV_OUT\"\n"
+	if err := os.WriteFile(script, []byte(scriptBody), 0o755); err != nil {
+		t.Fatalf("write helper script: %v", err)
+	}
+
+	helper := exec.Command(os.Args[0], "-test.run=^TestStartDetachedDaemonPropagatesXDGEnvFromPaths$")
+	helper.Env = append(os.Environ(),
+		"GO_WANT_DETACHED_ENV_HELPER=1",
+		"DETACHED_ENV_HELPER_SCRIPT="+script,
+		"DETACHED_ENV_OUTPUT="+outputFile,
+	)
+	output, err := helper.CombinedOutput()
+	if err != nil {
+		t.Fatalf("helper failed: %v\n%s", err, string(output))
+	}
+
+	var got string
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		raw, err := os.ReadFile(outputFile)
+		if err == nil {
+			got = string(raw)
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if got == "" {
+		t.Fatal("expected detached child env output")
+	}
+	want := strings.Join([]string{
+		filepath.Join(tempDir, "cfg-home"),
+		filepath.Join(tempDir, "data-home"),
+		filepath.Join(tempDir, "state-home"),
+		"",
+	}, "\n")
+	if got != want {
+		t.Fatalf("env output = %q, want %q", got, want)
+	}
+}
+
 func helperRunDetached(t *testing.T) {
 	t.Helper()
 	script := os.Getenv("DETACHED_HELPER_SCRIPT")
@@ -78,6 +127,29 @@ func helperRunDetached(t *testing.T) {
 	_, err := StartDetachedDaemon(LaunchOptions{
 		BinaryPath: script,
 		Env:        append(os.Environ(), "PID_FILE="+pidFile),
+		Paths:      paths,
+	})
+	if err != nil {
+		t.Fatalf("StartDetachedDaemon: %v", err)
+	}
+}
+
+func helperRunDetachedEnv(t *testing.T) {
+	t.Helper()
+	script := os.Getenv("DETACHED_ENV_HELPER_SCRIPT")
+	outputFile := os.Getenv("DETACHED_ENV_OUTPUT")
+	if script == "" || outputFile == "" {
+		t.Fatal("missing detached env helper env")
+	}
+	tempDir := filepath.Dir(outputFile)
+	paths := Paths{
+		ConfigDir: filepath.Join(tempDir, "cfg-home", ProductName),
+		DataDir:   filepath.Join(tempDir, "data-home", ProductName),
+		StateDir:  filepath.Join(tempDir, "state-home", ProductName),
+	}
+	_, err := StartDetachedDaemon(LaunchOptions{
+		BinaryPath: script,
+		Env:        append(os.Environ(), "ENV_OUT="+outputFile),
 		Paths:      paths,
 	})
 	if err != nil {
