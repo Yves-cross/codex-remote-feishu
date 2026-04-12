@@ -139,6 +139,64 @@ func TestTickDoesNotAutoCheckOrPromptUpgrade(t *testing.T) {
 	}
 }
 
+func TestUpgradeLatestClearsStalePendingCandidateMatchingLiveVersion(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, statePath := newUpgradeTestApp(t, gateway)
+	app.serverIdentity.Version = "v1.1.0"
+	app.upgradeLookup = func(context.Context, install.ReleaseTrack) (install.ReleaseInfo, error) {
+		return install.ReleaseInfo{TagName: "v1.1.0"}, nil
+	}
+
+	stateValue, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	stateValue.CurrentVersion = "v1.0.0"
+	stateValue.PendingUpgrade = &install.PendingUpgrade{
+		Phase:         install.PendingUpgradePhasePrompted,
+		Source:        install.UpgradeSourceRelease,
+		TargetTrack:   install.ReleaseTrackProduction,
+		TargetVersion: "v1.1.0",
+		TargetSlot:    "v1.1.0",
+	}
+	if err := install.WriteState(statePath, stateValue); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUpgradeCommand,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/upgrade latest",
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ops := gateway.snapshotOperations()
+		for _, op := range ops {
+			if op.CardTitle == "Debug" && strings.Contains(op.CardBody, "当前已经是 production track 的最新版本 v1.1.0。") {
+				updated, err := install.LoadState(statePath)
+				if err != nil {
+					t.Fatalf("LoadState updated: %v", err)
+				}
+				if updated.PendingUpgrade != nil {
+					t.Fatalf("expected stale pending upgrade to be cleared, got %#v", updated.PendingUpgrade)
+				}
+				if updated.CurrentVersion != "v1.1.0" {
+					t.Fatalf("current version = %q, want v1.1.0", updated.CurrentVersion)
+				}
+				return
+			}
+			if op.CardTitle == "Upgrade" && strings.Contains(op.CardBody, "正在准备升级到 v1.1.0") {
+				t.Fatalf("expected stale candidate to be cleared before starting upgrade, got %#v", op)
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for latest-version notice")
+}
+
 func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
 	gateway := newLifecycleGateway()
 	app, statePath := newUpgradeTestApp(t, gateway)

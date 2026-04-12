@@ -189,6 +189,11 @@ func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateVal
 	if a.upgradeStartInFlight {
 		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
 	}
+	if clearStalePendingCandidateOnLiveVersion(&stateValue, a.currentBinaryVersion()) {
+		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
+			return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理陈旧升级候选失败：%v", err))}
+		}
+	}
 	if stateValue.PendingUpgrade != nil && pendingUpgradeCandidate(stateValue.PendingUpgrade) {
 		return a.beginPendingUpgradeLocked(command, stateValue)
 	}
@@ -825,6 +830,41 @@ func clearPendingCandidateOnTrackSwitch(pending *install.PendingUpgrade, nextTra
 		return false
 	}
 	return pending.TargetTrack != nextTrack || pendingUpgradeCandidate(pending)
+}
+
+func clearStalePendingCandidateOnLiveVersion(stateValue *install.InstallState, liveVersion string) bool {
+	if stateValue == nil || stateValue.PendingUpgrade == nil || !pendingUpgradeCandidate(stateValue.PendingUpgrade) {
+		return false
+	}
+	pending := stateValue.PendingUpgrade
+	if pending.Source != install.UpgradeSourceRelease {
+		return false
+	}
+	liveVersion = strings.TrimSpace(liveVersion)
+	if liveVersion == "" {
+		return false
+	}
+	targetVersion := firstNonEmpty(strings.TrimSpace(pending.TargetVersion), strings.TrimSpace(pending.TargetSlot))
+	if targetVersion == "" || targetVersion != liveVersion {
+		return false
+	}
+	stateValue.CurrentVersion = liveVersion
+	stateValue.CurrentSlot = firstNonEmpty(strings.TrimSpace(pending.TargetSlot), strings.TrimSpace(pending.TargetVersion), liveVersion)
+	if stateValue.CurrentTrack == "" {
+		stateValue.CurrentTrack = firstNonEmptyTrack(pending.TargetTrack, install.ParseReleaseTrack(liveVersion))
+	}
+	stateValue.LastKnownLatestVersion = liveVersion
+	stateValue.PendingUpgrade = nil
+	return true
+}
+
+func firstNonEmptyTrack(values ...install.ReleaseTrack) install.ReleaseTrack {
+	for _, value := range values {
+		if strings.TrimSpace(string(value)) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func debugUsageEvents(surfaceID, message string) []control.UIEvent {
