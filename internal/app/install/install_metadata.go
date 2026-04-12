@@ -118,7 +118,7 @@ func ApplyStateMetadata(state *InstallState, opts StateMetadataOptions) {
 	if state.ServiceManager == "" {
 		state.ServiceManager = ServiceManagerDetached
 	}
-	if effectiveServiceManager(*state) == ServiceManagerSystemdUser && strings.TrimSpace(state.ServiceUnitPath) == "" {
+	if effectiveServiceManager(*state) == ServiceManagerSystemdUser {
 		state.ServiceUnitPath = systemdUserUnitPathForInstance(
 			firstNonEmpty(strings.TrimSpace(state.BaseDir), inferBaseDir(strings.TrimSpace(state.ConfigPath), strings.TrimSpace(state.StatePath))),
 			state.InstanceID,
