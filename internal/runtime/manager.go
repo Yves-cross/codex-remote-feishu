@@ -33,6 +33,36 @@ type ProbeResult struct {
 	Err     error
 }
 
+type ProbeMismatchAction string
+
+const (
+	ProbeMismatchReplace       ProbeMismatchAction = "replace"
+	ProbeMismatchRefuseReplace ProbeMismatchAction = "refuse_replace"
+)
+
+type ProbeMismatchError struct {
+	Status ProbeStatus
+	Err    error
+}
+
+func (e ProbeMismatchError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	switch e.Status {
+	case ProbeLegacy:
+		return "relay identity is legacy; refusing to replace existing daemon from probe"
+	case ProbeIncompatible:
+		return "relay identity is incompatible; refusing to replace existing daemon from probe"
+	default:
+		return "relay probe mismatch; refusing to replace existing daemon"
+	}
+}
+
+func (e ProbeMismatchError) Unwrap() error {
+	return e.Err
+}
+
 type ManagerConfig struct {
 	RelayServerURL       string
 	Identity             agentproto.BinaryIdentity
@@ -47,6 +77,7 @@ type ManagerConfig struct {
 	StartFunc            func(context.Context) (int, error)
 	RestartFunc          func(context.Context) error
 	StopFunc             func(context.Context, int) error
+	MismatchAction       ProbeMismatchAction
 }
 
 type Manager struct {
@@ -67,6 +98,9 @@ func NewManager(cfg ManagerConfig) *Manager {
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 200 * time.Millisecond
+	}
+	if cfg.MismatchAction == "" {
+		cfg.MismatchAction = ProbeMismatchReplace
 	}
 	return &Manager{
 		config:      cfg,
@@ -99,6 +133,9 @@ func (m *Manager) EnsureReady(ctx context.Context) error {
 	case ProbeUnreachable:
 		return m.startAndWait(ctx)
 	case ProbeIncompatible, ProbeLegacy:
+		if m.config.MismatchAction == ProbeMismatchRefuseReplace {
+			return ProbeMismatchError{Status: current.Status, Err: current.Err}
+		}
 		if m.restartFunc != nil {
 			return m.restartAndWait(ctx)
 		}

@@ -223,6 +223,88 @@ func TestManagerEnsureReadyReplacesIncompatibleDaemonDuringBootstrap(t *testing.
 	}
 }
 
+func TestManagerEnsureReadyRefusesToReplaceIncompatibleDaemonWhenConfigured(t *testing.T) {
+	manager := NewManager(ManagerConfig{
+		Identity: agentproto.BinaryIdentity{
+			Product:          ProductName,
+			Version:          "2.0.0",
+			BuildFingerprint: "fp-new",
+		},
+		Paths:          testPaths(t),
+		MismatchAction: ProbeMismatchRefuseReplace,
+	})
+	manager.probeFunc = func(context.Context) ProbeResult {
+		return ProbeResult{
+			Status: ProbeIncompatible,
+			Welcome: agentproto.Welcome{
+				Protocol: agentproto.WireProtocol,
+				Server: &agentproto.ServerIdentity{
+					BinaryIdentity: agentproto.BinaryIdentity{
+						Product:          ProductName,
+						Version:          "1.0.0",
+						BuildFingerprint: "fp-old",
+					},
+					PID: 333,
+				},
+			},
+			Err: errors.New("relay version mismatch"),
+		}
+	}
+	manager.startFunc = func(context.Context) (int, error) {
+		t.Fatal("unexpected start")
+		return 0, nil
+	}
+	manager.restartFunc = func(context.Context) error {
+		t.Fatal("unexpected restart")
+		return nil
+	}
+	manager.stopFunc = func(context.Context, int) error {
+		t.Fatal("unexpected stop")
+		return nil
+	}
+
+	err := manager.EnsureReady(context.Background())
+	var mismatchErr ProbeMismatchError
+	if !errors.As(err, &mismatchErr) {
+		t.Fatalf("expected ProbeMismatchError, got %v", err)
+	}
+	if mismatchErr.Status != ProbeIncompatible {
+		t.Fatalf("mismatch status = %s, want incompatible", mismatchErr.Status)
+	}
+}
+
+func TestManagerEnsureReadyRefusesToReplaceLegacyDaemonWhenConfigured(t *testing.T) {
+	manager := NewManager(ManagerConfig{
+		Identity:       testBinaryIdentity(),
+		Paths:          testPaths(t),
+		MismatchAction: ProbeMismatchRefuseReplace,
+	})
+	manager.probeFunc = func(context.Context) ProbeResult {
+		return ProbeResult{Status: ProbeLegacy}
+	}
+	manager.startFunc = func(context.Context) (int, error) {
+		t.Fatal("unexpected start")
+		return 0, nil
+	}
+	manager.restartFunc = func(context.Context) error {
+		t.Fatal("unexpected restart")
+		return nil
+	}
+	manager.stopFunc = func(context.Context, int) error {
+		t.Fatal("unexpected stop")
+		return nil
+	}
+
+	err := manager.EnsureReady(context.Background())
+	var mismatchErr ProbeMismatchError
+	if !errors.As(err, &mismatchErr) {
+		t.Fatalf("expected ProbeMismatchError, got %v", err)
+	}
+	if mismatchErr.Status != ProbeLegacy {
+		t.Fatalf("mismatch status = %s, want legacy", mismatchErr.Status)
+	}
+}
+
 func TestManagerEnsureReadyUsesRestartHookForIncompatibleRelay(t *testing.T) {
 	manager := NewManager(ManagerConfig{
 		Identity: agentproto.BinaryIdentity{

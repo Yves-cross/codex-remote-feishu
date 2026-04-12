@@ -175,6 +175,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		DaemonBinaryPath:     firstNonEmpty(a.config.DaemonBinaryPath, a.config.BinaryPath),
 		DaemonUseSystemProxy: a.config.DaemonUseSystemProxy,
 		CapturedProxyEnv:     a.config.ChildProxyEnv,
+		MismatchAction:       relayruntime.ProbeMismatchRefuseReplace,
 	})
 	if err := manager.EnsureReady(ctx); err != nil {
 		return 1, err
