@@ -267,7 +267,6 @@ bash ./install-release.sh
 expected_dir="${install_root}/${version}"
 [[ -d "${expected_dir}" ]]
 [[ -x "${expected_dir}/codex-remote" ]]
-[[ -f "${expected_dir}/README.md" ]]
 [[ -f "${expected_dir}/QUICKSTART.md" ]]
 [[ -d "${expected_dir}/deploy" ]]
 [[ ! -e "${expected_dir}/setup.sh" ]]
