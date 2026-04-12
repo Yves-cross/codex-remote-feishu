@@ -11,6 +11,7 @@ import (
 
 func TestRunServiceInstallUserWritesUnitAndState(t *testing.T) {
 	baseDir := t.TempDir()
+	stubServiceUserHome(t, baseDir)
 	servicePath := filepath.Join(baseDir, "shell-bin") + string(os.PathListSeparator) + "/usr/bin"
 	t.Setenv("PATH", servicePath)
 	statePath := defaultInstallStatePath(baseDir)
@@ -73,6 +74,31 @@ func TestRunServiceInstallUserWritesUnitAndState(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "service manager: systemd_user") {
 		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestApplyStateMetadataRewritesLegacySystemdUserUnitPathToCurrentHome(t *testing.T) {
+	baseDir := filepath.Join(string(filepath.Separator), "data", "dl")
+	homeDir := t.TempDir()
+	stubServiceUserHome(t, homeDir)
+
+	state := InstallState{
+		BaseDir:         baseDir,
+		ConfigPath:      filepath.Join(baseDir, ".config", "codex-remote", "config.json"),
+		StatePath:       filepath.Join(baseDir, ".local", "share", "codex-remote", "install-state.json"),
+		ServiceManager:  ServiceManagerSystemdUser,
+		ServiceUnitPath: filepath.Join(baseDir, ".config", "systemd", "user", "codex-remote.service"),
+	}
+
+	ApplyStateMetadata(&state, StateMetadataOptions{
+		StatePath:      state.StatePath,
+		BaseDir:        state.BaseDir,
+		ServiceManager: state.ServiceManager,
+	})
+
+	want := filepath.Join(homeDir, ".config", "systemd", "user", "codex-remote.service")
+	if state.ServiceUnitPath != want {
+		t.Fatalf("ServiceUnitPath = %q, want %q", state.ServiceUnitPath, want)
 	}
 }
 
