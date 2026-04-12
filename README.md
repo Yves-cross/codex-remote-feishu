@@ -220,11 +220,19 @@ loginctl enable-linger "$USER"
 - `./bin/codex-remote daemon`
   - 需要前台直接观察 daemon 启动过程和日志时使用
 
-默认会写入：
+如果当前 workspace 下存在 `.codex-remote/install-target.json`，这些 repo-local 命令会优先跟随该 workspace 绑定的全局实例与 `baseDir`；没有 binding 时，默认退回 `stable`。
+
+stable 默认会写入：
 
 - `~/.config/codex-remote/config.json`
 - `~/.local/share/codex-remote/install-state.json`
 - `~/.local/share/codex-remote/logs/codex-remote-relayd.log`
+
+命名实例则会写入 namespaced 路径，例如 `master`：
+
+- `<baseDir>/.config/codex-remote-master/codex-remote/config.json`
+- `<baseDir>/.local/share/codex-remote-master/codex-remote/install-state.json`
+- `<baseDir>/.local/share/codex-remote-master/codex-remote/logs/codex-remote-relayd.log`
 
 如果本机还只有旧的 `config.env` / `wrapper.env` / `services.env`，bootstrap 或启动时会自动迁移到 `config.json`，并把旧文件备份成 `*.migrated-<timestamp>.bak`。
 

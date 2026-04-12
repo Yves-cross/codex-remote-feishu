@@ -1,8 +1,8 @@
 package install
 
 import (
+	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,59 +12,97 @@ const (
 	repoRootEnvVar           = "CODEX_REMOTE_REPO_ROOT"
 	repoLocalStateDirName    = ".codex-remote"
 	repoLocalInstanceFile    = "install-instance"
+	repoLocalBindingFile     = "install-target.json"
+	repoLocalBindingVersion  = 1
 	repoLocalExcludeLine     = "/.codex-remote/"
 	projectModuleDeclaration = "module github.com/kxn/codex-remote-feishu"
 )
 
-type installInstanceSelection struct {
-	InstanceID   string
-	RepoRoot     string
-	WriteBinding bool
-	ClearBinding bool
+type repoInstallBinding struct {
+	Version         int    `json:"version"`
+	InstanceID      string `json:"instanceId"`
+	BaseDir         string `json:"baseDir,omitempty"`
+	InstallBinDir   string `json:"installBinDir,omitempty"`
+	ConfigPath      string `json:"configPath,omitempty"`
+	StatePath       string `json:"statePath,omitempty"`
+	LogPath         string `json:"logPath,omitempty"`
+	ServiceName     string `json:"serviceName,omitempty"`
+	ServiceUnitPath string `json:"serviceUnitPath,omitempty"`
 }
 
-func resolveInstallInstanceSelection(explicitValue, baseDir string) (installInstanceSelection, error) {
+type installInstanceSelection struct {
+	InstanceID      string
+	BaseDir         string
+	InstallBinDir   string
+	ConfigPath      string
+	StatePath       string
+	LogPath         string
+	ServiceName     string
+	ServiceUnitPath string
+	RepoRoot        string
+	WriteBinding    bool
+	ClearBinding    bool
+}
+
+func resolveInstallInstanceSelection(explicitValue, explicitBaseDir, fallbackBaseDir, goos string) (installInstanceSelection, error) {
 	repoRoot, err := resolveRepoRoot()
+	if err != nil {
+		return installInstanceSelection{}, err
+	}
+	binding, bindingFound, err := readRepoInstallBinding(repoRoot)
 	if err != nil {
 		return installInstanceSelection{}, err
 	}
 
 	trimmedExplicit := strings.TrimSpace(explicitValue)
+	trimmedExplicitBaseDir := strings.TrimSpace(explicitBaseDir)
+	instanceID := defaultInstanceID
 	if trimmedExplicit != "" {
-		instanceID, err := parseInstanceID(trimmedExplicit)
+		instanceID, err = parseInstanceID(trimmedExplicit)
 		if err != nil {
 			return installInstanceSelection{}, err
 		}
-		return installInstanceSelection{
-			InstanceID:   instanceID,
-			RepoRoot:     repoRoot,
-			WriteBinding: repoRoot != "" && !isDefaultInstance(instanceID),
-			ClearBinding: repoRoot != "" && isDefaultInstance(instanceID),
-		}, nil
+	} else if bindingFound {
+		instanceID = binding.InstanceID
 	}
 
-	if repoRoot == "" {
-		return installInstanceSelection{InstanceID: defaultInstanceID}, nil
+	resolvedBaseDir := trimmedExplicitBaseDir
+	if resolvedBaseDir == "" {
+		if bindingFound && strings.TrimSpace(binding.BaseDir) != "" {
+			resolvedBaseDir = binding.BaseDir
+		} else {
+			resolvedBaseDir = detectExistingInstanceBaseDir(repoRoot, instanceID, fallbackBaseDir)
+		}
+	}
+	if resolvedBaseDir == "" {
+		resolvedBaseDir = fallbackBaseDir
+	}
+	resolvedBaseDir = filepath.Clean(strings.TrimSpace(resolvedBaseDir))
+
+	layout := installLayoutForInstance(resolvedBaseDir, instanceID)
+	selection := installInstanceSelection{
+		InstanceID:      instanceID,
+		BaseDir:         resolvedBaseDir,
+		InstallBinDir:   defaultInstallBinDirForInstance(goos, resolvedBaseDir, instanceID),
+		ConfigPath:      defaultConfigPathForInstance(resolvedBaseDir, instanceID),
+		StatePath:       defaultInstallStatePathForInstance(resolvedBaseDir, instanceID),
+		LogPath:         filepath.Join(layout.StateDir, "logs", "codex-remote-relayd.log"),
+		ServiceName:     systemdUserServiceNameForInstance(instanceID),
+		ServiceUnitPath: systemdUserUnitPathForInstance(resolvedBaseDir, instanceID),
+		RepoRoot:        repoRoot,
 	}
 
-	if instanceID, ok, err := readRepoInstallInstance(repoRoot); err != nil {
-		return installInstanceSelection{}, err
-	} else if ok {
-		return installInstanceSelection{InstanceID: instanceID, RepoRoot: repoRoot}, nil
+	if repoRoot != "" {
+		switch {
+		case trimmedExplicit == "" && trimmedExplicitBaseDir == "":
+		case isDefaultInstance(instanceID) && trimmedExplicitBaseDir == "":
+			selection.ClearBinding = true
+		default:
+			selection.WriteBinding = true
+		}
 	}
 
-	if repoShouldUseDedicatedInstance(baseDir) {
-		return installInstanceSelection{
-			InstanceID:   deriveRepoInstanceID(repoRoot),
-			RepoRoot:     repoRoot,
-			WriteBinding: true,
-		}, nil
-	}
-
-	return installInstanceSelection{
-		InstanceID: defaultInstanceID,
-		RepoRoot:   repoRoot,
-	}, nil
+	return selection, nil
 }
 
 func persistInstallInstanceSelection(selection installInstanceSelection) error {
@@ -75,29 +113,19 @@ func persistInstallInstanceSelection(selection installInstanceSelection) error {
 		return clearRepoInstallInstance(selection.RepoRoot)
 	}
 	if selection.WriteBinding {
-		return writeRepoInstallInstance(selection.RepoRoot, selection.InstanceID)
+		return writeRepoInstallBinding(selection.RepoRoot, repoInstallBinding{
+			Version:         repoLocalBindingVersion,
+			InstanceID:      selection.InstanceID,
+			BaseDir:         selection.BaseDir,
+			InstallBinDir:   selection.InstallBinDir,
+			ConfigPath:      selection.ConfigPath,
+			StatePath:       selection.StatePath,
+			LogPath:         selection.LogPath,
+			ServiceName:     selection.ServiceName,
+			ServiceUnitPath: selection.ServiceUnitPath,
+		})
 	}
 	return nil
-}
-
-func repoShouldUseDedicatedInstance(baseDir string) bool {
-	return defaultInstanceInstallExists(baseDir) || !portSetAvailable(instanceDefaultPorts(defaultInstanceID))
-}
-
-func defaultInstanceInstallExists(baseDir string) bool {
-	if strings.TrimSpace(baseDir) == "" {
-		return false
-	}
-	for _, path := range []string{
-		defaultInstallStatePathForInstance(baseDir, defaultInstanceID),
-		defaultConfigPathForInstance(baseDir, defaultInstanceID),
-	} {
-		info, err := os.Stat(path)
-		if err == nil && !info.IsDir() {
-			return true
-		}
-	}
-	return false
 }
 
 func resolveRepoRoot() (string, error) {
@@ -196,7 +224,60 @@ func repoInstallInstancePath(repoRoot string) string {
 	return filepath.Join(strings.TrimSpace(repoRoot), repoLocalStateDirName, repoLocalInstanceFile)
 }
 
+func repoInstallBindingPath(repoRoot string) string {
+	return filepath.Join(strings.TrimSpace(repoRoot), repoLocalStateDirName, repoLocalBindingFile)
+}
+
+func readRepoInstallBinding(repoRoot string) (repoInstallBinding, bool, error) {
+	if strings.TrimSpace(repoRoot) == "" {
+		return repoInstallBinding{}, false, nil
+	}
+	raw, err := os.ReadFile(repoInstallBindingPath(repoRoot))
+	if err != nil {
+		if os.IsNotExist(err) {
+			instanceID, ok, legacyErr := readLegacyRepoInstallInstance(repoRoot)
+			if legacyErr != nil {
+				return repoInstallBinding{}, false, legacyErr
+			}
+			if !ok {
+				return repoInstallBinding{}, false, nil
+			}
+			return repoInstallBinding{
+				Version:    repoLocalBindingVersion,
+				InstanceID: instanceID,
+			}, true, nil
+		}
+		return repoInstallBinding{}, false, err
+	}
+
+	var binding repoInstallBinding
+	if err := json.Unmarshal(raw, &binding); err != nil {
+		return repoInstallBinding{}, false, fmt.Errorf("invalid repo-local install binding: %w", err)
+	}
+	if binding.Version == 0 {
+		binding.Version = repoLocalBindingVersion
+	}
+	if binding.Version != repoLocalBindingVersion {
+		return repoInstallBinding{}, false, fmt.Errorf("unsupported repo-local install binding version %d", binding.Version)
+	}
+	instanceID, err := parseInstanceID(binding.InstanceID)
+	if err != nil {
+		return repoInstallBinding{}, false, fmt.Errorf("invalid repo-local install binding instance: %w", err)
+	}
+	binding.InstanceID = instanceID
+	binding.BaseDir = normalizeBindingBaseDir(binding.BaseDir)
+	return binding, true, nil
+}
+
 func readRepoInstallInstance(repoRoot string) (string, bool, error) {
+	binding, ok, err := readRepoInstallBinding(repoRoot)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	return binding.InstanceID, true, nil
+}
+
+func readLegacyRepoInstallInstance(repoRoot string) (string, bool, error) {
 	raw, err := os.ReadFile(repoInstallInstancePath(repoRoot))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -211,33 +292,96 @@ func readRepoInstallInstance(repoRoot string) (string, bool, error) {
 	return instanceID, true, nil
 }
 
-func writeRepoInstallInstance(repoRoot, instanceID string) error {
-	instanceID, err := parseInstanceID(instanceID)
+func writeRepoInstallBinding(repoRoot string, binding repoInstallBinding) error {
+	instanceID, err := parseInstanceID(binding.InstanceID)
 	if err != nil {
 		return err
 	}
-	path := repoInstallInstancePath(repoRoot)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	binding.Version = repoLocalBindingVersion
+	binding.InstanceID = instanceID
+	binding.BaseDir = normalizeBindingBaseDir(binding.BaseDir)
+
+	jsonPath := repoInstallBindingPath(repoRoot)
+	if err := os.MkdirAll(filepath.Dir(jsonPath), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(instanceID+"\n"), 0o600); err != nil {
+	raw, err := json.MarshalIndent(binding, "", "  ")
+	if err != nil {
+		return err
+	}
+	raw = append(raw, '\n')
+	if err := os.WriteFile(jsonPath, raw, 0o600); err != nil {
+		return err
+	}
+	if err := os.WriteFile(repoInstallInstancePath(repoRoot), []byte(instanceID+"\n"), 0o600); err != nil {
 		return err
 	}
 	return ensureRepoLocalGitExclude(repoRoot)
 }
 
 func clearRepoInstallInstance(repoRoot string) error {
-	path := repoInstallInstancePath(repoRoot)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
+	for _, path := range []string{
+		repoInstallBindingPath(repoRoot),
+		repoInstallInstancePath(repoRoot),
+	} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	return nil
 }
 
-func deriveRepoInstanceID(repoRoot string) string {
-	hash := fnv.New32a()
-	_, _ = hash.Write([]byte(filepath.Clean(strings.TrimSpace(repoRoot))))
-	return fmt.Sprintf("repo-%08x", hash.Sum32())
+func normalizeBindingBaseDir(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return filepath.Clean(value)
+}
+
+func detectExistingInstanceBaseDir(repoRoot, instanceID, fallbackBaseDir string) string {
+	for _, candidate := range repoInstallBaseDirCandidates(repoRoot, fallbackBaseDir) {
+		if installArtifactsExistForInstance(candidate, instanceID) {
+			return candidate
+		}
+	}
+	return normalizeBindingBaseDir(fallbackBaseDir)
+}
+
+func repoInstallBaseDirCandidates(repoRoot, fallbackBaseDir string) []string {
+	var values []string
+	seen := map[string]bool{}
+	appendValue := func(value string) {
+		value = normalizeBindingBaseDir(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		values = append(values, value)
+	}
+	current := normalizeBindingBaseDir(repoRoot)
+	for current != "" {
+		appendValue(current)
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	appendValue(fallbackBaseDir)
+	return values
+}
+
+func installArtifactsExistForInstance(baseDir, instanceID string) bool {
+	for _, path := range []string{
+		defaultInstallStatePathForInstance(baseDir, instanceID),
+		defaultConfigPathForInstance(baseDir, instanceID),
+	} {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureRepoLocalGitExclude(repoRoot string) error {

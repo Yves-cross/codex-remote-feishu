@@ -125,3 +125,52 @@ func TestRenderSystemdUserUnitEscapesPathsWithoutQuotedAssignments(t *testing.T)
 		t.Fatalf("unit missing escaped ExecStart path: %s", unitText)
 	}
 }
+
+func TestRunServiceStatusUsesWorkspaceBindingWhenStatePathOmitted(t *testing.T) {
+	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
+	statePath := defaultInstallStatePathForInstance(baseDir, "master")
+	state := InstallState{
+		InstanceID:      "master",
+		BaseDir:         baseDir,
+		ConfigPath:      filepath.Join(baseDir, ".config", "codex-remote-master", "codex-remote", "config.json"),
+		StatePath:       statePath,
+		ServiceManager:  ServiceManagerSystemdUser,
+		InstalledBinary: seedBinary(t, filepath.Join(baseDir, "bin", "codex-remote"), "binary"),
+	}
+	ApplyStateMetadata(&state, StateMetadataOptions{
+		StatePath:      statePath,
+		BaseDir:        baseDir,
+		ServiceManager: state.ServiceManager,
+	})
+	if err := WriteState(statePath, state); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: "master",
+		BaseDir:    baseDir,
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding: %v", err)
+	}
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	originalRunner := systemctlUserRunner
+	defer func() { systemctlUserRunner = originalRunner }()
+
+	var calls []string
+	systemctlUserRunner = func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, strings.Join(args, " "))
+		return "active\n", nil
+	}
+
+	var stdout bytes.Buffer
+	if err := RunService([]string{"status"}, strings.NewReader(""), &stdout, &bytes.Buffer{}, "vtest"); err != nil {
+		t.Fatalf("RunService status: %v", err)
+	}
+	if len(calls) != 1 || calls[0] != "status --no-pager --full codex-remote-master.service" {
+		t.Fatalf("systemctl calls = %#v", calls)
+	}
+	if !strings.Contains(stdout.String(), "service manager: systemd_user") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}

@@ -105,6 +105,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 
 func TestBootstrapSystemdUserPersistsLinuxServiceMetadata(t *testing.T) {
 	baseDir := t.TempDir()
+	stubServiceUserHome(t, baseDir)
 	binaryPath := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "binary-bin")
 
 	service := NewService()

@@ -1,8 +1,8 @@
 # 安装与部署设计
 
 > Type: `general`
-> Updated: `2026-04-11`
-> Summary: 增补 Linux systemd user service、本地 binary 升级事务入口、`codex.real` 子进程的定向 provider env 补齐规则，以及 release smoke/test 复用正式产物的当前实现。
+> Updated: `2026-04-12`
+> Summary: 补充全局 stable/beta/master 实例与 workspace 绑定模型，并记录 Linux systemd user service、本地 binary 升级事务入口、`codex.real` 子进程 provider env 补齐规则，以及 release smoke/test 复用正式产物的当前实现。
 
 ## 1. 范围
 
@@ -137,73 +137,75 @@ Windows PowerShell:
 
 ### 4.1 配置与状态
 
-当前 runtime 仍使用统一布局：
+当前 runtime 采用“默认 stable + 命名实例 namespaced layout”：
 
 ```text
+stable:
 <baseDir>/.config/codex-remote/config.json
 <baseDir>/.local/share/codex-remote/install-state.json
 <baseDir>/.local/share/codex-remote/releases/
 <baseDir>/.local/share/codex-remote/logs/codex-remote-relayd.log
 <baseDir>/.local/state/codex-remote/codex-remote-relayd.pid
+
+named instance <instanceId>:
+<baseDir>/.config/codex-remote-<instanceId>/codex-remote/config.json
+<baseDir>/.local/share/codex-remote-<instanceId>/codex-remote/install-state.json
+<baseDir>/.local/share/codex-remote-<instanceId>/codex-remote/releases/
+<baseDir>/.local/share/codex-remote-<instanceId>/codex-remote/logs/codex-remote-relayd.log
+<baseDir>/.local/state/codex-remote-<instanceId>/codex-remote/codex-remote-relayd.pid
 ```
 
 默认 `baseDir` 是用户 home 目录。
 
-### 4.3 Linux `systemd --user` 管理模式
+### 4.2 Workspace 绑定与全局实例
 
-Linux 当前已支持显式选择 `systemd_user` 作为 daemon lifecycle manager。
+源码仓库联调不再默认在“stable 已存在”时自动派生 `repo-xxxx` 实例。
 
-当前产品语义：
+当前模型收敛为：
 
-- `detached`
-  - 仍保留为默认兼容模式
-- `systemd_user`
-  - 由 `codex-remote service install-user|enable|start|stop|restart|status` 管理
-  - unit 安装到 `~/.config/systemd/user/codex-remote.service`
-  - 运行身份仍保持为当前用户
-  - 继续使用当前 XDG config/data/state 目录
+- 机器级长期实例由显式命名的全局实例承担，例如 `stable` / `beta` / `master`
+- 每个 workspace 只记录“我绑定哪套全局实例”和对应 `baseDir`
+- 仓库内的 `install` / `service` / `local-upgrade` / `upgrade-local.sh` 默认先读 workspace 绑定
+- 若当前 workspace 没有绑定，则默认退回 `stable`；退回前会优先向上查找 repo 祖先目录里已经存在的 stable install/config，再回退到用户 home
 
-如果希望机器重启后在没有手工打开终端的情况下也恢复 user service，需要额外启用：
-
-```bash
-loginctl enable-linger "$USER"
-```
-
-### 4.4 统一升级入口
-
-当前产品已经把升级入口统一为 daemon 内置事务：
-
-- release 升级
-  - 用户发送 `/upgrade latest`
-  - daemon 按当前 track 检查或继续升级到最新 release
-- 本地编译产物升级
-  - 用户先把新编译的 binary 放到固定 artifact 路径
-  - 再发送 `/upgrade local`
-
-本地 artifact 路径按当前 install-state 推导，默认位于：
+当前 repo-local 绑定文件为：
 
 ```text
-<stateDir>/local-upgrade/codex-remote
+<repoRoot>/.codex-remote/install-target.json
 ```
 
-Windows 下文件名为 `codex-remote.exe`。
+当前会记录：
 
-统一事务行为：
+- `instanceId`
+- `baseDir`
+- `installBinDir`
+- `configPath`
+- `statePath`
+- `logPath`
+- `serviceName`
+- `serviceUnitPath`
 
-- 把目标 binary 准备到 `versionsRoot/<slot>/`
-- 写入 `PendingUpgrade` 与 rollback candidate
-- daemon 复制当前 live binary 作为 `upgrade-helper`
-- 在 `systemd_user` 模式下，通过独立 transient unit 启动 helper，避免 stop 旧服务时把 helper 一并杀掉
-- helper 负责 stop old service -> switch stable binary -> start new service -> observe health
-- 新版本启动或健康检查失败时，自动回滚 binary 和 live config
+兼容旧路径时，仍会同步保留一份仅含实例 id 的：
 
-### 4.2 已安装二进制目录
+```text
+<repoRoot>/.codex-remote/install-instance
+```
+
+### 4.3 已安装二进制目录
 
 默认稳定安装目录按平台区分：
 
 - Linux: `~/.local/bin`
 - macOS: `~/Library/Application Support/codex-remote/bin`
 - Windows: `%LOCALAPPDATA%\\codex-remote\\bin`
+
+命名实例默认安装到 namespaced data 目录：
+
+- Linux: `<baseDir>/.local/share/codex-remote-<instanceId>/bin`
+- macOS: `<baseDir>/Library/Application Support/codex-remote-<instanceId>/bin`
+- Windows: `<baseDir>/AppData/Local/codex-remote-<instanceId>/bin`
+
+如果目标 `install-state.json` 已经存在，则 `codex-remote install` 在未显式传 `-install-bin-dir` 时会优先复用现有 `installedBinary` 所在目录，而不是擅自迁移稳定入口。
 
 release 包中的归档目录只是版本缓存位置，不是长期运行路径。
 
@@ -226,6 +228,62 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
   - helper 负责停当前 daemon、切换稳定入口、观察健康并在失败时自动回滚
   - daemon 在停机窗口里会先进入 shutdown gate，停止自动补拉 headless / wrapper
   - daemon 会向当前在线 wrapper 广播 `process.exit`，最多等待约 3 秒；仍未退出的实例按 PID 强制结束，避免升级切 stable entry 时命中 `ETXTBSY`
+
+### 4.4 Linux `systemd --user` 管理模式
+
+Linux 当前已支持显式选择 `systemd_user` 作为 daemon lifecycle manager。
+
+当前产品语义：
+
+- `detached`
+  - 仍保留为默认兼容模式
+- `systemd_user`
+  - 由 `codex-remote service install-user|enable|start|stop|restart|status` 管理
+  - stable unit 为 `<serviceHome>/.config/systemd/user/codex-remote.service`
+  - 命名实例 unit 为 `<serviceHome>/.config/systemd/user/codex-remote-<instanceId>.service`
+  - 这里的 `serviceHome` 指真实 `systemd --user` home，通常仍是 `$HOME`；它不等于 install `baseDir`
+  - 运行身份仍保持为当前用户
+  - unit 里的 `WorkingDirectory` 与 `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_STATE_HOME` 仍指向目标实例自己的 `baseDir`
+
+如果希望机器重启后在没有手工打开终端的情况下也恢复 user service，需要额外启用：
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+### 4.5 统一升级入口
+
+当前产品已经把升级入口统一为 daemon 内置事务：
+
+- release 升级
+  - 用户发送 `/upgrade latest`
+  - daemon 按当前 track 检查或继续升级到最新 release
+- 本地编译产物升级
+  - 用户先把新编译的 binary 放到固定 artifact 路径
+  - 再发送 `/upgrade local`
+
+本地 artifact 路径按当前 install-state 推导，默认位于：
+
+```text
+<stateDir>/local-upgrade/codex-remote
+```
+
+Windows 下文件名为 `codex-remote.exe`。
+
+源码仓库 helper `./upgrade-local.sh` 现在也遵循同一套 workspace 绑定解析：
+
+- 优先读取 `.codex-remote/install-target.json`
+- 没有 binding 时，优先向上查找现有全局实例的 `install-state.json` / `config.json`
+- 解析完成后，再把当前 repo 构建产物复制到对应实例的固定 local-upgrade artifact 路径
+
+统一事务行为：
+
+- 把目标 binary 准备到 `versionsRoot/<slot>/`
+- 写入 `PendingUpgrade` 与 rollback candidate
+- daemon 复制当前 live binary 作为 `upgrade-helper`
+- 在 `systemd_user` 模式下，通过独立 transient unit 启动 helper，避免 stop 旧服务时把 helper 一并杀掉
+- helper 负责 stop old service -> switch stable binary -> start new service -> observe health
+- 新版本启动或健康检查失败时，自动回滚 binary 和 live config
 
 ## 5. VS Code 接管模型
 

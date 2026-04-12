@@ -28,10 +28,10 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 
 	interactive := flagSet.Bool("interactive", false, "run interactive installer wizard")
 	bootstrapOnly := flagSet.Bool("bootstrap-only", false, "install binary and config only; do not patch VS Code integration")
-	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty auto-resolves to stable or repo-local instance")
+	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty auto-resolves to workspace binding or stable")
 	startDaemon := flagSet.Bool("start-daemon", false, "ensure the local daemon is running after install")
-	baseDir := flagSet.String("base-dir", defaults.BaseDir, "base directory for config and install state")
-	installBinDir := flagSet.String("install-bin-dir", defaults.InstallBinDir, "target directory for installed binary; empty keeps source path")
+	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to workspace binding or platform default")
+	installBinDir := flagSet.String("install-bin-dir", "", "target directory for installed binary; empty reuses existing install path or the instance default")
 	binaryPath := flagSet.String("binary", defaultBinary, "codex-remote binary source path")
 	installSource := flagSet.String("install-source", "", "install source metadata: release or repo")
 	currentTrack := flagSet.String("current-track", "", "current upgrade track metadata: production, beta, or alpha")
@@ -73,20 +73,19 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	if err != nil {
 		return err
 	}
-	selection, err := resolveInstallInstanceSelection(*instanceIDFlag, *baseDir)
+	selection, err := resolveInstallInstanceSelection(*instanceIDFlag, *baseDir, defaults.BaseDir, defaults.GOOS)
 	if err != nil {
 		return err
 	}
 	instanceID := selection.InstanceID
-	resolvedInstallBinDir := *installBinDir
-	if filepath.Clean(strings.TrimSpace(resolvedInstallBinDir)) == filepath.Clean(strings.TrimSpace(defaults.InstallBinDir)) {
-		resolvedInstallBinDir = defaultInstallBinDirForInstance(defaults.GOOS, defaults.HomeDir, instanceID)
-	}
+	resolvedBaseDir := selection.BaseDir
+	resolvedInstallBinDir := resolveTargetInstallBinDir(selection, *installBinDir)
+	preInteractiveInstallBinDir := resolvedInstallBinDir
 
 	service := NewService()
 	opts := Options{
 		InstanceID:         instanceID,
-		BaseDir:            *baseDir,
+		BaseDir:            resolvedBaseDir,
 		InstallBinDir:      resolvedInstallBinDir,
 		BinaryPath:         *binaryPath,
 		ServiceManager:     serviceManager,
@@ -111,6 +110,15 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		opts, err = RunInteractiveWizard(stdin, stdout, defaults, opts)
 		if err != nil {
 			return err
+		}
+		selection, err = resolveInstallInstanceSelection(instanceID, opts.BaseDir, defaults.BaseDir, defaults.GOOS)
+		if err != nil {
+			return err
+		}
+		opts.BaseDir = selection.BaseDir
+		if !flagWasProvided(flagSet, "install-bin-dir") &&
+			filepath.Clean(strings.TrimSpace(opts.InstallBinDir)) == filepath.Clean(strings.TrimSpace(preInteractiveInstallBinDir)) {
+			opts.InstallBinDir = resolveTargetInstallBinDir(selection, "")
 		}
 	}
 
@@ -215,6 +223,23 @@ func validateSourceBinary(path string) error {
 		return fmt.Errorf("empty version output")
 	}
 	return nil
+}
+
+func resolveTargetInstallBinDir(selection installInstanceSelection, explicitValue string) string {
+	if trimmed := strings.TrimSpace(explicitValue); trimmed != "" {
+		return trimmed
+	}
+	if state, err := LoadState(selection.StatePath); err == nil {
+		for _, candidate := range []string{
+			strings.TrimSpace(state.InstalledBinary),
+			strings.TrimSpace(state.CurrentBinaryPath),
+		} {
+			if candidate != "" {
+				return filepath.Dir(candidate)
+			}
+		}
+	}
+	return selection.InstallBinDir
 }
 
 func executableName(goos string) string {

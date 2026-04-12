@@ -162,6 +162,11 @@ make release-artifacts VERSION=v0.1.0
 - 默认在线安装入口保持 production-first，beta / alpha 必须显式通过 `--track` 选择
 - 飞书配置、VS Code detect/apply、shim 重装统一在 WebSetup / Admin UI 中完成
 - 仓库联调统一走本地构建 binary 的 `install -bootstrap-only -start-daemon`
+- 多 workspace 联调当前走“workspace 绑定全局实例”模型：
+  - repo-local 绑定文件为 `.codex-remote/install-target.json`
+  - 兼容旧工具时仍会同步写 `.codex-remote/install-instance`
+  - `install` / `service` / `local-upgrade` / `upgrade-local.sh` 默认先读这个 binding
+  - 若无 binding，则默认退回 `stable`，并优先向上查找 repo 祖先目录里已存在的 stable install
 - 仓库里不再保留单独的 `install.sh` 生命周期脚本
 - `managed_shim` 会把扩展 bundle 中的 `codex` 重命名为 `codex.real`
 - 然后把统一二进制 `codex-remote` 复制到原始 `codex` 路径
@@ -169,11 +174,16 @@ make release-artifacts VERSION=v0.1.0
 - `install-release.sh` 必须兼容 `curl | bash`
 - release 包必须能在没有 Go toolchain 和没有源码目录的情况下完成安装
 
-当前配置路径仍沿用统一布局：
+当前配置路径按实例区分：
 
-- `<baseDir>/.config/codex-remote/config.json`
-- `<baseDir>/.local/share/codex-remote/install-state.json`
-- `<baseDir>/.local/share/codex-remote/logs/codex-remote-relayd.log`
+- stable:
+  - `<baseDir>/.config/codex-remote/config.json`
+  - `<baseDir>/.local/share/codex-remote/install-state.json`
+  - `<baseDir>/.local/share/codex-remote/logs/codex-remote-relayd.log`
+- named instance `<instanceId>`:
+  - `<baseDir>/.config/codex-remote-<instanceId>/codex-remote/config.json`
+  - `<baseDir>/.local/share/codex-remote-<instanceId>/codex-remote/install-state.json`
+  - `<baseDir>/.local/share/codex-remote-<instanceId>/codex-remote/logs/codex-remote-relayd.log`
 
 这是当前 runtime config lookup 的约束，不要随意只改安装器而不改运行时读取逻辑。
 

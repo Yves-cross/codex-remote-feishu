@@ -18,6 +18,7 @@ func TestParseInstanceIDAcceptsCustomInstance(t *testing.T) {
 
 func TestApplyStateMetadataInfersCustomInstancePaths(t *testing.T) {
 	baseDir := filepath.Join(string(filepath.Separator), "tmp", "codex-remote-home")
+	stubServiceUserHome(t, baseDir)
 	state := InstallState{
 		ConfigPath:      filepath.Join(baseDir, ".config", "codex-remote-repo-1234", "codex-remote", "config.json"),
 		StatePath:       filepath.Join(baseDir, ".local", "share", "codex-remote-repo-1234", "codex-remote", "install-state.json"),
@@ -44,6 +45,7 @@ func TestApplyStateMetadataInfersCustomInstancePaths(t *testing.T) {
 func TestResolveInstallInstanceSelectionDefaultsToStableOutsideRepo(t *testing.T) {
 	t.Setenv(repoRootEnvVar, "")
 	wd := t.TempDir()
+	fallbackBaseDir := t.TempDir()
 	originalWD, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd() error = %v", err)
@@ -56,16 +58,16 @@ func TestResolveInstallInstanceSelectionDefaultsToStableOutsideRepo(t *testing.T
 			t.Fatalf("restore wd error = %v", err)
 		}
 	}()
-	originalPortAvailable := instancePortAvailableFunc
-	instancePortAvailableFunc = func(int) bool { return true }
-	defer func() { instancePortAvailableFunc = originalPortAvailable }()
 
-	selection, err := resolveInstallInstanceSelection("", t.TempDir())
+	selection, err := resolveInstallInstanceSelection("", "", fallbackBaseDir, "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
 	if selection.InstanceID != defaultInstanceID {
 		t.Fatalf("InstanceID = %q, want stable", selection.InstanceID)
+	}
+	if selection.BaseDir != fallbackBaseDir {
+		t.Fatalf("BaseDir = %q, want %q", selection.BaseDir, fallbackBaseDir)
 	}
 	if selection.WriteBinding || selection.ClearBinding {
 		t.Fatalf("unexpected binding action: %#v", selection)
@@ -99,124 +101,123 @@ func TestResolveInstallInstanceSelectionDetectsRepoRootFromWorkingDirectory(t *t
 	}()
 	t.Setenv(repoRootEnvVar, "")
 
-	selection, err := resolveInstallInstanceSelection("repo-1234", t.TempDir())
+	selection, err := resolveInstallInstanceSelection("master", "/data/dl", t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
 	if selection.RepoRoot != repoRoot {
 		t.Fatalf("RepoRoot = %q, want %q", selection.RepoRoot, repoRoot)
 	}
+	if selection.BaseDir != "/data/dl" {
+		t.Fatalf("BaseDir = %q, want /data/dl", selection.BaseDir)
+	}
+	if selection.ServiceName != "codex-remote-master.service" {
+		t.Fatalf("ServiceName = %q", selection.ServiceName)
+	}
 	if !selection.WriteBinding {
-		t.Fatalf("expected explicit custom instance to persist binding, got %#v", selection)
+		t.Fatalf("expected explicit instance to persist binding, got %#v", selection)
 	}
 }
 
 func TestResolveInstallInstanceSelectionUsesRepoBinding(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)
-	if err := writeRepoInstallInstance(repoRoot, "repo-1234"); err != nil {
-		t.Fatalf("writeRepoInstallInstance() error = %v", err)
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: "master",
+		BaseDir:    "/data/dl",
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding() error = %v", err)
 	}
 
-	selection, err := resolveInstallInstanceSelection("", t.TempDir())
+	selection, err := resolveInstallInstanceSelection("", "", t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
-	if selection.InstanceID != "repo-1234" {
-		t.Fatalf("InstanceID = %q, want repo-1234", selection.InstanceID)
+	if selection.InstanceID != "master" {
+		t.Fatalf("InstanceID = %q, want master", selection.InstanceID)
+	}
+	if selection.BaseDir != "/data/dl" {
+		t.Fatalf("BaseDir = %q, want /data/dl", selection.BaseDir)
+	}
+	if selection.StatePath != filepath.Join("/data/dl", ".local", "share", "codex-remote-master", "codex-remote", "install-state.json") {
+		t.Fatalf("StatePath = %q", selection.StatePath)
 	}
 	if selection.WriteBinding || selection.ClearBinding {
 		t.Fatalf("unexpected binding action: %#v", selection)
 	}
 }
 
-func TestResolveInstallInstanceSelectionCreatesDedicatedRepoInstanceWhenStableExists(t *testing.T) {
-	repoRoot := t.TempDir()
+func TestResolveInstallInstanceSelectionUsesLegacyRepoBindingAndDetectsAncestorBaseDir(t *testing.T) {
 	baseDir := t.TempDir()
-	t.Setenv(repoRootEnvVar, repoRoot)
-
-	statePath := defaultInstallStatePathForInstance(baseDir, defaultInstanceID)
-	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+	repoRoot := filepath.Join(baseDir, "workspace")
+	if err := os.MkdirAll(filepath.Join(repoRoot, ".codex-remote"), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	if err := os.WriteFile(statePath, []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(repoInstallInstancePath(repoRoot), []byte("master\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+	statePath := defaultInstallStatePathForInstance(baseDir, "master")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(state dir) error = %v", err)
+	}
+	if err := os.WriteFile(statePath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(state) error = %v", err)
+	}
+	t.Setenv(repoRootEnvVar, repoRoot)
 
-	originalPortAvailable := instancePortAvailableFunc
-	instancePortAvailableFunc = func(int) bool { return true }
-	defer func() { instancePortAvailableFunc = originalPortAvailable }()
-
-	selection, err := resolveInstallInstanceSelection("", baseDir)
+	selection, err := resolveInstallInstanceSelection("", "", t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
-	if selection.InstanceID != deriveRepoInstanceID(repoRoot) {
-		t.Fatalf("InstanceID = %q, want %q", selection.InstanceID, deriveRepoInstanceID(repoRoot))
+	if selection.InstanceID != "master" {
+		t.Fatalf("InstanceID = %q, want master", selection.InstanceID)
 	}
-	if !selection.WriteBinding {
-		t.Fatalf("expected binding write action, got %#v", selection)
-	}
-	if err := persistInstallInstanceSelection(selection); err != nil {
-		t.Fatalf("persistInstallInstanceSelection() error = %v", err)
-	}
-	bound, ok, err := readRepoInstallInstance(repoRoot)
-	if err != nil {
-		t.Fatalf("readRepoInstallInstance() error = %v", err)
-	}
-	if !ok || bound != selection.InstanceID {
-		t.Fatalf("bound = %q ok=%t, want %q true", bound, ok, selection.InstanceID)
+	if selection.BaseDir != baseDir {
+		t.Fatalf("BaseDir = %q, want %q", selection.BaseDir, baseDir)
 	}
 }
 
-func TestResolveInstallInstanceSelectionCreatesDedicatedRepoInstanceWhenStablePortsBusy(t *testing.T) {
-	repoRoot := t.TempDir()
+func TestResolveInstallInstanceSelectionFallsBackToAncestorStableBaseDir(t *testing.T) {
+	baseDir := t.TempDir()
+	repoRoot := filepath.Join(baseDir, "workspace")
+	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	statePath := defaultInstallStatePathForInstance(baseDir, defaultInstanceID)
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(state dir) error = %v", err)
+	}
+	if err := os.WriteFile(statePath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(state) error = %v", err)
+	}
 	t.Setenv(repoRootEnvVar, repoRoot)
-	originalWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd() error = %v", err)
-	}
-	wd := t.TempDir()
-	if err := os.Chdir(wd); err != nil {
-		t.Fatalf("Chdir() error = %v", err)
-	}
-	defer func() {
-		if err := os.Chdir(originalWD); err != nil {
-			t.Fatalf("restore wd error = %v", err)
-		}
-	}()
 
-	originalPortAvailable := instancePortAvailableFunc
-	instancePortAvailableFunc = func(port int) bool {
-		switch port {
-		case 9500, 9501, 9502, 9512, 17501:
-			return false
-		default:
-			return true
-		}
-	}
-	defer func() { instancePortAvailableFunc = originalPortAvailable }()
-
-	selection, err := resolveInstallInstanceSelection("", t.TempDir())
+	selection, err := resolveInstallInstanceSelection("", "", t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
-	if selection.InstanceID != deriveRepoInstanceID(repoRoot) {
-		t.Fatalf("InstanceID = %q, want %q", selection.InstanceID, deriveRepoInstanceID(repoRoot))
+	if selection.InstanceID != defaultInstanceID {
+		t.Fatalf("InstanceID = %q, want stable", selection.InstanceID)
 	}
-	if !selection.WriteBinding {
-		t.Fatalf("expected binding write action, got %#v", selection)
+	if selection.BaseDir != baseDir {
+		t.Fatalf("BaseDir = %q, want %q", selection.BaseDir, baseDir)
+	}
+	if selection.WriteBinding || selection.ClearBinding {
+		t.Fatalf("unexpected binding action: %#v", selection)
 	}
 }
 
 func TestResolveInstallInstanceSelectionExplicitStableClearsRepoBinding(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)
-	if err := writeRepoInstallInstance(repoRoot, "repo-1234"); err != nil {
-		t.Fatalf("writeRepoInstallInstance() error = %v", err)
+	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
+		InstanceID: "master",
+		BaseDir:    "/data/dl",
+	}); err != nil {
+		t.Fatalf("writeRepoInstallBinding() error = %v", err)
 	}
 
-	selection, err := resolveInstallInstanceSelection("stable", t.TempDir())
+	selection, err := resolveInstallInstanceSelection("stable", "", t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
@@ -226,9 +227,44 @@ func TestResolveInstallInstanceSelectionExplicitStableClearsRepoBinding(t *testi
 	if err := persistInstallInstanceSelection(selection); err != nil {
 		t.Fatalf("persistInstallInstanceSelection() error = %v", err)
 	}
-	if _, ok, err := readRepoInstallInstance(repoRoot); err != nil {
-		t.Fatalf("readRepoInstallInstance() error = %v", err)
+	if _, ok, err := readRepoInstallBinding(repoRoot); err != nil {
+		t.Fatalf("readRepoInstallBinding() error = %v", err)
 	} else if ok {
 		t.Fatal("expected repo-local binding to be removed")
+	}
+	if _, err := os.Stat(repoInstallInstancePath(repoRoot)); !os.IsNotExist(err) {
+		t.Fatalf("expected legacy binding to be removed, stat err = %v", err)
+	}
+}
+
+func TestResolveInstallInstanceSelectionExplicitStableWithBaseDirWritesBinding(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv(repoRootEnvVar, repoRoot)
+
+	selection, err := resolveInstallInstanceSelection("stable", "/data/dl", t.TempDir(), "linux")
+	if err != nil {
+		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
+	}
+	if !selection.WriteBinding {
+		t.Fatalf("expected binding write action, got %#v", selection)
+	}
+	if err := persistInstallInstanceSelection(selection); err != nil {
+		t.Fatalf("persistInstallInstanceSelection() error = %v", err)
+	}
+	binding, ok, err := readRepoInstallBinding(repoRoot)
+	if err != nil {
+		t.Fatalf("readRepoInstallBinding() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("expected binding to be written")
+	}
+	if binding.InstanceID != defaultInstanceID {
+		t.Fatalf("InstanceID = %q, want stable", binding.InstanceID)
+	}
+	if binding.BaseDir != "/data/dl" {
+		t.Fatalf("BaseDir = %q, want /data/dl", binding.BaseDir)
+	}
+	if binding.LogPath == "" {
+		t.Fatalf("expected derived log path in binding, got %#v", binding)
 	}
 }
