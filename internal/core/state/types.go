@@ -115,6 +115,7 @@ type ThreadRecord struct {
 	Loaded                  bool
 	Archived                bool
 	TrafficClass            agentproto.TrafficClass
+	TokenUsage              *agentproto.ThreadTokenUsage
 	UndeliveredReplay       *ThreadReplayRecord
 	LastUsedAt              time.Time
 	ListOrder               int

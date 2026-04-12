@@ -340,6 +340,110 @@ func TestCompleteItemUsesMaterializedBufferedText(t *testing.T) {
 	}
 }
 
+func TestThreadTokenUsageUpdatePopulatesThreadStateAndFinalTurnSummary(t *testing.T) {
+	now := time.Date(2026, 4, 12, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	if events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		MessageID:        "msg-1",
+		Text:             "继续",
+	}); len(events) == 0 {
+		t.Fatal("expected queued remote events")
+	}
+	if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
+	}); len(events) == 0 {
+		t.Fatal("expected turn start events")
+	}
+
+	contextWindow := 1000
+	if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventThreadTokenUsageUpdated,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		TokenUsage: &agentproto.ThreadTokenUsage{
+			Last: agentproto.TokenUsageBreakdown{
+				TotalTokens:           200,
+				InputTokens:           150,
+				CachedInputTokens:     90,
+				OutputTokens:          50,
+				ReasoningOutputTokens: 20,
+			},
+			Total: agentproto.TokenUsageBreakdown{
+				TotalTokens:           500,
+				InputTokens:           400,
+				CachedInputTokens:     200,
+				OutputTokens:          100,
+				ReasoningOutputTokens: 40,
+			},
+			ModelContextWindow: &contextWindow,
+		},
+	}); len(events) != 0 {
+		t.Fatalf("expected no direct UI event on token usage update, got %#v", events)
+	}
+
+	thread := svc.root.Instances["inst-1"].Threads["thread-1"]
+	if thread == nil || thread.TokenUsage == nil {
+		t.Fatalf("expected thread usage state, got %#v", thread)
+	}
+	if thread.TokenUsage.Total.TotalTokens != 500 || thread.TokenUsage.Last.CachedInputTokens != 90 {
+		t.Fatalf("unexpected thread token usage: %#v", thread.TokenUsage)
+	}
+	if binding := svc.activeRemote["inst-1"]; binding == nil || !binding.HasLastUsage || binding.LastUsage.TotalTokens != 200 {
+		t.Fatalf("expected active remote binding to capture last usage, got %#v", svc.activeRemote["inst-1"])
+	}
+
+	now = now.Add(3400 * time.Millisecond)
+	finished := completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "已完成。", nil)
+	var finalBlockEvent *control.UIEvent
+	for i := range finished {
+		event := finished[i]
+		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成。" {
+			finalBlockEvent = &finished[i]
+			break
+		}
+	}
+	if finalBlockEvent == nil || finalBlockEvent.FinalTurnSummary == nil {
+		t.Fatalf("expected final block with turn summary, got %#v", finished)
+	}
+	summary := finalBlockEvent.FinalTurnSummary
+	if summary.Elapsed != 3400*time.Millisecond {
+		t.Fatalf("unexpected elapsed summary: %#v", summary)
+	}
+	if summary.Usage == nil || summary.Usage.TotalTokens != 200 || summary.Usage.CachedInputTokens != 90 || summary.Usage.ReasoningOutputTokens != 20 {
+		t.Fatalf("unexpected final usage summary: %#v", summary)
+	}
+	if summary.TotalTokensInContext != 500 {
+		t.Fatalf("unexpected total tokens in context: %#v", summary)
+	}
+	if summary.ModelContextWindow == nil || *summary.ModelContextWindow != 1000 {
+		t.Fatalf("unexpected model context window: %#v", summary)
+	}
+}
+
 func TestAttachPinsObservedFocusedThread(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

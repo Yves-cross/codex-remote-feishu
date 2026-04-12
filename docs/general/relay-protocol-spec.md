@@ -1,8 +1,8 @@
 # Relay Protocol Spec
 
 > Type: `general`
-> Updated: `2026-04-09`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering 与 daemon 驱动的 wrapper 退出命令。
+> Updated: `2026-04-12`
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令，以及 `thread/tokenUsage/updated` 的 usage 标准化事件。
 
 ## 1. 文档定位
 
@@ -37,6 +37,7 @@
 - `thread/read`
 - `thread/started`
 - `thread/name/updated`
+- `thread/tokenUsage/updated`
 - `turn/start`
 - `turn/steer`
 - `turn/interrupt`
@@ -315,6 +316,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `threads.snapshot`
 - `thread.discovered`
 - `thread.focused`
+- `thread.token_usage.updated`
 - `config.observed`
 - `local.interaction.observed`
 - `turn.started`
@@ -342,6 +344,32 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 - `primary`
 - `internal_helper`
+
+#### `tokenUsage`
+
+当前仅在 `thread.token_usage.updated` 上使用。
+
+字段形状对齐 app-server `thread/tokenUsage/updated`：
+
+- `total`
+  - `totalTokens`
+  - `inputTokens`
+  - `cachedInputTokens`
+  - `outputTokens`
+  - `reasoningOutputTokens`
+- `last`
+  - `totalTokens`
+  - `inputTokens`
+  - `cachedInputTokens`
+  - `outputTokens`
+  - `reasoningOutputTokens`
+- `modelContextWindow`
+
+当前语义：
+
+- wrapper 只做字段标准化，不在这层计算展示文案
+- orchestrator 将 thread 级快照持久在内存 `ThreadRecord`
+- remote turn 绑定会额外记录 `last`，供 final summary 精确消费
 
 这两个字段共同决定：
 

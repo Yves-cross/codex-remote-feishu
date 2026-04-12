@@ -8,7 +8,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"sort"
 	"strings"
-	"time"
 )
 
 func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
@@ -231,23 +230,6 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 		events = append(events, s.bindSurfaceToThreadMode(surface, inst, item.FrozenThreadID, routeMode)...)
 	}
 	return events
-}
-
-func finalTurnSummaryForBinding(now time.Time, binding *remoteTurnBinding) *control.FinalTurnSummary {
-	if binding == nil || binding.StartedAt.IsZero() {
-		return nil
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	elapsed := now.Sub(binding.StartedAt)
-	if elapsed <= 0 {
-		return nil
-	}
-	return &control.FinalTurnSummary{
-		Elapsed:   elapsed,
-		ThreadCWD: strings.TrimSpace(binding.ThreadCWD),
-	}
 }
 
 func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {

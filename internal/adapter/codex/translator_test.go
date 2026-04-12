@@ -171,6 +171,33 @@ func TestObserveTurnStartedMarksRemoteInitiator(t *testing.T) {
 	}
 }
 
+func TestObserveThreadTokenUsageUpdated(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"totalTokens":200,"inputTokens":150,"cachedInputTokens":90,"outputTokens":50,"reasoningOutputTokens":20},"total":{"totalTokens":500,"inputTokens":400,"cachedInputTokens":200,"outputTokens":100,"reasoningOutputTokens":40},"modelContextWindow":1000}}}`))
+	if err != nil {
+		t.Fatalf("observe server: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one usage event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventThreadTokenUsageUpdated {
+		t.Fatalf("unexpected event kind: %#v", event)
+	}
+	if event.ThreadID != "thread-1" || event.TurnID != "turn-1" {
+		t.Fatalf("unexpected usage target: %#v", event)
+	}
+	if event.TokenUsage == nil {
+		t.Fatalf("expected token usage payload, got %#v", event)
+	}
+	if event.TokenUsage.Last.CachedInputTokens != 90 || event.TokenUsage.Total.TotalTokens != 500 {
+		t.Fatalf("unexpected token usage payload: %#v", event.TokenUsage)
+	}
+	if event.TokenUsage.ModelContextWindow == nil || *event.TokenUsage.ModelContextWindow != 1000 {
+		t.Fatalf("unexpected model context window: %#v", event.TokenUsage)
+	}
+}
+
 func TestObserveLocalNewThreadStartMarksLocalInitiator(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	if _, err := tr.ObserveClient([]byte(`{"method":"turn/start","params":{"cwd":"/tmp/project"}}`)); err != nil {

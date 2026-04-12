@@ -66,6 +66,8 @@ type remoteTurnBinding struct {
 	TurnID                string
 	Status                string
 	StartedAt             time.Time
+	LastUsage             agentproto.TokenUsageBreakdown
+	HasLastUsage          bool
 }
 
 type pendingSteerBinding struct {
@@ -462,9 +464,9 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			if thread == nil {
 				continue
 			}
-			copied := *thread
+			copied := cloneThreadRecord(thread)
 			copied.Loaded = false
-			nextThreads[threadID] = &copied
+			nextThreads[threadID] = copied
 		}
 		for _, thread := range event.Threads {
 			s.maybePromoteWorkspaceRoot(inst, thread.CWD)
@@ -510,6 +512,8 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		}
 		events := append(preface, s.pauseForLocal(instanceID)...)
 		return append(events, s.reevaluateFollowSurfaces(instanceID)...)
+	case agentproto.EventThreadTokenUsageUpdated:
+		return append(preface, s.applyThreadTokenUsageUpdate(instanceID, event)...)
 	case agentproto.EventTurnStarted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = event.TurnID
@@ -538,9 +542,11 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = ""
 		s.clearRequestsForTurn(instanceID, event.ThreadID, event.TurnID)
+		var thread *state.ThreadRecord
 		if event.ThreadID != "" {
 			inst.ActiveThreadID = event.ThreadID
-			s.touchThread(s.ensureThread(inst, event.ThreadID))
+			thread = s.ensureThread(inst, event.ThreadID)
+			s.touchThread(thread)
 		}
 		surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 		if surface != nil {
@@ -555,7 +561,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			event.TurnID,
 			true,
 			summary,
-			finalTurnSummaryForBinding(s.now().UTC(), s.lookupRemoteTurn(instanceID, event.ThreadID, event.TurnID)),
+			finalTurnSummaryForBinding(s.now().UTC(), s.lookupRemoteTurn(instanceID, event.ThreadID, event.TurnID), thread),
 		)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)

@@ -405,15 +405,19 @@ type FileChangeSummary struct {
 }
 
 type FinalTurnUsage struct {
-	InputTokens  int
-	OutputTokens int
-	TotalTokens  int
+	InputTokens           int
+	CachedInputTokens     int
+	OutputTokens          int
+	ReasoningOutputTokens int
+	TotalTokens           int
 }
 
 type FinalTurnSummary struct {
-	Elapsed   time.Duration
-	ThreadCWD string
-	Usage     *FinalTurnUsage
+	Elapsed              time.Duration
+	ThreadCWD            string
+	Usage                *FinalTurnUsage
+	TotalTokensInContext int
+	ModelContextWindow   *int
 }
 
 type ImageOutput struct {

@@ -311,6 +311,17 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			ThreadID: threadID,
 			Name:     name,
 		}}}, nil
+	case "thread/tokenUsage/updated":
+		threadID, turnID, usage := extractThreadTokenUsageNotification(message)
+		if threadID == "" || usage == nil {
+			return Result{}, nil
+		}
+		return Result{Events: []agentproto.Event{{
+			Kind:       agentproto.EventThreadTokenUsageUpdated,
+			ThreadID:   threadID,
+			TurnID:     turnID,
+			TokenUsage: usage,
+		}}}, nil
 	case "turn/started":
 		threadID := lookupString(message, "params", "thread", "id")
 		if threadID == "" {
