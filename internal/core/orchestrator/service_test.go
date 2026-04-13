@@ -765,7 +765,7 @@ func TestListWorkspacesMarksBusyClaimedWorkspaceDisabled(t *testing.T) {
 		t.Fatalf("expected one selection prompt, got %#v", events)
 	}
 	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Kind != control.SelectionPromptAttachWorkspace || len(prompt.Options) != 2 {
+	if prompt.Kind != control.SelectionPromptAttachWorkspace || len(prompt.Options) != 3 {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
 	if prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
@@ -782,7 +782,9 @@ func TestListWorkspacesMarksBusyClaimedWorkspaceDisabled(t *testing.T) {
 				t.Fatalf("expected free workspace to remain selectable, got %#v", option)
 			}
 		default:
-			t.Fatalf("unexpected workspace option: %#v", option)
+			if option.ActionKind != "create_workspace" || option.ButtonLabel != "新建" {
+				t.Fatalf("unexpected workspace option: %#v", option)
+			}
 		}
 	}
 }
@@ -857,7 +859,7 @@ func TestListWorkspacesShowsCurrentSummaryAndSortsAttachableFirst(t *testing.T) 
 	if !strings.Contains(prompt.ContextText, "droid · 5分前") || !strings.Contains(prompt.ContextText, "同工作区内继续工作可 /use，或直接发送文本（也可 /new）") {
 		t.Fatalf("expected current workspace summary, got %#v", prompt.ContextText)
 	}
-	if len(prompt.Options) != 2 {
+	if len(prompt.Options) != 3 {
 		t.Fatalf("expected current workspace to be summarized instead of listed, got %#v", prompt.Options)
 	}
 	if !testutil.SamePath(prompt.Options[0].OptionID, "/data/dl/web") || prompt.Options[0].Disabled || prompt.Options[0].ButtonLabel != "切换" || prompt.Options[0].MetaText != "2分前 · 有 VS Code 活动" {
@@ -865,6 +867,9 @@ func TestListWorkspacesShowsCurrentSummaryAndSortsAttachableFirst(t *testing.T) 
 	}
 	if !testutil.SamePath(prompt.Options[1].OptionID, "/data/dl/ops") || !prompt.Options[1].Disabled || prompt.Options[1].MetaText != "1小时前 · 当前被其他飞书会话接管" {
 		t.Fatalf("expected busy workspace in unavailable section, got %#v", prompt.Options[1])
+	}
+	if prompt.Options[2].ActionKind != "create_workspace" || prompt.Options[2].ButtonLabel != "新建" {
+		t.Fatalf("expected create-workspace entry, got %#v", prompt.Options[2])
 	}
 }
 
@@ -902,11 +907,11 @@ func TestListWorkspacesUsesVisibleThreadCWDsForBroadHeadlessPool(t *testing.T) {
 	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
-	if len(prompt.Options) != 2 {
+	if len(prompt.Options) != 3 {
 		t.Fatalf("expected two real workspaces instead of broad instance root, got %#v", prompt.Options)
 	}
 	got := map[string]bool{}
-	for _, option := range prompt.Options {
+	for _, option := range prompt.Options[:2] {
 		got[option.OptionID] = true
 	}
 	if !got[testutil.WorkspacePath("data", "dl", "atlas")] || !got[testutil.WorkspacePath("data", "dl", "harbor")] || got[testutil.WorkspacePath("data", "dl")] {
@@ -951,7 +956,7 @@ func TestListWorkspacesShowsPersistedOnlyWorkspaceAsRecoverable(t *testing.T) {
 		t.Fatalf("expected one workspace selection prompt, got %#v", events)
 	}
 	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 1 {
+	if len(prompt.Options) != 2 {
 		t.Fatalf("expected one recoverable workspace option, got %#v", prompt.Options)
 	}
 	option := prompt.Options[0]
@@ -960,6 +965,9 @@ func TestListWorkspacesShowsPersistedOnlyWorkspaceAsRecoverable(t *testing.T) {
 	}
 	if option.MetaText != "3分前 · 后台可恢复" {
 		t.Fatalf("expected recoverable workspace meta, got %#v", option.MetaText)
+	}
+	if prompt.Options[1].ActionKind != "create_workspace" {
+		t.Fatalf("expected create-workspace entry, got %#v", prompt.Options[1])
 	}
 }
 
@@ -1003,11 +1011,14 @@ func TestListWorkspacesShowsPagedEntries(t *testing.T) {
 	if prompt.Page != 1 || prompt.TotalPages != 1 {
 		t.Fatalf("expected single-page workspace prompt, got %#v", prompt)
 	}
-	if len(prompt.Options) != 6 {
+	if len(prompt.Options) != 7 {
 		t.Fatalf("expected all workspaces on first page, got %#v", prompt.Options)
 	}
 	if prompt.Options[5].ActionKind != "" {
 		t.Fatalf("did not expect synthetic expand action in paged list, got %#v", prompt.Options[5])
+	}
+	if prompt.Options[6].ActionKind != "create_workspace" {
+		t.Fatalf("expected create-workspace action at end, got %#v", prompt.Options[6])
 	}
 }
 
@@ -1094,8 +1105,90 @@ func TestShowAllWorkspacesUsesSamePagedWorkspacePrompt(t *testing.T) {
 	if prompt.Page != 1 || prompt.TotalPages != 1 {
 		t.Fatalf("expected single-page workspace prompt, got %#v", prompt)
 	}
-	if len(prompt.Options) != 6 {
+	if len(prompt.Options) != 7 {
 		t.Fatalf("expected workspace entries without return option, got %#v", prompt.Options)
+	}
+	if prompt.Options[6].ActionKind != "create_workspace" {
+		t.Fatalf("expected create-workspace action at end, got %#v", prompt.Options[6])
+	}
+}
+
+func TestCreateWorkspaceActionOpensDirectoryPicker(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionCreateWorkspace,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].FeishuPathPickerView == nil {
+		t.Fatalf("expected path picker event, got %#v", events)
+	}
+	view := events[0].FeishuPathPickerView
+	if view.Mode != control.PathPickerModeDirectory || view.Title != "选择工作区目录" || view.ConfirmLabel != "作为工作区使用" {
+		t.Fatalf("unexpected path picker view: %#v", view)
+	}
+}
+
+func TestFreshWorkspaceHeadlessConnectsAndAllowsFirstTextToCreateThread(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := svc.ensureSurface(control.Action{
+		Kind:             control.ActionStatus,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	workspaceRoot := t.TempDir()
+
+	startEvents := svc.startFreshWorkspaceHeadless(surface, workspaceRoot)
+	if len(startEvents) != 2 || startEvents[1].DaemonCommand == nil || startEvents[1].DaemonCommand.Kind != control.DaemonCommandStartHeadless {
+		t.Fatalf("expected fresh workspace headless start, got %#v", startEvents)
+	}
+	pending := svc.root.Surfaces["surface-1"].PendingHeadless
+	if pending == nil || pending.Purpose != state.HeadlessLaunchPurposeFreshWorkspace || !testutil.SamePath(pending.ThreadCWD, workspaceRoot) {
+		t.Fatalf("unexpected pending workspace launch: %#v", pending)
+	}
+
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    pending.InstanceID,
+		DisplayName:   "headless",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	connectEvents := svc.ApplyInstanceConnected(pending.InstanceID)
+	if len(connectEvents) == 0 {
+		t.Fatal("expected workspace attach notice after headless connect")
+	}
+	snapshot := svc.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.InstanceID != pending.InstanceID || snapshot.PendingHeadless.InstanceID != "" || !testutil.SamePath(snapshot.WorkspaceKey, workspaceRoot) {
+		t.Fatalf("expected attached fresh workspace snapshot, got %#v", snapshot)
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTextMessage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-1",
+		Text:             "开始处理",
+		Inputs:           []agentproto.Input{{Type: agentproto.InputText, Text: "开始处理"}},
+	})
+	var promptSend *agentproto.Command
+	for _, event := range events {
+		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+			promptSend = event.Command
+		}
+	}
+	if promptSend == nil || !promptSend.Target.CreateThreadIfMissing || !testutil.SamePath(promptSend.Target.CWD, workspaceRoot) {
+		t.Fatalf("expected first text to create thread in fresh workspace, got %#v", events)
 	}
 }
 
@@ -1742,8 +1835,11 @@ func TestNormalModeListIncludesHeadlessWorkspace(t *testing.T) {
 	if prompt.Kind != control.SelectionPromptAttachWorkspace || prompt.Title != "工作区列表" || prompt.Layout != "grouped_attach_workspace" {
 		t.Fatalf("unexpected workspace prompt: %#v", prompt)
 	}
-	if len(prompt.Options) != 1 || prompt.Options[0].OptionID != "/data/dl/runtime/headless" {
+	if len(prompt.Options) != 2 || prompt.Options[0].OptionID != "/data/dl/runtime/headless" {
 		t.Fatalf("expected only headless workspace in list prompt, got %#v", prompt.Options)
+	}
+	if prompt.Options[1].ActionKind != "create_workspace" {
+		t.Fatalf("expected create-workspace entry, got %#v", prompt.Options[1])
 	}
 }
 

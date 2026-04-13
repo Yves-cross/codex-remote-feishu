@@ -1,0 +1,126 @@
+package orchestrator
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
+)
+
+const workspaceCreatePathPickerConsumerKind = "workspace_create"
+
+type workspaceCreatePathPickerConsumer struct{}
+
+func (workspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+	if s == nil || surface == nil {
+		return nil
+	}
+	workspaceKey, err := state.ResolveWorkspaceRootOnHost(result.SelectedPath)
+	if err != nil {
+		return notice(surface, "workspace_create_invalid", fmt.Sprintf("目录路径无效：%v", err))
+	}
+	if workspaceKey == "" {
+		return notice(surface, "workspace_create_invalid", "目录路径无效，请重新选择。")
+	}
+	if inst := s.resolveWorkspaceAttachInstance(surface, workspaceKey); inst != nil {
+		return s.attachWorkspace(surface, workspaceKey)
+	}
+	return s.startFreshWorkspaceHeadless(surface, workspaceKey)
+}
+
+func (workspaceCreatePathPickerConsumer) PathPickerCancelled(_ *Service, surface *state.SurfaceConsoleRecord, _ control.PathPickerResult) []control.UIEvent {
+	return notice(surface, "workspace_create_cancelled", "已取消新建工作区。")
+}
+
+func (s *Service) openCreateWorkspacePicker(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	if surface == nil {
+		return nil
+	}
+	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
+		return notice(surface, "workspace_create_normal_only", "当前处于 vscode 模式，不能从目录直接新建工作区。请先 `/mode normal`。")
+	}
+	initialPath := s.surfaceCurrentWorkspaceKey(surface)
+	if strings.TrimSpace(initialPath) == "" {
+		initialPath = string(filepath.Separator)
+	}
+	return s.openPathPicker(surface, surface.ActorUserID, control.PathPickerRequest{
+		Mode:         control.PathPickerModeDirectory,
+		Title:        "选择工作区目录",
+		RootPath:     string(filepath.Separator),
+		InitialPath:  initialPath,
+		ConfirmLabel: "作为工作区使用",
+		CancelLabel:  "取消",
+		ConsumerKind: workspaceCreatePathPickerConsumerKind,
+	})
+}
+
+func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+	if surface == nil {
+		return nil
+	}
+	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
+	if workspaceKey == "" {
+		return notice(surface, "workspace_create_invalid", "目录路径无效，请重新选择。")
+	}
+	if blocked := s.blockFreshThreadAttach(surface); blocked != nil {
+		return blocked
+	}
+	if owner := s.workspaceBusyOwnerForSurface(surface, workspaceKey); owner != nil {
+		return notice(surface, "workspace_busy", "目标 workspace 当前已被其他飞书会话接管，请等待对方 /detach。")
+	}
+
+	s.nextHeadlessID++
+	instanceID := fmt.Sprintf("inst-headless-workspace-%d-%d", s.now().UnixNano(), s.nextHeadlessID)
+	events := []control.UIEvent{}
+	if surface.AttachedInstanceID != "" {
+		events = append(events, s.discardDrafts(surface)...)
+		events = append(events, s.finalizeDetachedSurface(surface)...)
+	} else {
+		events = append(events, s.discardDrafts(surface)...)
+		clearSurfaceRequestCapture(surface)
+		clearSurfaceRequests(surface)
+		s.clearPreparedNewThread(surface)
+		surface.PromptOverride = state.ModelConfigRecord{}
+		surface.PendingHeadless = nil
+		surface.ActiveQueueItemID = ""
+		surface.DispatchMode = state.DispatchModeNormal
+		surface.Abandoning = false
+		delete(s.pausedUntil, surface.SurfaceSessionID)
+		delete(s.abandoningUntil, surface.SurfaceSessionID)
+	}
+	if !s.claimWorkspace(surface, workspaceKey) {
+		return append(events, notice(surface, "workspace_busy", "目标 workspace 当前已被其他飞书会话接管，请等待对方 /detach。")...)
+	}
+	surface.PendingHeadless = &state.HeadlessLaunchRecord{
+		InstanceID:  instanceID,
+		ThreadCWD:   workspaceKey,
+		RequestedAt: s.now(),
+		ExpiresAt:   s.now().Add(s.config.HeadlessLaunchWait),
+		Status:      state.HeadlessLaunchStarting,
+		Purpose:     state.HeadlessLaunchPurposeFreshWorkspace,
+	}
+	events = append(events,
+		control.UIEvent{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice: &control.Notice{
+				Code:  "workspace_create_starting",
+				Title: "正在准备工作区",
+				Text:  fmt.Sprintf("正在把 `%s` 准备成可用工作区，完成后你就可以直接发送文本开启新会话。", workspaceKey),
+			},
+		},
+		control.UIEvent{
+			Kind:             control.UIEventDaemonCommand,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandStartHeadless,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				InstanceID:       instanceID,
+				ThreadCWD:        workspaceKey,
+			},
+		},
+	)
+	return events
+}

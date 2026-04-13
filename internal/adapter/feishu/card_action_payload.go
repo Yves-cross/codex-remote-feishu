@@ -29,6 +29,7 @@ const (
 	cardActionPayloadDefaultCommandFieldName = "command_args"
 	cardActionKindAttachInstance             = "attach_instance"
 	cardActionKindAttachWorkspace            = "attach_workspace"
+	cardActionKindCreateWorkspace            = "create_workspace"
 	cardActionKindUseThread                  = "use_thread"
 	cardActionKindShowScopedThreads          = "show_scoped_threads"
 	cardActionKindShowThreads                = "show_threads"
@@ -115,6 +116,12 @@ func actionPayloadAttachWorkspace(workspaceKey string) map[string]any {
 	return map[string]any{
 		cardActionPayloadKeyKind:         cardActionKindAttachWorkspace,
 		cardActionPayloadKeyWorkspaceKey: strings.TrimSpace(workspaceKey),
+	}
+}
+
+func actionPayloadCreateWorkspace() map[string]any {
+	return map[string]any{
+		cardActionPayloadKeyKind: cardActionKindCreateWorkspace,
 	}
 }
 

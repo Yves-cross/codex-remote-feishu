@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-13`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Updated: `2026-04-14`
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff、normal `/list` 中“从目录新建工作区”的 fresh-workspace headless 启动路径，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -126,8 +126,10 @@ surface 不是单一枚举，而是五层正交状态叠加。
    1. detached `/use` 现在直接等同 detached `/useall`：都会先展示 cross-workspace 最近 5 个 workspace 组，并可卡片内展开全部工作区。
    2. attached `/use` 现在只展示当前 workspace 的最近 5 个会话；若超过 5 个，会在卡片底部追加一个 `show_scoped_threads` 按钮进入“当前工作区全部会话”。
    3. attached `/useall` 现在改成 cross-workspace 的 workspace-group 总览：默认只显示最近 5 个非当前 workspace 组，可进一步 `show_all_thread_workspaces` 展开全部；卡片里的 `use_thread` 按钮会显式携带 `allow_cross_workspace=true`，允许直接切到其他 workspace。
-   4. `/new` 已变成 workspace-owned prepared state。
-   5. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
+   4. normal `/list` 现在固定带一个 `create_workspace` 入口：目录确认后，若已有可接管 online instance 则直接复用 attach；若没有，则启动 daemon-owned managed headless，把该目录 bootstrap 成 fresh workspace。
+   5. fresh workspace bootstrap 成功后不会自动选 thread，而是落到现有 `R1 AttachedUnbound`；因此下一条普通文本继续复用 implicit new-thread 路径创建新会话。
+   6. `/new` 已变成 workspace-owned prepared state。
+   7. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
 8. `vscode mode` 当前已经完成这一轮收窄：
    1. `/list` attach/switch instance 后默认进入 follow-first，而不是落回 pinned/unbound。
    2. 默认跟随目标只看 `ObservedFocusedThreadID`，不再回落 `ActiveThreadID`。
@@ -277,8 +279,12 @@ surface 不是单一枚举，而是五层正交状态叠加。
 3. normal mode `/list` 卡片按钮当前分成两类：
    1. workspace 仍有可接管 online instance 时，走 `attach_workspace -> ActionAttachWorkspace`。
    2. workspace 只剩可恢复的 persisted/offline thread、但当前没有可接管 online instance 时，走 `show_workspace_threads -> ActionShowWorkspaceThreads`，先展示该 workspace 的全部可恢复会话，再复用现有 `/use` 恢复链路。
-4. `attachWorkspace()` 在 normal mode 下先做 `workspaceClaims`，再按“当前 instance / free instance / 当前 workspace 可见 thread 数 / exact workspace match”选择一个可接管的 online instance 落到该 workspace。
-5. attach / switch 成功后，统一进入 `R1 AttachedUnbound`，不再复用默认 thread 自动 pin。
+4. 同一张 `/list` 卡片现在还固定追加一个 `create_workspace -> ActionCreateWorkspace` 入口：
+   1. 点击后进入目录模式 `PathPicker`。
+   2. confirm 后若 `resolveWorkspaceAttachInstance()` 能找到在线实例，则直接复用 `attachWorkspace()`。
+   3. 若当前没有可复用实例，则进入 fresh-workspace `PendingHeadless` 启动路径。
+5. `attachWorkspace()` 在 normal mode 下先做 `workspaceClaims`，再按“当前 instance / free instance / 当前 workspace 可见 thread 数 / exact workspace match”选择一个可接管的 online instance 落到该 workspace。
+6. attach / switch 成功后，统一进入 `R1 AttachedUnbound`，不再复用默认 thread 自动 pin。
 
 同时，`attachInstance()`、`attachSurfaceToKnownThread()` 与 `startHeadlessForResolvedThread()` 在 normal mode 下仍然会先走 `workspaceClaims`，再进入现有 `instanceClaims` / `threadClaims`。
 
@@ -289,8 +295,9 @@ surface 不是单一枚举，而是五层正交状态叠加。
 3. 同一个 instance 仍然只能被一个飞书 surface attach；也就是说 instance claim 还在，只是已经退回到 workspace claim 之后。
 4. 不会进入“workspace 仲裁层已经冲突，但仍然 attach 成功”的半 attach 状态。
 5. normal mode 的 `/list` attach/switch 不会自动抢默认 thread；用户会明确落到 `R1`，然后继续 `/use`、点 thread 卡片，或直接发送文本开启新会话（等价隐式 `/new` 首条文本路径）。
-6. 如果当前 surface 已 attach 且没有其他可切换 workspace，卡片仍会保留“当前工作区”摘要，并在底部给出“当前没有其他可接管工作区”的短提示，不会出现空白卡片。
-7. managed headless instance 一旦已经被 retarget 到某个精确 workspace，后续 `thread.focused` / `threads.snapshot` 里的更宽父目录 `cwd` 当前不会再把它的 `WorkspaceRoot` 回退成父目录，避免 `/status` 与 `/use` 再次出现“实例显示是 A，实际 thread 在 B”的分裂态。
+6. fresh-workspace headless 启动成功后也复用这条 landing：实例连回后自动 attach 到目标 workspace，若还没有任何 thread，仍保持 `R1 AttachedUnbound` 并等待第一条普通文本创建新会话。
+7. 如果当前 surface 已 attach 且没有其他可切换 workspace，卡片仍会保留“当前工作区”摘要，并在底部给出“当前没有其他可接管工作区”的短提示，不会出现空白卡片。
+8. managed headless instance 一旦已经被 retarget 到某个精确 workspace，后续 `thread.focused` / `threads.snapshot` 里的更宽父目录 `cwd` 当前不会再把它的 `WorkspaceRoot` 回退成父目录，避免 `/status` 与 `/use` 再次出现“实例显示是 A，实际 thread 在 B”的分裂态。
 
 ### 4.1.1 vscode mode `/list` 先选 instance，并显式投影“当前实例”
 
@@ -334,8 +341,11 @@ surface 不是单一枚举，而是五层正交状态叠加。
 1. `starting` 时不能旁路 attach/use/follow/new。
 2. detached `/use` 触发的 preselected headless，在实例连上后会直接落到目标 thread，不会再进入手工 selecting。
 3. `/mode vscode` 与 `/detach` 都会主动取消当前恢复流程，并回到 detached 态；此外还有启动超时 watchdog。
-4. 旧 `/newinstance`、旧 `/killinstance` 与旧 `resume_headless_thread` 卡片即使仍被用户触发，也只会返回迁移提示，不会改动当前 pending headless。
-5. 后台 auto-restore 触发的 pending headless 也复用同一个 `G1` gate：
+4. `PendingHeadless` 当前有两类产品语义：
+   1. `Purpose=thread_restore`：显式 `/use` 一个需要后台恢复的 thread，或 auto-restore。
+   2. `Purpose=fresh_workspace`：normal `/list` 的 `create_workspace` 选了一个当前没有可复用实例的目录。
+5. 旧 `/newinstance`、旧 `/killinstance` 与旧 `resume_headless_thread` 卡片即使仍被用户触发，也只会返回迁移提示，不会改动当前 pending headless。
+6. 后台 auto-restore 触发的 pending headless 也复用同一个 `G1` gate：
    1. 启动阶段默认静默，不额外发 “headless_starting”。
    2. 成功后只发一条恢复成功 notice。
    3. 失败或超时后只发一条恢复失败 notice，并回到 `R0 Detached`。
@@ -600,6 +610,8 @@ surface 不是单一枚举，而是五层正交状态叠加。
 ```text
 R0 Detached
   -- /list -> attach_workspace(normal mode，workspace 可接管) --> R1 AttachedUnbound
+  -- /list -> create_workspace(confirm 后已有可复用实例) --> R1 AttachedUnbound
+  -- /list -> create_workspace(confirm 后需要 fresh headless) --> R0 + G1 PendingHeadlessStarting
   -- /list -> show_workspace_threads(normal mode，workspace 仅剩后台可恢复会话) --> 保持 R0 Detached，等待后续 /use(thread)
   -- /list -> attach_instance(vscode mode 且 observed focus 可接管) --> R4 FollowBound
   -- /list -> attach_instance(vscode mode 且尚无可接管 observed focus) --> R3 FollowWaiting
@@ -1035,6 +1047,7 @@ retained-offline overlay 额外规则：
 | 卡片动作 | 服务端 action | 说明 |
 | --- | --- | --- |
 | `attach_workspace` | `ActionAttachWorkspace` | normal mode `/list` 的 workspace attach/switch 入口 |
+| `create_workspace` | `ActionCreateWorkspace` | normal mode `/list` 里的“从目录新建工作区”；先开目录模式 path picker，再按 confirm 结果复用 attach 或启动 fresh workspace headless |
 | `show_all_workspaces` | `ActionShowAllWorkspaces` | normal mode `/list` 默认最近 5 个视图里展开全部工作区 |
 | `show_recent_workspaces` | `ActionShowRecentWorkspaces` | 从“全部工作区”视图返回默认最近 5 个工作区 |
 | `show_workspace_threads` | `ActionShowWorkspaceThreads` | normal mode `/list` 中 recoverable-only workspace 的单-workspace 会话列表入口 |

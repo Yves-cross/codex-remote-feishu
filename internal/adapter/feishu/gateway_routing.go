@@ -66,6 +66,16 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			WorkspaceKey:     workspaceKey,
 			Inbound:          meta,
 		}, true
+	case cardActionKindCreateWorkspace:
+		return control.Action{
+			Kind:             control.ActionCreateWorkspace,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			Inbound:          meta,
+		}, true
 	case cardActionKindUseThread:
 		threadID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyThreadID))
 		if threadID == "" {

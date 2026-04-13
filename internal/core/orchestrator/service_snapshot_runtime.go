@@ -380,6 +380,24 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 			},
 		}}
 	}
+	if pending.Purpose == state.HeadlessLaunchPurposeFreshWorkspace {
+		notice := NoticeForProblem(agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
+			Code:             "workspace_create_start_failed",
+			Layer:            "daemon",
+			Stage:            "headless_start",
+			Operation:        "create_workspace",
+			Message:          "无法准备这个工作区。",
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Retryable:        true,
+		}))
+		notice.Code = "workspace_create_start_failed"
+		notice.Title = "工作区准备失败"
+		return []control.UIEvent{{
+			Kind:             control.UIEventNotice,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			Notice:           &notice,
+		}}
+	}
 	problem := agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 		Code:             "headless_start_failed",
 		Layer:            "daemon",

@@ -391,6 +391,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 		RequestedAt:      s.now(),
 		ExpiresAt:        s.now().Add(s.config.HeadlessLaunchWait),
 		Status:           state.HeadlessLaunchStarting,
+		Purpose:          state.HeadlessLaunchPurposeThreadRestore,
 		SourceInstanceID: sourceInstanceID,
 		AutoRestore:      mode == startHeadlessModeHeadlessRestore,
 	}

@@ -164,7 +164,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 	if planner == nil {
 		planner = renderer.NewPlanner()
 	}
-	return &Service{
+	svc := &Service{
 		now:                 now,
 		config:              cfg,
 		root:                state.NewRoot(),
@@ -185,6 +185,8 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		threadClaims:        map[string]*threadClaimRecord{},
 		pathPickerConsumers: map[string]PathPickerConsumer{},
 	}
+	svc.RegisterPathPickerConsumer(workspaceCreatePathPickerConsumerKind, workspaceCreatePathPickerConsumer{})
+	return svc
 }
 
 func (s *Service) normalizeSurfaceProductMode(surface *state.SurfaceConsoleRecord) state.ProductMode {
@@ -347,6 +349,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.attachInstance(surface, action.InstanceID)
 	case control.ActionAttachWorkspace:
 		events = s.attachWorkspace(surface, action.WorkspaceKey)
+	case control.ActionCreateWorkspace:
+		events = s.openCreateWorkspacePicker(surface)
 	case control.ActionShowCommandHelp:
 		events = []control.UIEvent{s.feishuDirectCommandCatalogEvent(surface, "help", "", control.FeishuCommandHelpCatalog())}
 	case control.ActionDebugCommand:

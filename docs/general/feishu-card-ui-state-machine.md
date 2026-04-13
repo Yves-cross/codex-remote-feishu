@@ -1,8 +1,8 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-13`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、`request_user_input` 多题分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、request 卡在 same-daemon 生命周期内的 `request_revision` freshness，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回）。
+> Updated: `2026-04-14`
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、normal `/list` 工作区卡片里的 `create_workspace` 入口与“目录选择后交给 workspace consumer”的 handoff、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、request 卡在 same-daemon 生命周期内的 `request_revision` freshness，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回）。
 
 ## 1. 文档定位
 
@@ -82,6 +82,7 @@
 | --- | --- | --- |
 | `/menu` 首页 / 分组 / 返回 | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张命令菜单内的层级切换；不再直接进入主 reducer，也不改 core route |
 | `show_all_workspaces` / `show_recent_workspaces` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理 `/list` 工作区分页导航；不改变 attach 状态 |
+| `create_workspace` | `mixed` | 当前由 Feishu UI 层把 normal `/list` 里的“从目录新建工作区”按钮送到产品层；点击后会打开目录模式 path picker，真正的 workspace 创建/复用与 route 落点仍由 orchestrator 决定 |
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理 thread 列表分页与 scoped/all 视图切换；真正接管 thread 不在这里发生 |
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理 `/useall` 工作区总览分页、单 workspace 详情分页与“返回分组”；不直接改变 selected thread |
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡 |
@@ -139,6 +140,7 @@
 | --- | --- | --- |
 | `attach_instance` | `instance_id` | 接管指定实例 |
 | `attach_workspace` | `workspace_key` | 接管指定工作区 |
+| `create_workspace` | 无额外字段 | 打开“从目录新建工作区”的目录模式 path picker |
 | `use_thread` | `thread_id`、`allow_cross_workspace` | 选择 thread，必要时允许跨 workspace |
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `view_mode`、`page` | 在当前 same-context thread 列表里切页；`view_mode` 用于保持 scoped / VS Code / 当前视图模式 |
 | `show_all_workspaces` / `show_recent_workspaces` | `page` | 在 `/list` 工作区卡片里切页 |

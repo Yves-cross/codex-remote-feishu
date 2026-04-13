@@ -210,6 +210,14 @@ const (
 	HeadlessLaunchStarting HeadlessLaunchStatus = "starting"
 )
 
+type HeadlessLaunchPurpose string
+
+const (
+	HeadlessLaunchPurposeLegacy         HeadlessLaunchPurpose = ""
+	HeadlessLaunchPurposeThreadRestore  HeadlessLaunchPurpose = "thread_restore"
+	HeadlessLaunchPurposeFreshWorkspace HeadlessLaunchPurpose = "fresh_workspace"
+)
+
 type HeadlessLaunchRecord struct {
 	InstanceID       string
 	ThreadID         string
@@ -220,6 +228,7 @@ type HeadlessLaunchRecord struct {
 	RequestedAt      time.Time
 	ExpiresAt        time.Time
 	Status           HeadlessLaunchStatus
+	Purpose          HeadlessLaunchPurpose
 	PID              int
 	SourceInstanceID string
 	AutoRestore      bool

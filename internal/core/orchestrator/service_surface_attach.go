@@ -301,6 +301,10 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 	if surface == nil || inst == nil || pending == nil {
 		return nil
 	}
+	if pending.Purpose == state.HeadlessLaunchPurposeFreshWorkspace {
+		surface.PendingHeadless = nil
+		return s.attachWorkspace(surface, pending.ThreadCWD)
+	}
 	if strings.TrimSpace(pending.ThreadID) != "" {
 		view := s.mergedThreadView(surface, pending.ThreadID)
 		if view == nil {
