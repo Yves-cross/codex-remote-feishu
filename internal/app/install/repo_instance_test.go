@@ -78,6 +78,7 @@ func TestResolveInstallInstanceSelectionDefaultsToStableOutsideRepo(t *testing.T
 
 func TestResolveInstallInstanceSelectionDetectsRepoRootFromWorkingDirectory(t *testing.T) {
 	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
 	workDir := filepath.Join(repoRoot, "internal", "app", "install")
 	if err := os.MkdirAll(filepath.Join(repoRoot, ".git"), 0o755); err != nil {
 		t.Fatalf("MkdirAll(.git) error = %v", err)
@@ -103,15 +104,15 @@ func TestResolveInstallInstanceSelectionDetectsRepoRootFromWorkingDirectory(t *t
 	}()
 	t.Setenv(repoRootEnvVar, "")
 
-	selection, err := resolveInstallInstanceSelection("master", "/data/dl", t.TempDir(), "linux")
+	selection, err := resolveInstallInstanceSelection("master", baseDir, t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
 	if !testutil.SamePath(selection.RepoRoot, repoRoot) {
 		t.Fatalf("RepoRoot = %q, want %q", selection.RepoRoot, repoRoot)
 	}
-	if selection.BaseDir != "/data/dl" {
-		t.Fatalf("BaseDir = %q, want /data/dl", selection.BaseDir)
+	if selection.BaseDir != baseDir {
+		t.Fatalf("BaseDir = %q, want %q", selection.BaseDir, baseDir)
 	}
 	if selection.ServiceName != "codex-remote-master.service" {
 		t.Fatalf("ServiceName = %q", selection.ServiceName)
@@ -123,10 +124,11 @@ func TestResolveInstallInstanceSelectionDetectsRepoRootFromWorkingDirectory(t *t
 
 func TestResolveInstallInstanceSelectionUsesRepoBinding(t *testing.T) {
 	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)
 	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
 		InstanceID: "master",
-		BaseDir:    "/data/dl",
+		BaseDir:    baseDir,
 	}); err != nil {
 		t.Fatalf("writeRepoInstallBinding() error = %v", err)
 	}
@@ -138,10 +140,10 @@ func TestResolveInstallInstanceSelectionUsesRepoBinding(t *testing.T) {
 	if selection.InstanceID != "master" {
 		t.Fatalf("InstanceID = %q, want master", selection.InstanceID)
 	}
-	if selection.BaseDir != "/data/dl" {
-		t.Fatalf("BaseDir = %q, want /data/dl", selection.BaseDir)
+	if selection.BaseDir != baseDir {
+		t.Fatalf("BaseDir = %q, want %q", selection.BaseDir, baseDir)
 	}
-	if selection.StatePath != filepath.Join("/data/dl", ".local", "share", "codex-remote-master", "codex-remote", "install-state.json") {
+	if selection.StatePath != filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "install-state.json") {
 		t.Fatalf("StatePath = %q", selection.StatePath)
 	}
 	if selection.WriteBinding || selection.ClearBinding {
@@ -211,10 +213,11 @@ func TestResolveInstallInstanceSelectionFallsBackToAncestorStableBaseDir(t *test
 
 func TestResolveInstallInstanceSelectionExplicitStableClearsRepoBinding(t *testing.T) {
 	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)
 	if err := writeRepoInstallBinding(repoRoot, repoInstallBinding{
 		InstanceID: "master",
-		BaseDir:    "/data/dl",
+		BaseDir:    baseDir,
 	}); err != nil {
 		t.Fatalf("writeRepoInstallBinding() error = %v", err)
 	}
@@ -241,9 +244,10 @@ func TestResolveInstallInstanceSelectionExplicitStableClearsRepoBinding(t *testi
 
 func TestResolveInstallInstanceSelectionExplicitStableWithBaseDirWritesBinding(t *testing.T) {
 	repoRoot := t.TempDir()
+	baseDir := t.TempDir()
 	t.Setenv(repoRootEnvVar, repoRoot)
 
-	selection, err := resolveInstallInstanceSelection("stable", "/data/dl", t.TempDir(), "linux")
+	selection, err := resolveInstallInstanceSelection("stable", baseDir, t.TempDir(), "linux")
 	if err != nil {
 		t.Fatalf("resolveInstallInstanceSelection() error = %v", err)
 	}
@@ -263,8 +267,8 @@ func TestResolveInstallInstanceSelectionExplicitStableWithBaseDirWritesBinding(t
 	if binding.InstanceID != defaultInstanceID {
 		t.Fatalf("InstanceID = %q, want stable", binding.InstanceID)
 	}
-	if binding.BaseDir != "/data/dl" {
-		t.Fatalf("BaseDir = %q, want /data/dl", binding.BaseDir)
+	if binding.BaseDir != baseDir {
+		t.Fatalf("BaseDir = %q, want %q", binding.BaseDir, baseDir)
 	}
 	if binding.LogPath == "" {
 		t.Fatalf("expected derived log path in binding, got %#v", binding)

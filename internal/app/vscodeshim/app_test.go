@@ -1,6 +1,7 @@
 package vscodeshim
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,10 +22,10 @@ func TestResolveLaunchPlanUsesStateBinding(t *testing.T) {
 	writeExecutable(t, realPath, "real-codex")
 	writeExecutable(t, targetBinary, "codex-remote")
 	writeConfigFile(t, configPath)
-	writeInstallStateFile(t, statePath, `{
-  "configPath": "`+configPath+`",
-  "currentBinaryPath": "`+targetBinary+`"
-}`)
+	writeInstallStateFile(t, statePath, map[string]string{
+		"configPath":        configPath,
+		"currentBinaryPath": targetBinary,
+	})
 	if err := managedshim.WriteSidecar(sidecarPath, managedshim.Sidecar{
 		InstallStatePath: statePath,
 		ConfigPath:       configPath,
@@ -61,10 +62,10 @@ func TestResolveLaunchPlanFallsBackWhenConfigIsMissing(t *testing.T) {
 
 	writeExecutable(t, realPath, "real-codex")
 	writeExecutable(t, targetBinary, "codex-remote")
-	writeInstallStateFile(t, statePath, `{
-  "configPath": "`+filepath.Join(dir, "missing-config.json")+`",
-  "currentBinaryPath": "`+targetBinary+`"
-}`)
+	writeInstallStateFile(t, statePath, map[string]string{
+		"configPath":        filepath.Join(dir, "missing-config.json"),
+		"currentBinaryPath": targetBinary,
+	})
 	if err := managedshim.WriteSidecar(sidecarPath, managedshim.Sidecar{
 		InstallStatePath: statePath,
 		ConfigPath:       filepath.Join(dir, "missing-config.json"),
@@ -94,10 +95,10 @@ func TestResolveLaunchPlanRejectsRecursiveTargetAndFallsBack(t *testing.T) {
 
 	writeExecutable(t, realPath, "real-codex")
 	writeConfigFile(t, configPath)
-	writeInstallStateFile(t, statePath, `{
-  "configPath": "`+configPath+`",
-  "currentBinaryPath": "`+entrypoint+`"
-}`)
+	writeInstallStateFile(t, statePath, map[string]string{
+		"configPath":        configPath,
+		"currentBinaryPath": entrypoint,
+	})
 	if err := managedshim.WriteSidecar(sidecarPath, managedshim.Sidecar{
 		InstallStatePath: statePath,
 		ConfigPath:       configPath,
@@ -137,14 +138,14 @@ func TestResolveLaunchPlanKeepsPerEntrypointBindingsSeparate(t *testing.T) {
 	writeExecutable(t, targetB, "codex-remote-b")
 	writeConfigFile(t, configA)
 	writeConfigFile(t, configB)
-	writeInstallStateFile(t, stateA, `{
-  "configPath": "`+configA+`",
-  "currentBinaryPath": "`+targetA+`"
-}`)
-	writeInstallStateFile(t, stateB, `{
-  "configPath": "`+configB+`",
-  "currentBinaryPath": "`+targetB+`"
-}`)
+	writeInstallStateFile(t, stateA, map[string]string{
+		"configPath":        configA,
+		"currentBinaryPath": targetA,
+	})
+	writeInstallStateFile(t, stateB, map[string]string{
+		"configPath":        configB,
+		"currentBinaryPath": targetB,
+	})
 	if err := managedshim.WriteSidecar(managedshim.SidecarPath(entrypointA), managedshim.Sidecar{
 		InstallStatePath: stateA,
 		ConfigPath:       configA,
@@ -210,12 +211,16 @@ func writeConfigFile(t *testing.T, path string) {
 	}
 }
 
-func writeInstallStateFile(t *testing.T, path, raw string) {
+func writeInstallStateFile(t *testing.T, path string, payload any) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}
-	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 }

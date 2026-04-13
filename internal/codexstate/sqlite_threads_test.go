@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func TestSQLiteThreadCatalogRecentThreadsReturnsSortedNonArchivedRows(t *testing.T) {
@@ -43,7 +45,7 @@ func TestSQLiteThreadCatalogThreadByIDReturnsSingleMappedThread(t *testing.T) {
 	if thread == nil {
 		t.Fatal("expected thread")
 	}
-	if thread.ThreadID != "thread-1" || thread.Name != "修复登录流程" || thread.Preview != "第一条消息" || thread.CWD != "/data/dl/droid" {
+	if thread.ThreadID != "thread-1" || thread.Name != "修复登录流程" || thread.Preview != "第一条消息" || thread.CWD != testutil.WorkspacePath("data", "dl", "droid") {
 		t.Fatalf("unexpected thread mapping: %#v", thread)
 	}
 }
@@ -132,13 +134,13 @@ INSERT INTO threads (
 		reasoning string
 		agentRole string
 	}{
-		{id: "thread-1", updatedAt: 1775710100, source: "cli", cwd: "/data/dl/droid", title: "修复登录流程", archived: 0, preview: "第一条消息", model: "gpt-5.4", reasoning: "xhigh"},
-		{id: "thread-2", updatedAt: 1775710150, source: "cli", cwd: "/data/dl/archived", title: "旧会话", archived: 1, preview: "已归档", model: "gpt-5.4", reasoning: "medium"},
-		{id: "thread-3", updatedAt: 1775710200, source: "vscode", cwd: "/data/dl/web", title: "整理样式", archived: 0, preview: "第三条消息", model: "gpt-5.4", reasoning: "high"},
-		{id: "thread-exec", updatedAt: 1775710400, source: "exec", cwd: "/data/dl/_tmp-codex-thread-latency-hidden", title: "Latency Probe", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "low"},
-		{id: "thread-subagent", updatedAt: 1775710350, source: "cli", cwd: "/data/dl/workerproj", title: "子代理", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "medium", agentRole: "worker"},
-		{id: "thread-probe", updatedAt: 1775710300, source: "vscode", cwd: "/data/dl/_tmp-codex-appserver-hidden", title: "APP_SERVER_LATENCY_PROBE", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "low"},
-		{id: "thread-mcp", updatedAt: 1775710250, source: "mcp", cwd: "/data/dl/testgame", title: "MCP 会话", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "medium"},
+		{id: "thread-1", updatedAt: 1775710100, source: "cli", cwd: testutil.WorkspacePath("data", "dl", "droid"), title: "修复登录流程", archived: 0, preview: "第一条消息", model: "gpt-5.4", reasoning: "xhigh"},
+		{id: "thread-2", updatedAt: 1775710150, source: "cli", cwd: testutil.WorkspacePath("data", "dl", "archived"), title: "旧会话", archived: 1, preview: "已归档", model: "gpt-5.4", reasoning: "medium"},
+		{id: "thread-3", updatedAt: 1775710200, source: "vscode", cwd: testutil.WorkspacePath("data", "dl", "web"), title: "整理样式", archived: 0, preview: "第三条消息", model: "gpt-5.4", reasoning: "high"},
+		{id: "thread-exec", updatedAt: 1775710400, source: "exec", cwd: testutil.WorkspacePath("data", "dl", "_tmp-codex-thread-latency-hidden"), title: "Latency Probe", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "low"},
+		{id: "thread-subagent", updatedAt: 1775710350, source: "cli", cwd: testutil.WorkspacePath("data", "dl", "workerproj"), title: "子代理", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "medium", agentRole: "worker"},
+		{id: "thread-probe", updatedAt: 1775710300, source: "vscode", cwd: testutil.WorkspacePath("data", "dl", "_tmp-codex-appserver-hidden"), title: "APP_SERVER_LATENCY_PROBE", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "low"},
+		{id: "thread-mcp", updatedAt: 1775710250, source: "mcp", cwd: testutil.WorkspacePath("data", "dl", "testgame"), title: "MCP 会话", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "medium"},
 	}
 	for _, row := range rows {
 		if _, err := db.Exec(insert, row.id, row.updatedAt, row.source, row.cwd, row.title, row.archived, row.preview, row.model, row.reasoning, row.agentRole); err != nil {

@@ -1,6 +1,7 @@
 package install
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,8 +65,12 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}
-	if !strings.Contains(string(settingsRaw), state.InstalledWrapperBinary) {
-		t.Fatalf("expected settings to contain wrapper path, got %s", settingsRaw)
+	var settings map[string]string
+	if err := json.Unmarshal(settingsRaw, &settings); err != nil {
+		t.Fatalf("unmarshal settings: %v raw=%s", err, settingsRaw)
+	}
+	if settings["chatgpt.cliExecutable"] != state.InstalledWrapperBinary {
+		t.Fatalf("expected settings to contain wrapper path, got %#v", settings)
 	}
 	wantBinary := filepath.Join(installBinDir, filepath.Base(binaryPath))
 	if state.InstalledBinary != wantBinary {

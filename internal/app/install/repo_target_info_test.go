@@ -2,6 +2,7 @@ package install
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestResolveRepoInstallTargetInfoUsesBindingAndConfig(t *testing.T) {
 	if info.StatePath != statePath {
 		t.Fatalf("StatePath = %q, want %q", info.StatePath, statePath)
 	}
-	if info.LocalUpgradeArtifactPath != filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "local-upgrade", executableName("linux")) {
+	if info.LocalUpgradeArtifactPath != filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "local-upgrade", executableName(runtime.GOOS)) {
 		t.Fatalf("LocalUpgradeArtifactPath = %q", info.LocalUpgradeArtifactPath)
 	}
 	if info.LogPath != filepath.Join(baseDir, ".local", "share", "codex-remote-master", "codex-remote", "logs", "codex-remote-relayd.log") {

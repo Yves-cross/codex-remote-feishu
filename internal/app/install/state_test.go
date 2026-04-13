@@ -1,6 +1,7 @@
 package install
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +16,15 @@ func TestLoadStateCollapsesLegacyConfigPaths(t *testing.T) {
 	}
 	legacyWrapperPath := filepath.Join(baseDir, ".config", "codex-remote", "wrapper.env")
 	legacyServicesPath := filepath.Join(baseDir, ".config", "codex-remote", "services.env")
-	raw := `{
-  "statePath": "` + statePath + `",
-  "wrapperConfigPath": "` + legacyWrapperPath + `",
-  "servicesConfigPath": "` + legacyServicesPath + `"
-}`
-	if err := os.WriteFile(statePath, []byte(raw), 0o644); err != nil {
+	rawBytes, err := json.Marshal(map[string]string{
+		"statePath":          statePath,
+		"wrapperConfigPath":  legacyWrapperPath,
+		"servicesConfigPath": legacyServicesPath,
+	})
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
+	if err := os.WriteFile(statePath, rawBytes, 0o644); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 

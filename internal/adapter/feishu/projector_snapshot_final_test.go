@@ -1,13 +1,13 @@
 package feishu
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func TestProjectTurnFailedNoticeUsesErrorTheme(t *testing.T) {
@@ -813,7 +813,7 @@ func TestProjectSnapshotDisplaysBinaryIdentityLine(t *testing.T) {
 
 func TestProjectSnapshotDisplaysCurrentDirectoryWithGitBranch(t *testing.T) {
 	projector := NewProjector()
-	cwd := filepath.Join(string(filepath.Separator), "data", "dl", "droid")
+	cwd := testutil.WorkspacePath("data", "dl", "droid")
 	projector.readGitWorktree = func(got string) *gitWorktreeSummary {
 		if got != cwd {
 			t.Fatalf("unexpected cwd: %q", cwd)
@@ -840,7 +840,7 @@ func TestProjectSnapshotDisplaysCurrentDirectoryWithGitBranch(t *testing.T) {
 
 func TestProjectSnapshotDisplaysGitBranchAndCleanWorktree(t *testing.T) {
 	projector := NewProjector()
-	cwd := filepath.Join(string(filepath.Separator), "data", "dl", "droid")
+	cwd := testutil.WorkspacePath("data", "dl", "droid")
 	projector.readGitWorktree = func(got string) *gitWorktreeSummary {
 		if got != cwd {
 			t.Fatalf("unexpected cwd: %q", cwd)
@@ -869,7 +869,7 @@ func TestProjectSnapshotDisplaysGitBranchAndCleanWorktree(t *testing.T) {
 
 func TestProjectSnapshotDisplaysDirtyGitWorktreeSummary(t *testing.T) {
 	projector := NewProjector()
-	cwd := filepath.Join(string(filepath.Separator), "data", "dl", "droid")
+	cwd := testutil.WorkspacePath("data", "dl", "droid")
 	projector.readGitWorktree = func(got string) *gitWorktreeSummary {
 		if got != cwd {
 			t.Fatalf("unexpected cwd: %q", cwd)
@@ -884,7 +884,7 @@ func TestProjectSnapshotDisplaysDirtyGitWorktreeSummary(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventSnapshot,
 		Snapshot: &control.Snapshot{
-			WorkspaceKey: filepath.Join(string(filepath.Separator), "data", "dl", "ignored"),
+			WorkspaceKey: testutil.WorkspacePath("data", "dl", "ignored"),
 			NextPrompt: control.PromptRouteSummary{
 				CWD: cwd,
 			},

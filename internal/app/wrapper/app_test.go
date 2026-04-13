@@ -3,6 +3,7 @@ package wrapper
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
@@ -97,7 +99,7 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 		CommandID: "cmd-prompt",
 		Kind:      agentproto.CommandPromptSend,
 		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
-		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/data/dl/droid"},
+		Target:    agentproto.Target{ThreadID: "thread-1", CWD: testutil.WorkspacePath("data", "dl", "droid")},
 		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "列一下文件"}}},
 	}); err != nil {
 		t.Fatalf("send prompt: %v", err)
@@ -399,7 +401,17 @@ func TestWrapperKeepsEphemeralHelperTrafficOnStdoutAndAnnotatesRelay(t *testing.
 
 	waitForHello(t, helloCh, "inst-wrapper")
 
-	line := `{"id":"helper-thread-1","method":"thread/start","params":{"cwd":"` + repoRoot + `","approvalPolicy":"never","sandbox":"read-only","ephemeral":true,"persistExtendedHistory":false}}` + "\n"
+	line := mustJSONLine(t, map[string]any{
+		"id":     "helper-thread-1",
+		"method": "thread/start",
+		"params": map[string]any{
+			"cwd":                    repoRoot,
+			"approvalPolicy":         "never",
+			"sandbox":                "read-only",
+			"ephemeral":              true,
+			"persistExtendedHistory": false,
+		},
+	})
 	if _, err := io.WriteString(stdinWriter, line); err != nil {
 		t.Fatalf("write helper thread start: %v", err)
 	}
@@ -490,7 +502,17 @@ func TestWrapperWritesRawFramesWhenEnabled(t *testing.T) {
 
 	waitForHello(t, helloCh, "inst-wrapper-raw")
 
-	line := `{"id":"helper-thread-1","method":"thread/start","params":{"cwd":"` + repoRoot + `","approvalPolicy":"never","sandbox":"read-only","ephemeral":true,"persistExtendedHistory":false}}` + "\n"
+	line := mustJSONLine(t, map[string]any{
+		"id":     "helper-thread-1",
+		"method": "thread/start",
+		"params": map[string]any{
+			"cwd":                    repoRoot,
+			"approvalPolicy":         "never",
+			"sandbox":                "read-only",
+			"ephemeral":              true,
+			"persistExtendedHistory": false,
+		},
+	})
 	if _, err := io.WriteString(stdinWriter, line); err != nil {
 		t.Fatalf("write helper thread start: %v", err)
 	}
@@ -747,6 +769,15 @@ func waitForStdout(t *testing.T, timeout time.Duration, stdout, stderr *bytes.Bu
 			t.Fatalf("timed out waiting for matching stdout\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 		}
 	}
+}
+
+func mustJSONLine(t *testing.T, payload any) string {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal json line: %v", err)
+	}
+	return string(raw) + "\n"
 }
 
 func waitForHello(t *testing.T, helloCh <-chan agentproto.Hello, wantInstanceID string) {

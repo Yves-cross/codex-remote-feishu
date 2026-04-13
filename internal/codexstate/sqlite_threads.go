@@ -155,9 +155,14 @@ func (c *SQLiteThreadCatalog) openReadOnly() (*sql.DB, error) {
 	if c == nil || strings.TrimSpace(c.path) == "" {
 		return nil, fmt.Errorf("missing codex sqlite path")
 	}
+	path := filepath.Clean(strings.TrimSpace(c.path))
+	path = filepath.ToSlash(path)
+	if vol := filepath.VolumeName(filepath.Clean(strings.TrimSpace(c.path))); vol != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
 	dsn := (&url.URL{
 		Scheme:   "file",
-		Path:     c.path,
+		Path:     path,
 		RawQuery: url.Values{"mode": {"ro"}}.Encode(),
 	}).String()
 	db, err := sql.Open("sqlite", dsn)

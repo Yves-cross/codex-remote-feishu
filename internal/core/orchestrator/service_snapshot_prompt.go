@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"os"
 	"sort"
 	"strings"
 
@@ -263,8 +262,8 @@ func legacyWorkspaceDefaultCandidates(workspaceKey string, legacy map[string]sta
 			continue
 		}
 		if normalizedKey != workspaceKey &&
-			!strings.HasPrefix(normalizedKey, workspaceKey+string(os.PathSeparator)) &&
-			!strings.HasPrefix(workspaceKey, normalizedKey+string(os.PathSeparator)) {
+			!strings.HasPrefix(normalizedKey, workspaceKey+"/") &&
+			!strings.HasPrefix(workspaceKey, normalizedKey+"/") {
 			continue
 		}
 		candidates = append(candidates, candidate{

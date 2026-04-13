@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -123,12 +122,12 @@ func TestVSCodeDetectApplyAndReinstallManagedShim(t *testing.T) {
 		t.Fatalf("reinstall status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 
-	rawState, err := os.ReadFile(installStatePath)
+	state, err := install.LoadState(installStatePath)
 	if err != nil {
-		t.Fatalf("read install-state: %v", err)
+		t.Fatalf("LoadState: %v", err)
 	}
-	if !strings.Contains(string(rawState), entrypointV2) {
-		t.Fatalf("expected install-state to record latest bundle entrypoint, got %s", string(rawState))
+	if state.BundleEntrypoint != entrypointV2 {
+		t.Fatalf("expected install-state to record latest bundle entrypoint, got %#v", state)
 	}
 	if _, err := os.Stat(editor.ManagedShimRealBinaryPath(windowsSiblingV2)); !os.IsNotExist(err) {
 		t.Fatalf("expected non-current-platform sibling to stay untouched, stat err=%v", err)

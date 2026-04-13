@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -56,8 +57,8 @@ func TestRunUpgradeHelperWithStatePathSystemdUserUsesSystemctlStopStart(t *testi
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "install-state.json")
 	configPath := filepath.Join(dir, ".config", "codex-remote", "config.json")
-	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName("linux")), "old-binary")
-	targetBinary := seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName("linux")), "new-binary")
+	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName(runtime.GOOS)), "old-binary")
+	targetBinary := seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName(runtime.GOOS)), "new-binary")
 
 	cfg := config.DefaultAppConfig()
 	if err := config.WriteAppConfig(configPath, cfg); err != nil {
@@ -145,8 +146,8 @@ func TestRunUpgradeHelperWithStatePathDebugInstanceUsesDebugSystemdUnit(t *testi
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, ".local", "share", "codex-remote-debug", "codex-remote", "install-state.json")
 	configPath := filepath.Join(dir, ".config", "codex-remote-debug", "codex-remote", "config.json")
-	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName("linux")), "old-binary")
-	seedBinary(t, filepath.Join(dir, ".local", "share", "codex-remote-debug", "codex-remote", "releases", "v1.1.0", executableName("linux")), "new-binary")
+	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName(runtime.GOOS)), "old-binary")
+	seedBinary(t, filepath.Join(dir, ".local", "share", "codex-remote-debug", "codex-remote", "releases", "v1.1.0", executableName(runtime.GOOS)), "new-binary")
 
 	cfg := config.DefaultAppConfig()
 	if err := config.WriteAppConfig(configPath, cfg); err != nil {
@@ -211,8 +212,8 @@ func TestRunUpgradeHelperWithStatePathSystemdUserRollsBackOnObserveFailure(t *te
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "install-state.json")
 	configPath := filepath.Join(dir, ".config", "codex-remote", "config.json")
-	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName("linux")), "old-binary")
-	seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName("linux")), "new-binary")
+	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName(runtime.GOOS)), "old-binary")
+	seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName(runtime.GOOS)), "new-binary")
 
 	cfg := config.DefaultAppConfig()
 	if err := config.WriteAppConfig(configPath, cfg); err != nil {
@@ -299,8 +300,8 @@ func TestRunUpgradeHelperWithStatePathFailsWhenRollbackStopFails(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "install-state.json")
 	configPath := filepath.Join(dir, ".config", "codex-remote", "config.json")
-	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName("linux")), "old-binary")
-	seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName("linux")), "new-binary")
+	currentBinary := seedBinary(t, filepath.Join(dir, "bin", executableName(runtime.GOOS)), "old-binary")
+	seedBinary(t, filepath.Join(dir, "releases", "v1.1.0", executableName(runtime.GOOS)), "new-binary")
 
 	cfg := config.DefaultAppConfig()
 	if err := config.WriteAppConfig(configPath, cfg); err != nil {

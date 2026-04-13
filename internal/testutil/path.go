@@ -13,6 +13,10 @@ func RootedPath(parts ...string) string {
 	return filepath.Join(all...)
 }
 
+func WorkspacePath(parts ...string) string {
+	return filepath.ToSlash(RootedPath(parts...))
+}
+
 func CanonicalPath(path string) string {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "" || path == "." {

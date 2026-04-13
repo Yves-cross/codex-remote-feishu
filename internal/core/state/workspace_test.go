@@ -9,8 +9,9 @@ import (
 )
 
 func TestResolveWorkspaceKey(t *testing.T) {
-	want := testutil.RootedPath("data", "dl", "droid")
-	if got := ResolveWorkspaceKey("", " /data/dl/work/../droid/ "); got != want {
+	want := testutil.WorkspacePath("data", "dl", "droid")
+	input := " " + testutil.WorkspacePath("data", "dl", "work", "..", "droid") + "/ "
+	if got := ResolveWorkspaceKey("", input); got != want {
 		t.Fatalf("ResolveWorkspaceKey() = %q, want %q", got, want)
 	}
 	if got := ResolveWorkspaceKey("   "); got != "" {
@@ -19,7 +20,7 @@ func TestResolveWorkspaceKey(t *testing.T) {
 }
 
 func TestWorkspaceShortName(t *testing.T) {
-	if got := WorkspaceShortName("/data/dl/work/../droid/"); got != "droid" {
+	if got := WorkspaceShortName(testutil.WorkspacePath("data", "dl", "work", "..", "droid") + "/"); got != "droid" {
 		t.Fatalf("WorkspaceShortName() = %q, want %q", got, "droid")
 	}
 	if got := WorkspaceShortName("/"); got != "/" {

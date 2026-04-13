@@ -13,6 +13,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func TestAdminInstanceCreateRemovedFromWebAdmin(t *testing.T) {
@@ -139,22 +140,24 @@ func TestAdminInstancesListHidesManagedHeadlessBusyEntry(t *testing.T) {
 
 func TestAdminInstancesSnapshotFiltersManagedHeadlessButKeepsVSCode(t *testing.T) {
 	app := newManagedInstancesAdminTestApp(t)
+	workspaceRoot := testutil.WorkspacePath("data", "dl", "droid")
+	headlessRoot := testutil.WorkspacePath("tmp", "headless")
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-offline",
 		DisplayName:   "droid",
-		WorkspaceRoot: "/data/dl/droid",
-		WorkspaceKey:  "/data/dl/droid",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
 		ShortName:     "droid",
 		Online:        false,
 		Threads: map[string]*state.ThreadRecord{
-			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", Preview: "修登录", CWD: "/data/dl/droid", Loaded: true},
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", Preview: "修登录", CWD: workspaceRoot, Loaded: true},
 		},
 	})
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-headless-1",
 		DisplayName:   "headless",
-		WorkspaceRoot: "/tmp/headless",
-		WorkspaceKey:  "/tmp/headless",
+		WorkspaceRoot: headlessRoot,
+		WorkspaceKey:  headlessRoot,
 		ShortName:     "headless",
 		Source:        "headless",
 		Managed:       true,
@@ -167,7 +170,7 @@ func TestAdminInstancesSnapshotFiltersManagedHeadlessButKeepsVSCode(t *testing.T
 		PID:           4321,
 		RequestedAt:   now,
 		StartedAt:     now,
-		WorkspaceRoot: "/tmp/headless",
+		WorkspaceRoot: headlessRoot,
 		DisplayName:   "headless",
 		Status:        managedHeadlessStatusIdle,
 	}
@@ -184,7 +187,7 @@ func TestAdminInstancesSnapshotFiltersManagedHeadlessButKeepsVSCode(t *testing.T
 	if len(summaries) != 1 {
 		t.Fatalf("expected only vscode summary, got %#v", summaries)
 	}
-	if summaries[0].InstanceID != "inst-offline" || summaries[0].Source != "" || summaries[0].WorkspaceRoot != filepath.Join(string(filepath.Separator), "data", "dl", "droid") {
+	if summaries[0].InstanceID != "inst-offline" || summaries[0].Source != "" || !testutil.SamePath(summaries[0].WorkspaceRoot, workspaceRoot) {
 		t.Fatalf("unexpected vscode-only summary: %#v", summaries)
 	}
 }

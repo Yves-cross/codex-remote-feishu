@@ -869,12 +869,12 @@ func TestListWorkspacesMarksBusyClaimedWorkspaceDisabled(t *testing.T) {
 		t.Fatalf("expected workspace prompt title, got %#v", prompt)
 	}
 	for _, option := range prompt.Options {
-		switch option.OptionID {
-		case testutil.RootedPath("data", "dl", "droid"):
+		switch {
+		case testutil.SamePath(option.OptionID, testutil.WorkspacePath("data", "dl", "droid")):
 			if !option.Disabled || option.ButtonLabel != "" || !strings.Contains(option.MetaText, "当前被其他飞书会话接管") {
 				t.Fatalf("expected busy workspace to be disabled, got %#v", option)
 			}
-		case testutil.RootedPath("data", "dl", "web"):
+		case testutil.SamePath(option.OptionID, testutil.WorkspacePath("data", "dl", "web")):
 			if option.Disabled {
 				t.Fatalf("expected free workspace to remain selectable, got %#v", option)
 			}
@@ -1006,7 +1006,7 @@ func TestListWorkspacesUsesVisibleThreadCWDsForBroadHeadlessPool(t *testing.T) {
 	for _, option := range prompt.Options {
 		got[option.OptionID] = true
 	}
-	if !got[testutil.RootedPath("data", "dl", "atlas")] || !got[testutil.RootedPath("data", "dl", "harbor")] || got[testutil.RootedPath("data", "dl")] {
+	if !got[testutil.WorkspacePath("data", "dl", "atlas")] || !got[testutil.WorkspacePath("data", "dl", "harbor")] || got[testutil.WorkspacePath("data", "dl")] {
 		t.Fatalf("expected thread cwd workspaces only, got %#v", prompt.Options)
 	}
 }
