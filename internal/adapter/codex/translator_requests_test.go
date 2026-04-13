@@ -458,6 +458,78 @@ func TestObserveCommandExecutionItemsCarryCommandMetadata(t *testing.T) {
 	}
 }
 
+func TestTranslateThreadHistoryReadUsesThreadReadWithIncludeTurns(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		CommandID: "cmd-history-1",
+		Kind:      agentproto.CommandThreadHistoryRead,
+		Target: agentproto.Target{
+			ThreadID: "thread-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate history read: %v", err)
+	}
+	if len(payloads) != 1 {
+		t.Fatalf("expected one payload, got %d", len(payloads))
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloads[0], &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload["method"] != "thread/read" {
+		t.Fatalf("expected thread/read method, got %#v", payload)
+	}
+	params, _ := payload["params"].(map[string]any)
+	if params["threadId"] != "thread-1" || params["includeTurns"] != true {
+		t.Fatalf("expected includeTurns=true history read payload, got %#v", payload)
+	}
+}
+
+func TestObserveThreadHistoryReadResultEmitsStructuredHistoryEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	payloads, err := tr.TranslateCommand(agentproto.Command{
+		CommandID: "cmd-history-1",
+		Kind:      agentproto.CommandThreadHistoryRead,
+		Target: agentproto.Target{
+			ThreadID: "thread-1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate history read: %v", err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal(payloads[0], &request); err != nil {
+		t.Fatalf("unmarshal request: %v", err)
+	}
+	requestID, _ := request["id"].(string)
+
+	result, err := tr.ObserveServer([]byte(`{"id":"` + requestID + `","result":{"thread":{"id":"thread-1","name":"修复登录","cwd":"/tmp/project","turns":[{"id":"turn-1","status":"completed","startedAt":"2026-04-14T01:00:00Z","completedAt":"2026-04-14T01:01:00Z","items":[{"id":"item-user-1","type":"user_message","text":"请修一下登录"},{"id":"item-cmd-1","type":"commandExecution","status":"failed","command":"npm test","cwd":"/tmp/project","exitCode":1},{"id":"item-agent-1","type":"agent_message","text":"我已经定位到问题。"}]}]}}}`))
+	if err != nil {
+		t.Fatalf("observe history result: %v", err)
+	}
+	if !result.Suppress || len(result.Events) != 1 {
+		t.Fatalf("expected one suppressed history event, got %#v", result)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventThreadHistoryRead || event.CommandID != "cmd-history-1" || event.ThreadHistory == nil {
+		t.Fatalf("unexpected history event: %#v", event)
+	}
+	if event.ThreadHistory.Thread.ThreadID != "thread-1" || event.ThreadHistory.Thread.Name != "修复登录" {
+		t.Fatalf("unexpected history thread payload: %#v", event.ThreadHistory)
+	}
+	if len(event.ThreadHistory.Turns) != 1 {
+		t.Fatalf("expected one turn in history payload, got %#v", event.ThreadHistory)
+	}
+	turn := event.ThreadHistory.Turns[0]
+	if turn.TurnID != "turn-1" || turn.Status != "completed" || len(turn.Items) != 3 {
+		t.Fatalf("unexpected turn history payload: %#v", turn)
+	}
+	if turn.Items[1].Kind != "command_execution" || turn.Items[1].Command != "npm test" || turn.Items[1].ExitCode == nil || *turn.Items[1].ExitCode != 1 {
+		t.Fatalf("expected command execution item details, got %#v", turn.Items[1])
+	}
+}
+
 func TestObserveClientThreadNameSetResponseEmitsThreadDiscovered(t *testing.T) {
 	tr := NewTranslator("inst-1")
 

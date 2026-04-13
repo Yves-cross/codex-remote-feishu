@@ -79,6 +79,12 @@ type managedHeadlessProcess struct {
 	LastRefreshCompletedAt time.Time
 }
 
+type pendingThreadHistoryRead struct {
+	SurfaceSessionID string
+	InstanceID       string
+	ThreadID         string
+}
+
 type headlessRestoreRecoveryState struct {
 	Entry           SurfaceResumeEntry
 	NextAttemptAt   time.Time
@@ -143,6 +149,7 @@ type App struct {
 	startupRefreshPending           map[string]bool
 	startupRefreshSeen              bool
 	managedHeadless                 map[string]*managedHeadlessProcess
+	pendingThreadHistoryReads       map[string]pendingThreadHistoryRead
 	startHeadless                   func(relayruntime.HeadlessLaunchOptions) (int, error)
 	stopProcess                     func(int, time.Duration) error
 	sendAgentCommand                func(string, agentproto.Command) error
@@ -225,6 +232,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		headlessRestoreState:         map[string]*headlessRestoreRecoveryState{},
 		startupRefreshPending:        map[string]bool{},
 		managedHeadless:              map[string]*managedHeadlessProcess{},
+		pendingThreadHistoryReads:    map[string]pendingThreadHistoryRead{},
 		startHeadless:                relayruntime.StartDetachedWrapper,
 		stopProcess:                  relayruntime.TerminateProcess,
 		ingress:                      newIngressPump(),

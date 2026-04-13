@@ -30,6 +30,7 @@ type Translator struct {
 	pendingThreadReads         map[string]string
 	threadRefreshRecords       map[string]agentproto.ThreadSnapshotRecord
 	threadRefreshOrder         []string
+	pendingThreadHistoryReads  map[string]pendingThreadHistoryRead
 	pendingSuppressedResponse  map[string]suppressedResponseContext
 }
 
@@ -45,6 +46,11 @@ type pendingThreadResume struct {
 type pendingThreadNameSet struct {
 	ThreadID string
 	Name     string
+}
+
+type pendingThreadHistoryRead struct {
+	CommandID string
+	ThreadID  string
 }
 
 type suppressedResponseContext struct {
@@ -76,6 +82,7 @@ func NewTranslator(instanceID string) *Translator {
 		turnStartByThread:         map[string]map[string]any{},
 		pendingThreadReads:        map[string]string{},
 		threadRefreshRecords:      map[string]agentproto.ThreadSnapshotRecord{},
+		pendingThreadHistoryReads: map[string]pendingThreadHistoryRead{},
 		pendingSuppressedResponse: map[string]suppressedResponseContext{},
 	}
 }

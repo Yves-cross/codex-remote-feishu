@@ -218,6 +218,24 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			}
 			return Result{Suppress: true}, nil
 		}
+		if pending, exists := t.pendingThreadHistoryReads[requestID]; exists {
+			delete(t.pendingThreadHistoryReads, requestID)
+			history := parseThreadHistoryRecord(message["result"])
+			threadID := choose(history.Thread.ThreadID, pending.ThreadID)
+			if threadID == "" {
+				threadID = pending.ThreadID
+			}
+			history.Thread.ThreadID = threadID
+			return Result{
+				Suppress: true,
+				Events: []agentproto.Event{{
+					Kind:          agentproto.EventThreadHistoryRead,
+					CommandID:     pending.CommandID,
+					ThreadID:      threadID,
+					ThreadHistory: &history,
+				}},
+			}, nil
+		}
 	}
 
 	method, _ := message["method"].(string)

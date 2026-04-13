@@ -570,6 +570,10 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	syncSurfaceResumeState := false
 	for _, event := range events {
 		now := time.Now().UTC()
+		if historyEvents, handled := a.handleThreadHistoryEventLocked(instanceID, event); handled {
+			a.handleUIEvents(ctx, historyEvents)
+			continue
+		}
 		if event.Kind == agentproto.EventTurnCompleted {
 			a.traceTurnLifecycle(instanceID, event)
 		}
@@ -655,6 +659,10 @@ func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentprot
 		summarizeRemoteStatuses(a.service.ActiveRemoteTurns()),
 	)
 	if a.noteManagedRefreshAckLocked(instanceID, ack) {
+		return
+	}
+	if historyEvents, handled := a.handleThreadHistoryCommandAckLocked(instanceID, ack); handled {
+		a.handleUIEvents(ctx, historyEvents)
 		return
 	}
 	if ack.Accepted {

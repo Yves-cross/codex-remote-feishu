@@ -188,6 +188,7 @@ type SurfaceConsoleRecord struct {
 	ActiveCommandCapture *CommandCaptureRecord
 	ActivePathPicker     *ActivePathPickerRecord
 	ActiveExecProgress   *ExecCommandProgressRecord
+	LastThreadHistory    *agentproto.ThreadHistoryRecord
 	LastSelection        *SelectionAnnouncementRecord
 	AutoContinue         AutoContinueRuntimeRecord
 }

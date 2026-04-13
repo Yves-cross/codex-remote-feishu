@@ -25,6 +25,8 @@ func (a *App) handleDaemonCommand(command control.DaemonCommand) []control.UIEve
 		return a.handleUpgradeDaemonCommand(command)
 	case control.DaemonCommandVSCodeMigrate:
 		return a.handleVSCodeMigrateCommand(command)
+	case control.DaemonCommandThreadHistoryRead:
+		return a.handleThreadHistoryDaemonCommand(command)
 	default:
 		return nil
 	}

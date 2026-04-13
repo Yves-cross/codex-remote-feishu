@@ -133,6 +133,25 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			return nil, err
 		}
 		return [][]byte{append(bytes, '\n')}, nil
+	case agentproto.CommandThreadHistoryRead:
+		requestID := t.nextRequest("thread-history-read")
+		t.pendingThreadHistoryReads[requestID] = pendingThreadHistoryRead{
+			CommandID: command.CommandID,
+			ThreadID:  command.Target.ThreadID,
+		}
+		payload := map[string]any{
+			"id":     requestID,
+			"method": "thread/read",
+			"params": map[string]any{
+				"threadId":     command.Target.ThreadID,
+				"includeTurns": true,
+			},
+		}
+		bytes, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		return [][]byte{append(bytes, '\n')}, nil
 	case agentproto.CommandRequestRespond:
 		return t.translateRequestRespond(command)
 	default:

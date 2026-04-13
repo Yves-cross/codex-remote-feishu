@@ -27,6 +27,7 @@ type EventKind string
 
 const (
 	EventThreadsSnapshot          EventKind = "threads.snapshot"
+	EventThreadHistoryRead        EventKind = "thread.history.read"
 	EventThreadDiscovered         EventKind = "thread.discovered"
 	EventThreadFocused            EventKind = "thread.focused"
 	EventConfigObserved           EventKind = "config.observed"
@@ -61,6 +62,7 @@ type FileChangeRecord struct {
 type Event struct {
 	Seq             uint64                 `json:"seq,omitempty"`
 	Kind            EventKind              `json:"kind"`
+	CommandID       string                 `json:"commandId,omitempty"`
 	ThreadID        string                 `json:"threadId,omitempty"`
 	TurnID          string                 `json:"turnId,omitempty"`
 	ItemID          string                 `json:"itemId,omitempty"`
@@ -85,6 +87,7 @@ type Event struct {
 	Problem         *ErrorInfo             `json:"problem,omitempty"`
 	TokenUsage      *ThreadTokenUsage      `json:"tokenUsage,omitempty"`
 	PlanSnapshot    *TurnPlanSnapshot      `json:"planSnapshot,omitempty"`
+	ThreadHistory   *ThreadHistoryRecord   `json:"threadHistory,omitempty"`
 	Metadata        map[string]any         `json:"metadata,omitempty"`
 	Threads         []ThreadSnapshotRecord `json:"threads,omitempty"`
 	FileChanges     []FileChangeRecord     `json:"fileChanges,omitempty"`
@@ -103,15 +106,41 @@ type ThreadSnapshotRecord struct {
 	ListOrder       int    `json:"listOrder,omitempty"`
 }
 
+type ThreadHistoryRecord struct {
+	Thread ThreadSnapshotRecord      `json:"thread"`
+	Turns  []ThreadHistoryTurnRecord `json:"turns,omitempty"`
+}
+
+type ThreadHistoryTurnRecord struct {
+	TurnID       string                    `json:"turnId"`
+	Status       string                    `json:"status,omitempty"`
+	StartedAt    time.Time                 `json:"startedAt,omitempty"`
+	CompletedAt  time.Time                 `json:"completedAt,omitempty"`
+	ErrorMessage string                    `json:"errorMessage,omitempty"`
+	RequestID    string                    `json:"requestId,omitempty"`
+	Items        []ThreadHistoryItemRecord `json:"items,omitempty"`
+}
+
+type ThreadHistoryItemRecord struct {
+	ItemID   string `json:"itemId"`
+	Kind     string `json:"kind,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Command  string `json:"command,omitempty"`
+	CWD      string `json:"cwd,omitempty"`
+	ExitCode *int   `json:"exitCode,omitempty"`
+}
+
 type CommandKind string
 
 const (
-	CommandPromptSend     CommandKind = "prompt.send"
-	CommandTurnSteer      CommandKind = "turn.steer"
-	CommandTurnInterrupt  CommandKind = "turn.interrupt"
-	CommandRequestRespond CommandKind = "request.respond"
-	CommandThreadsRefresh CommandKind = "threads.refresh"
-	CommandProcessExit    CommandKind = "process.exit"
+	CommandPromptSend        CommandKind = "prompt.send"
+	CommandTurnSteer         CommandKind = "turn.steer"
+	CommandTurnInterrupt     CommandKind = "turn.interrupt"
+	CommandRequestRespond    CommandKind = "request.respond"
+	CommandThreadsRefresh    CommandKind = "threads.refresh"
+	CommandThreadHistoryRead CommandKind = "thread.history.read"
+	CommandProcessExit       CommandKind = "process.exit"
 )
 
 type InputKind string

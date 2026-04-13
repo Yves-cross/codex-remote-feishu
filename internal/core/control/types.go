@@ -496,11 +496,12 @@ const (
 type DaemonCommandKind string
 
 const (
-	DaemonCommandStartHeadless DaemonCommandKind = "headless.start"
-	DaemonCommandKillHeadless  DaemonCommandKind = "headless.kill"
-	DaemonCommandDebug         DaemonCommandKind = "debug.command"
-	DaemonCommandUpgrade       DaemonCommandKind = "upgrade.command"
-	DaemonCommandVSCodeMigrate DaemonCommandKind = "vscode.migrate"
+	DaemonCommandStartHeadless     DaemonCommandKind = "headless.start"
+	DaemonCommandKillHeadless      DaemonCommandKind = "headless.kill"
+	DaemonCommandDebug             DaemonCommandKind = "debug.command"
+	DaemonCommandUpgrade           DaemonCommandKind = "upgrade.command"
+	DaemonCommandVSCodeMigrate     DaemonCommandKind = "vscode.migrate"
+	DaemonCommandThreadHistoryRead DaemonCommandKind = "thread.history.read"
 )
 
 type DaemonCommand struct {

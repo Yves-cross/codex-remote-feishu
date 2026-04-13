@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-13`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件，以及 `turn/plan/updated` 的结构化计划快照事件。
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn/plan/updated` 的结构化计划快照事件，以及新的 `thread.history.read` 定向历史查询 command/event。
 
 ## 1. 文档定位
 
@@ -204,13 +204,14 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 ## 4. Canonical Command
 
-当前只实现六个公共 command：
+当前只实现七个公共 command：
 
 - `prompt.send`
 - `turn.steer`
 - `turn.interrupt`
 - `request.respond`
 - `threads.refresh`
+- `thread.history.read`
 - `process.exit`
 
 这些 command 的真实定义在 [types.go](../../internal/core/agentproto/types.go)。
@@ -300,7 +301,22 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 触发 wrapper 走 `thread/list + thread/read`，再返回标准化的 `threads.snapshot`。
 
-### 4.6 `process.exit`
+### 4.6 `thread.history.read`
+
+用于让 daemon 按需向某个 wrapper 查询指定 thread 的完整历史。
+
+关键字段：
+
+- `commandId`
+- `target.threadId`
+
+当前 wrapper 侧语义：
+
+- translator 把它翻译成 native `thread/read`
+- 固定带 `includeTurns=true`
+- 成功后不复用 `threads.snapshot`，而是回传单独的 `thread.history.read` event
+
+### 4.7 `process.exit`
 
 由 daemon 在 shutdown / upgrade 窗口下发，要求 wrapper 自行退出并结束其 child `codex app-server`。
 
@@ -315,6 +331,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 当前事件类型：
 
 - `threads.snapshot`
+- `thread.history.read`
 - `thread.discovered`
 - `thread.focused`
 - `thread.token_usage.updated`
@@ -329,7 +346,25 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `request.started`
 - `request.resolved`
 
-### 5.1 关键字段
+### 5.1 `thread.history.read`
+
+这是一个 command-correlated result event，用于把 `thread/read(includeTurns=true)` 的结构化结果从 wrapper 定向送回 daemon。
+
+关键字段：
+
+- `commandId`
+- `threadId`
+- `threadHistory`
+  - `thread`
+  - `turns[]`
+    - `turnId`
+    - `status`
+    - `startedAt`
+    - `completedAt`
+    - `errorMessage`
+    - `items[]`
+
+### 5.2 关键字段
 
 #### `initiator`
 
@@ -399,7 +434,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `item/plan/delta` 仍属于 `item.delta` 文本流，不会被折叠成 `planSnapshot`
 - orchestrator 在产品层按 live turn + surface 去重同内容快照，避免重复投影相同计划更新
 
-### 5.2 Request 元数据
+### 5.3 Request 元数据
 
 `request.started` 当前至少会携带：
 
@@ -423,7 +458,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - 若 upstream 未显式给出 option，但请求种类可确认支持 session 级放行，则补出 `acceptForSession`
 - `captureFeedback` 只存在于 Feishu `request.prompt` 渲染层，不回写到 canonical event
 
-### 5.3 Helper/Internal traffic 规则
+### 5.4 Helper/Internal traffic 规则
 
 当前冻结规则：
 

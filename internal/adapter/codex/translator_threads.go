@@ -1,6 +1,11 @@
 package codex
 
-import "github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+import (
+	"strings"
+	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+)
 
 func parseThreadList(result any) []agentproto.ThreadSnapshotRecord {
 	var raw []any
@@ -85,4 +90,121 @@ func parseThreadRecord(result any) agentproto.ThreadSnapshotRecord {
 			object["list_order"],
 		)),
 	}
+}
+
+func parseThreadHistoryRecord(result any) agentproto.ThreadHistoryRecord {
+	record := agentproto.ThreadHistoryRecord{}
+	if object, ok := result.(map[string]any); ok {
+		record.Thread = parseThreadRecord(object)
+		turnSource := object["turns"]
+		if turnSource == nil {
+			if thread, ok := object["thread"].(map[string]any); ok {
+				if record.Thread.ThreadID == "" {
+					record.Thread = parseThreadRecord(thread)
+				}
+				turnSource = thread["turns"]
+			}
+		}
+		record.Turns = parseThreadHistoryTurns(turnSource)
+	}
+	return record
+}
+
+func parseThreadHistoryTurns(source any) []agentproto.ThreadHistoryTurnRecord {
+	raw := contentArrayValues(source)
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]agentproto.ThreadHistoryTurnRecord, 0, len(raw))
+	for _, current := range raw {
+		turnMap, _ := current.(map[string]any)
+		if turnMap == nil {
+			continue
+		}
+		record := agentproto.ThreadHistoryTurnRecord{
+			TurnID: choose(
+				lookupStringFromAny(turnMap["id"]),
+				lookupStringFromAny(turnMap["turnId"]),
+			),
+			Status: choose(
+				lookupStringFromAny(turnMap["status"]),
+				lookupStringFromAny(turnMap["state"]),
+			),
+			StartedAt:    parseProtocolTime(firstNonNil(turnMap["startedAt"], turnMap["started_at"], turnMap["createdAt"], turnMap["created_at"])),
+			CompletedAt:  parseProtocolTime(firstNonNil(turnMap["completedAt"], turnMap["completed_at"], turnMap["finishedAt"], turnMap["finished_at"])),
+			ErrorMessage: choose(lookupStringFromAny(turnMap["errorMessage"]), lookupString(turnMap, "error", "message")),
+			RequestID:    choose(lookupStringFromAny(turnMap["requestId"]), lookupStringFromAny(turnMap["request_id"])),
+			Items:        parseThreadHistoryItems(turnMap["items"]),
+		}
+		if record.TurnID == "" {
+			continue
+		}
+		out = append(out, record)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parseThreadHistoryItems(source any) []agentproto.ThreadHistoryItemRecord {
+	raw := contentArrayValues(source)
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]agentproto.ThreadHistoryItemRecord, 0, len(raw))
+	for _, current := range raw {
+		itemMap, _ := current.(map[string]any)
+		if itemMap == nil {
+			continue
+		}
+		itemKind := normalizeItemKind(choose(
+			lookupStringFromAny(itemMap["type"]),
+			lookupString(itemMap, "item", "type"),
+		))
+		record := agentproto.ThreadHistoryItemRecord{
+			ItemID: choose(
+				lookupStringFromAny(itemMap["id"]),
+				lookupStringFromAny(itemMap["itemId"]),
+			),
+			Kind:   itemKind,
+			Status: extractItemStatus(itemMap),
+			Text:   extractItemText(itemMap),
+		}
+		if itemKind == "command_execution" {
+			if metadata := extractItemMetadata(itemKind, itemMap); len(metadata) != 0 {
+				if command, _ := metadata["command"].(string); strings.TrimSpace(command) != "" {
+					record.Command = strings.TrimSpace(command)
+				}
+				if cwd, _ := metadata["cwd"].(string); strings.TrimSpace(cwd) != "" {
+					record.CWD = strings.TrimSpace(cwd)
+				}
+				if exitCode, ok := metadata["exitCode"].(int); ok {
+					value := exitCode
+					record.ExitCode = &value
+				}
+			}
+		}
+		if record.ItemID == "" && record.Kind == "" && record.Text == "" && record.Command == "" {
+			continue
+		}
+		out = append(out, record)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parseProtocolTime(value any) time.Time {
+	text := strings.TrimSpace(lookupStringFromAny(value))
+	if text == "" {
+		return time.Time{}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
