@@ -50,9 +50,16 @@ type fakeGitHubClient struct {
 	removedLabels []string
 	commentedFile string
 	closed        bool
+	fetchErr      error
+	removeErr     error
+	commentErr    error
+	closeErr      error
 }
 
 func (f *fakeGitHubClient) FetchIssue(context.Context, Repo, int, int) (Issue, error) {
+	if f.fetchErr != nil {
+		return Issue{}, f.fetchErr
+	}
 	return f.issue, nil
 }
 func (f *fakeGitHubClient) AddLabels(_ context.Context, _ Repo, _ int, labels []string) error {
@@ -60,14 +67,23 @@ func (f *fakeGitHubClient) AddLabels(_ context.Context, _ Repo, _ int, labels []
 	return nil
 }
 func (f *fakeGitHubClient) RemoveLabels(_ context.Context, _ Repo, _ int, labels []string) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
 	f.removedLabels = append(f.removedLabels, labels...)
 	return nil
 }
 func (f *fakeGitHubClient) Comment(_ context.Context, _ Repo, _ int, bodyFile string) error {
+	if f.commentErr != nil {
+		return f.commentErr
+	}
 	f.commentedFile = bodyFile
 	return nil
 }
 func (f *fakeGitHubClient) Close(context.Context, Repo, int) error {
+	if f.closeErr != nil {
+		return f.closeErr
+	}
 	f.closed = true
 	return nil
 }
@@ -212,6 +228,81 @@ func TestFinishRunsChecksAndReleasesProcessing(t *testing.T) {
 	}
 	if gh.commentedFile != commentFile || !gh.closed || len(gh.removedLabels) != 1 || gh.removedLabels[0] != "processing" {
 		t.Fatalf("unexpected github side effects: %#v", gh)
+	}
+}
+
+func TestFinishReleasesProcessingWhenCommentFails(t *testing.T) {
+	root := t.TempDir()
+	commentFile := filepath.Join(root, "comment.md")
+	if err := os.WriteFile(commentFile, []byte("done"), 0o644); err != nil {
+		t.Fatalf("WriteFile comment: %v", err)
+	}
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number: 22,
+			Labels: []string{"processing"},
+		},
+		commentErr: os.ErrPermission,
+	}
+	svc := &Service{
+		RootDir: root,
+		Git: &fakeGitClient{
+			originURL:       "https://github.com/kxn/codex-remote-feishu.git",
+			diffCheckOutput: map[bool]string{false: "", true: ""},
+			diffCheckErr:    map[bool]error{},
+		},
+		GitHub: gh,
+		Now:    time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		CommentFile:       commentFile,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err == nil || !strings.Contains(err.Error(), os.ErrPermission.Error()) {
+		t.Fatalf("Finish error = %v, want comment error", err)
+	}
+	if !result.ProcessingReleased {
+		t.Fatalf("expected processing to be released on comment failure, got %#v", result)
+	}
+	if len(gh.removedLabels) != 1 || gh.removedLabels[0] != "processing" {
+		t.Fatalf("removed labels = %#v, want processing", gh.removedLabels)
+	}
+}
+
+func TestFinishReleasesProcessingWhenChecksFail(t *testing.T) {
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number: 22,
+			Labels: []string{"processing"},
+		},
+	}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git: &fakeGitClient{
+			originURL:       "https://github.com/kxn/codex-remote-feishu.git",
+			diffCheckOutput: map[bool]string{false: "dirty", true: ""},
+			diffCheckErr:    map[bool]error{false: os.ErrInvalid},
+		},
+		GitHub: gh,
+		Now:    time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		ReleaseProcessing: true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	if !hasFailedCheck(result.Checks) {
+		t.Fatalf("expected failed checks, got %#v", result.Checks)
+	}
+	if !result.ProcessingReleased {
+		t.Fatalf("expected processing to be released on check failure, got %#v", result)
+	}
+	if len(gh.removedLabels) != 1 || gh.removedLabels[0] != "processing" {
+		t.Fatalf("removed labels = %#v, want processing", gh.removedLabels)
 	}
 }
 

@@ -3,6 +3,7 @@ package issueworkflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,8 +126,8 @@ func (s *Service) Lint(ctx context.Context, opts LintOptions) (LintResult, error
 	return result, nil
 }
 
-func (s *Service) Finish(ctx context.Context, opts FinishOptions) (FinishResult, error) {
-	result := FinishResult{IssueNumber: opts.IssueNumber}
+func (s *Service) Finish(ctx context.Context, opts FinishOptions) (result FinishResult, err error) {
+	result = FinishResult{IssueNumber: opts.IssueNumber}
 	if opts.IssueNumber <= 0 {
 		return result, fmt.Errorf("finish requires a positive issue number")
 	}
@@ -135,6 +136,14 @@ func (s *Service) Finish(ctx context.Context, opts FinishOptions) (FinishResult,
 		return result, err
 	}
 	result.Repo = repo.String()
+	defer func() {
+		released, releaseErr := s.releaseProcessingLabel(ctx, repo, opts.IssueNumber, opts.ReleaseProcessing)
+		result.ProcessingReleased = released
+		if releaseErr == nil {
+			return
+		}
+		err = errors.Join(err, releaseErr)
+	}()
 	if !opts.SkipChecks {
 		if result.ChangedFiles, err = s.Git.ChangedFilesFromHEAD(ctx); err != nil {
 			return result, err
@@ -161,10 +170,6 @@ func (s *Service) Finish(ctx context.Context, opts FinishOptions) (FinishResult,
 			return result, nil
 		}
 	}
-	issue, err := s.GitHub.FetchIssue(ctx, repo, opts.IssueNumber, 1)
-	if err != nil {
-		return result, err
-	}
 	if strings.TrimSpace(opts.CommentFile) != "" {
 		if _, err := os.Stat(opts.CommentFile); err != nil {
 			return result, err
@@ -180,13 +185,24 @@ func (s *Service) Finish(ctx context.Context, opts FinishOptions) (FinishResult,
 		}
 		result.IssueClosed = true
 	}
-	if opts.ReleaseProcessing && hasLabel(issue.Labels, processingLabel) {
-		if err := s.GitHub.RemoveLabels(ctx, repo, opts.IssueNumber, []string{processingLabel}); err != nil {
-			return result, err
-		}
-		result.ProcessingReleased = true
-	}
 	return result, nil
+}
+
+func (s *Service) releaseProcessingLabel(ctx context.Context, repo Repo, issueNumber int, enabled bool) (bool, error) {
+	if !enabled {
+		return false, nil
+	}
+	issue, err := s.GitHub.FetchIssue(ctx, repo, issueNumber, 1)
+	if err != nil {
+		return false, err
+	}
+	if !hasLabel(issue.Labels, processingLabel) {
+		return false, nil
+	}
+	if err := s.GitHub.RemoveLabels(ctx, repo, issueNumber, []string{processingLabel}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
