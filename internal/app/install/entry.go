@@ -106,6 +106,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		Integrations:       integrations,
 		BootstrapOnly:      *bootstrapOnly,
 	}
+	preserveInstallOptionsFromExistingState(flagSet, selection.StatePath, &opts)
 	if *interactive {
 		opts, err = RunInteractiveWizard(stdin, stdout, defaults, opts)
 		if err != nil {
@@ -175,6 +176,55 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	return err
 }
 
+func preserveInstallOptionsFromExistingState(flagSet *flag.FlagSet, statePath string, opts *Options) {
+	if flagSet == nil || opts == nil || strings.TrimSpace(statePath) == "" {
+		return
+	}
+	existing, err := LoadState(statePath)
+	if err != nil {
+		return
+	}
+
+	if !flagWasProvided(flagSet, "service-manager") {
+		opts.ServiceManager = existing.ServiceManager
+	}
+	if !flagWasProvided(flagSet, "install-source") {
+		opts.InstallSource = existing.InstallSource
+	}
+	if !flagWasProvided(flagSet, "current-track") {
+		opts.CurrentTrack = existing.CurrentTrack
+	}
+	if !flagWasProvided(flagSet, "versions-root") {
+		opts.VersionsRoot = existing.VersionsRoot
+	}
+	if !flagWasProvided(flagSet, "current-slot") {
+		opts.CurrentSlot = existing.CurrentSlot
+	}
+	if !flagWasProvided(flagSet, "vscode-settings") && strings.TrimSpace(existing.VSCodeSettingsPath) != "" {
+		opts.VSCodeSettingsPath = existing.VSCodeSettingsPath
+	}
+	if !flagWasProvided(flagSet, "bundle-entrypoint") && strings.TrimSpace(existing.BundleEntrypoint) != "" {
+		opts.BundleEntrypoint = existing.BundleEntrypoint
+	}
+}
+
+func resolveUpgradeHelperBinary(statePath string) (string, error) {
+	helperBinary, execErr := executablePath()
+	if strings.TrimSpace(helperBinary) != "" {
+		return helperBinary, nil
+	}
+	stateValue, err := LoadState(statePath)
+	if err == nil {
+		helperBinary = firstNonEmpty(
+			strings.TrimSpace(stateValue.CurrentBinaryPath),
+			strings.TrimSpace(stateValue.InstalledBinary),
+		)
+		if helperBinary != "" {
+			return helperBinary, nil
+		}
+	}
+	return "", execErr
+}
 func defaultBinaryPath(goos string) string {
 	name := executableName(goos)
 	path, err := executablePath()

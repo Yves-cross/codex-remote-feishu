@@ -1,0 +1,71 @@
+package install
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+)
+
+func TestRepairRuntimeStateUpdatesBinaryVersionAndPromotesLiveSystemdUnit(t *testing.T) {
+	baseDir := t.TempDir()
+	homeDir := t.TempDir()
+	originalHome := serviceUserHomeDir
+	serviceUserHomeDir = func() (string, error) { return homeDir, nil }
+	defer func() { serviceUserHomeDir = originalHome }()
+
+	originalRunner := systemctlUserRunner
+	systemctlUserRunner = func(ctx context.Context, args ...string) (string, error) {
+		if len(args) >= 1 && args[0] == "show" {
+			return "ActiveState=active\nMainPID=43210\n", nil
+		}
+		return "", nil
+	}
+	defer func() { systemctlUserRunner = originalRunner }()
+
+	state := InstallState{
+		InstanceID:             "beta",
+		BaseDir:                baseDir,
+		StatePath:              defaultInstallStatePathForInstance(baseDir, "beta"),
+		ServiceManager:         ServiceManagerDetached,
+		CurrentBinaryPath:      "/old/bin/codex-remote",
+		InstalledBinary:        "/old/bin/codex-remote",
+		InstalledWrapperBinary: "/old/bin/codex-remote",
+		InstalledRelaydBinary:  "/old/bin/codex-remote",
+		CurrentVersion:         "v1.0.0",
+		ConfigPath:             "/old/config.json",
+	}
+
+	changed := RepairRuntimeState(&state, RuntimeStateRepairOptions{
+		CurrentBinaryPath: "/new/bin/codex-remote",
+		CurrentVersion:    "v1.5.0-beta.9",
+		ConfigPath:        "/new/config.json",
+		PID:               43210,
+	})
+	if !changed {
+		t.Fatal("expected runtime state repair to report changes")
+	}
+	if state.ServiceManager != ServiceManagerSystemdUser {
+		t.Fatalf("ServiceManager = %q, want %q", state.ServiceManager, ServiceManagerSystemdUser)
+	}
+	if state.ServiceUnitPath != filepath.Join(homeDir, ".config", "systemd", "user", "codex-remote-beta.service") {
+		t.Fatalf("ServiceUnitPath = %q", state.ServiceUnitPath)
+	}
+	if state.CurrentBinaryPath != "/new/bin/codex-remote" {
+		t.Fatalf("CurrentBinaryPath = %q", state.CurrentBinaryPath)
+	}
+	if state.InstalledBinary != "/new/bin/codex-remote" {
+		t.Fatalf("InstalledBinary = %q", state.InstalledBinary)
+	}
+	if state.InstalledWrapperBinary != "/new/bin/codex-remote" {
+		t.Fatalf("InstalledWrapperBinary = %q", state.InstalledWrapperBinary)
+	}
+	if state.InstalledRelaydBinary != "/new/bin/codex-remote" {
+		t.Fatalf("InstalledRelaydBinary = %q", state.InstalledRelaydBinary)
+	}
+	if state.CurrentVersion != "v1.5.0-beta.9" {
+		t.Fatalf("CurrentVersion = %q", state.CurrentVersion)
+	}
+	if state.ConfigPath != "/new/config.json" {
+		t.Fatalf("ConfigPath = %q", state.ConfigPath)
+	}
+}

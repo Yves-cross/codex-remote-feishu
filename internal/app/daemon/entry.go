@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/codexstate"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/conversationtrace"
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
@@ -73,6 +75,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 		return err
 	}
 	defer os.Remove(paths.IdentityFile)
+	repairInstallStateOnStartup(paths, identity)
 
 	env := envMap(os.Environ())
 	startup := buildStartupAccessPlan(loadedConfig.Config, cfg, env)
@@ -165,6 +168,26 @@ func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startu
 		return fmt.Errorf("run daemon: %w", err)
 	}
 	return nil
+}
+
+func repairInstallStateOnStartup(paths relayruntime.Paths, identity agentproto.ServerIdentity) {
+	statePath := filepath.Join(paths.DataDir, "install-state.json")
+	state, err := loadInstallStateIfPresent(statePath)
+	if err != nil || state == nil {
+		return
+	}
+	state.StatePath = statePath
+	if !install.RepairRuntimeState(state, install.RuntimeStateRepairOptions{
+		CurrentBinaryPath: identity.BinaryPath,
+		CurrentVersion:    identity.Version,
+		ConfigPath:        identity.ConfigPath,
+		PID:               identity.PID,
+	}) {
+		return
+	}
+	if err := install.WriteState(statePath, *state); err != nil {
+		log.Printf("startup install-state repair skipped: %v", err)
+	}
 }
 
 func runtimeGatewayApps(appConfig config.AppConfig, services config.ServicesConfig, paths relayruntime.Paths) []feishu.GatewayAppConfig {
