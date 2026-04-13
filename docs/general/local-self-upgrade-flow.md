@@ -1,8 +1,8 @@
 # 本地自升级流程
 
 > Type: `general`
-> Updated: `2026-04-12`
-> Summary: 新增 repo 构建产物触发本地自升级时的完整时序、关键路径、helper 启动方式与自动回滚规则说明。
+> Updated: `2026-04-13`
+> Summary: 说明 repo 构建产物触发本地自升级时的完整时序、内嵌 upgrade shim 的释放与启动方式，以及自动回滚规则。
 
 ## 1. 这份文档回答什么问题
 
@@ -13,7 +13,7 @@
 - `./upgrade-local.sh` 做了什么
 - `codex-remote local-upgrade` 做了什么
 - 真正负责切换 live binary 的 helper 是谁
-- helper 从哪里来，复制到哪里，怎么启动
+- helper 从哪里来，释放到哪里，怎么启动
 - 自动回滚在什么条件下触发
 - 多实例 / workspace 绑定下，升级到底打到哪个实例
 
@@ -75,17 +75,23 @@ Windows 下文件名为 `codex-remote.exe`。
 
 helper 真正切换版本时，覆盖的是这条路径。
 
-### 3.5 upgrade helper binary
+### 3.5 upgrade helper shim
 
 真正执行“停旧服务 -> 切换 stable binary -> 拉起新服务 -> 观察健康 -> 必要时回滚”的，是一个独立 helper 进程。
 
-这个 helper 不是直接拿 live binary 原地执行，而是先复制一份到：
+这个 helper 不再复用主 `codex-remote` binary 本体，而是一个构建时内嵌在主程序里的 tiny shim。需要执行升级事务时，当前进程会把它释放到：
 
 ```text
-<stateDir>/upgrade-helper/codex-remote-upgrade-helper-<timestamp>
+<stateDir>/upgrade-helper/codex-remote-upgrade-shim-<timestamp>
 ```
 
-这样即使当前服务被停止，helper 也能继续活着把后续事务跑完。
+同时会在旁边写入 sidecar：
+
+```text
+<stateDir>/upgrade-helper/codex-remote-upgrade-shim-<timestamp>.remote.json
+```
+
+sidecar 至少绑定当前事务对应的 `install-state.json`。这样即使当前服务被停止，shim 也能继续活着把后续事务跑完。
 
 ### 3.6 rollback bundle
 
@@ -129,12 +135,13 @@ repo 里常用的辅助解析入口是：
 通过检查后，它会：
 
 1. `git pull --ff-only`
-2. 构建 `./bin/codex-remote`
+2. 准备 host 平台的内嵌 upgrade shim 资产
+3. 构建 `./bin/codex-remote`
 
-这一步产出的 `./bin/codex-remote` 有两个用途：
+这一步产出的 `./bin/codex-remote` 的主要用途是：
 
 - 作为本次升级的 source build
-- 作为这次事务优先使用的 helper 来源
+- 携带当前 host 平台的内嵌 upgrade shim 资产，供后续 `local-upgrade` 释放
 
 ### 5.2 第二步：解析 repo 绑定实例
 
@@ -168,12 +175,8 @@ repo 里常用的辅助解析入口是：
 
 注意这里是“刚构建出的 repo binary”在执行 `local-upgrade` 子命令。
 
-当前实现中，helper binary 的解析顺序是：
-
-1. 先用当前进程的 `os.Executable()`
-2. 如果拿不到，再回退到 install-state 里的 `CurrentBinaryPath` / `InstalledBinary`
-
-所以在 `./upgrade-local.sh` 这条路径里，helper 的原始来源通常就是刚构建出的 `./bin/codex-remote`。这和 artifact 虽然都来自同一个 build 输出，但在事务里扮演的是两种不同角色。
+当前实现中，不再去解析“helper 来自哪个主 binary”。`local-upgrade` 会直接从当前执行体里释放内嵌的 upgrade shim，并为它写 sidecar。  
+所以在 `./upgrade-local.sh` 这条路径里，repo build 输出和 helper 仍然相关，但关系已经变成“主 binary 携带 shim 资产”，而不是“主 binary 自己被复制成 helper”。
 
 ## 6. `local-upgrade` 在内部做了什么
 
@@ -191,9 +194,9 @@ repo 里常用的辅助解析入口是：
    - `RollbackCandidate`
    - `PendingUpgrade.phase=prepared`
    - 目标 source / slot / version / targetBinaryPath
-8. 把 helper binary 复制到 state 目录下的 `upgrade-helper/`
+8. 把内嵌 upgrade shim 释放到 state 目录下的 `upgrade-helper/`，并写 sidecar
 9. 以独立进程方式启动：
-   - `upgrade-helper -state-path <statePath>`
+   - 直接执行 shim，自身通过 sidecar 找到 `install-state.json`
 10. 把 helper 的 transient unit 名称等信息再写回 `PendingUpgrade`
 
 到这里为止，`local-upgrade` 这条命令就结束了。真正的切换动作在后面那个 helper 里。
@@ -232,13 +235,13 @@ systemd-run --user --no-block --collect --quiet --service-type=exec ...
 
 ## 8. helper 的切换与观测流程
 
-helper 入口是：
+helper shim 入口是一个独立 binary，本身不再接受 `upgrade-helper -state-path ...` 这种子命令参数，而是：
 
 ```bash
-upgrade-helper -state-path <statePath>
+<stateDir>/upgrade-helper/codex-remote-upgrade-shim-<timestamp>
 ```
 
-它只接受已经处于 `PendingUpgrade.phase=prepared` 的事务。
+它会先读同路径旁边的 sidecar，再进入已经处于 `PendingUpgrade.phase=prepared` 的事务。
 
 完整流程是：
 
@@ -300,7 +303,7 @@ upgrade-helper -state-path <statePath>
 
 `<stateDir>/local-upgrade/codex-remote` 是升级源 artifact。
 
-`<stateDir>/upgrade-helper/...` 是真正执行升级事务的 helper 副本。
+`<stateDir>/upgrade-helper/...` 是真正执行升级事务的 helper shim 与 sidecar。
 
 它们可能来自同一个 repo build，但不是同一路径，也不是同一个职责。
 
@@ -315,9 +318,10 @@ upgrade-helper -state-path <statePath>
 
 真正改 `CurrentBinaryPath` 的动作发生在 helper 中。
 
-### 10.3 helper 优先使用“当前执行 `local-upgrade` 的 binary”
+### 10.3 helper 不再来自“当前执行 `local-upgrade` 的 binary 副本”
 
-这就是为什么最近实现改成“用当前 CLI binary 作为 upgrade helper”后，`./upgrade-local.sh` 能自然拿到刚构建的新 helper，而不需要再额外指定一个单独的 helper 路径。
+当前实现里，主 binary 只负责携带并释放内嵌 shim 资产。  
+是否更新 shim，不由普通业务发版直接驱动；只有 shim 本身或 sidecar schema 发生变化时，才需要重新准备对应平台的嵌入资产。
 
 ### 10.4 `systemd_user` 下 helper 不是原 service 的一部分
 
@@ -337,8 +341,11 @@ local upgrade artifact:
 target slot binary:
 <versionsRoot>/<slot>/codex-remote
 
-helper copy:
-<stateDir>/upgrade-helper/codex-remote-upgrade-helper-<timestamp>
+helper shim:
+<stateDir>/upgrade-helper/codex-remote-upgrade-shim-<timestamp>
+
+helper sidecar:
+<stateDir>/upgrade-helper/codex-remote-upgrade-shim-<timestamp>.remote.json
 
 rollback backup:
 <stateDir>/upgrade-backups/<slot>/<current-binary-name>
@@ -355,8 +362,10 @@ live installed binary:
 - `upgrade-local.sh`
 - `internal/app/install/local_upgrade_entry.go`
 - `internal/app/install/local_upgrade.go`
+- `internal/app/install/upgrade_shim.go`
 - `internal/app/install/upgrade_helper_launch.go`
 - `internal/app/install/upgrade_helper.go`
+- `internal/upgradeshim/`
 - `internal/app/install/rollback_bundle.go`
 - `internal/app/install/repo_target_info.go`
 - `scripts/install/repo-install-target.sh`
