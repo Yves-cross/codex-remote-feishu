@@ -233,13 +233,17 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 		return nil
 	}
 	events := a.applyIngressActionLocked(action)
+	appendEvents := events
 	inlineResult := a.inlineCardActionResultLocked(action, events)
+	if inlineResult == nil {
+		inlineResult, appendEvents = a.bareCommandContinuationResultLocked(action, events)
+	}
 	if inlineResult == nil {
 		inlineResult = a.commandSubmissionAnchorResultLocked(action)
 	}
 	inlineNavigationReplace := inlineResult != nil && control.AllowsInlineCardReplacement(action)
 	if !inlineNavigationReplace {
-		a.handleUIEvents(ctx, events)
+		a.handleUIEvents(ctx, appendEvents)
 	}
 	var clearTargets map[string]bool
 	if a.shouldClearSurfaceResumeTargetLocked(action, before) {
@@ -311,6 +315,73 @@ func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu
 		FeishuDirectCommandCatalog: &catalog,
 	}
 	ops := a.projector.Project(a.service.SurfaceChatID(action.SurfaceSessionID), event)
+	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
+		return nil
+	}
+	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}
+}
+
+func (a *App) bareCommandContinuationResultLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+	if !allowsBareCommandContinuation(action) || len(events) != 1 || events[0].DaemonCommand == nil {
+		return nil, events
+	}
+	daemonCommand := *events[0].DaemonCommand
+	if !daemonCommandMatchesBareContinuation(action, daemonCommand) {
+		return nil, events
+	}
+	followup := a.handleDaemonCommand(daemonCommand)
+	if len(followup) == 0 {
+		return nil, nil
+	}
+	replace := a.projectFirstCardAsReplacementLocked(action, followup[0])
+	if replace == nil {
+		return nil, followup
+	}
+	if len(followup) == 1 {
+		return replace, nil
+	}
+	return replace, followup[1:]
+}
+
+func allowsBareCommandContinuation(action control.Action) bool {
+	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
+		return false
+	}
+	fields := strings.Fields(strings.TrimSpace(action.Text))
+	if len(fields) != 1 {
+		return false
+	}
+	switch action.Kind {
+	case control.ActionUpgradeCommand, control.ActionDebugCommand:
+		return true
+	default:
+		return false
+	}
+}
+
+func daemonCommandMatchesBareContinuation(action control.Action, command control.DaemonCommand) bool {
+	switch action.Kind {
+	case control.ActionUpgradeCommand:
+		return command.Kind == control.DaemonCommandUpgrade
+	case control.ActionDebugCommand:
+		return command.Kind == control.DaemonCommandDebug
+	default:
+		return false
+	}
+}
+
+func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event control.UIEvent) *feishu.ActionResult {
+	if event.Command != nil || event.DaemonCommand != nil {
+		return nil
+	}
+	if strings.TrimSpace(event.GatewayID) == "" {
+		event.GatewayID = action.GatewayID
+	}
+	if strings.TrimSpace(event.SurfaceSessionID) == "" {
+		event.SurfaceSessionID = action.SurfaceSessionID
+	}
+	event.DaemonLifecycleID = a.daemonLifecycleID
+	ops := a.projector.Project(a.service.SurfaceChatID(event.SurfaceSessionID), event)
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
 		return nil
 	}

@@ -202,6 +202,24 @@ func TestAllowsCommandSubmissionAnchorReplacement(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "bare upgrade from stamped card callback",
+			action: Action{
+				Kind:    ActionUpgradeCommand,
+				Text:    "/upgrade",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "bare debug from stamped card callback",
+			action: Action{
+				Kind:    ActionDebugCommand,
+				Text:    "/debug",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
 			name: "debug with form args stays async",
 			action: Action{
 				Kind:    ActionDebugCommand,
