@@ -69,6 +69,72 @@ func TestRunMainBootstrapOnlyPreservesExistingRelayURLWhenFlagOmitted(t *testing
 	}
 }
 
+func TestRunMainBootstrapOnlyPreservesExistingInstallMetadataWhenFlagsOmitted(t *testing.T) {
+	t.Setenv(repoRootEnvVar, t.TempDir())
+	baseDir := t.TempDir()
+	installBinDir := filepath.Join(baseDir, "installed-bin")
+	statePath := defaultInstallStatePathForInstance(baseDir, defaultInstanceID)
+	existingBinary := seedBinary(t, filepath.Join(installBinDir, executableName("linux")), "old-binary")
+	if err := WriteState(statePath, InstallState{
+		InstanceID:         defaultInstanceID,
+		BaseDir:            baseDir,
+		StatePath:          statePath,
+		ServiceManager:     ServiceManagerSystemdUser,
+		InstallSource:      InstallSourceRelease,
+		CurrentTrack:       ReleaseTrackBeta,
+		CurrentVersion:     "v1.4.0-beta.1",
+		InstalledBinary:    existingBinary,
+		CurrentBinaryPath:  existingBinary,
+		VersionsRoot:       filepath.Join(baseDir, "releases-cache"),
+		CurrentSlot:        "v1.4.0-beta.1",
+		VSCodeSettingsPath: filepath.Join(baseDir, "vscode", "settings.json"),
+		BundleEntrypoint:   filepath.Join(baseDir, "bundle", "codex"),
+	}); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+
+	sourceBinary := seedBinary(t, filepath.Join(baseDir, "src", executableName("linux")), "new-binary")
+
+	originalValidator := sourceBinaryValidator
+	sourceBinaryValidator = func(string) error { return nil }
+	defer func() { sourceBinaryValidator = originalValidator }()
+
+	if err := RunMain([]string{
+		"-bootstrap-only",
+		"-base-dir", baseDir,
+		"-install-bin-dir", installBinDir,
+		"-binary", sourceBinary,
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, "vtest"); err != nil {
+		t.Fatalf("RunMain bootstrap-only: %v", err)
+	}
+
+	updated, err := LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if updated.ServiceManager != ServiceManagerSystemdUser {
+		t.Fatalf("ServiceManager = %q, want %q", updated.ServiceManager, ServiceManagerSystemdUser)
+	}
+	if updated.InstallSource != InstallSourceRelease {
+		t.Fatalf("InstallSource = %q, want %q", updated.InstallSource, InstallSourceRelease)
+	}
+	if updated.CurrentTrack != ReleaseTrackBeta {
+		t.Fatalf("CurrentTrack = %q, want %q", updated.CurrentTrack, ReleaseTrackBeta)
+	}
+	if updated.VersionsRoot != filepath.Join(baseDir, "releases-cache") {
+		t.Fatalf("VersionsRoot = %q, want preserved value", updated.VersionsRoot)
+	}
+	if updated.CurrentSlot != "v1.4.0-beta.1" {
+		t.Fatalf("CurrentSlot = %q, want preserved value", updated.CurrentSlot)
+	}
+	if updated.VSCodeSettingsPath != filepath.Join(baseDir, "vscode", "settings.json") {
+		t.Fatalf("VSCodeSettingsPath = %q, want preserved value", updated.VSCodeSettingsPath)
+	}
+	if updated.BundleEntrypoint != filepath.Join(baseDir, "bundle", "codex") {
+		t.Fatalf("BundleEntrypoint = %q, want preserved value", updated.BundleEntrypoint)
+	}
+}
+
 func TestRunMainDefaultsBinaryToCurrentExecutable(t *testing.T) {
 	t.Setenv(repoRootEnvVar, t.TempDir())
 	baseDir := t.TempDir()
