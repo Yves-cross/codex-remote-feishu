@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-13`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、`request_user_input` 多题分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、显式“提交已有答案（可留空）”路径、题级回答进度与已答/待答状态展示，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回）。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、`request_user_input` 多题分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回）。
 
 ## 1. 文档定位
 
@@ -146,7 +146,7 @@
 | `path_picker_select` | `picker_id`、`entry_name` | 在当前 active picker 里选择一个文件或目录 |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice |
-| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers` | 响应 approval 或 `request_user_input`；`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=submit_with_unanswered` 时触发留空提交 |
+| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers` | 响应 approval 或 `request_user_input`；`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=confirm_submit_with_unanswered` 触发留空确认提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
 | `submit_request_form` | `request_id`、`request_type`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径 |
 
@@ -162,12 +162,16 @@
 - `submit_request_form`
   - 优先把 `form_value` 整体转成 `request_answers`
   - `request_user_input` 当前只会为“需要手填”的问题渲染 form input（纯选项题不再渲染自由输入框）
-  - 多题场景会额外渲染“提交已有答案（可留空）”按钮，并通过 `request_option_id=submit_with_unanswered` 把“允许未答题提交”的意图显式传回 orchestrator
+  - 当本次提交后仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并刷新 request 卡片
+  - 确认态按钮用 `request_respond` 回传：
+    - `request_option_id=confirm_submit_with_unanswered`：确认留空提交
+    - `request_option_id=cancel_submit_with_unanswered`：返回继续补答
   - 若表单没有字段值，再回退 `input_value`
 
 `request_user_input` 卡片当前额外的可视语义：
 
 - 卡片顶部会展示 `回答进度 x/y`
+- 若存在未答题且用户触发提交，会进入“确认留空提交”提示块（含“继续补答”/“确认提交已有答案”）
 - 每道题都会展示 `状态：已回答/待回答`
 - 对于非私密题，已暂存答案会显示为 `当前答案：...`
 - 对 direct-options 题，若已有已答值，已选项保持 `primary`，其他选项降为 `default`，用于降低误触成本

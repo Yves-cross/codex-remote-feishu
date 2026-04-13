@@ -1559,16 +1559,12 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 		t.Fatalf("unexpected request option payload: %#v", value)
 	}
 	form, _ := ops[0].CardElements[4]["elements"].([]map[string]any)
-	if len(form) != 3 {
-		t.Fatalf("expected one input and two submit buttons, got %#v", ops[0].CardElements[4])
+	if len(form) != 2 {
+		t.Fatalf("expected one input and one submit button, got %#v", ops[0].CardElements[4])
 	}
 	submitValue := cardButtonPayload(t, form[1])
 	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" {
 		t.Fatalf("unexpected request form payload: %#v", submitValue)
-	}
-	partialSubmitValue := cardButtonPayload(t, form[2])
-	if partialSubmitValue["kind"] != "submit_request_form" || partialSubmitValue["request_option_id"] != "submit_with_unanswered" {
-		t.Fatalf("unexpected request partial submit payload: %#v", partialSubmitValue)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected request_user_input prompt to use structured V2 send path, got %#v", ops[0])
@@ -1593,8 +1589,8 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 		t.Fatalf("expected rendered V2 request form, got %#v", renderedForm)
 	}
 	renderedFormElements, _ := renderedForm["elements"].([]map[string]any)
-	if len(renderedFormElements) != 3 {
-		t.Fatalf("expected rendered request form to keep one input and two submit buttons, got %#v", renderedForm)
+	if len(renderedFormElements) != 2 {
+		t.Fatalf("expected rendered request form to keep one input and one submit button, got %#v", renderedForm)
 	}
 	if renderedFormElements[1]["action_type"] != nil || renderedFormElements[1]["form_action_type"] != "submit" {
 		t.Fatalf("expected rendered request form submit button to use V2 form_action_type, got %#v", renderedFormElements[1])
@@ -1603,22 +1599,17 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if renderedSubmitValue["kind"] != "submit_request_form" || renderedSubmitValue["request_id"] != "req-ui-1" {
 		t.Fatalf("unexpected rendered request form payload: %#v", renderedSubmitValue)
 	}
-	if renderedFormElements[2]["action_type"] != nil || renderedFormElements[2]["form_action_type"] != "submit" {
-		t.Fatalf("expected rendered partial submit button to use V2 form_action_type, got %#v", renderedFormElements[2])
-	}
-	renderedPartialSubmitValue := renderedButtonCallbackValue(t, renderedFormElements[2])
-	if renderedPartialSubmitValue["kind"] != "submit_request_form" || renderedPartialSubmitValue["request_option_id"] != "submit_with_unanswered" {
-		t.Fatalf("unexpected rendered partial submit payload: %#v", renderedPartialSubmitValue)
-	}
 }
 
-func TestProjectRequestUserInputPromptAddsPartialSubmitForMultiDirectQuestions(t *testing.T) {
+func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectRequestPrompt,
 		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-ui-3",
-			RequestType: "request_user_input",
+			RequestID:                          "req-ui-3",
+			RequestType:                        "request_user_input",
+			SubmitWithUnansweredConfirmPending: true,
+			SubmitWithUnansweredMissingLabels:  []string{"推理强度"},
 			Questions: []control.RequestPromptQuestion{
 				{
 					ID:             "model",
@@ -1646,19 +1637,26 @@ func TestProjectRequestUserInputPromptAddsPartialSubmitForMultiDirectQuestions(t
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if len(ops[0].CardElements) < 7 {
-		t.Fatalf("expected multi direct question card with extra partial submit row, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) < 8 {
+		t.Fatalf("expected confirm markdown and confirm action row, got %#v", ops[0].CardElements)
 	}
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
 		t.Fatalf("expected progress markdown for multi direct card, got %#v", ops[0].CardElements[0])
 	}
-	partialRow := cardElementButtons(t, ops[0].CardElements[5])
-	if len(partialRow) != 1 {
-		t.Fatalf("expected one partial submit button, got %#v", ops[0].CardElements[5])
+	if confirmMarkdown := markdownContent(ops[0].CardElements[1]); !strings.Contains(confirmMarkdown, "仍有 1 个问题未回答") {
+		t.Fatalf("expected confirm warning markdown, got %#v", ops[0].CardElements[1])
 	}
-	value := cardButtonPayload(t, partialRow[0])
-	if value["kind"] != "request_respond" || value["request_option_id"] != "submit_with_unanswered" {
-		t.Fatalf("unexpected partial submit button payload: %#v", value)
+	confirmRow := cardElementButtons(t, ops[0].CardElements[2])
+	if len(confirmRow) != 2 {
+		t.Fatalf("expected two confirm action buttons, got %#v", ops[0].CardElements[2])
+	}
+	cancelValue := cardButtonPayload(t, confirmRow[0])
+	if cancelValue["kind"] != "request_respond" || cancelValue["request_option_id"] != "cancel_submit_with_unanswered" {
+		t.Fatalf("unexpected cancel submit payload: %#v", cancelValue)
+	}
+	confirmValue := cardButtonPayload(t, confirmRow[1])
+	if confirmValue["kind"] != "request_respond" || confirmValue["request_option_id"] != "confirm_submit_with_unanswered" {
+		t.Fatalf("unexpected confirm submit payload: %#v", confirmValue)
 	}
 }
 

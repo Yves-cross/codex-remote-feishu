@@ -9,7 +9,11 @@ import (
 	"time"
 )
 
-const requestUserInputSubmitWithUnansweredOptionID = "submit_with_unanswered"
+const (
+	requestUserInputSubmitWithUnansweredOptionID        = "submit_with_unanswered"
+	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
+	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
+)
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	if surface == nil || action.RequestID == "" {
@@ -123,16 +127,7 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		CreatedAt:   s.now(),
 	}
 	surface.PendingRequests[event.RequestID] = record
-	return []control.UIEvent{s.feishuDirectRequestPromptEvent(surface, control.FeishuDirectRequestPrompt{
-		RequestID:   record.RequestID,
-		RequestType: record.RequestType,
-		Title:       record.Title,
-		Body:        record.Body,
-		ThreadID:    record.ThreadID,
-		ThreadTitle: threadTitle,
-		Options:     requestPromptOptionsToControl(record.Options),
-		Questions:   requestPromptQuestionsToControl(record.Questions, record.DraftAnswers),
-	})}
+	return []control.UIEvent{s.requestPromptEvent(surface, record, threadTitle)}
 }
 
 func (s *Service) resolveRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
@@ -247,6 +242,10 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			"decision": decision,
 		}, false, nil
 	case "request_user_input":
+		if requestUserInputCancelSubmitWithUnanswered(action.RequestOptionID) {
+			clearRequestUserInputSubmitConfirmState(request)
+			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
+		}
 		allowSubmitWithUnanswered := requestUserInputAllowSubmitWithUnanswered(action.RequestOptionID)
 		response, complete, missingLabels, errText := buildRequestUserInputResponse(request, action.RequestAnswers, allowSubmitWithUnanswered)
 		if errText != "" {
@@ -259,14 +258,10 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 				}
 				return nil, false, notice(surface, "request_invalid", "当前没有可提交的答案。")
 			}
-			if len(missingLabels) == 0 {
-				return nil, false, notice(surface, "request_saved", "已记录当前答案，请继续补全其他问题后再提交。")
-			}
-			if len(missingLabels) == 1 {
-				return nil, false, notice(surface, "request_saved", fmt.Sprintf("已记录当前答案。还差 1 个问题：%s。", missingLabels[0]))
-			}
-			return nil, false, notice(surface, "request_saved", fmt.Sprintf("已记录当前答案。还差 %d 个问题待填写。", len(missingLabels)))
+			setRequestUserInputSubmitConfirmState(request, missingLabels)
+			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
 		}
+		clearRequestUserInputSubmitConfirmState(request)
 		return response, true, nil
 	default:
 		return nil, false, notice(surface, "request_unsupported", fmt.Sprintf("飞书端暂不支持处理 %s 类型的请求。", requestType))
@@ -280,6 +275,7 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 	if request.DraftAnswers == nil {
 		request.DraftAnswers = map[string]string{}
 	}
+	sawNewAnswer := false
 	for _, question := range request.Questions {
 		questionID := strings.TrimSpace(question.ID)
 		if questionID == "" {
@@ -296,6 +292,10 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 			return nil, false, nil, fmt.Sprintf("问题“%s”的答案不在可选项中。", label)
 		}
 		request.DraftAnswers[questionID] = answerText
+		sawNewAnswer = true
+	}
+	if sawNewAnswer {
+		clearRequestUserInputSubmitConfirmState(request)
 	}
 	answers := map[string]any{}
 	missingLabels := make([]string, 0, len(request.Questions))
@@ -330,16 +330,65 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 }
 
 func requestUserInputAllowSubmitWithUnanswered(optionID string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(optionID))
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
+	normalized := requestUserInputNormalizedOptionID(optionID)
 	switch normalized {
-	case "submitwithunanswered", "allowunanswered", "submitpartial", "proceedwithunanswered":
+	case "submitwithunanswered", "allowunanswered", "submitpartial", "proceedwithunanswered", "confirmsubmitwithunanswered":
 		return true
 	default:
 		return false
 	}
+}
+
+func requestUserInputCancelSubmitWithUnanswered(optionID string) bool {
+	return requestUserInputNormalizedOptionID(optionID) == "cancelsubmitwithunanswered"
+}
+
+func requestUserInputNormalizedOptionID(optionID string) string {
+	normalized := strings.ToLower(strings.TrimSpace(optionID))
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "_", "")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	return normalized
+}
+
+func setRequestUserInputSubmitConfirmState(request *state.RequestPromptRecord, missingLabels []string) {
+	if request == nil {
+		return
+	}
+	request.SubmitWithUnansweredConfirmPending = true
+	request.SubmitWithUnansweredMissingLabels = append([]string(nil), missingLabels...)
+}
+
+func clearRequestUserInputSubmitConfirmState(request *state.RequestPromptRecord) {
+	if request == nil {
+		return
+	}
+	request.SubmitWithUnansweredConfirmPending = false
+	request.SubmitWithUnansweredMissingLabels = nil
+}
+
+func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+	threadTitle := strings.TrimSpace(threadTitleHint)
+	if threadTitle == "" {
+		inst := s.root.Instances[record.InstanceID]
+		var thread *state.ThreadRecord
+		if inst != nil {
+			thread = inst.Threads[record.ThreadID]
+		}
+		threadTitle = displayThreadTitle(inst, thread, record.ThreadID)
+	}
+	return s.feishuDirectRequestPromptEvent(surface, control.FeishuDirectRequestPrompt{
+		RequestID:                          record.RequestID,
+		RequestType:                        record.RequestType,
+		Title:                              record.Title,
+		Body:                               record.Body,
+		ThreadID:                           record.ThreadID,
+		ThreadTitle:                        threadTitle,
+		Options:                            requestPromptOptionsToControl(record.Options),
+		Questions:                          requestPromptQuestionsToControl(record.Questions, record.DraftAnswers),
+		SubmitWithUnansweredConfirmPending: record.SubmitWithUnansweredConfirmPending,
+		SubmitWithUnansweredMissingLabels:  append([]string(nil), record.SubmitWithUnansweredMissingLabels...),
+	})
 }
 
 func firstTrimmedAnswer(values []string) string {

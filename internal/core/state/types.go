@@ -267,7 +267,11 @@ type RequestPromptRecord struct {
 	Options      []RequestPromptOptionRecord
 	Questions    []RequestPromptQuestionRecord
 	DraftAnswers map[string]string
-	CreatedAt    time.Time
+	// SubmitWithUnansweredConfirmPending marks request_user_input cards that are
+	// waiting for explicit user confirmation before submitting unanswered fields.
+	SubmitWithUnansweredConfirmPending bool
+	SubmitWithUnansweredMissingLabels  []string
+	CreatedAt                          time.Time
 }
 
 type RequestCaptureRecord struct {

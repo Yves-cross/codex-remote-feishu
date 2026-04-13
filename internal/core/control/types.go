@@ -324,14 +324,16 @@ type RequestPromptQuestion struct {
 // FeishuDirectRequestPrompt is a retained direct card DTO for request cards
 // that still cross the boundary without a separate Feishu view model.
 type FeishuDirectRequestPrompt struct {
-	RequestID   string
-	RequestType string
-	Title       string
-	Body        string
-	ThreadID    string
-	ThreadTitle string
-	Options     []RequestPromptOption
-	Questions   []RequestPromptQuestion
+	RequestID                          string
+	RequestType                        string
+	Title                              string
+	Body                               string
+	ThreadID                           string
+	ThreadTitle                        string
+	Options                            []RequestPromptOption
+	Questions                          []RequestPromptQuestion
+	SubmitWithUnansweredConfirmPending bool
+	SubmitWithUnansweredMissingLabels  []string
 }
 
 type CommandCatalogButtonKind string

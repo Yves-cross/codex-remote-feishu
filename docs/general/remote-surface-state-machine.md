@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-13`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与凑齐后提交路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -1044,8 +1044,8 @@ retained-offline overlay 额外规则：
 | `show_all_threads` | `ActionShowAllThreads` | 打开 `/useall` 的默认 cross-workspace 总览；也用于单-workspace 全量视图返回总览 |
 | `show_all_thread_workspaces` | `ActionShowAllThreadWorkspaces` | 把 `/useall` grouped 总览从“最近 5 个工作区”展开到“全部工作区” |
 | `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | 从“全部工作区”视图返回 `/useall` 默认最近 5 个工作区总览 |
-| `request_respond` | `ActionRespondRequest` | approval 与 `request_user_input` 的按钮回传入口；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，且 `request_option_id=submit_with_unanswered` 时允许未答题提交 |
-| `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传；可带 `request_option_id=submit_with_unanswered` 触发未答题提交 |
+| `request_respond` | `ActionRespondRequest` | approval 与 `request_user_input` 的按钮回传入口；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，`request_option_id=confirm_submit_with_unanswered` 会确认留空提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
+| `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传；若提交后仍有未答题，request 会切到确认态，等待 `confirm_submit_with_unanswered` 或 `cancel_submit_with_unanswered` |
 | `resume_headless_thread` | `ActionRemovedCommand` | 历史兼容入口，统一回迁移提示 |
 | `kick_thread_confirm` | `ActionConfirmKickThread` | 强踢前再次校验实时状态 |
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
@@ -1149,7 +1149,7 @@ retained-offline overlay 额外规则：
 3. 有没有让未冻结草稿在 route change 时静默改投目标。
 4. 有没有把 UI helper 状态重新变回服务端持久 modal state。
 5. 有没有让 `R5 NewThreadReady` 在首条消息失败后落回无恢复路径的状态。
-6. `request_user_input` 的按钮/表单提交后，是否符合“局部答案先暂存、凑齐再清 pending request；或显式 `submit_with_unanswered` 后允许留空提交”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
+6. `request_user_input` 的按钮/表单提交后，是否符合“局部答案先暂存；未答题提交先进入确认态；确认后才留空提交并清 pending request”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
 
 ## 11. 待讨论取舍
 
