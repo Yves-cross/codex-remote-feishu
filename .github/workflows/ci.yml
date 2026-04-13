@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  quality-linux:
     runs-on: ubuntu-latest
 
     steps:
@@ -73,6 +73,35 @@ jobs:
       - name: Build
         run: |
           go build ./cmd/...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Test install and upgrade flows
+        run: go test ./internal/app/install ./internal/app/wrapper ./internal/runtime ./internal/externalaccess -count=1
+
+  go-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./cmd/...
 
       - name: Test
         run: go test ./...
