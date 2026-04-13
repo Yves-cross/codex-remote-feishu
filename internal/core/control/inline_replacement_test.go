@@ -42,8 +42,18 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "bare verbose",
+			action: Action{Kind: ActionVerboseCommand, Text: "/verbose"},
+			want:   true,
+		},
+		{
 			name:   "parameter apply",
 			action: Action{Kind: ActionModeCommand, Text: "/mode vscode"},
+			want:   false,
+		},
+		{
+			name:   "verbose parameter apply",
+			action: Action{Kind: ActionVerboseCommand, Text: "/verbose quiet"},
 			want:   false,
 		},
 		{

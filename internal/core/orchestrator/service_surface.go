@@ -116,6 +116,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		ChatID:           action.ChatID,
 		ActorUserID:      action.ActorUserID,
 		ProductMode:      state.ProductModeNormal,
+		Verbosity:        state.SurfaceVerbosityNormal,
 		RouteMode:        state.RouteModeUnbound,
 		DispatchMode:     state.DispatchModeNormal,
 		LastInboundAt:    s.now(),

@@ -191,6 +191,7 @@ func (s *Service) normalizeSurfaceProductMode(surface *state.SurfaceConsoleRecor
 		return state.ProductModeNormal
 	}
 	surface.ProductMode = state.NormalizeProductMode(surface.ProductMode)
+	surface.Verbosity = state.NormalizeSurfaceVerbosity(surface.Verbosity)
 	s.normalizeLegacyNormalFollowRoute(surface)
 	s.normalizeLegacyVSCodePreparedNewThread(surface)
 	return surface.ProductMode
@@ -383,6 +384,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		return s.handleReasoningCommand(surface, action)
 	case control.ActionAccessCommand:
 		return s.handleAccessCommand(surface, action)
+	case control.ActionVerboseCommand:
+		return s.handleVerboseCommand(surface, action)
 	case control.ActionAutoContinueCommand:
 		return s.handleAutoContinueCommand(surface, action)
 	case control.ActionModeCommand:

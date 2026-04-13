@@ -128,6 +128,19 @@ func parseProductMode(value string) (state.ProductMode, bool) {
 	}
 }
 
+func parseSurfaceVerbosity(value string) (state.SurfaceVerbosity, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "quiet":
+		return state.SurfaceVerbosityQuiet, true
+	case "normal":
+		return state.SurfaceVerbosityNormal, true
+	case "verbose":
+		return state.SurfaceVerbosityVerbose, true
+	default:
+		return "", false
+	}
+}
+
 func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	current := s.normalizeSurfaceProductMode(surface)
 	parts := strings.Fields(strings.TrimSpace(action.Text))
@@ -193,6 +206,26 @@ func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord,
 	default:
 		return notice(surface, "auto_continue_usage", "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。")
 	}
+}
+
+func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildVerboseCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		return notice(surface, "surface_verbose_usage", "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。")
+	}
+	target, ok := parseSurfaceVerbosity(parts[1])
+	if !ok {
+		return notice(surface, "surface_verbose_usage", "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。")
+	}
+	current := state.NormalizeSurfaceVerbosity(surface.Verbosity)
+	if target == current {
+		return notice(surface, "surface_verbose_current", fmt.Sprintf("当前飞书前端详细程度已经是 %s。", target))
+	}
+	surface.Verbosity = target
+	return notice(surface, "surface_verbose_updated", fmt.Sprintf("已将当前飞书会话的前端详细程度切换为 %s。", target))
 }
 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

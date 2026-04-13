@@ -39,6 +39,16 @@ func TestFeishuUIIntentFromAction(t *testing.T) {
 			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceThreads, WorkspaceKey: "/data/dl/web"},
 		},
 		{
+			name:   "bare verbose",
+			action: Action{Kind: ActionVerboseCommand, Text: "/verbose"},
+			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowVerboseCatalog, RawText: "/verbose"},
+		},
+		{
+			name:   "verbose apply stays product owned",
+			action: Action{Kind: ActionVerboseCommand, Text: "/verbose quiet"},
+			want:   nil,
+		},
+		{
 			name:   "path picker enter",
 			action: Action{Kind: ActionPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},
 			want:   &FeishuUIIntent{Kind: FeishuUIIntentPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},

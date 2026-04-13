@@ -45,6 +45,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowReasoningCatalog,
 		FeishuUIIntentShowAccessCatalog,
 		FeishuUIIntentShowModelCatalog,
+		FeishuUIIntentShowVerboseCatalog,
 		FeishuUIIntentShowRecentWorkspaces,
 		FeishuUIIntentShowAllWorkspaces,
 		FeishuUIIntentShowThreads,

@@ -25,6 +25,7 @@ const (
 	ActionModelCommand               ActionKind = "surface.command.model"
 	ActionReasoningCommand           ActionKind = "surface.command.reasoning"
 	ActionAccessCommand              ActionKind = "surface.command.access"
+	ActionVerboseCommand             ActionKind = "surface.command.verbose"
 	ActionAutoContinueCommand        ActionKind = "surface.command.auto_continue"
 	ActionModeCommand                ActionKind = "surface.command.mode"
 	ActionRespondRequest             ActionKind = "surface.request.respond"

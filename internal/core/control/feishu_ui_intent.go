@@ -11,6 +11,7 @@ const (
 	FeishuUIIntentShowReasoningCatalog       FeishuUIIntentKind = "show_reasoning_catalog"
 	FeishuUIIntentShowAccessCatalog          FeishuUIIntentKind = "show_access_catalog"
 	FeishuUIIntentShowModelCatalog           FeishuUIIntentKind = "show_model_catalog"
+	FeishuUIIntentShowVerboseCatalog         FeishuUIIntentKind = "show_verbose_catalog"
 	FeishuUIIntentShowRecentWorkspaces       FeishuUIIntentKind = "show_recent_workspaces"
 	FeishuUIIntentShowAllWorkspaces          FeishuUIIntentKind = "show_all_workspaces"
 	FeishuUIIntentShowThreads                FeishuUIIntentKind = "show_threads"
@@ -60,6 +61,10 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 	case ActionModelCommand:
 		if isBareInlineCommand(action.Text, "/model") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowModelCatalog, RawText: action.Text}, true
+		}
+	case ActionVerboseCommand:
+		if isBareInlineCommand(action.Text, "/verbose") {
+			return &FeishuUIIntent{Kind: FeishuUIIntentShowVerboseCatalog, RawText: action.Text}, true
 		}
 	case ActionShowRecentWorkspaces:
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentWorkspaces}, true

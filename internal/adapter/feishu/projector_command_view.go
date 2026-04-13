@@ -193,6 +193,8 @@ func commandConfigCatalogFromView(view control.FeishuCommandConfigView) control.
 		return accessCatalogFromView(view)
 	case control.FeishuCommandModel:
 		return modelCatalogFromView(view)
+	case control.FeishuCommandVerbose:
+		return verboseCatalogFromView(view)
 	default:
 		return control.FeishuDirectCommandCatalog{}
 	}
@@ -367,6 +369,32 @@ func attachmentRequiredCatalogForDefinition(def control.FeishuCommandDefinition)
 				recoveryEntry(control.FeishuCommandStatus),
 			},
 		}},
+		RelatedButtons: commandBackButtons(def.GroupID),
+	}
+}
+
+func verboseCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDirectCommandCatalog {
+	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandVerbose)
+	current := strings.TrimSpace(view.CurrentValue)
+	sections := []control.CommandCatalogSection{{
+		Title: "立即切换",
+		Entries: []control.CommandCatalogEntry{{
+			Buttons: fixedChoiceButtonsFromOptions(def.Options, current, "normal"),
+		}},
+	}}
+	if form := control.FeishuCommandFormWithDefault(control.FeishuCommandVerbose, ""); form != nil {
+		sections = append(sections, control.CommandCatalogSection{
+			Title:   "手动输入",
+			Entries: []control.CommandCatalogEntry{{Form: form}},
+		})
+	}
+	return control.FeishuDirectCommandCatalog{
+		Title:          def.Title,
+		Summary:        fmt.Sprintf("当前：`%s`。", displayPromptValue(current, "normal")),
+		Interactive:    true,
+		DisplayStyle:   control.CommandCatalogDisplayCompactButtons,
+		Breadcrumbs:    commandBreadcrumbs(def.GroupID, def.Title),
+		Sections:       sections,
 		RelatedButtons: commandBackButtons(def.GroupID),
 	}
 }

@@ -39,6 +39,25 @@ func NormalizeProductMode(mode ProductMode) ProductMode {
 	}
 }
 
+type SurfaceVerbosity string
+
+const (
+	SurfaceVerbosityQuiet   SurfaceVerbosity = "quiet"
+	SurfaceVerbosityNormal  SurfaceVerbosity = "normal"
+	SurfaceVerbosityVerbose SurfaceVerbosity = "verbose"
+)
+
+func NormalizeSurfaceVerbosity(value SurfaceVerbosity) SurfaceVerbosity {
+	switch value {
+	case SurfaceVerbosityQuiet:
+		return SurfaceVerbosityQuiet
+	case SurfaceVerbosityVerbose:
+		return SurfaceVerbosityVerbose
+	default:
+		return SurfaceVerbosityNormal
+	}
+}
+
 type QueueItemStatus string
 
 const (
@@ -146,6 +165,7 @@ type SurfaceConsoleRecord struct {
 	ChatID               string
 	ActorUserID          string
 	ProductMode          ProductMode
+	Verbosity            SurfaceVerbosity
 	ClaimedWorkspaceKey  string
 	AttachedInstanceID   string
 	SelectedThreadID     string

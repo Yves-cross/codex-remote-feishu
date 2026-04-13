@@ -24,6 +24,7 @@ const (
 	FeishuCommandModel             = "model"
 	FeishuCommandReasoning         = "reasoning"
 	FeishuCommandAccess            = "access"
+	FeishuCommandVerbose           = "verbose"
 	FeishuCommandHelp              = "help"
 	FeishuCommandMenu              = "menu"
 	FeishuCommandDebug             = "debug"
@@ -296,6 +297,38 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{prefix: "access-", kind: ActionAccessCommand, build: buildMenuAccessText},
 			{prefix: "approval_", kind: ActionAccessCommand, build: buildMenuAccessText},
 			{prefix: "approval-", kind: ActionAccessCommand, build: buildMenuAccessText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandVerbose,
+			GroupID:          FeishuCommandGroupSendSettings,
+			Title:            "前端详细程度",
+			CanonicalSlash:   "/verbose",
+			CanonicalMenuKey: "verbose",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "normal",
+			ArgumentFormNote: "输入 quiet / normal / verbose。",
+			ArgumentSubmit:   "应用",
+			Description:      "控制飞书前端显示过程消息的详细程度；bare `/verbose` 会返回可选档位卡片。",
+			Examples:         []string{"/verbose quiet", "/verbose normal", "/verbose verbose"},
+			Options: []FeishuCommandOption{
+				commandOption("/verbose", "verbose", "quiet", "quiet", "只显示最终答复和必须可见的交互提示。"),
+				commandOption("/verbose", "verbose", "normal", "normal", "显示普通过程文本、plan 和最终答复。"),
+				commandOption("/verbose", "verbose", "verbose", "verbose", "显示全部普通过程信息，并为未来更细的过程事件预留。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/verbose", kind: ActionVerboseCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "verbose", action: Action{Kind: ActionVerboseCommand, Text: "/verbose"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "verbose_", kind: ActionVerboseCommand, build: buildMenuVerboseText},
+			{prefix: "verbose-", kind: ActionVerboseCommand, build: buildMenuVerboseText},
 		},
 	},
 	{
@@ -964,5 +997,15 @@ func commandOption(commandText, menuKey, value, label, description string) Feish
 		Description: description,
 		CommandText: commandText + " " + value,
 		MenuKey:     menuKey + "_" + value,
+	}
+}
+
+func buildMenuVerboseText(suffix string) (string, bool) {
+	value := strings.ToLower(strings.TrimSpace(suffix))
+	switch value {
+	case "quiet", "normal", "verbose":
+		return "/verbose " + value, true
+	default:
+		return "", false
 	}
 }

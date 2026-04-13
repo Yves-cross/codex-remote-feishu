@@ -581,6 +581,58 @@ func TestApplyFeishuUIIntentBuildsModeCatalog(t *testing.T) {
 	}
 }
 
+func TestApplyFeishuUIIntentBuildsVerboseCatalog(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplyFeishuUIIntent(control.Action{
+		Kind:             control.ActionVerboseCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/verbose",
+	}, control.FeishuUIIntent{
+		Kind:    control.FeishuUIIntentShowVerboseCatalog,
+		RawText: "/verbose",
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected verbose catalog event, got %#v", events)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.Title != "前端详细程度" {
+		t.Fatalf("unexpected verbose catalog: %#v", catalog)
+	}
+	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil || events[0].FeishuCommandView.Config.CommandID != control.FeishuCommandVerbose {
+		t.Fatalf("expected feishu command view for verbose catalog, got %#v", events[0].FeishuCommandView)
+	}
+	if got := events[0].FeishuCommandView.Config.CurrentValue; got != string(state.SurfaceVerbosityNormal) {
+		t.Fatalf("expected default verbosity current value, got %q", got)
+	}
+}
+
+func TestApplySurfaceActionVerboseCommandUpdatesSurface(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionVerboseCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/verbose quiet",
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "surface_verbose_updated" {
+		t.Fatalf("expected verbosity updated notice, got %#v", events)
+	}
+	surface := svc.root.Surfaces["surface-1"]
+	if surface == nil {
+		t.Fatal("expected surface to exist")
+	}
+	if surface.Verbosity != state.SurfaceVerbosityQuiet {
+		t.Fatalf("expected surface verbosity quiet, got %q", surface.Verbosity)
+	}
+}
+
 func TestAttachBusyInstanceRejectsSecondSurface(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
