@@ -2,6 +2,7 @@ package shutdownctx
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 )
 
@@ -14,6 +15,10 @@ const (
 
 type holder struct {
 	mode atomic.Int32
+
+	mu                  sync.Mutex
+	consoleCloseHandler func()
+	consoleCloseHandled bool
 }
 
 type contextKey struct{}
@@ -35,6 +40,42 @@ func ModeFrom(ctx context.Context) Mode {
 		return ModeDefault
 	}
 	return modeFromIndex(int(h.mode.Load()))
+}
+
+func SetConsoleCloseHandler(ctx context.Context, handler func()) bool {
+	if ctx == nil {
+		return false
+	}
+	h, _ := ctx.Value(contextKey{}).(*holder)
+	if h == nil {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.consoleCloseHandler = handler
+	return true
+}
+
+func HandleConsoleClose(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	h, _ := ctx.Value(contextKey{}).(*holder)
+	if h == nil {
+		return
+	}
+	h.mode.Store(int32(modeToIndex(ModeConsoleClose)))
+	h.mu.Lock()
+	if h.consoleCloseHandled {
+		h.mu.Unlock()
+		return
+	}
+	h.consoleCloseHandled = true
+	handler := h.consoleCloseHandler
+	h.mu.Unlock()
+	if handler != nil {
+		handler()
+	}
 }
 
 func modeToIndex(mode Mode) int {

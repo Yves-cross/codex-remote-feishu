@@ -17,6 +17,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
 )
 
 type runnableDaemon interface {
@@ -134,6 +135,9 @@ func RunMain(ctx context.Context, version, branch string) error {
 		startup.SetupToken = token
 		startup.SetupTokenExpiry = expiresAt
 	}
+	_ = shutdownctx.SetConsoleCloseHandler(ctx, func() {
+		_ = app.shutdownForConsoleClose()
+	})
 	return runConfiguredDaemon(ctx, app, startup, cfg, env)
 }
 

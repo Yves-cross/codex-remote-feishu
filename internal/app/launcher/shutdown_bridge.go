@@ -20,6 +20,7 @@ func newMainContext(parent context.Context) (context.Context, context.CancelFunc
 	ctx, stopSignals := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	unregister, err := registerPlatformShutdownBridge(func() {
 		setMode(shutdownctx.ModeConsoleClose)
+		shutdownctx.HandleConsoleClose(parent)
 		stopSignals()
 	})
 	if err != nil {
