@@ -11,6 +11,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
 )
 
 func TestDaemonStartsPreselectedHeadlessForGlobalThreadUse(t *testing.T) {
@@ -378,6 +379,29 @@ func TestDaemonShutdownForceKillsConnectedWrapperAfterTimeout(t *testing.T) {
 	}
 	if stoppedGrace != 0 {
 		t.Fatalf("expected force kill grace 0, got %s", stoppedGrace)
+	}
+}
+
+func TestDaemonShutdownForConsoleCloseSkipsGatewayWait(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+
+	cancelled := false
+	gatewayDone := make(chan struct{})
+	app.setGatewayRuntime(func() { cancelled = true }, gatewayDone)
+
+	ctx, setMode := shutdownctx.WithHolder(context.Background())
+	setMode(shutdownctx.ModeConsoleClose)
+
+	started := time.Now()
+	if err := app.Shutdown(ctx); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if !cancelled {
+		t.Fatal("expected gateway runtime cancel to be called")
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("expected console-close shutdown not to wait for gateway, took %s", elapsed)
 	}
 }
 
