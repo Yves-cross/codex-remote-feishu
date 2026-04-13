@@ -113,3 +113,37 @@ func TestStartUpgradeHelperProcessUsesSystemdRunForSystemdUser(t *testing.T) {
 		t.Fatalf("unit name = %q, want codex-remote-upgrade-helper-*.service", transient.UnitName)
 	}
 }
+
+func TestStartUpgradeHelperProcessDirectExecUsesNoSubcommandArgs(t *testing.T) {
+	originalDetached := upgradeHelperStartDetachedCommandFunc
+	originalSystemd := upgradeHelperStartSystemdUserTransientFunc
+	defer func() {
+		upgradeHelperStartDetachedCommandFunc = originalDetached
+		upgradeHelperStartSystemdUserTransientFunc = originalSystemd
+	}()
+
+	var detached relayruntime.DetachedCommandOptions
+	upgradeHelperStartDetachedCommandFunc = func(opts relayruntime.DetachedCommandOptions) (int, error) {
+		detached = opts
+		return 123, nil
+	}
+	upgradeHelperStartSystemdUserTransientFunc = func(context.Context, systemdUserTransientCommandOptions) (string, error) {
+		t.Fatal("unexpected systemd-run launcher")
+		return "", nil
+	}
+
+	_, err := StartUpgradeHelperProcess(context.Background(), UpgradeHelperLaunchOptions{
+		State: InstallState{
+			ServiceManager: ServiceManagerDetached,
+		},
+		HelperBinary: testutil.WorkspacePath("tmp", "upgrade-shim"),
+		StatePath:    testutil.WorkspacePath("tmp", "install-state.json"),
+		DirectExec:   true,
+	})
+	if err != nil {
+		t.Fatalf("StartUpgradeHelperProcess: %v", err)
+	}
+	if len(detached.Args) != 0 {
+		t.Fatalf("args = %#v, want empty for direct shim", detached.Args)
+	}
+}

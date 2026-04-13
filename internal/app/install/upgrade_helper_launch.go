@@ -19,6 +19,7 @@ type UpgradeHelperLaunchOptions struct {
 	LogPath      string
 	Env          []string
 	WorkDir      string
+	DirectExec   bool
 }
 
 type systemdUserTransientCommandOptions struct {
@@ -48,6 +49,9 @@ func StartUpgradeHelperProcess(ctx context.Context, opts UpgradeHelperLaunchOpti
 	}
 
 	args := []string{"upgrade-helper", "-state-path", statePath}
+	if opts.DirectExec {
+		args = nil
+	}
 	if effectiveServiceManager(opts.State) == ServiceManagerSystemdUser && runtime.GOOS == "linux" {
 		unitName := uniqueUpgradeHelperUnitName()
 		_, err := upgradeHelperStartSystemdUserTransientFunc(ctx, systemdUserTransientCommandOptions{
