@@ -55,6 +55,21 @@ func TestRenderOperationCardV2EnvelopeFromOperationFields(t *testing.T) {
 	}
 }
 
+func TestRenderOperationCardV2EnvelopeCanEnableSharedCardUpdates(t *testing.T) {
+	payload := renderOperationCard(Operation{
+		Kind:            OperationUpdateCard,
+		CardTitle:       "执行中",
+		CardBody:        "`npm test`",
+		CardThemeKey:    cardThemeInfo,
+		CardUpdateMulti: true,
+	}, cardEnvelopeV2)
+
+	config, _ := payload["config"].(map[string]any)
+	if config["update_multi"] != true {
+		t.Fatalf("expected update_multi=true for patchable card, got %#v", payload)
+	}
+}
+
 func TestRenderOperationCardV2EnvelopeFromOperationFieldsPreservesNativeV2InteractiveElements(t *testing.T) {
 	payload := renderOperationCard(Operation{
 		Kind:         OperationSendCard,

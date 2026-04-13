@@ -90,7 +90,7 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 	if doc == nil {
 		return nil
 	}
-	return renderCardDocument(doc, version)
+	return renderCardDocument(doc, version, operation.CardUpdateMulti)
 }
 
 func (operation Operation) ordinaryCardEnvelope() cardEnvelopeVersion {
@@ -100,7 +100,7 @@ func (operation Operation) ordinaryCardEnvelope() cardEnvelopeVersion {
 	return cardEnvelopeV2
 }
 
-func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion) map[string]any {
+func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion, updateMulti bool) map[string]any {
 	if doc == nil {
 		return nil
 	}
@@ -124,23 +124,31 @@ func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion) map[stri
 	}
 	switch version {
 	case cardEnvelopeV2:
+		config := map[string]any{
+			"width_mode":     "fill",
+			"enable_forward": true,
+		}
+		if updateMulti {
+			config["update_multi"] = true
+		}
 		return map[string]any{
 			"schema": "2.0",
-			"config": map[string]any{
-				"width_mode":     "fill",
-				"enable_forward": true,
-			},
+			"config": config,
 			"header": header,
 			"body": map[string]any{
 				"elements": elements,
 			},
 		}
 	default:
+		config := map[string]any{
+			"wide_screen_mode": true,
+			"enable_forward":   true,
+		}
+		if updateMulti {
+			config["update_multi"] = true
+		}
 		return map[string]any{
-			"config": map[string]any{
-				"wide_screen_mode": true,
-				"enable_forward":   true,
-			},
+			"config":   config,
 			"header":   header,
 			"elements": elements,
 		}

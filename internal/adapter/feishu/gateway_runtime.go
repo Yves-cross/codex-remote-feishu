@@ -214,6 +214,23 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), operation.SurfaceSessionID)
 		}
 		return nil
+	case OperationUpdateCard:
+		messageID := strings.TrimSpace(operation.MessageID)
+		if messageID == "" {
+			return fmt.Errorf("update card failed: missing message id")
+		}
+		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(operation, operation.ordinaryCardEnvelope()), maxFeishuCardBytes))
+		if err != nil {
+			return err
+		}
+		resp, err := g.patchMessageFn(ctx, messageID, string(card))
+		if err != nil {
+			return err
+		}
+		if !resp.Success() {
+			return newAPIError("im.v1.message.patch", resp.ApiResp, resp.CodeError)
+		}
+		return nil
 	case OperationSendImage:
 		receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
 		if receiveID == "" || receiveIDType == "" {
@@ -711,6 +728,15 @@ func (g *LiveGateway) replyMessage(ctx context.Context, messageID, msgType, cont
 		MessageId(messageID).
 		Body(larkim.NewReplyMessageReqBodyBuilder().
 			MsgType(msgType).
+			Content(content).
+			Build()).
+		Build())
+}
+
+func (g *LiveGateway) patchMessage(ctx context.Context, messageID, content string) (*larkim.PatchMessageResp, error) {
+	return g.client.Im.V1.Message.Patch(ctx, larkim.NewPatchMessageReqBuilder().
+		MessageId(messageID).
+		Body(larkim.NewPatchMessageReqBodyBuilder().
 			Content(content).
 			Build()).
 		Build())

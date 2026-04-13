@@ -15,6 +15,7 @@ type OperationKind string
 const (
 	OperationSendText         OperationKind = "send_text"
 	OperationSendCard         OperationKind = "send_card"
+	OperationUpdateCard       OperationKind = "update_card"
 	OperationSendImage        OperationKind = "send_image"
 	OperationDeleteMessage    OperationKind = "delete_message"
 	OperationAddReaction      OperationKind = "add_reaction"
@@ -40,6 +41,7 @@ type Operation struct {
 	CardBody         string
 	CardThemeKey     string
 	CardElements     []map[string]any
+	CardUpdateMulti  bool
 	cardEnvelope     cardEnvelopeVersion
 	card             *cardDocument
 }

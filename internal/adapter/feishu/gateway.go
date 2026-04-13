@@ -48,6 +48,7 @@ type LiveGateway struct {
 	fetchMessageFn     func(context.Context, string) (*gatewayMessage, error)
 	createMessageFn    func(context.Context, string, string, string, string) (*larkim.CreateMessageResp, error)
 	replyMessageFn     func(context.Context, string, string, string) (*larkim.ReplyMessageResp, error)
+	patchMessageFn     func(context.Context, string, string) (*larkim.PatchMessageResp, error)
 	deleteMessageFn    func(context.Context, string) (*larkim.DeleteMessageResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
 
@@ -105,6 +106,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway.fetchMessageFn = gateway.fetchMessage
 	gateway.createMessageFn = gateway.createMessage
 	gateway.replyMessageFn = gateway.replyMessage
+	gateway.patchMessageFn = gateway.patchMessage
 	gateway.deleteMessageFn = gateway.deleteMessage
 	gateway.botTimeSensitiveFn = gateway.botTimeSensitive
 	return gateway

@@ -250,6 +250,67 @@ func TestApplySendCardCanStillForceLegacyEnvelope(t *testing.T) {
 	}
 }
 
+func TestApplyUpdateCardPatchesInteractiveMessage(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var (
+		patchedMessageID string
+		patchedContent   string
+	)
+	gateway.patchMessageFn = func(_ context.Context, messageID, content string) (*larkim.PatchMessageResp, error) {
+		patchedMessageID = messageID
+		patchedContent = content
+		return &larkim.PatchMessageResp{
+			ApiResp: &larkcore.ApiResp{},
+			CodeError: larkcore.CodeError{
+				Code: 0,
+				Msg:  "ok",
+			},
+		}, nil
+	}
+
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:             OperationUpdateCard,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		MessageID:        "om-card-1",
+		CardTitle:        "执行中",
+		CardBody:         "`npm test`",
+		CardThemeKey:     cardThemeInfo,
+		CardUpdateMulti:  true,
+	}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if patchedMessageID != "om-card-1" {
+		t.Fatalf("patched message id = %q, want om-card-1", patchedMessageID)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(patchedContent), &payload); err != nil {
+		t.Fatalf("patched content is not valid json: %v", err)
+	}
+	if payload["schema"] != "2.0" {
+		t.Fatalf("expected v2 schema, got %#v", payload)
+	}
+	config, _ := payload["config"].(map[string]any)
+	if config["update_multi"] != true {
+		t.Fatalf("expected update_multi=true, got %#v", payload)
+	}
+}
+
+func TestApplyUpdateCardRequiresMessageID(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:         OperationUpdateCard,
+		GatewayID:    "app-1",
+		CardTitle:    "执行中",
+		CardBody:     "`npm test`",
+		CardThemeKey: cardThemeInfo,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "missing message id") {
+		t.Fatalf("expected missing message id error, got %v", err)
+	}
+}
+
 func TestMenuActionKindKnownValues(t *testing.T) {
 	tests := map[string]control.ActionKind{
 		"menu":             control.ActionShowCommandMenu,
