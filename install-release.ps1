@@ -161,7 +161,7 @@ function Invoke-DownloadRequest([string]$Url, [string]$OutFile) {
     try {
       $file = [System.IO.File]::Open($OutFile, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
       try {
-        $stream.CopyTo($file)
+        ([System.IO.Stream]$stream).CopyTo([System.IO.Stream]$file)
       } finally {
         $file.Dispose()
       }
