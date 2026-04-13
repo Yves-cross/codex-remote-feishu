@@ -106,6 +106,39 @@ func (s *Service) prepareNewThreadBase(surface *state.SurfaceConsoleRecord, inst
 	return cwd, threadID, true
 }
 
+func (s *Service) maybePrepareImplicitNewThreadFromUnboundText(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, text string) []control.UIEvent {
+	if surface == nil || inst == nil {
+		return nil
+	}
+	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
+		return nil
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	if surface.RouteMode != state.RouteModeUnbound {
+		return nil
+	}
+	if strings.TrimSpace(surface.SelectedThreadID) != "" {
+		return nil
+	}
+
+	cwd, threadID, ok := s.prepareNewThreadBase(surface, inst)
+	if !ok {
+		return notice(surface, "new_thread_cwd_missing", "当前工作区缺少可继承的工作目录，暂时无法新建会话。请先 /list 切换工作区，或稍后重试。")
+	}
+	if blocked := s.blockNewThreadPreparation(surface); blocked != nil {
+		return blocked
+	}
+
+	s.releaseSurfaceThreadClaim(surface)
+	surface.RouteMode = state.RouteModeNewThreadReady
+	surface.PreparedThreadCWD = cwd
+	surface.PreparedFromThreadID = threadID
+	surface.PreparedAt = s.now()
+	return nil
+}
+
 func preparedNewThreadSelectionTitle() string {
 	return "新建会话（等待首条消息）"
 }
@@ -334,6 +367,9 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
+	}
+	if blocked := s.maybePrepareImplicitNewThreadFromUnboundText(surface, inst, text); blocked != nil {
+		return blocked
 	}
 	if blocked := s.unboundInputBlocked(surface); blocked != nil {
 		return blocked

@@ -651,7 +651,7 @@ func TestNewThreadRejectedInVSCodeMode(t *testing.T) {
 	}
 }
 
-func TestTextMessageNormalWorkspaceUnboundPromptsUseOrNew(t *testing.T) {
+func TestTextMessageNormalWorkspaceUnboundImplicitlyCreatesNewThread(t *testing.T) {
 	now := time.Date(2026, 4, 6, 12, 50, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -672,8 +672,50 @@ func TestTextMessageNormalWorkspaceUnboundPromptsUseOrNew(t *testing.T) {
 		Text:             "直接发一条消息",
 	})
 
-	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "thread_unbound" || !strings.Contains(events[0].Notice.Text, "/new") {
-		t.Fatalf("expected normal unbound text to suggest /new, got %#v", events)
+	sawPromptSend := false
+	for _, event := range events {
+		if event.Notice != nil && event.Notice.Code == "thread_unbound" {
+			t.Fatalf("expected implicit new-thread enqueue instead of thread_unbound, got %#v", events)
+		}
+		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+			sawPromptSend = true
+			if !event.Command.Target.CreateThreadIfMissing {
+				t.Fatalf("expected prompt send to create thread, got %#v", event.Command.Target)
+			}
+			if event.Command.Target.CWD != "/data/dl/droid" {
+				t.Fatalf("expected prompt send cwd to use attached workspace, got %#v", event.Command.Target)
+			}
+		}
+	}
+	if !sawPromptSend {
+		t.Fatalf("expected text to enqueue and dispatch prompt send, got %#v", events)
+	}
+
+	surface := svc.root.Surfaces["surface-1"]
+	if surface.RouteMode != state.RouteModeNewThreadReady || surface.SelectedThreadID != "" {
+		t.Fatalf("expected implicit path to enter new_thread_ready before turn starts, got %#v", surface)
+	}
+	if strings.TrimSpace(surface.PreparedThreadCWD) != "/data/dl/droid" {
+		t.Fatalf("expected prepared cwd from workspace claim, got %#v", surface)
+	}
+	if surface.ActiveQueueItemID == "" {
+		t.Fatalf("expected implicit first input to be active, got %#v", surface)
+	}
+	item := surface.QueueItems[surface.ActiveQueueItemID]
+	if item == nil || item.RouteModeAtEnqueue != state.RouteModeNewThreadReady || item.FrozenThreadID != "" || strings.TrimSpace(item.FrozenCWD) != "/data/dl/droid" {
+		t.Fatalf("expected queued first input to freeze new_thread_ready semantics, got %#v", item)
+	}
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-new",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+
+	surface = svc.root.Surfaces["surface-1"]
+	if surface.RouteMode != state.RouteModePinned || surface.SelectedThreadID != "thread-new" {
+		t.Fatalf("expected turn.started to bind surface back to pinned route, got %#v", surface)
 	}
 }
 
