@@ -72,6 +72,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 				a.handleUIEvents(context.Background(), rollback)
 				continue
 			}
+			a.traceSteerCommand(event.SurfaceSessionID, instanceID, *event.Command)
 			if err := a.sendAgentCommand(instanceID, *event.Command); err != nil {
 				log.Printf("relay send command failed: instance=%s kind=%s err=%v", instanceID, event.Command.Kind, err)
 				rollback := a.service.HandleCommandDispatchFailure(event.SurfaceSessionID, event.Command.CommandID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
@@ -175,6 +176,7 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEve
 		}
 		return err
 	}
+	a.traceAssistantBlock(event)
 	return nil
 }
 

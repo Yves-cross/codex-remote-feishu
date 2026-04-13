@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-13`
-> Summary: 新增 Claude normal-mode PoC 方案文档，并刷新文档索引。
+> Summary: 新增开发态会话 trace 日志文档，并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -112,6 +112,7 @@
 
 - [architecture.md](./general/architecture.md)
 - [codex-mcp-app-server-protocol.md](./general/codex-mcp-app-server-protocol.md)
+- [dev-conversation-trace.md](./general/dev-conversation-trace.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [feishu-im-message-research.md](./general/feishu-im-message-research.md)
 - [feishu-card-ui-state-machine.md](./general/feishu-card-ui-state-machine.md)

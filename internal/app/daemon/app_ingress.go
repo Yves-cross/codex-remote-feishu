@@ -200,6 +200,7 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 		return nil
 	}
 	action = a.classifyInboundAction(action)
+	a.traceUserTextAction(action)
 	before := a.service.SurfaceSnapshot(action.SurfaceSessionID)
 	log.Printf(
 		"surface action: surface=%s chat=%s actor=%s kind=%s message=%s instance=%s thread=%s verdict=%s reason=%s event=%s request=%s message_time=%s menu_time=%s card_lifecycle=%s text=%q",
@@ -394,6 +395,9 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	syncSurfaceResumeState := false
 	for _, event := range events {
 		now := time.Now().UTC()
+		if event.Kind == agentproto.EventTurnCompleted {
+			a.traceTurnLifecycle(instanceID, event)
+		}
 		if shouldLogAgentEvent(event) {
 			log.Printf(
 				"agent event: instance=%s kind=%s thread=%s turn=%s item=%s initiator=%s traffic=%s status=%s",
@@ -408,6 +412,9 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 			)
 		}
 		uiEvents := a.service.ApplyAgentEvent(instanceID, event)
+		if event.Kind == agentproto.EventTurnStarted {
+			a.traceTurnLifecycle(instanceID, event)
+		}
 		if event.Kind == agentproto.EventThreadsSnapshot {
 			a.markStartupThreadsRefreshSettledLocked(instanceID)
 			a.noteManagedThreadsSnapshotLocked(instanceID, now)
