@@ -48,6 +48,8 @@ type Config struct {
 	ShortName            string
 	Source               string
 	Managed              bool
+	Lifetime             string
+	ParentPID            int
 	Version              string
 	Branch               string
 	BuildFingerprint     string
@@ -98,6 +100,16 @@ func LoadConfig(args []string, version, branch string) (Config, error) {
 		source = "vscode"
 	}
 	managed := parseBoolEnv("CODEX_REMOTE_INSTANCE_MANAGED")
+	lifetime, parentPID, err := resolveInstanceLifetime(
+		source,
+		managed,
+		os.Getenv("CODEX_REMOTE_LIFETIME"),
+		os.Getenv("CODEX_REMOTE_PARENT_PID"),
+		os.Getppid(),
+	)
+	if err != nil {
+		return Config{}, err
+	}
 	paths, err := relayruntime.DefaultPaths()
 	if err != nil {
 		return Config{}, err
@@ -119,6 +131,8 @@ func LoadConfig(args []string, version, branch string) (Config, error) {
 		ShortName:            shortName,
 		Source:               source,
 		Managed:              managed,
+		Lifetime:             string(lifetime),
+		ParentPID:            parentPID,
 		Version:              firstNonEmpty(strings.TrimSpace(version), "dev"),
 		Branch:               firstNonEmpty(strings.TrimSpace(branch), "dev"),
 		BuildFingerprint:     binaryIdentity.BuildFingerprint,
@@ -204,6 +218,18 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	problems := &problemReporter{}
 	commandResponses := newCommandResponseTracker()
 	shutdownCh := make(chan shutdownRequest, 1)
+	hostExitCh := make(chan struct{}, 1)
+
+	if err := startHostLifetimeWatcher(ctx, a.config, func() {
+		select {
+		case hostExitCh <- struct{}{}:
+		default:
+		}
+	}); err != nil {
+		childCancel()
+		_ = cmd.Wait()
+		return 1, err
+	}
 
 	if err := a.bootstrapHeadlessCodex(childStdin, rawLogger, problems.Emit); err != nil {
 		childCancel()
@@ -398,6 +424,11 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		return 1, err
 	case request := <-shutdownCh:
 		a.debugf("wrapper shutdown requested by daemon: command=%s", request.CommandID)
+		stopChild()
+		client.Close()
+		return 0, nil
+	case <-hostExitCh:
+		a.debugf("wrapper shutdown requested by host exit: lifetime=%s parentPid=%d", a.config.Lifetime, a.config.ParentPID)
 		stopChild()
 		client.Close()
 		return 0, nil
