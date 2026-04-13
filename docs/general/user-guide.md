@@ -1,7 +1,7 @@
 # 使用说明书
 
 > Type: `general`
-> Updated: `2026-04-12`
+> Updated: `2026-04-13`
 > Summary: 收敛正式版前的用户口径，统一默认正式版安装、`/upgrade latest` 升级方式、normal-mode-first 使用路径，以及按场景处理的 VS Code 接入说明。
 
 ## 1. 这是什么
@@ -104,10 +104,14 @@
 
 ## 5. 安装
 
-### 5.1 macOS / Linux 一条命令安装
+### 5.1 一条命令安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1 | iex
 ```
 
 这条命令会：
@@ -123,10 +127,18 @@ curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/inst
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --track beta
 ```
 
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1))) -Track beta
+```
+
 如果你想固定到某个版本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --version <version>
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1))) -Version <version>
 ```
 
 ### 5.2 手动安装 release 包

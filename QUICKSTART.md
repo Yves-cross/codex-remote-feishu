@@ -1,9 +1,13 @@
 # 快速开始
 
-## 方式一：macOS / Linux 一条命令安装最新正式版
+## 方式一：一条命令安装最新正式版
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1 | iex
 ```
 
 这条命令会自动：
@@ -20,10 +24,18 @@ curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/inst
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --version <version>
 ```
 
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1))) -Version <version>
+```
+
 如果你明确想提前体验预发布版本，也可以额外指定：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.sh | bash -s -- --track beta
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/kxn/codex-remote-feishu/master/install-release.ps1))) -Track beta
 ```
 
 ## 方式二：下载 release 压缩包
