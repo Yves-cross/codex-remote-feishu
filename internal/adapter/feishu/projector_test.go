@@ -1563,7 +1563,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 		t.Fatalf("expected one input and one submit button, got %#v", ops[0].CardElements[4])
 	}
 	submitValue := cardButtonPayload(t, form[1])
-	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" {
+	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" || submitValue["request_option_id"] != "submit" {
 		t.Fatalf("unexpected request form payload: %#v", submitValue)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
@@ -1596,8 +1596,55 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 		t.Fatalf("expected rendered request form submit button to use V2 form_action_type, got %#v", renderedFormElements[1])
 	}
 	renderedSubmitValue := renderedButtonCallbackValue(t, renderedFormElements[1])
-	if renderedSubmitValue["kind"] != "submit_request_form" || renderedSubmitValue["request_id"] != "req-ui-1" {
+	if renderedSubmitValue["kind"] != "submit_request_form" || renderedSubmitValue["request_id"] != "req-ui-1" || renderedSubmitValue["request_option_id"] != "submit" {
 		t.Fatalf("unexpected rendered request form payload: %#v", renderedSubmitValue)
+	}
+}
+
+func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventFeishuDirectRequestPrompt,
+		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
+			RequestID:   "req-ui-submit",
+			RequestType: "request_user_input",
+			Questions: []control.RequestPromptQuestion{
+				{
+					ID:             "model",
+					Header:         "模型",
+					Question:       "请选择模型",
+					DirectResponse: true,
+					Options: []control.RequestPromptQuestionOption{
+						{Label: "gpt-5.4"},
+						{Label: "gpt-5.3"},
+					},
+				},
+				{
+					ID:             "effort",
+					Header:         "推理强度",
+					Question:       "请选择推理强度",
+					DirectResponse: true,
+					Options: []control.RequestPromptQuestionOption{
+						{Label: "high"},
+						{Label: "medium"},
+					},
+				},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) < 7 {
+		t.Fatalf("expected submit action row for no-form prompt, got %#v", ops[0].CardElements)
+	}
+	submitRow := cardElementButtons(t, ops[0].CardElements[5])
+	if len(submitRow) != 1 {
+		t.Fatalf("expected one submit action button, got %#v", ops[0].CardElements[5])
+	}
+	value := cardButtonPayload(t, submitRow[0])
+	if value["kind"] != "request_respond" || value["request_option_id"] != "submit" {
+		t.Fatalf("unexpected submit action payload: %#v", value)
 	}
 }
 

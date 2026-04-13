@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	requestUserInputSubmitOptionID                      = "submit"
 	requestUserInputSubmitWithUnansweredOptionID        = "submit_with_unanswered"
 	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
@@ -243,23 +244,39 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 		}, false, nil
 	case "request_user_input":
 		if requestUserInputCancelSubmitWithUnanswered(action.RequestOptionID) {
+			if !request.SubmitWithUnansweredConfirmPending {
+				return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
+			}
 			clearRequestUserInputSubmitConfirmState(request)
 			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
 		}
+		if requestUserInputConfirmSubmitWithUnanswered(action.RequestOptionID) && !request.SubmitWithUnansweredConfirmPending {
+			return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
+		}
+		submitIntent := requestUserInputSubmitIntent(action.RequestOptionID)
 		allowSubmitWithUnanswered := requestUserInputAllowSubmitWithUnanswered(action.RequestOptionID)
 		response, complete, missingLabels, errText := buildRequestUserInputResponse(request, action.RequestAnswers, allowSubmitWithUnanswered)
 		if errText != "" {
 			return nil, false, notice(surface, "request_invalid", errText)
 		}
 		if !complete {
+			if submitIntent {
+				setRequestUserInputSubmitConfirmState(request, missingLabels)
+				return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
+			}
 			if len(action.RequestAnswers) == 0 {
 				if len(missingLabels) != 0 {
 					return nil, false, notice(surface, "request_invalid", fmt.Sprintf("问题“%s”还没有填写答案。", missingLabels[0]))
 				}
 				return nil, false, notice(surface, "request_invalid", "当前没有可提交的答案。")
 			}
-			setRequestUserInputSubmitConfirmState(request, missingLabels)
-			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
+			if len(missingLabels) == 0 {
+				return nil, false, notice(surface, "request_saved", "已记录当前答案，请继续补全其他问题后再提交。")
+			}
+			if len(missingLabels) == 1 {
+				return nil, false, notice(surface, "request_saved", fmt.Sprintf("已记录当前答案。还差 1 个问题：%s。", missingLabels[0]))
+			}
+			return nil, false, notice(surface, "request_saved", fmt.Sprintf("已记录当前答案。还差 %d 个问题待填写。", len(missingLabels)))
 		}
 		clearRequestUserInputSubmitConfirmState(request)
 		return response, true, nil
@@ -332,15 +349,34 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 func requestUserInputAllowSubmitWithUnanswered(optionID string) bool {
 	normalized := requestUserInputNormalizedOptionID(optionID)
 	switch normalized {
-	case "submitwithunanswered", "allowunanswered", "submitpartial", "proceedwithunanswered", "confirmsubmitwithunanswered":
+	case "submitwithunanswered", "allowunanswered", "submitpartial", "proceedwithunanswered":
+		return true
+	case requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID):
 		return true
 	default:
 		return false
 	}
 }
 
+func requestUserInputConfirmSubmitWithUnanswered(optionID string) bool {
+	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID)
+}
+
 func requestUserInputCancelSubmitWithUnanswered(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == "cancelsubmitwithunanswered"
+	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestUserInputCancelSubmitWithUnansweredOptionID)
+}
+
+func requestUserInputSubmitIntent(optionID string) bool {
+	normalized := requestUserInputNormalizedOptionID(optionID)
+	switch normalized {
+	case requestUserInputNormalizedOptionID(requestUserInputSubmitOptionID),
+		requestUserInputNormalizedOptionID("submit_answers"),
+		requestUserInputNormalizedOptionID(requestUserInputSubmitWithUnansweredOptionID),
+		requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID):
+		return true
+	default:
+		return false
+	}
 }
 
 func requestUserInputNormalizedOptionID(optionID string) string {

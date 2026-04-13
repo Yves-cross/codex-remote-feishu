@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	requestUserInputSubmitOptionID                      = "submit"
 	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
 )
@@ -112,6 +113,10 @@ func requestUserInputPromptElements(prompt control.FeishuDirectRequestPrompt, da
 	if requestPromptNeedsForm(prompt) {
 		if form := requestPromptFormElement(prompt, daemonLifecycleID); len(form) != 0 {
 			elements = append(elements, form)
+		}
+	} else if !prompt.SubmitWithUnansweredConfirmPending {
+		if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
+			elements = append(elements, row)
 		}
 	}
 	elements = append(elements, map[string]any{
@@ -271,15 +276,30 @@ func requestPromptFormElement(prompt control.FeishuDirectRequestPrompt, daemonLi
 		return nil
 	}
 	elements = append(elements, cardFormSubmitButtonElement("提交答案", stampActionValue(map[string]any{
-		cardActionPayloadKeyKind:        cardActionKindSubmitRequestForm,
-		cardActionPayloadKeyRequestID:   prompt.RequestID,
-		cardActionPayloadKeyRequestType: strings.TrimSpace(prompt.RequestType),
+		cardActionPayloadKeyKind:            cardActionKindSubmitRequestForm,
+		cardActionPayloadKeyRequestID:       prompt.RequestID,
+		cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
+		cardActionPayloadKeyRequestOptionID: requestUserInputSubmitOptionID,
 	}, daemonLifecycleID)))
 	return map[string]any{
 		"tag":      "form",
 		"name":     "request_form_" + strings.TrimSpace(prompt.RequestID),
 		"elements": elements,
 	}
+}
+
+func requestPromptSubmitActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+	if len(prompt.Questions) == 0 {
+		return nil
+	}
+	return cardButtonGroupElement([]map[string]any{
+		cardCallbackButtonElement("提交答案", "primary", stampActionValue(map[string]any{
+			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
+			cardActionPayloadKeyRequestID:       prompt.RequestID,
+			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
+			cardActionPayloadKeyRequestOptionID: requestUserInputSubmitOptionID,
+		}, daemonLifecycleID), false, ""),
+	})
 }
 
 func requestPromptSubmitConfirmActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
@@ -326,7 +346,7 @@ func requestPromptQuestionHint(prompt control.FeishuDirectRequestPrompt) string 
 		return "可直接点击按钮回答单选题；如果需要补充文字或填写其他答案，请在下方表单里提交。若仍有未答题，会先进入确认提交步骤。"
 	}
 	if hasDirect {
-		return "点击按钮可逐题作答。"
+		return "点击按钮可逐题作答；准备结束时请点击“提交答案”。若仍有未答题，会先进入确认提交步骤。"
 	}
 	return "填写后点击“提交答案”；若仍有未答题，会先进入确认提交步骤。"
 }

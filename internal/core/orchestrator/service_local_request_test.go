@@ -922,18 +922,15 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
-		t.Fatalf("expected partial submit to enter confirm card state, got %#v", events)
-	}
-	if !events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected confirm state in prompt event, got %#v", events[0].FeishuDirectRequestPrompt)
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_saved" {
+		t.Fatalf("expected partial answer to be saved first, got %#v", events)
 	}
 	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if pending == nil || pending.DraftAnswers["model"] != "gpt-5.4" {
 		t.Fatalf("expected partial answer to persist in pending request, got %#v", pending)
 	}
-	if !pending.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected pending request to enter confirm state after partial submit, got %#v", pending)
+	if pending.SubmitWithUnansweredConfirmPending {
+		t.Fatalf("expected partial answer save to keep request in answering state, got %#v", pending)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
@@ -1003,8 +1000,8 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil || !events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected option-only partial submit to enter confirm state, got %#v", events)
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_saved" {
+		t.Fatalf("expected option-only partial submit to be saved, got %#v", events)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
@@ -1071,15 +1068,25 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil || !events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected first step to enter confirm state, got %#v", events)
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_saved" {
+		t.Fatalf("expected first step to save partial answer, got %#v", events)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		RequestID:        "req-ui-1",
-		RequestOptionID:  "submit_with_unanswered",
+		RequestOptionID:  "submit",
+	})
+	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil || !events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
+		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
+	}
+
+	events = svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-ui-1",
+		RequestOptionID:  "confirm_submit_with_unanswered",
 	})
 	if len(events) != 1 || events[0].Command == nil {
 		t.Fatalf("expected submit_with_unanswered to dispatch response, got %#v", events)
@@ -1143,6 +1150,12 @@ func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *
 			"model": {"gpt-5.4"},
 		},
 	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-ui-1",
+		RequestOptionID:  "submit",
+	})
 
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
@@ -1159,6 +1172,100 @@ func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *
 	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if pending == nil || pending.SubmitWithUnansweredConfirmPending {
 		t.Fatalf("expected pending request confirm state to clear, got %#v", pending)
+	}
+}
+
+func TestRespondRequestUserInputRejectsStaleConfirmSubmit(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-ui-1",
+		Metadata: map[string]any{
+			"requestType": "request_user_input",
+			"questions": []map[string]any{
+				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}, {"label": "gpt-5.3"}}},
+				{"id": "effort", "header": "推理强度", "question": "请选择推理强度", "options": []map[string]any{{"label": "high"}, {"label": "medium"}}},
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-ui-1",
+		RequestOptionID:  "confirm_submit_with_unanswered",
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
+		t.Fatalf("expected stale confirm submit to be rejected, got %#v", events)
+	}
+}
+
+func TestRespondRequestUserInputRejectsStaleCancelSubmit(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-ui-1",
+		Metadata: map[string]any{
+			"requestType": "request_user_input",
+			"questions": []map[string]any{
+				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}, {"label": "gpt-5.3"}}},
+				{"id": "effort", "header": "推理强度", "question": "请选择推理强度", "options": []map[string]any{{"label": "high"}, {"label": "medium"}}},
+			},
+		},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-ui-1",
+		RequestOptionID:  "cancel_submit_with_unanswered",
+	})
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
+		t.Fatalf("expected stale cancel submit to be rejected, got %#v", events)
 	}
 }
 

@@ -87,7 +87,7 @@
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡 |
 | `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
-| `request approve` / `request_user_input` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、`request_user_input` 的分题暂存、`submit_with_unanswered` 显式留空提交与最终提交校验属于产品状态机 |
+| `request approve` / `request_user_input` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、`request_user_input` 的分题暂存、“提交答案”触发确认态、确认态留空提交与最终提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
 | `/new` | `product-owned` | 是否进入 `new_thread_ready`、何时消耗第一条消息、request gate 是否阻断都属于 core 状态机 |
@@ -146,7 +146,7 @@
 | `path_picker_select` | `picker_id`、`entry_name` | 在当前 active picker 里选择一个文件或目录 |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice |
-| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers` | 响应 approval 或 `request_user_input`；`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=confirm_submit_with_unanswered` 触发留空确认提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
+| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers` | 响应 approval 或 `request_user_input`；`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=submit` 触发“提交答案”语义，未答题时会进入确认态；`request_option_id=confirm_submit_with_unanswered` 触发留空确认提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
 | `submit_request_form` | `request_id`、`request_type`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径 |
 
@@ -162,6 +162,7 @@
 - `submit_request_form`
   - 优先把 `form_value` 整体转成 `request_answers`
   - `request_user_input` 当前只会为“需要手填”的问题渲染 form input（纯选项题不再渲染自由输入框）
+  - 表单“提交答案”按钮带 `request_option_id=submit`
   - 当本次提交后仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并刷新 request 卡片
   - 确认态按钮用 `request_respond` 回传：
     - `request_option_id=confirm_submit_with_unanswered`：确认留空提交

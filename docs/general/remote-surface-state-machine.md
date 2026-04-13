@@ -1009,7 +1009,7 @@ transport degraded retained attachment
 | 覆盖状态 | 当前行为 |
 | --- | --- |
 | `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autowhip`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
-| `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；若用户点击“提交已有答案（可留空）”，则允许未答题按空答案提交并清 gate |
+| `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；用户点击“提交答案”后若仍有未答题，会先进入确认态，再决定是否留空提交并清 gate |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |
 | `G5 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片、revoke/reaction；`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel 会先清 gate，再把结果交给 consumer 或默认 notice；unauthorized 只回拒绝 notice，不清当前 gate；若 picker 已过期，则会在下一次 action 入口自动清 gate |
@@ -1044,8 +1044,8 @@ retained-offline overlay 额外规则：
 | `show_all_threads` | `ActionShowAllThreads` | 打开 `/useall` 的默认 cross-workspace 总览；也用于单-workspace 全量视图返回总览 |
 | `show_all_thread_workspaces` | `ActionShowAllThreadWorkspaces` | 把 `/useall` grouped 总览从“最近 5 个工作区”展开到“全部工作区” |
 | `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | 从“全部工作区”视图返回 `/useall` 默认最近 5 个工作区总览 |
-| `request_respond` | `ActionRespondRequest` | approval 与 `request_user_input` 的按钮回传入口；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，`request_option_id=confirm_submit_with_unanswered` 会确认留空提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
-| `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传；若提交后仍有未答题，request 会切到确认态，等待 `confirm_submit_with_unanswered` 或 `cancel_submit_with_unanswered` |
+| `request_respond` | `ActionRespondRequest` | approval 与 `request_user_input` 的按钮回传入口；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，`request_option_id=submit` 触发“提交答案”语义，若有未答题会进入确认态；`request_option_id=confirm_submit_with_unanswered` 会确认留空提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
+| `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传；表单“提交答案”会带 `request_option_id=submit`；若提交后仍有未答题，request 会切到确认态，等待 `confirm_submit_with_unanswered` 或 `cancel_submit_with_unanswered` |
 | `resume_headless_thread` | `ActionRemovedCommand` | 历史兼容入口，统一回迁移提示 |
 | `kick_thread_confirm` | `ActionConfirmKickThread` | 强踢前再次校验实时状态 |
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
@@ -1149,7 +1149,7 @@ retained-offline overlay 额外规则：
 3. 有没有让未冻结草稿在 route change 时静默改投目标。
 4. 有没有把 UI helper 状态重新变回服务端持久 modal state。
 5. 有没有让 `R5 NewThreadReady` 在首条消息失败后落回无恢复路径的状态。
-6. `request_user_input` 的按钮/表单提交后，是否符合“局部答案先暂存；未答题提交先进入确认态；确认后才留空提交并清 pending request”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
+6. `request_user_input` 的按钮/表单提交后，是否符合“按钮答题先暂存；显式点击提交后若仍有未答题才进入确认态；确认后才留空提交并清 pending request”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
 
 ## 11. 待讨论取舍
 
