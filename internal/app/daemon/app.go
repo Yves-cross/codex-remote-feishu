@@ -177,14 +177,15 @@ type App struct {
 	toolBearerToken        string
 	workspaceContextRoots  map[string]string
 
-	shutdownGracePeriod    time.Duration
-	shutdownNoticeTimeout  time.Duration
-	gatewayStopTimeout     time.Duration
-	shutdownDrainTimeout   time.Duration
-	shutdownDrainPoll      time.Duration
-	shutdownForceKillGrace time.Duration
-	gatewayApplyTimeout    time.Duration
-	finalPreviewTimeout    time.Duration
+	shutdownGracePeriod      time.Duration
+	shutdownNoticeTimeout    time.Duration
+	gatewayStopTimeout       time.Duration
+	shutdownDrainTimeout     time.Duration
+	shutdownDrainPoll        time.Duration
+	shutdownForceKillGrace   time.Duration
+	gatewayApplyTimeout      time.Duration
+	finalPreviewTimeout      time.Duration
+	commandAnchorRecallDelay time.Duration
 
 	upgradeLookup          releaseLookupFunc
 	upgradeCheckInterval   time.Duration
@@ -244,6 +245,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		shutdownForceKillGrace:       0,
 		gatewayApplyTimeout:          30 * time.Second,
 		finalPreviewTimeout:          90 * time.Second,
+		commandAnchorRecallDelay:     8 * time.Second,
 		upgradeCheckInterval:         3 * time.Hour,
 		upgradeStartupDelay:          1 * time.Minute,
 		upgradePromptScanEvery:       5 * time.Second,

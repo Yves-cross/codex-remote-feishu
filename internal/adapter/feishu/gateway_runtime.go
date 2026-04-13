@@ -255,6 +255,27 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation Operation) error {
 			g.recordSurfaceMessage(stringPtr(resp.Data.MessageId), operation.SurfaceSessionID)
 		}
 		return nil
+	case OperationDeleteMessage:
+		if strings.TrimSpace(operation.MessageID) == "" {
+			return nil
+		}
+		resp, err := g.deleteMessageFn(ctx, operation.MessageID)
+		if err != nil {
+			return err
+		}
+		if !resp.Success() {
+			if ignoredMissingMessageDeleteError(resp.Code, resp.Msg) {
+				g.mu.Lock()
+				delete(g.messages, operation.MessageID)
+				g.mu.Unlock()
+				return nil
+			}
+			return newAPIError("im.v1.message.delete", resp.ApiResp, resp.CodeError)
+		}
+		g.mu.Lock()
+		delete(g.messages, operation.MessageID)
+		g.mu.Unlock()
+		return nil
 	case OperationAddReaction:
 		if operation.MessageID == "" {
 			return nil
@@ -744,6 +765,28 @@ func ignoredMissingReactionError(_ int, msg string) bool {
 	return false
 }
 
+func ignoredMissingMessageDeleteError(_ int, msg string) bool {
+	msg = strings.ToLower(strings.TrimSpace(msg))
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, "not found") || strings.Contains(msg, "recalled") || strings.Contains(msg, "deleted") {
+		return true
+	}
+	missingHints := []string{
+		"目标消息不存在",
+		"消息不存在",
+		"消息已撤回",
+		"消息已删除",
+	}
+	for _, hint := range missingHints {
+		if strings.Contains(msg, strings.ToLower(hint)) {
+			return true
+		}
+	}
+	return false
+}
+
 func cardTemplate(themeKey, fallback string) string {
 	key := strings.ToLower(strings.TrimSpace(themeKey))
 	if key == "" {
@@ -768,4 +811,10 @@ func (g *LiveGateway) recordSurfaceMessage(messageID, surfaceSessionID string) {
 	g.mu.Lock()
 	g.messages[messageID] = surfaceSessionID
 	g.mu.Unlock()
+}
+
+func (g *LiveGateway) deleteMessage(ctx context.Context, messageID string) (*larkim.DeleteMessageResp, error) {
+	return g.client.Im.V1.Message.Delete(ctx, larkim.NewDeleteMessageReqBuilder().
+		MessageId(messageID).
+		Build())
 }

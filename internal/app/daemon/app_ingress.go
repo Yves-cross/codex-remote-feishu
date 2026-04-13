@@ -235,15 +235,20 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	events := a.applyIngressActionLocked(action)
 	appendEvents := events
 	inlineResult := a.inlineCardActionResultLocked(action, events)
+	commandSubmissionAnchorReplace := false
 	if inlineResult == nil {
 		inlineResult, appendEvents = a.bareCommandContinuationResultLocked(action, events)
 	}
 	if inlineResult == nil {
 		inlineResult = a.commandSubmissionAnchorResultLocked(action)
+		commandSubmissionAnchorReplace = inlineResult != nil
 	}
 	inlineNavigationReplace := inlineResult != nil && control.AllowsInlineCardReplacement(action)
 	if !inlineNavigationReplace {
 		a.handleUIEvents(ctx, appendEvents)
+	}
+	if commandSubmissionAnchorReplace {
+		a.scheduleCommandSubmissionAnchorRecall(action)
 	}
 	var clearTargets map[string]bool
 	if a.shouldClearSurfaceResumeTargetLocked(action, before) {
@@ -415,6 +420,38 @@ func commandSubmissionAnchorCommandText(action control.Action) string {
 	default:
 		return ""
 	}
+}
+
+func (a *App) scheduleCommandSubmissionAnchorRecall(action control.Action) {
+	messageID := strings.TrimSpace(action.MessageID)
+	if messageID == "" || a.commandAnchorRecallDelay < 0 {
+		return
+	}
+	delay := a.commandAnchorRecallDelay
+	surfaceID := strings.TrimSpace(action.SurfaceSessionID)
+	gatewayID := strings.TrimSpace(action.GatewayID)
+	go func() {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		a.mu.Lock()
+		shuttingDown := a.shuttingDown
+		a.mu.Unlock()
+		if shuttingDown {
+			return
+		}
+		ctx, cancel := a.newTimeoutContext(context.Background(), a.gatewayApplyTimeout)
+		defer cancel()
+		err := a.gateway.Apply(ctx, []feishu.Operation{{
+			Kind:             feishu.OperationDeleteMessage,
+			GatewayID:        gatewayID,
+			SurfaceSessionID: surfaceID,
+			MessageID:        messageID,
+		}})
+		if err != nil {
+			log.Printf("command submission anchor recall skipped: surface=%s message=%s err=%v", surfaceID, messageID, err)
+		}
+	}()
 }
 
 func (a *App) ensureSurfaceRouteForNotice(action control.Action) {

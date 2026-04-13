@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-13`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、`request_user_input` 多题分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、显式“提交已有答案（可留空）”路径、题级回答进度与已答/待答状态展示，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append）。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、`request_user_input` 多题分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、显式“提交已有答案（可留空）”路径、题级回答进度与已答/待答状态展示，以及“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回）。
 
 ## 1. 文档定位
 
@@ -245,6 +245,7 @@
 
 - stamped 菜单命令里的非 inline 命令（例如 `/status`、`/list`、`/stop`、`/new`、`/follow`、`/detach`）会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡。
 - bare `/upgrade`、bare `/debug` 在 stamped 菜单卡里会直接同位承接为对应状态/输入卡（replace 当前菜单卡），不再先外跳 append 一张新卡。
+- “命令已提交”锚点卡当前会在短延时后尝试 best-effort 自动撤回；撤回失败时仅静默降级，不影响主流程。
 - 这条路径不会改变产品动作 owner，也不会把参数应用动作改成 inline replace。
 
 ## 6. 当前 freshness / old-card 语义
@@ -331,6 +332,8 @@
   - 锁定 `FeishuPathPickerView` 的按钮 payload、`daemon_lifecycle_id` stamp 与 enter/select 按钮区分
 - [internal/adapter/feishu/gateway_test.go](../../internal/adapter/feishu/gateway_test.go)
   - 锁定 callback payload 解析、同步等待 replace 的触发条件（inline navigation + command submission anchor）、无 lifecycle 导航仍异步 ack
+- [internal/adapter/feishu/gateway_delete_message_test.go](../../internal/adapter/feishu/gateway_delete_message_test.go)
+  - 锁定 message.delete 出站能力与“消息已不存在”类错误的静默降级
 - [internal/adapter/feishu/gateway_path_picker_test.go](../../internal/adapter/feishu/gateway_path_picker_test.go)
   - 锁定 `path_picker_*` callback payload 能正确回到 `control.Action`
 - [internal/core/orchestrator/service_test.go](../../internal/core/orchestrator/service_test.go)
@@ -342,7 +345,7 @@
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
   - 锁定 daemon ingress 统一入口下的 inline replace 结果、菜单命令提交态锚点（replace 提交态 + append 结果）、`/help` 保持 append-only、active path picker 会阻断 competing `/menu`、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
 - [internal/app/daemon/app_submission_anchor_test.go](../../internal/app/daemon/app_submission_anchor_test.go)
-  - 锁定阶段 A/B 菜单提交承接行为：普通命令“提交态锚点 + append 结果”、bare `/upgrade` 同位承接 replace
+  - 锁定阶段 A/B/C 菜单提交承接行为：普通命令“提交态锚点 + append 结果 + 延时自动撤回”、bare `/upgrade` 同位承接 replace
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)
   - 锁定 old / old-card 生命周期分类，以及 reject detail 已按当前 UI intent / command 语义收束
 - [internal/core/orchestrator/service_config_prompt_test.go](../../internal/core/orchestrator/service_config_prompt_test.go)
