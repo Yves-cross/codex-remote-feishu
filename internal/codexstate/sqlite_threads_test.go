@@ -2,6 +2,7 @@ package codexstate
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -61,6 +62,41 @@ func TestSQLiteThreadCatalogThreadByIDSkipsFilteredRows(t *testing.T) {
 		}
 		if thread != nil {
 			t.Fatalf("expected filtered thread %s to stay hidden, got %#v", threadID, thread)
+		}
+	}
+}
+
+func TestSQLiteThreadCatalogRecentWorkspacesReturnsAggregatedRows(t *testing.T) {
+	dbPath := createThreadCatalogTestDB(t)
+	catalog := NewSQLiteThreadCatalog(dbPath, SQLiteThreadCatalogOptions{Logf: func(string, ...any) {}})
+
+	workspaces, err := catalog.RecentWorkspaces(10)
+	if err != nil {
+		t.Fatalf("recent workspaces: %v", err)
+	}
+	if len(workspaces) != 2 {
+		t.Fatalf("expected 2 workspaces, got %#v", workspaces)
+	}
+	if got := workspaces[testutil.WorkspacePath("data", "dl", "web")]; !got.Equal(time.Unix(1775710200, 0).UTC()) {
+		t.Fatalf("unexpected web workspace timestamp: %v", got)
+	}
+	if got := workspaces[testutil.WorkspacePath("data", "dl", "droid")]; !got.Equal(time.Unix(1775710100, 0).UTC()) {
+		t.Fatalf("unexpected droid workspace timestamp: %v", got)
+	}
+}
+
+func TestIsSQLiteBusyError(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{err: nil, want: false},
+		{err: errors.New("database is locked"), want: true},
+		{err: errors.New("SQLITE_BUSY: database table is locked"), want: true},
+		{err: errors.New("permission denied"), want: false},
+	} {
+		if got := isSQLiteBusyError(tc.err); got != tc.want {
+			t.Fatalf("isSQLiteBusyError(%v)=%v want=%v", tc.err, got, tc.want)
 		}
 	}
 }

@@ -166,10 +166,7 @@ func (s *Service) mergePersistedRecentThreads(viewsByID map[string]*mergedThread
 	if s == nil || s.persistedThreads == nil {
 		return
 	}
-	threads, err := s.persistedThreads.RecentThreads(persistedRecentThreadLimit)
-	if err != nil {
-		return
-	}
+	threads := s.recentPersistedThreads(persistedRecentThreadLimit)
 	for i := range threads {
 		thread := threads[i]
 		if strings.TrimSpace(thread.ThreadID) == "" || !threadVisible(&thread) {

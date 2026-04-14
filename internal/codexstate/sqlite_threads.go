@@ -21,6 +21,7 @@ const (
 	defaultCodexSQLiteFilename = "state_5.sqlite"
 	internalProbeThreadPrefix  = "_tmp-codex-thread-latency-"
 	internalProbeAppPrefix     = "_tmp-codex-appserver-"
+	sqliteReadRetryCount       = 3
 )
 
 type SQLiteThreadCatalogOptions struct {
@@ -73,14 +74,9 @@ func (c *SQLiteThreadCatalog) RecentThreads(limit int) ([]state.ThreadRecord, er
 	if limit <= 0 {
 		limit = 50
 	}
-	db, err := c.openReadOnly()
-	if err != nil {
-		c.logError("open recent threads", err)
-		return nil, err
-	}
-	defer db.Close()
-
-	rows, err := db.Query(`
+	var threads []state.ThreadRecord
+	err := c.readWithRetry("query recent threads", func(db *sql.DB) error {
+		rows, err := db.Query(`
 SELECT id, title, cwd, updated_at, archived, model, reasoning_effort, first_user_message
 FROM threads
 WHERE archived = 0
@@ -91,29 +87,85 @@ WHERE archived = 0
 ORDER BY updated_at DESC, id DESC
 LIMIT ?
 `, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		local := make([]state.ThreadRecord, 0, limit)
+		for rows.Next() {
+			thread, err := scanPersistedThread(rows)
+			if err != nil {
+				return err
+			}
+			if thread == nil {
+				continue
+			}
+			local = append(local, *thread)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		threads = local
+		return nil
+	})
 	if err != nil {
 		c.logError("query recent threads", err)
 		return nil, err
 	}
-	defer rows.Close()
+	return threads, nil
+}
 
-	threads := make([]state.ThreadRecord, 0, limit)
-	for rows.Next() {
-		thread, err := scanPersistedThread(rows)
-		if err != nil {
-			c.logError("scan recent thread", err)
-			return nil, err
-		}
-		if thread == nil {
-			continue
-		}
-		threads = append(threads, *thread)
+func (c *SQLiteThreadCatalog) RecentWorkspaces(limit int) (map[string]time.Time, error) {
+	if limit <= 0 {
+		limit = 200
 	}
-	if err := rows.Err(); err != nil {
-		c.logError("iterate recent threads", err)
+	var workspaces map[string]time.Time
+	err := c.readWithRetry("query recent workspaces", func(db *sql.DB) error {
+		rows, err := db.Query(`
+SELECT cwd, MAX(updated_at) AS updated_at
+FROM threads
+WHERE archived = 0
+  AND source IN ('cli', 'vscode')
+  AND COALESCE(agent_role, '') = ''
+  AND cwd NOT LIKE '%/_tmp-codex-thread-latency-%'
+  AND cwd NOT LIKE '%/_tmp-codex-appserver-%'
+GROUP BY cwd
+ORDER BY updated_at DESC, cwd ASC
+LIMIT ?
+`, limit)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		local := map[string]time.Time{}
+		for rows.Next() {
+			var cwd string
+			var updatedAt int64
+			if err := rows.Scan(&cwd, &updatedAt); err != nil {
+				return err
+			}
+			cwd = state.ResolveWorkspaceKey(cwd)
+			if cwd == "" || internalProbeWorkspace(cwd) {
+				continue
+			}
+			lastUsedAt := unixTimestamp(updatedAt)
+			if current, ok := local[cwd]; !ok || lastUsedAt.After(current) {
+				local[cwd] = lastUsedAt
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		workspaces = local
+		return nil
+	})
+	if err != nil {
+		c.logError("query recent workspaces", err)
 		return nil, err
 	}
-	return threads, nil
+	return workspaces, nil
 }
 
 func (c *SQLiteThreadCatalog) ThreadByID(threadID string) (*state.ThreadRecord, error) {
@@ -121,14 +173,9 @@ func (c *SQLiteThreadCatalog) ThreadByID(threadID string) (*state.ThreadRecord, 
 	if threadID == "" {
 		return nil, nil
 	}
-	db, err := c.openReadOnly()
-	if err != nil {
-		c.logError("open thread by id", err)
-		return nil, err
-	}
-	defer db.Close()
-
-	row := db.QueryRow(`
+	var thread *state.ThreadRecord
+	err := c.readWithRetry("query thread by id", func(db *sql.DB) error {
+		row := db.QueryRow(`
 SELECT id, title, cwd, updated_at, archived, model, reasoning_effort, first_user_message
 FROM threads
 WHERE id = ?
@@ -139,16 +186,23 @@ WHERE id = ?
   AND cwd NOT LIKE '%/_tmp-codex-appserver-%'
 LIMIT 1
 `, threadID)
-	thread, err := scanPersistedThread(row)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return nil, nil
-	case err != nil:
+		record, err := scanPersistedThread(row)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			thread = nil
+			return nil
+		case err != nil:
+			return err
+		default:
+			thread = record
+			return nil
+		}
+	})
+	if err != nil {
 		c.logError("query thread by id", err)
 		return nil, err
-	default:
-		return thread, nil
 	}
+	return thread, nil
 }
 
 func (c *SQLiteThreadCatalog) openReadOnly() (*sql.DB, error) {
@@ -177,6 +231,62 @@ func (c *SQLiteThreadCatalog) logError(scope string, err error) {
 		return
 	}
 	c.logf("codex sqlite thread catalog %s failed: %v", strings.TrimSpace(scope), err)
+}
+
+func (c *SQLiteThreadCatalog) readWithRetry(scope string, fn func(*sql.DB) error) error {
+	if c == nil {
+		return fmt.Errorf("missing codex sqlite thread catalog")
+	}
+	scope = strings.TrimSpace(scope)
+	var lastErr error
+	for attempt := 0; attempt < sqliteReadRetryCount; attempt++ {
+		db, err := c.openReadOnly()
+		if err != nil {
+			lastErr = err
+		} else {
+			runErr := fn(db)
+			closeErr := db.Close()
+			if runErr != nil {
+				lastErr = runErr
+			} else if closeErr != nil {
+				lastErr = closeErr
+			} else {
+				if attempt > 0 && c.logf != nil {
+					c.logf("codex sqlite thread catalog %s recovered after busy retry (%d)", scope, attempt)
+				}
+				return nil
+			}
+		}
+		if !isSQLiteBusyError(lastErr) || attempt+1 >= sqliteReadRetryCount {
+			return lastErr
+		}
+		if c.logf != nil {
+			c.logf("codex sqlite thread catalog %s busy, retrying (%d/%d): %v", scope, attempt+1, sqliteReadRetryCount-1, lastErr)
+		}
+		time.Sleep(sqliteReadRetryBackoff(attempt))
+	}
+	return lastErr
+}
+
+func sqliteReadRetryBackoff(attempt int) time.Duration {
+	switch attempt {
+	case 0:
+		return 15 * time.Millisecond
+	case 1:
+		return 35 * time.Millisecond
+	default:
+		return 60 * time.Millisecond
+	}
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "sqlite_busy")
 }
 
 type rowScanner interface {

@@ -236,6 +236,8 @@ func (s *Service) buildWorkspaceSelectionModel(surface *state.SurfaceConsoleReco
 			recoverableWorkspaces[workspaceKey] = usedAt
 		}
 	}
+	s.mergeWorkspaceSelectionRecencyFromOnlineThreads(recoverableWorkspaces, recoverableWorkspaceSeen, visibleWorkspaces)
+	s.mergeWorkspaceSelectionRecencyFromPersistedWorkspaces(recoverableWorkspaces, recoverableWorkspaceSeen, visibleWorkspaces)
 
 	currentWorkspace := s.surfaceCurrentWorkspaceKey(surface)
 	entries := make([]workspaceSelectionEntry, 0, len(visibleWorkspaces))
@@ -554,4 +556,70 @@ func workspaceSelectionLabel(workspaceKey string) string {
 		return label
 	}
 	return workspaceKey
+}
+
+func (s *Service) mergeWorkspaceSelectionRecencyFromOnlineThreads(latest map[string]time.Time, seen map[string]bool, visible map[string]struct{}) {
+	if s == nil {
+		return
+	}
+	for _, inst := range s.root.Instances {
+		if inst == nil || !inst.Online {
+			continue
+		}
+		for _, thread := range visibleThreads(inst) {
+			mergeWorkspaceSelectionThreadRecency(latest, seen, visible, thread)
+		}
+	}
+}
+
+func (s *Service) mergeWorkspaceSelectionRecencyFromPersistedWorkspaces(latest map[string]time.Time, seen map[string]bool, visible map[string]struct{}) {
+	if s == nil || s.persistedThreads == nil {
+		return
+	}
+	for workspaceKey, usedAt := range s.recentPersistedWorkspaces(persistedRecentWorkspaceLimit) {
+		workspaceKey = state.ResolveWorkspaceKey(workspaceKey)
+		if workspaceKey == "" || workspaceSelectionInternalProbeWorkspace(workspaceKey) {
+			continue
+		}
+		seen[workspaceKey] = true
+		if visible != nil {
+			visible[workspaceKey] = struct{}{}
+		}
+		if current, ok := latest[workspaceKey]; !ok || usedAt.After(current) {
+			latest[workspaceKey] = usedAt
+		}
+	}
+}
+
+func mergeWorkspaceSelectionThreadRecency(latest map[string]time.Time, seen map[string]bool, visible map[string]struct{}, thread *state.ThreadRecord) {
+	workspaceKey, usedAt := workspaceSelectionThreadKeyAndUsedAt(thread)
+	if workspaceKey == "" {
+		return
+	}
+	seen[workspaceKey] = true
+	if visible != nil {
+		visible[workspaceKey] = struct{}{}
+	}
+	if current, ok := latest[workspaceKey]; !ok || usedAt.After(current) {
+		latest[workspaceKey] = usedAt
+	}
+}
+
+func workspaceSelectionThreadKeyAndUsedAt(thread *state.ThreadRecord) (string, time.Time) {
+	if !threadVisible(thread) {
+		return "", time.Time{}
+	}
+	workspaceKey := state.ResolveWorkspaceKey(thread.CWD)
+	if workspaceKey == "" || workspaceSelectionInternalProbeWorkspace(workspaceKey) {
+		return "", time.Time{}
+	}
+	return workspaceKey, thread.LastUsedAt
+}
+
+func workspaceSelectionInternalProbeWorkspace(workspaceKey string) bool {
+	workspaceKey = state.NormalizeWorkspaceKey(workspaceKey)
+	if workspaceKey == "" {
+		return false
+	}
+	return strings.Contains(workspaceKey, "/_tmp-codex-thread-latency-") || strings.Contains(workspaceKey, "/_tmp-codex-appserver-")
 }

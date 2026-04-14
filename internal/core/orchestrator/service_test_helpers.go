@@ -98,10 +98,12 @@ func findSelectionPromptByKind(t *testing.T, events []control.UIEvent, kind cont
 }
 
 type fakePersistedThreadCatalog struct {
-	recent    []state.ThreadRecord
-	byID      map[string]state.ThreadRecord
-	recentErr error
-	byIDErr   error
+	recent              []state.ThreadRecord
+	recentWorkspaces    map[string]time.Time
+	byID                map[string]state.ThreadRecord
+	recentErr           error
+	recentWorkspacesErr error
+	byIDErr             error
 }
 
 func (f *fakePersistedThreadCatalog) RecentThreads(limit int) ([]state.ThreadRecord, error) {
@@ -115,6 +117,23 @@ func (f *fakePersistedThreadCatalog) RecentThreads(limit int) ([]state.ThreadRec
 		return append([]state.ThreadRecord(nil), f.recent...), nil
 	}
 	return append([]state.ThreadRecord(nil), f.recent[:limit]...), nil
+}
+
+func (f *fakePersistedThreadCatalog) RecentWorkspaces(limit int) (map[string]time.Time, error) {
+	if f == nil {
+		return nil, nil
+	}
+	if f.recentWorkspacesErr != nil {
+		return nil, f.recentWorkspacesErr
+	}
+	if len(f.recentWorkspaces) == 0 {
+		return nil, nil
+	}
+	out := make(map[string]time.Time, len(f.recentWorkspaces))
+	for workspaceKey, usedAt := range f.recentWorkspaces {
+		out[workspaceKey] = usedAt
+	}
+	return out, nil
 }
 
 func (f *fakePersistedThreadCatalog) ThreadByID(threadID string) (*state.ThreadRecord, error) {

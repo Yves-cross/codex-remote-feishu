@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1082,6 +1083,168 @@ func TestBuildWorkspaceSelectionModelKeepsSemanticEntries(t *testing.T) {
 	}
 	if !testutil.SamePath(model.Entries[0].WorkspaceKey, "/data/dl/proj-0") || !model.Entries[0].Attachable || model.Entries[0].RecoverableOnly {
 		t.Fatalf("unexpected first workspace entry: %#v", model.Entries[0])
+	}
+}
+
+func TestBuildWorkspaceSelectionModelIncludesRecoverableWorkspaceOutsideInstanceRoot(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "fschannel",
+		WorkspaceRoot: "/data/dl/fschannel",
+		WorkspaceKey:  "/data/dl/fschannel",
+		ShortName:     "fschannel",
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-root": {
+				ThreadID:   "thread-root",
+				Name:       "当前仓库",
+				CWD:        "/data/dl/fschannel",
+				LastUsedAt: now.Add(-1 * time.Minute),
+			},
+			"thread-picdetect": {
+				ThreadID:   "thread-picdetect",
+				Name:       "picdetect",
+				CWD:        "/data/dl/picdetect",
+				LastUsedAt: now,
+			},
+		},
+	})
+
+	model, events := svc.buildWorkspaceSelectionModel(svc.ensureSurface(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}), 1)
+	if len(events) != 0 || model == nil {
+		t.Fatalf("expected workspace selection model, got model=%#v events=%#v", model, events)
+	}
+
+	var rootEntry *control.FeishuWorkspaceSelectionEntry
+	var recoverableEntry *control.FeishuWorkspaceSelectionEntry
+	for i := range model.Entries {
+		entry := &model.Entries[i]
+		switch {
+		case testutil.SamePath(entry.WorkspaceKey, "/data/dl/fschannel"):
+			rootEntry = entry
+		case testutil.SamePath(entry.WorkspaceKey, "/data/dl/picdetect"):
+			recoverableEntry = entry
+		}
+	}
+	if rootEntry == nil || !rootEntry.Attachable || rootEntry.RecoverableOnly {
+		t.Fatalf("expected root workspace to stay attachable, got %#v", model.Entries)
+	}
+	if recoverableEntry == nil {
+		t.Fatalf("expected recoverable workspace outside instance root to be listed, got %#v", model.Entries)
+	}
+	if recoverableEntry.Attachable || !recoverableEntry.RecoverableOnly {
+		t.Fatalf("expected out-of-root workspace to be recoverable-only, got %#v", recoverableEntry)
+	}
+}
+
+func TestBuildWorkspaceSelectionModelUsesPersistedWorkspaceAggregationBeyondThreadLimit(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	recent := make([]state.ThreadRecord, 0, persistedRecentThreadLimit+1)
+	for i := 0; i < persistedRecentThreadLimit; i++ {
+		recent = append(recent, state.ThreadRecord{
+			ThreadID:   fmt.Sprintf("thread-hot-%d", i),
+			Name:       "hot workspace",
+			CWD:        "/data/dl/hot",
+			LastUsedAt: now.Add(-time.Duration(i) * time.Second),
+		})
+	}
+	recent = append(recent, state.ThreadRecord{
+		ThreadID:   "thread-legacy",
+		Name:       "legacy workspace",
+		CWD:        "/data/dl/legacy",
+		LastUsedAt: now.Add(-24 * time.Hour),
+	})
+	svc.SetPersistedThreadCatalog(&fakePersistedThreadCatalog{
+		recent: recent,
+		recentWorkspaces: map[string]time.Time{
+			"/data/dl/hot":    now,
+			"/data/dl/legacy": now.Add(-24 * time.Hour),
+		},
+		byID: map[string]state.ThreadRecord{},
+	})
+
+	model, events := svc.buildWorkspaceSelectionModel(svc.ensureSurface(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}), 1)
+	if len(events) != 0 || model == nil {
+		t.Fatalf("expected workspace selection model, got model=%#v events=%#v", model, events)
+	}
+
+	foundLegacy := false
+	for i := range model.Entries {
+		entry := model.Entries[i]
+		if !testutil.SamePath(entry.WorkspaceKey, "/data/dl/legacy") {
+			continue
+		}
+		foundLegacy = true
+		if !entry.RecoverableOnly || entry.Attachable {
+			t.Fatalf("expected legacy workspace to stay recoverable-only, got %#v", entry)
+		}
+	}
+	if !foundLegacy {
+		t.Fatalf("expected legacy workspace to remain visible via workspace aggregation, got %#v", model.Entries)
+	}
+}
+
+func TestBuildWorkspaceSelectionModelFallsBackToLastGoodPersistedSnapshot(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	catalog := &fakePersistedThreadCatalog{
+		recent: []state.ThreadRecord{
+			{
+				ThreadID:   "thread-picdetect",
+				Name:       "排查图片识别",
+				CWD:        "/data/dl/picdetect",
+				LastUsedAt: now.Add(-2 * time.Minute),
+			},
+		},
+		recentWorkspaces: map[string]time.Time{
+			"/data/dl/picdetect": now.Add(-2 * time.Minute),
+		},
+		byID: map[string]state.ThreadRecord{},
+	}
+	svc.SetPersistedThreadCatalog(catalog)
+
+	surface := svc.ensureSurface(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	model, events := svc.buildWorkspaceSelectionModel(surface, 1)
+	if len(events) != 0 || model == nil {
+		t.Fatalf("expected initial workspace selection model, got model=%#v events=%#v", model, events)
+	}
+
+	catalog.recentErr = errors.New("database is locked")
+	catalog.recentWorkspacesErr = errors.New("database is locked")
+	model, events = svc.buildWorkspaceSelectionModel(surface, 1)
+	if len(events) != 0 || model == nil {
+		t.Fatalf("expected fallback workspace selection model, got model=%#v events=%#v", model, events)
+	}
+
+	found := false
+	for i := range model.Entries {
+		if testutil.SamePath(model.Entries[i].WorkspaceKey, "/data/dl/picdetect") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected fallback snapshot to keep persisted workspace visible, got %#v", model.Entries)
 	}
 }
 

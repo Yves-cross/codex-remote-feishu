@@ -43,6 +43,8 @@ type Service struct {
 	workspaceClaims      map[string]*workspaceClaimRecord
 	threadClaims         map[string]*threadClaimRecord
 	persistedThreads     PersistedThreadCatalog
+	persistedThreadsLast []state.ThreadRecord
+	persistedWorkspaces  map[string]time.Time
 	pathPickerConsumers  map[string]PathPickerConsumer
 }
 
@@ -135,6 +137,7 @@ type threadClaimRecord struct {
 
 type PersistedThreadCatalog interface {
 	RecentThreads(limit int) ([]state.ThreadRecord, error)
+	RecentWorkspaces(limit int) (map[string]time.Time, error)
 	ThreadByID(threadID string) (*state.ThreadRecord, error)
 }
 
@@ -302,6 +305,8 @@ func (s *Service) UpsertInstance(inst *state.InstanceRecord) {
 
 func (s *Service) SetPersistedThreadCatalog(catalog PersistedThreadCatalog) {
 	s.persistedThreads = catalog
+	s.persistedThreadsLast = nil
+	s.persistedWorkspaces = nil
 }
 
 func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
