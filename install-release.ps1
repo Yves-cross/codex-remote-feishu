@@ -147,6 +147,23 @@ function Get-GoArch {
   throw "Unsupported Windows architecture. The online installer currently supports x64 only."
 }
 
+function Ensure-SystemNetHttp {
+  if ("System.Net.Http.HttpClientHandler" -as [type]) {
+    return
+  }
+
+  # Windows PowerShell 5 does not always preload System.Net.Http for scriptblocks fetched via irm/iex.
+  try {
+    Add-Type -AssemblyName System.Net.Http | Out-Null
+  } catch {
+    throw "Failed to load System.Net.Http for the Windows installer. $($_.Exception.Message)"
+  }
+
+  if (-not ("System.Net.Http.HttpClientHandler" -as [type])) {
+    throw "System.Net.Http is unavailable in this PowerShell session."
+  }
+}
+
 function Add-AuthHeader([System.Net.Http.HttpRequestMessage]$Request) {
   $token = Get-AuthToken
   if (-not [string]::IsNullOrWhiteSpace($token)) {
@@ -155,9 +172,7 @@ function Add-AuthHeader([System.Net.Http.HttpRequestMessage]$Request) {
 }
 
 function Invoke-HttpRequest([string]$Url) {
-  if (-not (Test-HttpClientAvailable)) {
-    throw "System.Net.Http.HttpClient is unavailable in this PowerShell runtime."
-  }
+  Ensure-SystemNetHttp
   $handler = New-Object System.Net.Http.HttpClientHandler
   if ($Url -match '^https?://(127\.0\.0\.1|localhost)(:\d+)?(/|$)') {
     $handler.UseProxy = $false
@@ -316,7 +331,7 @@ function Update-CurrentLink([string]$InstallRootPath, [string]$TargetDir) {
 
 if ($Help) {
   Show-Usage
-  exit 0
+  return
 }
 
 $Track = Assert-Track $Track
@@ -361,7 +376,7 @@ try {
   Write-Output "Current release link: $(Join-Path $InstallRoot 'current')"
 
   if ($DownloadOnly.IsPresent -or $skipSetup) {
-    exit 0
+    return
   }
 
   $binaryPath = Join-Path $targetDir "codex-remote.exe"
@@ -380,7 +395,7 @@ try {
     -start-daemon `
     @InstallArgs
   if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+    throw "codex-remote install failed with exit code $LASTEXITCODE."
   }
 } finally {
   if (Test-Path -LiteralPath $tmpDir) {
