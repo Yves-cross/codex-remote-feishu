@@ -1715,7 +1715,7 @@ func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) 
 	}
 }
 
-func TestIgnoredMissingReactionError(t *testing.T) {
+func TestIgnoredMissingReactionCreateError(t *testing.T) {
 	tests := []struct {
 		name string
 		msg  string
@@ -1730,7 +1730,27 @@ func TestIgnoredMissingReactionError(t *testing.T) {
 		{name: "empty", msg: "", want: false},
 	}
 	for _, tt := range tests {
-		if got := ignoredMissingReactionError(0, tt.msg); got != tt.want {
+		if got := ignoredMissingReactionCreateError(0, tt.msg); got != tt.want {
+			t.Fatalf("%s: got %v, want %v", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestIgnoredMissingReactionDeleteError(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{name: "english missing message", msg: "message not found", want: true},
+		{name: "reaction id not found", msg: "reaction not found", want: true},
+		{name: "reaction deleted", msg: "reaction deleted", want: true},
+		{name: "chinese missing reaction", msg: "表情不存在", want: true},
+		{name: "other error", msg: "permission denied", want: false},
+		{name: "empty", msg: "", want: false},
+	}
+	for _, tt := range tests {
+		if got := ignoredMissingReactionDeleteError(0, tt.msg); got != tt.want {
 			t.Fatalf("%s: got %v, want %v", tt.name, got, tt.want)
 		}
 	}

@@ -313,7 +313,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			return err
 		}
 		if !resp.Success() {
-			if ignoredMissingReactionError(resp.Code, resp.Msg) {
+			if ignoredMissingReactionCreateError(resp.Code, resp.Msg) {
 				return nil
 			}
 			return newAPIError("im.v1.message_reaction.create", resp.ApiResp, resp.CodeError)
@@ -339,7 +339,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			return err
 		}
 		if !resp.Success() {
-			if ignoredMissingReactionError(resp.Code, resp.Msg) {
+			if ignoredMissingReactionDeleteError(resp.Code, resp.Msg) {
 				g.mu.Lock()
 				delete(g.reactions, reactionKey(operation.MessageID, operation.EmojiType))
 				g.mu.Unlock()
@@ -773,7 +773,7 @@ func replyRespError(resp *larkim.ReplyMessageResp) error {
 	})
 }
 
-func ignoredMissingReactionError(_ int, msg string) bool {
+func ignoredMissingReactionCreateError(_ int, msg string) bool {
 	msg = strings.ToLower(strings.TrimSpace(msg))
 	if msg == "" {
 		return false
@@ -788,6 +788,31 @@ func ignoredMissingReactionError(_ int, msg string) bool {
 		"消息不存在",
 		"消息已撤回",
 		"消息已删除",
+	}
+	for _, hint := range missingHints {
+		if strings.Contains(msg, strings.ToLower(hint)) {
+			return true
+		}
+	}
+	return false
+}
+
+func ignoredMissingReactionDeleteError(code int, msg string) bool {
+	if ignoredMissingReactionCreateError(code, msg) {
+		return true
+	}
+	msg = strings.ToLower(strings.TrimSpace(msg))
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, "reaction") {
+		if strings.Contains(msg, "not found") || strings.Contains(msg, "deleted") {
+			return true
+		}
+	}
+	missingHints := []string{
+		"表情不存在",
+		"表情已删除",
 	}
 	for _, hint := range missingHints {
 		if strings.Contains(msg, strings.ToLower(hint)) {
