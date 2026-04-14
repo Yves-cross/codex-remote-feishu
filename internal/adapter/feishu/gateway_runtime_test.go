@@ -134,7 +134,7 @@ func TestLiveGatewayCommandMessageAcksBeforeHandlerCompletes(t *testing.T) {
 	}
 }
 
-func TestLiveGatewayPlainTextWaitsForHandlerBeforeAck(t *testing.T) {
+func TestLiveGatewayPlainTextAcksBeforeQueuedHandlerCompletes(t *testing.T) {
 	holdConn := make(chan struct{})
 	defer close(holdConn)
 
@@ -170,23 +170,23 @@ func TestLiveGatewayPlainTextWaitsForHandlerBeforeAck(t *testing.T) {
 
 	select {
 	case response := <-responseCh:
-		t.Fatalf("expected no ack before plain text handler completed, got %#v", response)
-	case <-time.After(150 * time.Millisecond):
+		if response.err != nil {
+			t.Fatalf("gateway response failed: %v", response.err)
+		}
+		if response.elapsed > 200*time.Millisecond {
+			t.Fatalf("expected immediate plain text ack, took %s", response.elapsed)
+		}
+		if got := response.headers.GetString(larkws.HeaderBizRt); strings.TrimSpace(got) == "" {
+			t.Fatalf("expected %s header in response, got headers=%#v", larkws.HeaderBizRt, response.headers)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for gateway ack before queued handler completed")
 	}
 
 	close(release)
 
-	var response gatewayAckResponse
 	select {
-	case response = <-responseCh:
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for gateway ack after releasing handler")
-	}
-	if response.err != nil {
-		t.Fatalf("gateway response failed: %v", response.err)
-	}
-	if got := response.headers.GetString(larkws.HeaderBizRt); strings.TrimSpace(got) == "" {
-		t.Fatalf("expected %s header in response, got headers=%#v", larkws.HeaderBizRt, response.headers)
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	cancel()

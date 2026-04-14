@@ -1,8 +1,8 @@
 # Feishu 产品设计
 
 > Type: `general`
-> Updated: `2026-04-14`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步 reply 当前 processing 源消息的自动 steering、manual `/compact` 入口与 gating，以及 `merge_forward` 结构化 envelope 入站语义。
+> Updated: `2026-04-15`
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步普通飞书入站的 early ACK + gateway-local FIFO lane、reply 当前 processing 源消息的自动 steering、manual `/compact` 入口与 gating，以及 `merge_forward` 结构化 envelope 入站语义。
 
 ## 1. 文档定位
 
@@ -46,6 +46,16 @@
 
 - `surface.message.text`
 
+当前 ACK 语义已经拆成两层：
+
+- slash command 文本
+  - 仍走轻量同步解析
+  - 识别出 command 后立即 ACK，再异步进入后续 handler
+- 普通文本 / reply 文本
+  - 不再要求在飞书 callback 里同步跑完 quoted-input 补查、daemon/orchestrator 和 UI 投影
+  - 当前会先完成轻量归类，然后进入 gateway-local 的 per-surface FIFO lane
+  - 成功入 lane 后立即 ACK，lane 内再继续做引用消息补查和后续业务处理
+
 当前主展示的 canonical 文本命令：
 
 - `/help`
@@ -88,6 +98,8 @@ alias 仍继续兼容，但不再作为主展示入口：
 
 - `post`
   - 单条图文混合消息会把文本和图片一起整理进同一次 prompt
+  - 当前会先轻量校验正文结构，再进入与普通文本共用的 per-surface FIFO lane
+  - 正文里的图片下载已经移到 ACK 之后
 - reply / quote
   - 会补查被引用消息
   - 引用文本会作为额外提示文本带入
@@ -95,6 +107,7 @@ alias 仍继续兼容，但不再作为主展示入口：
   - 若 reply 目标命中当前 surface 正在 processing 的 source message，且 reply 当前消息属于文本 / 图片输入，则不会把被引用原消息再次重发，而是把“当前 reply 自身内容”直接 steer 进当前 running turn
 - `merge_forward`
   - 正文转发聊天记录不会再拍平成普通 prose 摘要
+  - 当前会先尽早 ACK，再在 per-surface FIFO lane 里展开整棵转发树
   - 当前会先构造成结构化树，再以首个文本 input 发送：
     - `<forwarded_chat_bundle_v1>{...json...}</forwarded_chat_bundle_v1>`
   - reply / quote 一个转发聊天记录时，复用同一结构，但 wrapper 会变成：
@@ -143,7 +156,9 @@ canonical menu key 语法当前固定为：
 
 - `surface.message.image`
 
-图片会先下载到本地临时文件，再进入 staged image 队列。
+图片当前会先完成轻量 envelope 解析并进入 per-surface FIFO lane。
+
+真实图片下载已经移到 ACK 之后；下载成功后再进入 staged image 队列。
 
 ### 3.4 Reaction 创建
 
@@ -175,6 +190,10 @@ canonical menu key 语法当前固定为：
 - queued item 属于别的 frozen thread
 - bot 自己补上的 reaction 回流事件
 
+ACK 语义上，reaction created 现在也会进入和普通文本共用的 per-surface FIFO lane，而不是继续单独同步直达 handler。
+
+这样可以避免“原文本还在后台排队处理中，但 reaction 已经先进入 orchestrator”这类同 surface 乱序。
+
 ### 3.5 消息撤回
 
 当前也消费：
@@ -194,6 +213,8 @@ canonical menu key 语法当前固定为：
 
 - 基础收发仍能工作
 - 但“撤回消息即取消输入”这条体验不会生效
+
+ACK 语义上，message recalled 现在同样会进入和普通文本共用的 per-surface FIFO lane，保证撤回和原文本之间仍按同 surface 顺序处理。
 
 ### 3.6 卡片回调
 
@@ -250,6 +271,8 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
   - 给用户返回“旧卡片已过期，请重新触发对应命令”
 
 同一 daemon 生命周期内的精确 `event_id` 去重当前不是这条产品规则的一部分。
+
+但在 ordinary inbound 的 gateway-local FIFO lane 内，当前已经补了一层 daemon 生命周期内的短窗 `event_id/request_id` 去重，用来压住飞书普通消息、reaction 和 recalled 的重复投递执行风险。
 
 ## 4. Attachment 与 thread 路由
 

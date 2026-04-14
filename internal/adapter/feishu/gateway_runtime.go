@@ -25,27 +25,16 @@ const (
 )
 
 func (g *LiveGateway) Start(ctx context.Context, handler ActionHandler) error {
+	inboundLane := newSurfaceInboundLane(ctx, g, handler)
 	dispatch := dispatcher.NewEventDispatcher("", "")
 	dispatch.OnP2MessageReceiveV1(func(ctx context.Context, event *larkim.P2MessageReceiveV1) error {
-		action, ok, err := g.parseMessageEvent(ctx, event)
-		if err != nil || !ok {
-			return err
-		}
-		return handleGatewayEventAction(ctx, action, handler)
+		return g.handleInboundMessageEvent(ctx, event, handler, inboundLane)
 	})
 	dispatch.OnP2MessageRecalledV1(func(ctx context.Context, event *larkim.P2MessageRecalledV1) error {
-		action, ok := g.parseMessageRecalledEvent(event)
-		if !ok {
-			return nil
-		}
-		return handleGatewayEventAction(ctx, action, handler)
+		return g.handleInboundMessageRecalledEvent(ctx, event, handler, inboundLane)
 	})
 	dispatch.OnP2MessageReactionCreatedV1(func(ctx context.Context, event *larkim.P2MessageReactionCreatedV1) error {
-		action, ok := g.parseMessageReactionCreatedEvent(event)
-		if !ok {
-			return nil
-		}
-		return handleGatewayEventAction(ctx, action, handler)
+		return g.handleInboundMessageReactionCreatedEvent(ctx, event, handler, inboundLane)
 	})
 	dispatch.OnP2CardActionTrigger(func(ctx context.Context, event *larkcallback.CardActionTriggerEvent) (*larkcallback.CardActionTriggerResponse, error) {
 		action, ok := g.parseCardActionTriggerEvent(event)

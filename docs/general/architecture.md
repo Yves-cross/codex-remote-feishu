@@ -1,8 +1,8 @@
 # 架构
 
 > Type: `general`
-> Updated: `2026-04-07`
-> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，避免继续沿用旧的三二进制产品叙述。
+> Updated: `2026-04-15`
+> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，并补充 Feishu ordinary inbound 的 early ACK + gateway-local FIFO lane 边界。
 
 ## 1. 当前状态
 
@@ -144,8 +144,17 @@ wrapper 和 daemon 之间的 websocket 传输层。
 Feishu 平台适配层，负责：
 
 - 接收入站消息 / 菜单 / reaction / 图片
+- 对普通 `message.receive`、`reaction.created`、`message.recalled` 做轻量归类与 gateway-local per-surface FIFO 入队
 - 下载图片
 - 把 `UIEvent` 投影成文本、卡片和 reaction 操作
+
+当前普通飞书入站的 ACK 边界已经前移：
+
+- 轻量 command / menu / 非同步回包 card action：尽早 ACK
+- 高风险 ordinary inbound（普通文本、`post`、图片、`merge_forward`，以及保持同 surface 顺序所需的 `reaction.created` / `message.recalled`）：
+  - 先做最小 envelope 校验和 surface 路由
+  - 成功进入 gateway-local FIFO lane 后立即 ACK
+  - lane 内再继续做 quoted-input 补查、图片下载、转发树展开，以及后续 `control.Action -> orchestrator -> projector` 处理
 
 ### 4.9 `internal/adapter/editor`
 
