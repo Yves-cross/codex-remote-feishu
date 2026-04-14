@@ -223,16 +223,23 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		if messageID == "" {
 			return fmt.Errorf("update card failed: missing message id")
 		}
+		updateContext := fmt.Sprintf(
+			"surface=%s chat=%s message=%s title=%q",
+			strings.TrimSpace(operation.SurfaceSessionID),
+			strings.TrimSpace(operation.ChatID),
+			messageID,
+			strings.TrimSpace(operation.CardTitle),
+		)
 		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(*operation, operation.ordinaryCardEnvelope()), maxFeishuCardBytes))
 		if err != nil {
 			return err
 		}
 		resp, err := g.patchMessageFn(ctx, messageID, string(card))
 		if err != nil {
-			return err
+			return fmt.Errorf("update card failed: %s: %w", updateContext, err)
 		}
 		if !resp.Success() {
-			return newAPIError("im.v1.message.patch", resp.ApiResp, resp.CodeError)
+			return fmt.Errorf("update card failed: %s: %w", updateContext, newAPIError("im.v1.message.patch", resp.ApiResp, resp.CodeError))
 		}
 		return nil
 	case OperationSendImage:
