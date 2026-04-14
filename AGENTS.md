@@ -333,7 +333,8 @@ When a change is intentionally committed during task work:
 
 - Push it to GitHub in the same turn by default.
 - Exception: when the user explicitly requests staged local-only commits between phases, follow `GitHub Issue Workflow` and do not push until the staged rollout is complete or the user asks for a push.
-- Do not leave a local-only commit behind unless the user explicitly asks not to push yet.
+- Exception: when applying `Clean Worktree Stop Rule` at a pause boundary and no push was requested, a local commit may be kept and pushed later.
+- Do not leave a local-only commit behind unless one of the above exceptions applies.
 - For the common happy path, prefer `./safe-push.sh` from the repo root instead of manually doing `fetch -> rebase -> retest -> push`.
 - `./safe-push.sh` is intentionally narrow:
   - it requires a clean worktree
@@ -347,6 +348,19 @@ When a change is intentionally committed during task work:
   - if no drift is found, continue push
   - if drift is found, fix it first, then continue and finish
 - If rebase conflicts or tests fail, stop and handle that manually; do not try to script conflict resolution into the helper.
+
+## Clean Worktree Stop Rule
+
+For repository tasks, when pausing or ending a turn with local modifications (tracked or untracked), always classify each change before stopping:
+
+- `done-and-worth-commit`: the change is complete enough and valuable; commit it before stopping. Push is optional at this point unless the user requested immediate push.
+- `temporary-in-progress`: the change is unfinished but intentionally kept for the next step; it may remain local.
+- `useless-or-noise`: the change is not useful (experimental leftovers, accidental outputs, or stale scratch edits); remove it before stopping.
+
+Default expectations:
+
+- Do not leave mixed unknown leftovers in the worktree.
+- If temporary changes are kept, they should be clearly intentional and scoped to upcoming work.
 
 ## Branch Restoration Rule
 
