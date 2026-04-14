@@ -1218,6 +1218,16 @@
       "recordedAt": "2026-04-12T09:42:34Z"
     },
     {
+      "number": 157,
+      "title": "[Release] v1.5.0",
+      "updatedAt": "2026-04-13T16:38:24Z",
+      "closedAt": "2026-04-13T16:38:24Z",
+      "decision": "skip",
+      "reason": "release tracker 属于发布流程记录，不产生可复用设计文档增量。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/157",
+      "recordedAt": "2026-04-13T17:14:57Z"
+    },
+    {
       "number": 158,
       "title": "[Bug] 修复 release 升级跨设备落盘失败并禁用自动升级弹卡",
       "updatedAt": "2026-04-11T10:33:54Z",
@@ -1352,6 +1362,16 @@
       "recordedAt": "2026-04-12T09:42:55Z"
     },
     {
+      "number": 172,
+      "title": "升级 helper 在切换或回滚 binary 前未严格确认旧进程退出",
+      "updatedAt": "2026-04-13T02:55:11Z",
+      "closedAt": "2026-04-13T02:55:09Z",
+      "decision": "skip",
+      "reason": "严格 stop gate 与 rollback 语义已在 docs/general/local-self-upgrade-flow.md 落地记录。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/172",
+      "recordedAt": "2026-04-13T17:14:14Z"
+    },
+    {
       "number": 173,
       "title": "升级 helper 在切换或回滚 binary 前未严格确认旧进程退出",
       "updatedAt": "2026-04-12T15:41:18Z",
@@ -1377,12 +1397,12 @@
     {
       "number": 177,
       "title": "[Feature] 抽出飞书卡片文件/目录选择器基础能力",
-      "updatedAt": "2026-04-12T16:30:11Z",
+      "updatedAt": "2026-04-12T17:01:10Z",
       "closedAt": "2026-04-12T15:51:22Z",
       "decision": "skip",
-      "reason": "latest issue update does not change durable behavior; path picker foundation remains fully covered by canonical remote-surface and Feishu card state-machine docs",
+      "reason": "已由 canonical 状态机文档覆盖：docs/general/remote-surface-state-machine.md 与 docs/general/feishu-card-ui-state-machine.md，包含路径选择器基座、active gate、freshness 与 consumer handoff 结论",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/177",
-      "recordedAt": "2026-04-12T16:31:50Z"
+      "recordedAt": "2026-04-13T17:05:39Z"
     },
     {
       "number": 178,
@@ -1467,6 +1487,106 @@
       ],
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/184",
       "recordedAt": "2026-04-12T16:27:28Z"
+    },
+    {
+      "number": 186,
+      "title": "normal mode 已接管 workspace 但未选 thread 时允许直接发文本新建会话",
+      "updatedAt": "2026-04-13T08:43:37Z",
+      "closedAt": "2026-04-13T08:43:35Z",
+      "decision": "skip",
+      "reason": "normal unbound 首条文本隐式新建语义已同步 docs/general/remote-surface-state-machine.md。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/186",
+      "recordedAt": "2026-04-13T17:14:46Z"
+    },
+    {
+      "number": 188,
+      "title": "[Work] 参考 https://github.com/kxn/codex-remote-feishu/issues/183 的设计，将upgrade的helper也做成独立 shim",
+      "updatedAt": "2026-04-13T04:47:10Z",
+      "closedAt": "2026-04-13T04:46:40Z",
+      "decision": "skip",
+      "reason": "upgrade helper 独立 shim + sidecar 模型已写入 docs/general/local-self-upgrade-flow.md。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/188",
+      "recordedAt": "2026-04-13T17:14:31Z"
+    },
+    {
+      "number": 190,
+      "title": "[Work] Clarify wrapper lifetime ownership and clean up orphaned Windows wrapper processes",
+      "updatedAt": "2026-04-13T00:34:20Z",
+      "closedAt": "2026-04-13T00:34:18Z",
+      "decision": "skip",
+      "reason": "运行时生命周期修复以实现收敛为主，当前文档已覆盖 wrapper 与 daemon 责任边界，无需新增独立文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/190",
+      "recordedAt": "2026-04-13T17:14:09Z"
+    },
+    {
+      "number": 191,
+      "title": "[Work] Fix orphaned daemon-owned headless wrapper after closing foreground daemon on Windows",
+      "updatedAt": "2026-04-13T04:27:36Z",
+      "closedAt": "2026-04-13T04:27:34Z",
+      "decision": "skip",
+      "reason": "Windows console close fast-path 与子树回收属于实现级修复，当前安装与运行文档已覆盖相关停机语义。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/191",
+      "recordedAt": "2026-04-13T17:14:20Z"
+    },
+    {
+      "number": 192,
+      "title": "[Enhancement] 增加仅开发构建可用的可见对话 trace 日志，用于复盘 steer / commentary / final 时间线",
+      "updatedAt": "2026-04-13T08:32:53Z",
+      "closedAt": "2026-04-13T08:32:50Z",
+      "decision": "skip",
+      "reason": "开发态 trace 已由 docs/general/dev-conversation-trace.md 覆盖。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/192",
+      "recordedAt": "2026-04-13T17:14:41Z"
+    },
+    {
+      "number": 193,
+      "title": "[Research] 飞书权限缺口聚合与 /status 展示",
+      "updatedAt": "2026-04-13T04:48:37Z",
+      "closedAt": "2026-04-13T04:48:35Z",
+      "decision": "skip",
+      "reason": "权限缺口聚合为 /status 展示增强，当前仓库文档体系不新增独立专题文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/193",
+      "recordedAt": "2026-04-13T17:14:36Z"
+    },
+    {
+      "number": 194,
+      "title": "feat: 增加飞书前端消息详细程度档位（/verbose）",
+      "updatedAt": "2026-04-13T04:45:44Z",
+      "closedAt": "2026-04-13T04:45:42Z",
+      "decision": "skip",
+      "reason": "前端可见性档位属于交互层增量能力，本次不新增独立生命周期文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/194",
+      "recordedAt": "2026-04-13T17:14:26Z"
+    },
+    {
+      "number": 200,
+      "title": "design: request_user_input 飞书交互效果对齐 Codex client（第二轮）",
+      "updatedAt": "2026-04-13T16:57:38Z",
+      "closedAt": "2026-04-13T16:57:36Z",
+      "decision": "skip",
+      "reason": "request_user_input 的提交确认与 revision 语义已同步两份 canonical 状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/200",
+      "recordedAt": "2026-04-13T17:15:08Z"
+    },
+    {
+      "number": 201,
+      "title": "Improve menu card attention flow after command submission",
+      "updatedAt": "2026-04-13T16:43:06Z",
+      "closedAt": "2026-04-13T16:43:04Z",
+      "decision": "skip",
+      "reason": "菜单提交锚点与同位承接语义已同步 docs/general/feishu-card-ui-state-machine.md。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/201",
+      "recordedAt": "2026-04-13T17:15:03Z"
+    },
+    {
+      "number": 202,
+      "title": "[Enhancement] 为 /list /use /useall 的长列表选择卡片增加分页与分层浏览",
+      "updatedAt": "2026-04-13T14:15:03Z",
+      "closedAt": "2026-04-13T14:15:00Z",
+      "decision": "skip",
+      "reason": "分页与分层浏览交互已同步状态机文档（remote-surface 与 feishu-card-ui）。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/202",
+      "recordedAt": "2026-04-13T17:14:52Z"
     }
   ]
 }
