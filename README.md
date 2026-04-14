@@ -2,7 +2,7 @@
 
 `codex-remote-feishu` 把一台机器上的 Codex 工作现场带到飞书，让你可以在飞书里接管工作区、切换 thread、继续对话、发图和停止当前 turn。
 
-更完整的面向最终用户的使用说明见 [docs/general/user-guide.md](./docs/general/user-guide.md)。
+使用说明 https://my.feishu.cn/docx/PTncdNBf1oS9N5xBikBcGi2enzc
 
 核心目标场景是：
 
