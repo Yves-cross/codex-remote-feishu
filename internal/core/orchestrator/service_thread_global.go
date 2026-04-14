@@ -279,6 +279,15 @@ func mergeThreadMetadata(currentThread, nextThread *state.ThreadRecord) *state.T
 	if strings.TrimSpace(merged.Preview) == "" {
 		merged.Preview = strings.TrimSpace(secondary.Preview)
 	}
+	if strings.TrimSpace(merged.FirstUserMessage) == "" {
+		merged.FirstUserMessage = strings.TrimSpace(secondary.FirstUserMessage)
+	}
+	if strings.TrimSpace(merged.LastUserMessage) == "" {
+		merged.LastUserMessage = strings.TrimSpace(secondary.LastUserMessage)
+	}
+	if strings.TrimSpace(merged.LastAssistantMessage) == "" {
+		merged.LastAssistantMessage = strings.TrimSpace(secondary.LastAssistantMessage)
+	}
 	if strings.TrimSpace(merged.CWD) == "" {
 		merged.CWD = strings.TrimSpace(secondary.CWD)
 	}
@@ -351,6 +360,15 @@ func mergedThreadMetadataScore(thread *state.ThreadRecord) int {
 		score++
 	}
 	if strings.TrimSpace(thread.Preview) != "" {
+		score++
+	}
+	if strings.TrimSpace(thread.FirstUserMessage) != "" {
+		score++
+	}
+	if strings.TrimSpace(thread.LastUserMessage) != "" {
+		score++
+	}
+	if strings.TrimSpace(thread.LastAssistantMessage) != "" {
 		score++
 	}
 	if strings.TrimSpace(thread.CWD) != "" {

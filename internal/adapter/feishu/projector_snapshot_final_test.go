@@ -1106,7 +1106,7 @@ func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 	}
 	if !containsAll(ops[0].CardBody,
 		"**当前输入目标：** droid · 这是一个特别长特别长特别长的当前输入目标...",
-		"**最近信息：** 这是一条特别长特别长特别长特别长的最近消息内容，...",
+		"**最近回复：** 这是一条特别长特别长特别长特别长的最近消息内容，...",
 	) {
 		t.Fatalf("expected snapshot body to compact long text, got %#v", ops[0].CardBody)
 	}
@@ -1115,7 +1115,7 @@ func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 	}
 }
 
-func TestProjectThreadSelectionChangeIncludesShortThreadID(t *testing.T) {
+func TestProjectThreadSelectionChangeDoesNotExposeThreadID(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventThreadSelectionChange,
@@ -1131,7 +1131,7 @@ func TestProjectThreadSelectionChangeIncludesShortThreadID(t *testing.T) {
 	if ops[0].CardTitle != "系统提示" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if ops[0].CardBody != "当前输入目标已切换到：dl · 新会话\n\n会话 ID：7fd1…b782\n\n最近信息：\n最近一条信息" {
+	if ops[0].CardBody != "当前输入目标已切换到：dl · 新会话\n\n最近回复：\n最近一条信息" {
 		t.Fatalf("unexpected card body: %#v", ops[0])
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {

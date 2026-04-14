@@ -60,7 +60,7 @@ func TestLocalPauseWithoutQueuedMessagesDoesNotEmitResumeNotice(t *testing.T) {
 	}
 }
 
-func TestDisplayThreadTitleDisambiguatesDuplicateTitles(t *testing.T) {
+func TestDisplayThreadTitleDoesNotExposeShortIDForDuplicateTitles(t *testing.T) {
 	inst := &state.InstanceRecord{
 		DisplayName:   "dl",
 		WorkspaceKey:  "/data/dl",
@@ -74,11 +74,11 @@ func TestDisplayThreadTitleDisambiguatesDuplicateTitles(t *testing.T) {
 
 	first := displayThreadTitle(inst, inst.Threads["019d56f0-de5e-7943-bc9a-18c42ef11acb"], "019d56f0-de5e-7943-bc9a-18c42ef11acb")
 	second := displayThreadTitle(inst, inst.Threads["019d56f0-e48d-7e51-be84-04a5658e4c96"], "019d56f0-e48d-7e51-be84-04a5658e4c96")
-	if first == second {
-		t.Fatalf("expected duplicate thread titles to be disambiguated, got %q and %q", first, second)
+	if first != "dl" || second != "dl" {
+		t.Fatalf("expected duplicate unnamed sessions to keep workspace title without short ids, got %q and %q", first, second)
 	}
-	if !strings.Contains(first, "de5e…1acb") || !strings.Contains(second, "e48d…4c96") {
-		t.Fatalf("expected disambiguated titles to include short ids, got %q and %q", first, second)
+	if strings.Contains(first, "…") || strings.Contains(second, "…") {
+		t.Fatalf("expected titles to avoid short ids, got %q and %q", first, second)
 	}
 }
 

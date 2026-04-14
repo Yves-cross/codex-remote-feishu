@@ -182,7 +182,20 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, owner *state.SurfaceConsoleRecord) []control.UIEvent {
 	thread := inst.Threads[threadID]
 	title := displayThreadTitle(inst, thread, threadID)
-	subtitle := s.threadSelectionSubtitle(surface, inst, thread)
+	lines := []string{}
+	if firstUser := threadFirstUserSnippet(thread, 72); firstUser != "" {
+		lines = append(lines, "会话起点："+firstUser)
+	}
+	if lastUser := threadLastUserSnippet(thread, 72); lastUser != "" {
+		lines = append(lines, "最近用户："+lastUser)
+	}
+	if lastAssistant := threadLastAssistantSnippet(thread, 72); lastAssistant != "" {
+		lines = append(lines, "最近回复："+lastAssistant)
+	}
+	subtitle := strings.Join(lines, "\n")
+	if subtitle == "" {
+		subtitle = s.threadSelectionSubtitle(surface, inst, thread)
+	}
 	return []control.UIEvent{s.feishuDirectSelectionPromptEvent(surface, control.FeishuDirectSelectionPrompt{
 		Kind:  control.SelectionPromptKickThread,
 		Title: "强踢当前会话？",

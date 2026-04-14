@@ -242,28 +242,47 @@ func threadSelectionOption(entry control.FeishuThreadSelectionEntry, includeWork
 }
 
 func threadSelectionMetaText(entry control.FeishuThreadSelectionEntry) string {
+	base := ""
 	status := strings.TrimSpace(entry.Status)
 	if entry.Current {
 		parts := []string{firstNonEmpty(status, "已接管")}
 		if age := strings.TrimSpace(entry.AgeText); age != "" {
 			parts = append(parts, age)
 		}
-		return strings.Join(parts, " · ")
+		base = strings.Join(parts, " · ")
+	} else if status != "" && (strings.Contains(status, "其他飞书会话接管") || strings.Contains(status, "不可接管") || strings.Contains(status, "不存在") || strings.Contains(status, "切换工作区") || strings.Contains(status, "VS Code 占用中")) {
+		base = status
+	} else {
+		parts := make([]string, 0, 2)
+		if entry.VSCodeFocused {
+			parts = append(parts, "VS Code 当前焦点")
+		}
+		if age := strings.TrimSpace(entry.AgeText); age != "" && age != "时间未知" {
+			parts = append(parts, age)
+		}
+		if len(parts) != 0 {
+			base = strings.Join(parts, " · ")
+		} else {
+			base = firstNonEmpty(status, strings.TrimSpace(entry.AgeText), "时间未知")
+		}
 	}
-	if status != "" && (strings.Contains(status, "其他飞书会话接管") || strings.Contains(status, "不可接管") || strings.Contains(status, "不存在") || strings.Contains(status, "切换工作区") || strings.Contains(status, "VS Code 占用中")) {
-		return status
+	if hint := threadSelectionConversationHint(entry); hint != "" {
+		return base + "\n" + hint
 	}
-	parts := make([]string, 0, 2)
-	if entry.VSCodeFocused {
-		parts = append(parts, "VS Code 当前焦点")
+	return base
+}
+
+func threadSelectionConversationHint(entry control.FeishuThreadSelectionEntry) string {
+	if lastUser := strings.TrimSpace(entry.LastUserMessage); lastUser != "" {
+		return "最近用户：" + lastUser
 	}
-	if age := strings.TrimSpace(entry.AgeText); age != "" && age != "时间未知" {
-		parts = append(parts, age)
+	if firstUser := strings.TrimSpace(entry.FirstUserMessage); firstUser != "" {
+		return "会话起点：" + firstUser
 	}
-	if len(parts) != 0 {
-		return strings.Join(parts, " · ")
+	if lastAssistant := strings.TrimSpace(entry.LastAssistantMessage); lastAssistant != "" {
+		return "最近回复：" + lastAssistant
 	}
-	return firstNonEmpty(status, strings.TrimSpace(entry.AgeText), "时间未知")
+	return ""
 }
 
 func workspaceSelectionMetaText(ageText string, hasVSCodeActivity, busy, unavailable, recoverableOnly bool) string {

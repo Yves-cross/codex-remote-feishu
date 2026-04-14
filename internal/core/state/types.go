@@ -127,6 +127,9 @@ type ThreadRecord struct {
 	ThreadID                string
 	Name                    string
 	Preview                 string
+	FirstUserMessage        string
+	LastUserMessage         string
+	LastAssistantMessage    string
 	CWD                     string
 	State                   string
 	ExplicitModel           string

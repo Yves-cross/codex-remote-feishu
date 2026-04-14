@@ -296,17 +296,24 @@ func maxInt(left, right int) int {
 func (s *Service) threadSelectionViewEntry(surface *state.SurfaceConsoleRecord, view *mergedThreadView, allowCrossWorkspace bool) control.FeishuThreadSelectionEntry {
 	status, disabled := s.threadSelectionStatus(surface, view, allowCrossWorkspace)
 	workspaceKey := mergedThreadWorkspaceClaimKey(view)
+	thread := (*state.ThreadRecord)(nil)
+	if view != nil {
+		thread = view.Thread
+	}
 	return control.FeishuThreadSelectionEntry{
-		ThreadID:            view.ThreadID,
-		Summary:             s.threadSelectionSummary(surface, view),
-		WorkspaceKey:        workspaceKey,
-		WorkspaceLabel:      workspaceSelectionLabel(workspaceKey),
-		AgeText:             humanizeRelativeTime(s.now(), threadLastUsedAt(view)),
-		Status:              status,
-		VSCodeFocused:       view != nil && view.Inst != nil && strings.TrimSpace(view.Inst.ObservedFocusedThreadID) == view.ThreadID,
-		Disabled:            disabled,
-		AllowCrossWorkspace: allowCrossWorkspace,
-		Current:             surface != nil && surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID),
+		ThreadID:             view.ThreadID,
+		Summary:              s.threadSelectionSummary(surface, view),
+		WorkspaceKey:         workspaceKey,
+		WorkspaceLabel:       workspaceSelectionLabel(workspaceKey),
+		AgeText:              humanizeRelativeTime(s.now(), threadLastUsedAt(view)),
+		Status:               status,
+		FirstUserMessage:     threadFirstUserSnippet(thread, 56),
+		LastUserMessage:      threadLastUserSnippet(thread, 56),
+		LastAssistantMessage: threadLastAssistantSnippet(thread, 56),
+		VSCodeFocused:        view != nil && view.Inst != nil && strings.TrimSpace(view.Inst.ObservedFocusedThreadID) == view.ThreadID,
+		Disabled:             disabled,
+		AllowCrossWorkspace:  allowCrossWorkspace,
+		Current:              surface != nil && surface.SelectedThreadID == view.ThreadID && s.surfaceOwnsThread(surface, view.ThreadID),
 	}
 }
 
@@ -320,10 +327,8 @@ func (s *Service) threadSelectionSummary(surface *state.SurfaceConsoleRecord, vi
 }
 
 func vscodeThreadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
+	_ = fallback
 	source := threadDisplayBody(thread, 20)
-	if source == "" {
-		source = control.ShortenThreadID(fallback)
-	}
 	if source == "" {
 		source = "未命名会话"
 	}

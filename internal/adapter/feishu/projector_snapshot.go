@@ -36,11 +36,8 @@ func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory st
 		switch {
 		case snapshot.Attachment.SelectedThreadTitle != "":
 			lines = append(lines, snapshotField("当前输入目标", compactSnapshotStatusText(snapshot.Attachment.SelectedThreadTitle, snapshotStatusTitleLimit)))
-			if short := control.ShortenThreadID(snapshot.Attachment.SelectedThreadID); short != "" {
-				lines = append(lines, snapshotField("会话 ID", short))
-			}
 		case snapshot.Attachment.SelectedThreadID != "":
-			lines = append(lines, snapshotField("当前输入目标", snapshot.Attachment.SelectedThreadID))
+			lines = append(lines, snapshotField("当前输入目标", "未命名会话"))
 		case snapshot.Attachment.RouteMode == "new_thread_ready":
 			lines = append(lines, snapshotField("当前输入目标", "新建会话（等待首条消息）"))
 		case snapshot.Attachment.RouteMode == "follow_local":
@@ -48,8 +45,19 @@ func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory st
 		default:
 			lines = append(lines, snapshotField("当前输入目标", "未绑定会话"))
 		}
-		if preview := strings.TrimSpace(snapshot.Attachment.SelectedThreadPreview); preview != "" {
-			lines = append(lines, snapshotField("最近信息", compactSnapshotStatusText(preview, snapshotStatusPreviewLimit)))
+		if first := strings.TrimSpace(snapshot.Attachment.SelectedThreadFirstUserMessage); first != "" {
+			lines = append(lines, snapshotField("会话起点", compactSnapshotStatusText(first, snapshotStatusPreviewLimit)))
+		}
+		if lastUser := strings.TrimSpace(snapshot.Attachment.SelectedThreadLastUserMessage); lastUser != "" {
+			lines = append(lines, snapshotField("最近用户", compactSnapshotStatusText(lastUser, snapshotStatusPreviewLimit)))
+		}
+		if lastAssistant := strings.TrimSpace(snapshot.Attachment.SelectedThreadLastAssistantMessage); lastAssistant != "" {
+			lines = append(lines, snapshotField("最近回复", compactSnapshotStatusText(lastAssistant, snapshotStatusPreviewLimit)))
+		} else if preview := strings.TrimSpace(snapshot.Attachment.SelectedThreadPreview); preview != "" {
+			lines = append(lines, snapshotField("最近回复", compactSnapshotStatusText(preview, snapshotStatusPreviewLimit)))
+		}
+		if age := strings.TrimSpace(snapshot.Attachment.SelectedThreadAgeText); age != "" && age != "时间未知" {
+			lines = append(lines, snapshotField("最近活跃", age))
 		}
 		if dispatch := snapshotDispatchText(snapshot.Dispatch); dispatch != "" {
 			lines = append(lines, snapshotField("执行状态", dispatch))

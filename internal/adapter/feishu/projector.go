@@ -439,14 +439,19 @@ func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) 
 	if strings.TrimSpace(selection.RouteMode) == "new_thread_ready" {
 		return "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。"
 	}
-	body := fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)
-	if short := control.ShortenThreadID(selection.ThreadID); short != "" {
-		body += "\n\n会话 ID：" + short
+	lines := []string{fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)}
+	if first := strings.TrimSpace(selection.FirstUserMessage); first != "" {
+		lines = append(lines, "", "会话起点：", first)
 	}
-	if preview := strings.TrimSpace(selection.Preview); preview != "" {
-		body += "\n\n最近信息：\n" + preview
+	if lastUser := strings.TrimSpace(selection.LastUserMessage); lastUser != "" {
+		lines = append(lines, "", "最近用户：", lastUser)
 	}
-	return body
+	if lastAssistant := strings.TrimSpace(selection.LastAssistantMessage); lastAssistant != "" {
+		lines = append(lines, "", "最近回复：", lastAssistant)
+	} else if preview := strings.TrimSpace(selection.Preview); preview != "" {
+		lines = append(lines, "", "最近回复：", preview)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {

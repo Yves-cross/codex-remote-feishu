@@ -45,7 +45,9 @@ func (s *Service) storeThreadReplayText(inst *state.InstanceRecord, threadID, tu
 	}
 	thread := s.ensureThread(inst, threadID)
 	s.clearThreadReplay(inst, threadID)
-	thread.Preview = previewOfText(text)
+	snippet := previewOfText(text)
+	thread.LastAssistantMessage = snippet
+	thread.Preview = snippet
 	s.touchThread(thread)
 	thread.UndeliveredReplay = &state.ThreadReplayRecord{
 		Kind:   state.ThreadReplayAssistantFinal,

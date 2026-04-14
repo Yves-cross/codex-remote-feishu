@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 新增单文件门限拆分审计草案，并刷新文档索引。
+> Summary: 新增会话描述统一方案并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -140,6 +140,7 @@
 
 - [claude-normal-mode-poc-design.md](./inprogress/claude-normal-mode-poc-design.md)
 - [relay-daemon-autostart-design.md](./inprogress/relay-daemon-autostart-design.md)
+- [thread-description-unification-plan.md](./inprogress/thread-description-unification-plan.md)
 - [unified-binary-design.md](./inprogress/unified-binary-design.md)
 
 ### 6.4 `draft`

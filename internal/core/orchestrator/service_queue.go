@@ -27,6 +27,9 @@ func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMe
 		RouteModeAtEnqueue:    routeMode,
 		Status:                state.QueueItemQueued,
 	}
+	if inst != nil && strings.TrimSpace(threadID) != "" {
+		s.recordThreadUserMessage(inst, threadID, sourceMessagePreview)
+	}
 	return s.enqueuePreparedQueueItem(surface, item, front)
 }
 
@@ -213,6 +216,11 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	if item.FrozenThreadID == "" {
 		item.FrozenThreadID = threadID
 	}
+	inst := s.root.Instances[instanceID]
+	if inst != nil {
+		targetThreadID := strings.TrimSpace(firstNonEmpty(item.FrozenThreadID, threadID))
+		s.recordThreadUserMessage(inst, targetThreadID, item.SourceMessagePreview)
+	}
 	s.captureRemoteTurnStartTotalUsage(instanceID, binding, item.FrozenThreadID)
 	if binding.StartedAt.IsZero() {
 		binding.StartedAt = s.now().UTC()
@@ -223,7 +231,6 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 		Status:      string(item.Status),
 	}, queueItemSourceMessageIDs(item))
 	if item.FrozenThreadID != "" {
-		inst := s.root.Instances[instanceID]
 		routeMode := item.RouteModeAtEnqueue
 		if routeMode == "" || routeMode == state.RouteModeNewThreadReady {
 			routeMode = state.RouteModePinned
@@ -298,7 +305,9 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []c
 		if preview == "" {
 			preview = "已生成图片"
 		}
-		thread.Preview = previewOfText("图片：" + preview)
+		snippet := previewOfText("图片：" + preview)
+		thread.LastAssistantMessage = snippet
+		thread.Preview = snippet
 		s.touchThread(thread)
 	}
 
@@ -455,10 +464,30 @@ func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst 
 		events = append(events, event)
 	}
 	if thread != nil && strings.TrimSpace(text) != "" {
-		thread.Preview = previewOfText(text)
-		s.touchThread(thread)
+		snippet := previewOfText(text)
+		if snippet != "" {
+			thread.LastAssistantMessage = snippet
+			thread.Preview = snippet
+			s.touchThread(thread)
+		}
 	}
 	return events
+}
+
+func (s *Service) recordThreadUserMessage(inst *state.InstanceRecord, threadID, text string) {
+	if inst == nil || strings.TrimSpace(threadID) == "" {
+		return
+	}
+	snippet := previewOfText(text)
+	if snippet == "" {
+		return
+	}
+	thread := s.ensureThread(inst, threadID)
+	if strings.TrimSpace(thread.FirstUserMessage) == "" {
+		thread.FirstUserMessage = snippet
+	}
+	thread.LastUserMessage = snippet
+	s.touchThread(thread)
 }
 
 func (s *Service) trackItemStart(instanceID string, event agentproto.Event) {

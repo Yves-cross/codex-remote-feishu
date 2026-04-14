@@ -12,16 +12,19 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) control.UIEvent {
+func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage string) control.UIEvent {
 	return control.UIEvent{
 		Kind:             control.UIEventThreadSelectionChange,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		ThreadSelection: &control.ThreadSelectionChanged{
-			ThreadID:  threadID,
-			RouteMode: routeMode,
-			Title:     title,
-			Preview:   preview,
+			ThreadID:             threadID,
+			RouteMode:            routeMode,
+			Title:                title,
+			Preview:              preview,
+			FirstUserMessage:     firstUserMessage,
+			LastUserMessage:      lastUserMessage,
+			LastAssistantMessage: lastAssistantMessage,
 		},
 	}
 }
@@ -193,13 +196,10 @@ func isDigits(value string) bool {
 func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallback string) string {
 	short := threadWorkspaceLabel(inst, thread)
 	if thread == nil {
-		if fallback == "" {
-			return short
-		}
 		if short == "" {
-			return control.ShortenThreadID(fallback)
+			return "未命名会话"
 		}
-		return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
+		return short
 	}
 	if body := threadDisplayBody(thread, 40); body != "" {
 		if short == "" {
@@ -212,20 +212,26 @@ func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallbac
 		switch {
 		case base == "", base == ".", base == string(filepath.Separator), base == short:
 			if short == "" {
-				return control.ShortenThreadID(fallback)
+				return "未命名会话"
 			}
-			return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
+			return short
 		default:
-			return fmt.Sprintf("%s · %s · %s", short, base, control.ShortenThreadID(fallback))
+			if short == "" {
+				return base
+			}
+			return fmt.Sprintf("%s · %s", short, base)
 		}
 	}
-	if fallback == "" {
+	if short != "" {
 		return short
 	}
-	if short == "" {
-		return control.ShortenThreadID(fallback)
+	if body := threadDisplayBody(thread, 40); body != "" {
+		return body
 	}
-	return fmt.Sprintf("%s · %s", short, control.ShortenThreadID(fallback))
+	if strings.TrimSpace(fallback) != "" {
+		return "未命名会话"
+	}
+	return "未命名会话"
 }
 
 func threadWorkspaceLabel(inst *state.InstanceRecord, thread *state.ThreadRecord) string {
@@ -255,8 +261,27 @@ func threadDisplayBody(thread *state.ThreadRecord, limit int) string {
 	if thread == nil {
 		return ""
 	}
+	if title := threadDisplayPrimary(thread, limit); title != "" {
+		return title
+	}
+	return ""
+}
+
+func threadDisplayPrimary(thread *state.ThreadRecord, limit int) string {
+	if thread == nil {
+		return ""
+	}
 	if name := threadDisplayName(thread); name != "" {
 		return truncateThreadDisplayText(name, limit)
+	}
+	if recentUser := threadLastUserSnippet(thread, limit); recentUser != "" {
+		return recentUser
+	}
+	if firstUser := threadFirstUserSnippet(thread, limit); firstUser != "" {
+		return firstUser
+	}
+	if recentAssistant := threadLastAssistantSnippet(thread, limit); recentAssistant != "" {
+		return recentAssistant
 	}
 	if preview := previewOfText(thread.Preview); preview != "" {
 		return truncateThreadDisplayText(preview, limit)
@@ -290,18 +315,7 @@ func truncateThreadDisplayText(text string, limit int) string {
 }
 
 func displayThreadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallback string) string {
-	title := threadTitle(inst, thread, fallback)
-	if inst == nil || fallback == "" {
-		return title
-	}
-	shortID := control.ShortenThreadID(fallback)
-	if strings.Contains(title, shortID) {
-		return title
-	}
-	if duplicateThreadTitle(inst, title) {
-		return fmt.Sprintf("%s · %s", title, shortID)
-	}
-	return title
+	return threadTitle(inst, thread, fallback)
 }
 
 func duplicateThreadTitle(inst *state.InstanceRecord, title string) bool {
@@ -328,14 +342,17 @@ func threadPreview(thread *state.ThreadRecord) string {
 	if thread == nil {
 		return ""
 	}
+	if assistant := threadLastAssistantSnippet(thread, 40); assistant != "" {
+		return assistant
+	}
+	if user := threadLastUserSnippet(thread, 40); user != "" {
+		return user
+	}
 	return previewSnippet(thread.Preview)
 }
 
 func threadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
 	source := threadDisplayBody(thread, 20)
-	if source == "" {
-		source = control.ShortenThreadID(fallback)
-	}
 	if source == "" {
 		source = "未命名会话"
 	}
@@ -376,13 +393,44 @@ func threadNeedsRefresh(thread *state.ThreadRecord) bool {
 }
 
 func threadSelectionSubtitle(thread *state.ThreadRecord, threadID string) string {
+	_ = threadID
 	if thread != nil && thread.CWD != "" {
 		return thread.CWD
 	}
-	if short := control.ShortenThreadID(threadID); short != "" {
-		return "会话 ID " + short
-	}
 	return ""
+}
+
+func threadFirstUserSnippet(thread *state.ThreadRecord, limit int) string {
+	if thread == nil {
+		return ""
+	}
+	value := previewOfText(thread.FirstUserMessage)
+	if value == "" {
+		return ""
+	}
+	return truncateThreadDisplayText(value, limit)
+}
+
+func threadLastUserSnippet(thread *state.ThreadRecord, limit int) string {
+	if thread == nil {
+		return ""
+	}
+	value := previewOfText(thread.LastUserMessage)
+	if value == "" {
+		return ""
+	}
+	return truncateThreadDisplayText(value, limit)
+}
+
+func threadLastAssistantSnippet(thread *state.ThreadRecord, limit int) string {
+	if thread == nil {
+		return ""
+	}
+	value := previewOfText(thread.LastAssistantMessage)
+	if value == "" {
+		return ""
+	}
+	return truncateThreadDisplayText(value, limit)
 }
 
 func headlessPendingNoticeCode(pending *state.HeadlessLaunchRecord) string {

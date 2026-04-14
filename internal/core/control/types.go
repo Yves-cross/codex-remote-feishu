@@ -189,17 +189,21 @@ type PermissionGapSummary struct {
 }
 
 type AttachmentSummary struct {
-	InstanceID            string
-	ObjectType            string
-	DisplayName           string
-	Source                string
-	Managed               bool
-	PID                   int
-	SelectedThreadID      string
-	SelectedThreadTitle   string
-	SelectedThreadPreview string
-	RouteMode             string
-	Abandoning            bool
+	InstanceID                         string
+	ObjectType                         string
+	DisplayName                        string
+	Source                             string
+	Managed                            bool
+	PID                                int
+	SelectedThreadID                   string
+	SelectedThreadTitle                string
+	SelectedThreadPreview              string
+	SelectedThreadFirstUserMessage     string
+	SelectedThreadLastUserMessage      string
+	SelectedThreadLastAssistantMessage string
+	SelectedThreadAgeText              string
+	RouteMode                          string
+	Abandoning                         bool
 }
 
 type PendingHeadlessSummary struct {
@@ -302,10 +306,13 @@ type Notice struct {
 }
 
 type ThreadSelectionChanged struct {
-	ThreadID  string
-	RouteMode string
-	Title     string
-	Preview   string
+	ThreadID             string
+	RouteMode            string
+	Title                string
+	Preview              string
+	FirstUserMessage     string
+	LastUserMessage      string
+	LastAssistantMessage string
 }
 
 type RequestPromptOption struct {

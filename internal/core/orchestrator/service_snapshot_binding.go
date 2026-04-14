@@ -51,6 +51,18 @@ func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, i
 }
 
 func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) []control.UIEvent {
+	firstUserMessage := ""
+	lastUserMessage := ""
+	lastAssistantMessage := ""
+	if surface != nil && strings.TrimSpace(threadID) != "" {
+		if inst := s.root.Instances[strings.TrimSpace(surface.AttachedInstanceID)]; inst != nil {
+			if thread := inst.Threads[threadID]; threadVisible(thread) {
+				firstUserMessage = threadFirstUserSnippet(thread, 64)
+				lastUserMessage = threadLastUserSnippet(thread, 64)
+				lastAssistantMessage = threadLastAssistantSnippet(thread, 64)
+			}
+		}
+	}
 	if surface.LastSelection != nil &&
 		surface.LastSelection.ThreadID == threadID &&
 		surface.LastSelection.RouteMode == routeMode {
@@ -64,7 +76,7 @@ func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, thr
 		Title:     title,
 		Preview:   preview,
 	}
-	return []control.UIEvent{threadSelectionEvent(surface, threadID, routeMode, title, preview)}
+	return []control.UIEvent{threadSelectionEvent(surface, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage)}
 }
 
 func notice(surface *state.SurfaceConsoleRecord, code, text string) []control.UIEvent {
