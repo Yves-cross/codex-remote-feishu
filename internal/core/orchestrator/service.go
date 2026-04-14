@@ -409,6 +409,20 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				Text:             action.Text,
 			},
 		}}
+	case control.ActionCronCommand:
+		events = []control.UIEvent{{
+			Kind:             control.UIEventDaemonCommand,
+			GatewayID:        surface.GatewayID,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			SourceMessageID:  action.MessageID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandCron,
+				GatewayID:        surface.GatewayID,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				SourceMessageID:  action.MessageID,
+				Text:             action.Text,
+			},
+		}}
 	case control.ActionUpgradeCommand:
 		events = []control.UIEvent{{
 			Kind:             control.UIEventDaemonCommand,

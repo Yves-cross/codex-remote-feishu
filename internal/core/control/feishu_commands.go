@@ -26,6 +26,7 @@ const (
 	FeishuCommandHelp              = "help"
 	FeishuCommandMenu              = "menu"
 	FeishuCommandDebug             = "debug"
+	FeishuCommandCron              = "cron"
 	FeishuCommandUpgrade           = "upgrade"
 )
 
@@ -635,6 +636,29 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "menu", action: Action{Kind: ActionShowCommandMenu}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandCron,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "定时任务",
+			CanonicalSlash:   "/cron",
+			CanonicalMenuKey: "cron",
+			ArgumentKind:     FeishuCommandArgumentText,
+			ArgumentFormHint: "reload",
+			ArgumentFormNote: "例如 reload。",
+			ArgumentSubmit:   "执行",
+			Description:      "打开当前 daemon 实例专属的定时任务多维表格，或用 `/cron reload` 重新加载任务配置。",
+			Examples:         []string{"/cron", "/cron reload"},
+			ShowInHelp:       true,
+			ShowInMenu:       false,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/cron", kind: ActionCronCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "cron", action: Action{Kind: ActionCronCommand, Text: "/cron"}},
 		},
 	},
 	{

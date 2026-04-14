@@ -107,6 +107,7 @@ loginctl enable-linger "$USER"
 
 - 飞书应用已经开通 `deploy/feishu/README.md` 里列出的基础消息 / 事件权限
 - 如果你希望本地 `.md` 链接自动变成飞书预览链接，还需要 `drive:drive`
+- 如果你希望在飞书里用 `/cron` 打开当前实例的定时任务多维表格，还需要 `bitable:app`
 
 然后在飞书里：
 
@@ -114,6 +115,7 @@ loginctl enable-linger "$USER"
 - 如果只是想快速回到最近对话，直接发 `/use`
 - 只有当你明确想让飞书跟着编辑器当前焦点变化时，才切到 `vscode` 模式
 - 如果你一时记不住命令，先发 `/help` 或 `/menu`
+- 如果你想让当前 daemon 实例按计划后台执行任务，可以先发 `/cron` 配置任务表，再发 `/cron reload` 生效
 - `/list` 在 `normal` 模式下显示工作区，在 `vscode` 模式下才显示在线 VS Code 实例
 - `/use` 用来继续最近可见会话；`/threads` 仍可作为旧别名使用；`/useall` 会显示全部可见会话
 - 优先使用卡片按钮；如果卡片提示已经过期，直接重发对应命令

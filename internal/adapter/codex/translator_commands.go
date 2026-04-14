@@ -15,6 +15,12 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			t.pendingLocalNewThreadTurn = false
 			requestID := t.nextRequest("thread-start")
 			t.pendingThreadCreate[requestID] = pendingThreadCreate{Command: command}
+			params := t.buildThreadStartParams(command.Target.CWD, command.Overrides)
+			if command.Target.InternalHelper {
+				params["ephemeral"] = true
+				params["persistExtendedHistory"] = false
+				t.pendingInternalThreadSet[requestID] = true
+			}
 			t.debugf(
 				"translate remote prompt: command=%s action=thread/start request=%s targetThread=%s cwd=%s currentThread=%s surface=%s inputs=%d",
 				command.CommandID,
@@ -28,7 +34,7 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			payload := map[string]any{
 				"id":     requestID,
 				"method": "thread/start",
-				"params": t.buildThreadStartParams(command.Target.CWD, command.Overrides),
+				"params": params,
 			}
 			bytes, err := json.Marshal(payload)
 			if err != nil {

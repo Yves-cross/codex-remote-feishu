@@ -100,7 +100,7 @@ func AllowsCommandSubmissionAnchorReplacement(action Action) bool {
 		ActionFollowLocal,
 		ActionDetach:
 		return true
-	case ActionUpgradeCommand, ActionDebugCommand:
+	case ActionUpgradeCommand, ActionDebugCommand, ActionCronCommand:
 		return isSingleTokenSlashCommand(action.Text)
 	default:
 		return false

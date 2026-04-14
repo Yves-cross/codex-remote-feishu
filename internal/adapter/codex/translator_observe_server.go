@@ -47,17 +47,6 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			t.debugf("observe server suppressed response: request=%s", requestID)
 			return Result{Suppress: true}, nil
 		}
-		if t.pendingInternalThreadSet[requestID] {
-			delete(t.pendingInternalThreadSet, requestID)
-			threadID := lookupString(message, "result", "thread", "id")
-			if threadID == "" {
-				threadID = lookupString(message, "result", "id")
-			}
-			if threadID != "" {
-				t.internalThreadIDs[threadID] = true
-			}
-			return Result{}, nil
-		}
 		if t.pendingInternalTurnSet[requestID] {
 			delete(t.pendingInternalTurnSet, requestID)
 			turnID := lookupString(message, "result", "turn", "id")
@@ -73,6 +62,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		if pending, exists := t.pendingThreadCreate[requestID]; exists {
 			delete(t.pendingThreadCreate, requestID)
 			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
+				delete(t.pendingInternalThreadSet, requestID)
 				t.debugf("observe server thread/start error: request=%s error=%s", requestID, errMsg)
 				return Result{Events: []agentproto.Event{{
 					Kind:         agentproto.EventTurnCompleted,
@@ -83,6 +73,12 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			threadID := lookupString(message, "result", "thread", "id")
 			if threadID == "" {
 				threadID = lookupString(message, "result", "id")
+			}
+			if t.pendingInternalThreadSet[requestID] {
+				delete(t.pendingInternalThreadSet, requestID)
+				if threadID != "" {
+					t.internalThreadIDs[threadID] = true
+				}
 			}
 			t.currentThreadID = threadID
 			if pending.Command.Target.CWD != "" {
@@ -97,6 +93,17 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				Suppress:        true,
 				OutboundToCodex: [][]byte{followup},
 			}, nil
+		}
+		if t.pendingInternalThreadSet[requestID] {
+			delete(t.pendingInternalThreadSet, requestID)
+			threadID := lookupString(message, "result", "thread", "id")
+			if threadID == "" {
+				threadID = lookupString(message, "result", "id")
+			}
+			if threadID != "" {
+				t.internalThreadIDs[threadID] = true
+			}
+			return Result{}, nil
 		}
 		if pending, exists := t.pendingThreadResume[requestID]; exists {
 			delete(t.pendingThreadResume, requestID)

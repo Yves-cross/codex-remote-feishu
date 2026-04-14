@@ -69,6 +69,7 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 
 如果你的飞书控制台支持权限 JSON 导入，优先在这个入口里粘贴这段内容，再补手工确认：
 
+- `bitable:app`
 - `drive:drive`
 - `im:datasync.feed_card.time_sensitive:write`
 - `im:message`
@@ -88,6 +89,10 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 - 发送文本消息
 - 发送卡片消息
 - 添加和移除消息 reaction
+
+如果你计划使用 `/cron` 定时任务，再额外确认：
+
+- `bitable:app` 已开通，用于创建和访问当前 daemon 实例的专属多维表格
 
 ### 2. 事件订阅
 

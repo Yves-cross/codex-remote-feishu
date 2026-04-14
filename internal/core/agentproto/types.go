@@ -184,6 +184,7 @@ type Origin struct {
 type Target struct {
 	ThreadID               string `json:"threadId,omitempty"`
 	CreateThreadIfMissing  bool   `json:"createThreadIfMissing,omitempty"`
+	InternalHelper         bool   `json:"internalHelper,omitempty"`
 	CWD                    string `json:"cwd,omitempty"`
 	TurnID                 string `json:"turnId,omitempty"`
 	UseActiveTurnIfOmitted bool   `json:"useActiveTurnIfOmitted,omitempty"`

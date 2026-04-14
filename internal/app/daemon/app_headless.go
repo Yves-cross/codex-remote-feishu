@@ -30,6 +30,8 @@ func (a *App) handleDaemonCommandLocked(command control.DaemonCommand) []control
 		return a.killManagedHeadless(command)
 	case control.DaemonCommandDebug:
 		return a.handleDebugDaemonCommand(command)
+	case control.DaemonCommandCron:
+		return a.handleCronDaemonCommand(command)
 	case control.DaemonCommandUpgrade:
 		return a.handleUpgradeDaemonCommand(command)
 	case control.DaemonCommandVSCodeMigrate:

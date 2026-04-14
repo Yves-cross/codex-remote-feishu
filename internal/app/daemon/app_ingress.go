@@ -476,6 +476,9 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	if a.shuttingDown {
 		return
 	}
+	if a.handleCronHelloLocked(ctx, hello) {
+		return
+	}
 	now := time.Now().UTC()
 
 	inst := a.service.Instance(hello.Instance.InstanceID)
@@ -564,6 +567,9 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.shuttingDown {
+		return
+	}
+	if a.handleCronEventsLocked(ctx, instanceID, events) {
 		return
 	}
 	syncSurfaceResumeState := false
@@ -687,6 +693,9 @@ func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentprot
 	if a.shuttingDown {
 		return
 	}
+	if a.handleCronCommandAckLocked(ctx, instanceID, ack) {
+		return
+	}
 	log.Printf("relay command ack: instance=%s command=%s accepted=%t error=%s", instanceID, ack.CommandID, ack.Accepted, ack.Error)
 	a.debugf(
 		"command ack state: instance=%s command=%s accepted=%t pending=%s active=%s",
@@ -714,6 +723,9 @@ func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.shuttingDown {
+		return
+	}
+	if a.handleCronDisconnectLocked(ctx, instanceID) {
 		return
 	}
 	now := time.Now().UTC()
@@ -790,5 +802,7 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.handleUIEvents(ctx, recoveryEvents)
 	a.syncFeishuTimeSensitiveLocked(ctx)
 	a.maybeStartFeishuPermissionRefreshLocked(now)
+	a.maybeScheduleCronJobsLocked(now)
+	a.reapCronExitTargetsLocked(now)
 	a.maybeShutdownExternalAccessIdleLocked(now)
 }

@@ -168,6 +168,14 @@ type App struct {
 	feishuPermissionRefreshInFlight bool
 	feishuOnboarding                map[string]*feishuOnboardingSession
 	feishuSetup                     feishuSetupClient
+	cronLoaded                      bool
+	cronSyncInFlight                bool
+	cronState                       *cronStateFile
+	cronRuns                        map[string]*cronRunState
+	cronJobActiveRuns               map[string]string
+	cronExitTargets                 map[string]*cronExitTarget
+	cronBitableFactory              func(string) (feishu.BitableAPI, error)
+	cronNextScheduleScan            time.Time
 
 	adminAuth             *adminauth.Manager
 	admin                 adminRuntimeState
@@ -243,6 +251,9 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		feishuPermissionRefreshEvery: defaultFeishuPermissionRefreshEvery,
 		feishuOnboarding:             map[string]*feishuOnboardingSession{},
 		feishuSetup:                  newLiveFeishuSetupClient(),
+		cronRuns:                     map[string]*cronRunState{},
+		cronJobActiveRuns:            map[string]string{},
+		cronExitTargets:              map[string]*cronExitTarget{},
 		adminAuth:                    authManager,
 		workspaceContextRoots:        map[string]string{},
 		shutdownGracePeriod:          5 * time.Second,
@@ -261,6 +272,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 	}
 	app.projector.SetSnapshotBinary(formatStatusSnapshotBinary(serverIdentity))
 	app.upgradeLookup = app.defaultReleaseLookup
+	app.cronBitableFactory = app.defaultCronBitableFactory
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{
 		OnHello:      app.enqueueHello,
 		OnEvents:     app.enqueueEvents,

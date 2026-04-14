@@ -39,6 +39,10 @@ func (s *Service) recentPersistedWorkspaces(limit int) map[string]time.Time {
 	return workspaceRecencyFromThreads(s.recentPersistedThreads(persistedRecentThreadLimit))
 }
 
+func (s *Service) RecentPersistedWorkspaces(limit int) map[string]time.Time {
+	return clonePersistedWorkspaceRecency(s.recentPersistedWorkspaces(limit))
+}
+
 func workspaceRecencyFromThreads(threads []state.ThreadRecord) map[string]time.Time {
 	if len(threads) == 0 {
 		return nil

@@ -55,6 +55,7 @@ func DefaultManifest() Manifest {
 			Scopes: PermissionScopes{
 				Tenant: []string{
 					"drive:drive",
+					"bitable:app",
 					"im:datasync.feed_card.time_sensitive:write",
 					"im:message",
 					"im:message.group_at_msg:readonly",
