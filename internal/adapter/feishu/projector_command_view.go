@@ -98,6 +98,7 @@ func commandMenuHomeEntries(stage string) []control.CommandCatalogEntry {
 	case commandMenuStageNormalWorking:
 		commandIDs = []string{
 			control.FeishuCommandStop,
+			control.FeishuCommandSteerAll,
 			control.FeishuCommandNew,
 			control.FeishuCommandReasoning,
 			control.FeishuCommandModel,
@@ -106,6 +107,7 @@ func commandMenuHomeEntries(stage string) []control.CommandCatalogEntry {
 	case commandMenuStageVSCodeWorking:
 		commandIDs = []string{
 			control.FeishuCommandStop,
+			control.FeishuCommandSteerAll,
 			control.FeishuCommandReasoning,
 			control.FeishuCommandModel,
 			control.FeishuCommandAccess,

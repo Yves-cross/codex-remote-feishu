@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、normal `/list` 工作区卡片里的 `create_workspace` 入口与“目录选择后交给 workspace consumer”的 handoff、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、request 卡在 same-daemon 生命周期内的 `request_revision` freshness、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回），以及无回调的 `exec_command` 共享更新卡（首次 reply，后续 `message.patch` 同卡更新，正文出现后终结）。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、`path_picker_*` callback 协议、active picker 的 same-daemon freshness / append-only confirm-cancel 边界、normal `/list` 工作区卡片里的 `create_workspace` 入口与“目录选择后交给 workspace consumer”的 handoff、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、request 卡在 same-daemon 生命周期内的 `request_revision` freshness、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`），以及无回调的 `exec_command` 共享更新卡（首次 reply，后续 `message.patch` 同卡更新，正文出现后终结）。
 
 ## 1. 文档定位
 
@@ -55,7 +55,7 @@
   - 负责只在安全条件下把同上下文导航转成 `ReplaceCurrentCard`
   - 当前有两条 replace 路径：
     - inline navigation：当 action 命中 **inline-replace allow-list**（并非所有 `FeishuUIIntent`）、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard`
-    - command submission anchor：当 action 命中提交态锚点 allow-list（如 `/status`、`/list`）时，daemon 回一张轻量“命令已提交”替换卡，同时保留原结果 append
+    - command submission anchor：当 action 命中提交态锚点 allow-list（如 `/status`、`/list`、`/steerall`）时，daemon 回一张轻量“命令已提交”替换卡，同时保留原结果 append
 - `orchestrator / Feishu UI controller`
   - 负责 `show_*`、`/menu`、bare config-card 这类 pure navigation 的 controller 分流与事件构建
   - 负责通过阶段 1 暴露的 `Feishu*Context` query/policy 边界生成 UI-owned read model 与 request 事件
@@ -269,7 +269,7 @@
 
 当前新增补充：
 
-- stamped 菜单命令里的非 inline 命令（例如 `/status`、`/list`、`/stop`、`/new`、`/follow`、`/detach`）会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡。
+- stamped 菜单命令里的非 inline 命令（例如 `/status`、`/list`、`/stop`、`/steerall`、`/new`、`/follow`、`/detach`）会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡。
 - bare `/upgrade`、bare `/debug` 在 stamped 菜单卡里会直接同位承接为对应状态/输入卡（replace 当前菜单卡），不再先外跳 append 一张新卡。
 - “命令已提交”锚点卡当前会在短延时后尝试 best-effort 自动撤回；撤回失败时仅静默降级，不影响主流程。
 - 这条路径不会改变产品动作 owner，也不会把参数应用动作改成 inline replace。

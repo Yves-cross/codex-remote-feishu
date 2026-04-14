@@ -86,6 +86,8 @@ type pendingSteerBinding struct {
 	InstanceID       string
 	SurfaceSessionID string
 	QueueItemID      string
+	QueueItemIDs     []string
+	QueueIndices     map[string]int
 	SourceMessageID  string
 	CommandID        string
 	ThreadID         string
@@ -344,6 +346,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.prepareNewThread(surface)
 	case control.ActionSendFile:
 		events = s.openSendFilePicker(surface)
+	case control.ActionSteerAll:
+		events = s.handleSteerAllCommand(surface)
 	case control.ActionKillInstance:
 		events = s.killHeadlessInstance(surface)
 	case control.ActionRemovedCommand:

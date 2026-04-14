@@ -71,7 +71,7 @@ func DefaultManifest() Manifest {
 			{Event: "im.message.receive_v1", Purpose: "接收飞书中的文本和图片消息。"},
 			{Event: "im.message.recalled_v1", Purpose: "用户撤回尚未执行的输入时，取消排队消息或 staged image。"},
 			{Event: "im.message.reaction.created_v1", Purpose: "用户给排队中的文本消息点赞时，把该 queue item 升级为对当前 running turn 的 steering。"},
-			{Event: "application.bot.menu_v6", Purpose: "处理机器人静态菜单里的阶段入口和高频快捷键，例如 menu/stop/new/reasoning/model/access。"},
+			{Event: "application.bot.menu_v6", Purpose: "处理机器人静态菜单里的阶段入口和高频快捷键，例如 menu/stop/steerall/new/reasoning/model/access。"},
 		},
 		Callbacks: []CallbackRequirement{
 			{Callback: "card.action.trigger", Purpose: "通过飞书回调长连接处理选择卡片、命令菜单导航、参数卡和 approval request 交互。"},

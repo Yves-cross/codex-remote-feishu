@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff、normal `/list` 中“从目录新建工作区”的 fresh-workspace headless 启动路径，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、`/steerall` 的批量并入当前 running turn 入口、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff、normal `/list` 中“从目录新建工作区”的 fresh-workspace headless 启动路径，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -556,16 +556,18 @@ surface 不是单一枚举，而是五层正交状态叠加。
    3. `/status`
 3. `normal` working 首页前排固定为：
    1. `/stop`
-   2. `/new`
+   2. `/steerall`
+   3. `/new`
+   4. `/reasoning`
+   5. `/model`
+   6. `/access`
+4. `vscode` working 首页前排固定为：
+   1. `/stop`
+   2. `/steerall`
    3. `/reasoning`
    4. `/model`
    5. `/access`
-4. `vscode` working 首页前排固定为：
-   1. `/stop`
-   2. `/reasoning`
-   3. `/model`
-   4. `/access`
-   5. `/follow`
+   6. `/follow`
 5. `normal` working 首页与主路径里不再暴露 `/follow`。
 6. bare 参数命令现在统一走“快捷按钮 + 单字段表单”：
    1. `send settings`：`/reasoning`、`/model`、`/access`
@@ -752,6 +754,7 @@ E0 Idle
 
 E1 Queued
   -- queued 主文本被 `ThumbsUp`，且当前有同 thread active turn --> `SteerPending` overlay
+  -- `/steerall` 命中且存在同 thread queued 项 --> `SteerPending` overlay
 
 E2 Dispatching
   -- turn.started(remote_surface) --> E3 Running
@@ -761,8 +764,8 @@ E3 Running
   -- turn.completed(remote_surface) --> E0 Idle
 
 `SteerPending` overlay
-  -- `turn.steer` command ack accepted --> item `steered`，移除 queue pending reaction，并给主文本 + 已绑定图片补 `ThumbsUp`
-  -- `turn.steer` dispatch failure / command rejected --> 恢复到原 queue 位置
+  -- `turn.steer` command ack accepted --> 被并入的 item 逐条转 `steered`，并给对应主文本 + 已绑定图片补 `ThumbsUp`
+  -- `turn.steer` dispatch failure / command rejected --> 被并入的 item 按原队列顺序恢复
   -- transport degraded / disconnect / remove instance --> 恢复到原 queue 位置
 ```
 
@@ -773,7 +776,8 @@ E3 Running
 3. 对空 thread 首条消息，promote 会优先按 `Initiator.SurfaceSessionID` 命中。
 4. 若 queue item 来自 `R5`，turn.started 后 surface 必须切回 `pinned`，不会继续停在 `new_thread_ready`。
 5. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
-6. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
+6. `/steerall` 当前会把同一 active thread 下所有 queued 项聚合为一次 `turn.steer`；若没有可并入项，只返回 noop 提示，不改队列状态。
+7. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
    1. surface 不会立刻同步 enqueue 新 item
    2. 只会把 surface 置入 `A2 Scheduled`
    3. 后续等 `Tick()` 到期后再真正 enqueue
@@ -1005,6 +1009,7 @@ transport degraded retained attachment
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autowhip` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/help` `/menu` `/debug` `/upgrade` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
+| `/steerall` | 允许；通常返回 noop 提示 | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 |
 | 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
 | 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
 | 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 理论上通常不会出现；若出现仍按 attached surface 处理 |

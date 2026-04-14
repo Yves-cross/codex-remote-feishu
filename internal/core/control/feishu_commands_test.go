@@ -109,6 +109,29 @@ func TestParseFeishuTextActionRecognizesModeCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesSteerAllCommand(t *testing.T) {
+	action, ok := ParseFeishuTextAction("/steerall")
+	if !ok {
+		t.Fatal("expected /steerall to be parsed")
+	}
+	if action.Kind != ActionSteerAll {
+		t.Fatalf("action kind = %q, want %q", action.Kind, ActionSteerAll)
+	}
+}
+
+func TestParseFeishuMenuActionRecognizesSteerAllCommand(t *testing.T) {
+	tests := []string{"steerall", "steer_all"}
+	for _, key := range tests {
+		action, ok := ParseFeishuMenuAction(key)
+		if !ok {
+			t.Fatalf("expected %q to be parsed", key)
+		}
+		if action.Kind != ActionSteerAll {
+			t.Fatalf("event key %q => kind %q, want %q", key, action.Kind, ActionSteerAll)
+		}
+	}
+}
+
 func TestParseFeishuTextActionRecognizesVerboseCommand(t *testing.T) {
 	tests := []string{
 		"/verbose",
@@ -202,6 +225,7 @@ func TestFeishuRecommendedMenusStayInSuggestedOrder(t *testing.T) {
 	want := []FeishuRecommendedMenu{
 		{Key: "menu", Name: "命令菜单", Description: "打开阶段感知的命令菜单首页。"},
 		{Key: "stop", Name: "停止当前执行", Description: "中断当前执行，并丢弃飞书侧尚未发送的排队输入。"},
+		{Key: "steerall", Name: "Steer All", Description: "把当前队列里可并入本轮执行的输入一次性并入当前 running turn。"},
 		{Key: "new", Name: "新建会话", Description: "仅 normal 模式可用：准备一个新会话，下一条消息会作为首条输入。"},
 		{Key: "reasoning", Name: "推理强度", Description: "打开推理强度参数卡；如果知道完整 key，也可直接使用 `reasoning_high` 这类直达入口。"},
 		{Key: "model", Name: "模型", Description: "打开模型卡片；如果知道完整 key，也可直接使用 `model_gpt-5.4` 这类直达入口。"},

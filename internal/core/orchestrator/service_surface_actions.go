@@ -455,51 +455,138 @@ func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, act
 	if targetMessageID == "" {
 		return nil
 	}
-	inst := s.root.Instances[surface.AttachedInstanceID]
-	if inst == nil || inst.ActiveTurnID == "" || inst.ActiveThreadID == "" {
+	inst, activeThreadID, activeTurnID, ok := s.activeSteerTarget(surface)
+	if !ok {
 		return nil
 	}
-	for index, queueID := range surface.QueuedQueueItemIDs {
-		item := surface.QueueItems[queueID]
-		if item == nil || item.Status != state.QueueItemQueued || item.SourceMessageID != targetMessageID {
+	for _, candidate := range s.steerCandidates(surface, activeThreadID) {
+		if !queueItemHasSourceMessage(candidate.Item, targetMessageID) {
 			continue
 		}
-		if item.FrozenThreadID == "" || item.FrozenThreadID != inst.ActiveThreadID {
-			return nil
+		return s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, []steerCandidate{candidate}, targetMessageID)
+	}
+	return nil
+}
+
+func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+	inst, activeThreadID, activeTurnID, ok := s.activeSteerTarget(surface)
+	if !ok {
+		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
+	}
+	candidates := s.steerCandidates(surface, activeThreadID)
+	if len(candidates) == 0 {
+		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
+	}
+	events := notice(surface, "steer_all_requested", fmt.Sprintf("正在把 %d 条排队输入并入当前执行。", len(candidates)))
+	return append(events, s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, candidates, "")...)
+}
+
+type steerCandidate struct {
+	QueueIndex int
+	Item       *state.QueueItemRecord
+}
+
+func (s *Service) activeSteerTarget(surface *state.SurfaceConsoleRecord) (*state.InstanceRecord, string, string, bool) {
+	if surface == nil {
+		return nil, "", "", false
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		return nil, "", "", false
+	}
+	threadID := strings.TrimSpace(inst.ActiveThreadID)
+	turnID := strings.TrimSpace(inst.ActiveTurnID)
+	if threadID == "" || turnID == "" {
+		return nil, "", "", false
+	}
+	return inst, threadID, turnID, true
+}
+
+func (s *Service) steerCandidates(surface *state.SurfaceConsoleRecord, activeThreadID string) []steerCandidate {
+	if surface == nil || strings.TrimSpace(activeThreadID) == "" {
+		return nil
+	}
+	candidates := make([]steerCandidate, 0, len(surface.QueuedQueueItemIDs))
+	for index, queueID := range surface.QueuedQueueItemIDs {
+		item := surface.QueueItems[queueID]
+		if item == nil || item.Status != state.QueueItemQueued {
+			continue
+		}
+		if item.FrozenThreadID == "" || item.FrozenThreadID != activeThreadID {
+			continue
+		}
+		candidates = append(candidates, steerCandidate{
+			QueueIndex: index,
+			Item:       item,
+		})
+	}
+	return candidates
+}
+
+func (s *Service) dispatchSteerCandidates(
+	surface *state.SurfaceConsoleRecord,
+	inst *state.InstanceRecord,
+	activeThreadID string,
+	activeTurnID string,
+	candidates []steerCandidate,
+	explicitSourceMessageID string,
+) []control.UIEvent {
+	if surface == nil || inst == nil || strings.TrimSpace(activeThreadID) == "" || strings.TrimSpace(activeTurnID) == "" || len(candidates) == 0 {
+		return nil
+	}
+	queueItemIDs := make([]string, 0, len(candidates))
+	queueIndices := make(map[string]int, len(candidates))
+	inputs := make([]agentproto.Input, 0, len(candidates))
+	sourceMessageID := strings.TrimSpace(explicitSourceMessageID)
+	for _, candidate := range candidates {
+		item := candidate.Item
+		if item == nil || strings.TrimSpace(item.ID) == "" || item.Status != state.QueueItemQueued {
+			continue
 		}
 		item.Status = state.QueueItemSteering
 		surface.QueuedQueueItemIDs = removeString(surface.QueuedQueueItemIDs, item.ID)
-		s.pendingSteers[item.ID] = &pendingSteerBinding{
-			InstanceID:       inst.InstanceID,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			QueueItemID:      item.ID,
-			SourceMessageID:  item.SourceMessageID,
-			ThreadID:         inst.ActiveThreadID,
-			TurnID:           inst.ActiveTurnID,
-			QueueIndex:       index,
+		queueItemIDs = append(queueItemIDs, item.ID)
+		queueIndices[item.ID] = candidate.QueueIndex
+		inputs = append(inputs, item.Inputs...)
+		if sourceMessageID == "" {
+			sourceMessageID = strings.TrimSpace(item.SourceMessageID)
 		}
-		return []control.UIEvent{{
-			Kind:             control.UIEventAgentCommand,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			Command: &agentproto.Command{
-				Kind: agentproto.CommandTurnSteer,
-				Origin: agentproto.Origin{
-					Surface:   surface.SurfaceSessionID,
-					UserID:    surface.ActorUserID,
-					ChatID:    surface.ChatID,
-					MessageID: item.SourceMessageID,
-				},
-				Target: agentproto.Target{
-					ThreadID: inst.ActiveThreadID,
-					TurnID:   inst.ActiveTurnID,
-				},
-				Prompt: agentproto.Prompt{
-					Inputs: item.Inputs,
-				},
-			},
-		}}
 	}
-	return nil
+	if len(queueItemIDs) == 0 || len(inputs) == 0 {
+		return nil
+	}
+	primaryQueueItemID := queueItemIDs[0]
+	s.pendingSteers[primaryQueueItemID] = &pendingSteerBinding{
+		InstanceID:       inst.InstanceID,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		QueueItemID:      primaryQueueItemID,
+		QueueItemIDs:     queueItemIDs,
+		QueueIndices:     queueIndices,
+		SourceMessageID:  sourceMessageID,
+		ThreadID:         activeThreadID,
+		TurnID:           activeTurnID,
+		QueueIndex:       queueIndices[primaryQueueItemID],
+	}
+	return []control.UIEvent{{
+		Kind:             control.UIEventAgentCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Command: &agentproto.Command{
+			Kind: agentproto.CommandTurnSteer,
+			Origin: agentproto.Origin{
+				Surface:   surface.SurfaceSessionID,
+				UserID:    surface.ActorUserID,
+				ChatID:    surface.ChatID,
+				MessageID: sourceMessageID,
+			},
+			Target: agentproto.Target{
+				ThreadID: activeThreadID,
+				TurnID:   activeTurnID,
+			},
+			Prompt: agentproto.Prompt{
+				Inputs: inputs,
+			},
+		},
+	}}
 }
 
 func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, targetMessageID string) []control.UIEvent {

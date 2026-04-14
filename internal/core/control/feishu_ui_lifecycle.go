@@ -90,6 +90,7 @@ func AllowsCommandSubmissionAnchorReplacement(action Action) bool {
 		ActionShowAllThreads,
 		ActionStatus,
 		ActionStop,
+		ActionSteerAll,
 		ActionNewThread,
 		ActionFollowLocal,
 		ActionDetach:

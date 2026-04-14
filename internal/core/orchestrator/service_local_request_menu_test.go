@@ -123,7 +123,7 @@ func TestMenuActionNormalHomepageHidesFollow(t *testing.T) {
 	})
 	catalog := commandCatalogFromEvent(t, events[0])
 	got := firstCommands(catalog.Sections[1].Entries)
-	want := []string{"/stop", "/new", "/reasoning", "/model", "/access"}
+	want := []string{"/stop", "/steerall", "/new", "/reasoning", "/model", "/access"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normal home commands = %#v, want %#v", got, want)
 	}
@@ -149,7 +149,7 @@ func TestMenuActionVSCodeHomepageKeepsFollowBehindSettings(t *testing.T) {
 	})
 	catalog := commandCatalogFromEvent(t, events[0])
 	got := firstCommands(catalog.Sections[1].Entries)
-	want := []string{"/stop", "/reasoning", "/model", "/access", "/follow"}
+	want := []string{"/stop", "/steerall", "/reasoning", "/model", "/access", "/follow"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("vscode home commands = %#v, want %#v", got, want)
 	}

@@ -201,19 +201,22 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 		delete(s.pendingSteers, key)
 		return nil
 	}
-	item := surface.QueueItems[binding.QueueItemID]
-	if item == nil || item.Status != state.QueueItemSteering {
-		delete(s.pendingSteers, key)
-		return nil
-	}
-	item.Status = state.QueueItemSteered
 	delete(s.pendingSteers, key)
-	return s.pendingInputEvents(surface, control.PendingInputState{
-		QueueItemID: item.ID,
-		Status:      string(item.Status),
-		QueueOff:    true,
-		ThumbsUp:    true,
-	}, queueItemSourceMessageIDs(item))
+	events := []control.UIEvent{}
+	for _, queueItemID := range pendingSteerQueueItemIDs(binding) {
+		item := surface.QueueItems[queueItemID]
+		if item == nil || item.Status != state.QueueItemSteering {
+			continue
+		}
+		item.Status = state.QueueItemSteered
+		events = append(events, s.pendingInputEvents(surface, control.PendingInputState{
+			QueueItemID: item.ID,
+			Status:      string(item.Status),
+			QueueOff:    true,
+			ThumbsUp:    true,
+		}, queueItemSourceMessageIDs(item))...)
+	}
+	return events
 }
 
 func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
@@ -303,16 +306,38 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 	if surface == nil {
 		return nil
 	}
-	item := surface.QueueItems[binding.QueueItemID]
-	if item == nil {
-		return nil
+	restoreOrder := []struct {
+		queueItemID string
+		queueIndex  int
+	}{}
+	for _, queueItemID := range pendingSteerQueueItemIDs(binding) {
+		item := surface.QueueItems[queueItemID]
+		if item == nil || item.Status == state.QueueItemSteered {
+			continue
+		}
+		item.Status = state.QueueItemQueued
+		surface.QueuedQueueItemIDs = removeString(surface.QueuedQueueItemIDs, item.ID)
+		queueIndex, ok := pendingSteerQueueIndex(binding, queueItemID)
+		if !ok {
+			queueIndex = len(surface.QueuedQueueItemIDs)
+		}
+		restoreOrder = append(restoreOrder, struct {
+			queueItemID string
+			queueIndex  int
+		}{
+			queueItemID: queueItemID,
+			queueIndex:  queueIndex,
+		})
 	}
-	if item.Status == state.QueueItemSteered {
-		return nil
+	sort.SliceStable(restoreOrder, func(i, j int) bool {
+		if restoreOrder[i].queueIndex == restoreOrder[j].queueIndex {
+			return restoreOrder[i].queueItemID < restoreOrder[j].queueItemID
+		}
+		return restoreOrder[i].queueIndex < restoreOrder[j].queueIndex
+	})
+	for _, restore := range restoreOrder {
+		surface.QueuedQueueItemIDs = insertString(surface.QueuedQueueItemIDs, restore.queueIndex, restore.queueItemID)
 	}
-	item.Status = state.QueueItemQueued
-	surface.QueuedQueueItemIDs = removeString(surface.QueuedQueueItemIDs, item.ID)
-	surface.QueuedQueueItemIDs = insertString(surface.QueuedQueueItemIDs, binding.QueueIndex, item.ID)
 	var events []control.UIEvent
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
 		events = append(events, control.UIEvent{
@@ -351,6 +376,35 @@ func appendSteerRestoreHint(text string) string {
 		return text
 	}
 	return text + " 已恢复原排队位置。"
+}
+
+func pendingSteerQueueItemIDs(binding *pendingSteerBinding) []string {
+	if binding == nil {
+		return nil
+	}
+	ids := uniqueStrings(binding.QueueItemIDs)
+	if len(ids) > 0 {
+		return ids
+	}
+	if strings.TrimSpace(binding.QueueItemID) == "" {
+		return nil
+	}
+	return []string{binding.QueueItemID}
+}
+
+func pendingSteerQueueIndex(binding *pendingSteerBinding, queueItemID string) (int, bool) {
+	if binding == nil || strings.TrimSpace(queueItemID) == "" {
+		return 0, false
+	}
+	if binding.QueueIndices != nil {
+		if index, ok := binding.QueueIndices[queueItemID]; ok {
+			return index, true
+		}
+	}
+	if binding.QueueItemID == queueItemID {
+		return binding.QueueIndex, true
+	}
+	return 0, false
 }
 
 func (s *Service) HandleHeadlessLaunchStarted(surfaceID, instanceID string, pid int) []control.UIEvent {

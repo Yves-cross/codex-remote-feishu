@@ -731,11 +731,13 @@ func (s *Service) surfaceHasPendingSteer(surface *state.SurfaceConsoleRecord) bo
 		if binding == nil || binding.SurfaceSessionID != surface.SurfaceSessionID {
 			continue
 		}
-		item := surface.QueueItems[binding.QueueItemID]
-		if item == nil || item.Status != state.QueueItemSteering {
-			continue
+		for _, queueItemID := range pendingSteerQueueItemIDs(binding) {
+			item := surface.QueueItems[queueItemID]
+			if item == nil || item.Status != state.QueueItemSteering {
+				continue
+			}
+			return true
 		}
-		return true
 	}
 	return false
 }
