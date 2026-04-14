@@ -197,12 +197,21 @@ type SurfaceConsoleRecord struct {
 	AutoContinue         AutoContinueRuntimeRecord
 }
 
+type ExecCommandProgressEntryRecord struct {
+	ItemID  string
+	Kind    string
+	Label   string
+	Summary string
+	Status  string
+}
+
 type ExecCommandProgressRecord struct {
 	InstanceID    string
 	ThreadID      string
 	TurnID        string
 	ItemID        string
 	MessageID     string
+	Entries       []ExecCommandProgressEntryRecord
 	Commands      []string
 	Command       string
 	CWD           string

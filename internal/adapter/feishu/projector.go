@@ -402,28 +402,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.ExecCommandProgress == nil {
 			return nil
 		}
-		progress := *event.ExecCommandProgress
-		body := execCommandProgressBody(progress)
-		operation := Operation{
-			GatewayID:        event.GatewayID,
-			SurfaceSessionID: event.SurfaceSessionID,
-			ChatID:           chatID,
-			MessageID:        progress.MessageID,
-			ReplyToMessageID: event.SourceMessageID,
-			CardTitle:        "处理中",
-			CardBody:         body,
-			CardThemeKey:     cardThemeInfo,
-			CardUpdateMulti:  true,
-			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument("处理中", body, cardThemeInfo, nil),
-		}
-		if strings.TrimSpace(progress.MessageID) != "" {
-			operation.Kind = OperationUpdateCard
-			operation.ReplyToMessageID = ""
-		} else {
-			operation.Kind = OperationSendCard
-		}
-		return []Operation{operation}
+		return p.projectExecCommandProgress(chatID, event)
 	case control.UIEventThreadSelectionChange:
 		if event.ThreadSelection == nil {
 			return nil

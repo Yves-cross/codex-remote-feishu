@@ -477,11 +477,20 @@ type ImageOutput struct {
 	ImageBase64 string
 }
 
+type ExecCommandProgressEntry struct {
+	ItemID  string
+	Kind    string
+	Label   string
+	Summary string
+	Status  string
+}
+
 type ExecCommandProgress struct {
 	ThreadID  string
 	TurnID    string
 	ItemID    string
 	MessageID string
+	Entries   []ExecCommandProgressEntry
 	Commands  []string
 	Command   string
 	CWD       string

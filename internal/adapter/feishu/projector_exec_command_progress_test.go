@@ -72,6 +72,35 @@ func TestProjectExecCommandProgressUpdatesExistingCard(t *testing.T) {
 	}
 }
 
+func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "web-1",
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: `bash -lc "go test ./..."`},
+				{ItemID: "web-1", Kind: "web_search", Label: "搜索", Summary: "上海天气"},
+				{ItemID: "web-2", Kind: "web_search", Label: "打开网页", Summary: "https://example.com/weather"},
+			},
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one operation, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	if !strings.Contains(body, "执行：") || !strings.Contains(body, "搜索：上海天气") || !strings.Contains(body, "打开网页：https://example.com/weather") {
+		t.Fatalf("expected shared command and web search rows, got %#v", ops[0])
+	}
+	if strings.Contains(body, `bash -lc`) {
+		t.Fatalf("expected command row to still strip shell wrapper, got %#v", ops[0])
+	}
+}
+
 func TestProjectExecCommandProgressTruncatesLongCommandSummary(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

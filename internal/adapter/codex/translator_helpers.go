@@ -144,6 +144,8 @@ func normalizeItemKind(raw string) string {
 		return "reasoning"
 	case "commandExecution", "command_execution":
 		return "command_execution"
+	case "webSearch", "web_search":
+		return "web_search"
 	case "fileChange", "file_change":
 		return "file_change"
 	case "imageGeneration", "image_generation", "imageGenerationCall", "image_generation_call":
@@ -259,6 +261,39 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 			metadata["exitCode"] = exitCode
 		} else if exitCode := lookupIntFromAny(item["exit_code"]); exitCode != 0 || item["exit_code"] != nil {
 			metadata["exitCode"] = exitCode
+		}
+	case "web_search":
+		if query := firstNonEmptyString(
+			lookupStringFromAny(item["query"]),
+			lookupString(item, "action", "query"),
+		); query != "" {
+			metadata["query"] = query
+		}
+		action := lookupMap(item, "action")
+		if actionType := normalizeWebSearchActionType(firstNonEmptyString(
+			lookupStringFromAny(action["type"]),
+			lookupStringFromAny(item["actionType"]),
+			lookupStringFromAny(item["action_type"]),
+		)); actionType != "" {
+			metadata["actionType"] = actionType
+		}
+		if queries := extractStringList(firstNonNil(
+			action["queries"],
+			item["queries"],
+		)); len(queries) > 0 {
+			metadata["queries"] = queries
+		}
+		if url := firstNonEmptyString(
+			lookupStringFromAny(action["url"]),
+			lookupStringFromAny(item["url"]),
+		); url != "" {
+			metadata["url"] = url
+		}
+		if pattern := firstNonEmptyString(
+			lookupStringFromAny(action["pattern"]),
+			lookupStringFromAny(item["pattern"]),
+		); pattern != "" {
+			metadata["pattern"] = pattern
 		}
 	}
 	return metadata
@@ -392,6 +427,21 @@ func extractStringList(value any) []string {
 		}
 	}
 	return out
+}
+
+func normalizeWebSearchActionType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "search":
+		return "search"
+	case "openpage", "open_page":
+		return "open_page"
+	case "findinpage", "find_in_page":
+		return "find_in_page"
+	case "other":
+		return "other"
+	default:
+		return ""
+	}
 }
 
 func extractDynamicToolContentItems(item map[string]any) []map[string]any {

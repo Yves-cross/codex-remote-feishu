@@ -254,6 +254,63 @@ func TestObserveServerItemLifecycleAndDelta(t *testing.T) {
 	}
 }
 
+func TestObserveServerWebSearchLifecycleExtractsMetadata(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"web-1","type":"webSearch"}}}`))
+	if err != nil {
+		t.Fatalf("observe web search started: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one web search started event, got %#v", started.Events)
+	}
+	startedEvent := started.Events[0]
+	if startedEvent.Kind != agentproto.EventItemStarted || startedEvent.ItemKind != "web_search" {
+		t.Fatalf("unexpected web search started event: %#v", startedEvent)
+	}
+	if len(startedEvent.Metadata) != 0 {
+		t.Fatalf("expected empty metadata for begin event, got %#v", startedEvent.Metadata)
+	}
+
+	completed, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"web-1","type":"webSearch","query":"上海天气","action":{"type":"search","query":"上海天气","queries":["上海天气","shanghai weather"]}}}}`))
+	if err != nil {
+		t.Fatalf("observe web search completed: %v", err)
+	}
+	if len(completed.Events) != 1 {
+		t.Fatalf("expected one web search completed event, got %#v", completed.Events)
+	}
+	completedEvent := completed.Events[0]
+	if completedEvent.Kind != agentproto.EventItemCompleted || completedEvent.ItemKind != "web_search" {
+		t.Fatalf("unexpected web search completed event: %#v", completedEvent)
+	}
+	if completedEvent.Metadata["query"] != "上海天气" || completedEvent.Metadata["actionType"] != "search" {
+		t.Fatalf("unexpected web search metadata: %#v", completedEvent.Metadata)
+	}
+	queries, ok := completedEvent.Metadata["queries"].([]string)
+	if !ok || len(queries) != 2 || queries[1] != "shanghai weather" {
+		t.Fatalf("expected extracted queries, got %#v", completedEvent.Metadata["queries"])
+	}
+}
+
+func TestObserveServerWebSearchFindInPageExtractsURLAndPattern(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"web-2","type":"webSearch","action":{"type":"findInPage","url":"https://example.com","pattern":"pricing"}}}}`))
+	if err != nil {
+		t.Fatalf("observe web search find-in-page completed: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.ItemKind != "web_search" || event.Metadata["actionType"] != "find_in_page" {
+		t.Fatalf("unexpected web search find-in-page event: %#v", event)
+	}
+	if event.Metadata["url"] != "https://example.com" || event.Metadata["pattern"] != "pricing" {
+		t.Fatalf("unexpected web search find-in-page metadata: %#v", event.Metadata)
+	}
+}
+
 func TestObserveServerDynamicToolCallCompletedExtractsContentItems(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"tool-1","type":"dynamicToolCall","tool":"demo_tool","contentItems":[{"type":"inputText","text":"dynamic-ok"},{"type":"inputImage","imageUrl":"data:image/png;base64,AAA"}]}}}`))
