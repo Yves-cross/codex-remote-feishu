@@ -55,8 +55,9 @@ type pendingThreadHistoryRead struct {
 }
 
 type suppressedResponseContext struct {
-	Action   string
-	ThreadID string
+	Action           string
+	ThreadID         string
+	SurfaceSessionID string
 }
 
 type Result struct {

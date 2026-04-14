@@ -83,6 +83,39 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			len(command.Prompt.Inputs),
 		)
 		return [][]byte{payload}, nil
+	case agentproto.CommandThreadCompactStart:
+		threadID := strings.TrimSpace(command.Target.ThreadID)
+		if threadID == "" {
+			return nil, fmt.Errorf("thread.compact.start requires thread id")
+		}
+		requestID := t.nextRequest("thread-compact-start")
+		surfaceID := choose(command.Origin.Surface, command.Origin.ChatID)
+		t.pendingRemoteTurnByThread[threadID] = surfaceID
+		t.pendingSuppressedResponse[requestID] = suppressedResponseContext{
+			Action:           "thread/compact/start",
+			ThreadID:         threadID,
+			SurfaceSessionID: surfaceID,
+		}
+		t.debugf(
+			"translate remote compact: command=%s action=thread/compact/start request=%s targetThread=%s currentThread=%s surface=%s",
+			command.CommandID,
+			requestID,
+			threadID,
+			t.currentThreadID,
+			surfaceID,
+		)
+		payload := map[string]any{
+			"id":     requestID,
+			"method": "thread/compact/start",
+			"params": map[string]any{
+				"threadId": threadID,
+			},
+		}
+		bytes, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		return [][]byte{append(bytes, '\n')}, nil
 	case agentproto.CommandTurnInterrupt:
 		payload := map[string]any{
 			"id":     t.nextRequest("turn-interrupt"),
@@ -244,8 +277,9 @@ func (t *Translator) directTurnStart(threadID string, command agentproto.Command
 		"params": template,
 	}
 	t.pendingSuppressedResponse[lookupStringFromAny(payload["id"])] = suppressedResponseContext{
-		Action:   "turn/start",
-		ThreadID: threadID,
+		Action:           "turn/start",
+		ThreadID:         threadID,
+		SurfaceSessionID: choose(command.Origin.Surface, command.Origin.ChatID),
 	}
 	bytes, err := json.Marshal(payload)
 	if err != nil {

@@ -139,6 +139,9 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.pendingRemote[inst.InstanceID] != nil {
 		return nil
 	}
+	if s.instanceHasCompact(inst.InstanceID) {
+		return nil
+	}
 
 	queueID := surface.QueuedQueueItemIDs[0]
 	surface.QueuedQueueItemIDs = surface.QueuedQueueItemIDs[1:]

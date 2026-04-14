@@ -419,6 +419,9 @@ func (s *Service) surfaceHasLiveRemoteWork(surface *state.SurfaceConsoleRecord) 
 	if surface == nil {
 		return false
 	}
+	if s.surfaceHasPendingCompact(surface) {
+		return true
+	}
 	if s.surfaceHasPendingSteer(surface) {
 		return true
 	}

@@ -30,6 +30,18 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 						ErrorMessage: errMsg,
 					}}}, nil
 				}
+				if pending.Action == "thread/compact/start" {
+					return Result{Events: []agentproto.Event{agentproto.NewSystemErrorEvent(agentproto.ErrorInfo{
+						Code:             "compact_start_failed",
+						Layer:            "server",
+						Stage:            "command_response",
+						Operation:        "thread.compact.start",
+						Message:          "Codex 拒绝了这次上下文整理请求。",
+						Details:          errMsg,
+						SurfaceSessionID: pending.SurfaceSessionID,
+						ThreadID:         pending.ThreadID,
+					})}}, nil
+				}
 				return Result{}, nil
 			}
 			t.debugf("observe server suppressed response: request=%s", requestID)

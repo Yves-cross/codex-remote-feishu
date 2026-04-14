@@ -15,6 +15,7 @@ const (
 	FeishuCommandFollow            = "follow"
 	FeishuCommandDetach            = "detach"
 	FeishuCommandStop              = "stop"
+	FeishuCommandCompact           = "compact"
 	FeishuCommandSteerAll          = "steerall"
 	FeishuCommandMode              = "mode"
 	FeishuCommandAutoContinue      = "autowhip"
@@ -144,6 +145,25 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "stop", action: Action{Kind: ActionStop}},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandCompact,
+			GroupID:          FeishuCommandGroupCurrentWork,
+			Title:            "整理上下文",
+			CanonicalSlash:   "/compact",
+			CanonicalMenuKey: "compact",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "对当前已绑定 thread 发起一次手动上下文整理；当前有其他任务时会直接拒绝。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textExact: []feishuCommandMatch{
+			{alias: "/compact", action: Action{Kind: ActionCompact}},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "compact", action: Action{Kind: ActionCompact}},
 		},
 	},
 	{

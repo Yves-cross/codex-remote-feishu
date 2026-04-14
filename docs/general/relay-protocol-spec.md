@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn/plan/updated` 的结构化计划快照事件、`thread.history.read` 定向历史查询 command/event，以及 `contextCompaction` 到 compact notice 的标准化语义。
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn/plan/updated` 的结构化计划快照事件、`thread.history.read` 定向历史查询 command/event、`contextCompaction` 到 compact notice 的标准化语义，以及新的 `thread.compact.start` 手动上下文整理 command。
 
 ## 1. 文档定位
 
@@ -35,6 +35,7 @@
 - `thread/name/set`
 - `thread/list`
 - `thread/read`
+- `thread/compact/start`
 - `thread/started`
 - `thread/name/updated`
 - `thread/tokenUsage/updated`
@@ -204,9 +205,10 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 ## 4. Canonical Command
 
-当前只实现七个公共 command：
+当前只实现八个公共 command：
 
 - `prompt.send`
+- `thread.compact.start`
 - `turn.steer`
 - `turn.interrupt`
 - `request.respond`
@@ -258,14 +260,31 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - 若该 item 已绑定图片，则 `inputs[]` 会把主文本和同 item 图片一起带上；
 - 成功信号当前定义为 wrapper 返回 `command_ack.accepted=true`。
 
-### 4.3 `turn.interrupt`
+### 4.3 `thread.compact.start`
+
+用于对当前已绑定 thread 发起一次 manual compact。
+
+关键字段：
+
+- `target.threadId`
+
+当前 wrapper / translator 侧语义：
+
+- translator 把它翻译成 native `thread/compact/start`
+- 该请求的同步成功响应会被 suppress，不额外回传独立 result event
+- 后续实际生命周期仍沿用标准 `turn.started` / `item.*` / `turn.completed`
+- 若 native 同步返回错误，translator 会上送 `system.error`
+  - `operation=thread.compact.start`
+  - 以及对应 `surfaceSessionID` / `threadId`
+
+### 4.4 `turn.interrupt`
 
 关键字段：
 
 - `target.threadId`
 - `target.turnId`
 
-### 4.4 `request.respond`
+### 4.5 `request.respond`
 
 用于将 approval / structured response 回写给 native request id。
 
@@ -297,11 +316,11 @@ wrapper 收到 `command` 后总是回传 accept/reject：
   - 对当前 request 发送 `decision=decline`
   - 再把用户下一条文字作为 follow-up prompt 入队
 
-### 4.5 `threads.refresh`
+### 4.6 `threads.refresh`
 
 触发 wrapper 走 `thread/list + thread/read`，再返回标准化的 `threads.snapshot`。
 
-### 4.6 `thread.history.read`
+### 4.7 `thread.history.read`
 
 用于让 daemon 按需向某个 wrapper 查询指定 thread 的完整历史。
 
@@ -316,7 +335,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - 固定带 `includeTurns=true`
 - 成功后不复用 `threads.snapshot`，而是回传单独的 `thread.history.read` event
 
-### 4.7 `process.exit`
+### 4.8 `process.exit`
 
 由 daemon 在 shutdown / upgrade 窗口下发，要求 wrapper 自行退出并结束其 child `codex app-server`。
 
@@ -499,6 +518,7 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - `surface.menu.list_instances`
 - `surface.menu.status`
 - `surface.menu.stop`
+- `surface.menu.compact`
 - `surface.command.model`
 - `surface.command.reasoning`
 - `surface.command.access`

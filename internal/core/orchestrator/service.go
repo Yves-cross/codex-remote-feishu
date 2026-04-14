@@ -41,6 +41,7 @@ type Service struct {
 	turnFileChanges      map[string]*turnFileChangeSummary
 	pendingRemote        map[string]*remoteTurnBinding
 	activeRemote         map[string]*remoteTurnBinding
+	compactTurns         map[string]*compactTurnBinding
 	pendingSteers        map[string]*pendingSteerBinding
 	instanceClaims       map[string]*instanceClaimRecord
 	workspaceClaims      map[string]*workspaceClaimRecord
@@ -87,6 +88,22 @@ type remoteTurnBinding struct {
 	HasStartTotalUsage    bool
 	LastUsage             agentproto.TokenUsageBreakdown
 	HasLastUsage          bool
+}
+
+type compactTurnStatus string
+
+const (
+	compactTurnStatusDispatching compactTurnStatus = "dispatching"
+	compactTurnStatusRunning     compactTurnStatus = "running"
+)
+
+type compactTurnBinding struct {
+	InstanceID       string
+	SurfaceSessionID string
+	ThreadID         string
+	CommandID        string
+	TurnID           string
+	Status           compactTurnStatus
 }
 
 type pendingSteerBinding struct {
@@ -190,6 +207,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		turnFileChanges:     map[string]*turnFileChangeSummary{},
 		pendingRemote:       map[string]*remoteTurnBinding{},
 		activeRemote:        map[string]*remoteTurnBinding{},
+		compactTurns:        map[string]*compactTurnBinding{},
 		pendingSteers:       map[string]*pendingSteerBinding{},
 		instanceClaims:      map[string]*instanceClaimRecord{},
 		workspaceClaims:     map[string]*workspaceClaimRecord{},
@@ -355,6 +373,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.presentInstanceSelection(surface)
 	case control.ActionNewThread:
 		events = s.prepareNewThread(surface)
+	case control.ActionCompact:
+		events = s.handleCompactCommand(surface)
 	case control.ActionSendFile:
 		events = s.openSendFilePicker(surface)
 	case control.ActionSteerAll:
@@ -588,6 +608,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		if surface := s.surfaceForInitiator(instanceID, event); surface != nil {
 			surface.ActiveTurnOrigin = event.Initiator.Kind
 		}
+		compactEvents := s.promoteCompactTurn(instanceID, event)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			if event.ThreadID != "" {
 				inst.ObservedFocusedThreadID = event.ThreadID
@@ -599,9 +620,12 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 				s.touchThread(thread)
 			}
 			events := append(preface, s.pauseForLocal(instanceID)...)
+			events = append(events, compactEvents...)
 			return s.filterEventsForSurfaceVisibility(append(events, s.reevaluateFollowSurfaces(instanceID)...))
 		}
-		return s.filterEventsForSurfaceVisibility(append(preface, s.markRemoteTurnRunning(instanceID, event.Initiator, event.ThreadID, event.TurnID)...))
+		events := append(preface, compactEvents...)
+		events = append(events, s.markRemoteTurnRunning(instanceID, event.Initiator, event.ThreadID, event.TurnID)...)
+		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventTurnCompleted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		inst.ActiveTurnID = ""
@@ -637,14 +661,18 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		events = append(events, s.finalizeExecCommandProgressForTurn(instanceID, event.ThreadID, event.TurnID, event.Status, finalText)...)
 		deleteMatchingTurnPlanSnapshots(s.turnPlanSnapshots, instanceID, event.ThreadID, event.TurnID)
 		deleteMatchingMCPToolCallProgress(s.mcpToolCallProgress, instanceID, event.ThreadID, event.TurnID)
+		compactEvents := s.completeCompactTurn(instanceID, event.ThreadID, event.TurnID)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
+			events = append(events, compactEvents...)
 			if surface != nil {
 				events = append(events, s.finishSurfaceAfterWork(surface)...)
 			}
 			return s.filterEventsForSurfaceVisibility(events)
 		}
-		return s.filterEventsForSurfaceVisibility(append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem, finalText, summary)...))
+		events = append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem, finalText, summary)...)
+		events = append(events, compactEvents...)
+		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventItemStarted:
 		s.trackItemStart(instanceID, event)
 		return s.filterEventsForSurfaceVisibility(append(preface, s.handleProcessProgressItemStarted(instanceID, event)...))
@@ -660,7 +688,10 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 	case agentproto.EventRequestResolved:
 		return s.filterEventsForSurfaceVisibility(append(preface, s.resolveRequestPrompt(instanceID, event)...))
 	case agentproto.EventSystemError:
-		return s.filterEventsForSurfaceVisibility(append(preface, s.handleProblem(instanceID, problemFromEvent(event))...))
+		problem := problemFromEvent(event)
+		events := append(preface, s.handleCompactProblem(instanceID, problem)...)
+		events = append(events, s.handleProblem(instanceID, problem)...)
+		return s.filterEventsForSurfaceVisibility(events)
 	default:
 		return s.filterEventsForSurfaceVisibility(preface)
 	}

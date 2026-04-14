@@ -109,6 +109,11 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 		return
 	}
 	if surface.AttachedInstanceID != "" {
+		compact := s.compactTurns[surface.AttachedInstanceID]
+		if compact != nil && compact.SurfaceSessionID == surfaceID && compact.CommandID == "" {
+			compact.CommandID = commandID
+			return
+		}
 		binding := s.pendingRemote[surface.AttachedInstanceID]
 		if binding != nil && binding.SurfaceSessionID == surfaceID {
 			if surface.ActiveQueueItemID != "" && binding.QueueItemID != surface.ActiveQueueItemID {
@@ -161,6 +166,9 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 
 func (s *Service) HandleCommandDispatchFailure(surfaceID, commandID string, err error) []control.UIEvent {
 	surface := s.root.Surfaces[surfaceID]
+	if events := s.restorePendingCompactDispatch(surfaceID, commandID, "dispatch_failed", err); len(events) != 0 {
+		return events
+	}
 	if events := s.restorePendingRequestDispatch(surface, commandID, "dispatch_failed"); len(events) != 0 {
 		return events
 	}
@@ -223,6 +231,9 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
 	if ack.CommandID == "" {
 		return nil
+	}
+	if events := s.restorePendingCompactCommand(instanceID, ack.CommandID, commandAckProblem("", ack)); len(events) != 0 {
+		return events
 	}
 	if key, binding := s.pendingSteerForCommand(instanceID, ack.CommandID); binding != nil {
 		notice := NoticeForProblem(commandAckProblem(binding.SurfaceSessionID, ack))

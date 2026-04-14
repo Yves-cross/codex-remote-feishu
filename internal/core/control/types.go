@@ -13,6 +13,7 @@ const (
 	ActionListInstances               ActionKind = "surface.menu.list_instances"
 	ActionStatus                      ActionKind = "surface.menu.status"
 	ActionStop                        ActionKind = "surface.menu.stop"
+	ActionCompact                     ActionKind = "surface.menu.compact"
 	ActionSteerAll                    ActionKind = "surface.menu.steer_all"
 	ActionNewThread                   ActionKind = "surface.menu.new_thread"
 	ActionKillInstance                ActionKind = "surface.menu.kill_instance"

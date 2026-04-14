@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 源消息时的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（工作区下拉 + 会话下拉 + confirm，recoverable-only workspace 也可经由 `新建会话` 走 fresh headless `PrepareNewThread` 启动路径）；同时记录 Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`permissions_request_approval` / `mcp_server_elicitation` 已进入 renderable request card 与结构化回写链路、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 源消息时的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（工作区下拉 + 会话下拉 + confirm，recoverable-only workspace 也可经由 `新建会话` 走 fresh headless `PrepareNewThread` 启动路径）；同时记录 Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`permissions_request_approval` / `mcp_server_elicitation` 已进入 renderable request card 与结构化回写链路、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -577,20 +577,22 @@ surface 不是单一枚举，而是五层正交状态叠加。
    3. `/status`
 3. `normal` working 首页前排固定为：
    1. `/stop`
-   2. `/steerall`
-   3. `/new`
+   2. `/compact`
+   3. `/steerall`
+   4. `/new`
+   5. `/history`
+   6. `/reasoning`
+   7. `/model`
+   8. `/access`
+4. `vscode` working 首页前排固定为：
+   1. `/stop`
+   2. `/compact`
+   3. `/steerall`
    4. `/history`
    5. `/reasoning`
    6. `/model`
    7. `/access`
-4. `vscode` working 首页前排固定为：
-   1. `/stop`
-   2. `/steerall`
-   3. `/history`
-   4. `/reasoning`
-   5. `/model`
-   6. `/access`
-   7. `/follow`
+   8. `/follow`
 5. `normal` working 首页与主路径里不再暴露 `/follow`。
 6. bare 参数命令现在统一走“快捷按钮 + 单字段表单”：
    1. `send settings`：`/reasoning`、`/model`、`/access`
@@ -752,12 +754,13 @@ R5 NewThreadReady
    2. 它仍可复用该 thread 的 metadata / cwd。
    3. 后续只允许落到 free visible headless、reusable managed headless，或 create managed headless。
 
-### 5.2 远端队列生命周期
+### 5.2 远端队列与 compact 生命周期
 
 ```text
 E0 Idle
   -- enqueue --> E1 Queued
   -- dispatchNext --> E2 Dispatching
+  -- /compact(当前已绑定 thread，且无 queued/dispatching/running/steering/其他 compact) --> `CompactPending` overlay
 
 E1 Queued
   -- queued 主文本被 `ThumbsUp`，且当前有同 thread active turn --> `SteerPending` overlay
@@ -770,6 +773,16 @@ E2 Dispatching
 E3 Running
   -- turn.completed(remote_surface) --> E0 Idle
   -- reply 当前 processing source message（文本/图片，且命中当前 surface active running item） --> `SteerPending` overlay
+
+`CompactPending` overlay
+  -- command dispatch accepted，等待 compact 对应 `turn.started` --> 保持 `CompactPending`
+  -- turn.started(remote_surface，命中当前 compact 请求) --> `CompactRunning` overlay
+  -- command rejected / dispatch failure / `system.error(operation=thread.compact.start)` --> 清 compact overlay，并恢复后续 queue 出队
+
+`CompactRunning` overlay
+  -- turn.completed(remote_surface) --> 清 compact overlay，并继续 dispatchNext / finishSurfaceAfterWork
+  -- compact 期间新文本 --> 先按普通 queued follow-up 入队，不立即派发
+  -- compact 期间 reply auto-steer / `/steerall` --> 不命中 compact turn
 
 `SteerPending` overlay
   -- `turn.steer` command ack accepted --> 被并入的 item 逐条转 `steered`，并给对应主文本 + 已绑定图片补 `ThumbsUp`
@@ -784,25 +797,31 @@ E3 Running
 3. 对空 thread 首条消息，promote 会优先按 `Initiator.SurfaceSessionID` 命中。
 4. 若 queue item 来自 `R5`，turn.started 后 surface 必须切回 `pinned`，不会继续停在 `new_thread_ready`。
 5. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
-6. `/steerall` 当前会把同一 active thread 下所有 queued 项聚合为一次 `turn.steer`；若没有可并入项，只返回 noop 提示，不改队列状态。
-7. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
+6. compact 当前不是普通 queue item，也不会占用 `ActiveQueueItemID`；它按 instance 级 `compactTurns` 单独跟踪 pending/running 状态。
+7. 只要 compact 仍在 pending/running，`dispatchNext` 就不会再把后续 queued 输入发给同一实例。
+8. `/steerall` 当前会把同一 active thread 下所有 queued 项聚合为一次 `turn.steer`；若没有可并入项，只返回 noop 提示，不改队列状态；compact turn 本身不会成为 steer 目标。
+9. compact pending/running 也属于 `surfaceHasLiveRemoteWork`：
+   1. `/mode` 会直接拒绝
+   2. `/detach` 会进入 delayed detach / abandoning
+   3. `/use`、`/follow`、`/new` 这类 route mutation 会被挡住，不会在 compact 期间偷偷切走当前 thread
+10. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
    1. surface 不会立刻同步 enqueue 新 item
    2. 只会把 surface 置入 `A2 Scheduled`
    3. 后续等 `Tick()` 到期后再真正 enqueue
-7. autowhip 当前有两条独立触发通道：
+11. autowhip 当前有两条独立触发通道：
    1. `problem.Retryable=true` 的 retryable failure
    2. final assistant 文本**不包含**收工口令 `老板不要再打我了，真的没有事情干了`
-8. 若 final assistant 文本命中收工口令：
+12. 若 final assistant 文本命中收工口令：
    1. 当前 surface 会回到 `A1 EnabledIdle`
    2. 不会继续 schedule / dispatch autowhip
    3. 会补一条 `AutoWhip` notice：`Codex 已经把活干完了，老板放过他吧`
-9. `/stop` 命中 live remote work 时，会给当前 surface 打一次 `SuppressOnce`：
+13. `/stop` 命中 live remote work 时，会给当前 surface 打一次 `SuppressOnce`：
    1. 本轮 turn 收尾时不会触发 autowhip
    2. suppress 只消费一次，之后 autowhip 恢复正常评估
-10. 当前 backoff 固定为：
+14. 当前 backoff 固定为：
    1. `incomplete_stop`（文本未出现收工口令）: `3s -> 10s -> 30s`，最多 3 次
    2. `retryable_failure`: `10s -> 30s -> 90s -> 300s`，最多 4 次
-11. autowhip 当前不会伪造用户消息回显，也不会补 `THINKING` / `ThumbsUp` / `ThumbsDown` reaction；额外可见性只来自上面的 `AutoWhip` notice。
+15. autowhip 当前不会伪造用户消息回显，也不会补 `THINKING` / `ThumbsUp` / `ThumbsDown` reaction；额外可见性只来自上面的 `AutoWhip` notice。
 
 ### 5.3 本地 VS Code 仲裁
 
@@ -1010,12 +1029,13 @@ transport degraded retained attachment
 | --- | --- | --- | --- | --- | --- | --- |
 | `/list` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 拒绝 | 拒绝 | 允许；若首条消息已 dispatching/running 则拒绝 |
+| `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | `normal`: 允许；若存在 compact/steer/queued/dispatching/running 则拒绝；`vscode`: 拒绝 | 拒绝 | 拒绝 | 允许；若首条消息已 dispatching/running 则拒绝 |
+| `/compact` | 提示先 `/list` / `/use` 接管并绑定会话 | 提示先 `/use`，或直接发文本开启新会话 | 允许；仅对当前已绑定 thread 生效，若已有 compact/steer/queued/dispatching/running 则拒绝 | 提示先在 VS Code 里进入会话，或手动 `/use` | 允许；仅对当前跟随到的 thread 生效，若已有 compact/steer/queued/dispatching/running 则拒绝 | 提示先发送首条文本真正创建会话 |
 | `/history` | 提示先 `/list` 接管在线实例 | 提示先 `/use`，或直接发文本开启新会话 | 允许；读取当前选中 thread 的历史 | 提示先在 VS Code 里进入会话，或手动 `/use` | 允许；读取当前跟随 thread 的历史 | 提示先发送首条文本真正创建会话 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | `normal`: 二者都打开 unified target picker；`/list` 是更偏向换工作区，`/use`/`/useall` 是更偏向选会话；`vscode`: 拒绝并提示先 `/list` | `normal`: 二者都打开 target picker，`/use` 默认当前 workspace，`/useall` 允许跨 workspace；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: 二者都打开 target picker，允许在 confirm 时切到其他 workspace 或 `新建会话`；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | 允许打开 target picker；若仅有 unsent draft，confirm 前会先丢弃；若首条已 dispatching/running，则 confirm 时拒绝 route exit |
-| `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | 拒绝并提示迁移 |
-| `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
+| `/use` `/useall` | `normal`: 二者都打开 unified target picker；`/list` 是更偏向换工作区，`/use`/`/useall` 是更偏向选会话；`vscode`: 拒绝并提示先 `/list` | `normal`: 二者都打开 target picker，`/use` 默认当前 workspace，`/useall` 允许跨 workspace；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: 二者都打开 target picker，允许在 confirm 时切到其他 workspace 或 `新建会话`；但若存在 compact/steer/queued/dispatching/running，confirm 时拒绝 route exit；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量；若存在 compact/steer/queued/dispatching/running，则拒绝切走当前 thread | 允许打开 target picker；若仅有 unsent draft，confirm 前会先丢弃；若首条已 dispatching/running，则 confirm 时拒绝 route exit |
+| `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许；若存在 compact/steer/queued/dispatching/running 则拒绝 route change | 允许 | 允许；若存在 compact/steer/queued/dispatching/running，则保持当前 thread 不切换 | 拒绝并提示迁移 |
+| `/mode` | 允许 | 允许；若有 compact/steer/queued/dispatching/running 则拒绝 | 允许；若有 compact/steer/queued/dispatching/running 则拒绝 | 允许；若有 compact/steer/queued/dispatching/running 则拒绝 | 允许；若有 compact/steer/queued/dispatching/running 则拒绝 | 允许；若有 compact/steer/queued/dispatching/running 则拒绝 |
 | `/autowhip` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/help` `/menu` `/debug` `/upgrade` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/steerall` | 允许；通常返回 noop 提示 | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 |
@@ -1035,8 +1055,8 @@ transport degraded retained attachment
 | 覆盖状态 | 当前行为 |
 | --- | --- |
 | `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autowhip`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
-| `G2 PendingRequest` | 普通文本、图片、`/new` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；用户点击“提交答案”后若仍有未答题，会先进入确认态，再决定是否留空提交并清 gate。`permissions_request_approval` 现在会投影成权限授予卡，支持“允许本次 / 本会话允许 / 拒绝”；`mcp_server_elicitation` 现在会按 mode 投影成“继续/拒绝/取消”卡，或带 schema 派生字段的表单卡。表单型 elicitation 也会暂存局部答案，并在 `request_revision` 上做 same-daemon freshness 校验 |
-| `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
+| `G2 PendingRequest` | 普通文本、图片、`/new`、`/compact` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。approval 走按钮确认；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；用户点击“提交答案”后若仍有未答题，会先进入确认态，再决定是否留空提交并清 gate。`permissions_request_approval` 现在会投影成权限授予卡，支持“允许本次 / 本会话允许 / 拒绝”；`mcp_server_elicitation` 现在会按 mode 投影成“继续/拒绝/取消”卡，或带 schema 派生字段的表单卡。表单型 elicitation 也会暂存局部答案，并在 `request_revision` 上做 same-daemon freshness 校验 |
+| `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/compact`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |
 | `G5 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片、revoke/reaction；`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel 会先清 gate，再把结果交给 consumer 或默认 notice；unauthorized 只回拒绝 notice，不清当前 gate；若 picker 已过期，则会在下一次 action 入口自动清 gate |
 | `E6 Abandoning` | 只允许 `/status`、`/autowhip`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |

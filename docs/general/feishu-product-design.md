@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步 reply 当前 processing 源消息的自动 steering 与 `merge_forward` 结构化 envelope 入站语义。
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步 reply 当前 processing 源消息的自动 steering、manual `/compact` 入口与 gating，以及 `merge_forward` 结构化 envelope 入站语义。
 
 ## 1. 文档定位
 
@@ -58,6 +58,7 @@
 - `/follow`
 - `/detach`
 - `/stop`
+- `/compact`
 - `/mode`
 - `/autowhip`
 - `/model`
@@ -441,6 +442,27 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - autowhip queue item 记录 `SourceKind=auto_continue`
 - autowhip item 仍会保留“最终回复挂回哪条原用户消息”的 reply anchor
 - 但不会把 queue / typing / reaction 再投影回原用户消息，避免把系统自动续推伪装成新的用户输入状态
+
+### 5.1.1 manual `/compact`
+
+`/compact` 当前是一个真正的 manual compact 入口，不会把字符串 `/compact` 当普通文本发给 Codex。
+
+当前产品语义：
+
+- 只对当前已绑定 thread 生效
+- 若当前没有可用 thread：
+  - 明确提示先 `/use` 选择会话
+- 若当前已有 regular turn、排队消息、正在派发中的请求、正在进行 steer，或当前实例已有 compact：
+  - 直接拒绝
+  - 不排队 compact
+  - 也不替换当前 turn
+- compact 请求会走上游 `thread/compact/start`
+- compact turn 自身不会接收 reply auto-steer 或 `/steerall`
+- compact pending/running 期间，后续普通文本会先进入当前 surface queue
+- 等 compact 对应的 `turn.completed` 到来后，后续排队消息才会继续自动派发
+- 若 compact 在 turn 建立前就被上游拒绝或派发失败：
+  - 会给出失败提示
+  - 并恢复后续排队消息的正常出队
 
 ### 5.2 Typing reaction
 

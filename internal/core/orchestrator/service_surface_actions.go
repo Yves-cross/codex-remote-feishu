@@ -505,6 +505,9 @@ func (s *Service) activeSteerTarget(surface *state.SurfaceConsoleRecord) (*state
 	if threadID == "" || turnID == "" {
 		return nil, "", "", false
 	}
+	if s.isCompactTurn(inst.InstanceID, threadID, turnID) {
+		return nil, "", "", false
+	}
 	return inst, threadID, turnID, true
 }
 
@@ -689,6 +692,13 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	} else if surface.ActiveQueueItemID != "" {
 		if inst != nil && !inst.Online {
 			notice = s.stopOfflineNotice(surface)
+		} else if s.surfaceHasPendingCompact(surface) {
+			notice = control.Notice{
+				Code:     "stop_not_interruptible",
+				Title:    "当前还不能停止",
+				Text:     "当前上下文整理请求正在派发，尚未进入可中断状态。",
+				ThemeKey: "system",
+			}
 		} else {
 			notice = control.Notice{
 				Code:     "stop_not_interruptible",
