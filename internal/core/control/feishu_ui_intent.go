@@ -35,17 +35,17 @@ const (
 // FeishuUIIntent classifies same-context Feishu navigation handled by the
 // Feishu UI controller instead of the main product reducer.
 type FeishuUIIntent struct {
-	Kind         FeishuUIIntentKind
-	RawText      string
-	ViewMode     string
-	WorkspaceKey string
-	Page         int
-	ReturnPage   int
-	PickerID     string
-	PickerEntry  string
-	TargetValue  string
-	ActorUserID  string
-	TurnID       string
+	Kind            FeishuUIIntentKind
+	RawText         string
+	ViewMode        string
+	WorkspaceKey    string
+	Page            int
+	ReturnPage      int
+	PickerID        string
+	PickerEntry     string
+	TargetValue     string
+	ActorUserID     string
+	TurnID          string
 	SourceMessageID string
 	Inline          bool
 }

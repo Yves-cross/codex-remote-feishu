@@ -6,11 +6,11 @@ package control
 type FeishuUIDTOwner string
 
 const (
-	FeishuUIDTOwnerDirectDTO    FeishuUIDTOwner = "feishu_direct_dto"
-	FeishuUIDTOwnerSelection    FeishuUIDTOwner = "feishu_selection_view"
-	FeishuUIDTOwnerCommand      FeishuUIDTOwner = "feishu_command_view"
-	FeishuUIDTOwnerPathPicker   FeishuUIDTOwner = "feishu_path_picker_view"
-	FeishuUIDTOwnerTargetPicker FeishuUIDTOwner = "feishu_target_picker_view"
+	FeishuUIDTOwnerDirectDTO     FeishuUIDTOwner = "feishu_direct_dto"
+	FeishuUIDTOwnerSelection     FeishuUIDTOwner = "feishu_selection_view"
+	FeishuUIDTOwnerCommand       FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerPathPicker    FeishuUIDTOwner = "feishu_path_picker_view"
+	FeishuUIDTOwnerTargetPicker  FeishuUIDTOwner = "feishu_target_picker_view"
 	FeishuUIDTOwnerThreadHistory FeishuUIDTOwner = "feishu_thread_history_view"
 )
 

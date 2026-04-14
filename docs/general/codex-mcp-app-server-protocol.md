@@ -1,8 +1,8 @@
 # Codex MCP App-Server 协议基线
 
 > Type: `general`
-> Updated: `2026-04-11`
-> Summary: 基于 upstream `openai/codex` HEAD `7999b0f60f048ca8398ec988f3aabd09d278e058` 梳理 MCP tool call、授权确认与 elicitation 的 app-server 时序，并对照当前仓库偏差。
+> Updated: `2026-04-14`
+> Summary: 基于 upstream `openai/codex` HEAD `7999b0f60f048ca8398ec988f3aabd09d278e058` 梳理 MCP tool call、授权确认与 elicitation 的 app-server 时序，并同步当前仓库已落地的 MCP request typing、Feishu 可响应链路与剩余偏差。
 
 ## 1. 文档定位
 
@@ -358,12 +358,11 @@ TUI 路线说明：
 
 ### 6.4 Feishu / remote surface 层
 
-以当前产品模型，飞书端还缺少：
+以当前产品模型，飞书端剩余缺口主要是：
 
-- MCP elicitation form/url 的原生承载
-- permissions approval 的授权范围与权限子集回写
 - guardian review 的轻量可见性
 - MCP tool call 运行中 progress 展示
+- MCP tool call 最终结果的更完整产品化回显
 
 因此，如果不先做协议分层，后续任何“支持 MCP request”都只会继续停留在旧的近似兼容。
 
@@ -381,10 +380,15 @@ TUI 路线说明：
 
 ### 7.2 Stage 2：可响应链路
 
+已完成：
+
 - translator command 侧补齐：
   - MCP elicitation `{action, content, _meta}`
   - permissions approval `{permissions, scope}`
-- orchestrator / surface 层定义哪些 request 可以直接在飞书端完成
+- orchestrator / surface 层已把这些 request 接入飞书端直答：
+  - `permissions_request_approval`
+  - `mcp_server_elicitation`
+  - 其中 form 模式 elicitation 会先做 schema 派生字段或 JSON fallback，再走显式提交
 - 明确 guardian review 在飞书端是只展示，还是未来允许人工干预
 
 ### 7.3 Stage 3：展示与产品化
@@ -398,14 +402,18 @@ TUI 路线说明：
 
 截至当前代码，可以直接确认：
 
-1. 本仓库现在还没有遵守 upstream 最新 MCP app-server 协议分层。
-2. 当前“泛化 approval/request_user_input”模型不够表达：
-   - permissions approval
-   - MCP elicitation
-   - guardian review
-   - MCP progress
-3. 如果后续继续做 MCP 相关功能，应优先做结构扩展，而不是继续在旧结构里打补丁。
-4. 对远端/飞书端来说，更合适的参考面是 upstream TUI，而不是 exec 的自动取消/拒绝策略。
+1. 本仓库已经遵守 upstream 最新 MCP request typing：
+   - `permissions_request_approval`
+   - `mcp_server_elicitation`
+   - `item/tool/requestUserInput` fallback
+2. 当前飞书端已经具备这两条结构化回写能力：
+   - permissions approval `{permissions, scope}`
+   - MCP elicitation `{action, content, _meta}`
+3. 当前剩余主要偏差集中在“过程可见性与结果展示”，而不是 request typing 本身：
+   - guardian review notification 仍未产品化
+   - `item/mcpToolCall/progress` 仍未做完整 UI 表达
+   - MCP tool call 最终结果仍缺更富的产品回显
+4. 对远端/飞书端来说，更合适的参考面仍然是 upstream TUI，而不是 exec 的自动取消/拒绝策略。
 
 ## 9. 参考
 

@@ -31,7 +31,7 @@ const (
 	cardPathPickerFileSelectFieldName         = "path_picker_file"
 	cardTargetPickerWorkspaceFieldName        = "target_picker_workspace"
 	cardTargetPickerSessionFieldName          = "target_picker_session"
-	cardThreadHistoryTurnFieldName           = "thread_history_turn"
+	cardThreadHistoryTurnFieldName            = "thread_history_turn"
 	cardActionPayloadDefaultCommandFieldName  = "command_args"
 	cardActionKindAttachInstance              = "attach_instance"
 	cardActionKindAttachWorkspace             = "attach_workspace"

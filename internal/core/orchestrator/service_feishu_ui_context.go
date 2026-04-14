@@ -263,12 +263,12 @@ func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, vie
 
 func (s *Service) threadHistoryViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuThreadHistoryView, inline bool, sourceMessageID string) control.UIEvent {
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuThreadHistory,
-		GatewayID:                surface.GatewayID,
-		SurfaceSessionID:         surface.SurfaceSessionID,
-		SourceMessageID:          sourceMessageID,
-		InlineReplaceCurrentCard: inline,
-		FeishuThreadHistoryView:  &view,
+		Kind:                       control.UIEventFeishuThreadHistory,
+		GatewayID:                  surface.GatewayID,
+		SurfaceSessionID:           surface.SurfaceSessionID,
+		SourceMessageID:            sourceMessageID,
+		InlineReplaceCurrentCard:   inline,
+		FeishuThreadHistoryView:    &view,
 		FeishuThreadHistoryContext: s.buildFeishuThreadHistoryContextFromView(surface, view),
 	}
 }

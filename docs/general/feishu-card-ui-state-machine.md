@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`（工作区下拉 + 会话下拉 + confirm）、`/history` 的 `FeishuThreadHistoryView`（同卡 loading -> async query -> `message.patch` 回填列表/详情）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / active history 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、request 卡在 same-daemon 生命周期内的 `request_revision` freshness，以及“当前仅 approval / request_user_input 渲染为 request 卡；尚未支持飞书直答的 MCP request type 只追加 unsupported notice、不生成伪 approval 卡”的边界、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call`，首次 reply，后续 `message.patch` 同卡更新，正文出现后终结；其中 `web_search` 与 `mcp_tool_call` 在 normal / verbose 可见，`exec_command` 仅 verbose 可见）。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`（工作区下拉 + 会话下拉 + confirm）、`/history` 的 `FeishuThreadHistoryView`（同卡 loading -> async query -> `message.patch` 回填列表/详情）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / active history 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、`permissions_request_approval` 与 `mcp_server_elicitation` 已进入 request 卡体系（权限按钮、url continue 卡、schema 派生表单、same-daemon `request_revision` freshness）、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call`，首次 reply，后续 `message.patch` 同卡更新，正文出现后终结；其中 `web_search` 与 `mcp_tool_call` 在 normal / verbose 可见，`exec_command` 仅 verbose 可见）。
 
 ## 1. 文档定位
 
@@ -96,7 +96,7 @@
 | `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
 | bare `/history` / `history_page` / `history_detail` | `mixed` | 当前由 Feishu UI controller 先把同一张卡同步切到 loading，再异步发起 `thread.history.read`；列表/详情结果与失败态默认继续 patch 回这张 history 卡 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
-| `request approve` / `request_user_input` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、`request_user_input` 的分题暂存、“提交答案”触发确认态、确认态留空提交与最终提交校验属于产品状态机。当前只有 approval 与 `request_user_input` 会真正投影成 request 卡；尚未支持飞书直答的 MCP request type 只保留产品门禁并追加 unsupported notice |
+| `request approve` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
 | `/new` | `product-owned` | 是否进入 `new_thread_ready`、何时消耗第一条消息、request gate 是否阻断都属于 core 状态机 |
@@ -170,9 +170,9 @@
 | `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送 |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice |
-| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 当前只响应 approval 或 `request_user_input`；`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=submit` 触发“提交答案”语义，未答题时会进入确认态；`request_option_id=confirm_submit_with_unanswered` 触发留空确认提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容。尚未支持飞书直答的 MCP request type 当前不会生成这类 callback |
+| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。`request_user_input` 可携带局部 `request_answers` 进入分题暂存，`request_option_id=submit` 触发“提交答案”语义，未答题时会进入确认态；`permissions_request_approval` 通过按钮直接携带 scope 语义；`mcp_server_elicitation` 在 url 模式下直接承载 continue/decline/cancel，在 form 模式下也可用局部 `request_answers` 暂存字段后再显式提交 |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
-| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径 |
+| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于 `request_user_input` 与 form 模式 `mcp_server_elicitation` |
 
 ### 4.3 当前表单提交规则
 
@@ -185,9 +185,11 @@
   - 若 `form_value` 为空，则回退 `input_value`
 - `submit_request_form`
   - 优先把 `form_value` 整体转成 `request_answers`
-  - `request_user_input` 当前只会为“需要手填”的问题渲染 form input（纯选项题不再渲染自由输入框）
-  - 表单“提交答案”按钮带 `request_option_id=submit`
-  - 当本次提交后仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并刷新 request 卡片
+  - `request_user_input` 与 form 模式 `mcp_server_elicitation` 当前都只会为“需要手填”的字段渲染 form input（纯选项题不再渲染自由输入框）
+  - 表单提交按钮统一带 `request_option_id=submit`
+    - `request_user_input` 的文案是“提交答案”
+    - `mcp_server_elicitation` 的文案是“提交并继续”
+  - `request_user_input` 若本次提交后仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并刷新 request 卡片
   - request 卡的按钮与表单提交都会携带 `request_revision`
     - 只要当前 request 因为“局部答案已保存”“进入确认态”“取消确认态”“提交失败恢复”而刷新，revision 就会递增
     - 同 daemon 生命周期里的旧 request 卡，如果 revision 落后于当前 pending request，会收到 `request_card_expired`，不会再改写当前草稿状态
@@ -213,11 +215,22 @@
   - 若 daemon dispatch 失败或 wrapper 显式 reject，会清掉 pending-dispatch 标记、递增 `request_revision`、刷新一张新 request 卡并附带失败 notice
   - 在 pending-dispatch 期间，同一 request 的重复点击会收到“已提交，等待处理”提示，不会重复下发命令
 
-当前未支持飞书直答的 MCP request type（例如 `permissions_request_approval`、`mcp_server_elicitation`）有一条显式 UI 边界：
+MCP request 卡片当前新增的可视语义：
 
-- orchestrator 仍会保留 pending request gate，避免把后续普通文本误送进 turn
-- projector / gateway 当前不会为它们生成 `request_respond` 或 `submit_request_form` 卡片
-- 用户只会收到一条 append-only `request_unsupported` notice，而不是一张伪装成 approval 的旧式确认卡
+- `permissions_request_approval`
+  - 渲染为单张 request 卡
+  - 默认按钮是“允许本次 / 本会话允许 / 拒绝”
+  - 按钮点击直接走 `request_respond`
+- `mcp_server_elicitation`
+  - `mode=url`
+    - 渲染为 continue/decline/cancel 按钮卡
+    - “继续”前允许先去外部页面完成授权或确认
+  - `mode=form`
+    - 会优先把 top-level flat object schema 投影成字段列表
+    - 简单枚举字段可直接用按钮回填局部草稿
+    - 需要手填的字段走 form submit，并使用“提交并继续”按钮
+    - 若 schema 超过当前平铺能力，会回退成单字段 JSON 输入，而不是直接 unsupported
+- 这两类 MCP request 与 `request_user_input` 一样，都会继续携带 `request_revision`，用于阻止同 daemon 生命周期里的旧卡继续改写当前 request 草稿
 
 ### 4.4 当前 surface 解析规则
 
@@ -367,7 +380,7 @@
   - 即：只要 callback 仍在当前 daemon 生命周期内，就直接用**当前** surface state 重建卡片，而不是尝试恢复点击时那一版旧 view
   - request prompt 当前是这个规则的例外
     - request 卡不是 replaceable pure navigation
-    - 但 `request_user_input` 的草稿/确认态属于可变产品状态，所以同 daemon 生命周期内额外要求 `request_revision` 匹配
+    - `request_user_input` 与 form 模式 `mcp_server_elicitation` 的草稿/确认态都属于可变产品状态，所以同 daemon 生命周期内额外要求 `request_revision` 匹配
     - 这条规则只用于防止旧 request 卡继续改写当前 request 草稿，不扩展到 `/menu` / selection / path picker / target picker
   - path picker 当前在这条规则上额外有一个 coarse-grained `picker_id`
     - 它不是每一步导航都变化的 per-view token
