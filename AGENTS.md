@@ -19,6 +19,22 @@
 - If multiple skills match, use all relevant skills together.
 - Exclusion notes (for example “pure copy/styling/logging/tests only”) apply only when you can confirm logic carriers are unchanged.
 
+## Workspace Cleanliness Rule
+
+For every new repository task in chat (not only GitHub issue workflow):
+
+- Before starting substantive read/edit/build work, check current workspace cleanliness with `git status --short`.
+- If the worktree is clean, proceed normally.
+- If the worktree is not clean, do not silently continue with mixed context:
+  - first classify existing local changes as either `same-task` or `different-task`
+  - if `different-task`, stop and ask the user whether to:
+    - commit/push them first
+    - shelve them
+    - or explicitly continue in dirty workspace
+  - if `same-task`, explicitly state that assumption in chat and continue
+- Do not mix unrelated edits into one commit by default.
+- When the user asks to "先提交" or similar, complete that commit before starting additional implementation work.
+
 ## Staged Execution Continuity Rule
 
 When the user explicitly asks staged rollout (for example: `按阶段推进`, `分阶段推进`, `阶段式推进`, `staged rollout`):
