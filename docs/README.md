@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-13`
-> Summary: 新增开发态会话 trace 日志文档，并刷新文档索引。
+> Updated: `2026-04-14`
+> Summary: 新增单文件门限拆分审计草案，并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -146,6 +146,7 @@
 
 - [acp-claude-integration-design.md](./draft/acp-claude-integration-design.md)
 - [daemon-package-refactor-plan.md](./draft/daemon-package-refactor-plan.md)
+- [file-length-split-audit-2026-04.md](./draft/file-length-split-audit-2026-04.md)
 - [feishu-inline-card-update-design.md](./draft/feishu-inline-card-update-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
