@@ -16,6 +16,7 @@ const (
 	FeishuCommandUse               = "use"
 	FeishuCommandUseAll            = "useall"
 	FeishuCommandNew               = "new"
+	FeishuCommandSendFile          = "sendfile"
 	FeishuCommandFollow            = "follow"
 	FeishuCommandDetach            = "detach"
 	FeishuCommandStop              = "stop"
@@ -176,6 +177,7 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "newinstance", action: Action{Kind: ActionRemovedCommand, Text: "new_instance"}},
 		},
 	},
+	sendFileCommandSpec(),
 	{
 		definition: FeishuCommandDefinition{
 			ID:               FeishuCommandReasoning,

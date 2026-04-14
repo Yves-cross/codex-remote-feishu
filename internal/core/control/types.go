@@ -28,6 +28,7 @@ const (
 	ActionVerboseCommand             ActionKind = "surface.command.verbose"
 	ActionAutoContinueCommand        ActionKind = "surface.command.auto_continue"
 	ActionModeCommand                ActionKind = "surface.command.mode"
+	ActionSendFile                   ActionKind = "surface.command.send_file"
 	ActionRespondRequest             ActionKind = "surface.request.respond"
 	ActionTextMessage                ActionKind = "surface.message.text"
 	ActionImageMessage               ActionKind = "surface.message.image"
@@ -502,6 +503,7 @@ const (
 	DaemonCommandUpgrade           DaemonCommandKind = "upgrade.command"
 	DaemonCommandVSCodeMigrate     DaemonCommandKind = "vscode.migrate"
 	DaemonCommandThreadHistoryRead DaemonCommandKind = "thread.history.read"
+	DaemonCommandSendIMFile        DaemonCommandKind = "feishu.im_file.send"
 )
 
 type DaemonCommand struct {
@@ -515,6 +517,7 @@ type DaemonCommand struct {
 	ThreadCWD        string
 	AutoRestore      bool
 	Text             string
+	LocalPath        string
 }
 
 type UIEvent struct {

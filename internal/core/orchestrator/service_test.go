@@ -2,6 +2,8 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1130,6 +1132,117 @@ func TestCreateWorkspaceActionOpensDirectoryPicker(t *testing.T) {
 	view := events[0].FeishuPathPickerView
 	if view.Mode != control.PathPickerModeDirectory || view.Title != "选择工作区目录" || view.ConfirmLabel != "作为工作区使用" {
 		t.Fatalf("unexpected path picker view: %#v", view)
+	}
+}
+
+func TestSendFileActionOpensFilePickerInsideCurrentWorkspace(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	workspaceRoot := t.TempDir()
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "headless",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].FeishuPathPickerView == nil {
+		t.Fatalf("expected file picker event, got %#v", events)
+	}
+	view := events[0].FeishuPathPickerView
+	if view.Mode != control.PathPickerModeFile || view.Title != "选择要发送的文件" || !testutil.SamePath(view.RootPath, workspaceRoot) {
+		t.Fatalf("unexpected send-file picker view: %#v", view)
+	}
+}
+
+func TestSendFileActionRequiresAttachedWorkspace(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 6, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "send_file_requires_workspace" {
+		t.Fatalf("expected requires-workspace notice, got %#v", events)
+	}
+}
+
+func TestSendFilePickerConfirmDispatchesDaemonCommand(t *testing.T) {
+	now := time.Date(2026, 4, 14, 9, 7, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	workspaceRoot := t.TempDir()
+	filePath := filepath.Join(workspaceRoot, "report.txt")
+	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "headless",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	openEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	view := openEvents[0].FeishuPathPickerView
+	selectEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+		PickerEntry:      "report.txt",
+	})
+	if len(selectEvents) != 1 || selectEvents[0].FeishuPathPickerView == nil || !selectEvents[0].FeishuPathPickerView.CanConfirm {
+		t.Fatalf("expected selectable file picker state, got %#v", selectEvents)
+	}
+	confirmEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+	})
+	if len(confirmEvents) != 1 || confirmEvents[0].DaemonCommand == nil {
+		t.Fatalf("expected daemon command after picker confirm, got %#v", confirmEvents)
+	}
+	command := confirmEvents[0].DaemonCommand
+	if command.Kind != control.DaemonCommandSendIMFile || !testutil.SamePath(command.LocalPath, filePath) {
+		t.Fatalf("unexpected send-file daemon command: %#v", command)
 	}
 }
 

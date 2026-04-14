@@ -140,6 +140,16 @@ func TestParseFeishuTextActionRecognizesVSCodeMigrateCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesSendFileCommand(t *testing.T) {
+	action, ok := ParseFeishuTextAction("/sendfile")
+	if !ok {
+		t.Fatal("expected /sendfile to be parsed")
+	}
+	if action.Kind != ActionSendFile {
+		t.Fatalf("action kind = %q, want %q", action.Kind, ActionSendFile)
+	}
+}
+
 func TestFeishuCommandCatalogsHideKillInstanceFromVisibleEntries(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -216,6 +226,24 @@ func TestFeishuCommandCatalogsIncludeAutoContinue(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("catalog %#v does not include /autowhip", catalog.Title)
+		}
+	}
+}
+
+func TestFeishuCommandCatalogsIncludeSendFile(t *testing.T) {
+	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+		found := false
+		for _, section := range catalog.Sections {
+			for _, entry := range section.Entries {
+				for _, command := range entry.Commands {
+					if command == "/sendfile" {
+						found = true
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("catalog %#v does not include /sendfile", catalog.Title)
 		}
 	}
 }

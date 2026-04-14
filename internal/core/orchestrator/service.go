@@ -186,6 +186,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		pathPickerConsumers: map[string]PathPickerConsumer{},
 	}
 	svc.RegisterPathPickerConsumer(workspaceCreatePathPickerConsumerKind, workspaceCreatePathPickerConsumer{})
+	svc.RegisterPathPickerConsumer(sendFilePathPickerConsumerKind, sendFilePathPickerConsumer{})
 	return svc
 }
 
@@ -341,6 +342,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.presentInstanceSelection(surface)
 	case control.ActionNewThread:
 		events = s.prepareNewThread(surface)
+	case control.ActionSendFile:
+		events = s.openSendFilePicker(surface)
 	case control.ActionKillInstance:
 		events = s.killHeadlessInstance(surface)
 	case control.ActionRemovedCommand:
