@@ -21,7 +21,7 @@ func TestEnsureReleaseBinaryDownloadsAndExtractsPackage(t *testing.T) {
 	assetName := releaseAssetName(version, goos, goarch)
 	packageDir := releasePackageDir(version, goos, goarch)
 	archivePath := filepath.Join(t.TempDir(), assetName)
-	writeReleaseArchive(t, archivePath, packageDir, executableName(goos), "release-binary")
+	writePlatformReleaseArchive(t, archivePath, packageDir, executableName(goos), "release-binary", goos)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if filepath.Base(r.URL.Path) != assetName {
@@ -60,7 +60,7 @@ func TestEnsureReleaseBinaryFallsBackWhenRenameHitsCrossDeviceLink(t *testing.T)
 	assetName := releaseAssetName(version, goos, goarch)
 	packageDir := releasePackageDir(version, goos, goarch)
 	archivePath := filepath.Join(t.TempDir(), assetName)
-	writeReleaseArchive(t, archivePath, packageDir, executableName(goos), "release-binary")
+	writePlatformReleaseArchive(t, archivePath, packageDir, executableName(goos), "release-binary", goos)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if filepath.Base(r.URL.Path) != assetName {
@@ -159,6 +159,15 @@ func writeReleaseArchive(t *testing.T, archivePath, packageDir, binaryName, cont
 	if _, err := tarWriter.Write([]byte(content)); err != nil {
 		t.Fatalf("Write file contents: %v", err)
 	}
+}
+
+func writePlatformReleaseArchive(t *testing.T, archivePath, packageDir, binaryName, content, goos string) {
+	t.Helper()
+	if goos == "windows" {
+		writeReleaseZip(t, archivePath, packageDir, binaryName, content)
+		return
+	}
+	writeReleaseArchive(t, archivePath, packageDir, binaryName, content)
 }
 
 func writeReleaseZip(t *testing.T, archivePath, packageDir, binaryName, content string) {

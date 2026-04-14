@@ -9,6 +9,9 @@ import (
 func TestRepairRuntimeStateUpdatesBinaryVersionAndPromotesLiveSystemdUnit(t *testing.T) {
 	baseDir := t.TempDir()
 	homeDir := t.TempDir()
+	originalGOOS := serviceRuntimeGOOS
+	serviceRuntimeGOOS = "linux"
+	defer func() { serviceRuntimeGOOS = originalGOOS }()
 	originalHome := serviceUserHomeDir
 	serviceUserHomeDir = func() (string, error) { return homeDir, nil }
 	defer func() { serviceUserHomeDir = originalHome }()

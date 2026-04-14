@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -224,7 +225,7 @@ func TestDaemonVSCodeMigrateCommandAppliesManagedShimAndPromptsReopen(t *testing
 	if detect.Settings.CLIExecutable != "" || detect.Settings.MatchesBinary {
 		t.Fatalf("expected legacy settings override cleared after migration, got %#v", detect.Settings)
 	}
-	if _, err := os.Stat(entrypoint + ".real"); err != nil {
+	if _, err := os.Stat(editor.ManagedShimRealBinaryPath(entrypoint)); err != nil {
 		t.Fatalf("expected shim backup after migration: %v", err)
 	}
 

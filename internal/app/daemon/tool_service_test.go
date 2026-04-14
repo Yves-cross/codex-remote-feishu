@@ -17,6 +17,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 type fakeToolFileSender struct {
@@ -135,7 +136,8 @@ func TestResolveSurfaceContextToolRejectsVSCodeModeAndResolvesNormalMode(t *test
 	if toolErr != nil {
 		t.Fatalf("resolveSurfaceContextTool() error = %#v", toolErr)
 	}
-	if result["workspace_root"] != workspaceRoot || result["product_mode"] != "normal" {
+	workspaceRootValue, _ := result["workspace_root"].(string)
+	if !testutil.SamePath(workspaceRootValue, workspaceRoot) || result["product_mode"] != "normal" {
 		t.Fatalf("unexpected resolved context: %#v", result)
 	}
 

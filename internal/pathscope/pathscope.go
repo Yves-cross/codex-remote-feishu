@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -37,13 +38,13 @@ func ApplyPrefix(path string) string {
 	}
 	path = filepath.Clean(path)
 	prefix := PrefixRoot()
-	if prefix == "" || !filepath.IsAbs(path) {
+	if prefix == "" || !pathIsAbsoluteLike(path) {
 		return path
 	}
 	if withinPrefix(path, prefix) {
 		return path
 	}
-	relative := strings.TrimLeft(path, string(filepath.Separator))
+	relative := strings.TrimLeft(path, string(filepath.Separator)+"/")
 	if relative == "" {
 		return prefix
 	}
@@ -61,7 +62,7 @@ func EnsureWritePath(path string) error {
 		return nil
 	}
 	path = filepath.Clean(path)
-	if !filepath.IsAbs(path) {
+	if !pathIsAbsoluteLike(path) {
 		return nil
 	}
 	prefix := PrefixRoot()
@@ -100,4 +101,11 @@ func withinPrefix(path, prefix string) bool {
 		return false
 	}
 	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func pathIsAbsoluteLike(path string) bool {
+	if filepath.IsAbs(path) {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.HasPrefix(path, `\`)
 }

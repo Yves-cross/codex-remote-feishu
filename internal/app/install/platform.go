@@ -48,7 +48,7 @@ func defaultInstallBinDirForInstance(goos, homeDir, instanceID string) string {
 		return filepath.Join(homeDir, "Library", "Application Support", instanceNamespace(instanceID), "bin")
 	case "windows":
 		if localAppData := os.Getenv("LOCALAPPDATA"); strings.TrimSpace(localAppData) != "" {
-			return filepath.Join(localAppData, instanceNamespace(instanceID), "bin")
+			return filepath.Join(pathscope.ApplyPrefix(localAppData), instanceNamespace(instanceID), "bin")
 		}
 	}
 	return filepath.Join(homeDir, ".local", "share", instanceNamespace(instanceID), "bin")
@@ -60,7 +60,7 @@ func defaultVSCodeSettingsPath(goos, homeDir string) string {
 		return filepath.Join(homeDir, "Library", "Application Support", "Code", "User", "settings.json")
 	case "windows":
 		if appData := os.Getenv("APPDATA"); strings.TrimSpace(appData) != "" {
-			return filepath.Join(appData, "Code", "User", "settings.json")
+			return filepath.Join(pathscope.ApplyPrefix(appData), "Code", "User", "settings.json")
 		}
 	}
 	return filepath.Join(homeDir, ".config", "Code", "User", "settings.json")
@@ -69,7 +69,7 @@ func defaultVSCodeSettingsPath(goos, homeDir string) string {
 func detectBundleEntrypoints(goos, goarch, homeDir string) []string {
 	var roots []string
 	if envRoot := os.Getenv("VSCODE_SERVER_EXTENSIONS_DIR"); strings.TrimSpace(envRoot) != "" {
-		roots = append(roots, envRoot)
+		roots = append(roots, pathscope.ApplyPrefix(envRoot))
 	}
 	switch goos {
 	case "linux":

@@ -144,6 +144,12 @@ func resolveCodexConfigPath(env []string) (string, error) {
 }
 
 func currentUserHomeDir() string {
+	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
+		return pathscope.ApplyPrefix(home)
+	}
+	if home := strings.TrimSpace(os.Getenv("USERPROFILE")); home != "" {
+		return pathscope.ApplyPrefix(home)
+	}
 	if home, err := pathscope.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
 		return home
 	}

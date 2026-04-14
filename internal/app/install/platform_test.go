@@ -140,6 +140,8 @@ func TestDetectPlatformDefaultsUsesFSPrefix(t *testing.T) {
 	prefix := filepath.Join(t.TempDir(), "sandbox")
 	t.Setenv("HOME", homeDir)
 	t.Setenv("USERPROFILE", homeDir)
+	t.Setenv("LOCALAPPDATA", filepath.Join(homeDir, "AppData", "Local"))
+	t.Setenv("APPDATA", filepath.Join(homeDir, "AppData", "Roaming"))
 	t.Setenv(pathscope.EnvFSPrefix, prefix)
 
 	defaults, err := DetectPlatformDefaults()
