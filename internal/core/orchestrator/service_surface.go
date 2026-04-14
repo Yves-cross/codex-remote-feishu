@@ -211,8 +211,6 @@ func (s *Service) handleRemovedCommand(surface *state.SurfaceConsoleRecord, acti
 	switch control.LegacyActionKey(action.Text) {
 	case "newinstance":
 		return notice(surface, "command_removed_newinstance", "`/newinstance` 已移除。请改用 `/use` 或 `/useall` 选择要恢复的会话；在默认 normal 模式下，系统会自动复用在线工作区，必要时在后台恢复。")
-	case "killinstance":
-		return notice(surface, "command_removed_killinstance", "`/killinstance` 已移除。请改用 `/detach` 取消当前恢复流程，或断开当前接管。")
 	case "resume_headless_thread":
 		return notice(surface, "selection_expired", "这个旧恢复卡片（来自已移除的 `/newinstance` 流程）已失效，请改用 `/use` 或 `/useall` 选择要恢复的会话；在默认 normal 模式下，系统会自动复用在线工作区，必要时在后台恢复。")
 	default:

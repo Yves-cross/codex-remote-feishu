@@ -1,4 +1,5 @@
 package control
+
 const (
 	FeishuCommandGroupCurrentWork  = "current_work"
 	FeishuCommandGroupSendSettings = "send_settings"
@@ -436,9 +437,12 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		textExact: []feishuCommandMatch{
 			{alias: "/detach", action: Action{Kind: ActionDetach}},
+			{alias: "/killinstance", action: Action{Kind: ActionDetach}},
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "detach", action: Action{Kind: ActionDetach}},
+			{alias: "killinstance", action: Action{Kind: ActionDetach}},
+			{alias: "kill_instance", action: Action{Kind: ActionDetach}},
 		},
 	},
 	{
@@ -644,25 +648,6 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "debug", action: Action{Kind: ActionDebugCommand, Text: "/debug"}},
-		},
-	},
-	{
-		definition: FeishuCommandDefinition{
-			ID:               "killinstance_legacy",
-			GroupID:          FeishuCommandGroupMaintenance,
-			Title:            "旧版 killinstance",
-			CanonicalSlash:   "/killinstance",
-			CanonicalMenuKey: "killinstance",
-			ArgumentKind:     FeishuCommandArgumentNone,
-			Description:      "历史兼容入口，提示改用 /detach。",
-			ShowInHelp:       false,
-			ShowInMenu:       false,
-		},
-		textExact: []feishuCommandMatch{
-			{alias: "/killinstance", action: Action{Kind: ActionRemovedCommand, Text: "/killinstance"}},
-		},
-		menuExact: []feishuCommandMatch{
-			{alias: "killinstance", action: Action{Kind: ActionRemovedCommand, Text: "kill_instance"}},
 		},
 	},
 	{

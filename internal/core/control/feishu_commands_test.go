@@ -2,6 +2,7 @@ package control
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -202,12 +203,12 @@ func TestFeishuCommandCatalogsHideKillInstanceFromVisibleEntries(t *testing.T) {
 	}
 }
 
-func TestParseFeishuLegacyKillInstanceCommandsAsRemoved(t *testing.T) {
+func TestParseFeishuLegacyKillInstanceCommandsAsDetach(t *testing.T) {
 	action, ok := ParseFeishuTextAction("/killinstance")
 	if !ok {
 		t.Fatal("expected /killinstance to be parsed")
 	}
-	if action.Kind != ActionRemovedCommand || action.Text != "/killinstance" {
+	if action.Kind != ActionDetach {
 		t.Fatalf("unexpected text action for /killinstance: %#v", action)
 	}
 
@@ -215,8 +216,51 @@ func TestParseFeishuLegacyKillInstanceCommandsAsRemoved(t *testing.T) {
 	if !ok {
 		t.Fatal("expected kill_instance menu action to be parsed")
 	}
-	if menu.Kind != ActionRemovedCommand || menu.Text != "kill_instance" {
+	if menu.Kind != ActionDetach {
 		t.Fatalf("unexpected menu action for kill_instance: %#v", menu)
+	}
+}
+
+func TestFeishuMenuVisibleCommandsHaveCanonicalSlashAndMenuParity(t *testing.T) {
+	for _, def := range FeishuCommandDefinitions() {
+		if !def.ShowInMenu {
+			continue
+		}
+		slash := strings.TrimSpace(def.CanonicalSlash)
+		if slash == "" {
+			t.Fatalf("menu-visible command %q missing canonical slash", def.ID)
+		}
+		textAction, ok := ParseFeishuTextAction(slash)
+		if !ok {
+			t.Fatalf("menu-visible command %q slash %q is not parseable", def.ID, slash)
+		}
+
+		menuKey := strings.TrimSpace(def.CanonicalMenuKey)
+		if menuKey == "" {
+			t.Fatalf("menu-visible command %q missing canonical menu key", def.ID)
+		}
+		menuAction, ok := ParseFeishuMenuAction(menuKey)
+		if !ok {
+			t.Fatalf("menu-visible command %q menu key %q is not parseable", def.ID, menuKey)
+		}
+		if textAction.Kind != menuAction.Kind {
+			t.Fatalf("menu-visible command %q slash/menu kind mismatch: %q vs %q", def.ID, textAction.Kind, menuAction.Kind)
+		}
+	}
+}
+
+func TestFeishuHelpVisibleCommandsHaveCanonicalSlashParsing(t *testing.T) {
+	for _, def := range FeishuCommandDefinitions() {
+		if !def.ShowInHelp {
+			continue
+		}
+		slash := strings.TrimSpace(def.CanonicalSlash)
+		if slash == "" {
+			t.Fatalf("help-visible command %q missing canonical slash", def.ID)
+		}
+		if _, ok := ParseFeishuTextAction(slash); !ok {
+			t.Fatalf("help-visible command %q slash %q is not parseable", def.ID, slash)
+		}
 	}
 }
 

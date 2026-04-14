@@ -173,7 +173,7 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 	case control.ActionNewThread:
 		return "新建会话", "/new"
 	case control.ActionKillInstance:
-		return "结束 headless", "/killinstance"
+		return "解除接管", "/detach"
 	case control.ActionRemovedCommand:
 		return "已移除命令", control.LegacyActionCommand(action.Text)
 	case control.ActionShowCommandHelp:

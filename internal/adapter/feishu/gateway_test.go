@@ -320,8 +320,8 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 		"new_thread":       control.ActionNewThread,
 		"newinstance":      control.ActionRemovedCommand,
 		"new_instance":     control.ActionRemovedCommand,
-		"killinstance":     control.ActionRemovedCommand,
-		"kill_instance":    control.ActionRemovedCommand,
+		"killinstance":     control.ActionDetach,
+		"kill_instance":    control.ActionDetach,
 		"threads":          control.ActionShowThreads,
 		"sessions":         control.ActionShowThreads,
 		"use":              control.ActionShowThreads,
@@ -475,7 +475,7 @@ func TestParseTextActionRecognizesSessionCommands(t *testing.T) {
 		"/sessionsall":  control.ActionShowAllThreads,
 		"/new":          control.ActionNewThread,
 		"/newinstance":  control.ActionRemovedCommand,
-		"/killinstance": control.ActionRemovedCommand,
+		"/killinstance": control.ActionDetach,
 	}
 	for input, want := range tests {
 		action, handled := parseTextAction(input)
@@ -507,7 +507,7 @@ func TestParseTextActionRecognizesHelpAndMenuCommands(t *testing.T) {
 	}
 }
 
-func TestRemovedLegacyCommandsPreserveCommandText(t *testing.T) {
+func TestRemovedLegacyAndDetachCompatibilityCommands(t *testing.T) {
 	action, handled := parseTextAction("/newinstance")
 	if !handled {
 		t.Fatalf("expected /newinstance to be handled as removed command")
@@ -526,18 +526,18 @@ func TestRemovedLegacyCommandsPreserveCommandText(t *testing.T) {
 
 	kill, handled := parseTextAction("/killinstance")
 	if !handled {
-		t.Fatalf("expected /killinstance to be handled as removed command")
+		t.Fatalf("expected /killinstance to be handled as detach command")
 	}
-	if kill.Kind != control.ActionRemovedCommand || kill.Text != "/killinstance" {
-		t.Fatalf("unexpected removed killinstance action: %#v", kill)
+	if kill.Kind != control.ActionDetach {
+		t.Fatalf("unexpected killinstance action: %#v", kill)
 	}
 
 	killMenu, ok := menuAction("kill_instance")
 	if !ok {
-		t.Fatalf("expected legacy kill_instance menu to resolve to removed command")
+		t.Fatalf("expected legacy kill_instance menu to resolve to detach")
 	}
-	if killMenu.Kind != control.ActionRemovedCommand || killMenu.Text != "kill_instance" {
-		t.Fatalf("unexpected removed kill menu action: %#v", killMenu)
+	if killMenu.Kind != control.ActionDetach {
+		t.Fatalf("unexpected kill menu action: %#v", killMenu)
 	}
 }
 
