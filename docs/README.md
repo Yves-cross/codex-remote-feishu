@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 新增会话描述统一方案并刷新文档索引。
+> Summary: 新增 Claude provider 协议映射文档并刷新文档索引。
 
 ## 1. 适用范围
 
@@ -138,6 +138,7 @@
 
 ### 6.3 `inprogress`
 
+- [claude-provider-protocol-mapping.md](./inprogress/claude-provider-protocol-mapping.md)
 - [claude-normal-mode-poc-design.md](./inprogress/claude-normal-mode-poc-design.md)
 - [relay-daemon-autostart-design.md](./inprogress/relay-daemon-autostart-design.md)
 - [thread-description-unification-plan.md](./inprogress/thread-description-unification-plan.md)
