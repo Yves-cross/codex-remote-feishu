@@ -237,7 +237,7 @@ func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord,
 		}
 		clearAutoContinueRuntime(surface)
 		surface.AutoContinue.Enabled = true
-		return notice(surface, "auto_continue_enabled", "已开启当前飞书会话的 autowhip。daemon 重启后不会恢复之前的 autowhip 状态。")
+		return notice(surface, "auto_continue_enabled", "已开启当前飞书会话的 autowhip。服务重启后不会恢复之前的 autowhip 状态。")
 	case "off", "disable", "disabled", "false":
 		clearAutoContinueRuntime(surface)
 		return notice(surface, "auto_continue_disabled", "已关闭当前飞书会话的 autowhip。")

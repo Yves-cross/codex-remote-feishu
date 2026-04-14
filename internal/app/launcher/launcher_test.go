@@ -272,7 +272,7 @@ func TestMainReportsDaemonError(t *testing.T) {
 	if exitCode != 1 {
 		t.Fatalf("Main exitCode = %d, want 1", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "daemon error: boom") {
+	if !strings.Contains(stderr.String(), "service error: boom") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }

@@ -58,7 +58,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 	var finalBlockPreviewer feishu.FinalBlockPreviewService = controller
 	lock, err := relayruntime.AcquireLock(ctx, paths.DaemonLockFile, false)
 	if err != nil {
-		return fmt.Errorf("acquire daemon runtime lock: %w", err)
+		return fmt.Errorf("acquire service runtime lock: %w", err)
 	}
 	defer lock.Release()
 
@@ -153,7 +153,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 
 func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startupAccessPlan, services config.ServicesConfig, env map[string]string) error {
 	if err := app.Bind(); err != nil {
-		return fmt.Errorf("bind daemon listeners: %w", err)
+		return fmt.Errorf("bind service listeners: %w", err)
 	}
 	logStartupState(startup, services, app.PprofURL())
 	if err := maybeOpenSetupBrowser(startup, env); err != nil {
@@ -165,7 +165,7 @@ func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startu
 		}
 	}
 	if err := app.Run(ctx); err != nil && err != context.Canceled {
-		return fmt.Errorf("run daemon: %w", err)
+		return fmt.Errorf("run service: %w", err)
 	}
 	return nil
 }

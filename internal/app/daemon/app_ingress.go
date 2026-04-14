@@ -525,14 +525,14 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	if err := a.sendAgentCommand(hello.Instance.InstanceID, command); err != nil {
 		log.Printf("relay send command failed: instance=%s kind=%s err=%v", hello.Instance.InstanceID, command.Kind, err)
 		if managed := a.managedHeadless[hello.Instance.InstanceID]; managed != nil {
-			managed.LastError = "daemon 无法向本地 wrapper 发送初始化 threads.refresh。"
+			managed.LastError = "服务无法向本地 wrapper 发送初始化 threads.refresh。"
 		}
 		a.handleUIEvents(ctx, a.service.HandleProblem(hello.Instance.InstanceID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 			Code:      "relay_send_command_failed",
 			Layer:     "daemon",
 			Stage:     "send_threads_refresh",
 			Operation: string(command.Kind),
-			Message:   "daemon 无法向本地 wrapper 发送初始化命令。",
+			Message:   "服务无法向本地 wrapper 发送初始化命令。",
 			CommandID: command.CommandID,
 			Retryable: true,
 		})))

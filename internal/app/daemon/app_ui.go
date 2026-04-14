@@ -80,7 +80,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 					Layer:            "daemon",
 					Stage:            "relay_send_command",
 					Operation:        string(event.Command.Kind),
-					Message:          "daemon 无法把消息发送到本地 wrapper。",
+					Message:          "服务无法把消息发送到本地 wrapper。",
 					SurfaceSessionID: event.SurfaceSessionID,
 					CommandID:        event.Command.CommandID,
 					Retryable:        true,
@@ -258,7 +258,7 @@ func (a *App) queueGatewayFailureNotice(event control.UIEvent, err error) {
 		Layer:            "daemon",
 		Stage:            "gateway_apply",
 		Operation:        string(event.Kind),
-		Message:          "daemon 无法把消息发送到飞书。",
+		Message:          "服务无法把消息发送到飞书。",
 		SurfaceSessionID: event.SurfaceSessionID,
 		Retryable:        true,
 	}))

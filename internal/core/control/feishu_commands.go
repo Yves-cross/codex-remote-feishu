@@ -649,7 +649,7 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			ArgumentFormHint: "reload",
 			ArgumentFormNote: "例如 reload。",
 			ArgumentSubmit:   "执行",
-			Description:      "打开当前 daemon 实例专属的定时任务多维表格，或用 `/cron reload` 重新加载任务配置。",
+			Description:      "打开当前服务实例专属的定时任务多维表格，或用 `/cron reload` 重新加载任务配置。",
 			Examples:         []string{"/cron", "/cron reload"},
 			ShowInHelp:       true,
 			ShowInMenu:       false,

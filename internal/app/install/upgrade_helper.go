@@ -78,7 +78,7 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 	}
 
 	if err := stopCurrentDaemon(ctx, stateValue, paths); err != nil {
-		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("stop current daemon: %w", err))
+		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("stop current service: %w", err))
 	}
 	if err := switchUpgradeBinary(&stateValue); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("switch target binary: %w", err))
@@ -90,7 +90,7 @@ func RunUpgradeHelperWithStatePath(ctx context.Context, statePath string) error 
 	}
 
 	if _, err := startUpgradeDaemon(ctx, cfg, stateValue, paths); err != nil {
-		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("start upgraded daemon: %w", err))
+		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, fmt.Errorf("start upgraded service: %w", err))
 	}
 	if err := upgradeHelperObserveFunc(ctx, cfg); err != nil {
 		return rollbackUpgradeState(ctx, statePath, stateValue, cfg, paths, err)
@@ -145,7 +145,7 @@ func observeUpgrade(ctx context.Context, cfg config.LoadedAppConfig) error {
 		case <-time.After(upgradeHelperPollInterval):
 		}
 	}
-	return errors.New("timed out waiting for upgraded daemon to become healthy")
+	return errors.New("timed out waiting for upgraded service to become healthy")
 }
 
 func probeUpgradeHealth(ctx context.Context, client *http.Client, healthURL, bootstrapURL, runtimeStatusURL, statusURL string) (bool, bool, error) {
@@ -157,7 +157,7 @@ func probeUpgradeHealth(ctx context.Context, client *http.Client, healthURL, boo
 		return false, false, err
 	}
 	if bootstrapState.SetupRequired {
-		return false, false, errors.New("upgraded daemon unexpectedly returned to setup-required state")
+		return false, false, errors.New("upgraded service unexpectedly returned to setup-required state")
 	}
 	if err := expectHTTPStatus(ctx, client, runtimeStatusURL, http.StatusOK); err != nil {
 		return false, false, err
@@ -310,7 +310,7 @@ func rollbackUpgradeState(ctx context.Context, statePath string, stateValue Inst
 	if _, err := startUpgradeDaemon(ctx, cfg, stateValue, paths); err != nil {
 		stateValue.PendingUpgrade.Phase = PendingUpgradePhaseFailed
 		_ = WriteState(statePath, stateValue)
-		return fmt.Errorf("restart rollback daemon failed after %v: %w", cause, err)
+		return fmt.Errorf("restart rollback service failed after %v: %w", cause, err)
 	}
 	return cause
 }

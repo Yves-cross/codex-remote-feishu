@@ -101,9 +101,9 @@ func renderSystemdUserUnit(state InstallState) (string, error) {
 	}
 
 	layout := installLayoutForInstance(state.BaseDir, state.InstanceID)
-	description := "codex-remote daemon"
+	description := "codex-remote service"
 	if !isDefaultInstance(state.InstanceID) {
-		description = fmt.Sprintf("codex-remote daemon (%s)", state.InstanceID)
+		description = fmt.Sprintf("codex-remote service (%s)", state.InstanceID)
 	}
 
 	lines := []string{

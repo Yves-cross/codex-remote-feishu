@@ -59,7 +59,7 @@ func Main(opts Options) int {
 	switch decision.Role {
 	case RoleDaemon:
 		if err := opts.Runners.RunDaemon(ctx, opts.Version, opts.Branch); err != nil && err != context.Canceled {
-			_, _ = fmt.Fprintf(opts.Stderr, "daemon error: %v\n", err)
+			_, _ = fmt.Fprintf(opts.Stderr, "service error: %v\n", err)
 			return 1
 		}
 		return 0
@@ -153,7 +153,7 @@ func usageText() string {
   codex-remote help
 
 Notes:
-  - no arguments defaults to daemon mode
+  - no arguments defaults to service mode
   - wrapper role only supports Codex app-server mode
   - unknown top-level commands do not fall through to wrapper
 `

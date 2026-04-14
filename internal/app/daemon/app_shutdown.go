@@ -13,7 +13,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
 )
 
-const daemonShutdownNoticeText = "daemon 正在关闭，当前飞书窗口会暂时离线。若稍后完成重启或升级，请重新发送消息或命令继续使用。"
+const daemonShutdownNoticeText = "服务正在关闭，当前飞书窗口会暂时离线。若稍后完成重启或升级，请重新发送消息或命令继续使用。"
 
 type relayShutdownTarget struct {
 	InstanceID string

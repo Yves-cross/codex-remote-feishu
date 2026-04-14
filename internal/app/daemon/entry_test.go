@@ -112,7 +112,7 @@ func TestRunConfiguredDaemonSkipsBrowserWhenBindFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected bind failure")
 	}
-	if !strings.Contains(err.Error(), "bind daemon listeners") {
+	if !strings.Contains(err.Error(), "bind service listeners") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if called != 0 {

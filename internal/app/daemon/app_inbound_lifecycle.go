@@ -85,7 +85,7 @@ func inboundTimeValue(ts time.Time) string {
 func rejectedInboundNotice(action control.Action) *control.Notice {
 	switch inboundVerdict(action) {
 	case control.InboundLifecycleOld:
-		text := "检测到这是 daemon 上一个生命周期里的旧消息、旧命令或旧菜单动作，已忽略。"
+		text := "检测到这是服务上一个生命周期里的旧消息、旧命令或旧菜单动作，已忽略。"
 		if detail := rejectedInboundActionDetail(action); detail != "" {
 			text += "\n\n本次被忽略的是：" + detail + "。"
 		}
@@ -97,7 +97,7 @@ func rejectedInboundNotice(action control.Action) *control.Notice {
 			ThemeKey: "error",
 		}
 	case control.InboundLifecycleOldCard:
-		text := "这张卡片来自 daemon 上一个生命周期，已过期。"
+		text := "这张卡片来自服务上一个生命周期，已过期。"
 		if detail := rejectedInboundActionDetail(action); detail != "" {
 			text += "\n\n卡片对应动作：" + detail + "。"
 		}

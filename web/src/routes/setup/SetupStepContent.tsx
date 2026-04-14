@@ -153,7 +153,7 @@ export function SetupStepContent({
               <div className="manifest-block">
                 <h4>先看一下这台机器能不能正常使用</h4>
                 <ul className="wizard-bullet-list">
-                  <li>检查当前 daemon 有没有可用的 headless 启动器。</li>
+                  <li>检查当前服务有没有可用的 headless 启动器。</li>
                   <li>检查 wrapper 实际会去启动哪个真实的 <code>codex</code>。</li>
                   <li>检查当前服务环境里能不能把它解析成可执行文件。</li>
                   <li>检查是否存在明显配置风险，例如回指自身或只靠 PATH 解析。</li>

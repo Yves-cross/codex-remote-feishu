@@ -29,7 +29,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	interactive := flagSet.Bool("interactive", false, "run interactive installer wizard")
 	bootstrapOnly := flagSet.Bool("bootstrap-only", false, "install binary and config only; do not patch VS Code integration")
 	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty auto-resolves to workspace binding or stable")
-	startDaemon := flagSet.Bool("start-daemon", false, "ensure the local daemon is running after install")
+	startDaemon := flagSet.Bool("start-daemon", false, "ensure the local service is running after install")
 	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to workspace binding or platform default")
 	installBinDir := flagSet.String("install-bin-dir", "", "target directory for installed binary; empty reuses existing install path or the instance default")
 	binaryPath := flagSet.String("binary", defaultBinary, "codex-remote binary source path")
@@ -38,7 +38,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	currentVersion := flagSet.String("current-version", version, "current binary version metadata")
 	versionsRoot := flagSet.String("versions-root", "", "version cache root metadata")
 	currentSlot := flagSet.String("current-slot", "", "current version slot metadata")
-	serviceManagerFlag := flagSet.String("service-manager", string(ServiceManagerDetached), "daemon lifecycle manager: detached or systemd_user (linux only)")
+	serviceManagerFlag := flagSet.String("service-manager", string(ServiceManagerDetached), "service lifecycle manager: detached or systemd_user (linux only)")
 	relayURL := flagSet.String("relay-url", "", "relay websocket url; empty preserves existing or default config")
 	codexBinary := flagSet.String("codex-binary", "", "real codex binary path; empty keeps wrapper default and lets managed_shim auto-resolve codex.real")
 	integrationMode := flagSet.String("integration", "auto", "integration mode: auto or managed_shim; legacy editor_settings/both inputs are accepted and normalized to managed_shim")
@@ -158,11 +158,11 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 	status, err := ensureDaemonReady(context.Background(), state, version)
 	if err != nil {
 		if stderr != nil {
-			_, _ = fmt.Fprintf(stderr, "daemon startup log: %s\n", status.LogPath)
+			_, _ = fmt.Fprintf(stderr, "service startup log: %s\n", status.LogPath)
 		}
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "daemon: ready\nweb admin: %s\n", status.AdminURL); err != nil {
+	if _, err := fmt.Fprintf(stdout, "service: ready\nweb admin: %s\n", status.AdminURL); err != nil {
 		return err
 	}
 	if status.SetupRequired {
