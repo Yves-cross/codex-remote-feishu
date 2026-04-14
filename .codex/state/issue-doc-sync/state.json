@@ -98,6 +98,16 @@
       "recordedAt": "2026-04-12T09:39:11Z"
     },
     {
+      "number": 12,
+      "title": "[Bug] MCP request 在飞书端缺少可响应路径，可能导致远端卡住",
+      "updatedAt": "2026-04-14T15:14:12Z",
+      "closedAt": "2026-04-14T15:10:49Z",
+      "decision": "skip",
+      "reason": "旧的 MCP symptom issue 已被后续 MCP 对齐与可响应链路文档吸收，当前 canonical 文档已覆盖其 durable 结论。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/12",
+      "recordedAt": "2026-04-14T16:19:52Z"
+    },
+    {
       "number": 13,
       "updatedAt": "2026-04-07T10:51:53Z",
       "decision": "merge",
@@ -384,6 +394,16 @@
       "recordedAt": "2026-04-12T16:29:58Z"
     },
     {
+      "number": 54,
+      "title": "[Work] 在线 installer 的行为需要重新定义",
+      "updatedAt": "2026-04-14T11:10:41Z",
+      "closedAt": "2026-04-14T11:10:41Z",
+      "decision": "skip",
+      "reason": "在线 installer 的稳定路径、versions root、install-state 与 local upgrade 契约，当前已由 install-deploy 与 local-self-upgrade 文档覆盖。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/54",
+      "recordedAt": "2026-04-14T16:19:22Z"
+    },
+    {
       "number": 55,
       "updatedAt": "2026-04-08T12:54:48Z",
       "decision": "skip",
@@ -470,6 +490,16 @@
       "reason": "already covered by current feishu product docs and remote surface state machine",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/65",
       "recordedAt": "2026-04-12T09:40:23Z"
+    },
+    {
+      "number": 66,
+      "title": "[Work] history 命令",
+      "updatedAt": "2026-04-14T12:30:44Z",
+      "closedAt": "2026-04-14T12:30:41Z",
+      "decision": "skip",
+      "reason": "/history 的入口、卡片交互与 thread 历史查询语义，已同步 user-guide、remote-surface 与 feishu-card-ui 文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/66",
+      "recordedAt": "2026-04-14T16:19:29Z"
     },
     {
       "number": 67,
@@ -838,6 +868,46 @@
       "recordedAt": "2026-04-12T09:40:38Z"
     },
     {
+      "number": 107,
+      "title": "[Work] 支持将 MCP tool call 的结构化/图片结果回显到飞书端",
+      "updatedAt": "2026-04-14T15:03:14Z",
+      "closedAt": "2026-04-14T15:03:14Z",
+      "decision": "skip",
+      "reason": "MCP tool call 的结构化/图片结果回显语义，已同步 codex-mcp-app-server-protocol、Feishu 产品文档与状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/107",
+      "recordedAt": "2026-04-14T16:19:49Z"
+    },
+    {
+      "number": 108,
+      "title": "[Work] 支持将 web_search 过程状态以轻量提示同步到飞书端",
+      "updatedAt": "2026-04-14T09:28:06Z",
+      "closedAt": "2026-04-14T09:28:02Z",
+      "decision": "skip",
+      "reason": "web_search 共享过程卡的展示条件与终结时机，已同步到 Feishu 卡片状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/108",
+      "recordedAt": "2026-04-14T16:19:19Z"
+    },
+    {
+      "number": 109,
+      "title": "[Work] 在飞书端以轻量活动卡片展示 exec_command 过程",
+      "updatedAt": "2026-04-14T09:01:23Z",
+      "closedAt": "2026-04-14T09:01:20Z",
+      "decision": "skip",
+      "reason": "exec_command 共享过程卡的展示条件与终结时机，已同步到 Feishu 卡片状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/109",
+      "recordedAt": "2026-04-14T16:19:12Z"
+    },
+    {
+      "number": 110,
+      "title": "[Work] 支持将 MCP tool call 过程状态以轻量提示同步到飞书端",
+      "updatedAt": "2026-04-14T09:10:05Z",
+      "closedAt": "2026-04-14T09:10:01Z",
+      "decision": "skip",
+      "reason": "mcp_tool_call 共享过程卡的展示条件与终结时机，已同步到 Feishu 卡片状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/110",
+      "recordedAt": "2026-04-14T16:19:15Z"
+    },
+    {
       "number": 111,
       "title": "[Work] 支持 Feishu 同上下文展开卡原地更新（/menu、/use、/useall）",
       "updatedAt": "2026-04-11T09:41:46Z",
@@ -1034,6 +1104,16 @@
       "recordedAt": "2026-04-12T09:42:30Z"
     },
     {
+      "number": 130,
+      "title": "[Work] 利用飞书的动态更新卡片机制实现codex过程状态的展示",
+      "updatedAt": "2026-04-13T18:18:01Z",
+      "closedAt": "2026-04-13T18:17:58Z",
+      "decision": "skip",
+      "reason": "动态过程卡总方案已收敛进共享 progress card 文档语义，当前 canonical Feishu 卡片状态机已覆盖，无需再为 umbrella issue 单独落文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/130",
+      "recordedAt": "2026-04-14T16:18:46Z"
+    },
+    {
       "number": 131,
       "title": "[Cleanup] 硬化 Feishu V2 card model 边界，隔离 legacy compat helper",
       "updatedAt": "2026-04-11T09:42:10Z",
@@ -1042,6 +1122,36 @@
       "reason": "maintainability-only Feishu V2 boundary cleanup with no additional durable product behavior beyond the current V2 docs",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/131",
       "recordedAt": "2026-04-12T09:42:20Z"
+    },
+    {
+      "number": 132,
+      "title": "[Work] 分阶段对齐最新 Codex MCP app-server 协议模型与飞书远端链路",
+      "updatedAt": "2026-04-14T16:07:33Z",
+      "closedAt": "2026-04-14T16:07:29Z",
+      "decision": "skip",
+      "reason": "MCP 总跟踪 issue 的阶段结论已被各子阶段文档与 codex-mcp-app-server-protocol 吸收，无需再单独沉淀 parent tracker 文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/132",
+      "recordedAt": "2026-04-14T16:19:59Z"
+    },
+    {
+      "number": 133,
+      "title": "[Work] MCP 对齐阶段 1：建立独立 request/event/item 模型与 translator plumbing",
+      "updatedAt": "2026-04-14T12:13:35Z",
+      "closedAt": "2026-04-14T12:13:32Z",
+      "decision": "skip",
+      "reason": "MCP 阶段 1 的 typed request/event/item 对齐结论，已同步到 codex-mcp-app-server-protocol 与两份状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/133",
+      "recordedAt": "2026-04-14T16:19:25Z"
+    },
+    {
+      "number": 134,
+      "title": "[Work] MCP 对齐阶段 2：实现远端可响应的 elicitation / permissions 链路",
+      "updatedAt": "2026-04-14T13:38:35Z",
+      "closedAt": "2026-04-14T13:33:56Z",
+      "decision": "skip",
+      "reason": "MCP 远端可响应的 permissions/elicitation 链路，已同步 codex-mcp-app-server-protocol 与两份状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/134",
+      "recordedAt": "2026-04-14T16:19:35Z"
     },
     {
       "number": 135,
@@ -1184,6 +1294,16 @@
       "recordedAt": "2026-04-12T09:42:32Z"
     },
     {
+      "number": 153,
+      "title": "增加飞书端当前线程 Token Usage 查询能力",
+      "updatedAt": "2026-04-14T14:58:47Z",
+      "closedAt": "2026-04-14T14:58:47Z",
+      "decision": "skip",
+      "reason": "该 issue 最终收口为“不再落独立 /usage 命令，只保留结果卡 footer 的 usage 展示”；现有 Feishu 产品文档已覆盖 durable 结果。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/153",
+      "recordedAt": "2026-04-14T16:19:44Z"
+    },
+    {
       "number": 154,
       "title": "Add roadmap-driven production release scaffolding",
       "updatedAt": "2026-04-11T09:42:27Z",
@@ -1322,6 +1442,16 @@
       "recordedAt": "2026-04-12T09:42:51Z"
     },
     {
+      "number": 167,
+      "title": "[Work] 梳理并收敛 item.delta 全量文本重算渲染链",
+      "updatedAt": "2026-04-14T02:24:10Z",
+      "closedAt": "2026-04-14T02:24:07Z",
+      "decision": "skip",
+      "reason": "item.delta 惰性物化缓冲属于实现级性能收敛，当前 durable 结论已由现有 relay/backpressure 文档覆盖，无需新增独立同步文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/167",
+      "recordedAt": "2026-04-14T16:18:59Z"
+    },
+    {
       "number": 168,
       "title": "[Bugfix] 吸收 release/1.5 的 surface resume 修复到 master",
       "updatedAt": "2026-04-12T02:36:43Z",
@@ -1393,6 +1523,26 @@
       ],
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/174",
       "recordedAt": "2026-04-12T16:25:21Z"
+    },
+    {
+      "number": 175,
+      "title": "[Feature] 支持通过目录选择创建新工作区并切换上下文",
+      "updatedAt": "2026-04-13T18:07:54Z",
+      "closedAt": "2026-04-13T18:07:51Z",
+      "decision": "skip",
+      "reason": "新建工作区的目录选择、fresh workspace/headless 落点与后续发话语义，当前已由 remote-surface 与 feishu-card-ui 两份状态机文档覆盖。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/175",
+      "recordedAt": "2026-04-14T16:18:43Z"
+    },
+    {
+      "number": 176,
+      "title": "[Feature] 支持通过飞书卡片选择本机文件并发送到当前 surface",
+      "updatedAt": "2026-04-14T00:08:25Z",
+      "closedAt": "2026-04-14T00:08:21Z",
+      "decision": "skip",
+      "reason": "/sendfile 的当前 workspace 文件选择与发送到当前 surface 的闭环，已由现有 Feishu/UI 状态机与产品文档覆盖。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/176",
+      "recordedAt": "2026-04-14T16:18:50Z"
     },
     {
       "number": 177,
@@ -1587,6 +1737,96 @@
       "reason": "分页与分层浏览交互已同步状态机文档（remote-surface 与 feishu-card-ui）。",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/202",
       "recordedAt": "2026-04-13T17:14:52Z"
+    },
+    {
+      "number": 203,
+      "title": "[Feature] 新增 Steer All 命令（slash + 飞书菜单）",
+      "updatedAt": "2026-04-14T00:41:06Z",
+      "closedAt": "2026-04-14T00:41:03Z",
+      "decision": "skip",
+      "reason": "/steerall 的路由语义、队列并入条件与菜单锚点卡行为，已同步 remote-surface 与 feishu-card-ui 两份 canonical 文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/203",
+      "recordedAt": "2026-04-14T16:18:53Z"
+    },
+    {
+      "number": 204,
+      "title": "提升 /list 历史工作区可见性与 SQLite 读取稳定性（含二次复查）",
+      "updatedAt": "2026-04-14T01:50:10Z",
+      "closedAt": "2026-04-14T01:50:07Z",
+      "decision": "skip",
+      "reason": "recoverable-only workspace 可见性、SQLite recent workspace 聚合与失败回退语义，已同步 remote-surface 与 Feishu 产品文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/204",
+      "recordedAt": "2026-04-14T16:18:56Z"
+    },
+    {
+      "number": 205,
+      "title": "重构 Feishu /menu：去除常用操作并按任务对象重分类（分阶段）",
+      "updatedAt": "2026-04-14T02:57:37Z",
+      "closedAt": "2026-04-14T02:57:34Z",
+      "decision": "skip",
+      "reason": "/menu 去掉“常用操作”并按当前工作对象重分类的现状，已同步到 Feishu 卡片状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/205",
+      "recordedAt": "2026-04-14T16:19:02Z"
+    },
+    {
+      "number": 206,
+      "title": "[Work] 重构 send file 交互：V2 双下拉（目录/文件）与紧凑卡片",
+      "updatedAt": "2026-04-14T05:01:16Z",
+      "closedAt": "2026-04-14T05:01:13Z",
+      "decision": "skip",
+      "reason": "sendfile 紧凑双下拉卡片、目录/文件分离语义与 select_static 兼容解析，已同步到 Feishu 卡片状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/206",
+      "recordedAt": "2026-04-14T16:19:06Z"
+    },
+    {
+      "number": 207,
+      "title": "统一 /list /use /useall 为单卡片目标选择器，并补齐新建会话 headless 路径",
+      "updatedAt": "2026-04-14T07:21:36Z",
+      "closedAt": "2026-04-14T07:21:33Z",
+      "decision": "skip",
+      "reason": "/list /use /useall 收敛到 unified target picker 与 recoverable-only workspace 的 fresh headless 新会话路径，已同步 remote-surface 与 feishu-card-ui 文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/207",
+      "recordedAt": "2026-04-14T16:19:09Z"
+    },
+    {
+      "number": 208,
+      "title": "[Feature] reply 当前 processing 源消息时，自动将文本/图片 steer 到当前 turn",
+      "updatedAt": "2026-04-14T13:14:17Z",
+      "closedAt": "2026-04-14T13:14:13Z",
+      "decision": "skip",
+      "reason": "reply 当前 processing 源消息时自动把文本/图片 steer 入当前 turn 的产品语义，已同步 Feishu 产品文档与 remote-surface 状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/208",
+      "recordedAt": "2026-04-14T16:19:32Z"
+    },
+    {
+      "number": 211,
+      "title": "[Feature] 将 merge_forward 展开为保留层级的结构化格式，并把相关图片一并纳入输入",
+      "updatedAt": "2026-04-14T14:30:45Z",
+      "closedAt": "2026-04-14T14:30:42Z",
+      "decision": "skip",
+      "reason": "merge_forward 的结构化 envelope、层级保留与图片纳入输入语义，已同步 Feishu 产品文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/211",
+      "recordedAt": "2026-04-14T16:19:38Z"
+    },
+    {
+      "number": 212,
+      "title": "[Work] 在 Feishu / relay 消息流中显示 context compacted 事件",
+      "updatedAt": "2026-04-14T14:55:07Z",
+      "closedAt": "2026-04-14T14:55:03Z",
+      "decision": "skip",
+      "reason": "context compacted 事件在 Feishu/relay 消息流中的暴露语义，已同步 relay protocol、Feishu 产品文档与 remote-surface 状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/212",
+      "recordedAt": "2026-04-14T16:19:41Z"
+    },
+    {
+      "number": 213,
+      "title": "[Work] 为 Feishu / relay 暴露手动 compact 入口并接通上游 thread/compact/start",
+      "updatedAt": "2026-04-14T15:49:09Z",
+      "closedAt": "2026-04-14T15:49:09Z",
+      "decision": "skip",
+      "reason": "manual /compact 入口、上游 thread/compact/start 接线与 gating 语义，已同步 relay protocol、Feishu 产品文档与 remote-surface 状态机文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/213",
+      "recordedAt": "2026-04-14T16:19:55Z"
     }
   ]
 }
