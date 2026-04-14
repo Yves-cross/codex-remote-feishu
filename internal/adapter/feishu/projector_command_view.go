@@ -33,22 +33,16 @@ func commandMenuCatalogFromView(view control.FeishuCommandMenuView, ctx *control
 	}
 	groupID := strings.TrimSpace(view.GroupID)
 	if groupID == "" {
-		return buildCommandMenuHomeCatalog(stage)
+		return buildCommandMenuHomeCatalog()
 	}
 	return buildCommandMenuGroupCatalog(stage, groupID)
 }
 
-func buildCommandMenuHomeCatalog(stage string) control.FeishuDirectCommandCatalog {
-	sections := []control.CommandCatalogSection{
-		{
-			Title:   "全部分组",
-			Entries: commandMenuGroupEntries(),
-		},
-		{
-			Title:   "常用操作",
-			Entries: commandMenuHomeEntries(stage),
-		},
-	}
+func buildCommandMenuHomeCatalog() control.FeishuDirectCommandCatalog {
+	sections := []control.CommandCatalogSection{{
+		Title:   "全部分组",
+		Entries: commandMenuGroupEntries(),
+	}}
 	return control.FeishuDirectCommandCatalog{
 		Title:        "命令菜单",
 		Interactive:  true,
@@ -60,7 +54,7 @@ func buildCommandMenuHomeCatalog(stage string) control.FeishuDirectCommandCatalo
 func buildCommandMenuGroupCatalog(stage, groupID string) control.FeishuDirectCommandCatalog {
 	group, ok := control.FeishuCommandGroupByID(groupID)
 	if !ok {
-		return buildCommandMenuHomeCatalog(stage)
+		return buildCommandMenuHomeCatalog()
 	}
 	entries := make([]control.CommandCatalogEntry, 0, 6)
 	for _, def := range control.FeishuCommandDefinitionsForGroup(groupID) {
@@ -90,39 +84,6 @@ func buildCommandMenuGroupCatalog(stage, groupID string) control.FeishuDirectCom
 			CommandText: menuCommandText(""),
 		}},
 	}
-}
-
-func commandMenuHomeEntries(stage string) []control.CommandCatalogEntry {
-	commandIDs := []string{control.FeishuCommandList, control.FeishuCommandUse, control.FeishuCommandStatus}
-	switch stage {
-	case commandMenuStageNormalWorking:
-		commandIDs = []string{
-			control.FeishuCommandStop,
-			control.FeishuCommandSteerAll,
-			control.FeishuCommandNew,
-			control.FeishuCommandReasoning,
-			control.FeishuCommandModel,
-			control.FeishuCommandAccess,
-		}
-	case commandMenuStageVSCodeWorking:
-		commandIDs = []string{
-			control.FeishuCommandStop,
-			control.FeishuCommandSteerAll,
-			control.FeishuCommandReasoning,
-			control.FeishuCommandModel,
-			control.FeishuCommandAccess,
-			control.FeishuCommandFollow,
-		}
-	}
-	entries := make([]control.CommandCatalogEntry, 0, len(commandIDs))
-	for _, commandID := range commandIDs {
-		def, ok := control.FeishuCommandDefinitionByID(commandID)
-		if !ok {
-			continue
-		}
-		entries = append(entries, commandEntryForDefinition(def))
-	}
-	return entries
 }
 
 func commandMenuGroupEntries() []control.CommandCatalogEntry {

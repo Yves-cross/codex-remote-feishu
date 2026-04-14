@@ -125,7 +125,7 @@ func (s *Service) commandMenuCatalogFromView(view control.FeishuCommandMenuView)
 	stage := commandMenuStage(strings.TrimSpace(view.Stage))
 	groupID := strings.TrimSpace(view.GroupID)
 	if groupID == "" {
-		return s.buildCommandMenuHomeCatalog(nil, stage)
+		return s.buildCommandMenuHomeCatalog(nil)
 	}
 	return s.buildCommandMenuGroupCatalog(nil, stage, groupID)
 }

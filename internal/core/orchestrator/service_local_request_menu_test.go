@@ -83,7 +83,7 @@ func TestMenuActionBuildsInteractiveCommandCatalogEvent(t *testing.T) {
 	}
 }
 
-func TestMenuActionDetachedHomepagePrioritizesListUseStatus(t *testing.T) {
+func TestMenuActionDetachedHomepageShowsGroupNavigationOnly(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 
@@ -98,17 +98,15 @@ func TestMenuActionDetachedHomepagePrioritizesListUseStatus(t *testing.T) {
 		t.Fatalf("expected command catalog, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if len(catalog.Sections) < 2 || catalog.Sections[0].Title != "全部分组" || catalog.Sections[1].Title != "常用操作" {
+	if len(catalog.Sections) != 1 || catalog.Sections[0].Title != "全部分组" {
 		t.Fatalf("unexpected detached home catalog: %#v", catalog)
 	}
-	got := firstCommands(catalog.Sections[1].Entries)
-	want := []string{"/list", "/use", "/status"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("detached home commands = %#v, want %#v", got, want)
+	if len(firstCommands(catalog.Sections[0].Entries)) != 0 {
+		t.Fatalf("expected home catalog to be pure group navigation, got %#v", catalog.Sections[0].Entries)
 	}
 }
 
-func TestMenuActionNormalHomepageHidesFollow(t *testing.T) {
+func TestMenuActionNormalSwitchTargetGroupHidesFollow(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
@@ -120,21 +118,22 @@ func TestMenuActionNormalHomepageHidesFollow(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		GatewayID:        "app-1",
+		Text:             "/menu switch_target",
 	})
 	catalog := commandCatalogFromEvent(t, events[0])
-	got := firstCommands(catalog.Sections[1].Entries)
-	want := []string{"/stop", "/steerall", "/new", "/reasoning", "/model", "/access"}
+	got := firstCommands(catalog.Sections[0].Entries)
+	want := []string{"/list", "/use", "/useall", "/detach"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("normal home commands = %#v, want %#v", got, want)
+		t.Fatalf("normal switch_target commands = %#v, want %#v", got, want)
 	}
 	for _, command := range got {
 		if command == "/follow" {
-			t.Fatalf("normal home should not expose /follow: %#v", got)
+			t.Fatalf("normal switch_target should not expose /follow: %#v", got)
 		}
 	}
 }
 
-func TestMenuActionVSCodeHomepageKeepsFollowBehindSettings(t *testing.T) {
+func TestMenuActionVSCodeSwitchTargetGroupShowsFollow(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	materializeVSCodeSurfaceForTest(svc, "surface-1")
@@ -146,12 +145,13 @@ func TestMenuActionVSCodeHomepageKeepsFollowBehindSettings(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		GatewayID:        "app-1",
+		Text:             "/menu switch_target",
 	})
 	catalog := commandCatalogFromEvent(t, events[0])
-	got := firstCommands(catalog.Sections[1].Entries)
-	want := []string{"/stop", "/steerall", "/reasoning", "/model", "/access", "/follow"}
+	got := firstCommands(catalog.Sections[0].Entries)
+	want := []string{"/list", "/use", "/useall", "/detach", "/follow"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("vscode home commands = %#v, want %#v", got, want)
+		t.Fatalf("vscode switch_target commands = %#v, want %#v", got, want)
 	}
 }
 

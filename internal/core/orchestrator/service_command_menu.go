@@ -38,17 +38,11 @@ func (s *Service) commandMenuStage(surface *state.SurfaceConsoleRecord) commandM
 	return commandMenuStageNormalWorking
 }
 
-func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecord, stage commandMenuStage) control.FeishuDirectCommandCatalog {
-	sections := []control.CommandCatalogSection{
-		{
-			Title:   "全部分组",
-			Entries: s.commandMenuGroupEntries(),
-		},
-		{
-			Title:   "常用操作",
-			Entries: s.commandMenuHomeEntries(stage),
-		},
-	}
+func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
+	sections := []control.CommandCatalogSection{{
+		Title:   "全部分组",
+		Entries: s.commandMenuGroupEntries(),
+	}}
 	return control.FeishuDirectCommandCatalog{
 		Title:        "命令菜单",
 		Interactive:  true,
@@ -60,7 +54,7 @@ func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecor
 func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleRecord, stage commandMenuStage, groupID string) control.FeishuDirectCommandCatalog {
 	group, ok := control.FeishuCommandGroupByID(groupID)
 	if !ok {
-		return s.buildCommandMenuHomeCatalog(surface, stage)
+		return s.buildCommandMenuHomeCatalog(surface)
 	}
 	entries := make([]control.CommandCatalogEntry, 0, 6)
 	for _, def := range control.FeishuCommandDefinitionsForGroup(groupID) {
@@ -90,39 +84,6 @@ func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleReco
 			CommandText: menuCommandText(""),
 		}},
 	}
-}
-
-func (s *Service) commandMenuHomeEntries(stage commandMenuStage) []control.CommandCatalogEntry {
-	commandIDs := []string{control.FeishuCommandList, control.FeishuCommandUse, control.FeishuCommandStatus}
-	switch stage {
-	case commandMenuStageNormalWorking:
-		commandIDs = []string{
-			control.FeishuCommandStop,
-			control.FeishuCommandSteerAll,
-			control.FeishuCommandNew,
-			control.FeishuCommandReasoning,
-			control.FeishuCommandModel,
-			control.FeishuCommandAccess,
-		}
-	case commandMenuStageVSCodeWorking:
-		commandIDs = []string{
-			control.FeishuCommandStop,
-			control.FeishuCommandSteerAll,
-			control.FeishuCommandReasoning,
-			control.FeishuCommandModel,
-			control.FeishuCommandAccess,
-			control.FeishuCommandFollow,
-		}
-	}
-	entries := make([]control.CommandCatalogEntry, 0, len(commandIDs))
-	for _, commandID := range commandIDs {
-		def, ok := control.FeishuCommandDefinitionByID(commandID)
-		if !ok {
-			continue
-		}
-		entries = append(entries, commandEntryForDefinition(def))
-	}
-	return entries
 }
 
 func (s *Service) commandMenuGroupEntries() []control.CommandCatalogEntry {

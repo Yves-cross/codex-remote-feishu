@@ -1155,13 +1155,11 @@ func TestCommandCatalogFromViewBuildsDetachedMenuHome(t *testing.T) {
 	if catalog.Title != "命令菜单" || !catalog.Interactive {
 		t.Fatalf("unexpected menu catalog: %#v", catalog)
 	}
-	if len(catalog.Sections) < 2 || catalog.Sections[0].Title != "全部分组" || catalog.Sections[1].Title != "常用操作" {
+	if len(catalog.Sections) != 1 || catalog.Sections[0].Title != "全部分组" {
 		t.Fatalf("unexpected menu sections: %#v", catalog.Sections)
 	}
-	got := firstCommandTexts(catalog.Sections[1].Entries)
-	want := []string{"/list", "/use", "/status"}
-	if fmt.Sprint(got) != fmt.Sprint(want) {
-		t.Fatalf("detached menu commands = %#v, want %#v", got, want)
+	if got := firstCommandTexts(catalog.Sections[0].Entries); len(got) != 0 {
+		t.Fatalf("detached menu home should only expose group navigation entries, got %#v", got)
 	}
 }
 
