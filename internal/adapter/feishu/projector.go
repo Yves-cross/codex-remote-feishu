@@ -685,10 +685,10 @@ func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
 	}
 	parts := []string{fmt.Sprintf("**本轮用时** %s", formatElapsedDuration(summary.Elapsed))}
 	if usage := summary.Usage; usage != nil {
-		parts = append(parts, fmt.Sprintf("**本轮累计** %s", formatTokenUsageSummary(usage)))
+		parts = append(parts, fmt.Sprintf("**本轮累计** %s", formatTokenUsageSummary(usage, false)))
 	}
 	if usage := summary.ThreadUsage; usage != nil {
-		parts = append(parts, fmt.Sprintf("**线程累计** %s", formatTokenUsageSummary(usage)))
+		parts = append(parts, fmt.Sprintf("**线程累计** %s", formatTokenUsageSummary(usage, true)))
 	}
 	contextInputTokens := 0
 	if usage := summary.ThreadUsage; usage != nil {
@@ -702,23 +702,46 @@ func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {
 	return strings.Join(parts, "  ")
 }
 
-func formatTokenUsageSummary(usage *control.FinalTurnUsage) string {
+func formatTokenUsageSummary(usage *control.FinalTurnUsage, compact bool) string {
 	if usage == nil {
 		return ""
 	}
 	return strings.Join([]string{
-		fmt.Sprintf("输入 %d", usage.InputTokens),
-		fmt.Sprintf("缓存 %s", formatCachedUsageSummary(usage.CachedInputTokens, usage.InputTokens)),
-		fmt.Sprintf("输出 %d", usage.OutputTokens),
-		fmt.Sprintf("推理 %d", usage.ReasoningOutputTokens),
+		fmt.Sprintf("输入 %s", formatTokenUsageValue(usage.InputTokens, compact)),
+		fmt.Sprintf("缓存 %s", formatCachedUsageSummary(usage.CachedInputTokens, usage.InputTokens, compact)),
+		fmt.Sprintf("输出 %s", formatTokenUsageValue(usage.OutputTokens, compact)),
+		fmt.Sprintf("推理 %s", formatTokenUsageValue(usage.ReasoningOutputTokens, compact)),
 	}, "  ")
 }
 
-func formatCachedUsageSummary(cachedInput, input int) string {
+func formatCachedUsageSummary(cachedInput, input int, compact bool) string {
+	value := formatTokenUsageValue(cachedInput, compact)
 	if input <= 0 {
-		return fmt.Sprintf("%d", cachedInput)
+		return value
 	}
-	return fmt.Sprintf("%d (%.1f%%)", cachedInput, float64(cachedInput)*100/float64(input))
+	return fmt.Sprintf("%s (%.1f%%)", value, float64(cachedInput)*100/float64(input))
+}
+
+func formatTokenUsageValue(value int, compact bool) string {
+	if !compact {
+		return fmt.Sprintf("%d", value)
+	}
+	type unit struct {
+		suffix string
+		base   float64
+	}
+	units := []unit{
+		{suffix: "B", base: 1_000_000_000},
+		{suffix: "M", base: 1_000_000},
+		{suffix: "K", base: 1_000},
+	}
+	floatValue := float64(value)
+	for _, item := range units {
+		if value >= int(item.base) {
+			return fmt.Sprintf("%.1f%s", floatValue/item.base, item.suffix)
+		}
+	}
+	return fmt.Sprintf("%d", value)
 }
 
 func formatApproxContextLeftSummary(input int, modelContextWindow *int) string {

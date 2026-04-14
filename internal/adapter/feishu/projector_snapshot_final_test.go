@@ -389,6 +389,45 @@ func TestProjectFinalAssistantBlockShowsTurnUsageFooter(t *testing.T) {
 	}
 }
 
+func TestProjectFinalAssistantBlockCompactsThreadUsageFooter(t *testing.T) {
+	projector := NewProjector()
+	contextWindow := 1000000000
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-usage-compact",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成。",
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed:            2100 * time.Millisecond,
+			ModelContextWindow: &contextWindow,
+			Usage: &control.FinalTurnUsage{
+				InputTokens:           466989,
+				CachedInputTokens:     395648,
+				OutputTokens:          1803,
+				ReasoningOutputTokens: 761,
+			},
+			ThreadUsage: &control.FinalTurnUsage{
+				InputTokens:           250741509,
+				CachedInputTokens:     233287808,
+				OutputTokens:          912728,
+				ReasoningOutputTokens: 415546,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(ops[0].CardElements) != 1 {
+		t.Fatalf("expected standalone usage footer, got %#v", ops[0].CardElements)
+	}
+	if ops[0].CardElements[0]["content"] != "**本轮用时** 2秒  **本轮累计** 输入 466989  缓存 395648 (84.7%)  输出 1803  推理 761  **线程累计** 输入 250.7M  缓存 233.3M (93.0%)  输出 912.7K  推理 415.5K  **上下文剩余(估算)** 74.9%" {
+		t.Fatalf("unexpected compact usage footer: %#v", ops[0].CardElements[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockShowsZeroInputWithoutCacheRatio(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
