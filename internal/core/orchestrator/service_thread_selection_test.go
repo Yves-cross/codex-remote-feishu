@@ -119,17 +119,15 @@ func TestPresentThreadSelectionIncludesStableShortIDInSubtitle(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 	})
 	if len(events) != 1 {
-		t.Fatalf("expected one thread selection prompt, got %#v", events)
+		t.Fatalf("expected one target picker event, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 1 {
-		t.Fatalf("expected one thread selection prompt, got %#v", events)
+	view := targetPickerFromEvent(t, events[0])
+	if len(view.SessionOptions) != 2 {
+		t.Fatalf("expected one thread plus new-thread option, got %#v", view.SessionOptions)
 	}
-	if prompt.Title != "最近会话" {
-		t.Fatalf("expected recent session prompt title, got %#v", prompt)
-	}
-	if prompt.Options[0].Subtitle != "可接管" {
-		t.Fatalf("expected attached /use subtitle to only show handoff status, got %#v", prompt.Options[0])
+	option, ok := targetPickerSessionOption(view, targetPickerThreadValue("019d56f0-de5e-7943-bc9a-18c42ef11acb"))
+	if !ok || option.Label != "dl · 未命名会话" || strings.Contains(option.Label, "…") {
+		t.Fatalf("expected unnamed duplicate session to avoid short id leakage, got %#v", option)
 	}
 }
 
@@ -164,20 +162,14 @@ func TestPresentThreadSelectionShowsPagedMostRecentThreads(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 6 {
-		t.Fatalf("expected first page of recent threads, got %#v", prompt.Options)
+	view := targetPickerFromEvent(t, events[0])
+	if len(view.SessionOptions) != 7 {
+		t.Fatalf("expected all recent threads plus new-thread option, got %#v", view.SessionOptions)
 	}
-	if prompt.Title != "最近会话" || prompt.Hint != "" || prompt.Page != 1 || prompt.TotalPages != 1 {
-		t.Fatalf("unexpected recent prompt metadata: %#v", prompt)
-	}
-	if prompt.Options[0].OptionID != "thread-6" || prompt.Options[5].OptionID != "thread-1" {
-		t.Fatalf("expected most recent sessions first, got %#v", prompt.Options)
-	}
-	if prompt.Options[5].ActionKind != "" {
-		t.Fatalf("did not expect trailing synthetic action, got %#v", prompt.Options[5])
+	if view.SelectedSessionValue != targetPickerThreadValue("thread-6") {
+		t.Fatalf("expected most recent session to be selected by default, got %#v", view)
 	}
 }
 
@@ -212,17 +204,14 @@ func TestPresentScopedThreadSelectionShowsAllSessionsInCurrentWorkspace(t *testi
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "当前工作区全部会话" || len(prompt.Options) != 6 {
-		t.Fatalf("expected all current-workspace sessions, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUse || view.SelectedWorkspaceKey != "/data/dl" {
+		t.Fatalf("expected scoped /use to stay on current workspace, got %#v", view)
 	}
-	if prompt.Options[0].OptionID != "thread-6" || prompt.Options[5].OptionID != "thread-1" {
-		t.Fatalf("expected scoped-all prompt to keep recency order, got %#v", prompt.Options)
-	}
-	if prompt.Page != 1 || prompt.TotalPages != 1 || prompt.ViewMode != string(control.FeishuThreadSelectionNormalScopedAll) {
-		t.Fatalf("expected paged scoped prompt metadata, got %#v", prompt)
+	if len(view.SessionOptions) != 7 || view.SelectedSessionValue != targetPickerThreadValue("thread-6") {
+		t.Fatalf("expected current-workspace sessions in recency order plus new-thread option, got %#v", view.SessionOptions)
 	}
 }
 
@@ -249,20 +238,14 @@ func TestPresentAllThreadSelectionShowsAllSessionsByRecency(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "全部会话" || prompt.Hint != "" || prompt.Layout != "workspace_grouped_useall" {
-		t.Fatalf("unexpected all-session prompt metadata: %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUseAll || view.SelectedWorkspaceKey != "/data/dl" {
+		t.Fatalf("expected attached /useall to keep current workspace selected, got %#v", view)
 	}
-	if prompt.ContextTitle != "当前工作区" || !testutil.SamePath(prompt.ContextKey, "/data/dl") || !strings.Contains(prompt.ContextText, "dl ·") {
-		t.Fatalf("expected attached /useall prompt to expose current workspace summary, got %#v", prompt)
-	}
-	if len(prompt.Options) != 0 {
-		t.Fatalf("expected grouped overview to defer current workspace threads to context action, got %#v", prompt.Options)
-	}
-	if prompt.Page != 1 || prompt.TotalPages != 1 {
-		t.Fatalf("expected single-page grouped overview, got %#v", prompt)
+	if len(view.WorkspaceOptions) != 1 || len(view.SessionOptions) != 3 {
+		t.Fatalf("expected current workspace threads plus new-thread option, got %#v", view)
 	}
 }
 
@@ -297,22 +280,11 @@ func TestPresentAllThreadSelectionUsesThreeWorkspaceGroupsPerPage(t *testing.T) 
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "全部会话" || prompt.Layout != "workspace_grouped_useall" {
-		t.Fatalf("unexpected prompt metadata: %#v", prompt)
-	}
-	if len(prompt.Options) != 3 {
-		t.Fatalf("expected first page with three workspace groups, got %#v", prompt.Options)
-	}
-	for index, want := range []string{"thread-6", "thread-5", "thread-4"} {
-		if prompt.Options[index].OptionID != want {
-			t.Fatalf("expected recent workspace thread order, got %#v", prompt.Options)
-		}
-	}
-	if prompt.Page != 1 || prompt.TotalPages != 2 {
-		t.Fatalf("expected paged workspace-group prompt, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUseAll || len(view.WorkspaceOptions) != 6 {
+		t.Fatalf("expected all workspaces in a single picker, got %#v", view)
 	}
 }
 
@@ -406,19 +378,11 @@ func TestPresentAllThreadWorkspacesUsesPagedWorkspaceOverview(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 3 {
-		t.Fatalf("expected first overview page with three workspace groups, got %#v", prompt.Options)
-	}
-	for index, want := range []string{"thread-6", "thread-5", "thread-4"} {
-		if prompt.Options[index].OptionID != want {
-			t.Fatalf("expected paged workspace order, got %#v", prompt.Options)
-		}
-	}
-	if prompt.Page != 1 || prompt.TotalPages != 2 {
-		t.Fatalf("expected paged workspace overview metadata, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUseAll || len(view.WorkspaceOptions) != 6 {
+		t.Fatalf("expected all workspaces in unified target picker, got %#v", view)
 	}
 }
 
@@ -476,17 +440,14 @@ func TestPresentAllThreadSelectionDoesNotCountCurrentWorkspaceAgainstGroupLimit(
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if !testutil.SamePath(prompt.ContextKey, "/data/dl/current") || prompt.ContextTitle != "当前工作区" {
-		t.Fatalf("expected current workspace context, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if !testutil.SamePath(view.SelectedWorkspaceKey, "/data/dl/current") {
+		t.Fatalf("expected current workspace to remain selected, got %#v", view)
 	}
-	if len(prompt.Options) != 3 {
-		t.Fatalf("expected current workspace context plus first page of three other groups, got %#v", prompt.Options)
-	}
-	if prompt.Page != 1 || prompt.TotalPages != 2 {
-		t.Fatalf("expected paged grouped prompt metadata, got %#v", prompt)
+	if len(view.WorkspaceOptions) != 6 {
+		t.Fatalf("expected current workspace plus all other groups in unified picker, got %#v", view.WorkspaceOptions)
 	}
 }
 
@@ -543,17 +504,17 @@ func TestShowWorkspaceThreadsDisplaysSingleWorkspaceAllSessions(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected workspace selection prompt, got %#v", events)
+		t.Fatalf("expected workspace target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Layout != "workspace_grouped_useall" || prompt.Title != "web 全部会话" || len(prompt.Options) != 3 {
-		t.Fatalf("unexpected workspace-all prompt: %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceWorkspace || view.SelectedWorkspaceKey != "/data/dl/web" {
+		t.Fatalf("unexpected workspace target picker: %#v", view)
 	}
-	if prompt.Options[0].OptionID != "thread-2" || prompt.Options[1].OptionID != "thread-3" || prompt.Options[2].OptionID != "thread-1" {
-		t.Fatalf("expected workspace-all prompt to keep recency order, got %#v", prompt.Options)
+	if len(view.SessionOptions) != 4 {
+		t.Fatalf("expected workspace sessions plus new-thread option, got %#v", view.SessionOptions)
 	}
-	if prompt.ContextKey != "/data/dl/web" || prompt.Page != 1 || prompt.TotalPages != 1 {
-		t.Fatalf("expected workspace detail metadata, got %#v", prompt)
+	if view.SelectedSessionValue != targetPickerThreadValue("thread-2") {
+		t.Fatalf("expected workspace target picker to keep recency order, got %#v", view)
 	}
 }
 

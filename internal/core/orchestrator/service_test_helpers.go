@@ -55,6 +55,46 @@ func selectionPromptFromEvent(t *testing.T, event control.UIEvent) *control.Feis
 	return prompt
 }
 
+func targetPickerFromEvent(t *testing.T, event control.UIEvent) *control.FeishuTargetPickerView {
+	t.Helper()
+	if event.FeishuTargetPickerView == nil {
+		t.Fatalf("expected target picker view, got %#v", event)
+	}
+	return event.FeishuTargetPickerView
+}
+
+func singleTargetPickerEvent(t *testing.T, events []control.UIEvent) *control.FeishuTargetPickerView {
+	t.Helper()
+	if len(events) != 1 {
+		t.Fatalf("expected exactly one event, got %#v", events)
+	}
+	return targetPickerFromEvent(t, events[0])
+}
+
+func targetPickerWorkspaceOption(view *control.FeishuTargetPickerView, value string) (control.FeishuTargetPickerWorkspaceOption, bool) {
+	if view == nil {
+		return control.FeishuTargetPickerWorkspaceOption{}, false
+	}
+	for _, option := range view.WorkspaceOptions {
+		if option.Value == value {
+			return option, true
+		}
+	}
+	return control.FeishuTargetPickerWorkspaceOption{}, false
+}
+
+func targetPickerSessionOption(view *control.FeishuTargetPickerView, value string) (control.FeishuTargetPickerSessionOption, bool) {
+	if view == nil {
+		return control.FeishuTargetPickerSessionOption{}, false
+	}
+	for _, option := range view.SessionOptions {
+		if option.Value == value {
+			return option, true
+		}
+	}
+	return control.FeishuTargetPickerSessionOption{}, false
+}
+
 func eventCommandCatalog(event control.UIEvent) (*control.FeishuDirectCommandCatalog, bool) {
 	if event.FeishuDirectCommandCatalog != nil {
 		return event.FeishuDirectCommandCatalog, true

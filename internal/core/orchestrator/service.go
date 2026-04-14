@@ -27,6 +27,7 @@ type Service struct {
 	nextPromptID         int
 	nextRequestCommandID int
 	nextPathPickerID     int
+	nextTargetPickerID   int
 	nextHeadlessID       int
 	handoffUntil         map[string]time.Time
 	pausedUntil          map[string]time.Time
@@ -345,7 +346,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	switch action.Kind {
 	case control.ActionListInstances:
 		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
-			events = s.presentWorkspaceSelection(surface)
+			events = s.openTargetPicker(surface, control.TargetPickerRequestSourceList, "", false)
 			break
 		}
 		events = s.presentInstanceSelection(surface)
@@ -365,6 +366,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.attachWorkspace(surface, action.WorkspaceKey)
 	case control.ActionCreateWorkspace:
 		events = s.openCreateWorkspacePicker(surface)
+	case control.ActionTargetPickerConfirm:
+		events = s.handleTargetPickerConfirm(surface, action.PickerID, action.ActorUserID, action.WorkspaceKey, action.TargetPickerValue)
 	case control.ActionShowCommandHelp:
 		events = []control.UIEvent{s.feishuDirectCommandCatalogEvent(surface, "help", "", control.FeishuCommandHelpCatalog())}
 	case control.ActionDebugCommand:

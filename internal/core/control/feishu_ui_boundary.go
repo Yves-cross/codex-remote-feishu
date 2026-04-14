@@ -6,10 +6,11 @@ package control
 type FeishuUIDTOwner string
 
 const (
-	FeishuUIDTOwnerDirectDTO  FeishuUIDTOwner = "feishu_direct_dto"
-	FeishuUIDTOwnerSelection  FeishuUIDTOwner = "feishu_selection_view"
-	FeishuUIDTOwnerCommand    FeishuUIDTOwner = "feishu_command_view"
-	FeishuUIDTOwnerPathPicker FeishuUIDTOwner = "feishu_path_picker_view"
+	FeishuUIDTOwnerDirectDTO    FeishuUIDTOwner = "feishu_direct_dto"
+	FeishuUIDTOwnerSelection    FeishuUIDTOwner = "feishu_selection_view"
+	FeishuUIDTOwnerCommand      FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerPathPicker   FeishuUIDTOwner = "feishu_path_picker_view"
+	FeishuUIDTOwnerTargetPicker FeishuUIDTOwner = "feishu_target_picker_view"
 )
 
 // FeishuUICallbackPayloadOwner identifies the layer that owns callback payload
@@ -93,4 +94,16 @@ type FeishuUIPathPickerContext struct {
 	RootPath     string
 	CurrentPath  string
 	SelectedPath string
+}
+
+// FeishuUITargetPickerContext describes the stable query/policy inputs backing
+// the unified workspace/session target picker card.
+type FeishuUITargetPickerContext struct {
+	DTOOwner             FeishuUIDTOwner
+	Surface              FeishuUISurfaceContext
+	PickerID             string
+	Source               TargetPickerRequestSource
+	Title                string
+	SelectedWorkspaceKey string
+	SelectedSessionValue string
 }

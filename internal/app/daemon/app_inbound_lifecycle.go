@@ -206,6 +206,8 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "解除接管", "/detach"
 	case control.ActionPathPickerEnter, control.ActionPathPickerUp, control.ActionPathPickerSelect, control.ActionPathPickerConfirm, control.ActionPathPickerCancel:
 		return "路径选择器卡片动作", ""
+	case control.ActionTargetPickerSelectWorkspace, control.ActionTargetPickerSelectSession, control.ActionTargetPickerConfirm:
+		return "目标选择卡片动作", ""
 	default:
 		return "", ""
 	}
@@ -241,6 +243,10 @@ func rejectedInboundIntentLabel(intent control.FeishuUIIntent) (label, command s
 		return "返回上一级目录", ""
 	case control.FeishuUIIntentPathPickerSelect:
 		return "选择路径", ""
+	case control.FeishuUIIntentTargetPickerSelectWorkspace:
+		return "切换工作区候选", ""
+	case control.FeishuUIIntentTargetPickerSelectSession:
+		return "切换会话候选", ""
 	case control.FeishuUIIntentPathPickerConfirm:
 		return "确认路径选择", ""
 	case control.FeishuUIIntentPathPickerCancel:

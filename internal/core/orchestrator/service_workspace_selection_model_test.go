@@ -41,23 +41,14 @@ func TestListWorkspacesShowsPagedEntries(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected one workspace selection prompt, got %#v", events)
+		t.Fatalf("expected one target picker event, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "工作区列表" {
-		t.Fatalf("unexpected prompt title: %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceList || view.Title != "选择工作区与会话" {
+		t.Fatalf("unexpected target picker title: %#v", view)
 	}
-	if prompt.Page != 1 || prompt.TotalPages != 1 {
-		t.Fatalf("expected single-page workspace prompt, got %#v", prompt)
-	}
-	if len(prompt.Options) != 7 {
-		t.Fatalf("expected all workspaces on first page, got %#v", prompt.Options)
-	}
-	if prompt.Options[5].ActionKind != "" {
-		t.Fatalf("did not expect synthetic expand action in paged list, got %#v", prompt.Options[5])
-	}
-	if prompt.Options[6].ActionKind != "create_workspace" {
-		t.Fatalf("expected create-workspace action at end, got %#v", prompt.Options[6])
+	if len(view.WorkspaceOptions) != 6 {
+		t.Fatalf("expected all workspaces in a single target picker, got %#v", view.WorkspaceOptions)
 	}
 }
 

@@ -344,7 +344,7 @@ func TestPathPickerExpiredGateAutoClearsOnRouteAction(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ActorUserID:      "user-1",
 	})
-	if len(listEvents) != 1 || listEvents[0].FeishuSelectionView == nil {
+	if len(listEvents) != 1 || listEvents[0].FeishuTargetPickerView == nil {
 		t.Fatalf("expected /list to proceed after picker expiry, got %#v", listEvents)
 	}
 	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
@@ -406,7 +406,7 @@ func TestPathPickerBlocksRouteMutationUntilCancelled(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ActorUserID:      "user-1",
 	})
-	if len(listEvents) != 1 || listEvents[0].FeishuSelectionView == nil {
+	if len(listEvents) != 1 || listEvents[0].FeishuTargetPickerView == nil {
 		t.Fatalf("expected /list to work again after cancel, got %#v", listEvents)
 	}
 }

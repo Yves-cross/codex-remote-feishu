@@ -186,6 +186,18 @@ func (s *Service) buildFeishuPathPickerContextFromView(surface *state.SurfaceCon
 	}
 }
 
+func (s *Service) buildFeishuTargetPickerContextFromView(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView) *control.FeishuUITargetPickerContext {
+	return &control.FeishuUITargetPickerContext{
+		DTOOwner:             control.FeishuUIDTOwnerTargetPicker,
+		Surface:              s.buildFeishuUISurfaceContext(surface),
+		PickerID:             strings.TrimSpace(view.PickerID),
+		Source:               view.Source,
+		Title:                strings.TrimSpace(view.Title),
+		SelectedWorkspaceKey: strings.TrimSpace(view.SelectedWorkspaceKey),
+		SelectedSessionValue: strings.TrimSpace(view.SelectedSessionValue),
+	}
+}
+
 func (s *Service) feishuDirectSelectionPromptEvent(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt) control.UIEvent {
 	return control.UIEvent{
 		Kind:                        control.UIEventFeishuDirectSelectionPrompt,
@@ -222,5 +234,16 @@ func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view 
 		InlineReplaceCurrentCard: inline,
 		FeishuPathPickerView:     &view,
 		FeishuPathPickerContext:  s.buildFeishuPathPickerContextFromView(surface, view),
+	}
+}
+
+func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView, inline bool) control.UIEvent {
+	return control.UIEvent{
+		Kind:                      control.UIEventFeishuTargetPicker,
+		GatewayID:                 surface.GatewayID,
+		SurfaceSessionID:          surface.SurfaceSessionID,
+		InlineReplaceCurrentCard:  inline,
+		FeishuTargetPickerView:    &view,
+		FeishuTargetPickerContext: s.buildFeishuTargetPickerContextFromView(surface, view),
 	}
 }

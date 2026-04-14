@@ -186,6 +186,7 @@ type SurfaceConsoleRecord struct {
 	PreparedAt           time.Time
 	PromptOverride       ModelConfigRecord
 	PendingHeadless      *HeadlessLaunchRecord
+	ActiveTargetPicker   *ActiveTargetPickerRecord
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
 	ActiveCommandCapture *CommandCaptureRecord
@@ -247,6 +248,7 @@ type HeadlessLaunchRecord struct {
 	ExpiresAt        time.Time
 	Status           HeadlessLaunchStatus
 	Purpose          HeadlessLaunchPurpose
+	PrepareNewThread bool
 	PID              int
 	SourceInstanceID string
 	AutoRestore      bool

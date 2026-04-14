@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-14`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、`/steerall` 的批量并入当前 running turn 入口、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff、normal `/list` 中“从目录新建工作区”的 fresh-workspace headless 启动路径，以及 `/debug` `/upgrade` 的菜单入口；同时记录 `/use` / `/useall` 的 scoped/global 展示规则、normal `/list` 对 recoverable-only workspace 的恢复入口、Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、`/steerall` 的批量并入当前 running turn 入口、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（工作区下拉 + 会话下拉 + confirm，recoverable-only workspace 也可经由 `新建会话` 走 fresh headless `PrepareNewThread` 启动路径）；同时记录 Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
 
 ## 1. 文档定位
 
@@ -41,6 +41,9 @@
 24. [internal/app/daemon/app_vscode_migration.go](../../internal/app/daemon/app_vscode_migration.go)
 25. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
 26. [internal/core/orchestrator/service_path_picker.go](../../internal/core/orchestrator/service_path_picker.go)
+27. [internal/core/orchestrator/service_target_picker.go](../../internal/core/orchestrator/service_target_picker.go)
+28. [internal/core/state/target_picker.go](../../internal/core/state/target_picker.go)
+29. [internal/core/control/feishu_target_picker.go](../../internal/core/control/feishu_target_picker.go)
 
 ## 2. 审计前提
 
@@ -120,16 +123,18 @@ surface 不是单一枚举，而是五层正交状态叠加。
 4. 若当前仍有 live remote work，则 `/mode` 直接拒绝，并明确提示用户 `/stop` 或 `/detach`。
 5. `Abandoning` 仍是更高优先级 gate；但 `PendingHeadless` 不再阻塞 `/mode`，用户可以直接切到 `vscode` 终止恢复流程。
 6. 当前 `/list` 已按 mode 分流：
-   1. normal mode 列 workspace，并走 workspace attach/switch。
+   1. normal mode 打开 unified target picker，由用户在同一张卡里选择工作区与会话后再确认。
    2. vscode mode 继续列在线 VS Code instance。
 7. `normal mode` 当前已经完成这一轮产品收窄：
-   1. detached `/use` 现在直接等同 detached `/useall`：都会先展示 cross-workspace 最近 5 个 workspace 组，并可卡片内展开全部工作区。
-   2. attached `/use` 现在只展示当前 workspace 的最近 5 个会话；若超过 5 个，会在卡片底部追加一个 `show_scoped_threads` 按钮进入“当前工作区全部会话”。
-   3. attached `/useall` 现在改成 cross-workspace 的 workspace-group 总览：默认只显示最近 5 个非当前 workspace 组，可进一步 `show_all_thread_workspaces` 展开全部；卡片里的 `use_thread` 按钮会显式携带 `allow_cross_workspace=true`，允许直接切到其他 workspace。
-   4. normal `/list` 现在固定带一个 `create_workspace` 入口：目录确认后，若已有可接管 online instance 则直接复用 attach；若没有，则启动 daemon-owned managed headless，把该目录 bootstrap 成 fresh workspace。
-   5. fresh workspace bootstrap 成功后不会自动选 thread，而是落到现有 `R1 AttachedUnbound`；因此下一条普通文本继续复用 implicit new-thread 路径创建新会话。
-   6. `/new` 已变成 workspace-owned prepared state。
-   7. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
+   1. `/list` / `/use` / `/useall` 都收敛到同一张 target picker 卡：先选工作区，再选会话，最后由 confirm 按钮一次性提交真实切换。
+   2. 工作区候选只保留当前可操作的 workspace：可接管 online workspace，以及带可恢复会话的 recoverable-only workspace；busy / 不可接管 workspace 不再单独列在主路径里。
+   3. 会话候选始终基于当前选中的 workspace 重新生成，并固定附带一项 `新建会话`。
+   4. `target_picker_select_workspace` / `target_picker_select_session` 只刷新同一张卡，不会立即 attach、switch 或创建新会话。
+   5. confirm 既有会话时，会复用现有 `/use` / cross-workspace attach 语义；必要时仍会走 existing visible / reusable headless / create headless 的既有 resolver。
+   6. confirm `新建会话` 时，若目标 workspace 已 attach 或可直接 attach，则直接进入（或先 attach 再进入）`R5 NewThreadReady`；若目标 workspace 只剩 recoverable-only 语义，则启动 fresh managed headless，并在连接成功后直接进入 `R5`。
+   7. `show_threads` / `show_all_threads` / `show_scoped_threads` / `show_workspace_threads` / `show_all_workspaces` / `show_recent_workspaces` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` 在 normal mode 下当前都只负责“重新打开或刷新 target picker”，不再维持旧的分页 selection-card 主路径。
+   8. `/new` 已变成 workspace-owned prepared state。
+   9. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
 8. `vscode mode` 当前已经完成这一轮收窄：
    1. `/list` attach/switch instance 后默认进入 follow-first，而不是落回 pinned/unbound。
    2. 默认跟随目标只看 `ObservedFocusedThreadID`，不再回落 `ActiveThreadID`。
@@ -258,46 +263,48 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 ## 4. 当前已实现的不变量
 
-### 4.1 normal mode `/list` 先选 workspace，再落到 `R1 AttachedUnbound`
+### 4.1 normal mode `/list` / `/use` / `/useall` 先打开 target picker，confirm 后再改 route
 
-当前 normal mode 的 `/list` 已经不再列 instance，而是列 workspace。
+当前 normal mode 的 `/list` / `/use` / `/useall` 已经收敛成同一套 `FeishuTargetPicker` 工作流。
 
 对应实现里：
 
-1. `presentWorkspaceSelection()` 优先按所有在线 instance 的可见 thread `CWD` 归并 workspace。
-   1. 只有当某个 instance 当前完全没有可见 thread 时，才回退到该 instance 的 `WorkspaceKey/WorkspaceRoot`。
-   2. 这样 broad headless pool 不会再把多个真实 workspace 压扁成一个实例级根目录。
-   3. 对 `normal mode` / managed headless 来说，这里的“可见 thread”当前还要求 `thread.CWD` 必须落在该 instance 的 `WorkspaceRoot` 之下；若某个 `threads.snapshot` 混入了别的 workspace 的 thread，它不会再参与 workspace 归并、`/use` 候选或 current/free-visible 解析。
-2. normal mode `/list` 的 Feishu 卡片当前走专用 `grouped_attach_workspace` 布局，不再复用通用 selection 模板。
-   1. 若 surface 当前已 attach workspace，会先在卡片顶部投影一个“当前工作区”摘要。
-   2. 当前工作区摘要只显示 `workspace label + 最近活跃时间 + /use / 直接发文本（也可 /new）提示`，不会再把当前 workspace 混进可点击列表。
-   3. 默认只展示其余 workspace 中最近使用的 5 个；若超过 5 个，会在卡片底部追加一个 `show_all_workspaces` 按钮切到“全部工作区”视图。
-   4. “全部工作区”视图会保留同样的 current-summary 与分组样式，并在底部追加一个 `show_recent_workspaces` 按钮返回默认视图。
-   5. 其余 workspace 按“可接管 / 其他状态”分组展示；按钮使用全宽动作前缀文案，例如 `接管 · web`、`切换 · web`、`不可接管 · ops`。
-   6. 每个 workspace 的第二行状态当前压缩为短元信息，例如 `2分前 · 有 VS Code 活动`、`1小时前 · 当前被其他飞书会话接管`。
-   7. recent/all 视图里的 workspace 选择范围都按该 workspace 下可见 thread 的最新活跃时间倒序裁剪；无时间时再回退到 `workspaceKey` 字典序。
-3. normal mode `/list` 卡片按钮当前分成两类：
-   1. workspace 仍有可接管 online instance 时，走 `attach_workspace -> ActionAttachWorkspace`。
-   2. workspace 只剩可恢复的 persisted/offline thread、但当前没有可接管 online instance 时，走 `show_workspace_threads -> ActionShowWorkspaceThreads`，先展示该 workspace 的全部可恢复会话，再复用现有 `/use` 恢复链路。
-4. 同一张 `/list` 卡片现在还固定追加一个 `create_workspace -> ActionCreateWorkspace` 入口：
-   1. 点击后进入目录模式 `PathPicker`。
-   2. confirm 后若 `resolveWorkspaceAttachInstance()` 能找到在线实例，则直接复用 `attachWorkspace()`。
-   3. 若当前没有可复用实例，则进入 fresh-workspace `PendingHeadless` 启动路径。
-5. `attachWorkspace()` 在 normal mode 下先做 `workspaceClaims`，再按“当前 instance / free instance / 当前 workspace 可见 thread 数 / exact workspace match”选择一个可接管的 online instance 落到该 workspace。
-6. attach / switch 成功后，统一进入 `R1 AttachedUnbound`，不再复用默认 thread 自动 pin。
-
-同时，`attachInstance()`、`attachSurfaceToKnownThread()` 与 `startHeadlessForResolvedThread()` 在 normal mode 下仍然会先走 `workspaceClaims`，再进入现有 `instanceClaims` / `threadClaims`。
+1. `targetPickerWorkspaceEntries()` 仍以当前可操作 workspace 为候选源。
+   1. 在线实例先按可见 thread 的 `CWD` 归并 workspace；只有当某个 instance 当前完全没有可见 thread 时，才回退到该 instance 的 `WorkspaceKey/WorkspaceRoot`。
+   2. merged thread views / persisted recent threads 仍会把 recoverable-only workspace 补进候选。
+   3. 仍会过滤 busy workspace，以及既不能 attach 也没有 recoverable thread 支撑的 workspace。
+2. `/list` 的直接动作，以及 normal mode 下的 `show_*` 同上下文导航，现在都会产出 `UIEventFeishuTargetPicker`。
+   1. 主卡固定是 `工作区下拉 + 会话下拉 + confirm 按钮`。
+   2. `source=list/use/useall/workspace` 只影响标题、默认 workspace 和默认 session，不再决定不同卡片布局。
+   3. 工作区下拉只显示当前可操作的 workspace；busy / 不可接管 workspace 不再单独列在主路径里。
+3. 会话下拉始终基于当前选中的 workspace 动态重建。
+   1. 先列该 workspace 下当前可接管或可恢复的 thread。
+   2. 最后一项固定追加 `新建会话`。
+   3. 若 surface 当前已经在该 workspace 的 `R5 NewThreadReady`，默认选中 `新建会话`；否则优先当前 thread，再回退到第一个可恢复 thread。
+4. 选择工作区或会话时，只会刷新 target picker 本身，不会立即 attach / switch / create。
+   1. `target_picker_select_workspace`
+   2. `target_picker_select_session`
+   3. 这两类回调都属于 same-context pure navigation，满足 daemon freshness 时会 inline replace 当前卡。
+5. 真正的产品状态变化只发生在 `target_picker_confirm`。
+   1. 选既有会话时，复用现有 `/use` / `use_thread` / cross-workspace attach 语义；必要时仍会走 existing visible / reusable headless / create headless 的既有 resolver。
+   2. 选 `新建会话` 且目标 workspace 已 attach 或可直接 attach 时，会直接进入（或先 attach 再进入）`R5 NewThreadReady`。
+   3. 选 `新建会话` 且目标 workspace 只剩 recoverable-only 语义时，会启动 fresh managed headless，并把 `PrepareNewThread=true` 记入 `PendingHeadless`；实例连回后直接进入 `R5`，不再先停在 `R1`。
+6. `target_picker_confirm` 当前还有一条显式防呆。
+   1. 若用户按下确认时，工作区或会话候选已经变化到不再包含原选择，服务端不会再 silent fallback 到别的默认候选。
+   2. 当前行为是追加一张最新 target picker + `target_picker_selection_changed` notice，要求用户在最新卡片上重新确认。
+7. 旧的 normal-mode grouped workspace/thread selection cards 不再是主路径。
+   1. `ActionCreateWorkspace` 仍保留 transport 兼容，但当前 normal `/list` 主卡不再默认暴露“从目录新建工作区”入口。
+   2. `show_all_workspaces` / `show_recent_workspaces` / `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` 在 normal mode 下当前都退化成“用指定 source / workspace 重新打开 target picker”的兼容导航入口。
+8. confirm 后真正 attach / switch 时，`attachWorkspace()`、`attachSurfaceToKnownThread()` 与 `startHeadlessForResolvedThread()` 在 normal mode 下仍然会先走 `workspaceClaims`，再进入现有 `instanceClaims` / `threadClaims`。
 
 结果：
 
 1. 同一个 workspace 当前最多只允许一个 normal-mode surface 占有。
-2. 第二个 normal-mode surface 如果试图通过 `/list` attach/switch 到同 workspace，或 `/use` / headless 恢复到该 workspace，会直接收到 `workspace_busy`。
+2. 第二个 normal-mode surface 如果试图通过 target picker attach/switch 到同 workspace，或通过 `/use` / headless 恢复到该 workspace，会直接收到 `workspace_busy`。
 3. 同一个 instance 仍然只能被一个飞书 surface attach；也就是说 instance claim 还在，只是已经退回到 workspace claim 之后。
 4. 不会进入“workspace 仲裁层已经冲突，但仍然 attach 成功”的半 attach 状态。
-5. normal mode 的 `/list` attach/switch 不会自动抢默认 thread；用户会明确落到 `R1`，然后继续 `/use`、点 thread 卡片，或直接发送文本开启新会话（等价隐式 `/new` 首条文本路径）。
-6. fresh-workspace headless 启动成功后也复用这条 landing：实例连回后自动 attach 到目标 workspace，若还没有任何 thread，仍保持 `R1 AttachedUnbound` 并等待第一条普通文本创建新会话。
-7. 如果当前 surface 已 attach 且没有其他可切换 workspace，卡片仍会保留“当前工作区”摘要，并在底部给出“当前没有其他可接管工作区”的短提示，不会出现空白卡片。
-8. managed headless instance 一旦已经被 retarget 到某个精确 workspace，后续 `thread.focused` / `threads.snapshot` 里的更宽父目录 `cwd` 当前不会再把它的 `WorkspaceRoot` 回退成父目录，避免 `/status` 与 `/use` 再次出现“实例显示是 A，实际 thread 在 B”的分裂态。
+5. 通过旧 `attach_workspace` 兼容入口时，成功后仍会落到 `R1 AttachedUnbound`；而 target picker confirm 既有会话 / `新建会话` 时，则会直接落到 `R2` 或 `R5`。
+6. managed headless instance 一旦已经被 retarget 到某个精确 workspace，后续 `thread.focused` / `threads.snapshot` 里的更宽父目录 `cwd` 当前不会再把它的 `WorkspaceRoot` 回退成父目录，避免 `/status` 与 `/use` 再次出现“实例显示是 A，实际 thread 在 B”的分裂态。
 
 ### 4.1.1 vscode mode `/list` 先选 instance，并显式投影“当前实例”
 
@@ -611,14 +618,15 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 ```text
 R0 Detached
-  -- /list -> attach_workspace(normal mode，workspace 可接管) --> R1 AttachedUnbound
-  -- /list -> create_workspace(confirm 后已有可复用实例) --> R1 AttachedUnbound
-  -- /list -> create_workspace(confirm 后需要 fresh headless) --> R0 + G1 PendingHeadlessStarting
-  -- /list -> show_workspace_threads(normal mode，workspace 仅剩后台可恢复会话) --> 保持 R0 Detached，等待后续 /use(thread)
+  -- /list(normal mode) --> 保持 R0 Detached，打开 target picker
+  -- /use(normal mode) --> 保持 R0 Detached，打开 target picker
+  -- /useall(normal mode) --> 保持 R0 Detached，打开 target picker
+  -- target picker confirm(thread，normal mode 且可解析到当前可用实例) --> R2 AttachedPinned
+  -- target picker confirm(thread，normal mode 且需要新 headless) --> R0 + G1 PendingHeadlessStarting
+  -- target picker confirm(new_thread，normal mode 且 workspace 可直接 attach) --> R5 NewThreadReady
+  -- target picker confirm(new_thread，normal mode 且 workspace 仅 recoverable-only) --> R0 + G1 PendingHeadlessStarting
   -- /list -> attach_instance(vscode mode 且 observed focus 可接管) --> R4 FollowBound
   -- /list -> attach_instance(vscode mode 且尚无可接管 observed focus) --> R3 FollowWaiting
-  -- /use(thread，normal mode 且可解析到当前可用实例) --> R2 AttachedPinned
-  -- /use(thread，normal mode 且需要新 headless) --> R0 + G1 PendingHeadlessStarting
   -- /use(thread，vscode mode) --> 拒绝 + migration to /list
   -- daemon startup latent normal surface + exact visible thread restore --> R2 AttachedPinned
   -- daemon startup latent normal surface + workspace fallback --> R1 AttachedUnbound
@@ -628,18 +636,22 @@ R0 Detached
 R1 AttachedUnbound
   -- 普通文本(normal mode，workspace 已知) --> 隐式进入 R5 并立刻消费首条文本（R5 + E1/E2）
   -- 图片消息(normal mode，workspace 已知) --> 隐式进入 R5，并先停留在 D1 StagedImages（不会仅凭图片创建新 thread）
-  -- /use(thread，同 instance 可见) --> R2 AttachedPinned
-  -- /use(thread，normal mode 且目标在其他 workspace) --> 拒绝 + migration to /list
-  -- /use(thread，normal mode 且需要切换实例但仍在当前 workspace) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /list(normal mode) --> 保持 R1 AttachedUnbound，打开 target picker
+  -- /use(normal mode) --> 保持 R1 AttachedUnbound，打开 target picker（默认当前 workspace）
+  -- /useall(normal mode) --> 保持 R1 AttachedUnbound，打开 target picker（允许跨 workspace）
+  -- target picker confirm(thread，同/跨 workspace) --> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- target picker confirm(new_thread，当前/其它可接管 workspace) --> R5 NewThreadReady
   -- /follow(vscode mode) --> R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- /new(normal mode，workspace 已知) --> R5 NewThreadReady
   -- /detach --> R0 Detached
 
 R2 AttachedPinned
-  -- /use(other thread，同 instance 可见) --> R2 AttachedPinned
-  -- /use(other thread，normal mode 且目标在其他 workspace) --> 拒绝 + migration to /list
-  -- /use(other thread，normal mode 且需要切换实例但仍在当前 workspace) --> detach 语义清理后 -> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- /list(normal mode) --> 保持 R2 AttachedPinned，打开 target picker
+  -- /use(normal mode) --> 保持 R2 AttachedPinned，打开 target picker（默认当前 workspace）
+  -- /useall(normal mode) --> 保持 R2 AttachedPinned，打开 target picker（允许跨 workspace）
+  -- target picker confirm(other thread，同/跨 workspace) --> R2 AttachedPinned 或 G1 PendingHeadlessStarting
+  -- target picker confirm(new_thread，同/跨 workspace) --> R5 NewThreadReady 或 G1 PendingHeadlessStarting
   -- /follow(vscode mode) --> R4 FollowBound 或 R3 FollowWaiting
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- /new(normal mode 且无 live remote work，workspace 已知) --> R5 NewThreadReady
@@ -665,7 +677,9 @@ R4 FollowBound
 R5 NewThreadReady
   -- 第一条普通文本 --> R5 + E1/E2，等待新 thread 落地
   -- turn.started(remote_surface，新 thread) --> R2 AttachedPinned
-  -- /use(thread，normal mode) 且仅有 staged/queued draft --> discard drafts + R2 AttachedPinned
+  -- /list(normal mode) --> 保持 R5 NewThreadReady，打开 target picker
+  -- /use / /useall(normal mode) 且仅有 staged/queued draft --> 打开 target picker；confirm 后 discard drafts + 切换或重新准备
+  -- /use / /useall(normal mode) 且首条消息已 dispatching/running --> 打开 target picker；confirm 时拒绝 route exit
   -- /follow(normal mode) --> 拒绝 + migration notice
   -- 重复 /new 且无 draft --> 保持 R5，仅回 already_new_thread_ready
   -- 重复 /new 且仅有 staged/queued draft --> discard drafts，保持 R5
@@ -682,32 +696,22 @@ R5 NewThreadReady
 4. `/attach` 或 `/use` 进入某个已选 thread 后，还会执行一次 thread replay 检查：
    1. 该 thread idle 且存在 `UndeliveredReplay` 时，会立刻补发并清空。
    2. 该 thread busy 时不会插入旧 final/旧 notice，候选保留到后续 idle 的 `/attach` 或 `/use`。
-5. normal mode detached/global `/use` 与 `/useall` 的 resolver 顺序当前是：
-   1. 当前 attached instance 内可见 thread。
-   2. free existing visible instance。
-   3. reusable managed headless。
-   4. create managed headless。
-   5. 第 1/2 类 visible resolver 当前只接受“thread 仍属于该 instance 当前 workspace”的候选；foreign workspace thread 即使短暂出现在实例快照里，也不会再把 surface silently 留在错误 workspace 上。
-5. normal mode detached/global `/use` 与 `/useall` 的**候选 thread 列表**当前先 merge 两类来源：
-   1. runtime/catalog 已可见 thread。
-   2. Codex sqlite 中最近 persisted 的主交互 thread metadata：
-      1. 仅 `cli` / `vscode` source。
-      2. 排除 subagent role、`exec` / `mcp` 等后台线程。
-      3. 排除内部 probe workspace（例如 `_tmp-codex-thread-latency-*`、`_tmp-codex-appserver-*`）。
-   3. merge 完成后，最终展示给用户前还会再按 normal `/list` 当前可见的 workspace 集合过滤：
-      1. 保留当前在线实例能导出的 workspace。
-      2. 如果 surface 已 attach，则额外保留当前已 claimed 的 workspace。
-      3. 同时也保留 merged recent thread 自己导出的 recoverable workspace，因此 persisted/offline-only workspace 现在会直接出现在 detached/global `/use` `/useall` 和 normal `/list` 里。
-      4. 仍然会过滤没有任何 merged thread 支撑的历史脏 workspace key。
-6. sqlite 只负责补 freshness，不旁路 resolver：
-   1. busy / claim / free-visible / reusable-headless / create-headless 仍只由现有 runtime resolver 决定。
-   2. sqlite read 失败或 schema 不兼容时，会安全回退到 runtime/catalog-only 行为。
-7. attached normal `/use` / `show_scoped_threads` 当前只看当前 claimed workspace：
-   1. `/use` = 最近 5 个
-   2. `show_scoped_threads` = 当前工作区全部会话
-   3. 两者都不显示 workspace 行，只显示接管状态
-   4. `show_scoped_threads` 展开后的卡片尾部会追加一个 `show_threads` 返回按钮，回到最近 5 个会话
-   5. 卡片展示固定按“当前会话 / 可接管 / 其他状态 / 更多”分组；按钮文案优先表达动作，例如 `当前 · <摘要>`、`接管 · <摘要>`、`不可接管 · <摘要>`、`查看全部 · 当前工作区全部会话`、`返回 · 最近会话`
+5. normal mode `/list` / `/use` / `/useall` 当前共享同一套 workspace candidate / resolver 基础：
+   1. workspace 候选来自 runtime 可见 workspace 与 merged recent thread / persisted recent thread 导出的 recoverable workspace。
+   2. persisted sqlite 只负责补 freshness，不旁路 resolver；busy / claim / free-visible / reusable-headless / create-headless 仍只由现有 runtime resolver 决定。
+   3. sqlite read 失败或 schema 不兼容时，会安全回退到 runtime/catalog-only 行为。
+   4. 最终仍会过滤 busy workspace，以及没有任何 merged thread / online instance 支撑的历史脏 workspace key。
+6. target picker 当前承担了 normal mode 的主选择面：
+   1. `/list`、detached `/use`、detached `/useall` 打开的是同一张卡，只是标题与默认 workspace 不同。
+   2. attached `/use` 默认当前 workspace，attached `/useall` 仍允许跨 workspace；但二者都通过同一个工作区下拉显式切换，不再依赖旧的 grouped recent/all 视图。
+   3. 会话下拉固定是“该 workspace 下可接管/可恢复 thread + `新建会话`”。
+   4. normal mode 下的 `show_threads` / `show_all_threads` / `show_scoped_threads` / `show_workspace_threads` / `show_all_workspaces` / `show_recent_workspaces` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` 当前都只负责在 same-context 中重新打开或刷新这张卡。
+   5. `target_picker_select_workspace` / `target_picker_select_session` 是 pure navigation，会 inline replace；`target_picker_confirm` 是 append-only 产品动作。
+   6. 若 confirm 时原选择已经失效，当前会刷新一张最新 picker 并返回 `target_picker_selection_changed`，不会 silent fallback 到别的 thread / workspace。
+7. target picker confirm 的产品落点当前分三类：
+   1. 既有 thread：复用现有 resolver 顺序 `当前 attached instance 内可见 thread -> free existing visible instance -> reusable managed headless -> create managed headless`。
+   2. 既有 thread 但需要跨 workspace / 跨实例：仍会先走 detach-like 清理，丢弃 staged/queued draft、清 request / capture / prompt override，再 attach 到新目标。
+   3. `新建会话`：当前或可直接 attach 的 workspace 会进入 `R5`；recoverable-only workspace 则启动 fresh managed headless，并在实例连回后直接进入 `R5`。
 8. attached `vscode /use` / `/useall` 当前有两条额外约束：
    1. 只展示当前 attached instance 的可见 thread，不再走 merged global thread view。
    2. force-pick 后会保留 `RouteMode=follow_local`，后续 observed focus 变化仍可覆盖。
@@ -716,31 +720,18 @@ R5 NewThreadReady
    5. attached `vscode /use` 的卡片分组仍是“当前会话 / 可接管 / 其他状态 / 更多”，只是“更多”按钮文案会改成 `查看全部 · 当前实例全部会话`。
    6. attached `vscode /useall` 的标题当前已改成 `当前实例全部会话`，不再使用含糊的 `全部会话`。
    7. `当前实例全部会话` 卡片会保留“当前会话”区块；其余 thread 按最近活跃时间顺序平铺在“全部会话”区块里，并在按钮外用 `1. VS Code 当前焦点 · 2分前` 这类编号 + 元信息行帮助快速扫读长列表。
-9. attached normal `/useall` 当前会显示 cross-workspace 的 workspace-group 总览，并允许直接点击切到其他 workspace。
-   1. 这类 global 卡片会先保留一个单独的“当前会话”区块。
-   2. 若当前 surface 已 attach workspace，还会在其后插入一段“当前工作区”摘要，仅供参考，不再展开当前 workspace 的 thread 列表；同 workspace 内切换仍建议回 `/use`
-   3. 当前工作区摘要区会附带一个“查看当前工作区全部会话”按钮，点击后切到当前 workspace 的全量会话卡片；该卡片尾部会追加一个 `show_all_threads` 返回按钮，回到 cross-workspace `/useall` 的默认总览。
-   4. detached/global `/use` 与 attached `/useall` 共享同一套 grouped 总览：默认只显示最近 5 个 workspace 组；若 surface 已 attach 当前 workspace，则“当前工作区”摘要不计入这 5 个名额。
-   5. workspace 组按该组内最新 thread 的最近活跃时间倒序。
-   6. 默认总览底部若还有未显示的 workspace 组，会追加一个 `show_all_thread_workspaces` 按钮，切到“全部工作区”视图；展开视图底部再追加一个 `show_recent_thread_workspaces` 按钮返回默认最近视图。
-   7. 每个 workspace 组内的 thread 同样按最近活跃时间倒序，并在按钮外显示 `1. 5分10秒前` 这类序号 + 相对时间行；thread 本身只保留动作按钮。
-   8. 主 `/useall` 卡片里，每个 workspace 组最多只展开前 5 个可接管 thread；若还有更多，会在组尾附带“查看该工作区全部会话”按钮，点击后切到该 workspace 的全量会话卡片。
-   9. 单-workspace 全量卡片会保留同样的排序和“序号 + 相对时间 + 全宽按钮”样式，只是不再截断到 5 条。
-   10. 若 thread 还带有 “VS Code 占用中” 提示，会附加在相对时间行里。
-   11. 若某个 workspace 下全部 thread 当前都不可接管，则该组只显示 workspace 标题和原因，不再展开 thread 列表。
-   12. `show_workspace_threads`、`show_all_threads`、`show_all_thread_workspaces` 与 `show_recent_thread_workspaces` 当前都属于 same-context 导航；若动作来自当前 daemon 生命周期生成的卡片，会直接原地替换当前卡，而不是再追加一张新卡。
-10. 当 normal mode `/use` / `/useall` 命中第 2/3/4 类 resolver 时，当前实现会先走 detach 语义清理：
+9. target picker confirm 进入跨 workspace / cross-instance target 时，当前实现仍会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
    3. 当前 instance claim 会先释放，再 attach 到新目标。
-9. 当 surface 处于 `PendingRequest`、`RequestCapture` 或 `ActivePathPicker` 时：
+10. 当 surface 处于 `PendingRequest`、`RequestCapture` 或 `ActivePathPicker` 时：
    1. same-instance `/use`
    2. `/follow`
    3. follow-local 自动重绑定
    当前都会被冻结，避免 UI 宣布的新目标和下一条普通输入的实际落点不一致。
    4. 若是 `ActivePathPicker`，当前还会额外把 `/list`、`/menu`、bare config cards、`/detach` 等 competing Feishu card flow 一并挡住，只保留 picker 自身回调与 `/status`。
-10. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
-11. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
+11. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
+12. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
    1. 当前可见 thread 若只存在于 VS Code instance，不会被自动 attach 到 VS Code。
    2. 它仍可复用该 thread 的 metadata / cwd。
    3. 后续只允许落到 free visible headless、reusable managed headless，或 create managed headless。
@@ -1004,14 +995,14 @@ transport degraded retained attachment
 | `/newinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
 | `/new` | 拒绝 | `normal`: 允许；`vscode`: 拒绝 | `normal`: 允许；`vscode`: 拒绝 | 拒绝 | 拒绝 | 允许；若首条消息已 dispatching/running 则拒绝 |
 | `/killinstance` | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 | 兼容提示，不改状态 |
-| `/use` `/useall` | `normal`: `/use`=`/useall`，都会展示 global 最近 5 个 workspace 组，并可卡片内展开全部；`vscode`: 拒绝并提示先 `/list` | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 最近 5 个 workspace 组，卡片 `show_scoped_threads`=当前 workspace 全量，`show_all_thread_workspaces`=global 全量 workspace 组；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: `/use`=当前 workspace 最近 5 个，`/useall`=global 最近 5 个 workspace 组，卡片 `show_scoped_threads`=当前 workspace 全量，`show_all_thread_workspaces`=global 全量 workspace 组；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | 允许；若仅有 unsent draft 会先丢弃 |
+| `/use` `/useall` | `normal`: 二者都打开 unified target picker；`/list` 是更偏向换工作区，`/use`/`/useall` 是更偏向选会话；`vscode`: 拒绝并提示先 `/list` | `normal`: 二者都打开 target picker，`/use` 默认当前 workspace，`/useall` 允许跨 workspace；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `normal`: 二者都打开 target picker，允许在 confirm 时切到其他 workspace 或 `新建会话`；`vscode`: `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | `/use`=当前 instance 最近 5 个，`/useall`=当前 instance 全量 | 允许打开 target picker；若仅有 unsent draft，confirm 前会先丢弃；若首条已 dispatching/running，则 confirm 时拒绝 route exit |
 | `/follow` | `normal`: 拒绝并提示迁移；`vscode`: 拒绝并提示先 `/list` | `normal`: 拒绝并提示迁移；`vscode`: 允许 | `normal`: 拒绝并提示迁移；`vscode`: 允许 | 允许 | 允许 | 拒绝并提示迁移 |
 | `/mode` | 允许 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 | 允许；若有 queued/dispatching/running 则拒绝 |
 | `/autowhip` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/help` `/menu` `/debug` `/upgrade` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
 | `/steerall` | 允许；通常返回 noop 提示 | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 | 允许；仅在存在同 thread queued + running turn 时并入，否则 noop | 允许；通常返回 noop 提示 |
-| 文本 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
-| 图片 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
+| 文本 | 拒绝 | `normal`: 允许并隐式进入新会话首条输入；`vscode`: 拒绝 | 允许 | 拒绝 | 允许 | 允许首条；首条 queued/dispatching/running 后拒绝第二条 |
+| 图片 | 拒绝 | `normal`: 允许并隐式进入 `R5` 后暂存；`vscode`: 拒绝 | 允许 | 拒绝 | 允许 | 仅在首条文本尚未入队前允许 |
 | 请求按钮 | 拒绝 | 拒绝 | 允许 | 拒绝 | 允许 | 理论上通常不会出现；若出现仍按 attached surface 处理 |
 | `/stop` | 通常无效果 | 通常无效果 | 允许 | 允许 | 允许 | 允许；可清掉 staged/queued draft |
 | `/status` | 允许 | 允许 | 允许 | 允许 | 允许 | 允许 |
@@ -1052,16 +1043,19 @@ retained-offline overlay 额外规则：
 | 卡片动作 | 服务端 action | 说明 |
 | --- | --- | --- |
 | `attach_workspace` | `ActionAttachWorkspace` | normal mode `/list` 的 workspace attach/switch 入口 |
-| `create_workspace` | `ActionCreateWorkspace` | normal mode `/list` 里的“从目录新建工作区”；先开目录模式 path picker，再按 confirm 结果复用 attach 或启动 fresh workspace headless |
-| `show_all_workspaces` | `ActionShowAllWorkspaces` | normal mode `/list` 默认最近 5 个视图里展开全部工作区 |
-| `show_recent_workspaces` | `ActionShowRecentWorkspaces` | 从“全部工作区”视图返回默认最近 5 个工作区 |
-| `show_workspace_threads` | `ActionShowWorkspaceThreads` | normal mode `/list` 中 recoverable-only workspace 的单-workspace 会话列表入口 |
+| `create_workspace` | `ActionCreateWorkspace` | 旧 normal `/list` 卡片残留的 transport 兼容入口；当前主路径不再默认暴露 |
+| `show_all_workspaces` | `ActionShowAllWorkspaces` | normal mode 下重新打开 `/list` target picker（兼容旧分页导航动作） |
+| `show_recent_workspaces` | `ActionShowRecentWorkspaces` | normal mode 下重新打开 `/list` target picker（兼容旧分页返回动作） |
+| `show_workspace_threads` | `ActionShowWorkspaceThreads` | normal mode 下以指定 workspace 为默认项重新打开 target picker（兼容旧 recoverable-workspace 入口） |
 | `attach_instance` | `ActionAttachInstance` | 直达 attach |
 | `use_thread` | `ActionUseThread` | 直达 thread 切换 |
-| `show_threads` | `ActionShowThreads` | 从 scoped-all 视图返回最近 5 个会话 |
-| `show_all_threads` | `ActionShowAllThreads` | 打开 `/useall` 的默认 cross-workspace 总览；也用于单-workspace 全量视图返回总览 |
-| `show_all_thread_workspaces` | `ActionShowAllThreadWorkspaces` | 把 `/useall` grouped 总览从“最近 5 个工作区”展开到“全部工作区” |
-| `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | 从“全部工作区”视图返回 `/useall` 默认最近 5 个工作区总览 |
+| `show_threads` | `ActionShowThreads` | normal mode 下重新打开 `/use` target picker；vscode mode 下仍是当前实例最近会话视图 |
+| `show_all_threads` | `ActionShowAllThreads` | normal mode 下重新打开 `/useall` target picker；vscode mode 下仍是当前实例全部会话视图 |
+| `show_all_thread_workspaces` | `ActionShowAllThreadWorkspaces` | normal mode 下重新打开 `/useall` target picker（兼容旧 grouped 总览展开动作） |
+| `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | normal mode 下重新打开 `/useall` target picker（兼容旧 grouped 总览返回动作） |
+| `target_picker_select_workspace` | `ActionTargetPickerSelectWorkspace` | unified target picker 的工作区下拉回调；只刷新当前卡，不直接改 route |
+| `target_picker_select_session` | `ActionTargetPickerSelectSession` | unified target picker 的会话下拉回调；只刷新当前卡，不直接改 route |
+| `target_picker_confirm` | `ActionTargetPickerConfirm` | unified target picker 的确认按钮；真正执行 attach / switch / `新建会话` |
 | `request_respond` | `ActionRespondRequest` | approval 与 `request_user_input` 的按钮回传入口；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，局部保存后会刷新当前 request 卡并递增 `request_revision`；`request_option_id=submit` 触发“提交答案”语义，若有未答题会进入确认态；`request_option_id=confirm_submit_with_unanswered` 会确认留空提交，`request_option_id=cancel_submit_with_unanswered` 退出确认态，`request_option_id=submit_with_unanswered` 保持兼容 |
 | `submit_request_form` | `ActionRespondRequest` | `request_user_input` 的表单提交入口；按 `question.id -> answers[]` 回传；表单“提交答案”会带 `request_option_id=submit`；若提交后仍有未答题，request 会切到确认态，等待 `confirm_submit_with_unanswered` 或 `cancel_submit_with_unanswered` |
 | `resume_headless_thread` | `ActionRemovedCommand` | 历史兼容入口，统一回迁移提示 |
@@ -1095,7 +1089,9 @@ retained-offline overlay 额外规则：
    5. `ActionShowAllThreads`
    6. `ActionShowScopedThreads`
    7. `ActionShowWorkspaceThreads`
-   8. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
+   8. `ActionTargetPickerSelectWorkspace`
+   9. `ActionTargetPickerSelectSession`
+   10. bare `ActionModeCommand` / `ActionAutoContinueCommand` / `ActionReasoningCommand` / `ActionAccessCommand` / `ActionModelCommand`
 2. 只有当这些动作命中 `InlineCardReplacementPolicy(...)`、来源卡片带有当前 daemon 的 lifecycle 标识、且 Feishu UI controller 只返回一个显式标记 `InlineReplaceCurrentCard` 的 `UIEvent` 时，才会走原地替换。
 3. `/help` 这类静态目录卡、apply 终态、request prompt 终态、upgrade/debug 异步结果等仍然沿用 append-only 消息语义，不在这轮同步回包范围内。
 

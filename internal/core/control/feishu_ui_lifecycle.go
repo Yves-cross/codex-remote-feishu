@@ -56,7 +56,9 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowRecentThreadWorkspaces,
 		FeishuUIIntentPathPickerEnter,
 		FeishuUIIntentPathPickerUp,
-		FeishuUIIntentPathPickerSelect:
+		FeishuUIIntentPathPickerSelect,
+		FeishuUIIntentTargetPickerSelectWorkspace,
+		FeishuUIIntentTargetPickerSelectSession:
 		return true
 	default:
 		return false

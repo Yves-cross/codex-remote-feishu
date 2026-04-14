@@ -27,7 +27,7 @@ func (workspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Service, surface
 	if inst := s.resolveWorkspaceAttachInstance(surface, workspaceKey); inst != nil {
 		return s.attachWorkspace(surface, workspaceKey)
 	}
-	return s.startFreshWorkspaceHeadless(surface, workspaceKey)
+	return s.startFreshWorkspaceHeadlessWithOptions(surface, workspaceKey, false)
 }
 
 func (workspaceCreatePathPickerConsumer) PathPickerCancelled(_ *Service, surface *state.SurfaceConsoleRecord, _ control.PathPickerResult) []control.UIEvent {
@@ -57,6 +57,10 @@ func (s *Service) openCreateWorkspacePicker(surface *state.SurfaceConsoleRecord)
 }
 
 func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+	return s.startFreshWorkspaceHeadlessWithOptions(surface, workspaceKey, false)
+}
+
+func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceConsoleRecord, workspaceKey string, prepareNewThread bool) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
@@ -94,12 +98,17 @@ func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecor
 		return append(events, notice(surface, "workspace_busy", "目标 workspace 当前已被其他飞书会话接管，请等待对方 /detach。")...)
 	}
 	surface.PendingHeadless = &state.HeadlessLaunchRecord{
-		InstanceID:  instanceID,
-		ThreadCWD:   workspaceKey,
-		RequestedAt: s.now(),
-		ExpiresAt:   s.now().Add(s.config.HeadlessLaunchWait),
-		Status:      state.HeadlessLaunchStarting,
-		Purpose:     state.HeadlessLaunchPurposeFreshWorkspace,
+		InstanceID:       instanceID,
+		ThreadCWD:        workspaceKey,
+		RequestedAt:      s.now(),
+		ExpiresAt:        s.now().Add(s.config.HeadlessLaunchWait),
+		Status:           state.HeadlessLaunchStarting,
+		Purpose:          state.HeadlessLaunchPurposeFreshWorkspace,
+		PrepareNewThread: prepareNewThread,
+	}
+	noticeText := fmt.Sprintf("正在把 `%s` 准备成可用工作区，完成后你就可以直接发送文本开启新会话。", workspaceKey)
+	if prepareNewThread {
+		noticeText = fmt.Sprintf("正在把 `%s` 准备成可用工作区，完成后会直接进入新会话待命。", workspaceKey)
 	}
 	events = append(events,
 		control.UIEvent{
@@ -108,7 +117,7 @@ func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecor
 			Notice: &control.Notice{
 				Code:  "workspace_create_starting",
 				Title: "正在准备工作区",
-				Text:  fmt.Sprintf("正在把 `%s` 准备成可用工作区，完成后你就可以直接发送文本开启新会话。", workspaceKey),
+				Text:  noticeText,
 			},
 		},
 		control.UIEvent{

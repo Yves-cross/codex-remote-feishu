@@ -814,17 +814,20 @@ func TestShowThreadsDetachedShowsGlobalMergedRecentThreads(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected detached /use to show global thread prompt, got %#v", events)
+		t.Fatalf("expected detached /use to open target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "全部会话" || len(prompt.Options) != 2 {
-		t.Fatalf("unexpected prompt: %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUse || len(view.WorkspaceOptions) != 2 {
+		t.Fatalf("unexpected target picker: %#v", view)
 	}
-	if prompt.Options[0].OptionID != "thread-2" || !prompt.Options[0].AllowCrossWorkspace || prompt.Options[0].Subtitle != "/data/dl/web\n可接管，将启动后台恢复" {
-		t.Fatalf("expected offline workspace thread to stay visible for recovery, got %#v", prompt.Options[0])
+	if view.SelectedWorkspaceKey != "/data/dl/web" {
+		t.Fatalf("expected most-recent workspace to be selected first, got %#v", view)
 	}
-	if prompt.Options[1].OptionID != "thread-1" || !prompt.Options[1].AllowCrossWorkspace || prompt.Options[1].Subtitle != "/data/dl/droid\n可接管" {
-		t.Fatalf("expected online workspace thread to remain visible, got %#v", prompt.Options[1])
+	if _, ok := targetPickerSessionOption(view, targetPickerThreadValue("thread-2")); !ok {
+		t.Fatalf("expected offline workspace thread to stay visible for recovery, got %#v", view.SessionOptions)
+	}
+	if _, ok := targetPickerWorkspaceOption(view, "/data/dl/droid"); !ok {
+		t.Fatalf("expected online workspace to remain visible, got %#v", view.WorkspaceOptions)
 	}
 }
 
@@ -855,20 +858,20 @@ func TestShowThreadsDetachedIncludesPersistedThreadsFromRecoverableWorkspaces(t 
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected detached /use prompt, got %#v", events)
+		t.Fatalf("expected detached /use target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 2 {
-		t.Fatalf("expected persisted recoverable workspaces to appear in prompt, got %#v", prompt.Options)
+	view := targetPickerFromEvent(t, events[0])
+	if len(view.WorkspaceOptions) != 2 {
+		t.Fatalf("expected persisted recoverable workspaces to appear in picker, got %#v", view.WorkspaceOptions)
 	}
-	if prompt.Options[0].OptionID != "thread-persisted" || !prompt.Options[0].AllowCrossWorkspace || !strings.Contains(prompt.Options[0].Subtitle, "后台恢复") {
-		t.Fatalf("expected newest persisted thread first, got %#v", prompt.Options[0])
+	if view.SelectedWorkspaceKey != "/data/dl/sqlite" {
+		t.Fatalf("expected newest persisted workspace first, got %#v", view)
 	}
-	if prompt.Options[0].Label != "sqlite · 数据库里的新会话" || !strings.Contains(prompt.Options[0].Subtitle, "/data/dl/sqlite") {
-		t.Fatalf("expected persisted metadata to render in prompt, got %#v", prompt.Options[0])
+	if option, ok := targetPickerWorkspaceOption(view, "/data/dl/sqlite"); !ok || option.MetaText == "" {
+		t.Fatalf("expected persisted workspace metadata to render in picker, got %#v", view.WorkspaceOptions)
 	}
-	if prompt.Options[1].OptionID != "thread-older" || !prompt.Options[1].AllowCrossWorkspace || !strings.Contains(prompt.Options[1].Subtitle, "/data/dl/older") {
-		t.Fatalf("expected persisted-only recoverable workspace thread to remain visible, got %#v", prompt.Options[1])
+	if _, ok := targetPickerWorkspaceOption(view, "/data/dl/older"); !ok {
+		t.Fatalf("expected persisted-only recoverable workspace to remain visible, got %#v", view.WorkspaceOptions)
 	}
 }
 
@@ -890,11 +893,14 @@ func TestShowThreadsDetachedShowsPersistedThreadsWhenOnlyRecoverableWorkspacesEx
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected persisted-only recoverable workspace to produce thread prompt, got %#v", events)
+		t.Fatalf("expected persisted-only recoverable workspace to produce target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 1 || prompt.Options[0].OptionID != "thread-persisted" {
-		t.Fatalf("expected persisted-only recoverable thread to remain selectable, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if len(view.WorkspaceOptions) != 1 || view.SelectedWorkspaceKey != "/data/dl/sqlite" {
+		t.Fatalf("expected persisted-only recoverable workspace to remain selectable, got %#v", view)
+	}
+	if _, ok := targetPickerSessionOption(view, targetPickerThreadValue("thread-persisted")); !ok {
+		t.Fatalf("expected persisted-only recoverable thread to remain selectable, got %#v", view.SessionOptions)
 	}
 }
 
@@ -925,11 +931,14 @@ func TestShowThreadsDetachedFallsBackWhenPersistedReaderFails(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected fallback prompt, got %#v", events)
+		t.Fatalf("expected fallback target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 1 || prompt.Options[0].OptionID != "thread-1" {
-		t.Fatalf("expected catalog-only fallback prompt, got %#v", prompt.Options)
+	view := targetPickerFromEvent(t, events[0])
+	if len(view.WorkspaceOptions) != 1 || view.SelectedWorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected catalog-only fallback workspace, got %#v", view)
+	}
+	if _, ok := targetPickerSessionOption(view, targetPickerThreadValue("thread-1")); !ok {
+		t.Fatalf("expected catalog-only fallback thread, got %#v", view.SessionOptions)
 	}
 }
 
@@ -964,11 +973,11 @@ func TestShowThreadsDetachedPrefersPersistedFreshMetadataForVisibleThread(t *tes
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	option := prompt.Options[0]
-	if option.Label != "droid · 数据库里的新标题" || option.ButtonLabel != "droid · 数据库里的新标题" || option.Subtitle != "/data/dl/droid\n可接管" {
+	view := targetPickerFromEvent(t, events[0])
+	option, ok := targetPickerSessionOption(view, targetPickerThreadValue("thread-1"))
+	if !ok || option.Label != "droid · 数据库里的新标题" || option.MetaText == "" {
 		t.Fatalf("expected persisted freshness to improve visible thread metadata without changing attach mode, got %#v", option)
 	}
 }
@@ -1009,22 +1018,14 @@ func TestPresentGlobalThreadSelectionMarksBusyThreadDisabled(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	var busyOption *control.SelectionOption
-	for i := range prompt.Options {
-		option := prompt.Options[i]
-		if option.OptionID == "thread-busy" {
-			busyOption = &option
-			break
-		}
+	view := targetPickerFromEvent(t, events[0])
+	if _, ok := targetPickerWorkspaceOption(view, "/data/dl/web"); ok {
+		t.Fatalf("expected busy workspace to be omitted from target picker, got %#v", view.WorkspaceOptions)
 	}
-	if busyOption == nil {
-		t.Fatalf("expected busy thread in global prompt, got %#v", prompt.Options)
-	}
-	if !busyOption.Disabled || busyOption.ButtonLabel != "web · 忙碌会话" || !strings.Contains(busyOption.Subtitle, "接管") {
-		t.Fatalf("expected busy thread to be disabled in global prompt, got %#v", busyOption)
+	if _, ok := targetPickerWorkspaceOption(view, "/data/dl/droid"); !ok {
+		t.Fatalf("expected free workspace to remain visible, got %#v", view.WorkspaceOptions)
 	}
 }
 
@@ -1074,16 +1075,17 @@ func TestShowThreadsAttachedNormalFiltersToCurrentWorkspace(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if len(prompt.Options) != 2 {
-		t.Fatalf("expected only current-workspace threads, got %#v", prompt.Options)
+	view := targetPickerFromEvent(t, events[0])
+	if view.SelectedWorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected current workspace to remain selected, got %#v", view)
 	}
-	for _, option := range prompt.Options {
-		if option.OptionID == "thread-3" {
-			t.Fatalf("expected other-workspace thread to be filtered out, got %#v", prompt.Options)
-		}
+	if len(view.SessionOptions) != 3 {
+		t.Fatalf("expected current workspace threads plus new-thread option, got %#v", view.SessionOptions)
+	}
+	if _, ok := targetPickerSessionOption(view, targetPickerThreadValue("thread-3")); ok {
+		t.Fatalf("expected other-workspace thread to be filtered out, got %#v", view.SessionOptions)
 	}
 }
 
@@ -1122,20 +1124,14 @@ func TestShowAllThreadsAttachedNormalShowsCrossWorkspaceSessions(t *testing.T) {
 	})
 
 	if len(events) != 1 {
-		t.Fatalf("expected selection prompt, got %#v", events)
+		t.Fatalf("expected target picker, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "全部会话" || len(prompt.Options) != 1 {
-		t.Fatalf("expected cross-workspace all-session prompt, got %#v", prompt)
+	view := targetPickerFromEvent(t, events[0])
+	if view.Source != control.TargetPickerRequestSourceUseAll || view.SelectedWorkspaceKey != "/data/dl/droid" {
+		t.Fatalf("expected attached /useall to open current workspace picker, got %#v", view)
 	}
-	if prompt.ContextTitle != "当前工作区" || prompt.ContextKey != "/data/dl/droid" {
-		t.Fatalf("expected current workspace summary for attached /useall, got %#v", prompt)
-	}
-	if prompt.Options[0].OptionID != "thread-3" || !prompt.Options[0].AllowCrossWorkspace || !strings.Contains(prompt.Options[0].Subtitle, "/data/dl/web") {
-		t.Fatalf("expected other-workspace thread to appear in /useall prompt, got %#v", prompt.Options[0])
-	}
-	if prompt.Options[0].GroupKey != "/data/dl/web" || prompt.Options[0].GroupLabel != "web" || prompt.Options[0].AgeText == "" || prompt.Options[0].MetaText == "" {
-		t.Fatalf("expected cross-workspace option to include grouped rendering metadata, got %#v", prompt.Options[0])
+	if _, ok := targetPickerWorkspaceOption(view, "/data/dl/web"); !ok {
+		t.Fatalf("expected other workspace to appear in /useall picker, got %#v", view.WorkspaceOptions)
 	}
 }
 

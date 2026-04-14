@@ -85,6 +85,9 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 		Title:     "未绑定会话",
 		Preview:   "",
 	}
+	if mode == attachWorkspaceModeTargetPickerNewThread {
+		return s.prepareNewThread(surface)
+	}
 
 	noticeCode := "workspace_attached"
 	noticeText := fmt.Sprintf("已接管工作区 %s。请继续 /use 选择一个会话，或直接发送文本开启新会话（也可 /new 先进入待命）。", workspaceKey)
@@ -303,6 +306,9 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 	}
 	if pending.Purpose == state.HeadlessLaunchPurposeFreshWorkspace {
 		surface.PendingHeadless = nil
+		if pending.PrepareNewThread {
+			return s.attachWorkspaceWithMode(surface, pending.ThreadCWD, attachWorkspaceModeTargetPickerNewThread)
+		}
 		return s.attachWorkspace(surface, pending.ThreadCWD)
 	}
 	if strings.TrimSpace(pending.ThreadID) != "" {

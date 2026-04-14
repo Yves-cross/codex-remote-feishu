@@ -27,24 +27,42 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 	case control.FeishuUIIntentShowVerboseCatalog:
 		return []control.UIEvent{s.commandViewEvent(surface, s.buildVerboseCommandView(surface))}
 	case control.FeishuUIIntentShowRecentWorkspaces:
-		return s.presentWorkspaceSelectionPage(surface, intent.Page)
+		return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, intent.WorkspaceKey, true)
 	case control.FeishuUIIntentShowAllWorkspaces:
-		return s.presentWorkspaceSelectionPage(surface, intent.Page)
+		return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, intent.WorkspaceKey, true)
 	case control.FeishuUIIntentShowThreads:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUse, intent.WorkspaceKey, true)
+		}
 		return s.presentThreadSelectionMode(surface, threadSelectionDisplayRecent, intent.Page)
 	case control.FeishuUIIntentShowAllThreads:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUseAll, intent.WorkspaceKey, true)
+		}
 		return s.presentThreadSelectionMode(surface, threadSelectionDisplayAll, intent.Page)
 	case control.FeishuUIIntentShowScopedThreads:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUse, intent.WorkspaceKey, true)
+		}
 		mode := threadSelectionDisplayScopedAll
 		if intent.ViewMode == string(control.FeishuThreadSelectionVSCodeAll) || intent.ViewMode == string(control.FeishuThreadSelectionVSCodeScopedAll) {
 			mode = threadSelectionDisplayScopedAll
 		}
 		return s.presentThreadSelectionMode(surface, mode, intent.Page)
 	case control.FeishuUIIntentShowWorkspaceThreads:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceWorkspace, intent.WorkspaceKey, true)
+		}
 		return s.presentWorkspaceThreadSelectionPage(surface, intent.WorkspaceKey, intent.Page, intent.ReturnPage)
 	case control.FeishuUIIntentShowAllThreadWorkspaces:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUseAll, intent.WorkspaceKey, true)
+		}
 		return s.presentThreadSelectionMode(surface, threadSelectionDisplayAllExpanded, intent.Page)
 	case control.FeishuUIIntentShowRecentThreadWorkspaces:
+		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
+			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUseAll, intent.WorkspaceKey, true)
+		}
 		return s.presentThreadSelectionMode(surface, threadSelectionDisplayAllExpanded, intent.Page)
 	case control.FeishuUIIntentPathPickerEnter:
 		return s.handlePathPickerEnter(surface, intent.PickerID, intent.PickerEntry, intent.ActorUserID)
@@ -56,6 +74,10 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		return s.handlePathPickerConfirm(surface, intent.PickerID, intent.ActorUserID)
 	case control.FeishuUIIntentPathPickerCancel:
 		return s.handlePathPickerCancel(surface, intent.PickerID, intent.ActorUserID)
+	case control.FeishuUIIntentTargetPickerSelectWorkspace:
+		return s.handleTargetPickerSelectWorkspace(surface, intent.PickerID, intent.WorkspaceKey, intent.ActorUserID)
+	case control.FeishuUIIntentTargetPickerSelectSession:
+		return s.handleTargetPickerSelectSession(surface, intent.PickerID, intent.TargetValue, intent.ActorUserID)
 	default:
 		return nil
 	}

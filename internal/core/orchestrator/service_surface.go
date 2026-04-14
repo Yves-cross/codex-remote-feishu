@@ -68,8 +68,9 @@ const (
 type attachWorkspaceMode string
 
 const (
-	attachWorkspaceModeDefault       attachWorkspaceMode = "default"
-	attachWorkspaceModeSurfaceResume attachWorkspaceMode = "surface_resume"
+	attachWorkspaceModeDefault               attachWorkspaceMode = "default"
+	attachWorkspaceModeSurfaceResume         attachWorkspaceMode = "surface_resume"
+	attachWorkspaceModeTargetPickerNewThread attachWorkspaceMode = "target_picker_new_thread"
 )
 
 type attachInstanceMode string

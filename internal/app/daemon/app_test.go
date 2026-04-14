@@ -534,7 +534,7 @@ func TestHandleGatewayActionReplacesScopedThreadCardForCardNavigation(t *testing
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "当前工作区全部会话" {
+	if result.ReplaceCurrentCard.CardTitle != "选择当前工作目标" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
 	if operationHasActionValue(*result.ReplaceCurrentCard, "show_threads", "", "") {
@@ -580,10 +580,10 @@ func TestHandleGatewayActionReplacesWorkspaceThreadCardForCardNavigation(t *test
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "proj1 全部会话" {
+	if result.ReplaceCurrentCard.CardTitle != "选择工作区与会话" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "proj1 全部会话" {
+	if result.ReplaceCurrentCard.CardTitle != "选择工作区与会话" {
 		t.Fatalf("unexpected replacement workspace card title, got %#v", result.ReplaceCurrentCard)
 	}
 }
@@ -632,7 +632,7 @@ func TestHandleGatewayActionReplacesExpandedWorkspaceListCardForCardNavigation(t
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "工作区列表" {
+	if result.ReplaceCurrentCard.CardTitle != "选择工作区与会话" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
 	if operationHasActionValue(*result.ReplaceCurrentCard, "show_recent_workspaces", "", "") {
@@ -687,14 +687,14 @@ func TestHandleGatewayActionReplacesExpandedThreadWorkspaceCardForCardNavigation
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "全部会话" {
+	if result.ReplaceCurrentCard.CardTitle != "选择工作区与会话" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
 	if operationHasActionValue(*result.ReplaceCurrentCard, "show_recent_thread_workspaces", "", "") {
 		t.Fatalf("did not expect expanded thread workspace card to include old return action, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
-	if !operationHasActionValue(*result.ReplaceCurrentCard, "show_all_thread_workspaces", "", "") {
-		t.Fatalf("expected expanded thread workspace card to include next-page navigation, got %#v", result.ReplaceCurrentCard.CardElements)
+	if operationHasActionValue(*result.ReplaceCurrentCard, "show_all_thread_workspaces", "", "") {
+		t.Fatalf("did not expect unified target picker to keep old pagination action, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
 
@@ -795,7 +795,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 	var hasFinalReplyCard bool
 	for _, operation := range gateway.operations {
 		switch {
-		case operation.Kind == feishu.OperationSendCard && operation.CardTitle == "工作区列表":
+		case operation.Kind == feishu.OperationSendCard && operation.CardTitle == "选择工作区与会话":
 			hasListCard = true
 		case operation.Kind == feishu.OperationAddReaction && operation.MessageID == "msg-1":
 			hasTyping = true
@@ -1293,7 +1293,7 @@ func TestDaemonFallsBackToActorRouteForColdStartMenuActions(t *testing.T) {
 		t.Fatalf("expected one operation, got %#v", gateway.operations)
 	}
 	got := gateway.operations[0]
-	if got.Kind != feishu.OperationSendCard || got.CardTitle != "工作区列表" {
+	if got.Kind != feishu.OperationSendCard || got.CardTitle != "选择工作区与会话" {
 		t.Fatalf("unexpected operation: %#v", got)
 	}
 	if got.ReceiveID != "ou_1" || got.ReceiveIDType != "open_id" {
@@ -1753,7 +1753,7 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 	if !strings.Contains(gateway.operations[0].CardTitle, "链路错误") || !strings.Contains(gateway.operations[0].CardBody, "位置：<text_tag color='neutral'>gateway_apply</text_tag>") {
 		t.Fatalf("expected queued gateway failure notice first, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].CardTitle == "" || !strings.Contains(gateway.operations[1].CardBody, "当前没有可接管的工作区") {
+	if gateway.operations[1].CardTitle == "" || !strings.Contains(gateway.operations[1].CardBody, "当前没有可操作的工作区") {
 		t.Fatalf("expected current response card after queued notice, got %#v", gateway.operations[1])
 	}
 }

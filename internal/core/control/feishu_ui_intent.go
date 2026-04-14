@@ -5,26 +5,28 @@ import "strings"
 type FeishuUIIntentKind string
 
 const (
-	FeishuUIIntentShowCommandMenu            FeishuUIIntentKind = "show_command_menu"
-	FeishuUIIntentShowModeCatalog            FeishuUIIntentKind = "show_mode_catalog"
-	FeishuUIIntentShowAutoContinueCatalog    FeishuUIIntentKind = "show_auto_continue_catalog"
-	FeishuUIIntentShowReasoningCatalog       FeishuUIIntentKind = "show_reasoning_catalog"
-	FeishuUIIntentShowAccessCatalog          FeishuUIIntentKind = "show_access_catalog"
-	FeishuUIIntentShowModelCatalog           FeishuUIIntentKind = "show_model_catalog"
-	FeishuUIIntentShowVerboseCatalog         FeishuUIIntentKind = "show_verbose_catalog"
-	FeishuUIIntentShowRecentWorkspaces       FeishuUIIntentKind = "show_recent_workspaces"
-	FeishuUIIntentShowAllWorkspaces          FeishuUIIntentKind = "show_all_workspaces"
-	FeishuUIIntentShowThreads                FeishuUIIntentKind = "show_threads"
-	FeishuUIIntentShowAllThreads             FeishuUIIntentKind = "show_all_threads"
-	FeishuUIIntentShowScopedThreads          FeishuUIIntentKind = "show_scoped_threads"
-	FeishuUIIntentShowWorkspaceThreads       FeishuUIIntentKind = "show_workspace_threads"
-	FeishuUIIntentShowAllThreadWorkspaces    FeishuUIIntentKind = "show_all_thread_workspaces"
-	FeishuUIIntentShowRecentThreadWorkspaces FeishuUIIntentKind = "show_recent_thread_workspaces"
-	FeishuUIIntentPathPickerEnter            FeishuUIIntentKind = "path_picker_enter"
-	FeishuUIIntentPathPickerUp               FeishuUIIntentKind = "path_picker_up"
-	FeishuUIIntentPathPickerSelect           FeishuUIIntentKind = "path_picker_select"
-	FeishuUIIntentPathPickerConfirm          FeishuUIIntentKind = "path_picker_confirm"
-	FeishuUIIntentPathPickerCancel           FeishuUIIntentKind = "path_picker_cancel"
+	FeishuUIIntentShowCommandMenu             FeishuUIIntentKind = "show_command_menu"
+	FeishuUIIntentShowModeCatalog             FeishuUIIntentKind = "show_mode_catalog"
+	FeishuUIIntentShowAutoContinueCatalog     FeishuUIIntentKind = "show_auto_continue_catalog"
+	FeishuUIIntentShowReasoningCatalog        FeishuUIIntentKind = "show_reasoning_catalog"
+	FeishuUIIntentShowAccessCatalog           FeishuUIIntentKind = "show_access_catalog"
+	FeishuUIIntentShowModelCatalog            FeishuUIIntentKind = "show_model_catalog"
+	FeishuUIIntentShowVerboseCatalog          FeishuUIIntentKind = "show_verbose_catalog"
+	FeishuUIIntentShowRecentWorkspaces        FeishuUIIntentKind = "show_recent_workspaces"
+	FeishuUIIntentShowAllWorkspaces           FeishuUIIntentKind = "show_all_workspaces"
+	FeishuUIIntentShowThreads                 FeishuUIIntentKind = "show_threads"
+	FeishuUIIntentShowAllThreads              FeishuUIIntentKind = "show_all_threads"
+	FeishuUIIntentShowScopedThreads           FeishuUIIntentKind = "show_scoped_threads"
+	FeishuUIIntentShowWorkspaceThreads        FeishuUIIntentKind = "show_workspace_threads"
+	FeishuUIIntentShowAllThreadWorkspaces     FeishuUIIntentKind = "show_all_thread_workspaces"
+	FeishuUIIntentShowRecentThreadWorkspaces  FeishuUIIntentKind = "show_recent_thread_workspaces"
+	FeishuUIIntentPathPickerEnter             FeishuUIIntentKind = "path_picker_enter"
+	FeishuUIIntentPathPickerUp                FeishuUIIntentKind = "path_picker_up"
+	FeishuUIIntentPathPickerSelect            FeishuUIIntentKind = "path_picker_select"
+	FeishuUIIntentPathPickerConfirm           FeishuUIIntentKind = "path_picker_confirm"
+	FeishuUIIntentPathPickerCancel            FeishuUIIntentKind = "path_picker_cancel"
+	FeishuUIIntentTargetPickerSelectWorkspace FeishuUIIntentKind = "target_picker_select_workspace"
+	FeishuUIIntentTargetPickerSelectSession   FeishuUIIntentKind = "target_picker_select_session"
 )
 
 // FeishuUIIntent classifies same-context Feishu navigation handled by the
@@ -38,6 +40,7 @@ type FeishuUIIntent struct {
 	ReturnPage   int
 	PickerID     string
 	PickerEntry  string
+	TargetValue  string
 	ActorUserID  string
 }
 
@@ -95,6 +98,10 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerConfirm, PickerID: action.PickerID, ActorUserID: action.ActorUserID}, true
 	case ActionPathPickerCancel:
 		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerCancel, PickerID: action.PickerID, ActorUserID: action.ActorUserID}, true
+	case ActionTargetPickerSelectWorkspace:
+		return &FeishuUIIntent{Kind: FeishuUIIntentTargetPickerSelectWorkspace, PickerID: action.PickerID, WorkspaceKey: action.WorkspaceKey, ActorUserID: action.ActorUserID}, true
+	case ActionTargetPickerSelectSession:
+		return &FeishuUIIntent{Kind: FeishuUIIntentTargetPickerSelectSession, PickerID: action.PickerID, TargetValue: action.TargetPickerValue, ActorUserID: action.ActorUserID}, true
 	}
 	return nil, false
 }
