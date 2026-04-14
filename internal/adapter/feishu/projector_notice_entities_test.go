@@ -91,10 +91,8 @@ func TestProjectFinalAssistantBlockPreservesAngleBracketsInInlineCode(t *testing
 	if strings.Contains(ops[0].CardBody, "&gt;") || strings.Contains(ops[0].CardBody, "&lt;") {
 		t.Fatalf("expected final inline code to preserve angle brackets, got %#v", ops[0].CardBody)
 	}
-	if !containsAll(ops[0].CardBody,
-		"<text_tag color='neutral'>/model <模型> <推理强度></text_tag>",
-		"<text_tag color='neutral'>a < b > c</text_tag>",
-	) {
-		t.Fatalf("unexpected final inline-tag body: %#v", ops[0].CardBody)
+	want := "请运行 `/model <模型> <推理强度>`，再检查 `a < b > c`。"
+	if ops[0].CardBody != want {
+		t.Fatalf("unexpected final markdown body: %#v", ops[0].CardBody)
 	}
 }

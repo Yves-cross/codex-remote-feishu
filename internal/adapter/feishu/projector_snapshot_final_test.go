@@ -177,7 +177,7 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	}
 }
 
-func TestProjectFinalAssistantBlockRendersInlineCodeAsTags(t *testing.T) {
+func TestProjectFinalAssistantBlockPreservesInlineMarkdown(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:            control.UIEventBlockCommitted,
@@ -194,13 +194,13 @@ func TestProjectFinalAssistantBlockRendersInlineCodeAsTags(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	want := "已处理 <text_tag color='neutral'>#47</text_tag>，当前 verdict 是 <text_tag color='neutral'>old</text_tag>，可发送 <text_tag color='neutral'>/use</text_tag> 重试。"
+	want := "已处理 `#47`，当前 verdict 是 `old`，可发送 `/use` 重试。"
 	if ops[0].CardBody != want {
-		t.Fatalf("unexpected inline-tag body: %#v", ops[0])
+		t.Fatalf("unexpected final markdown body: %#v", ops[0])
 	}
 }
 
-func TestProjectFinalAssistantBlockKeepsFencedCodeWhileRenderingInlineTags(t *testing.T) {
+func TestProjectFinalAssistantBlockKeepsMixedInlineAndFencedMarkdown(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:            control.UIEventBlockCommitted,
@@ -217,9 +217,9 @@ func TestProjectFinalAssistantBlockKeepsFencedCodeWhileRenderingInlineTags(t *te
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	want := "已处理 <text_tag color='neutral'>#47</text_tag>。\n\n```text\n`old`\n/use\n```\n\n外面还有 <text_tag color='neutral'>done</text_tag>。"
+	want := "已处理 `#47`。\n\n```text\n`old`\n/use\n```\n\n外面还有 `done`。"
 	if ops[0].CardBody != want {
-		t.Fatalf("unexpected mixed inline/fence body: %#v", ops[0])
+		t.Fatalf("unexpected mixed final markdown body: %#v", ops[0])
 	}
 }
 
