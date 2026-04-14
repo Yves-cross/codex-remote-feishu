@@ -15,6 +15,8 @@ import (
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
+const testCanonicalResumeWorkspace = "/tmp/codex-remote/workspace-demo"
+
 func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -105,8 +107,8 @@ func TestSurfaceResumeStoreDedupesSplitFeishuP2PSurfacesOnPut(t *testing.T) {
 		ResumeInstanceID:   "inst-headless-2",
 		ResumeThreadID:     "thread-1",
 		ResumeThreadTitle:  "你好你好",
-		ResumeThreadCWD:    "/data/dl/fschannel5",
-		ResumeWorkspaceKey: "/data/dl/fschannel5",
+		ResumeThreadCWD:    testCanonicalResumeWorkspace,
+		ResumeWorkspaceKey: testCanonicalResumeWorkspace,
 		ResumeRouteMode:    "pinned",
 		ResumeHeadless:     true,
 		UpdatedAt:          canonicalUpdatedAt,
@@ -129,7 +131,7 @@ func TestSurfaceResumeStoreDedupesSplitFeishuP2PSurfacesOnPut(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected canonical feishu entry after dedupe, got %#v", entries)
 	}
-	if entry.ResumeThreadID != "thread-1" || entry.ResumeRouteMode != "pinned" || entry.ResumeWorkspaceKey != "/data/dl/fschannel5" {
+	if entry.ResumeThreadID != "thread-1" || entry.ResumeRouteMode != "pinned" || entry.ResumeWorkspaceKey != testCanonicalResumeWorkspace {
 		t.Fatalf("expected richer canonical resume target to win, got %#v", entry)
 	}
 	if !entry.UpdatedAt.Equal(canonicalUpdatedAt) {
@@ -172,8 +174,8 @@ func TestDaemonStartupCanonicalizesLegacySplitFeishuP2PSurfaceResumeState(t *tes
 				ResumeInstanceID:   "inst-headless-2",
 				ResumeThreadID:     "thread-1",
 				ResumeThreadTitle:  "你好你好",
-				ResumeThreadCWD:    "/data/dl/fschannel5",
-				ResumeWorkspaceKey: "/data/dl/fschannel5",
+				ResumeThreadCWD:    testCanonicalResumeWorkspace,
+				ResumeWorkspaceKey: testCanonicalResumeWorkspace,
 				ResumeRouteMode:    "pinned",
 				ResumeHeadless:     true,
 				UpdatedAt:          time.Date(2026, 4, 14, 4, 10, 35, 0, time.UTC),
@@ -200,7 +202,7 @@ func TestDaemonStartupCanonicalizesLegacySplitFeishuP2PSurfaceResumeState(t *tes
 	if entry == nil {
 		t.Fatal("expected canonical resume state entry after startup")
 	}
-	if entry.ResumeThreadID != "thread-1" || entry.ResumeRouteMode != "pinned" || entry.ResumeWorkspaceKey != "/data/dl/fschannel5" {
+	if entry.ResumeThreadID != "thread-1" || entry.ResumeRouteMode != "pinned" || entry.ResumeWorkspaceKey != testCanonicalResumeWorkspace {
 		t.Fatalf("expected canonical resume target after startup, got %#v", entry)
 	}
 }
