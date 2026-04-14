@@ -370,12 +370,12 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			MessageID:        progress.MessageID,
 			ReplyToMessageID: event.SourceMessageID,
-			CardTitle:        "执行命令",
+			CardTitle:        "处理中",
 			CardBody:         body,
 			CardThemeKey:     cardThemeInfo,
 			CardUpdateMulti:  true,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument("执行命令", body, cardThemeInfo, nil),
+			card:             rawCardDocument("处理中", body, cardThemeInfo, nil),
 		}
 		if strings.TrimSpace(progress.MessageID) != "" {
 			operation.Kind = OperationUpdateCard
@@ -412,7 +412,7 @@ func execCommandProgressBody(progress control.ExecCommandProgress) string {
 	}
 	lines := make([]string, 0, len(commands))
 	for _, command := range commands {
-		lines = append(lines, formatInlineCodeTextTag(command))
+		lines = append(lines, "执行："+formatInlineCodeTextTag(truncateExecProgressSummary(command, 30)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -451,7 +451,19 @@ func normalizeExecProgressCommand(command string) string {
 	} else if len(command) >= 2 && command[0] == '\'' && command[len(command)-1] == '\'' {
 		command = strings.TrimSpace(command[1 : len(command)-1])
 	}
-	return command
+	return strings.Join(strings.Fields(command), " ")
+}
+
+func truncateExecProgressSummary(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 3 {
+		limit = 3
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	return string(runes[:limit-3]) + "..."
 }
 
 func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) string {
