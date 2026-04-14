@@ -32,6 +32,7 @@ type Translator struct {
 	threadRefreshOrder         []string
 	pendingThreadHistoryReads  map[string]pendingThreadHistoryRead
 	pendingSuppressedResponse  map[string]suppressedResponseContext
+	pendingRequestTypes        map[string]agentproto.RequestType
 }
 
 type pendingThreadCreate struct {
@@ -84,6 +85,7 @@ func NewTranslator(instanceID string) *Translator {
 		threadRefreshRecords:      map[string]agentproto.ThreadSnapshotRecord{},
 		pendingThreadHistoryReads: map[string]pendingThreadHistoryRead{},
 		pendingSuppressedResponse: map[string]suppressedResponseContext{},
+		pendingRequestTypes:       map[string]agentproto.RequestType{},
 	}
 }
 

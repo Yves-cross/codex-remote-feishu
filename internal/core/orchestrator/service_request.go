@@ -85,7 +85,11 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 	if surface.PendingRequests == nil {
 		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 	}
-	requestType := normalizeRequestType(metadataString(event.Metadata, "requestType"))
+	promptType := ""
+	if event.RequestPrompt != nil {
+		promptType = string(event.RequestPrompt.Type)
+	}
+	requestType := normalizeRequestType(firstNonEmpty(promptType, metadataString(event.Metadata, "requestType")))
 	if requestType == "" {
 		requestType = "approval"
 	}
@@ -120,11 +124,14 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 			return notice(surface, "request_unsupported", "收到缺少问题定义的 request_user_input 请求，当前无法在飞书端处理。")
 		}
 	default:
-		return notice(surface, "request_unsupported", fmt.Sprintf("飞书端暂不支持处理 %s 类型的请求。", requestType))
+		if body == "" {
+			body = "本地 Codex 正在等待处理新的交互请求。"
+		}
 	}
 	record := &state.RequestPromptRecord{
 		RequestID:    event.RequestID,
 		RequestType:  requestType,
+		Prompt:       event.RequestPrompt,
 		InstanceID:   instanceID,
 		ThreadID:     event.ThreadID,
 		TurnID:       event.TurnID,
@@ -137,6 +144,9 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		CreatedAt:    s.now(),
 	}
 	surface.PendingRequests[event.RequestID] = record
+	if !requestPromptRenderable(requestType) {
+		return notice(surface, "request_unsupported", fmt.Sprintf("收到 %s 请求，当前飞书端还不能直接处理，已保持为待处理状态。", requestType))
+	}
 	return []control.UIEvent{s.requestPromptEvent(surface, record, threadTitle)}
 }
 

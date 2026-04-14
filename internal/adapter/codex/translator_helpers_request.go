@@ -3,6 +3,7 @@ package codex
 import (
 	"strings"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
@@ -21,6 +22,7 @@ func extractRequestPayload(message map[string]any) map[string]any {
 func extractRequestID(message map[string]any, request map[string]any) string {
 	return firstNonEmptyString(
 		lookupStringFromAny(request["id"]),
+		lookupStringFromAny(message["id"]),
 		lookupString(message, "params", "requestId"),
 		lookupString(message, "params", "id"),
 	)
@@ -44,16 +46,35 @@ func extractRequestTurnID(message map[string]any, request map[string]any) string
 	)
 }
 
-func extractRequestType(request, params map[string]any) string {
-	switch raw := strings.ToLower(strings.TrimSpace(extractRawRequestType(request, params))); {
+func extractRequestType(method string, request, params map[string]any) string {
+	return string(canonicalRequestType(method, extractRawRequestType(request, params)))
+}
+
+func canonicalRequestType(method, rawType string) agentproto.RequestType {
+	switch strings.TrimSpace(method) {
+	case "item/tool/requestUserInput":
+		return agentproto.RequestTypeRequestUserInput
+	case "item/permissions/requestApproval":
+		return agentproto.RequestTypePermissionsRequestApproval
+	case "mcpServer/elicitation/request":
+		return agentproto.RequestTypeMCPServerElicitation
+	}
+	raw := strings.ToLower(strings.TrimSpace(rawType))
+	switch {
 	case raw == "", raw == "approval", raw == "confirm", raw == "confirmation":
-		return "approval"
+		return agentproto.RequestTypeApproval
 	case strings.HasPrefix(raw, "approval"):
-		return "approval"
+		return agentproto.RequestTypeApproval
 	case strings.HasPrefix(raw, "confirm"):
-		return "approval"
+		return agentproto.RequestTypeApproval
+	case raw == "request_user_input", raw == "requestuserinput":
+		return agentproto.RequestTypeRequestUserInput
+	case raw == "permissions_request_approval", raw == "permissionsrequestapproval":
+		return agentproto.RequestTypePermissionsRequestApproval
+	case raw == "mcp_server_elicitation", raw == "mcpserverelicitation":
+		return agentproto.RequestTypeMCPServerElicitation
 	default:
-		return raw
+		return agentproto.RequestType(raw)
 	}
 }
 
@@ -68,30 +89,267 @@ func extractRawRequestType(request, params map[string]any) string {
 	))
 }
 
-func extractRequestMetadata(requestType string, request, params map[string]any) map[string]any {
+func extractRequestPrompt(method string, message map[string]any) *agentproto.RequestPrompt {
+	switch strings.TrimSpace(method) {
+	case "item/tool/requestUserInput":
+		return extractRequestUserInputPrompt(message)
+	case "item/permissions/requestApproval":
+		return extractPermissionsRequestPrompt(message)
+	case "mcpServer/elicitation/request":
+		return extractMCPElicitationPrompt(message)
+	default:
+		return extractGenericRequestPrompt(method, message)
+	}
+}
+
+func extractGenericRequestPrompt(method string, message map[string]any) *agentproto.RequestPrompt {
+	request := extractRequestPayload(message)
+	params := lookupMap(message, "params")
+	requestType := canonicalRequestType(method, extractRawRequestType(request, params))
+	prompt := &agentproto.RequestPrompt{
+		Type:           requestType,
+		RawType:        normalizeRawRequestType(extractRawRequestType(request, params)),
+		ItemID:         extractRequestItemID(request, params),
+		Title:          firstNonEmptyString(lookupStringFromAny(request["title"]), lookupStringFromAny(request["name"]), lookupStringFromAny(params["title"])),
+		Body:           extractRequestBody(request, params),
+		AcceptLabel:    extractRequestAcceptLabel(request, params),
+		DeclineLabel:   extractRequestDeclineLabel(request, params),
+		Options:        requestOptionsFromMaps(extractRequestOptions(request, params)),
+		Questions:      requestQuestionsFromMaps(extractRequestUserInputQuestions(request, params)),
+		Permissions:    nil,
+		MCPElicitation: nil,
+	}
+	if prompt.Title == "" {
+		prompt.Title = defaultRequestTitle(prompt.Type)
+	}
+	return prompt
+}
+
+func extractRequestUserInputPrompt(message map[string]any) *agentproto.RequestPrompt {
+	params := lookupMap(message, "params")
+	prompt := &agentproto.RequestPrompt{
+		Type:      agentproto.RequestTypeRequestUserInput,
+		Title:     firstNonEmptyString(lookupStringFromAny(params["title"]), lookupStringFromAny(params["header"])),
+		Body:      firstNonEmptyString(lookupStringFromAny(params["message"]), lookupStringFromAny(params["body"]), lookupStringFromAny(params["description"])),
+		ItemID:    extractRequestItemID(nil, params),
+		Questions: requestQuestionsFromMaps(extractRequestUserInputQuestions(nil, params)),
+	}
+	if prompt.Title == "" {
+		prompt.Title = defaultRequestTitle(prompt.Type)
+	}
+	return prompt
+}
+
+func extractPermissionsRequestPrompt(message map[string]any) *agentproto.RequestPrompt {
+	params := lookupMap(message, "params")
+	reason := firstNonEmptyString(
+		lookupStringFromAny(params["reason"]),
+		lookupString(params, "request", "reason"),
+	)
+	body := firstNonEmptyString(
+		lookupStringFromAny(params["message"]),
+		lookupStringFromAny(params["body"]),
+		reason,
+	)
+	prompt := &agentproto.RequestPrompt{
+		Type:  agentproto.RequestTypePermissionsRequestApproval,
+		Title: firstNonEmptyString(lookupStringFromAny(params["title"]), "需要授予权限"),
+		Body:  body,
+		ItemID: firstNonEmptyString(
+			lookupStringFromAny(params["itemId"]),
+			lookupString(params, "request", "itemId"),
+		),
+		Permissions: &agentproto.PermissionsRequestPrompt{
+			Reason:      reason,
+			Permissions: extractRequestMapList(firstNonNil(params["permissions"], lookupAny(params, "request", "permissions"))),
+		},
+	}
+	if prompt.Body == "" {
+		prompt.Body = "本地 Codex 正在等待授予附加权限。"
+	}
+	return prompt
+}
+
+func extractMCPElicitationPrompt(message map[string]any) *agentproto.RequestPrompt {
+	params := lookupMap(message, "params")
+	request := lookupMap(message, "params", "request")
+	mode := strings.TrimSpace(firstNonEmptyString(
+		lookupStringFromAny(request["mode"]),
+		lookupStringFromAny(params["mode"]),
+	))
+	body := firstNonEmptyString(
+		lookupStringFromAny(request["message"]),
+		lookupStringFromAny(params["message"]),
+	)
+	url := firstNonEmptyString(
+		lookupStringFromAny(request["url"]),
+		lookupStringFromAny(params["url"]),
+	)
+	if mode == "url" && url != "" && !strings.Contains(body, url) {
+		if body != "" {
+			body += "\n\n"
+		}
+		body += url
+	}
+	prompt := &agentproto.RequestPrompt{
+		Type:  agentproto.RequestTypeMCPServerElicitation,
+		Title: firstNonEmptyString(lookupStringFromAny(params["title"]), "需要处理 MCP 请求"),
+		Body:  body,
+		MCPElicitation: &agentproto.MCPElicitationPrompt{
+			ServerName: firstNonEmptyString(
+				lookupStringFromAny(params["serverName"]),
+				lookupStringFromAny(request["serverName"]),
+			),
+			Mode:          mode,
+			Message:       firstNonEmptyString(lookupStringFromAny(request["message"]), lookupStringFromAny(params["message"])),
+			URL:           url,
+			ElicitationID: firstNonEmptyString(lookupStringFromAny(request["elicitationId"]), lookupStringFromAny(params["elicitationId"])),
+			RequestedSchema: cloneMap(lookupMapFromAny(firstNonNil(
+				request["requestedSchema"],
+				params["requestedSchema"],
+			))),
+			Meta: cloneMap(lookupMapFromAny(firstNonNil(
+				request["_meta"],
+				params["_meta"],
+			))),
+		},
+	}
+	if prompt.Body == "" {
+		prompt.Body = "本地 Codex 正在等待 MCP server 返回更多信息。"
+	}
+	return prompt
+}
+
+func extractRequestMetadata(prompt *agentproto.RequestPrompt) map[string]any {
+	metadata := map[string]any{}
+	if prompt == nil {
+		return metadata
+	}
+	if prompt.Type != "" {
+		metadata["requestType"] = string(prompt.Type)
+	}
+	if prompt.RawType != "" {
+		metadata["requestKind"] = prompt.RawType
+	}
+	if prompt.ItemID != "" {
+		metadata["itemId"] = prompt.ItemID
+	}
+	if prompt.Title != "" {
+		metadata["title"] = prompt.Title
+	}
+	if prompt.Body != "" {
+		metadata["body"] = prompt.Body
+	}
+	if prompt.AcceptLabel != "" {
+		metadata["acceptLabel"] = prompt.AcceptLabel
+	}
+	if prompt.DeclineLabel != "" {
+		metadata["declineLabel"] = prompt.DeclineLabel
+	}
+	if len(prompt.Options) != 0 {
+		metadata["options"] = requestOptionsToMaps(prompt.Options)
+	}
+	if len(prompt.Questions) != 0 {
+		metadata["questions"] = requestQuestionsToMaps(prompt.Questions)
+	}
+	if prompt.Permissions != nil {
+		if prompt.Permissions.Reason != "" {
+			metadata["reason"] = prompt.Permissions.Reason
+		}
+		if len(prompt.Permissions.Permissions) != 0 {
+			metadata["permissions"] = cloneJSONValue(prompt.Permissions.Permissions)
+		}
+	}
+	if prompt.MCPElicitation != nil {
+		if prompt.MCPElicitation.ServerName != "" {
+			metadata["serverName"] = prompt.MCPElicitation.ServerName
+		}
+		if prompt.MCPElicitation.Mode != "" {
+			metadata["elicitationMode"] = prompt.MCPElicitation.Mode
+		}
+		if prompt.MCPElicitation.Message != "" {
+			metadata["elicitationMessage"] = prompt.MCPElicitation.Message
+		}
+		if prompt.MCPElicitation.URL != "" {
+			metadata["url"] = prompt.MCPElicitation.URL
+		}
+		if prompt.MCPElicitation.ElicitationID != "" {
+			metadata["elicitationId"] = prompt.MCPElicitation.ElicitationID
+		}
+		if len(prompt.MCPElicitation.RequestedSchema) != 0 {
+			metadata["requestedSchema"] = cloneMap(prompt.MCPElicitation.RequestedSchema)
+		}
+		if len(prompt.MCPElicitation.Meta) != 0 {
+			metadata["meta"] = cloneMap(prompt.MCPElicitation.Meta)
+		}
+	}
+	return metadata
+}
+
+func extractResolvedRequestMetadata(requestType string, request, params map[string]any) map[string]any {
 	metadata := map[string]any{}
 	if requestType != "" {
 		metadata["requestType"] = requestType
 	}
-	if rawType := extractRawRequestType(request, params); rawType != "" {
-		metadata["requestKind"] = strings.ToLower(strings.TrimSpace(rawType))
-	}
-	title := firstNonEmptyString(
-		lookupStringFromAny(request["title"]),
-		lookupStringFromAny(request["name"]),
-		lookupStringFromAny(params["title"]),
+	result := lookupMapFromAny(firstNonNil(
+		params["result"],
+		params["response"],
+		request["result"],
+		request["response"],
+	))
+	decision := firstNonEmptyString(
+		lookupStringFromAny(result["decision"]),
+		lookupString(params, "result", "decision"),
+		lookupString(params, "response", "decision"),
+		lookupStringFromAny(params["decision"]),
+		lookupString(request, "result", "decision"),
+		lookupString(request, "response", "decision"),
+		lookupStringFromAny(request["decision"]),
 	)
-	if title == "" {
-		switch requestType {
-		case "", "approval":
-			title = "需要确认"
-		default:
-			title = "需要处理请求"
-		}
+	if decision != "" {
+		metadata["decision"] = decision
 	}
-	if title != "" {
-		metadata["title"] = title
+	action := firstNonEmptyString(
+		lookupStringFromAny(result["action"]),
+		lookupStringFromAny(params["action"]),
+		lookupStringFromAny(request["action"]),
+	)
+	if action != "" {
+		metadata["action"] = action
 	}
+	scope := firstNonEmptyString(
+		lookupStringFromAny(result["scope"]),
+		lookupStringFromAny(params["scope"]),
+		lookupStringFromAny(request["scope"]),
+	)
+	if scope != "" {
+		metadata["scope"] = scope
+	}
+	if permissions := extractRequestMapList(firstNonNil(result["permissions"], params["permissions"], request["permissions"])); len(permissions) != 0 {
+		metadata["permissions"] = permissions
+	}
+	if content := cloneJSONValue(result["content"]); content != nil {
+		metadata["content"] = content
+	}
+	if meta := lookupMap(result, "_meta"); len(meta) != 0 {
+		metadata["meta"] = meta
+	}
+	return metadata
+}
+
+func extractRequestCommand(request, params map[string]any) string {
+	command := firstNonEmptyString(
+		lookupStringFromAny(request["command"]),
+		lookupString(request, "command", "command"),
+		lookupString(request, "command", "text"),
+		lookupStringFromAny(params["command"]),
+		lookupString(params, "command", "command"),
+		lookupString(params, "command", "text"),
+	)
+	return strings.TrimSpace(command)
+}
+
+func extractRequestBody(request, params map[string]any) string {
 	body := firstNonEmptyString(
 		lookupStringFromAny(request["message"]),
 		lookupStringFromAny(request["description"]),
@@ -109,99 +367,225 @@ func extractRequestMetadata(requestType string, request, params map[string]any) 
 		}
 		body += "```text\n" + command + "\n```"
 	}
-	if body != "" {
-		metadata["body"] = body
-	}
-	acceptLabel := firstNonEmptyString(
+	return body
+}
+
+func extractRequestAcceptLabel(request, params map[string]any) string {
+	return firstNonEmptyString(
 		lookupStringFromAny(request["acceptLabel"]),
 		lookupStringFromAny(request["approveLabel"]),
 		lookupStringFromAny(request["allowLabel"]),
 		lookupStringFromAny(request["confirmLabel"]),
 		lookupStringFromAny(params["acceptLabel"]),
 	)
-	if acceptLabel != "" {
-		metadata["acceptLabel"] = acceptLabel
-	}
-	declineLabel := firstNonEmptyString(
+}
+
+func extractRequestDeclineLabel(request, params map[string]any) string {
+	return firstNonEmptyString(
 		lookupStringFromAny(request["declineLabel"]),
 		lookupStringFromAny(request["denyLabel"]),
 		lookupStringFromAny(request["rejectLabel"]),
 		lookupStringFromAny(params["declineLabel"]),
 	)
-	if declineLabel != "" {
-		metadata["declineLabel"] = declineLabel
-	}
-	if options := extractRequestOptions(request, params); len(options) != 0 {
-		metadata["options"] = options
-	}
-	return metadata
 }
 
-func extractRequestUserInputMetadata(message map[string]any) map[string]any {
-	params := lookupMap(message, "params")
-	metadata := map[string]any{
-		"requestType": "request_user_input",
-	}
-	if itemID := firstNonEmptyString(
+func extractRequestItemID(request, params map[string]any) string {
+	return firstNonEmptyString(
+		lookupStringFromAny(request["itemId"]),
+		lookupString(request, "item", "id"),
 		lookupStringFromAny(params["itemId"]),
 		lookupString(params, "item", "id"),
-	); itemID != "" {
-		metadata["itemId"] = itemID
-	}
-	title := firstNonEmptyString(
-		lookupStringFromAny(params["title"]),
-		lookupStringFromAny(params["header"]),
 	)
-	if title == "" {
-		title = "需要补充输入"
-	}
-	metadata["title"] = title
-	if body := firstNonEmptyString(
-		lookupStringFromAny(params["message"]),
-		lookupStringFromAny(params["body"]),
-		lookupStringFromAny(params["description"]),
-	); body != "" {
-		metadata["body"] = body
-	}
-	if questions := extractRequestUserInputQuestions(params); len(questions) != 0 {
-		metadata["questions"] = questions
-	}
-	return metadata
 }
 
-func extractResolvedRequestMetadata(requestType string, request, params map[string]any) map[string]any {
-	metadata := map[string]any{}
-	if requestType != "" {
-		metadata["requestType"] = requestType
+func defaultRequestTitle(requestType agentproto.RequestType) string {
+	switch requestType {
+	case agentproto.RequestTypeApproval:
+		return "需要确认"
+	case agentproto.RequestTypeRequestUserInput:
+		return "需要补充输入"
+	case agentproto.RequestTypePermissionsRequestApproval:
+		return "需要授予权限"
+	default:
+		return "需要处理请求"
 	}
-	decision := firstNonEmptyString(
-		lookupString(params, "result", "decision"),
-		lookupString(params, "response", "decision"),
-		lookupStringFromAny(params["decision"]),
-		lookupString(request, "result", "decision"),
-		lookupString(request, "response", "decision"),
-		lookupStringFromAny(request["decision"]),
-	)
-	if decision != "" {
-		metadata["decision"] = decision
-	}
-	return metadata
 }
 
-func extractRequestCommand(request, params map[string]any) string {
-	command := firstNonEmptyString(
-		lookupStringFromAny(request["command"]),
-		lookupString(request, "command", "command"),
-		lookupString(request, "command", "text"),
-		lookupStringFromAny(params["command"]),
-		lookupString(params, "command", "command"),
-		lookupString(params, "command", "text"),
-	)
-	return strings.TrimSpace(command)
+func normalizeRawRequestType(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
 
-func extractRequestUserInputQuestions(params map[string]any) []map[string]any {
-	source := firstNonNil(params["questions"], params["items"])
+func extractRequestMapList(source any) []map[string]any {
+	if source == nil {
+		return nil
+	}
+	var rawItems []any
+	switch typed := source.(type) {
+	case []any:
+		rawItems = typed
+	case []map[string]any:
+		rawItems = make([]any, 0, len(typed))
+		for _, item := range typed {
+			rawItems = append(rawItems, item)
+		}
+	default:
+		return nil
+	}
+	items := make([]map[string]any, 0, len(rawItems))
+	for _, raw := range rawItems {
+		record, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		items = append(items, cloneMap(record))
+	}
+	return items
+}
+
+func requestOptionsFromMaps(source []map[string]any) []agentproto.RequestOption {
+	if len(source) == 0 {
+		return nil
+	}
+	options := make([]agentproto.RequestOption, 0, len(source))
+	for _, option := range source {
+		optionID := strings.TrimSpace(firstNonEmptyString(
+			lookupStringFromAny(option["id"]),
+			lookupStringFromAny(option["optionId"]),
+		))
+		if optionID == "" {
+			continue
+		}
+		options = append(options, agentproto.RequestOption{
+			OptionID: optionID,
+			Label:    strings.TrimSpace(lookupStringFromAny(option["label"])),
+			Style:    strings.TrimSpace(lookupStringFromAny(option["style"])),
+		})
+	}
+	return options
+}
+
+func requestOptionsToMaps(source []agentproto.RequestOption) []map[string]any {
+	if len(source) == 0 {
+		return nil
+	}
+	options := make([]map[string]any, 0, len(source))
+	for _, option := range source {
+		record := map[string]any{"id": strings.TrimSpace(option.OptionID)}
+		if label := strings.TrimSpace(option.Label); label != "" {
+			record["label"] = label
+		}
+		if style := strings.TrimSpace(option.Style); style != "" {
+			record["style"] = style
+		}
+		options = append(options, record)
+	}
+	return options
+}
+
+func requestQuestionsFromMaps(source []map[string]any) []agentproto.RequestQuestion {
+	if len(source) == 0 {
+		return nil
+	}
+	questions := make([]agentproto.RequestQuestion, 0, len(source))
+	for _, question := range source {
+		questionID := strings.TrimSpace(firstNonEmptyString(
+			lookupStringFromAny(question["id"]),
+			lookupStringFromAny(question["questionId"]),
+		))
+		if questionID == "" {
+			continue
+		}
+		questions = append(questions, agentproto.RequestQuestion{
+			ID:             questionID,
+			Header:         strings.TrimSpace(lookupStringFromAny(question["header"])),
+			Question:       strings.TrimSpace(lookupStringFromAny(question["question"])),
+			AllowOther:     lookupBoolFromAny(question["isOther"]),
+			Secret:         lookupBoolFromAny(question["isSecret"]),
+			Options:        requestQuestionOptionsFromMaps(extractRequestUserInputQuestionOptions(question)),
+			Placeholder:    strings.TrimSpace(lookupStringFromAny(question["placeholder"])),
+			DefaultValue:   strings.TrimSpace(lookupStringFromAny(question["defaultValue"])),
+			DirectResponse: lookupBoolFromAny(question["directResponse"]),
+		})
+	}
+	return questions
+}
+
+func requestQuestionsToMaps(source []agentproto.RequestQuestion) []map[string]any {
+	if len(source) == 0 {
+		return nil
+	}
+	questions := make([]map[string]any, 0, len(source))
+	for _, question := range source {
+		record := map[string]any{"id": strings.TrimSpace(question.ID)}
+		if value := strings.TrimSpace(question.Header); value != "" {
+			record["header"] = value
+		}
+		if value := strings.TrimSpace(question.Question); value != "" {
+			record["question"] = value
+		}
+		if question.AllowOther {
+			record["isOther"] = true
+		}
+		if question.Secret {
+			record["isSecret"] = true
+		}
+		if value := strings.TrimSpace(question.Placeholder); value != "" {
+			record["placeholder"] = value
+		}
+		if value := strings.TrimSpace(question.DefaultValue); value != "" {
+			record["defaultValue"] = value
+		}
+		if question.DirectResponse {
+			record["directResponse"] = true
+		}
+		if options := requestQuestionOptionsToMaps(question.Options); len(options) != 0 {
+			record["options"] = options
+		}
+		questions = append(questions, record)
+	}
+	return questions
+}
+
+func requestQuestionOptionsFromMaps(source []map[string]any) []agentproto.RequestQuestionOption {
+	if len(source) == 0 {
+		return nil
+	}
+	options := make([]agentproto.RequestQuestionOption, 0, len(source))
+	for _, option := range source {
+		label := strings.TrimSpace(lookupStringFromAny(option["label"]))
+		if label == "" {
+			continue
+		}
+		options = append(options, agentproto.RequestQuestionOption{
+			Label:       label,
+			Description: strings.TrimSpace(lookupStringFromAny(option["description"])),
+		})
+	}
+	return options
+}
+
+func requestQuestionOptionsToMaps(source []agentproto.RequestQuestionOption) []map[string]any {
+	if len(source) == 0 {
+		return nil
+	}
+	options := make([]map[string]any, 0, len(source))
+	for _, option := range source {
+		record := map[string]any{"label": strings.TrimSpace(option.Label)}
+		if description := strings.TrimSpace(option.Description); description != "" {
+			record["description"] = description
+		}
+		options = append(options, record)
+	}
+	return options
+}
+
+func extractRequestUserInputQuestions(request, params map[string]any) []map[string]any {
+	source := firstNonNil(
+		request["questions"],
+		request["items"],
+		params["questions"],
+		params["items"],
+	)
 	if source == nil {
 		return nil
 	}
@@ -258,6 +642,9 @@ func extractRequestUserInputQuestions(params map[string]any) []map[string]any {
 		}
 		if defaultValue := firstNonEmptyString(lookupStringFromAny(record["defaultValue"])); defaultValue != "" {
 			question["defaultValue"] = defaultValue
+		}
+		if lookupBoolFromAny(record["directResponse"]) {
+			question["directResponse"] = true
 		}
 		if options := extractRequestUserInputQuestionOptions(record); len(options) != 0 {
 			question["options"] = options

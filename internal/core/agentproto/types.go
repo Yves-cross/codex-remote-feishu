@@ -85,6 +85,9 @@ type Event struct {
 	TrafficClass    TrafficClass           `json:"trafficClass,omitempty"`
 	Initiator       Initiator              `json:"initiator,omitempty"`
 	Problem         *ErrorInfo             `json:"problem,omitempty"`
+	RequestPrompt   *RequestPrompt         `json:"requestPrompt,omitempty"`
+	MCPToolProgress *MCPToolCallProgress   `json:"mcpToolProgress,omitempty"`
+	ApprovalReview  *AutoApprovalReview    `json:"approvalReview,omitempty"`
 	TokenUsage      *ThreadTokenUsage      `json:"tokenUsage,omitempty"`
 	PlanSnapshot    *TurnPlanSnapshot      `json:"planSnapshot,omitempty"`
 	ThreadHistory   *ThreadHistoryRecord   `json:"threadHistory,omitempty"`
@@ -198,4 +201,76 @@ type PromptOverrides struct {
 type Request struct {
 	RequestID string         `json:"requestId,omitempty"`
 	Response  map[string]any `json:"response,omitempty"`
+}
+
+type RequestType string
+
+const (
+	RequestTypeApproval                   RequestType = "approval"
+	RequestTypeRequestUserInput           RequestType = "request_user_input"
+	RequestTypePermissionsRequestApproval RequestType = "permissions_request_approval"
+	RequestTypeMCPServerElicitation       RequestType = "mcp_server_elicitation"
+)
+
+type RequestOption struct {
+	OptionID string `json:"optionId,omitempty"`
+	Label    string `json:"label,omitempty"`
+	Style    string `json:"style,omitempty"`
+}
+
+type RequestQuestionOption struct {
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type RequestQuestion struct {
+	ID             string                  `json:"id,omitempty"`
+	Header         string                  `json:"header,omitempty"`
+	Question       string                  `json:"question,omitempty"`
+	AllowOther     bool                    `json:"allowOther,omitempty"`
+	Secret         bool                    `json:"secret,omitempty"`
+	Options        []RequestQuestionOption `json:"options,omitempty"`
+	Placeholder    string                  `json:"placeholder,omitempty"`
+	DefaultValue   string                  `json:"defaultValue,omitempty"`
+	DirectResponse bool                    `json:"directResponse,omitempty"`
+}
+
+type PermissionsRequestPrompt struct {
+	Reason      string           `json:"reason,omitempty"`
+	Permissions []map[string]any `json:"permissions,omitempty"`
+}
+
+type MCPElicitationPrompt struct {
+	ServerName      string         `json:"serverName,omitempty"`
+	Mode            string         `json:"mode,omitempty"`
+	Message         string         `json:"message,omitempty"`
+	URL             string         `json:"url,omitempty"`
+	ElicitationID   string         `json:"elicitationId,omitempty"`
+	RequestedSchema map[string]any `json:"requestedSchema,omitempty"`
+	Meta            map[string]any `json:"meta,omitempty"`
+}
+
+type RequestPrompt struct {
+	Type           RequestType               `json:"type,omitempty"`
+	RawType        string                    `json:"rawType,omitempty"`
+	Title          string                    `json:"title,omitempty"`
+	Body           string                    `json:"body,omitempty"`
+	ItemID         string                    `json:"itemId,omitempty"`
+	AcceptLabel    string                    `json:"acceptLabel,omitempty"`
+	DeclineLabel   string                    `json:"declineLabel,omitempty"`
+	Options        []RequestOption           `json:"options,omitempty"`
+	Questions      []RequestQuestion         `json:"questions,omitempty"`
+	Permissions    *PermissionsRequestPrompt `json:"permissions,omitempty"`
+	MCPElicitation *MCPElicitationPrompt     `json:"mcpElicitation,omitempty"`
+}
+
+type MCPToolCallProgress struct {
+	Message string `json:"message,omitempty"`
+}
+
+type AutoApprovalReview struct {
+	TargetItemID string         `json:"targetItemId,omitempty"`
+	ActionType   string         `json:"actionType,omitempty"`
+	Review       map[string]any `json:"review,omitempty"`
+	Action       map[string]any `json:"action,omitempty"`
 }

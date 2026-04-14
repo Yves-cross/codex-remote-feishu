@@ -265,6 +265,9 @@ func (s *Service) restorePendingRequestDispatch(surface *state.SurfaceConsoleRec
 		if noticeCode == "command_rejected" {
 			noticeText = "本地 Codex 拒绝了这次请求提交，请在最新卡片上重试。"
 		}
+		if !requestPromptRenderable(request.RequestType) {
+			return notice(surface, noticeCode, noticeText)
+		}
 		return []control.UIEvent{
 			s.requestPromptEvent(surface, request, ""),
 			{

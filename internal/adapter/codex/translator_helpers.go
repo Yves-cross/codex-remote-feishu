@@ -27,6 +27,31 @@ func cloneMap(input map[string]any) map[string]any {
 	return output
 }
 
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		cloned := make(map[string]any, len(typed))
+		for key, item := range typed {
+			cloned[key] = cloneJSONValue(item)
+		}
+		return cloned
+	case []any:
+		cloned := make([]any, 0, len(typed))
+		for _, item := range typed {
+			cloned = append(cloned, cloneJSONValue(item))
+		}
+		return cloned
+	case []map[string]any:
+		cloned := make([]any, 0, len(typed))
+		for _, item := range typed {
+			cloned = append(cloned, cloneJSONValue(item))
+		}
+		return cloned
+	default:
+		return value
+	}
+}
+
 func setDefault(target map[string]any, key string, value any) {
 	if _, exists := target[key]; !exists {
 		target[key] = value
@@ -237,6 +262,26 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 			lookupStringFromAny(item["error"]),
 		); errorMessage != "" {
 			metadata["errorMessage"] = errorMessage
+		}
+		if arguments := cloneJSONValue(firstNonNil(
+			item["arguments"],
+			lookupAny(item, "invocation", "arguments"),
+		)); arguments != nil {
+			metadata["arguments"] = arguments
+		}
+		if result := cloneJSONValue(item["result"]); result != nil {
+			metadata["result"] = result
+		}
+		if result := lookupMap(item, "result"); len(result) != 0 {
+			if content := cloneJSONValue(result["content"]); content != nil {
+				metadata["resultContent"] = content
+			}
+			if structuredContent := cloneJSONValue(result["structuredContent"]); structuredContent != nil {
+				metadata["resultStructuredContent"] = structuredContent
+			}
+			if meta := lookupMap(result, "_meta"); len(meta) != 0 {
+				metadata["resultMeta"] = meta
+			}
 		}
 		if durationMs := lookupIntFromAny(item["durationMs"]); durationMs != 0 || item["durationMs"] != nil {
 			metadata["durationMs"] = durationMs

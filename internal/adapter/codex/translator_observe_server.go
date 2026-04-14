@@ -468,7 +468,6 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}
 		return Result{Events: []agentproto.Event{event}}, nil
 	case "serverRequest/started", "request/started":
-		params := lookupMap(message, "params")
 		request := extractRequestPayload(message)
 		requestID := extractRequestID(message, request)
 		if requestID == "" {
@@ -476,33 +475,136 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}
 		threadID := extractRequestThreadID(message, request)
 		turnID := extractRequestTurnID(message, request)
-		metadata := extractRequestMetadata(extractRequestType(request, params), request, params)
+		prompt := extractRequestPrompt(method, message)
+		if prompt != nil {
+			t.pendingRequestTypes[requestID] = prompt.Type
+		}
 		return Result{Events: []agentproto.Event{{
-			Kind:         agentproto.EventRequestStarted,
-			ThreadID:     threadID,
-			TurnID:       turnID,
-			RequestID:    requestID,
-			Status:       "pending",
-			TrafficClass: t.trafficClassForTurn(threadID, turnID),
-			Initiator:    t.initiatorForTurn(threadID, turnID),
-			Metadata:     metadata,
+			Kind:          agentproto.EventRequestStarted,
+			ThreadID:      threadID,
+			TurnID:        turnID,
+			RequestID:     requestID,
+			Status:        "pending",
+			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
+			Initiator:     t.initiatorForTurn(threadID, turnID),
+			RequestPrompt: prompt,
+			Metadata:      extractRequestMetadata(prompt),
+		}}}, nil
+	case "item/permissions/requestApproval", "mcpServer/elicitation/request":
+		requestID := extractRequestID(message, nil)
+		if requestID == "" {
+			return Result{}, nil
+		}
+		threadID := extractRequestThreadID(message, nil)
+		turnID := extractRequestTurnID(message, nil)
+		prompt := extractRequestPrompt(method, message)
+		if prompt != nil {
+			t.pendingRequestTypes[requestID] = prompt.Type
+		}
+		return Result{Events: []agentproto.Event{{
+			Kind:          agentproto.EventRequestStarted,
+			ThreadID:      threadID,
+			TurnID:        turnID,
+			RequestID:     requestID,
+			Status:        "pending",
+			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
+			Initiator:     t.initiatorForTurn(threadID, turnID),
+			RequestPrompt: prompt,
+			Metadata:      extractRequestMetadata(prompt),
 		}}}, nil
 	case "item/tool/requestUserInput":
-		requestID := lookupStringFromAny(message["id"])
+		requestID := extractRequestID(message, nil)
 		if requestID == "" {
 			return Result{}, nil
 		}
 		threadID := lookupString(message, "params", "threadId")
 		turnID := lookupString(message, "params", "turnId")
+		prompt := extractRequestPrompt(method, message)
+		if prompt != nil {
+			t.pendingRequestTypes[requestID] = prompt.Type
+		}
 		return Result{Events: []agentproto.Event{{
-			Kind:         agentproto.EventRequestStarted,
+			Kind:          agentproto.EventRequestStarted,
+			ThreadID:      threadID,
+			TurnID:        turnID,
+			RequestID:     requestID,
+			Status:        "pending",
+			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
+			Initiator:     t.initiatorForTurn(threadID, turnID),
+			RequestPrompt: prompt,
+			Metadata:      extractRequestMetadata(prompt),
+		}}}, nil
+	case "item/mcpToolCall/progress":
+		threadID := lookupString(message, "params", "threadId")
+		turnID := lookupString(message, "params", "turnId")
+		itemID := lookupString(message, "params", "itemId")
+		progressMessage := firstNonEmptyString(
+			lookupString(message, "params", "message"),
+			lookupString(message, "params", "progress", "message"),
+		)
+		if itemID == "" || progressMessage == "" {
+			return Result{}, nil
+		}
+		return Result{Events: []agentproto.Event{{
+			Kind:            agentproto.EventItemDelta,
+			ThreadID:        threadID,
+			TurnID:          turnID,
+			ItemID:          itemID,
+			ItemKind:        "mcp_tool_call",
+			Status:          "inProgress",
+			Delta:           progressMessage,
+			TrafficClass:    t.trafficClassForTurn(threadID, turnID),
+			Initiator:       t.initiatorForTurn(threadID, turnID),
+			MCPToolProgress: &agentproto.MCPToolCallProgress{Message: progressMessage},
+			Metadata: map[string]any{
+				"progressMessage": progressMessage,
+			},
+		}}}, nil
+	case "item/autoApprovalReview/started", "item/autoApprovalReview/completed":
+		threadID := lookupString(message, "params", "threadId")
+		turnID := lookupString(message, "params", "turnId")
+		targetItemID := lookupString(message, "params", "targetItemId")
+		action := cloneMap(lookupMap(message, "params", "action"))
+		review := cloneMap(lookupMap(message, "params", "review"))
+		metadata := map[string]any{}
+		if targetItemID != "" {
+			metadata["targetItemId"] = targetItemID
+		}
+		if len(action) != 0 {
+			metadata["action"] = action
+		}
+		if len(review) != 0 {
+			metadata["review"] = review
+		}
+		actionType := firstNonEmptyString(
+			lookupStringFromAny(action["type"]),
+			lookupString(message, "params", "action", "type"),
+		)
+		if actionType != "" {
+			metadata["actionType"] = actionType
+		}
+		kind := agentproto.EventItemStarted
+		status := "started"
+		if method == "item/autoApprovalReview/completed" {
+			kind = agentproto.EventItemCompleted
+			status = "completed"
+		}
+		return Result{Events: []agentproto.Event{{
+			Kind:         kind,
 			ThreadID:     threadID,
 			TurnID:       turnID,
-			RequestID:    requestID,
-			Status:       "pending",
+			ItemID:       targetItemID,
+			ItemKind:     "auto_approval_review",
+			Status:       status,
 			TrafficClass: t.trafficClassForTurn(threadID, turnID),
 			Initiator:    t.initiatorForTurn(threadID, turnID),
-			Metadata:     extractRequestUserInputMetadata(message),
+			ApprovalReview: &agentproto.AutoApprovalReview{
+				TargetItemID: targetItemID,
+				ActionType:   actionType,
+				Action:       action,
+				Review:       review,
+			},
+			Metadata: metadata,
 		}}}, nil
 	case "serverRequest/resolved", "request/resolved":
 		params := lookupMap(message, "params")
@@ -513,7 +615,12 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}
 		threadID := extractRequestThreadID(message, request)
 		turnID := extractRequestTurnID(message, request)
-		metadata := extractResolvedRequestMetadata(extractRequestType(request, params), request, params)
+		requestType := extractRequestType(method, request, params)
+		if requestType == "" {
+			requestType = string(t.pendingRequestTypes[requestID])
+		}
+		delete(t.pendingRequestTypes, requestID)
+		metadata := extractResolvedRequestMetadata(requestType, request, params)
 		status := firstNonEmptyString(
 			lookupStringFromAny(params["status"]),
 			lookupStringFromAny(request["status"]),

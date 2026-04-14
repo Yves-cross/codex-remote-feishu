@@ -296,6 +296,7 @@ type RequestPromptQuestionRecord struct {
 type RequestPromptRecord struct {
 	RequestID                string
 	RequestType              string
+	Prompt                   *agentproto.RequestPrompt
 	InstanceID               string
 	ThreadID                 string
 	TurnID                   string

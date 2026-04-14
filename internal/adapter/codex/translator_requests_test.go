@@ -42,6 +42,9 @@ func TestObserveServerRequestStartedProducesApprovalEvent(t *testing.T) {
 	if event.Metadata["requestType"] != "approval" || event.Metadata["title"] != "Run command?" {
 		t.Fatalf("unexpected request metadata: %#v", event.Metadata)
 	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypeApproval {
+		t.Fatalf("expected typed approval prompt, got %#v", event.RequestPrompt)
+	}
 	body, _ := event.Metadata["body"].(string)
 	if !strings.Contains(body, "Need approval before continuing.") || !strings.Contains(body, "git push") {
 		t.Fatalf("expected message and command in body, got %#v", event.Metadata)
@@ -64,6 +67,9 @@ func TestObserveServerRequestStartedNormalizesApprovalKindAndExtractsOptions(t *
 	event := result.Events[0]
 	if event.Metadata["requestType"] != "approval" || event.Metadata["requestKind"] != "approval_command" {
 		t.Fatalf("unexpected normalized request metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.RawType != "approval_command" {
+		t.Fatalf("expected typed approval prompt with raw type, got %#v", event.RequestPrompt)
 	}
 	options, ok := event.Metadata["options"].([]map[string]any)
 	if !ok || len(options) != 3 {
@@ -90,6 +96,9 @@ func TestObserveServerRequestUserInputProducesQuestionMetadata(t *testing.T) {
 	}
 	if event.Metadata["requestType"] != "request_user_input" || event.Metadata["itemId"] != "item-1" {
 		t.Fatalf("unexpected request user input metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypeRequestUserInput {
+		t.Fatalf("expected typed request_user_input prompt, got %#v", event.RequestPrompt)
 	}
 	questions, ok := event.Metadata["questions"].([]map[string]any)
 	if !ok || len(questions) != 2 {
@@ -130,6 +139,88 @@ func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
 	}
 	if event.Metadata["decision"] != "decline" {
 		t.Fatalf("unexpected resolved request metadata: %#v", event.Metadata)
+	}
+}
+
+func TestObserveServerPermissionsRequestApprovalProducesDedicatedRequestType(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-perm-1","method":"item/permissions/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","reason":"Need docs scope","permissions":[{"name":"docs.read","title":"Read docs"}]}}`))
+	if err != nil {
+		t.Fatalf("observe permissions request approval: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-perm-1" {
+		t.Fatalf("unexpected request event: %#v", event)
+	}
+	if event.Metadata["requestType"] != "permissions_request_approval" || event.Metadata["itemId"] != "item-1" {
+		t.Fatalf("unexpected permissions request metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypePermissionsRequestApproval {
+		t.Fatalf("expected typed permissions request prompt, got %#v", event.RequestPrompt)
+	}
+}
+
+func TestObserveServerMCPElicitationProducesDedicatedRequestType(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-mcp-1","method":"mcpServer/elicitation/request","params":{"threadId":"thread-1","turnId":"turn-1","serverName":"docs","request":{"mode":"url","message":"Open the consent page","url":"https://example.com/approve","elicitationId":"eli-1","_meta":{"flow":"oauth"}}}}`))
+	if err != nil {
+		t.Fatalf("observe mcp elicitation request: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-mcp-1" {
+		t.Fatalf("unexpected request event: %#v", event)
+	}
+	if event.Metadata["requestType"] != "mcp_server_elicitation" || event.Metadata["serverName"] != "docs" || event.Metadata["url"] != "https://example.com/approve" {
+		t.Fatalf("unexpected mcp elicitation metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypeMCPServerElicitation {
+		t.Fatalf("expected typed mcp elicitation prompt, got %#v", event.RequestPrompt)
+	}
+}
+
+func TestObserveServerMCPToolCallProgressProducesDeltaEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"item/mcpToolCall/progress","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"mcp-1","message":"Querying MCP server"}}`))
+	if err != nil {
+		t.Fatalf("observe mcp tool call progress: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one delta event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventItemDelta || event.ItemKind != "mcp_tool_call" || event.ItemID != "mcp-1" || event.Delta != "Querying MCP server" {
+		t.Fatalf("unexpected mcp progress event: %#v", event)
+	}
+	if event.MCPToolProgress == nil || event.MCPToolProgress.Message != "Querying MCP server" {
+		t.Fatalf("expected typed mcp progress payload, got %#v", event.MCPToolProgress)
+	}
+}
+
+func TestObserveServerAutoApprovalReviewProducesDedicatedItemEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"method":"item/autoApprovalReview/started","params":{"threadId":"thread-1","turnId":"turn-1","targetItemId":"mcp-1","action":{"type":"mcpToolCall"},"review":{"status":"pending"}}}`))
+	if err != nil {
+		t.Fatalf("observe auto approval review: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one review event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventItemStarted || event.ItemKind != "auto_approval_review" || event.ItemID != "mcp-1" {
+		t.Fatalf("unexpected auto approval review event: %#v", event)
+	}
+	if event.ApprovalReview == nil || event.ApprovalReview.ActionType != "mcpToolCall" {
+		t.Fatalf("expected typed review payload, got %#v", event.ApprovalReview)
 	}
 }
 

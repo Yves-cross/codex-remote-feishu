@@ -180,13 +180,12 @@ func TestAttachReplaysUndeliveredFinalForIdleThread(t *testing.T) {
 	now := time.Date(2026, 4, 7, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
-		InstanceID:              "inst-1",
-		DisplayName:             "droid",
-		WorkspaceRoot:           "/data/dl/droid",
-		WorkspaceKey:            "/data/dl/droid",
-		ShortName:               "droid",
-		Online:                  true,
-		ObservedFocusedThreadID: "thread-1",
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
 			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
 		},
@@ -592,6 +591,63 @@ func TestApprovalRequestPromptUsesAttachedSurfaceForLocalTurn(t *testing.T) {
 	}
 	if !events[0].FeishuRequestContext.Surface.RouteMutationBlocked || events[0].FeishuRequestContext.Surface.RouteMutationBlockedBy != "pending_request" {
 		t.Fatalf("expected pending request to block route mutation, got %#v", events[0].FeishuRequestContext.Surface)
+	}
+}
+
+func TestUnsupportedMCPRequestStoresPendingStateWithoutRenderingApprovalCard(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-mcp-1",
+		RequestPrompt: &agentproto.RequestPrompt{
+			Type:   agentproto.RequestTypePermissionsRequestApproval,
+			Title:  "需要授予权限",
+			Body:   "本地 Codex 正在等待 docs.read 权限。",
+			ItemID: "item-1",
+		},
+		Metadata: map[string]any{
+			"requestType": "permissions_request_approval",
+			"title":       "需要授予权限",
+			"body":        "本地 Codex 正在等待 docs.read 权限。",
+			"itemId":      "item-1",
+		},
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_unsupported" {
+		t.Fatalf("expected unsupported notice, got %#v", events)
+	}
+	if events[0].FeishuDirectRequestPrompt != nil {
+		t.Fatalf("expected no approval-style request card for unsupported mcp request, got %#v", events[0].FeishuDirectRequestPrompt)
+	}
+	record := svc.root.Surfaces["surface-1"].PendingRequests["req-mcp-1"]
+	if record == nil || record.RequestType != "permissions_request_approval" {
+		t.Fatalf("expected pending unsupported request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+	if record.Prompt == nil || record.Prompt.Type != agentproto.RequestTypePermissionsRequestApproval {
+		t.Fatalf("expected typed request prompt to be retained in state, got %#v", record)
 	}
 }
 

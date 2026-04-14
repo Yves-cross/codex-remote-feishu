@@ -17,8 +17,23 @@ func normalizeRequestType(value string) string {
 		return "approval"
 	case strings.HasPrefix(normalized, "confirm"):
 		return "approval"
+	case normalized == "request_user_input", normalized == "requestuserinput":
+		return "request_user_input"
+	case normalized == "permissions_request_approval", normalized == "permissionsrequestapproval":
+		return "permissions_request_approval"
+	case normalized == "mcp_server_elicitation", normalized == "mcpserverelicitation":
+		return "mcp_server_elicitation"
 	default:
 		return normalized
+	}
+}
+
+func requestPromptRenderable(requestType string) bool {
+	switch normalizeRequestType(requestType) {
+	case "approval", "request_user_input":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -397,8 +412,15 @@ func metadataRequestOptions(metadata map[string]any) []state.RequestPromptOption
 }
 
 func pendingRequestNoticeText(request *state.RequestPromptRecord) string {
-	if request != nil && normalizeRequestType(request.RequestType) == "request_user_input" {
-		return "当前有待回答问题。请先在卡片上点击选项或提交表单。"
+	if request == nil {
+		return "当前有待处理请求。"
 	}
-	return "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。"
+	switch normalizeRequestType(request.RequestType) {
+	case "request_user_input":
+		return "当前有待回答问题。请先在卡片上点击选项或提交表单。"
+	case "approval":
+		return "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。"
+	default:
+		return "当前有待处理请求。这个请求类型暂时不能在飞书端直接处理，请先回到本地处理或等待后续支持。"
+	}
 }

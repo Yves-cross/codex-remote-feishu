@@ -47,3 +47,26 @@ func TestObserveServerMCPToolCallCompletedExtractsFailureMetadata(t *testing.T) 
 		t.Fatalf("expected durationMs metadata, got %#v", event.Metadata)
 	}
 }
+
+func TestObserveServerMCPToolCallCompletedExtractsStructuredResultMetadata(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"mcp-1","type":"mcpToolCall","status":"completed","server":"docs","tool":"lookup","arguments":{"query":"hello"},"result":{"content":[{"type":"text","text":"world"}],"structuredContent":{"answer":"world"},"_meta":{"source":"docs"}},"durationMs":24}}}`))
+	if err != nil {
+		t.Fatalf("observe mcp tool call completed: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Metadata["arguments"] == nil || event.Metadata["result"] == nil {
+		t.Fatalf("expected arguments and result metadata, got %#v", event.Metadata)
+	}
+	structured, ok := event.Metadata["resultStructuredContent"].(map[string]any)
+	if !ok || structured["answer"] != "world" {
+		t.Fatalf("expected structured result metadata, got %#v", event.Metadata)
+	}
+	meta, ok := event.Metadata["resultMeta"].(map[string]any)
+	if !ok || meta["source"] != "docs" {
+		t.Fatalf("expected result meta metadata, got %#v", event.Metadata)
+	}
+}
