@@ -463,6 +463,24 @@ func TestObserveServerCompletedLegacyAssistantMessageMapsToAgentMessage(t *testi
 	}
 }
 
+func TestObserveServerContextCompactionMapsToCanonicalKind(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	result, err := tr.ObserveServer([]byte(`{"method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"compact-1","type":"contextCompaction","status":"completed"}}}`))
+	if err != nil {
+		t.Fatalf("observe context compaction item completed: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventItemCompleted || event.ItemKind != "context_compaction" || event.Status != "completed" {
+		t.Fatalf("unexpected context compaction event: %#v", event)
+	}
+	if len(event.Metadata) != 0 {
+		t.Fatalf("expected compact completion to stay metadata-light, got %#v", event.Metadata)
+	}
+}
+
 func TestObserveServerFileChangeLifecyclePreservesStructuredChanges(t *testing.T) {
 	tr := NewTranslator("inst-1")
 

@@ -124,6 +124,10 @@ func isImageGenerationItem(itemKind string) bool {
 	return strings.TrimSpace(itemKind) == "image_generation"
 }
 
+func isContextCompactionItem(itemKind string) bool {
+	return strings.TrimSpace(itemKind) == "context_compaction"
+}
+
 func isDynamicToolCallItem(itemKind string) bool {
 	return strings.TrimSpace(itemKind) == "dynamic_tool_call"
 }

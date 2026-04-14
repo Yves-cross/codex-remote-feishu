@@ -173,6 +173,8 @@ func normalizeItemKind(raw string) string {
 		return "web_search"
 	case "fileChange", "file_change":
 		return "file_change"
+	case "contextCompaction", "context_compaction":
+		return "context_compaction"
 	case "imageGeneration", "image_generation", "imageGenerationCall", "image_generation_call":
 		return "image_generation"
 	case "mcpToolCall", "mcp_tool_call":

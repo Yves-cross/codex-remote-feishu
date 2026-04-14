@@ -532,6 +532,10 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 		delete(s.itemBuffers, key)
 		return s.renderImageItem(instanceID, event)
 	}
+	if isContextCompactionItem(event.ItemKind) {
+		delete(s.itemBuffers, key)
+		return s.renderCompactNotice(instanceID, event)
+	}
 	buf := s.itemBuffers[key]
 	if buf == nil {
 		buf = s.ensureItemBuffer(instanceID, event.ThreadID, event.TurnID, event.ItemID, event.ItemKind)

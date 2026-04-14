@@ -1,8 +1,8 @@
 # Relay Protocol Spec
 
 > Type: `general`
-> Updated: `2026-04-13`
-> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn/plan/updated` 的结构化计划快照事件，以及新的 `thread.history.read` 定向历史查询 command/event。
+> Updated: `2026-04-14`
+> Summary: 继续作为当前 canonical 协议文档，并同步 `turn.steer`、Feishu reaction steering、daemon 驱动的 wrapper 退出命令、`thread/tokenUsage/updated` usage 事件、`turn/plan/updated` 的结构化计划快照事件、`thread.history.read` 定向历史查询 command/event，以及 `contextCompaction` 到 compact notice 的标准化语义。
 
 ## 1. 文档定位
 
@@ -433,6 +433,15 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 - wrapper 会把 native `turn/plan/updated` 标准化成 `turn.plan.updated + planSnapshot`
 - `item/plan/delta` 仍属于 `item.delta` 文本流，不会被折叠成 `planSnapshot`
 - orchestrator 在产品层按 live turn + surface 去重同内容快照，避免重复投影相同计划更新
+
+#### `item.completed.itemKind=context_compaction`
+
+当前语义：
+
+- wrapper 会把 native `item.type=contextCompaction` 标准化成 `item.completed + itemKind=context_compaction`
+- 这个 item 不走 assistant 正文渲染，也不参与普通文本缓冲
+- orchestrator 会把它投影成一条单独的 compact 成功提示
+- 若 compact 发生时没有 live surface，server 会把该提示存成 thread 级一次性 replay，等用户重新接入该 thread 时只补投一次
 
 ### 5.3 Request 元数据
 
