@@ -100,7 +100,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 			continue
 		}
 		a.flushPendingGatewayNotices(event.SurfaceSessionID)
-		if err := a.deliverUIEvent(event); err != nil {
+		if err := a.deliverUIEventLocked(context.Background(), event); err != nil {
 			chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 			log.Printf("gateway apply failed: chat=%s event=%s err=%v", chatID, event.Kind, err)
 			a.queueGatewayFailureNotice(event, err)
@@ -112,7 +112,15 @@ func (a *App) deliverUIEvent(event control.UIEvent) error {
 	return a.deliverUIEventWithContext(context.Background(), event)
 }
 
+func (a *App) deliverUIEventLocked(ctx context.Context, event control.UIEvent) error {
+	return a.deliverUIEventWithContextMode(ctx, event, true)
+}
+
 func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEvent) error {
+	return a.deliverUIEventWithContextMode(ctx, event, false)
+}
+
+func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.UIEvent, appLocked bool) error {
 	chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 	actorUserID := a.service.SurfaceActorUserID(event.SurfaceSessionID)
 	gatewayID := firstNonEmpty(event.GatewayID, a.service.SurfaceGatewayID(event.SurfaceSessionID))
@@ -124,7 +132,7 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEve
 	var previewSupplementOps []feishu.Operation
 	if a.finalBlockPreviewer != nil && event.Kind == control.UIEventBlockCommitted && event.Block != nil {
 		previewCtx, previewCancel := a.newTimeoutContext(ctx, a.finalPreviewTimeout)
-		previewResult, err := a.finalBlockPreviewer.RewriteFinalBlock(previewCtx, feishu.FinalBlockPreviewRequest{
+		previewReq := feishu.FinalBlockPreviewRequest{
 			GatewayID:        gatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
@@ -132,7 +140,18 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEve
 			WorkspaceRoot:    a.previewWorkspaceRoot(event.SurfaceSessionID, *event.Block),
 			ThreadCWD:        a.previewThreadCWD(event.SurfaceSessionID, *event.Block),
 			Block:            *event.Block,
-		})
+		}
+		var (
+			previewResult feishu.FinalBlockPreviewResult
+			err           error
+		)
+		if appLocked {
+			a.mu.Unlock()
+			previewResult, err = a.finalBlockPreviewer.RewriteFinalBlock(previewCtx, previewReq)
+			a.mu.Lock()
+		} else {
+			previewResult, err = a.finalBlockPreviewer.RewriteFinalBlock(previewCtx, previewReq)
+		}
 		previewCancel()
 		event.Block = &previewResult.Block
 		previewSupplementOps = a.projector.ProjectPreviewSupplements(gatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, previewResult.Supplements)
