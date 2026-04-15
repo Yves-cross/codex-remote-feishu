@@ -133,6 +133,7 @@
 - [managed-headless-pool-design.md](./implemented/managed-headless-pool-design.md)
 - [new-thread-command-design.md](./implemented/new-thread-command-design.md)
 - [relay-backpressure-hardening-design.md](./implemented/relay-backpressure-hardening-design.md)
+- [shared-exploration-progress-card-design.md](./implemented/shared-exploration-progress-card-design.md)
 - [authenticated-external-access-foundation-design.md](./implemented/authenticated-external-access-foundation-design.md)
 - [web-admin-ui-redesign.md](./implemented/web-admin-ui-redesign.md)
 
@@ -154,7 +155,6 @@
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
 - [non-linux-user-autostart-research.md](./draft/non-linux-user-autostart-research.md)
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
-- [shared-exploration-progress-card-design.md](./draft/shared-exploration-progress-card-design.md)
 - [web-preview-snapshot-design.md](./draft/web-preview-snapshot-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-onboarding-admin-workflow-prd.md](./draft/web-onboarding-admin-workflow-prd.md)

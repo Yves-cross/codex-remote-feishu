@@ -1,7 +1,9 @@
 import type {
+  AdminSurfaceStatusSummary,
   AdminInstanceSummary,
   AutostartDetectResponse,
   BootstrapState,
+  ExecCommandProgressView,
   FeishuAppSummary,
   FeishuManifest,
   GatewayStatus,
@@ -12,16 +14,19 @@ import type {
   VSCodeDetectResponse,
 } from "../lib/types";
 
-type BootstrapOverrides =
-  Partial<Omit<BootstrapState, "session" | "config" | "relay" | "admin" | "feishu">> & {
-    session?: Partial<BootstrapState["session"]>;
-    config?: Partial<BootstrapState["config"]>;
-    relay?: Partial<BootstrapState["relay"]>;
-    admin?: Partial<BootstrapState["admin"]>;
-    feishu?: Partial<BootstrapState["feishu"]>;
-  };
+type BootstrapOverrides = Partial<
+  Omit<BootstrapState, "session" | "config" | "relay" | "admin" | "feishu">
+> & {
+  session?: Partial<BootstrapState["session"]>;
+  config?: Partial<BootstrapState["config"]>;
+  relay?: Partial<BootstrapState["relay"]>;
+  admin?: Partial<BootstrapState["admin"]>;
+  feishu?: Partial<BootstrapState["feishu"]>;
+};
 
-export function makeBootstrap(overrides: BootstrapOverrides = {}): BootstrapState {
+export function makeBootstrap(
+  overrides: BootstrapOverrides = {},
+): BootstrapState {
   const {
     session: sessionOverrides,
     config: configOverrides,
@@ -66,7 +71,9 @@ export function makeBootstrap(overrides: BootstrapOverrides = {}): BootstrapStat
   };
 }
 
-export function makeGatewayStatus(overrides: Partial<GatewayStatus> = {}): GatewayStatus {
+export function makeGatewayStatus(
+  overrides: Partial<GatewayStatus> = {},
+): GatewayStatus {
   return {
     gatewayId: "bot-1",
     name: "Main Bot",
@@ -76,7 +83,9 @@ export function makeGatewayStatus(overrides: Partial<GatewayStatus> = {}): Gatew
   };
 }
 
-export function makeApp(overrides: Partial<FeishuAppSummary> = {}): FeishuAppSummary {
+export function makeApp(
+  overrides: Partial<FeishuAppSummary> = {},
+): FeishuAppSummary {
   return {
     id: "bot-1",
     name: "Main Bot",
@@ -91,7 +100,9 @@ export function makeApp(overrides: Partial<FeishuAppSummary> = {}): FeishuAppSum
   };
 }
 
-export function makeManifest(overrides: Partial<FeishuManifest> = {}): FeishuManifest {
+export function makeManifest(
+  overrides: Partial<FeishuManifest> = {},
+): FeishuManifest {
   return {
     scopesImport: {
       scopes: {
@@ -107,7 +118,9 @@ export function makeManifest(overrides: Partial<FeishuManifest> = {}): FeishuMan
   };
 }
 
-export function makeVSCodeDetect(overrides: Partial<VSCodeDetectResponse> = {}): VSCodeDetectResponse {
+export function makeVSCodeDetect(
+  overrides: Partial<VSCodeDetectResponse> = {},
+): VSCodeDetectResponse {
   return {
     sshSession: false,
     recommendedMode: "managed_shim",
@@ -133,7 +146,9 @@ export function makeVSCodeDetect(overrides: Partial<VSCodeDetectResponse> = {}):
   };
 }
 
-export function makeAutostartDetect(overrides: Partial<AutostartDetectResponse> = {}): AutostartDetectResponse {
+export function makeAutostartDetect(
+  overrides: Partial<AutostartDetectResponse> = {},
+): AutostartDetectResponse {
   return {
     platform: "darwin",
     supported: false,
@@ -145,7 +160,9 @@ export function makeAutostartDetect(overrides: Partial<AutostartDetectResponse> 
   };
 }
 
-export function makeRuntimeRequirementsDetect(overrides: Partial<RuntimeRequirementsDetectResponse> = {}): RuntimeRequirementsDetectResponse {
+export function makeRuntimeRequirementsDetect(
+  overrides: Partial<RuntimeRequirementsDetectResponse> = {},
+): RuntimeRequirementsDetectResponse {
   return {
     ready: true,
     summary: "当前机器已满足基础运行条件，可以继续后面的可选配置。",
@@ -173,10 +190,13 @@ export function makeRuntimeRequirementsDetect(overrides: Partial<RuntimeRequirem
   };
 }
 
-export function makeRuntimeStatus(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
+export function makeRuntimeStatus(
+  overrides: Partial<RuntimeStatus> = {},
+): RuntimeStatus {
   return {
     instances: [],
     surfaces: [],
+    surfaceStatuses: [],
     gateways: [],
     pendingRemoteTurns: [],
     activeRemoteTurns: [],
@@ -184,7 +204,39 @@ export function makeRuntimeStatus(overrides: Partial<RuntimeStatus> = {}): Runti
   };
 }
 
-export function makeImageStagingStatus(overrides: Partial<ImageStagingStatusResponse> = {}): ImageStagingStatusResponse {
+export function makeExecCommandProgress(
+  overrides: Partial<ExecCommandProgressView> = {},
+): ExecCommandProgressView {
+  return {
+    status: "running",
+    blocks: [],
+    entries: [],
+    commands: [],
+    ...overrides,
+  };
+}
+
+export function makeSurfaceStatus(
+  overrides: Partial<AdminSurfaceStatusSummary> = {},
+): AdminSurfaceStatusSummary {
+  return {
+    surfaceSessionId: "surface-1",
+    productMode: "normal",
+    displayTitle: "整理 websetup 流程",
+    threadTitle: "整理 websetup 流程",
+    firstUserMessage: "请把 websetup 的体验重新整理一下",
+    lastUserMessage: "顺便把探索过程卡也接到 web 里",
+    lastAssistantMessage: "我会先补结构化探索状态卡。",
+    workspacePath: "/tmp/demo",
+    instanceDisplayName: "Demo Workspace",
+    progress: makeExecCommandProgress(),
+    ...overrides,
+  };
+}
+
+export function makeImageStagingStatus(
+  overrides: Partial<ImageStagingStatusResponse> = {},
+): ImageStagingStatusResponse {
   return {
     rootDir: "/tmp/image-staging",
     fileCount: 0,
@@ -195,7 +247,9 @@ export function makeImageStagingStatus(overrides: Partial<ImageStagingStatusResp
   };
 }
 
-export function makePreviewDriveStatus(overrides: Partial<PreviewDriveStatusResponse> = {}): PreviewDriveStatusResponse {
+export function makePreviewDriveStatus(
+  overrides: Partial<PreviewDriveStatusResponse> = {},
+): PreviewDriveStatusResponse {
   return {
     gatewayId: "bot-1",
     name: "Main Bot",
@@ -209,7 +263,9 @@ export function makePreviewDriveStatus(overrides: Partial<PreviewDriveStatusResp
   };
 }
 
-export function makeInstance(overrides: Partial<AdminInstanceSummary> = {}): AdminInstanceSummary {
+export function makeInstance(
+  overrides: Partial<AdminInstanceSummary> = {},
+): AdminInstanceSummary {
   return {
     instanceId: "inst-1",
     displayName: "Workspace",

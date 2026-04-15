@@ -261,6 +261,23 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 	if binding := s.lookupRemoteTurn(progress.InstanceID, threadID, turnID); binding != nil {
 		sourceMessageID = firstNonEmpty(binding.ReplyToMessageID, binding.SourceMessageID)
 	}
+	snapshot := ExecCommandProgressSnapshot(progress)
+	if snapshot == nil {
+		return nil
+	}
+	snapshot.Final = final
+	return []control.UIEvent{{
+		Kind:                control.UIEventExecCommandProgress,
+		SurfaceSessionID:    surface.SurfaceSessionID,
+		SourceMessageID:     sourceMessageID,
+		ExecCommandProgress: snapshot,
+	}}
+}
+
+func ExecCommandProgressSnapshot(progress *state.ExecCommandProgressRecord) *control.ExecCommandProgress {
+	if progress == nil {
+		return nil
+	}
 	entries := make([]control.ExecCommandProgressEntry, 0, len(progress.Entries))
 	for _, entry := range progress.Entries {
 		entries = append(entries, control.ExecCommandProgressEntry{
@@ -271,25 +288,18 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 			Status:  entry.Status,
 		})
 	}
-	blocks := execCommandProgressBlocks(progress)
-	return []control.UIEvent{{
-		Kind:             control.UIEventExecCommandProgress,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		SourceMessageID:  sourceMessageID,
-		ExecCommandProgress: &control.ExecCommandProgress{
-			ThreadID:  progress.ThreadID,
-			TurnID:    progress.TurnID,
-			ItemID:    progress.ItemID,
-			MessageID: progress.MessageID,
-			Blocks:    blocks,
-			Entries:   entries,
-			Commands:  append([]string(nil), progress.Commands...),
-			Command:   progress.Command,
-			CWD:       progress.CWD,
-			Status:    progress.Status,
-			Final:     final,
-		},
-	}}
+	return &control.ExecCommandProgress{
+		ThreadID:  progress.ThreadID,
+		TurnID:    progress.TurnID,
+		ItemID:    progress.ItemID,
+		MessageID: progress.MessageID,
+		Blocks:    execCommandProgressBlocks(progress),
+		Entries:   entries,
+		Commands:  append([]string(nil), progress.Commands...),
+		Command:   progress.Command,
+		CWD:       progress.CWD,
+		Status:    progress.Status,
+	}
 }
 
 func (s *Service) ensureExecCommandProgress(surface *state.SurfaceConsoleRecord, instanceID, threadID, turnID string) *state.ExecCommandProgressRecord {

@@ -1,11 +1,17 @@
 :root {
   color-scheme: light;
-  font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family:
+    "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #122230;
   background:
-    radial-gradient(circle at top left, rgba(14, 116, 144, 0.12), transparent 24rem),
+    radial-gradient(
+      circle at top left,
+      rgba(14, 116, 144, 0.12),
+      transparent 24rem
+    ),
     linear-gradient(180deg, #eff4f7 0%, #f6f8fb 48%, #eef2f7 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -209,7 +215,10 @@ button {
   padding: 0.82rem 1.1rem;
   border-radius: 999px;
   cursor: pointer;
-  transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease,
+    background-color 120ms ease;
 }
 
 .primary-button {
@@ -316,11 +325,19 @@ button {
 }
 
 .stat-card.accent {
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(15, 118, 110, 0.1),
+    rgba(255, 255, 255, 0.96)
+  );
 }
 
 .stat-card.warn {
-  background: linear-gradient(180deg, rgba(183, 121, 31, 0.12), rgba(255, 255, 255, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(183, 121, 31, 0.12),
+    rgba(255, 255, 255, 0.96)
+  );
 }
 
 .definition-list {
@@ -691,10 +708,57 @@ button {
   color: var(--text-soft);
 }
 
+.surface-progress-card {
+  gap: 0.9rem;
+  border-color: rgba(217, 119, 6, 0.16);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 247, 237, 0.88),
+      rgba(255, 255, 255, 0.96)
+    ),
+    var(--surface-strong);
+}
+
+.surface-progress-copy,
+.surface-progress-blocks,
+.surface-progress-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.surface-progress-copy p {
+  color: var(--text-body);
+}
+
+.surface-progress-copy strong,
+.surface-progress-block strong {
+  color: var(--text-strong);
+}
+
+.surface-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(217, 119, 6, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.surface-progress-row {
+  color: var(--text-body);
+}
+
 .app-status-hero {
   border-color: rgba(20, 184, 166, 0.18);
   background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(255, 255, 255, 0.94)),
+    linear-gradient(
+      135deg,
+      rgba(20, 184, 166, 0.08),
+      rgba(255, 255, 255, 0.94)
+    ),
     var(--surface-strong);
 }
 
@@ -953,7 +1017,11 @@ button {
 .wizard-callout {
   padding: 1.15rem;
   border-radius: 1.25rem;
-  background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(255, 255, 255, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(15, 118, 110, 0.08),
+    rgba(255, 255, 255, 0.96)
+  );
   border: 1px solid rgba(15, 118, 110, 0.12);
 }
 
@@ -1302,13 +1370,20 @@ button {
     align-items: stretch;
   }
 
-  .hero-actions > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .panel-actions > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .button-row > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .attention-actions > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .wizard-inline-actions > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .wizard-footer-left > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
-  .wizard-footer-right > :is(.primary-button, .secondary-button, .ghost-button, .danger-button) {
+  .hero-actions
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .panel-actions
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .button-row
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .attention-actions
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .wizard-inline-actions
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .wizard-footer-left
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button),
+  .wizard-footer-right
+    > :is(.primary-button, .secondary-button, .ghost-button, .danger-button) {
     width: 100%;
   }
 

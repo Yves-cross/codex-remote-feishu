@@ -5,6 +5,7 @@ import { AdminRoute } from "./AdminRoute";
 import {
   makeApp,
   makeBootstrap,
+  makeSurfaceStatus,
   makeImageStagingStatus,
   makeManifest,
   makePreviewDriveStatus,
@@ -22,13 +23,19 @@ describe("AdminRoute", () => {
     window.history.replaceState({}, "", "/g/demo/admin");
 
     const { calls } = installMockFetch({
-      "/g/demo/api/admin/bootstrap-state": { body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }) },
+      "/g/demo/api/admin/bootstrap-state": {
+        body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }),
+      },
       "/g/demo/api/admin/runtime-status": { body: makeRuntimeStatus() },
       "/g/demo/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
-      "/g/demo/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/g/demo/api/admin/feishu/manifest": {
+        body: { manifest: makeManifest() },
+      },
       "/g/demo/api/admin/vscode/detect": { body: makeVSCodeDetect() },
       "/g/demo/api/admin/instances": { body: { instances: [] } },
-      "/g/demo/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/g/demo/api/admin/storage/image-staging": {
+        body: makeImageStagingStatus(),
+      },
       "/g/demo/api/admin/storage/preview-drive/bot-1": {
         body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
       },
@@ -36,10 +43,14 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "新增飞书应用" }),
+    ).toBeInTheDocument();
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((call) => call.rawURL.startsWith("./"))).toBe(true);
-    expect(calls.some((call) => call.path === "/g/demo/api/admin/bootstrap-state")).toBe(true);
+    expect(
+      calls.some((call) => call.path === "/g/demo/api/admin/bootstrap-state"),
+    ).toBe(true);
   });
 
   it("keeps app repair inside admin instead of linking back to setup", async () => {
@@ -47,7 +58,9 @@ describe("AdminRoute", () => {
     const user = userEvent.setup();
 
     installMockFetch({
-      "/g/demo/api/admin/bootstrap-state": { body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }) },
+      "/g/demo/api/admin/bootstrap-state": {
+        body: makeBootstrap({ admin: { setupURL: "/g/demo/setup" } }),
+      },
       "/g/demo/api/admin/runtime-status": { body: makeRuntimeStatus() },
       "/g/demo/api/admin/feishu/apps": {
         body: {
@@ -64,15 +77,21 @@ describe("AdminRoute", () => {
           ],
         },
       },
-      "/g/demo/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/g/demo/api/admin/feishu/manifest": {
+        body: { manifest: makeManifest() },
+      },
       "/g/demo/api/admin/vscode/detect": { body: makeVSCodeDetect() },
       "/g/demo/api/admin/instances": { body: { instances: [] } },
-      "/g/demo/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/g/demo/api/admin/storage/image-staging": {
+        body: makeImageStagingStatus(),
+      },
       "/g/demo/api/admin/storage/preview-drive/bot-1": {
         body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
       },
       "/g/demo/api/admin/feishu/apps/bot-1/wizard": (call) => {
-        expect(JSON.parse(String(call.init?.body))).toEqual({ scopesExported: true });
+        expect(JSON.parse(String(call.init?.body))).toEqual({
+          scopesExported: true,
+        });
         return {
           body: {
             app: makeApp({
@@ -93,9 +112,13 @@ describe("AdminRoute", () => {
     render(<AdminRoute />);
 
     expect(await screen.findByText("导入基础权限")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "继续完成首次配置" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "继续完成首次配置" }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "我已完成" }));
-    expect(await screen.findByText("已记录：基础权限已处理。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("已记录：基础权限已处理。"),
+    ).toBeInTheDocument();
   });
 
   it("toggles the shell section navigation and closes it after selecting a section", async () => {
@@ -163,13 +186,20 @@ describe("AdminRoute", () => {
       "/api/admin/instances": { body: { instances: [] } },
       "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
       "/api/admin/storage/preview-drive/bot-readonly": {
-        body: makePreviewDriveStatus({ gatewayId: "bot-readonly", name: "Readonly Bot" }),
+        body: makePreviewDriveStatus({
+          gatewayId: "bot-readonly",
+          name: "Readonly Bot",
+        }),
       },
     });
 
     render(<AdminRoute />);
 
-    expect(await screen.findAllByText("当前由启动参数接管，只能查看状态，不能在管理页修改。")).not.toHaveLength(0);
+    expect(
+      await screen.findAllByText(
+        "当前由启动参数接管，只能查看状态，不能在管理页修改。",
+      ),
+    ).not.toHaveLength(0);
     expect(screen.getByLabelText("飞书应用名称")).toBeDisabled();
     expect(screen.getByRole("button", { name: "保存更改" })).toBeDisabled();
   });
@@ -232,12 +262,20 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "保存更改" })).toBeEnabled();
+    expect(
+      await screen.findByRole("button", { name: "保存更改" }),
+    ).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "保存更改" }));
 
-    expect(await screen.findByText("更改已保存到本地配置，但运行时还没应用成功。页面已刷新为“未生效”状态，请重试应用。")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "更改已保存到本地配置，但运行时还没应用成功。页面已刷新为“未生效”状态，请重试应用。",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("待同步").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "重试应用" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "重试应用" }),
+    ).toBeInTheDocument();
   });
 
   it("shows existing-app manual connect flow when adding a new app from admin", async () => {
@@ -257,13 +295,17 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "新增飞书应用" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新增飞书应用" }));
     await user.click(screen.getByRole("radio", { name: /接入已有飞书应用/ }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
 
     expect(await screen.findByText("已有飞书应用怎么接")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存并验证" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "保存并验证" }),
+    ).toBeInTheDocument();
   });
 
   it("creates a new admin bot through qr onboarding", async () => {
@@ -356,13 +398,17 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByRole("button", { name: "新增飞书应用" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "新增飞书应用" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "新增飞书应用" }));
     await user.click(screen.getByRole("radio", { name: /新建飞书应用/ }));
     await user.click(screen.getByRole("button", { name: "下一步" }));
 
     expect(await screen.findByText("扫码创建飞书应用")).toBeInTheDocument();
-    expect(await screen.findByText(/页面会每 2 秒自动检查一次扫码结果/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/页面会每 2 秒自动检查一次扫码结果/),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新二维码状态" }));
     expect(await screen.findByText("扫码创建已经完成")).toBeInTheDocument();
     expect(screen.getByText(/drive:drive/)).toBeInTheDocument();
@@ -380,9 +426,13 @@ describe("AdminRoute", () => {
       "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
       "/api/admin/vscode/detect": {
         body: makeVSCodeDetect({
-          latestBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
-          recordedBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
-          candidateBundleEntrypoints: ["/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js"],
+          latestBundleEntrypoint:
+            "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          recordedBundleEntrypoint:
+            "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          candidateBundleEntrypoints: [
+            "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+          ],
           settings: {
             path: "/tmp/settings.json",
             exists: true,
@@ -405,13 +455,19 @@ describe("AdminRoute", () => {
         body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
       },
       "/api/admin/vscode/apply": (call) => {
-        expect(JSON.parse(String(call.init?.body))).toEqual({ mode: "managed_shim" });
+        expect(JSON.parse(String(call.init?.body))).toEqual({
+          mode: "managed_shim",
+        });
         return {
           body: makeVSCodeDetect({
             currentMode: "managed_shim",
-            latestBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
-            recordedBundleEntrypoint: "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
-            candidateBundleEntrypoints: ["/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js"],
+            latestBundleEntrypoint:
+              "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+            recordedBundleEntrypoint:
+              "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+            candidateBundleEntrypoints: [
+              "/tmp/.vscode/extensions/openai.chatgpt-remote/dist/extension.js",
+            ],
             settings: {
               path: "/tmp/settings.json",
               exists: true,
@@ -433,12 +489,20 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByText("你以后主要怎么使用 VS Code 里的 Codex？")).toBeInTheDocument();
+    expect(
+      await screen.findByText("你以后主要怎么使用 VS Code 里的 Codex？"),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: /要在当前这台机器上使用/ }));
-    await user.click(screen.getByRole("button", { name: "在这台机器上启用 VS Code" }));
+    await user.click(
+      screen.getByRole("radio", { name: /要在当前这台机器上使用/ }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "在这台机器上启用 VS Code" }),
+    );
 
-    expect(await screen.findByText(/已接管这台机器上的 VS Code 扩展入口/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/已接管这台机器上的 VS Code 扩展入口/),
+    ).toBeInTheDocument();
   });
 
   it("hides manual managed-instance controls from the admin panel", async () => {
@@ -457,9 +521,73 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByText(/后台恢复实例由系统自动管理/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "新建实例" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/后台恢复实例由系统自动管理/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "新建实例" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("可由管理页删除")).not.toBeInTheDocument();
+  });
+
+  it("renders shared exploration progress cards for active surfaces", async () => {
+    installMockFetch({
+      "/api/admin/bootstrap-state": { body: makeBootstrap() },
+      "/api/admin/runtime-status": {
+        body: makeRuntimeStatus({
+          surfaceStatuses: [
+            makeSurfaceStatus({
+              progress: {
+                status: "running",
+                blocks: [
+                  {
+                    blockId: "exploration",
+                    kind: "exploration",
+                    status: "running",
+                    rows: [
+                      {
+                        rowId: "read",
+                        kind: "read",
+                        items: [
+                          "docs/README.md",
+                          "web/src/routes/AdminRoute.tsx",
+                        ],
+                      },
+                      {
+                        rowId: "list::web/src/routes",
+                        kind: "list",
+                        summary: "web/src/routes",
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          ],
+        }),
+      },
+      "/api/admin/feishu/apps": { body: { apps: [makeApp()] } },
+      "/api/admin/feishu/manifest": { body: { manifest: makeManifest() } },
+      "/api/admin/vscode/detect": { body: makeVSCodeDetect() },
+      "/api/admin/instances": { body: { instances: [] } },
+      "/api/admin/storage/image-staging": { body: makeImageStagingStatus() },
+      "/api/admin/storage/preview-drive/bot-1": {
+        body: makePreviewDriveStatus({ gatewayId: "bot-1", name: "Main Bot" }),
+      },
+    });
+
+    render(<AdminRoute />);
+
+    expect(await screen.findByText("进行中的会话")).toBeInTheDocument();
+    expect(screen.getByText("整理 websetup 流程")).toBeInTheDocument();
+    expect(screen.getAllByText("探索中").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("读取：docs/README.md、web/src/routes/AdminRoute.tsx"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("列目录：web/src/routes")).toBeInTheDocument();
+    expect(screen.getByText("会话起点：")).toBeInTheDocument();
+    expect(screen.getByText("最近提问：")).toBeInTheDocument();
+    expect(screen.getByText("最近回复：")).toBeInTheDocument();
   });
 
   it("does not show preview reconcile controls in the admin panel", async () => {
@@ -478,8 +606,14 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findByText(/每条飞书应用都会在自己的飞书云盘里维护固定的预览目录/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "检查目录一致性" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /每条飞书应用都会在自己的飞书云盘里维护固定的预览目录/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "检查目录一致性" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows drive permission guidance instead of failing preview status loads", async () => {
@@ -501,7 +635,8 @@ describe("AdminRoute", () => {
             estimatedBytes: 0,
             unknownSizeFileCount: 0,
             status: "permission_required",
-            statusMessage: "当前飞书应用还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。",
+            statusMessage:
+              "当前飞书应用还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。",
           },
         }),
       },
@@ -509,7 +644,9 @@ describe("AdminRoute", () => {
 
     render(<AdminRoute />);
 
-    expect(await screen.findAllByText(/当前飞书应用还没有开通飞书云盘权限/)).not.toHaveLength(0);
+    expect(
+      await screen.findAllByText(/当前飞书应用还没有开通飞书云盘权限/),
+    ).not.toHaveLength(0);
     expect(screen.getByText("需开通 Drive 权限")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "清理旧预览" })).toBeDisabled();
   });

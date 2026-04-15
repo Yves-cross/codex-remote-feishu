@@ -1,8 +1,8 @@
 # 共享探索过程卡设计
 
-> Type: `draft`
-> Updated: `2026-04-15`
-> Summary: 拆解上游 Codex 的 `Explored / Read / List / Search` 呈现逻辑，并给出在本仓库共用过程状态卡中的落地方案。
+> Type: `implemented`
+> Updated: `2026-04-16`
+> Summary: 记录共用探索过程卡的已落地边界：后端输出结构化 exploration block，Feishu 与 Web admin 共用同一套探索态渲染。
 
 ## 背景
 
@@ -30,7 +30,23 @@
 - 前端若想模仿上游，只能靠字符串猜测，稳定性很差。
 - `dynamic_tool_call` 和 `command_execution` 两条链路目前也没有统一成同一套探索表达。
 
-本文目标是把上游这套逻辑拆清楚，并明确本仓库应该如何在“前端共用状态卡片”里复现出足够接近的效果。
+本文原本用于拆清上游逻辑和落地路径；当前代码已经按本文主线完成第一轮实现，因此迁移到 `docs/implemented/`，用于记录当前边界与后续扩展方向。
+
+## 已实现状态
+
+当前仓库已经落地这些行为：
+
+1. `ExecCommandProgress` 增加了结构化 `Blocks`，其中 exploration block 可表达 `running / completed / failed` 与多条 `read / list / search` 行。
+2. `command_execution` 会把最稳定的一批命令归一进 exploration block，包括 `cat / bat / head / tail / sed / ls / rg / grep`。
+3. `dynamic_tool_call.read` 已接入同一套 exploration block，并继续沿用后端语义化而非前端猜字符串。
+4. Feishu 过程卡优先渲染 exploration block；Web admin 通过 `/api/admin/runtime-status` 的 `surfaceStatuses` 摘要渲染同构的探索状态卡。
+5. 原有 `Entries` 仍保留为兼容回退，因此未进入 exploration block 的普通过程不会丢失。
+
+当前仍然刻意保留的边界：
+
+1. Web 侧目前接入的是 admin 运行时摘要视图，而不是直接复用 Feishu 的卡片事件通道。
+2. `dynamic_tool_call` 只有语义最明确的 `read` 进入 exploration block，其他 tool 继续走 generic progress。
+3. 更广覆盖率的 shell parsing 与最近一次 exploration 摘要复用，留待后续迭代。
 
 ## 目标
 
@@ -357,19 +373,13 @@ block 至少应表达：
 2. `command_execution` 先接能稳定识别的 `read / list / search`
 3. ambiguous / unknown 全部继续走 generic
 
-### 阶段 3：接前端共用状态卡渲染
+### 已完成阶段
 
-1. Feishu 先支持 exploration block
-2. Web 侧共用状态卡同步支持同一套 block
-3. 只在 projector 做文案本地化，不在 projector 猜语义
+1. 结构化 block 模型已落到 `control/state/orchestrator`
+2. Feishu 与 Web admin 已接上同一套 exploration block
+3. active / completed / failed 生命周期与兼容回退测试已补齐
 
-### 阶段 4：补生命周期细节
-
-1. 支持 active -> completed 的探索块切换
-2. 支持探索块与普通过程块共存
-3. 覆盖“活动探索块期间出现不兼容完成事件”的场景
-
-### 阶段 5：扩展覆盖面
+### 后续可继续扩展
 
 1. 补更多 dynamic tool 语义映射
 2. 视需要把最近一次 exploration block 摘要复用到 snapshot / status 视图
@@ -411,7 +421,5 @@ block 至少应表达：
 
 ## 待讨论取舍
 
-1. 第一阶段是否只做 Feishu，再让 Web 复用同一 block 结构；还是两边一起接。
-2. `dynamic_tool_call` 除 `read` 外，哪些 tool 能被稳定映射为 `list / search`。
-3. exploration block 的头部文案是否需要完全沿用英文，还是按前端统一本地化。
-4. `/status` snapshot 是否要额外展示“最近一次探索摘要”，还是只在过程卡里可见。
+1. `dynamic_tool_call` 除 `read` 外，哪些 tool 能被稳定映射为 `list / search`。
+2. `/status` snapshot 是否要额外展示“最近一次探索摘要”，还是只在过程卡里可见。

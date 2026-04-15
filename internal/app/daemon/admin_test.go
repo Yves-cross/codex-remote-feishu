@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func TestSetupTokenExchangeEnablesSetupBootstrapAPI(t *testing.T) {
@@ -219,5 +221,89 @@ func TestAdminSkeletonReturnsStructuredNotImplemented(t *testing.T) {
 	}
 	if payload.Error.Code != "not_implemented" {
 		t.Fatalf("error code = %q, want not_implemented", payload.Error.Code)
+	}
+}
+
+func TestRuntimeStatusPayloadIncludesSurfaceProgressSummaries(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-1",
+			DisplayName:   "Demo Workspace",
+			WorkspaceRoot: "/tmp/demo",
+			WorkspaceKey:  "/tmp/demo",
+			Source:        "vscode",
+		},
+	})
+	inst := app.service.Instance("inst-1")
+	if inst == nil {
+		t.Fatal("expected instance after hello")
+	}
+	inst.Threads["thread-1"] = &state.ThreadRecord{
+		ThreadID:             "thread-1",
+		Name:                 "整理 websetup 流程",
+		FirstUserMessage:     "请把 websetup 的体验重新整理一下",
+		LastUserMessage:      "顺便把探索过程卡也接到 web 里",
+		LastAssistantMessage: "我会先补结构化探索状态卡。",
+		Loaded:               true,
+		LastUsedAt:           time.Date(2026, 4, 16, 8, 15, 0, 0, time.UTC),
+	}
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	surfaces := app.service.Surfaces()
+	if len(surfaces) != 1 {
+		t.Fatalf("expected one surface, got %d", len(surfaces))
+	}
+	surface := surfaces[0]
+	surface.AttachedInstanceID = "inst-1"
+	surface.SelectedThreadID = "thread-1"
+	surface.LastInboundAt = time.Date(2026, 4, 16, 8, 20, 0, 0, time.UTC)
+	surface.ActiveExecProgress = &state.ExecCommandProgressRecord{
+		InstanceID: "inst-1",
+		ThreadID:   "thread-1",
+		TurnID:     "turn-1",
+		Status:     "running",
+		Exploration: &state.ExecCommandProgressExplorationRecord{
+			Block: state.ExecCommandProgressBlockRecord{
+				BlockID: "exploration",
+				Kind:    "exploration",
+				Status:  "running",
+				Rows: []state.ExecCommandProgressBlockRowRecord{
+					{RowID: "read", Kind: "read", Items: []string{"docs/README.md", "web/src/routes/AdminRoute.tsx"}},
+					{RowID: "list::web/src/routes", Kind: "list", Summary: "web/src/routes"},
+				},
+			},
+			ActiveItemIDs: map[string]bool{"item-1": true},
+		},
+	}
+
+	payload := app.runtimeStatusPayload()
+	if len(payload.SurfaceStatuses) != 1 {
+		t.Fatalf("expected one surface summary, got %#v", payload.SurfaceStatuses)
+	}
+	summary := payload.SurfaceStatuses[0]
+	if summary.DisplayTitle != summary.ThreadTitle {
+		t.Fatalf("display title = %q, want %q", summary.DisplayTitle, summary.ThreadTitle)
+	}
+	if summary.FirstUserMessage != "请把 websetup 的体验重新整理一下" {
+		t.Fatalf("unexpected first user message: %#v", summary)
+	}
+	if summary.LastUserMessage != "顺便把探索过程卡也接到 web 里" {
+		t.Fatalf("unexpected last user message: %#v", summary)
+	}
+	if summary.LastAssistantMessage != "我会先补结构化探索状态卡。" {
+		t.Fatalf("unexpected last assistant message: %#v", summary)
+	}
+	if summary.InstanceDisplayName != "Demo Workspace" || summary.WorkspacePath != "/tmp/demo" {
+		t.Fatalf("unexpected instance summary: %#v", summary)
+	}
+	if summary.Progress == nil || len(summary.Progress.Blocks) != 1 {
+		t.Fatalf("expected exploration progress blocks, got %#v", summary.Progress)
+	}
+	block := summary.Progress.Blocks[0]
+	if block.Kind != "exploration" || block.Status != "running" {
+		t.Fatalf("unexpected progress block: %#v", block)
+	}
+	if len(block.Rows) != 2 || len(block.Rows[0].Items) != 2 || block.Rows[1].Summary != "web/src/routes" {
+		t.Fatalf("unexpected progress rows: %#v", block.Rows)
 	}
 }

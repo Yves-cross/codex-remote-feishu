@@ -148,6 +148,7 @@ type adminFeishuAppView struct {
 type runtimeStatusPayload struct {
 	Instances          []*state.InstanceRecord         `json:"instances"`
 	Surfaces           []*state.SurfaceConsoleRecord   `json:"surfaces"`
+	SurfaceStatuses    []adminSurfaceStatusSummary     `json:"surfaceStatuses,omitempty"`
 	Gateways           []feishu.GatewayStatus          `json:"gateways,omitempty"`
 	PendingRemoteTurns []orchestrator.RemoteTurnStatus `json:"pendingRemoteTurns"`
 	ActiveRemoteTurns  []orchestrator.RemoteTurnStatus `json:"activeRemoteTurns"`
@@ -622,9 +623,11 @@ func redactAdminConfig(cfg config.AppConfig) adminConfigView {
 func (a *App) runtimeStatusPayload() runtimeStatusPayload {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	surfaces := a.service.Surfaces()
 	return runtimeStatusPayload{
 		Instances:          a.service.Instances(),
-		Surfaces:           a.service.Surfaces(),
+		Surfaces:           surfaces,
+		SurfaceStatuses:    a.runtimeSurfaceStatusesLocked(surfaces),
 		Gateways:           gatewayStatuses(a.gateway),
 		PendingRemoteTurns: a.service.PendingRemoteTurns(),
 		ActiveRemoteTurns:  a.service.ActiveRemoteTurns(),

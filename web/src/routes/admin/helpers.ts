@@ -1,4 +1,13 @@
-import type { AdminInstanceSummary, FeishuAppSummary, PreviewDriveStatusResponse, VSCodeDetectResponse } from "../../lib/types";
+import type {
+  AdminInstanceSummary,
+  AdminSurfaceStatusSummary,
+  ExecCommandProgressBlock,
+  ExecCommandProgressBlockRow,
+  ExecCommandProgressEntry,
+  FeishuAppSummary,
+  PreviewDriveStatusResponse,
+  VSCodeDetectResponse,
+} from "../../lib/types";
 import { vscodeHasDetectedBundle, vscodeIsReady } from "../shared/helpers";
 import type { AppDraft, WizardRow } from "./types";
 import { newAppID } from "./types";
@@ -48,19 +57,50 @@ export function syncDraftSelection(
 
 export function buildWizardRows(app: FeishuAppSummary): WizardRow[] {
   return [
-    { label: "凭证已保存", done: Boolean(app.wizard?.credentialsSavedAt), timestamp: app.wizard?.credentialsSavedAt },
-    { label: "连接测试已通过", done: Boolean(app.wizard?.connectionVerifiedAt), timestamp: app.wizard?.connectionVerifiedAt },
-    { label: "权限已导入", done: Boolean(app.wizard?.scopesExportedAt), timestamp: app.wizard?.scopesExportedAt },
-    { label: "事件订阅已确认", done: Boolean(app.wizard?.eventsConfirmedAt), timestamp: app.wizard?.eventsConfirmedAt },
-    { label: "长连接已确认", done: Boolean(app.wizard?.callbacksConfirmedAt), timestamp: app.wizard?.callbacksConfirmedAt },
-    { label: "菜单已确认", done: Boolean(app.wizard?.menusConfirmedAt), timestamp: app.wizard?.menusConfirmedAt },
-    { label: "应用已发布", done: Boolean(app.wizard?.publishedAt), timestamp: app.wizard?.publishedAt },
+    {
+      label: "凭证已保存",
+      done: Boolean(app.wizard?.credentialsSavedAt),
+      timestamp: app.wizard?.credentialsSavedAt,
+    },
+    {
+      label: "连接测试已通过",
+      done: Boolean(app.wizard?.connectionVerifiedAt),
+      timestamp: app.wizard?.connectionVerifiedAt,
+    },
+    {
+      label: "权限已导入",
+      done: Boolean(app.wizard?.scopesExportedAt),
+      timestamp: app.wizard?.scopesExportedAt,
+    },
+    {
+      label: "事件订阅已确认",
+      done: Boolean(app.wizard?.eventsConfirmedAt),
+      timestamp: app.wizard?.eventsConfirmedAt,
+    },
+    {
+      label: "长连接已确认",
+      done: Boolean(app.wizard?.callbacksConfirmedAt),
+      timestamp: app.wizard?.callbacksConfirmedAt,
+    },
+    {
+      label: "菜单已确认",
+      done: Boolean(app.wizard?.menusConfirmedAt),
+      timestamp: app.wizard?.menusConfirmedAt,
+    },
+    {
+      label: "应用已发布",
+      done: Boolean(app.wizard?.publishedAt),
+      timestamp: app.wizard?.publishedAt,
+    },
   ];
 }
 
 export type SurfaceTone = "neutral" | "good" | "warn" | "danger";
 
-export function appPendingCount(app: FeishuAppSummary, previewSummary?: PreviewDriveStatusResponse["summary"]): number {
+export function appPendingCount(
+  app: FeishuAppSummary,
+  previewSummary?: PreviewDriveStatusResponse["summary"],
+): number {
   const missingCoreItems = [
     !app.wizard?.connectionVerifiedAt,
     !app.wizard?.scopesExportedAt,
@@ -69,7 +109,8 @@ export function appPendingCount(app: FeishuAppSummary, previewSummary?: PreviewD
     !app.wizard?.menusConfirmedAt,
     !app.wizard?.publishedAt,
   ].filter(Boolean).length;
-  const previewNeedsWork = previewSummary?.status === "permission_required" ? 1 : 0;
+  const previewNeedsWork =
+    previewSummary?.status === "permission_required" ? 1 : 0;
   return missingCoreItems + previewNeedsWork;
 }
 
@@ -77,7 +118,9 @@ export function appSurfaceStatus(
   app: FeishuAppSummary,
   previewSummary?: PreviewDriveStatusResponse["summary"],
 ): { label: string; tone: SurfaceTone; detail: string } {
-  const externalManaged = Boolean(app.readOnly || app.runtimeOnly || app.runtimeOverride);
+  const externalManaged = Boolean(
+    app.readOnly || app.runtimeOnly || app.runtimeOverride,
+  );
   const missingCoreItems = [
     !app.wizard?.scopesExportedAt,
     !app.wizard?.eventsConfirmedAt,
@@ -87,18 +130,24 @@ export function appSurfaceStatus(
   ].filter(Boolean).length;
   const previewNeedsWork = previewSummary?.status === "permission_required";
 
-  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
+  if (
+    app.runtimeApply?.pending &&
+    app.runtimeApply.action === "remove" &&
+    !app.persisted
+  ) {
     return {
       label: "待移除",
       tone: "warn",
-      detail: app.runtimeApply.error || "本地配置已经删除，但运行时里还没移除干净。",
+      detail:
+        app.runtimeApply.error || "本地配置已经删除，但运行时里还没移除干净。",
     };
   }
   if (app.runtimeApply?.pending) {
     return {
       label: "待同步",
       tone: "warn",
-      detail: app.runtimeApply.error || "本地配置已经更新，但运行时里还没应用成功。",
+      detail:
+        app.runtimeApply.error || "本地配置已经更新，但运行时里还没应用成功。",
     };
   }
   if (!app.enabled) {
@@ -120,7 +169,8 @@ export function appSurfaceStatus(
       return {
         label: "外部接管，待关注",
         tone: "warn",
-        detail: app.status.lastError || "当前由外部配置接管，但最近连接状态不稳定。",
+        detail:
+          app.status.lastError || "当前由外部配置接管，但最近连接状态不稳定。",
       };
     }
     return {
@@ -128,14 +178,19 @@ export function appSurfaceStatus(
       tone: app.status?.state === "connected" ? "good" : "neutral",
       detail:
         app.readOnlyReason ||
-        (app.status?.lastConnectedAt ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}` : "当前由运行时参数或外部配置接管。"),
+        (app.status?.lastConnectedAt
+          ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}`
+          : "当前由运行时参数或外部配置接管。"),
     };
   }
   if (!app.wizard?.connectionVerifiedAt) {
     return {
       label: "待验证",
       tone: "warn",
-      detail: app.appId || app.hasSecret ? "先完成一次连接验证，确认这份凭证可用。" : "先填写 App ID 和 App Secret。",
+      detail:
+        app.appId || app.hasSecret
+          ? "先完成一次连接验证，确认这份凭证可用。"
+          : "先填写 App ID 和 App Secret。",
     };
   }
   if (app.status?.state === "degraded") {
@@ -167,9 +222,17 @@ export function appSurfaceStatus(
   };
 }
 
-export function appConnectionStatus(app: FeishuAppSummary): { label: string; tone: SurfaceTone; detail: string } {
+export function appConnectionStatus(app: FeishuAppSummary): {
+  label: string;
+  tone: SurfaceTone;
+  detail: string;
+} {
   if (!app.enabled) {
-    return { label: "已停用", tone: "neutral", detail: "当前不会继续接收飞书消息。" };
+    return {
+      label: "已停用",
+      tone: "neutral",
+      detail: "当前不会继续接收飞书消息。",
+    };
   }
   if (app.status?.state === "auth_failed") {
     return {
@@ -182,7 +245,9 @@ export function appConnectionStatus(app: FeishuAppSummary): { label: string; ton
     return {
       label: "连接正常",
       tone: "good",
-      detail: app.status.lastConnectedAt ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}` : "已经建立连接。",
+      detail: app.status.lastConnectedAt
+        ? `最近连接 ${formatDateTime(app.status.lastConnectedAt)}`
+        : "已经建立连接。",
     };
   }
   if (app.status?.state === "degraded") {
@@ -213,7 +278,11 @@ export function appConnectionStatus(app: FeishuAppSummary): { label: string; ton
   };
 }
 
-export function appInteractionStatus(app: FeishuAppSummary): { label: string; tone: SurfaceTone; detail: string } {
+export function appInteractionStatus(app: FeishuAppSummary): {
+  label: string;
+  tone: SurfaceTone;
+  detail: string;
+} {
   if (!app.wizard?.connectionVerifiedAt) {
     return {
       label: "等待连接验证",
@@ -251,7 +320,9 @@ export function appInteractionStatus(app: FeishuAppSummary): { label: string; to
   };
 }
 
-export function appPreviewStatus(previewSummary?: PreviewDriveStatusResponse["summary"]): { label: string; tone: SurfaceTone; detail: string } {
+export function appPreviewStatus(
+  previewSummary?: PreviewDriveStatusResponse["summary"],
+): { label: string; tone: SurfaceTone; detail: string } {
   if (!previewSummary) {
     return {
       label: "状态未获取",
@@ -263,14 +334,20 @@ export function appPreviewStatus(previewSummary?: PreviewDriveStatusResponse["su
     return {
       label: "待开通 Drive 权限",
       tone: "warn",
-      detail: normalizeLegacyFeishuCopy(previewSummary.statusMessage || "如需 Markdown 预览，请先开通 drive:drive 权限。"),
+      detail: normalizeLegacyFeishuCopy(
+        previewSummary.statusMessage ||
+          "如需 Markdown 预览，请先开通 drive:drive 权限。",
+      ),
     };
   }
   if (previewSummary.status === "api_unavailable") {
     return {
       label: "当前未配置",
       tone: "neutral",
-      detail: normalizeLegacyFeishuCopy(previewSummary.statusMessage || "Markdown 预览是可选增强项，不影响基础对话。"),
+      detail: normalizeLegacyFeishuCopy(
+        previewSummary.statusMessage ||
+          "Markdown 预览是可选增强项，不影响基础对话。",
+      ),
     };
   }
   if (previewSummary.rootURL) {
@@ -290,7 +367,11 @@ export function appPreviewStatus(previewSummary?: PreviewDriveStatusResponse["su
 }
 
 export function appSourceLabel(app: FeishuAppSummary): string {
-  if (app.runtimeApply?.pending && app.runtimeApply.action === "remove" && !app.persisted) {
+  if (
+    app.runtimeApply?.pending &&
+    app.runtimeApply.action === "remove" &&
+    !app.persisted
+  ) {
     return "本地已删除，待运行时移除";
   }
   if (app.runtimeOverride) {
@@ -309,7 +390,9 @@ export function normalizeLegacyFeishuCopy(value: string): string {
   return value.replaceAll("机器人", "飞书应用");
 }
 
-export function statusTone(state?: string): "neutral" | "good" | "warn" | "danger" {
+export function statusTone(
+  state?: string,
+): "neutral" | "good" | "warn" | "danger" {
   switch (state) {
     case "connected":
       return "good";
@@ -323,7 +406,9 @@ export function statusTone(state?: string): "neutral" | "good" | "warn" | "dange
   }
 }
 
-export function appConnectionTone(app: FeishuAppSummary): "neutral" | "good" | "warn" | "danger" {
+export function appConnectionTone(
+  app: FeishuAppSummary,
+): "neutral" | "good" | "warn" | "danger" {
   if (app.runtimeApply?.pending) {
     return "warn";
   }
@@ -378,7 +463,12 @@ export function appConnectionLabel(app: FeishuAppSummary): string {
   }
 }
 
-export function appSetupProgress(app: FeishuAppSummary): { completed: number; total: number; complete: boolean; remaining: number } {
+export function appSetupProgress(app: FeishuAppSummary): {
+  completed: number;
+  total: number;
+  complete: boolean;
+  remaining: number;
+} {
   const steps = [
     Boolean(app.wizard?.connectionVerifiedAt),
     Boolean(app.wizard?.scopesExportedAt),
@@ -397,14 +487,20 @@ export function appSetupProgress(app: FeishuAppSummary): { completed: number; to
   };
 }
 
-export function instanceStatusTone(instance: AdminInstanceSummary): "neutral" | "good" | "warn" | "danger" {
+export function instanceStatusTone(
+  instance: AdminInstanceSummary,
+): "neutral" | "good" | "warn" | "danger" {
   if (instance.status === "error" || instance.lastError) {
     return "danger";
   }
   if (instance.status === "starting") {
     return "warn";
   }
-  if (instance.status === "busy" || instance.status === "idle" || instance.status === "online") {
+  if (
+    instance.status === "busy" ||
+    instance.status === "idle" ||
+    instance.status === "online"
+  ) {
     return "good";
   }
   if (instance.online) {
@@ -443,6 +539,86 @@ export function instanceSourceLabel(instance: AdminInstanceSummary): string {
     return "后台实例";
   }
   return "本机实例";
+}
+
+export function surfaceProgressTone(status?: string): SurfaceTone {
+  switch (status) {
+    case "completed":
+      return "good";
+    case "failed":
+      return "danger";
+    default:
+      return "warn";
+  }
+}
+
+export function surfaceProgressLabel(status?: string): string {
+  switch (status) {
+    case "completed":
+      return "已探索";
+    case "failed":
+      return "探索失败";
+    default:
+      return "探索中";
+  }
+}
+
+export function surfaceModeLabel(surface: AdminSurfaceStatusSummary): string {
+  return surface.productMode === "vscode" ? "VS Code" : "普通模式";
+}
+
+export function hasVisibleSurfaceProgress(
+  surface: AdminSurfaceStatusSummary,
+): boolean {
+  const progress = surface.progress;
+  if (!progress) {
+    return false;
+  }
+  return (
+    (progress.blocks?.length ?? 0) > 0 ||
+    (progress.entries?.length ?? 0) > 0 ||
+    Boolean(progress.command) ||
+    (progress.commands?.length ?? 0) > 0
+  );
+}
+
+export function renderSurfaceProgressBlockRow(
+  row: ExecCommandProgressBlockRow,
+): string {
+  const kind = row.kind?.trim();
+  if (kind === "read") {
+    return `读取：${(row.items ?? []).join("、")}`;
+  }
+  if (kind === "list") {
+    return `列目录：${row.summary ?? ""}`.trim();
+  }
+  if (kind === "search") {
+    const detail = row.secondary
+      ? `${row.summary ?? ""} in ${row.secondary}`
+      : (row.summary ?? "");
+    return `搜索：${detail}`.trim();
+  }
+  if ((row.summary ?? "").trim()) {
+    return row.summary ?? "";
+  }
+  return (row.items ?? []).join("、");
+}
+
+export function visibleSurfaceProgressBlocks(
+  surface: AdminSurfaceStatusSummary,
+): ExecCommandProgressBlock[] {
+  return (surface.progress?.blocks ?? []).filter(
+    (block) =>
+      (block.rows?.length ?? 0) > 0 && (block.kind ?? "").trim() !== "",
+  );
+}
+
+export function visibleSurfaceProgressEntries(
+  surface: AdminSurfaceStatusSummary,
+): ExecCommandProgressEntry[] {
+  return (surface.progress?.entries ?? []).filter(
+    (entry) => (entry.summary ?? "").trim() !== "",
+  );
 }
 
 export function vscodeModeLabel(mode?: string): string {
@@ -485,7 +661,9 @@ export function formatBytes(value: number): string {
   return `${current.toFixed(current >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export function vscodeReadinessText(vscode: VSCodeDetectResponse | null): string {
+export function vscodeReadinessText(
+  vscode: VSCodeDetectResponse | null,
+): string {
   if (!vscode) {
     return "尚未检测";
   }
@@ -502,7 +680,9 @@ export function vscodeReadinessText(vscode: VSCodeDetectResponse | null): string
     return "检测到 VS Code 扩展已升级，建议重新安装扩展入口。";
   }
   if (vscodeIsReady(vscode)) {
-    return vscode.sshSession ? "这台远程机器已经通过扩展入口接入 VS Code。" : "这台机器已经通过扩展入口接入 VS Code。";
+    return vscode.sshSession
+      ? "这台远程机器已经通过扩展入口接入 VS Code。"
+      : "这台机器已经通过扩展入口接入 VS Code。";
   }
   if (vscode.sshSession) {
     return "这台远程机器还没接入 VS Code，请先处理扩展入口。";
