@@ -47,13 +47,15 @@ func extractRequestTurnID(message map[string]any, request map[string]any) string
 }
 
 func extractRequestType(method string, request, params map[string]any) string {
-	return string(canonicalRequestType(method, extractRawRequestType(request, params)))
+	return string(canonicalRequestType(method, effectiveRawRequestType(method, request, params)))
 }
 
 func canonicalRequestType(method, rawType string) agentproto.RequestType {
 	switch strings.TrimSpace(method) {
-	case "item/tool/requestUserInput":
+	case "tool/requestUserInput", "item/tool/requestUserInput":
 		return agentproto.RequestTypeRequestUserInput
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
+		return agentproto.RequestTypeApproval
 	case "item/permissions/requestApproval":
 		return agentproto.RequestTypePermissionsRequestApproval
 	case "mcpServer/elicitation/request":
@@ -78,6 +80,33 @@ func canonicalRequestType(method, rawType string) agentproto.RequestType {
 	}
 }
 
+func effectiveRawRequestType(method string, request, params map[string]any) string {
+	if raw := extractRawRequestType(request, params); raw != "" {
+		return raw
+	}
+	return defaultRequestRawType(method, params)
+}
+
+func defaultRequestRawType(method string, params map[string]any) string {
+	switch strings.TrimSpace(method) {
+	case "tool/requestUserInput", "item/tool/requestUserInput":
+		return "request_user_input"
+	case "item/permissions/requestApproval":
+		return "permissions_request_approval"
+	case "mcpServer/elicitation/request":
+		return "mcp_server_elicitation"
+	case "item/fileChange/requestApproval":
+		return "approval_file_change"
+	case "item/commandExecution/requestApproval":
+		if len(lookupMap(params, "networkApprovalContext")) != 0 {
+			return "approval_network"
+		}
+		return "approval_command"
+	default:
+		return ""
+	}
+}
+
 func extractRawRequestType(request, params map[string]any) string {
 	return strings.TrimSpace(firstNonEmptyString(
 		lookupStringFromAny(request["type"]),
@@ -91,8 +120,12 @@ func extractRawRequestType(request, params map[string]any) string {
 
 func extractRequestPrompt(method string, message map[string]any) *agentproto.RequestPrompt {
 	switch strings.TrimSpace(method) {
-	case "item/tool/requestUserInput":
+	case "tool/requestUserInput", "item/tool/requestUserInput":
 		return extractRequestUserInputPrompt(message)
+	case "item/commandExecution/requestApproval":
+		return extractCommandExecutionRequestApprovalPrompt(message)
+	case "item/fileChange/requestApproval":
+		return extractFileChangeRequestApprovalPrompt(message)
 	case "item/permissions/requestApproval":
 		return extractPermissionsRequestPrompt(message)
 	case "mcpServer/elicitation/request":
@@ -105,10 +138,11 @@ func extractRequestPrompt(method string, message map[string]any) *agentproto.Req
 func extractGenericRequestPrompt(method string, message map[string]any) *agentproto.RequestPrompt {
 	request := extractRequestPayload(message)
 	params := lookupMap(message, "params")
-	requestType := canonicalRequestType(method, extractRawRequestType(request, params))
+	rawType := effectiveRawRequestType(method, request, params)
+	requestType := canonicalRequestType(method, rawType)
 	prompt := &agentproto.RequestPrompt{
 		Type:           requestType,
-		RawType:        normalizeRawRequestType(extractRawRequestType(request, params)),
+		RawType:        normalizeRawRequestType(rawType),
 		ItemID:         extractRequestItemID(request, params),
 		Title:          firstNonEmptyString(lookupStringFromAny(request["title"]), lookupStringFromAny(request["name"]), lookupStringFromAny(params["title"])),
 		Body:           extractRequestBody(request, params),
@@ -125,11 +159,89 @@ func extractGenericRequestPrompt(method string, message map[string]any) *agentpr
 	return prompt
 }
 
+func extractCommandExecutionRequestApprovalPrompt(message map[string]any) *agentproto.RequestPrompt {
+	prompt := extractGenericRequestPrompt("item/commandExecution/requestApproval", message)
+	if prompt == nil {
+		return nil
+	}
+	params := lookupMap(message, "params")
+	bodyLines := make([]string, 0, 8)
+	if prompt.Body != "" {
+		bodyLines = append(bodyLines, prompt.Body)
+	}
+	network := lookupMap(params, "networkApprovalContext")
+	if len(network) != 0 {
+		if prompt.Title == "" || prompt.Title == "需要确认" {
+			prompt.Title = "需要确认网络访问"
+		}
+		host := firstNonEmptyString(
+			lookupStringFromAny(network["host"]),
+			lookupStringFromAny(network["hostname"]),
+		)
+		protocol := lookupStringFromAny(network["protocol"])
+		port := firstNonEmptyString(
+			lookupStringFromAny(network["port"]),
+			lookupStringFromAny(network["destinationPort"]),
+		)
+		if len(bodyLines) == 0 {
+			bodyLines = append(bodyLines, "本地 Codex 正在等待你确认一次受管网络访问。")
+		}
+		if host != "" {
+			bodyLines = append(bodyLines, "目标主机："+host)
+		}
+		if protocol != "" {
+			bodyLines = append(bodyLines, "协议："+protocol)
+		}
+		if port != "" {
+			bodyLines = append(bodyLines, "端口："+port)
+		}
+		prompt.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+		return prompt
+	}
+	if prompt.Title == "" || prompt.Title == "需要确认" {
+		prompt.Title = "需要确认执行命令"
+	}
+	if cwd := strings.TrimSpace(lookupStringFromAny(params["cwd"])); cwd != "" && !strings.Contains(prompt.Body, cwd) {
+		if len(bodyLines) > 0 {
+			bodyLines = append(bodyLines, "")
+		}
+		bodyLines = append(bodyLines, "工作目录："+cwd)
+	}
+	prompt.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+	return prompt
+}
+
+func extractFileChangeRequestApprovalPrompt(message map[string]any) *agentproto.RequestPrompt {
+	prompt := extractGenericRequestPrompt("item/fileChange/requestApproval", message)
+	if prompt == nil {
+		return nil
+	}
+	params := lookupMap(message, "params")
+	if prompt.Title == "" || prompt.Title == "需要确认" {
+		prompt.Title = "需要确认修改文件"
+	}
+	grantRoot := strings.TrimSpace(firstNonEmptyString(
+		lookupStringFromAny(params["grantRoot"]),
+		lookupString(params, "request", "grantRoot"),
+	))
+	if grantRoot == "" {
+		return prompt
+	}
+	bodyLines := make([]string, 0, 4)
+	if prompt.Body != "" {
+		bodyLines = append(bodyLines, prompt.Body, "")
+	}
+	bodyLines = append(bodyLines, "授权根目录："+grantRoot)
+	prompt.Body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+	return prompt
+}
+
 func extractRequestUserInputPrompt(message map[string]any) *agentproto.RequestPrompt {
 	params := lookupMap(message, "params")
 	prompt := &agentproto.RequestPrompt{
 		Type:      agentproto.RequestTypeRequestUserInput,
 		Title:     firstNonEmptyString(lookupStringFromAny(params["title"]), lookupStringFromAny(params["header"])),
+		RawType:   "request_user_input",
 		Body:      firstNonEmptyString(lookupStringFromAny(params["message"]), lookupStringFromAny(params["body"]), lookupStringFromAny(params["description"])),
 		ItemID:    extractRequestItemID(nil, params),
 		Questions: requestQuestionsFromMaps(extractRequestUserInputQuestions(nil, params)),
@@ -152,9 +264,10 @@ func extractPermissionsRequestPrompt(message map[string]any) *agentproto.Request
 		reason,
 	)
 	prompt := &agentproto.RequestPrompt{
-		Type:  agentproto.RequestTypePermissionsRequestApproval,
-		Title: firstNonEmptyString(lookupStringFromAny(params["title"]), "需要授予权限"),
-		Body:  body,
+		Type:    agentproto.RequestTypePermissionsRequestApproval,
+		RawType: "permissions_request_approval",
+		Title:   firstNonEmptyString(lookupStringFromAny(params["title"]), "需要授予权限"),
+		Body:    body,
 		ItemID: firstNonEmptyString(
 			lookupStringFromAny(params["itemId"]),
 			lookupString(params, "request", "itemId"),
@@ -192,9 +305,10 @@ func extractMCPElicitationPrompt(message map[string]any) *agentproto.RequestProm
 		body += url
 	}
 	prompt := &agentproto.RequestPrompt{
-		Type:  agentproto.RequestTypeMCPServerElicitation,
-		Title: firstNonEmptyString(lookupStringFromAny(params["title"]), "需要处理 MCP 请求"),
-		Body:  body,
+		Type:    agentproto.RequestTypeMCPServerElicitation,
+		RawType: "mcp_server_elicitation",
+		Title:   firstNonEmptyString(lookupStringFromAny(params["title"]), "需要处理 MCP 请求"),
+		Body:    body,
 		MCPElicitation: &agentproto.MCPElicitationPrompt{
 			ServerName: firstNonEmptyString(
 				lookupStringFromAny(params["serverName"]),
@@ -220,7 +334,7 @@ func extractMCPElicitationPrompt(message map[string]any) *agentproto.RequestProm
 	return prompt
 }
 
-func extractRequestMetadata(prompt *agentproto.RequestPrompt) map[string]any {
+func extractRequestMetadata(method string, message map[string]any, prompt *agentproto.RequestPrompt) map[string]any {
 	metadata := map[string]any{}
 	if prompt == nil {
 		return metadata
@@ -282,6 +396,31 @@ func extractRequestMetadata(prompt *agentproto.RequestPrompt) map[string]any {
 		if len(prompt.MCPElicitation.Meta) != 0 {
 			metadata["meta"] = cloneMap(prompt.MCPElicitation.Meta)
 		}
+	}
+	params := lookupMap(message, "params")
+	if value := strings.TrimSpace(lookupStringFromAny(params["cwd"])); value != "" {
+		metadata["cwd"] = value
+	}
+	if value := strings.TrimSpace(firstNonEmptyString(lookupStringFromAny(params["grantRoot"]), lookupString(params, "request", "grantRoot"))); value != "" {
+		metadata["grantRoot"] = value
+	}
+	if actions := extractRequestMapList(params["commandActions"]); len(actions) != 0 {
+		metadata["commandActions"] = cloneJSONValue(actions)
+	}
+	if network := cloneMap(lookupMap(params, "networkApprovalContext")); len(network) != 0 {
+		metadata["networkApprovalContext"] = network
+	}
+	if amendment := cloneMap(lookupMap(params, "proposedExecpolicyAmendment")); len(amendment) != 0 {
+		metadata["proposedExecpolicyAmendment"] = amendment
+	}
+	if permissions := extractRequestMapList(params["additionalPermissions"]); len(permissions) != 0 {
+		metadata["additionalPermissions"] = cloneJSONValue(permissions)
+	}
+	if decisions := cloneJSONValue(firstNonNil(params["availableDecisions"], lookupAny(message, "params", "request", "availableDecisions"))); decisions != nil {
+		metadata["availableDecisions"] = decisions
+	}
+	if requestMethod := strings.TrimSpace(method); requestMethod != "" {
+		metadata["requestMethod"] = requestMethod
 	}
 	return metadata
 }
@@ -703,6 +842,8 @@ func extractRequestOptions(request, params map[string]any) []map[string]any {
 		request["choices"],
 		params["options"],
 		params["choices"],
+		request["availableDecisions"],
+		params["availableDecisions"],
 	)
 	if source == nil {
 		return nil
@@ -716,6 +857,11 @@ func extractRequestOptions(request, params map[string]any) []map[string]any {
 		for _, item := range typed {
 			rawOptions = append(rawOptions, item)
 		}
+	case []string:
+		rawOptions = make([]any, 0, len(typed))
+		for _, item := range typed {
+			rawOptions = append(rawOptions, item)
+		}
 	default:
 		return nil
 	}
@@ -724,8 +870,13 @@ func extractRequestOptions(request, params map[string]any) []map[string]any {
 	}
 	options := make([]map[string]any, 0, len(rawOptions))
 	for _, raw := range rawOptions {
-		record, ok := raw.(map[string]any)
-		if !ok {
+		record := map[string]any{}
+		switch typed := raw.(type) {
+		case map[string]any:
+			record = typed
+		case string:
+			record = map[string]any{"id": typed}
+		default:
 			continue
 		}
 		optionID := control.NormalizeRequestOptionID(firstNonEmptyString(
@@ -735,6 +886,11 @@ func extractRequestOptions(request, params map[string]any) []map[string]any {
 			lookupStringFromAny(record["value"]),
 			lookupStringFromAny(record["action"]),
 		))
+		if optionID == "" && len(record) == 1 {
+			for key := range record {
+				optionID = strings.TrimSpace(key)
+			}
+		}
 		if optionID == "" {
 			continue
 		}

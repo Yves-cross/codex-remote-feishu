@@ -532,9 +532,9 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
 			Initiator:     t.initiatorForTurn(threadID, turnID),
 			RequestPrompt: prompt,
-			Metadata:      extractRequestMetadata(prompt),
+			Metadata:      extractRequestMetadata(method, message, prompt),
 		}}}, nil
-	case "item/permissions/requestApproval", "mcpServer/elicitation/request":
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval", "mcpServer/elicitation/request":
 		requestID := extractRequestID(message, nil)
 		if requestID == "" {
 			return Result{}, nil
@@ -554,9 +554,9 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
 			Initiator:     t.initiatorForTurn(threadID, turnID),
 			RequestPrompt: prompt,
-			Metadata:      extractRequestMetadata(prompt),
+			Metadata:      extractRequestMetadata(method, message, prompt),
 		}}}, nil
-	case "item/tool/requestUserInput":
+	case "tool/requestUserInput", "item/tool/requestUserInput":
 		requestID := extractRequestID(message, nil)
 		if requestID == "" {
 			return Result{}, nil
@@ -576,7 +576,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			TrafficClass:  t.trafficClassForTurn(threadID, turnID),
 			Initiator:     t.initiatorForTurn(threadID, turnID),
 			RequestPrompt: prompt,
-			Metadata:      extractRequestMetadata(prompt),
+			Metadata:      extractRequestMetadata(method, message, prompt),
 		}}}, nil
 	case "item/mcpToolCall/progress":
 		threadID := lookupString(message, "params", "threadId")

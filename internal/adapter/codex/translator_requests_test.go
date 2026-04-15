@@ -109,6 +109,28 @@ func TestObserveServerRequestUserInputProducesQuestionMetadata(t *testing.T) {
 	}
 }
 
+func TestObserveServerTopLevelToolRequestUserInputProducesQuestionMetadata(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-ui-top-1","method":"tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","questions":[{"id":"mode","header":"模式","question":"请选择模式","options":[{"label":"自动"},{"label":"手动"}],"isOther":true}]}}`))
+	if err != nil {
+		t.Fatalf("observe top-level request user input: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-ui-top-1" {
+		t.Fatalf("unexpected request event: %#v", event)
+	}
+	if event.Metadata["requestType"] != "request_user_input" || event.Metadata["requestMethod"] != "tool/requestUserInput" {
+		t.Fatalf("unexpected top-level request user input metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypeRequestUserInput || event.RequestPrompt.RawType != "request_user_input" {
+		t.Fatalf("expected typed request_user_input prompt, got %#v", event.RequestPrompt)
+	}
+}
+
 func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
@@ -161,6 +183,79 @@ func TestObserveServerPermissionsRequestApprovalProducesDedicatedRequestType(t *
 	}
 	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypePermissionsRequestApproval {
 		t.Fatalf("expected typed permissions request prompt, got %#v", event.RequestPrompt)
+	}
+}
+
+func TestObserveServerCommandExecutionRequestApprovalProducesApprovalPrompt(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-cmd-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"cmd-1","reason":"需要联网下载依赖","command":"npm install","cwd":"/tmp/project","availableDecisions":["accept","acceptForSession","decline","cancel"]}}`))
+	if err != nil {
+		t.Fatalf("observe command execution request approval: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID != "req-cmd-1" {
+		t.Fatalf("unexpected request event: %#v", event)
+	}
+	if event.Metadata["requestType"] != "approval" || event.Metadata["requestKind"] != "approval_command" || event.Metadata["cwd"] != "/tmp/project" {
+		t.Fatalf("unexpected command request metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.Type != agentproto.RequestTypeApproval || event.RequestPrompt.RawType != "approval_command" {
+		t.Fatalf("expected typed command approval prompt, got %#v", event.RequestPrompt)
+	}
+	options, ok := event.Metadata["options"].([]map[string]any)
+	if !ok || len(options) != 4 || options[3]["id"] != "cancel" {
+		t.Fatalf("expected available decisions to become options, got %#v", event.Metadata["options"])
+	}
+	body, _ := event.Metadata["body"].(string)
+	if !strings.Contains(body, "npm install") || !strings.Contains(body, "/tmp/project") {
+		t.Fatalf("expected command request body to include command and cwd, got %q", body)
+	}
+}
+
+func TestObserveServerNetworkApprovalUsesDedicatedRawType(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-net-1","method":"item/commandExecution/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"cmd-2","networkApprovalContext":{"host":"registry.npmjs.org","protocol":"https","port":443},"availableDecisions":["accept","decline","cancel"]}}`))
+	if err != nil {
+		t.Fatalf("observe network approval: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Metadata["requestKind"] != "approval_network" {
+		t.Fatalf("expected approval_network raw kind, got %#v", event.Metadata)
+	}
+	body, _ := event.Metadata["body"].(string)
+	if !strings.Contains(body, "registry.npmjs.org") || !strings.Contains(body, "https") {
+		t.Fatalf("expected network approval body to include destination, got %q", body)
+	}
+}
+
+func TestObserveServerFileChangeRequestApprovalProducesApprovalPrompt(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	result, err := tr.ObserveServer([]byte(`{"id":"req-file-1","method":"item/fileChange/requestApproval","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"file-1","reason":"将要写入新的配置文件","grantRoot":"/tmp/project","availableDecisions":["accept","acceptForSession","decline","cancel"]}}`))
+	if err != nil {
+		t.Fatalf("observe file change request approval: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", result.Events)
+	}
+	event := result.Events[0]
+	if event.Metadata["requestType"] != "approval" || event.Metadata["requestKind"] != "approval_file_change" || event.Metadata["grantRoot"] != "/tmp/project" {
+		t.Fatalf("unexpected file change request metadata: %#v", event.Metadata)
+	}
+	if event.RequestPrompt == nil || event.RequestPrompt.RawType != "approval_file_change" {
+		t.Fatalf("expected typed file change approval prompt, got %#v", event.RequestPrompt)
+	}
+	body, _ := event.Metadata["body"].(string)
+	if !strings.Contains(body, "授权根目录：/tmp/project") {
+		t.Fatalf("expected file change request body to include grant root, got %q", body)
 	}
 }
 

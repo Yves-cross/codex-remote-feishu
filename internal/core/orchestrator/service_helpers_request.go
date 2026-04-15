@@ -72,6 +72,8 @@ func decisionForRequestOption(optionID string) string {
 		return "acceptForSession"
 	case "decline":
 		return "decline"
+	case "cancel":
+		return "cancel"
 	default:
 		return ""
 	}
@@ -176,7 +178,7 @@ func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptO
 			return
 		}
 		switch optionID {
-		case "accept", "acceptForSession", "decline", "captureFeedback":
+		case "accept", "acceptForSession", "decline", "cancel", "captureFeedback":
 		default:
 			return
 		}
@@ -188,6 +190,8 @@ func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptO
 				label = "本会话允许"
 			case "decline":
 				label = "拒绝"
+			case "cancel":
+				label = "取消"
 			case "captureFeedback":
 				label = "告诉 Codex 怎么改"
 			default:
@@ -210,15 +214,19 @@ func buildApprovalRequestOptions(metadata map[string]any) []state.RequestPromptO
 		seen[optionID] = true
 	}
 
-	for _, option := range metadataRequestOptions(metadata) {
+	upstreamOptions := metadataRequestOptions(metadata)
+	for _, option := range upstreamOptions {
 		add(option.OptionID, option.Label, option.Style)
 	}
-	if len(options) == 0 {
+	if len(upstreamOptions) == 0 {
 		add("accept", firstNonEmpty(metadataString(metadata, "acceptLabel"), "允许一次"), "primary")
 		if approvalRequestSupportsSession(metadata) {
 			add("acceptForSession", "本会话允许", "default")
 		}
 		add("decline", firstNonEmpty(metadataString(metadata, "declineLabel"), "拒绝"), "default")
+		if approvalRequestSupportsCancel(metadata) {
+			add("cancel", "取消", "default")
+		}
 	}
 	add("captureFeedback", "告诉 Codex 怎么改", "default")
 	return options
@@ -354,6 +362,23 @@ func approvalRequestSupportsSession(metadata map[string]any) bool {
 	}
 }
 
+func approvalRequestSupportsCancel(metadata map[string]any) bool {
+	if len(metadataRequestOptions(metadata)) != 0 {
+		for _, option := range metadataRequestOptions(metadata) {
+			if control.NormalizeRequestOptionID(option.OptionID) == "cancel" {
+				return true
+			}
+		}
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(metadataString(metadata, "requestKind"))) {
+	case "approval_command", "approval_file_change", "approval_network":
+		return true
+	default:
+		return false
+	}
+}
+
 func metadataRequestOptions(metadata map[string]any) []state.RequestPromptOptionRecord {
 	if len(metadata) == 0 {
 		return nil
@@ -419,7 +444,7 @@ func pendingRequestNoticeText(request *state.RequestPromptRecord) string {
 	case "request_user_input":
 		return "当前有待回答问题。请先在卡片上点击选项或提交表单。"
 	case "approval":
-		return "当前有待确认请求。请先点击卡片上的“允许一次”、“拒绝”或“告诉 Codex 怎么改”。"
+		return "当前有待确认请求。请先点击卡片上的处理按钮后再继续。"
 	case "permissions_request_approval":
 		return "当前有待授予权限请求。请先在卡片上选择“允许本次”、“本会话允许”或“拒绝”。"
 	case "mcp_server_elicitation":
