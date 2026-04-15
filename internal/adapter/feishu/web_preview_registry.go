@@ -290,6 +290,9 @@ func (p *DriveMarkdownPreviewer) loadWebPreviewArtifact(scopePublicID, previewID
 	}
 	content, err := os.ReadFile(p.previewBlobPath(record.BlobKey))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errPreviewArtifactExpired
+		}
 		return nil, err
 	}
 	return &webPreviewArtifact{

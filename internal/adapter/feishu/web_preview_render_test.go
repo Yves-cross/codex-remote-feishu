@@ -124,6 +124,45 @@ func TestDriveMarkdownPreviewerReturnsExpiredAndMissingPreviewResponses(t *testi
 	}
 }
 
+func TestDriveMarkdownPreviewerTreatsMissingBlobAsExpiredPreview(t *testing.T) {
+	root := t.TempDir()
+	previewer := newWebPreviewerForTest(root)
+
+	now := time.Date(2026, 4, 15, 13, 30, 0, 0, time.UTC)
+	sourcePath := filepath.Join(root, "docs", "note.txt")
+	_, previewID := publishWebPreviewArtifactForTest(t, previewer, sourcePath, []byte("hello\n"), now)
+
+	manifest, err := previewer.loadWebPreviewScopeManifest(testPreviewScopePublicID)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	record := manifest.Records[previewID]
+	if record == nil {
+		t.Fatalf("missing preview record %q", previewID)
+	}
+	originalExpiresAt := record.ExpiresAt
+	if err := os.Remove(previewer.previewBlobPath(record.BlobKey)); err != nil {
+		t.Fatalf("remove preview blob: %v", err)
+	}
+
+	previewer.nowFn = func() time.Time { return now.Add(time.Minute) }
+	rec := httptest.NewRecorder()
+	if ok := previewer.ServeWebPreview(rec, httptest.NewRequest(http.MethodGet, "/preview", nil), testPreviewScopePublicID, previewID, false); !ok {
+		t.Fatal("expected missing blob preview to produce an expired response")
+	}
+	if rec.Code != http.StatusGone {
+		t.Fatalf("missing blob preview status = %d, want 410 body=%s", rec.Code, rec.Body.String())
+	}
+
+	manifestAfter, err := previewer.loadWebPreviewScopeManifest(testPreviewScopePublicID)
+	if err != nil {
+		t.Fatalf("reload manifest: %v", err)
+	}
+	if got := manifestAfter.Records[previewID].ExpiresAt; !got.Equal(originalExpiresAt) {
+		t.Fatalf("expected missing blob preview not to refresh ttl, got %s want %s", got, originalExpiresAt)
+	}
+}
+
 func TestDriveMarkdownPreviewerDownloadInlineOnlyForSafeRenderers(t *testing.T) {
 	root := t.TempDir()
 	previewer := newWebPreviewerForTest(root)

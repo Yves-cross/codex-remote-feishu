@@ -16,6 +16,7 @@ import (
 
 var (
 	errPreviewRecordExpired              = fmt.Errorf("preview record expired")
+	errPreviewArtifactExpired            = fmt.Errorf("preview artifact expired")
 	previewDiffFirstThresholdBytes int64 = 2 * 1024 * 1024
 	markdownPreviewRenderer              = goldmark.New(goldmark.WithRendererOptions(goldmarkhtml.WithHardWraps()))
 )
@@ -55,7 +56,7 @@ func (p *DriveMarkdownPreviewer) ServeWebPreview(w http.ResponseWriter, r *http.
 			writeWebPreviewPage(w, buildWebPreviewPage(current, previous))
 		}
 		return true
-	case err == errPreviewRecordExpired:
+	case err == errPreviewRecordExpired || err == errPreviewArtifactExpired:
 		writeWebPreviewPage(w, webPreviewPage{
 			Title:        "预览已过期",
 			TypeLabel:    "Snapshot",
@@ -99,16 +100,15 @@ func (p *DriveMarkdownPreviewer) loadWebPreviewArtifactsForServe(scopePublicID, 
 	if !record.ExpiresAt.IsZero() && record.ExpiresAt.Before(now) {
 		return nil, nil, errPreviewRecordExpired
 	}
+	current, err := p.loadWebPreviewArtifact(scopePublicID, previewID)
+	if err != nil {
+		return nil, nil, err
+	}
 	record.LastUsedAt = now
 	record.ExpiresAt = now.Add(defaultPreviewRecordTTL)
 	manifest.LastUsedAt = now
 	_ = p.saveWebPreviewScopeManifest(manifest)
 	_ = p.touchPreviewBlob(record.BlobKey, now)
-
-	current, err := p.loadWebPreviewArtifact(scopePublicID, previewID)
-	if err != nil {
-		return nil, nil, err
-	}
 
 	var previous *webPreviewArtifact
 	if previousID := strings.TrimSpace(record.PreviousID); previousID != "" {
