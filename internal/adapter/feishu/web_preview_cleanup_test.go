@@ -43,9 +43,9 @@ func TestDriveMarkdownPreviewerCleanupWebPreviewCacheRemovesExpiredRecordsAndSta
 		t.Fatalf("age stale blob: %v", err)
 	}
 
-	previewer.mu.Lock()
+	previewer.webPreviewMu.Lock()
 	err = previewer.cleanupWebPreviewCacheLocked(now)
-	previewer.mu.Unlock()
+	previewer.webPreviewMu.Unlock()
 	if err != nil {
 		t.Fatalf("cleanup web preview cache: %v", err)
 	}
@@ -79,9 +79,9 @@ func TestDriveMarkdownPreviewerCleanupWebPreviewCacheEvictsOldestRecordsOverBudg
 	sourcePathNew := filepath.Join(root, "docs", "new.txt")
 	_, newPreviewID := publishWebPreviewArtifactForTest(t, previewer, sourcePathNew, []byte("newer payload"), now)
 
-	previewer.mu.Lock()
+	previewer.webPreviewMu.Lock()
 	err := previewer.cleanupWebPreviewCacheLocked(now.Add(time.Minute))
-	previewer.mu.Unlock()
+	previewer.webPreviewMu.Unlock()
 	if err != nil {
 		t.Fatalf("cleanup web preview cache: %v", err)
 	}

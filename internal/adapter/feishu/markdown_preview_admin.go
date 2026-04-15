@@ -15,22 +15,32 @@ func (p *DriveMarkdownPreviewer) CleanupBefore(ctx context.Context, cutoff time.
 		return PreviewDriveCleanupResult{}, fmt.Errorf("preview drive api is not available")
 	}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	state := p.loadStateLocked()
-	result, err := p.cleanupManagedPreviewFilesLocked(ctx, state, cutoff)
+	result, err := p.cleanupManagedPreviewFiles(ctx, cutoff)
 	if err != nil {
 		return PreviewDriveCleanupResult{}, err
 	}
-	state.LastCleanupAt = p.nowUTC()
-	result.Summary, err = p.summarizeManagedInventoryLocked(ctx, state)
+	summary, root, err := p.summarizeManagedInventory(ctx)
 	if err != nil {
 		return PreviewDriveCleanupResult{}, err
+	}
+	p.stateMu.Lock()
+	state := p.loadStateLocked()
+	state.LastCleanupAt = p.nowUTC()
+	if root != nil {
+		if state.Root == nil {
+			state.Root = &previewFolderRecord{}
+		}
+		state.Root.Token = root.Token
+		state.Root.URL = root.URL
+	} else {
+		state.Root = nil
 	}
 	if err := p.saveStateLocked(); err != nil {
+		p.stateMu.Unlock()
 		return PreviewDriveCleanupResult{}, err
 	}
+	p.stateMu.Unlock()
+	result.Summary = summary
 	return result, nil
 }
 
@@ -39,49 +49,59 @@ func (p *DriveMarkdownPreviewer) Summary() (PreviewDriveSummary, error) {
 		return PreviewDriveSummary{}, nil
 	}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
+	p.stateMu.Lock()
 	state := p.loadStateLocked()
 	if p.api == nil {
-		return previewAdminFallbackSummary(state, strings.TrimSpace(p.config.StatePath), "api_unavailable", "当前还没有可用的飞书云盘预览配置。"), nil
+		fallback := previewAdminFallbackSummary(state, strings.TrimSpace(p.config.StatePath), "api_unavailable", "当前还没有可用的飞书云盘预览配置。")
+		p.stateMu.Unlock()
+		return fallback, nil
 	}
 	beforeToken, beforeURL := previewRootSnapshot(state)
-	summary, err := p.summarizeManagedInventoryLocked(context.Background(), state)
+	p.stateMu.Unlock()
+
+	summary, root, err := p.summarizeManagedInventory(context.Background())
 	if err != nil {
 		if isPreviewDriveAccessDeniedError(err) {
-			return previewAdminFallbackSummary(state, strings.TrimSpace(p.config.StatePath), "permission_required", "当前机器人还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。"), nil
+			p.stateMu.Lock()
+			fallback := previewAdminFallbackSummary(p.loadStateLocked(), strings.TrimSpace(p.config.StatePath), "permission_required", "当前机器人还没有开通飞书云盘权限。如需 Markdown 预览，请为应用开通 `drive:drive` 权限。")
+			p.stateMu.Unlock()
+			return fallback, nil
 		}
 		return PreviewDriveSummary{}, err
 	}
-	afterToken, afterURL := previewRootSnapshot(state)
+	afterToken, afterURL := "", ""
+	if root != nil {
+		afterToken, afterURL = strings.TrimSpace(root.Token), strings.TrimSpace(root.URL)
+	}
 	if beforeToken != afterToken || beforeURL != afterURL {
+		p.stateMu.Lock()
+		state = p.loadStateLocked()
+		if root != nil {
+			if state.Root == nil {
+				state.Root = &previewFolderRecord{}
+			}
+			state.Root.Token = root.Token
+			state.Root.URL = root.URL
+		} else {
+			state.Root = nil
+		}
 		if err := p.saveStateLocked(); err != nil {
+			p.stateMu.Unlock()
 			return PreviewDriveSummary{}, err
 		}
+		p.stateMu.Unlock()
 	}
 	return summary, nil
 }
 
-func (p *DriveMarkdownPreviewer) summarizeManagedInventoryLocked(ctx context.Context, state *previewState) (PreviewDriveSummary, error) {
-	state = normalizePreviewState(state)
+func (p *DriveMarkdownPreviewer) summarizeManagedInventory(ctx context.Context) (PreviewDriveSummary, *previewFolderRecord, error) {
 	summary := PreviewDriveSummary{
 		StatePath: strings.TrimSpace(p.config.StatePath),
 	}
 
-	snapshot, ok, err := p.loadManagedInventoryLocked(ctx, state)
-	if err != nil {
-		return PreviewDriveSummary{}, err
-	}
-	if !ok {
-		return summary, nil
-	}
-
-	summary.RootToken = snapshot.root.Token
-	summary.RootURL = snapshot.root.URL
-	summary.FileCount = len(snapshot.files)
-	summary.ScopeCount = len(snapshot.folders)
-
+	p.stateMu.Lock()
+	state := p.loadStateLocked()
+	rootHint := clonePreviewFolderRecord(state.Root)
 	recordsByToken := map[string]*previewFileRecord{}
 	for _, record := range state.Files {
 		if record == nil {
@@ -91,8 +111,22 @@ func (p *DriveMarkdownPreviewer) summarizeManagedInventoryLocked(ctx context.Con
 		if token == "" {
 			continue
 		}
-		recordsByToken[token] = record
+		recordsByToken[token] = clonePreviewFileRecord(record)
 	}
+	p.stateMu.Unlock()
+
+	snapshot, ok, err := p.loadManagedInventory(ctx, rootHint)
+	if err != nil {
+		return PreviewDriveSummary{}, nil, err
+	}
+	if !ok {
+		return summary, nil, nil
+	}
+
+	summary.RootToken = snapshot.root.Token
+	summary.RootURL = snapshot.root.URL
+	summary.FileCount = len(snapshot.files)
+	summary.ScopeCount = len(snapshot.folders)
 
 	for _, node := range snapshot.files {
 		record := recordsByToken[node.Token]
@@ -106,7 +140,10 @@ func (p *DriveMarkdownPreviewer) summarizeManagedInventoryLocked(ctx context.Con
 		}
 	}
 
-	return summary, nil
+	return summary, &previewFolderRecord{
+		Token: snapshot.root.Token,
+		URL:   snapshot.root.URL,
+	}, nil
 }
 
 func previewRootSnapshot(state *previewState) (string, string) {

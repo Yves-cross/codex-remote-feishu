@@ -165,8 +165,11 @@ func (p *DriveMarkdownPreviewer) publishWebPreviewArtifact(ctx context.Context, 
 	}
 	scopePublicID := previewScopePublicID(scopeKey)
 	now := p.nowFn().UTC()
+
+	p.webPreviewMu.Lock()
 	manifest, err := p.loadWebPreviewScopeManifest(scopePublicID)
 	if err != nil {
+		p.webPreviewMu.Unlock()
 		return WebPreviewPublishResult{}, err
 	}
 	if manifest == nil {
@@ -212,14 +215,19 @@ func (p *DriveMarkdownPreviewer) publishWebPreviewArtifact(ctx context.Context, 
 	}
 	manifest.LastUsedAt = now
 	if err := p.ensurePreviewBlob(record.BlobKey, artifact.Bytes); err != nil {
+		p.webPreviewMu.Unlock()
 		return WebPreviewPublishResult{}, err
 	}
 	if err := p.touchPreviewBlob(record.BlobKey, now); err != nil {
+		p.webPreviewMu.Unlock()
 		return WebPreviewPublishResult{}, err
 	}
 	if err := p.saveWebPreviewScopeManifest(manifest); err != nil {
+		p.webPreviewMu.Unlock()
 		return WebPreviewPublishResult{}, err
 	}
+	p.webPreviewMu.Unlock()
+
 	url, err := p.issueWebPreviewURL(ctx, scopePublicID, previewID)
 	if err != nil {
 		return WebPreviewPublishResult{}, err

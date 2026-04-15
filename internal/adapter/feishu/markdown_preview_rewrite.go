@@ -28,25 +28,23 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Fina
 		return result, nil
 	}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	state := p.loadStateLocked()
 	runtime := &previewRewriteRuntime{}
-	rewritten, supplements, changed, dirty, rewriteErr := p.rewriteMarkdownLinksLocked(ctx, state, req, principals, runtime)
+	rewritten, supplements, changed, dirty, rewriteErr := p.rewriteMarkdownLinks(ctx, req, principals, runtime)
 	if changed {
 		result.Block.Text = rewritten
 	}
 	result.Supplements = append(result.Supplements, supplements...)
 	if changed || dirty {
+		p.stateMu.Lock()
 		if err := p.saveStateLocked(); err != nil && rewriteErr == nil {
 			rewriteErr = err
 		}
+		p.stateMu.Unlock()
 	}
 	return result, rewriteErr
 }
 
-func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context, state *previewState, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, []PreviewSupplement, bool, bool, error) {
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, []PreviewSupplement, bool, bool, error) {
 	text := req.Block.Text
 	matches := markdownLinkPattern.FindAllStringSubmatchIndex(text, -1)
 	if len(matches) == 0 {
@@ -82,7 +80,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context,
 				TargetStart: targetStart,
 				TargetEnd:   targetEnd,
 			}
-			published, ok, err := p.materializePreviewTargetLocked(ctx, state, ref, req, scopeKey, principals, runtime)
+			published, ok, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
 			switch {
 			case err != nil:
 				errs = append(errs, err.Error())
@@ -113,7 +111,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksLocked(ctx context.Context,
 	return builder.String(), supplements, changed, runtime != nil && runtime.dirty, rewriteErr
 }
 
-func (p *DriveMarkdownPreviewer) materializePreviewTargetLocked(ctx context.Context, state *previewState, ref PreviewReference, req FinalBlockPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
+func (p *DriveMarkdownPreviewer) materializePreviewTarget(ctx context.Context, ref PreviewReference, req FinalBlockPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
 	var errs []string
 	for _, handler := range p.handlers {
 		if handler == nil || !handler.Match(req, ref) {
@@ -127,7 +125,7 @@ func (p *DriveMarkdownPreviewer) materializePreviewTargetLocked(ctx context.Cont
 		if !ok || plan == nil {
 			continue
 		}
-		result, published, publishErr := p.publishPreviewPlanLocked(ctx, state, req, *plan, scopeKey, principals, runtime)
+		result, published, publishErr := p.publishPreviewPlan(ctx, req, *plan, scopeKey, principals, runtime)
 		if publishErr != nil {
 			errs = append(errs, publishErr.Error())
 			continue
@@ -142,7 +140,7 @@ func (p *DriveMarkdownPreviewer) materializePreviewTargetLocked(ctx context.Cont
 	return nil, false, nil
 }
 
-func (p *DriveMarkdownPreviewer) publishPreviewPlanLocked(ctx context.Context, state *previewState, req FinalBlockPreviewRequest, plan PreviewPlan, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
+func (p *DriveMarkdownPreviewer) publishPreviewPlan(ctx context.Context, req FinalBlockPreviewRequest, plan PreviewPlan, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
 	var errs []string
 	for _, delivery := range plan.Deliveries {
 		for _, publisher := range p.publishers {
@@ -153,7 +151,6 @@ func (p *DriveMarkdownPreviewer) publishPreviewPlanLocked(ctx context.Context, s
 				Request:    req,
 				Plan:       plan,
 				Delivery:   delivery,
-				State:      state,
 				ScopeKey:   scopeKey,
 				Principals: principals,
 				Runtime:    runtime,
@@ -266,89 +263,37 @@ func (p driveMarkdownLinkPublisher) Publish(ctx context.Context, req PreviewPubl
 	if p.previewer == nil {
 		return nil, false, nil
 	}
-	return p.previewer.publishDriveMarkdownLinkLocked(ctx, req)
+	return p.previewer.publishDriveMarkdownLink(ctx, req)
 }
 
-func (p *DriveMarkdownPreviewer) publishDriveMarkdownLinkLocked(ctx context.Context, req PreviewPublishRequest) (*PreviewPublishResult, bool, error) {
+func (p *DriveMarkdownPreviewer) publishDriveMarkdownLink(ctx context.Context, req PreviewPublishRequest) (*PreviewPublishResult, bool, error) {
 	artifact := req.Plan.Artifact
 	if strings.TrimSpace(artifact.SourcePath) == "" || len(artifact.Bytes) == 0 {
 		return nil, false, nil
 	}
 
-	scopeFolder, err := p.ensureScopeFolderLocked(ctx, req.State, req.ScopeKey, req.Principals)
+	fileKey := previewFileKey(req.ScopeKey, artifact.SourcePath, artifact.ContentHash)
+	now := p.nowUTC()
+	if record, ok := p.markDriveFileUsedIfReady(fileKey, req.ScopeKey, int64(len(artifact.Bytes)), req.Principals, now, req.Runtime); ok {
+		return &PreviewPublishResult{
+			PublisherID: p.driveMarkdownPublisherID(),
+			Mode:        PreviewPublishModeInlineLink,
+			URL:         record.URL,
+		}, true, nil
+	}
+
+	value, err := p.doPreviewOp("drive-file:"+fileKey, func() (any, error) {
+		if record, ok := p.markDriveFileUsedIfReady(fileKey, req.ScopeKey, int64(len(artifact.Bytes)), req.Principals, now, req.Runtime); ok {
+			return record, nil
+		}
+		return p.publishDriveFile(ctx, req, fileKey, now)
+	})
 	if err != nil {
 		return nil, true, err
 	}
-
-	fileKey := previewFileKey(req.ScopeKey, artifact.SourcePath, artifact.ContentHash)
-	record := req.State.Files[fileKey]
-	if record == nil {
-		record = &previewFileRecord{
-			Path:      artifact.SourcePath,
-			SHA256:    artifact.ContentHash,
-			ScopeKey:  req.ScopeKey,
-			SizeBytes: int64(len(artifact.Bytes)),
-		}
-		req.State.Files[fileKey] = record
-	}
-	if record.ScopeKey == "" {
-		record.ScopeKey = req.ScopeKey
-	}
-	if record.SizeBytes <= 0 {
-		record.SizeBytes = int64(len(artifact.Bytes))
-	}
-	now := time.Now().UTC()
-	if record.CreatedAt.IsZero() {
-		record.CreatedAt = now
-	}
-	record.LastUsedAt = now
-	scope := req.State.Scopes[req.ScopeKey]
-	if scope != nil {
-		scope.LastUsedAt = now
-	}
-
-	if record.Token == "" {
-		if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
-			if isPreviewParentMissingError(err) {
-				clearPreviewScope(req.State, req.ScopeKey)
-				scopeFolder, err = p.ensureScopeFolderLocked(ctx, req.State, req.ScopeKey, req.Principals)
-				if err != nil {
-					return nil, true, err
-				}
-				record.Token = ""
-				record.URL = ""
-				record.Shared = nil
-				if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
-					return nil, true, err
-				}
-			} else {
-				return nil, true, err
-			}
-		}
-	}
-
-	if record.URL == "" {
-		url, err := p.api.QueryMetaURL(ctx, record.Token, previewFileType)
-		if err != nil {
-			return nil, true, fmt.Errorf("query preview url for %s: %w", artifact.SourcePath, err)
-		}
-		record.URL = url
-	}
-
-	if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, req.Principals); err != nil {
-		if isPreviewResourceMissingError(err) {
-			record.Token = ""
-			record.URL = ""
-			record.Shared = nil
-			if err := p.uploadPreviewFileLocked(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
-				return nil, true, err
-			}
-			if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &record.Shared, req.Principals); err != nil {
-				return nil, true, err
-			}
-		} else {
-			return nil, true, err
-		}
+	record, _ := value.(*previewFileRecord)
+	if record == nil || strings.TrimSpace(record.URL) == "" {
+		return nil, false, nil
 	}
 
 	return &PreviewPublishResult{
@@ -362,7 +307,63 @@ func (p *DriveMarkdownPreviewer) driveMarkdownPublisherID() string {
 	return driveMarkdownLinkPublisher{previewer: p}.ID()
 }
 
-func (p *DriveMarkdownPreviewer) uploadPreviewFileLocked(ctx context.Context, record *previewFileRecord, parentToken, resolvedPath string, content []byte, contentSHA string) error {
+func (p *DriveMarkdownPreviewer) publishDriveFile(ctx context.Context, req PreviewPublishRequest, fileKey string, now time.Time) (*previewFileRecord, error) {
+	artifact := req.Plan.Artifact
+	for attempt := 0; attempt < 2; attempt++ {
+		scopeFolder, err := p.ensureScopeFolder(ctx, req.ScopeKey, req.Principals, req.Runtime)
+		if err != nil {
+			return nil, err
+		}
+
+		record := p.snapshotDriveFileRecord(fileKey, req.ScopeKey, artifact, now)
+		if record == nil {
+			record = &previewFileRecord{}
+		}
+
+		if strings.TrimSpace(record.Token) == "" {
+			if err := p.uploadPreviewFile(ctx, record, scopeFolder.Token, artifact.SourcePath, artifact.Bytes, artifact.ContentHash); err != nil {
+				if isPreviewParentMissingError(err) {
+					p.clearPreviewScopeState(req.ScopeKey, req.Runtime)
+					continue
+				}
+				return nil, err
+			}
+		}
+
+		if strings.TrimSpace(record.URL) == "" {
+			url, err := p.api.QueryMetaURL(ctx, record.Token, previewFileType)
+			if err != nil {
+				if isPreviewResourceMissingError(err) {
+					p.resetDriveFileRecord(fileKey, req.Runtime)
+					record.Token = ""
+					record.URL = ""
+					record.Shared = map[string]bool{}
+					continue
+				}
+				return nil, fmt.Errorf("query preview url for %s: %w", artifact.SourcePath, err)
+			}
+			record.URL = url
+		}
+
+		shared := clonePreviewShared(record.Shared)
+		if err := ensurePreviewPermissions(ctx, p.api, record.Token, previewFileType, &shared, req.Principals); err != nil {
+			if isPreviewResourceMissingError(err) {
+				p.resetDriveFileRecord(fileKey, req.Runtime)
+				record.Token = ""
+				record.URL = ""
+				record.Shared = map[string]bool{}
+				continue
+			}
+			return nil, err
+		}
+		record.Shared = shared
+		p.commitDriveFileRecord(fileKey, req.ScopeKey, record, now, req.Runtime)
+		return record, nil
+	}
+	return nil, fmt.Errorf("publish preview for %s: exhausted retries", artifact.SourcePath)
+}
+
+func (p *DriveMarkdownPreviewer) uploadPreviewFile(ctx context.Context, record *previewFileRecord, parentToken, resolvedPath string, content []byte, contentSHA string) error {
 	fileToken, err := p.api.UploadFile(ctx, parentToken, previewFileName(resolvedPath, contentSHA), content)
 	if err != nil {
 		return fmt.Errorf("upload preview for %s: %w", resolvedPath, err)
@@ -373,77 +374,101 @@ func (p *DriveMarkdownPreviewer) uploadPreviewFileLocked(ctx context.Context, re
 	return nil
 }
 
-func (p *DriveMarkdownPreviewer) ensureScopeFolderLocked(ctx context.Context, state *previewState, scopeKey string, principals []previewPrincipal) (*previewFolderRecord, error) {
-	scope := state.Scopes[scopeKey]
-	if scope == nil {
-		scope = &previewScopeRecord{}
-		state.Scopes[scopeKey] = scope
+func (p *DriveMarkdownPreviewer) ensureScopeFolder(ctx context.Context, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*previewFolderRecord, error) {
+	if folder := p.snapshotPreviewScopeFolder(scopeKey); folder != nil &&
+		strings.TrimSpace(folder.Token) != "" &&
+		previewSharedCoversPrincipals(folder.Shared, principals) {
+		return folder, nil
 	}
 
-	for attempt := 0; attempt < 2; attempt++ {
-		root, err := p.ensureRootFolderLocked(ctx, state)
-		if err != nil {
-			return nil, err
-		}
+	value, err := p.doPreviewOp("drive-scope:"+strings.TrimSpace(scopeKey), func() (any, error) {
+		for attempt := 0; attempt < 2; attempt++ {
+			folder := p.snapshotPreviewScopeFolder(scopeKey)
+			if folder != nil &&
+				strings.TrimSpace(folder.Token) != "" &&
+				previewSharedCoversPrincipals(folder.Shared, principals) {
+				return folder, nil
+			}
 
-		if scope.Folder == nil {
-			scope.Folder = &previewFolderRecord{}
-		}
-		if scope.Folder.Token == "" {
-			node, err := p.api.CreateFolder(ctx, previewScopeFolderName(scopeKey), root.Token)
+			root, err := p.ensureRootFolder(ctx, runtime)
 			if err != nil {
-				if isPreviewParentMissingError(err) {
-					state.Root = nil
+				return nil, err
+			}
+
+			if folder == nil {
+				folder = &previewFolderRecord{}
+			}
+			if strings.TrimSpace(folder.Token) == "" {
+				node, err := p.api.CreateFolder(ctx, previewScopeFolderName(scopeKey), root.Token)
+				if err != nil {
+					if isPreviewParentMissingError(err) {
+						p.clearPreviewRoot(runtime)
+						continue
+					}
+					return nil, fmt.Errorf("create preview folder for %s: %w", scopeKey, err)
+				}
+				folder.Token = node.Token
+				folder.URL = node.URL
+				folder.Shared = map[string]bool{}
+			}
+
+			shared := clonePreviewShared(folder.Shared)
+			if err := ensurePreviewPermissions(ctx, p.api, folder.Token, previewFolderType, &shared, principals); err != nil {
+				if isPreviewResourceMissingError(err) {
+					p.clearPreviewScopeState(scopeKey, runtime)
 					continue
 				}
-				return nil, fmt.Errorf("create preview folder for %s: %w", scopeKey, err)
+				return nil, fmt.Errorf("authorize preview folder for %s: %w", scopeKey, err)
 			}
-			scope.Folder.Token = node.Token
-			scope.Folder.URL = node.URL
-			scope.Folder.Shared = map[string]bool{}
+			folder.Shared = shared
+			p.storePreviewScopeFolder(scopeKey, folder, runtime)
+			return folder, nil
 		}
-
-		if err := ensurePreviewPermissions(ctx, p.api, scope.Folder.Token, previewFolderType, &scope.Folder.Shared, principals); err != nil {
-			if isPreviewResourceMissingError(err) {
-				scope.Folder = nil
-				continue
-			}
-			return nil, fmt.Errorf("authorize preview folder for %s: %w", scopeKey, err)
-		}
-		return scope.Folder, nil
+		return nil, fmt.Errorf("create preview folder for %s: exhausted retries", scopeKey)
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("create preview folder for %s: exhausted retries", scopeKey)
+	folder, _ := value.(*previewFolderRecord)
+	return folder, nil
 }
 
-func (p *DriveMarkdownPreviewer) ensureRootFolderLocked(ctx context.Context, state *previewState) (*previewFolderRecord, error) {
-	if state.Root == nil {
-		state.Root = &previewFolderRecord{}
+func (p *DriveMarkdownPreviewer) ensureRootFolder(ctx context.Context, runtime *previewRewriteRuntime) (*previewFolderRecord, error) {
+	if root := p.snapshotPreviewRoot(); root != nil && strings.TrimSpace(root.Token) != "" {
+		return root, nil
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		if state.Root.Token == "" {
-			node, ok, err := p.discoverManagedRootLocked(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("discover preview root folder: %w", err)
-			}
-			if ok {
-				state.Root.Token = node.Token
-				state.Root.URL = node.URL
-			}
+
+	value, err := p.doPreviewOp("drive-root", func() (any, error) {
+		if root := p.snapshotPreviewRoot(); root != nil && strings.TrimSpace(root.Token) != "" {
+			return root, nil
 		}
 
-		if state.Root.Token == "" {
+		root := &previewFolderRecord{}
+		node, ok, err := p.discoverManagedRoot(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("discover preview root folder: %w", err)
+		}
+		if ok {
+			root.Token = node.Token
+			root.URL = node.URL
+		}
+		if strings.TrimSpace(root.Token) == "" {
 			node, err := p.api.CreateFolder(ctx, defaultPreviewRootFolderName, "")
 			if err != nil {
 				return nil, fmt.Errorf("create preview root folder: %w", err)
 			}
-			state.Root.Token = node.Token
-			state.Root.URL = node.URL
+			root.Token = node.Token
+			root.URL = node.URL
 		}
-		return state.Root, nil
+		root.Shared = map[string]bool{}
+		p.storePreviewRoot(root, runtime)
+		return root, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("create preview root folder: exhausted retries")
+	root, _ := value.(*previewFolderRecord)
+	return root, nil
 }
 
 func (p *DriveMarkdownPreviewer) resolvePreviewPath(rawTarget string, req MarkdownPreviewRequest) (string, bool, error) {

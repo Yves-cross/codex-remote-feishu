@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,6 +56,7 @@ type fakeListPermissionMembersCall struct {
 }
 
 type fakePreviewAPI struct {
+	mu                   sync.Mutex
 	createFolderCalls    []fakeCreateFolderCall
 	uploadFileCalls      []fakeUploadFileCall
 	queryMetaURLCalls    []fakeQueryMetaCall
@@ -80,12 +82,18 @@ func newFakePreviewAPI() *fakePreviewAPI {
 }
 
 func (f *fakePreviewAPI) CreateFolder(ctx context.Context, name, parentToken string) (previewRemoteNode, error) {
+	f.mu.Lock()
 	f.createFolderCalls = append(f.createFolderCalls, fakeCreateFolderCall{Name: name, ParentToken: parentToken})
-	if f.createFolderFunc != nil {
-		return f.createFolderFunc(ctx, name, parentToken)
+	createFolderFunc := f.createFolderFunc
+	if createFolderFunc == nil {
+		f.nextFolder++
 	}
-	f.nextFolder++
-	token := "folder-" + string(rune('0'+f.nextFolder))
+	nextFolder := f.nextFolder
+	f.mu.Unlock()
+	if createFolderFunc != nil {
+		return createFolderFunc(ctx, name, parentToken)
+	}
+	token := "folder-" + string(rune('0'+nextFolder))
 	return previewRemoteNode{
 		Token: token,
 		URL:   "https://preview/" + token,
@@ -95,58 +103,79 @@ func (f *fakePreviewAPI) CreateFolder(ctx context.Context, name, parentToken str
 }
 
 func (f *fakePreviewAPI) UploadFile(ctx context.Context, parentToken, fileName string, content []byte) (string, error) {
+	f.mu.Lock()
 	f.uploadFileCalls = append(f.uploadFileCalls, fakeUploadFileCall{
 		ParentToken: parentToken,
 		FileName:    fileName,
 		Content:     string(content),
 	})
-	if f.uploadFileFunc != nil {
-		return f.uploadFileFunc(ctx, parentToken, fileName, content)
+	uploadFileFunc := f.uploadFileFunc
+	if uploadFileFunc == nil {
+		f.nextFile++
 	}
-	f.nextFile++
-	return "file-" + string(rune('0'+f.nextFile)), nil
+	nextFile := f.nextFile
+	f.mu.Unlock()
+	if uploadFileFunc != nil {
+		return uploadFileFunc(ctx, parentToken, fileName, content)
+	}
+	return "file-" + string(rune('0'+nextFile)), nil
 }
 
 func (f *fakePreviewAPI) QueryMetaURL(ctx context.Context, token, docType string) (string, error) {
+	f.mu.Lock()
 	f.queryMetaURLCalls = append(f.queryMetaURLCalls, fakeQueryMetaCall{Token: token, DocType: docType})
-	if f.queryMetaURLFunc != nil {
-		return f.queryMetaURLFunc(ctx, token, docType)
+	queryMetaURLFunc := f.queryMetaURLFunc
+	f.mu.Unlock()
+	if queryMetaURLFunc != nil {
+		return queryMetaURLFunc(ctx, token, docType)
 	}
 	return "https://preview/" + token, nil
 }
 
 func (f *fakePreviewAPI) GrantPermission(ctx context.Context, token, docType string, principal previewPrincipal) error {
+	f.mu.Lock()
 	f.grantPermissionCalls = append(f.grantPermissionCalls, fakeGrantPermissionCall{
 		Token:     token,
 		DocType:   docType,
 		Principal: principal,
 	})
-	if f.grantPermissionFunc != nil {
-		return f.grantPermissionFunc(ctx, token, docType, principal)
+	grantPermissionFunc := f.grantPermissionFunc
+	f.mu.Unlock()
+	if grantPermissionFunc != nil {
+		return grantPermissionFunc(ctx, token, docType, principal)
 	}
 	return nil
 }
 
 func (f *fakePreviewAPI) DeleteFile(ctx context.Context, token, docType string) error {
+	f.mu.Lock()
 	f.deleteFileCalls = append(f.deleteFileCalls, fakeDeleteFileCall{Token: token, DocType: docType})
-	if f.deleteFileFunc != nil {
-		return f.deleteFileFunc(ctx, token, docType)
+	deleteFileFunc := f.deleteFileFunc
+	f.mu.Unlock()
+	if deleteFileFunc != nil {
+		return deleteFileFunc(ctx, token, docType)
 	}
 	return nil
 }
 
 func (f *fakePreviewAPI) ListFiles(ctx context.Context, folderToken string) ([]previewRemoteNode, error) {
+	f.mu.Lock()
 	f.listFilesCalls = append(f.listFilesCalls, fakeListFilesCall{FolderToken: folderToken})
-	if f.listFilesFunc != nil {
-		return f.listFilesFunc(ctx, folderToken)
+	listFilesFunc := f.listFilesFunc
+	f.mu.Unlock()
+	if listFilesFunc != nil {
+		return listFilesFunc(ctx, folderToken)
 	}
 	return nil, nil
 }
 
 func (f *fakePreviewAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]bool, error) {
+	f.mu.Lock()
 	f.listPermissionCalls = append(f.listPermissionCalls, fakeListPermissionMembersCall{Token: token, DocType: docType})
-	if f.listPermissionFunc != nil {
-		return f.listPermissionFunc(ctx, token, docType)
+	listPermissionFunc := f.listPermissionFunc
+	f.mu.Unlock()
+	if listPermissionFunc != nil {
+		return listPermissionFunc(ctx, token, docType)
 	}
 	return map[string]bool{}, nil
 }

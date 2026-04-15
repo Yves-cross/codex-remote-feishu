@@ -42,13 +42,23 @@ type DriveMarkdownPreviewer struct {
 	api    previewDriveAPI
 	config MarkdownPreviewConfig
 
-	handlers     []FinalBlockPreviewHandler
-	publishers   []FinalBlockPreviewPublisher
-	webPublisher WebPreviewPublisher
-	mu           sync.Mutex
-	loaded       bool
-	state        *previewState
-	nowFn        func() time.Time
+	handlers      []FinalBlockPreviewHandler
+	publishers    []FinalBlockPreviewPublisher
+	webPublisher  WebPreviewPublisher
+	stateMu       sync.Mutex
+	webPreviewMu  sync.Mutex
+	maintenanceMu sync.Mutex
+	inflightMu    sync.Mutex
+	inflightOps   map[string]*previewOpCall
+	loaded        bool
+	state         *previewState
+	nowFn         func() time.Time
+}
+
+type previewOpCall struct {
+	done  chan struct{}
+	value any
+	err   error
 }
 
 type previewDriveAPI interface {

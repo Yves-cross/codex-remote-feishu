@@ -14,6 +14,12 @@ type previewRewriteRuntime struct {
 	dirty bool
 }
 
+type previewManagedCleanupCandidate struct {
+	Key       string
+	Token     string
+	SizeBytes int64
+}
+
 func (p *DriveMarkdownPreviewer) nowUTC() time.Time {
 	if p == nil || p.nowFn == nil {
 		return time.Now().UTC()
@@ -53,14 +59,78 @@ func parsePreviewRemoteTime(raw string) time.Time {
 	return time.Time{}
 }
 
-func (p *DriveMarkdownPreviewer) cleanupManagedPreviewFilesLocked(ctx context.Context, state *previewState, cutoff time.Time) (PreviewDriveCleanupResult, error) {
-	state = normalizePreviewState(state)
-	result := PreviewDriveCleanupResult{}
+func (p *DriveMarkdownPreviewer) cleanupManagedPreviewFiles(ctx context.Context, cutoff time.Time) (PreviewDriveCleanupResult, error) {
+	candidates, trackedTokens, skippedUnknown, rootHint := p.snapshotManagedCleanupState(cutoff)
+	result := PreviewDriveCleanupResult{
+		SkippedUnknownLastUsedCount: skippedUnknown,
+	}
+
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.Token) != "" {
+			err := p.api.DeleteFile(ctx, candidate.Token, previewFileType)
+			if err != nil && !isPreviewResourceMissingError(err) {
+				return PreviewDriveCleanupResult{}, err
+			}
+		}
+		result.DeletedFileCount++
+		if candidate.SizeBytes > 0 {
+			result.DeletedEstimatedBytes += candidate.SizeBytes
+		}
+	}
+
+	snapshot, ok, err := p.loadManagedInventory(ctx, rootHint)
+	if err != nil {
+		return PreviewDriveCleanupResult{}, err
+	}
+	if ok {
+		if err := p.cleanupRemoteManagedFiles(ctx, trackedTokens, cutoff, snapshot, &result); err != nil {
+			return PreviewDriveCleanupResult{}, err
+		}
+	}
+
+	p.stateMu.Lock()
+	state := p.loadStateLocked()
+	for _, candidate := range candidates {
+		record := state.Files[candidate.Key]
+		if record == nil {
+			delete(state.Files, candidate.Key)
+			continue
+		}
+		if strings.TrimSpace(candidate.Token) == "" || strings.TrimSpace(record.Token) == strings.TrimSpace(candidate.Token) {
+			delete(state.Files, candidate.Key)
+		}
+	}
+	if ok {
+		if state.Root == nil {
+			state.Root = &previewFolderRecord{}
+		}
+		state.Root.Token = snapshot.root.Token
+		state.Root.URL = snapshot.root.URL
+	}
+	result.Summary = summarizePreviewState(state, strings.TrimSpace(p.config.StatePath))
+	p.stateMu.Unlock()
+
+	return result, nil
+}
+
+func (p *DriveMarkdownPreviewer) snapshotManagedCleanupState(cutoff time.Time) ([]previewManagedCleanupCandidate, map[string]bool, int, *previewFolderRecord) {
+	if p == nil {
+		return nil, nil, 0, nil
+	}
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+
+	state := p.loadStateLocked()
+	rootHint := clonePreviewFolderRecord(state.Root)
 	keys := make([]string, 0, len(state.Files))
 	for key := range state.Files {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+
+	candidates := make([]previewManagedCleanupCandidate, 0)
+	trackedTokens := map[string]bool{}
+	skippedUnknown := 0
 	for _, key := range keys {
 		record := state.Files[key]
 		if record == nil {
@@ -68,30 +138,25 @@ func (p *DriveMarkdownPreviewer) cleanupManagedPreviewFilesLocked(ctx context.Co
 			continue
 		}
 		lastUsedAt, ok := previewRecordLastUsedAt(record)
-		if !ok {
-			result.SkippedUnknownLastUsedCount++
-			continue
-		}
-		if lastUsedAt.After(cutoff) {
-			continue
-		}
-		if strings.TrimSpace(record.Token) != "" {
-			err := p.api.DeleteFile(ctx, record.Token, previewFileType)
-			if err != nil && !isPreviewResourceMissingError(err) {
-				return PreviewDriveCleanupResult{}, err
+		switch {
+		case !ok:
+			skippedUnknown++
+			if strings.TrimSpace(record.Token) != "" {
+				trackedTokens[record.Token] = true
 			}
+		case lastUsedAt.After(cutoff):
+			if strings.TrimSpace(record.Token) != "" {
+				trackedTokens[record.Token] = true
+			}
+		default:
+			candidates = append(candidates, previewManagedCleanupCandidate{
+				Key:       key,
+				Token:     strings.TrimSpace(record.Token),
+				SizeBytes: record.SizeBytes,
+			})
 		}
-		result.DeletedFileCount++
-		if record.SizeBytes > 0 {
-			result.DeletedEstimatedBytes += record.SizeBytes
-		}
-		delete(state.Files, key)
 	}
-	if err := p.cleanupRemoteManagedFilesLocked(ctx, state, cutoff, &result); err != nil {
-		return PreviewDriveCleanupResult{}, err
-	}
-	result.Summary = summarizePreviewState(state, strings.TrimSpace(p.config.StatePath))
-	return result, nil
+	return candidates, trackedTokens, skippedUnknown, rootHint
 }
 
 func (p *DriveMarkdownPreviewer) RunBackgroundMaintenance(ctx context.Context) {
@@ -120,42 +185,53 @@ func (p *DriveMarkdownPreviewer) RunBackgroundMaintenance(ctx context.Context) {
 }
 
 func (p *DriveMarkdownPreviewer) runBackgroundCleanup(ctx context.Context) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.maintenanceMu.Lock()
+	defer p.maintenanceMu.Unlock()
 
 	now := p.nowUTC()
 	if p.api != nil && strings.TrimSpace(p.config.StatePath) != "" {
+		p.stateMu.Lock()
 		state := p.loadStateLocked()
-		if !state.LastCleanupAt.IsZero() && now.Before(state.LastCleanupAt.Add(p.config.BackgroundCleanupEvery)) {
-			return nil
-		}
+		shouldRunDriveCleanup := state.LastCleanupAt.IsZero() || now.After(state.LastCleanupAt.Add(p.config.BackgroundCleanupEvery))
+		p.stateMu.Unlock()
 
-		result, err := p.cleanupManagedPreviewFilesLocked(ctx, state, now.Add(-p.config.BackgroundCleanupMaxAge))
-		if err != nil {
-			return err
-		}
-		state.LastCleanupAt = now
-		if err := p.saveStateLocked(); err != nil {
-			return err
-		}
-		if result.DeletedFileCount > 0 {
-			log.Printf(
-				"markdown preview background cleanup: gateway=%s deleted=%d bytes=%d",
-				strings.TrimSpace(p.config.GatewayID),
-				result.DeletedFileCount,
-				result.DeletedEstimatedBytes,
-			)
+		if shouldRunDriveCleanup {
+			result, err := p.cleanupManagedPreviewFiles(ctx, now.Add(-p.config.BackgroundCleanupMaxAge))
+			if err != nil {
+				return err
+			}
+
+			p.stateMu.Lock()
+			state = p.loadStateLocked()
+			state.LastCleanupAt = now
+			if err := p.saveStateLocked(); err != nil {
+				p.stateMu.Unlock()
+				return err
+			}
+			p.stateMu.Unlock()
+
+			if result.DeletedFileCount > 0 {
+				log.Printf(
+					"markdown preview background cleanup: gateway=%s deleted=%d bytes=%d",
+					strings.TrimSpace(p.config.GatewayID),
+					result.DeletedFileCount,
+					result.DeletedEstimatedBytes,
+				)
+			}
 		}
 	}
 	if strings.TrimSpace(p.config.CacheDir) != "" {
-		if err := p.cleanupWebPreviewCacheLocked(now); err != nil {
+		p.webPreviewMu.Lock()
+		err := p.cleanupWebPreviewCacheLocked(now)
+		p.webPreviewMu.Unlock()
+		if err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (p *DriveMarkdownPreviewer) discoverManagedRootLocked(ctx context.Context) (previewRemoteNode, bool, error) {
+func (p *DriveMarkdownPreviewer) discoverManagedRoot(ctx context.Context) (previewRemoteNode, bool, error) {
 	rootFolders, err := p.api.ListFiles(ctx, "")
 	if err != nil {
 		return previewRemoteNode{}, false, err
@@ -194,23 +270,23 @@ type previewInventorySnapshot struct {
 	files   []previewRemoteNode
 }
 
-func (p *DriveMarkdownPreviewer) loadManagedInventoryLocked(ctx context.Context, state *previewState) (previewInventorySnapshot, bool, error) {
+func (p *DriveMarkdownPreviewer) loadManagedInventory(ctx context.Context, rootHint *previewFolderRecord) (previewInventorySnapshot, bool, error) {
 	if p == nil || p.api == nil {
 		return previewInventorySnapshot{}, false, nil
 	}
 
-	var root previewRemoteNode
+	currentRoot := clonePreviewFolderRecord(rootHint)
 	for attempt := 0; attempt < 2; attempt++ {
-		root = previewRemoteNode{}
-		if state != nil && state.Root != nil && strings.TrimSpace(state.Root.Token) != "" {
+		root := previewRemoteNode{}
+		if currentRoot != nil && strings.TrimSpace(currentRoot.Token) != "" {
 			root = previewRemoteNode{
-				Token: strings.TrimSpace(state.Root.Token),
-				URL:   strings.TrimSpace(state.Root.URL),
+				Token: strings.TrimSpace(currentRoot.Token),
+				URL:   strings.TrimSpace(currentRoot.URL),
 				Type:  previewFolderType,
 				Name:  defaultPreviewRootFolderName,
 			}
 		} else {
-			discovered, ok, err := p.discoverManagedRootLocked(ctx)
+			discovered, ok, err := p.discoverManagedRoot(ctx)
 			if err != nil {
 				return previewInventorySnapshot{}, false, fmt.Errorf("discover markdown preview root: %w", err)
 			}
@@ -218,31 +294,26 @@ func (p *DriveMarkdownPreviewer) loadManagedInventoryLocked(ctx context.Context,
 				return previewInventorySnapshot{}, false, nil
 			}
 			root = discovered
-			if state != nil {
-				if state.Root == nil {
-					state.Root = &previewFolderRecord{}
-				}
-				state.Root.Token = discovered.Token
-				state.Root.URL = discovered.URL
+			currentRoot = &previewFolderRecord{
+				Token: discovered.Token,
+				URL:   discovered.URL,
 			}
 		}
 
-		snapshot, err := p.walkManagedInventoryLocked(ctx, root)
+		snapshot, err := p.walkManagedInventory(ctx, root)
 		if err == nil {
 			return snapshot, true, nil
 		}
 		if !isPreviewResourceMissingError(err) {
 			return previewInventorySnapshot{}, false, err
 		}
-		if state != nil {
-			state.Root = nil
-		}
+		currentRoot = nil
 	}
 
 	return previewInventorySnapshot{}, false, nil
 }
 
-func (p *DriveMarkdownPreviewer) walkManagedInventoryLocked(ctx context.Context, root previewRemoteNode) (previewInventorySnapshot, error) {
+func (p *DriveMarkdownPreviewer) walkManagedInventory(ctx context.Context, root previewRemoteNode) (previewInventorySnapshot, error) {
 	snapshot := previewInventorySnapshot{root: root}
 	queue := []previewRemoteNode{root}
 	visited := map[string]bool{}
@@ -276,32 +347,9 @@ func (p *DriveMarkdownPreviewer) walkManagedInventoryLocked(ctx context.Context,
 	return snapshot, nil
 }
 
-func (p *DriveMarkdownPreviewer) cleanupRemoteManagedFilesLocked(ctx context.Context, state *previewState, cutoff time.Time, result *PreviewDriveCleanupResult) error {
+func (p *DriveMarkdownPreviewer) cleanupRemoteManagedFiles(ctx context.Context, trackedTokens map[string]bool, cutoff time.Time, snapshot previewInventorySnapshot, result *PreviewDriveCleanupResult) error {
 	if p == nil || p.api == nil || result == nil {
 		return nil
-	}
-
-	snapshot, ok, err := p.loadManagedInventoryLocked(ctx, state)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-
-	trackedTokens := map[string]bool{}
-	if state != nil {
-		for _, record := range state.Files {
-			if record == nil || strings.TrimSpace(record.Token) == "" {
-				continue
-			}
-			trackedTokens[record.Token] = true
-		}
-	}
-
-	if state != nil && state.Root != nil {
-		state.Root.Token = snapshot.root.Token
-		state.Root.URL = snapshot.root.URL
 	}
 
 	for _, node := range snapshot.files {

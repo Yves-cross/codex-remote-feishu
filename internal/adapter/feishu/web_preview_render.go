@@ -82,8 +82,8 @@ func (p *DriveMarkdownPreviewer) ServeWebPreview(w http.ResponseWriter, r *http.
 }
 
 func (p *DriveMarkdownPreviewer) loadWebPreviewArtifactsForServe(scopePublicID, previewID string) (*webPreviewArtifact, *webPreviewArtifact, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.webPreviewMu.Lock()
+	defer p.webPreviewMu.Unlock()
 
 	manifest, err := p.loadWebPreviewScopeManifest(scopePublicID)
 	if err != nil {
