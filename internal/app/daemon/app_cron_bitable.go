@@ -214,18 +214,7 @@ func (a *App) ensureCronBitableRemote(ctx context.Context, api feishu.BitableAPI
 		return cronBitableState{}, err
 	}
 	byID, byName := cronIndexTables(tables)
-	defaultTableID := firstNonEmpty(strings.TrimSpace(binding.DefaultTable), strings.TrimSpace(stringValue(app.DefaultTableId)))
-	if defaultTableID == "" &&
-		strings.TrimSpace(binding.Tables.Tasks) == "" &&
-		strings.TrimSpace(binding.Tables.Workspaces) == "" &&
-		strings.TrimSpace(binding.Tables.Runs) == "" &&
-		strings.TrimSpace(binding.Tables.Meta) == "" &&
-		len(byID) == 1 {
-		for tableID := range byID {
-			defaultTableID = tableID
-		}
-	}
-	binding.Tables.Tasks, err = a.ensureCronNamedTable(ctx, api, binding.AppToken, byID, byName, binding.Tables.Tasks, cronTasksTableName, "任务名", defaultTableID)
+	binding.Tables.Tasks, err = a.ensureCronNamedTable(ctx, api, binding.AppToken, byID, byName, binding.Tables.Tasks, cronTasksTableName, "任务名", "")
 	if err != nil {
 		return cronBitableState{}, err
 	}

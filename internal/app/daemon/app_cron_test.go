@@ -839,8 +839,8 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	if api.createAppCalls != 1 {
 		t.Fatalf("createAppCalls after first attempt = %d, want 1", api.createAppCalls)
 	}
-	if api.createTableCalls != 3 {
-		t.Fatalf("createTableCalls after first attempt = %d, want 3", api.createTableCalls)
+	if api.createTableCalls != 4 {
+		t.Fatalf("createTableCalls after first attempt = %d, want 4 with a fresh tasks table", api.createTableCalls)
 	}
 
 	api.mu.Lock()
@@ -857,15 +857,15 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	if api.getAppCalls == 0 {
 		t.Fatalf("expected retry to reuse existing app token via GetApp")
 	}
-	if api.createTableCalls != 3 {
-		t.Fatalf("createTableCalls after retry = %d, want still 3", api.createTableCalls)
+	if api.createTableCalls != 4 {
+		t.Fatalf("createTableCalls after retry = %d, want still 4", api.createTableCalls)
 	}
 	if app.cronState.Bitable.LastVerified.IsZero() {
 		t.Fatalf("expected successful retry to verify binding, got %#v", app.cronState.Bitable)
 	}
 }
 
-func TestEnsureCronBitableRecoversLegacyPartialStateWithoutCreatingExtraTasksTable(t *testing.T) {
+func TestEnsureCronBitableRecoversLegacyPartialStateWithFreshTasksTable(t *testing.T) {
 	api := newFlakyCronBootstrapBitableAPI()
 	api.failCreateField = false
 
@@ -891,11 +891,55 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithoutCreatingExtraTasksTab
 	if api.createAppCalls != 0 {
 		t.Fatalf("createAppCalls = %d, want 0 for persisted app token", api.createAppCalls)
 	}
-	if api.createTableCalls != 3 {
-		t.Fatalf("createTableCalls = %d, want 3 when default table is reused as tasks table", api.createTableCalls)
+	if api.createTableCalls != 4 {
+		t.Fatalf("createTableCalls = %d, want 4 when tasks table is created fresh", api.createTableCalls)
 	}
-	if got := app.cronState.Bitable.Tables.Tasks; got != "tbl-default" {
-		t.Fatalf("tasks table = %q, want tbl-default", got)
+	if got := app.cronState.Bitable.Tables.Tasks; got == "tbl-default" {
+		t.Fatalf("tasks table = %q, want a fresh table instead of the auto-created default table", got)
+	}
+}
+
+func TestEnsureCronBitableDoesNotLeakDefaultTemplateColumnsIntoTasksTable(t *testing.T) {
+	api := newFlakyCronBootstrapBitableAPI()
+	api.failCreateField = false
+	api.fieldsByTable["tbl-default"] = append(api.fieldsByTable["tbl-default"],
+		&larkbitable.AppTableField{FieldId: stringPtr("fld-default-single"), FieldName: stringPtr("单选"), Type: intPtr(3), IsPrimary: boolPtr(false)},
+		&larkbitable.AppTableField{FieldId: stringPtr("fld-default-date"), FieldName: stringPtr("日期"), Type: intPtr(5), IsPrimary: boolPtr(false)},
+		&larkbitable.AppTableField{FieldId: stringPtr("fld-default-attachment"), FieldName: stringPtr("附件"), Type: intPtr(17), IsPrimary: boolPtr(false)},
+	)
+
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	app.headlessRuntime.Paths.StateDir = t.TempDir()
+	app.cronLoaded = true
+	app.cronState = &cronStateFile{
+		SchemaVersion:    cronStateSchemaVersion,
+		InstanceScopeKey: "stable",
+		InstanceLabel:    "stable",
+		GatewayID:        "gateway-1",
+		Bitable:          &cronBitableState{},
+		Jobs:             []cronJobState{},
+	}
+	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+
+	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("ensureCronBitable: %v", err)
+	}
+
+	if got := app.cronState.Bitable.Tables.Tasks; got == "tbl-default" {
+		t.Fatalf("tasks table = %q, want a fresh clean table", got)
+	}
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	fields := api.fieldsByTable[app.cronState.Bitable.Tables.Tasks]
+	for _, field := range fields {
+		if field == nil {
+			continue
+		}
+		switch stringValue(field.FieldName) {
+		case "单选", "日期", "附件":
+			t.Fatalf("unexpected default template column leaked into tasks table: %s", stringValue(field.FieldName))
+		}
 	}
 }
 
