@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-15`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`（工作区下拉 + 会话下拉 + confirm）、`/history` 的 `FeishuThreadHistoryView`（同卡 loading -> async query -> `message.patch` 回填列表/详情）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / active history 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、`permissions_request_approval` 与 `mcp_server_elicitation` 已进入 request 卡体系（权限按钮、url continue 卡、schema 派生表单、same-daemon `request_revision` freshness）、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call`，首次 reply，后续 `message.patch` 同卡更新，正文出现后终结；其中 `web_search` 与 `mcp_tool_call` 在 normal / verbose 可见，`exec_command` 与 `dynamic_tool_call` 仅 verbose 可见；同类 `dynamic_tool_call` 会按 tool 名单行聚合并持续追加参数）。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`（工作区下拉 + 会话下拉 + confirm）、`/history` 的 `FeishuThreadHistoryView`（同卡 loading -> async query -> `message.patch` 回填列表/详情）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / active history 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、`permissions_request_approval` 与 `mcp_server_elicitation` 已进入 request 卡体系（权限按钮、url continue 卡、schema 派生表单、same-daemon `request_revision` freshness）、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call`，首次 reply，后续 `message.patch` 同卡更新，正文出现后终结；共享过程卡当前统一只在 verbose 可见；同类 `dynamic_tool_call` 会按 tool 名单行聚合并持续追加参数）。
 
 ## 1. 文档定位
 
@@ -341,7 +341,7 @@ MCP request 卡片当前新增的可视语义：
   - `mcp_tool_call` 会以 `MCP：server.tool` 的行级摘要进入同一张卡；完成态会补耗时，失败态会内联失败原因
   - `dynamic_tool_call` 会按 `tool + 参数` 的形式进入同一张卡；若同一 turn 内连续出现同名 tool，则会复用同一行并按首次出现顺序持续追加参数（例如 `Read：a.cpp` -> `Read：a.cpp b.cpp`）；失败态会在该行内补 `（失败）`
   - 对没有用户可展示文本或图片结果的 `dynamic_tool_call`，当前实现保持静默，不再额外发“空结果”notice
-  - 可见性当前按 item kind 区分：`web_search` 与 `mcp_tool_call` 在 normal / verbose 可见，`exec_command` 与 `dynamic_tool_call` 仅 verbose 可见
+  - 可见性当前统一收敛到 verbose：`exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` 都只在 verbose 可见；normal 继续保留 plan 与 final reply，但不再显示这类共享进行中卡
   - 一旦 assistant 正文开始输出，orchestrator 会终结这张进度卡的生命周期，后续不再继续 patch，避免“正文已出现但进度卡还在跳”的并发偏移
   - 若整轮没有正文，turn 完成时当前实现会直接停止更新并清理内存态，不再额外补一张最终过程卡
 

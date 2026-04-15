@@ -5,10 +5,12 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func TestMCPToolCallProgressUsesSharedProcessCard(t *testing.T) {
 	svc := prepareRemotePlanTurnForTest(t)
+	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityVerbose
 
 	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemStarted,
@@ -90,6 +92,7 @@ func TestMCPToolCallProgressUsesSharedProcessCard(t *testing.T) {
 
 func TestMCPToolCallProgressDoesNotReviveAfterAssistantText(t *testing.T) {
 	svc := prepareRemotePlanTurnForTest(t)
+	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityVerbose
 
 	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemStarted,
@@ -143,5 +146,33 @@ func TestMCPToolCallProgressDoesNotReviveAfterAssistantText(t *testing.T) {
 	})
 	if len(completed) != 0 {
 		t.Fatalf("expected completed mcp tool call not to revive shared progress after assistant text, got %#v", completed)
+	}
+}
+
+func TestMCPToolCallProgressNormalVerbositySuppressesSharedProcessCard(t *testing.T) {
+	svc := prepareRemotePlanTurnForTest(t)
+	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityNormal
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "mcp-1",
+		ItemKind: "mcp_tool_call",
+		Status:   "inProgress",
+		Initiator: agentproto.Initiator{
+			Kind:             agentproto.InitiatorRemoteSurface,
+			SurfaceSessionID: "surface-1",
+		},
+		Metadata: map[string]any{
+			"server": "docs",
+			"tool":   "lookup",
+		},
+	})
+	if len(events) != 0 {
+		t.Fatalf("expected normal verbosity to suppress mcp progress, got %#v", events)
+	}
+	if svc.root.Surfaces["surface-1"].ActiveExecProgress != nil {
+		t.Fatalf("expected normal verbosity not to retain shared progress state, got %#v", svc.root.Surfaces["surface-1"].ActiveExecProgress)
 	}
 }

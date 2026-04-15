@@ -382,8 +382,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			Examples:         []string{"/verbose quiet", "/verbose normal", "/verbose verbose"},
 			Options: []FeishuCommandOption{
 				commandOption("/verbose", "verbose", "quiet", "quiet", "只显示最终答复和必须可见的交互提示。"),
-				commandOption("/verbose", "verbose", "normal", "normal", "显示普通过程文本、plan 和最终答复。"),
-				commandOption("/verbose", "verbose", "verbose", "verbose", "显示全部普通过程信息，并为未来更细的过程事件预留。"),
+				commandOption("/verbose", "verbose", "normal", "normal", "显示普通过程文本、plan 和最终答复；不显示共享进行中卡。"),
+				commandOption("/verbose", "verbose", "verbose", "verbose", "显示共享进行中卡、普通过程文本、plan 和最终答复，并为未来更细的过程事件预留。"),
 			},
 			ShowInHelp: true,
 			ShowInMenu: true,

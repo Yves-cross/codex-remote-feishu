@@ -143,7 +143,7 @@ func TestExecCommandProgressNormalVerbositySuppressesCard(t *testing.T) {
 	}
 }
 
-func TestWebSearchProgressNormalVerbosityEmitsAndUpdatesSameCard(t *testing.T) {
+func TestWebSearchProgressNormalVerbositySuppressesCard(t *testing.T) {
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	surface := setupAutoContinueSurface(t, svc)
@@ -151,7 +151,7 @@ func TestWebSearchProgressNormalVerbosityEmitsAndUpdatesSameCard(t *testing.T) {
 
 	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "查一下", "turn-1")
 
-	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemStarted,
 		ThreadID: "thread-1",
 		TurnID:   "turn-1",
@@ -159,40 +159,11 @@ func TestWebSearchProgressNormalVerbosityEmitsAndUpdatesSameCard(t *testing.T) {
 		ItemKind: "web_search",
 		Status:   "running",
 	})
-	if len(started) != 1 || started[0].Kind != control.UIEventExecCommandProgress || started[0].ExecCommandProgress == nil {
-		t.Fatalf("expected web search start progress event, got %#v", started)
+	if len(events) != 0 {
+		t.Fatalf("expected normal verbosity to suppress web search progress, got %#v", events)
 	}
-	progress := started[0].ExecCommandProgress
-	if started[0].SourceMessageID != "msg-1" {
-		t.Fatalf("expected web search card to reply to source message, got %#v", started[0])
-	}
-	if len(progress.Entries) != 1 || progress.Entries[0].Label != "搜索" || progress.Entries[0].Summary != "正在搜索网络" {
-		t.Fatalf("expected web search placeholder entry, got %#v", progress.Entries)
-	}
-
-	svc.RecordExecCommandProgressMessage("surface-1", "thread-1", "turn-1", "web-1", "om-progress-1")
-
-	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{
-		Kind:     agentproto.EventItemCompleted,
-		ThreadID: "thread-1",
-		TurnID:   "turn-1",
-		ItemID:   "web-1",
-		ItemKind: "web_search",
-		Status:   "completed",
-		Metadata: map[string]any{
-			"actionType": "search",
-			"query":      "上海天气",
-		},
-	})
-	if len(completed) != 1 || completed[0].Kind != control.UIEventExecCommandProgress || completed[0].ExecCommandProgress == nil {
-		t.Fatalf("expected web search completion update event, got %#v", completed)
-	}
-	progress = completed[0].ExecCommandProgress
-	if progress.MessageID != "om-progress-1" {
-		t.Fatalf("expected web search completion to update same card, got %#v", progress)
-	}
-	if len(progress.Entries) != 1 || progress.Entries[0].Label != "搜索" || progress.Entries[0].Summary != "上海天气" {
-		t.Fatalf("expected refined web search summary, got %#v", progress.Entries)
+	if svc.root.Surfaces["surface-1"].ActiveExecProgress != nil {
+		t.Fatalf("expected normal verbosity not to retain web search progress, got %#v", svc.root.Surfaces["surface-1"].ActiveExecProgress)
 	}
 }
 

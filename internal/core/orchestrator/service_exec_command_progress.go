@@ -291,12 +291,8 @@ func (s *Service) surfaceAllowsProcessProgress(surface *state.SurfaceConsoleReco
 		return false
 	}
 	switch strings.TrimSpace(itemKind) {
-	case "command_execution":
+	case "command_execution", "dynamic_tool_call", "web_search", "mcp_tool_call":
 		return state.NormalizeSurfaceVerbosity(surface.Verbosity) == state.SurfaceVerbosityVerbose
-	case "dynamic_tool_call":
-		return state.NormalizeSurfaceVerbosity(surface.Verbosity) == state.SurfaceVerbosityVerbose
-	case "web_search", "mcp_tool_call":
-		return state.NormalizeSurfaceVerbosity(surface.Verbosity) != state.SurfaceVerbosityQuiet
 	default:
 		return false
 	}
