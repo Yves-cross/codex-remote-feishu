@@ -106,6 +106,8 @@ func normalizeExecProgressEntry(entry control.ExecCommandProgressEntry) (control
 			entry.Label = "MCP"
 		case "dynamic_tool_call":
 			entry.Label = "工具"
+		case "context_compaction":
+			entry.Label = "整理"
 		default:
 			entry.Label = "处理中"
 		}

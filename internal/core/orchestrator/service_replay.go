@@ -142,6 +142,22 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 	case state.ThreadReplayAssistantFinal:
 		return s.renderTextToSurface(surface, inst, threadID, replay.TurnID, replay.ItemID, replay.Text, true, nil, nil)
 	case state.ThreadReplayNotice:
+		if replay.NoticeCode == "context_compacted" {
+			if !s.surfaceAllowsProcessProgress(surface, "context_compaction") {
+				return nil
+			}
+			return []control.UIEvent{{
+				Kind:             control.UIEventExecCommandProgress,
+				GatewayID:        surface.GatewayID,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				ExecCommandProgress: &control.ExecCommandProgress{
+					ThreadID: threadID,
+					Entries: []control.ExecCommandProgressEntry{
+						compactCompletionProgressEntry("context_compaction"),
+					},
+				},
+			}}
+		}
 		notice := control.Notice{
 			Code:     replay.NoticeCode,
 			Title:    replay.NoticeTitle,
