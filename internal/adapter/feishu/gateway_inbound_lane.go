@@ -89,11 +89,9 @@ func (l *surfaceInboundLane) enqueue(work inboundWork) bool {
 
 	l.pruneExpiredDedupeLocked(now)
 	if key != "" {
-		if expiresAt, ok := l.dedupe[key]; ok && expiresAt.After(now) {
-			log.Printf("feishu inbound duplicate suppressed: surface=%s key=%s work=%s", surfaceID, key, work.description())
+		if l.dedupeKeyLocked(surfaceID, key, work.description(), now) {
 			return true
 		}
-		l.dedupe[key] = now.Add(inboundEventDedupeWindow)
 	}
 	l.queues[surfaceID] = append(l.queues[surfaceID], work)
 	if l.running[surfaceID] {
@@ -102,6 +100,38 @@ func (l *surfaceInboundLane) enqueue(work inboundWork) bool {
 	l.running[surfaceID] = true
 	go l.runSurface(surfaceID)
 	return true
+}
+
+func (l *surfaceInboundLane) markActionDuplicate(action control.Action) bool {
+	if l == nil {
+		return false
+	}
+	if err := l.ctx.Err(); err != nil {
+		return false
+	}
+	surfaceID := strings.TrimSpace(action.SurfaceSessionID)
+	if surfaceID == "" {
+		return false
+	}
+	key := dedupeKeyForAction(action)
+	if key == "" {
+		return false
+	}
+	now := time.Now()
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pruneExpiredDedupeLocked(now)
+	return l.dedupeKeyLocked(surfaceID, key, "action:"+string(action.Kind), now)
+}
+
+func (l *surfaceInboundLane) dedupeKeyLocked(surfaceID, key, description string, now time.Time) bool {
+	if expiresAt, ok := l.dedupe[key]; ok && expiresAt.After(now) {
+		log.Printf("feishu inbound duplicate suppressed: surface=%s key=%s work=%s", surfaceID, key, description)
+		return true
+	}
+	l.dedupe[key] = now.Add(inboundEventDedupeWindow)
+	return false
 }
 
 func (l *surfaceInboundLane) runSurface(surfaceID string) {
@@ -123,6 +153,19 @@ func (l *surfaceInboundLane) runSurface(surfaceID string) {
 			work.run(l.ctx, l.gateway, l.handler)
 		}()
 	}
+}
+
+func dedupeKeyForAction(action control.Action) string {
+	if action.Inbound == nil {
+		return ""
+	}
+	if key := strings.TrimSpace(action.Inbound.EventID); key != "" {
+		return "event:" + key
+	}
+	if key := strings.TrimSpace(action.Inbound.RequestID); key != "" {
+		return "request:" + key
+	}
+	return ""
 }
 
 func (l *surfaceInboundLane) dequeue(surfaceID string) inboundWork {
@@ -306,16 +349,7 @@ func (w *queuedActionWork) surfaceSessionID() string {
 }
 
 func (w *queuedActionWork) dedupeKey() string {
-	if w.action.Inbound == nil {
-		return ""
-	}
-	if key := strings.TrimSpace(w.action.Inbound.EventID); key != "" {
-		return "event:" + key
-	}
-	if key := strings.TrimSpace(w.action.Inbound.RequestID); key != "" {
-		return "request:" + key
-	}
-	return ""
+	return dedupeKeyForAction(w.action)
 }
 
 func (w *queuedActionWork) description() string {
@@ -335,6 +369,9 @@ func (g *LiveGateway) handleInboundMessageEvent(ctx context.Context, event *lark
 		return err
 	}
 	if plan.action != nil {
+		if lane != nil && lane.markActionDuplicate(*plan.action) {
+			return nil
+		}
 		return handleGatewayEventAction(ctx, *plan.action, handler)
 	}
 	if plan.queue == nil {

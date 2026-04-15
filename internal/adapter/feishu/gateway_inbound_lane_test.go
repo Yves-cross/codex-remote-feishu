@@ -132,6 +132,42 @@ func TestSurfaceInboundLaneSuppressesDuplicateQueuedMessageEvent(t *testing.T) {
 	}
 }
 
+func TestHandleInboundMessageEventSuppressesDuplicateCommandEvent(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	called := make(chan control.ActionKind, 2)
+	handler := func(_ context.Context, action control.Action) *ActionResult {
+		called <- action.Kind
+		return nil
+	}
+	lane := newSurfaceInboundLane(ctx, gateway, handler)
+
+	event := testTextMessageEvent("evt-cmd-dup-1", "om-msg-cmd", "/cron")
+	if err := gateway.handleInboundMessageEvent(ctx, event, handler, lane); err != nil {
+		t.Fatalf("first handleInboundMessageEvent returned error: %v", err)
+	}
+	if err := gateway.handleInboundMessageEvent(ctx, event, handler, lane); err != nil {
+		t.Fatalf("duplicate handleInboundMessageEvent returned error: %v", err)
+	}
+
+	select {
+	case kind := <-called:
+		if kind != control.ActionCronCommand {
+			t.Fatalf("unexpected handler kind: %s", kind)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for command handler call")
+	}
+
+	select {
+	case kind := <-called:
+		t.Fatalf("expected duplicate command event suppression, got extra handler call: %s", kind)
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
 func TestQueuedInboundFailureSendsReplyCard(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.downloadImageFn = func(_ context.Context, _, _ string) (string, string, error) {
