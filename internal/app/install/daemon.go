@@ -117,7 +117,7 @@ func discoverDaemonStatus(paths relayruntime.Paths, cfg config.AppConfig) daemon
 }
 
 func fallbackAdminURL(cfg config.AppConfig) string {
-	return "http://" + net.JoinHostPort(displayAdminHost(cfg.Admin.ListenHost), adminPort(cfg)) + "/"
+	return "http://" + net.JoinHostPort(displayAdminHost(cfg.Admin.ListenHost), adminPort(cfg)) + "/admin/"
 }
 
 func fallbackSetupURL(cfg config.AppConfig) string {

@@ -79,7 +79,7 @@ func TestSetupPageServesEmbeddedShell(t *testing.T) {
 		},
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://localhost:9501/",
+		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 		SetupRequired:   true,
 	})
@@ -254,7 +254,7 @@ func newAdminUITestApp(cfg config.AppConfig) *App {
 		Services:        services,
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://localhost:9501/",
+		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 	})
 	return app

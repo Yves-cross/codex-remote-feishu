@@ -51,7 +51,7 @@ export function makeBootstrap(overrides: BootstrapOverrides = {}): BootstrapStat
     admin: {
       listenHost: adminOverrides?.listenHost ?? "127.0.0.1",
       listenPort: adminOverrides?.listenPort ?? "9501",
-      url: adminOverrides?.url ?? "http://127.0.0.1:9501",
+      url: adminOverrides?.url ?? "http://127.0.0.1:9501/admin/",
       setupURL: adminOverrides?.setupURL ?? "/setup",
       setupTokenRequired: adminOverrides?.setupTokenRequired ?? false,
       setupTokenExpiresAt: adminOverrides?.setupTokenExpiresAt,

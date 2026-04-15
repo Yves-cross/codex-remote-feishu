@@ -773,7 +773,7 @@ func newFeishuAdminTestApp(t *testing.T, cfg config.AppConfig, services config.S
 		Services:             services,
 		AdminListenHost:      services.RelayAPIHost,
 		AdminListenPort:      services.RelayAPIPort,
-		AdminURL:             "http://localhost:" + services.RelayAPIPort + "/",
+		AdminURL:             "http://localhost:" + services.RelayAPIPort + "/admin/",
 		SetupURL:             "http://localhost:" + services.RelayAPIPort + "/setup",
 		EnvOverrideActive:    envOverrideActive,
 		EnvOverrideGatewayID: envOverrideGatewayID,

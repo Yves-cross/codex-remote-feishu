@@ -113,6 +113,9 @@ func TestSetupCompleteRevokesRemoteSetupSession(t *testing.T) {
 	if payload.SetupRequired {
 		t.Fatalf("unexpected setupRequired payload: %#v", payload)
 	}
+	if payload.AdminURL != "http://10.0.0.8:9501/admin/" {
+		t.Fatalf("admin url = %q, want remote /admin/", payload.AdminURL)
+	}
 	foundExpiredCookie := false
 	for _, responseCookie := range rec.Result().Cookies() {
 		if responseCookie.Name == adminauth.CookieName && responseCookie.MaxAge < 0 {
@@ -176,7 +179,7 @@ func newRemoteSetupTestApp(t *testing.T, home string) (*App, string) {
 		},
 		AdminListenHost: "0.0.0.0",
 		AdminListenPort: "9501",
-		AdminURL:        "http://10.0.0.8:9501/",
+		AdminURL:        "http://10.0.0.8:9501/admin/",
 		SetupURL:        "http://10.0.0.8:9501/setup",
 		SSHSession:      true,
 		SetupRequired:   true,

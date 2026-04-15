@@ -646,7 +646,7 @@ export function SetupRoute() {
     await runAction("finish-setup", async () => {
       const response = await sendJSON<SetupCompleteResponse>("/api/setup/complete", "POST");
       if (bootstrap.session.trustedLoopback) {
-        window.location.assign(relativeLocalPath("/"));
+        window.location.assign(relativeLocalPath("/admin/"));
         return;
       }
       setFinishInfo(response);

@@ -457,7 +457,7 @@ func TestDebugAdminCommandIssuesExternalAccessLink(t *testing.T) {
 	app.ConfigureAdmin(AdminRuntimeOptions{
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://127.0.0.1:9501/",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
 		SetupURL:        "http://127.0.0.1:9501/setup",
 	})
 	app.SetExternalAccess(ExternalAccessRuntimeConfig{
@@ -502,7 +502,7 @@ func TestDebugAdminCommandEmitsPreparingNoticeBeforeLinkReady(t *testing.T) {
 	app.ConfigureAdmin(AdminRuntimeOptions{
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://127.0.0.1:9501/",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
 		SetupURL:        "http://127.0.0.1:9501/setup",
 	})
 

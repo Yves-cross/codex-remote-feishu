@@ -29,7 +29,7 @@ func TestSetupTokenExchangeEnablesSetupBootstrapAPI(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "0.0.0.0",
 		AdminListenPort: "9501",
-		AdminURL:        "http://10.0.0.8:9501/",
+		AdminURL:        "http://10.0.0.8:9501/admin/",
 		SetupURL:        "http://10.0.0.8:9501/setup",
 		SSHSession:      true,
 		SetupRequired:   true,
@@ -74,6 +74,9 @@ func TestSetupTokenExchangeEnablesSetupBootstrapAPI(t *testing.T) {
 	if !payload.Session.Authenticated {
 		t.Fatal("expected authenticated session")
 	}
+	if payload.Admin.URL != "http://10.0.0.8:9501/admin/" {
+		t.Fatalf("admin url = %q, want remote /admin/", payload.Admin.URL)
+	}
 }
 
 func TestAdminEndpointsAllowLoopbackAndRedactSecret(t *testing.T) {
@@ -98,7 +101,7 @@ func TestAdminEndpointsAllowLoopbackAndRedactSecret(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://localhost:9501/",
+		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 	})
 
@@ -115,6 +118,9 @@ func TestAdminEndpointsAllowLoopbackAndRedactSecret(t *testing.T) {
 	}
 	if bootstrap.SetupRequired {
 		t.Fatal("did not expect setup required")
+	}
+	if bootstrap.Admin.URL != "http://localhost:9501/admin/" {
+		t.Fatalf("admin url = %q, want localhost /admin/", bootstrap.Admin.URL)
 	}
 	if !bootstrap.Session.TrustedLoopback {
 		t.Fatal("expected trusted loopback session")
@@ -156,7 +162,7 @@ func TestAdminAndSetupRoutesRejectUnauthorizedRemoteRequests(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "0.0.0.0",
 		AdminListenPort: "9501",
-		AdminURL:        "http://10.0.0.8:9501/",
+		AdminURL:        "http://10.0.0.8:9501/admin/",
 		SetupURL:        "http://10.0.0.8:9501/setup",
 		SSHSession:      true,
 		SetupRequired:   true,
@@ -195,7 +201,7 @@ func TestAdminSkeletonReturnsStructuredNotImplemented(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://localhost:9501/",
+		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 	})
 

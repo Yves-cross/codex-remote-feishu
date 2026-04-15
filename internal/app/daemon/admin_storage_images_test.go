@@ -128,7 +128,7 @@ func newImageStagingAdminTestApp(t *testing.T) (*App, string) {
 		Services:        defaultFeishuServices(),
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://localhost:9501/",
+		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 	})
 	return app, stateDir

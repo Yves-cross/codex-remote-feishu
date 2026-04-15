@@ -28,6 +28,9 @@ func TestBuildStartupAccessPlanUsesSSHSetupExposure(t *testing.T) {
 	if plan.AdminBindHost != "0.0.0.0" {
 		t.Fatalf("admin bind host = %q, want 0.0.0.0", plan.AdminBindHost)
 	}
+	if plan.AdminURL != "http://10.0.0.8:9501/admin/" {
+		t.Fatalf("admin url = %q", plan.AdminURL)
+	}
 	if plan.SetupURL != "http://10.0.0.8:9501/setup" {
 		t.Fatalf("setup url = %q", plan.SetupURL)
 	}
@@ -50,6 +53,9 @@ func TestBuildStartupAccessPlanUsesLocalhostForLocalSetup(t *testing.T) {
 	}
 	if plan.SSHSession {
 		t.Fatal("did not expect ssh session")
+	}
+	if plan.AdminURL != "http://localhost:9501/admin/" {
+		t.Fatalf("admin url = %q", plan.AdminURL)
 	}
 	if plan.SetupURL != "http://localhost:9501/setup" {
 		t.Fatalf("setup url = %q", plan.SetupURL)

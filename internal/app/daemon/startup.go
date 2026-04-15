@@ -41,7 +41,7 @@ func buildStartupAccessPlan(appConfig config.AppConfig, services config.Services
 		adminBindHost = "0.0.0.0"
 	}
 	adminHost := announcedAdminHost(adminBindHost, sshSession, env)
-	adminURL := httpURL(adminHost, services.RelayAPIPort, "/")
+	adminURL := httpURL(adminHost, services.RelayAPIPort, "/admin/")
 	setupURL := httpURL(adminHost, services.RelayAPIPort, "/setup")
 
 	autoOpen := appConfig.Admin.AutoOpenBrowser == nil || *appConfig.Admin.AutoOpenBrowser

@@ -32,7 +32,7 @@ func TestAdminExternalAccessStatusAndLink(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://127.0.0.1:9501/",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
 		SetupURL:        "http://127.0.0.1:9501/setup",
 	})
 	app.SetExternalAccess(ExternalAccessRuntimeConfig{
@@ -56,7 +56,7 @@ func TestAdminExternalAccessStatusAndLink(t *testing.T) {
 
 	body := map[string]any{
 		"purpose":   "debug",
-		"targetURL": "http://127.0.0.1:9501/",
+		"targetURL": "http://127.0.0.1:9501/admin/",
 	}
 	raw, _ := json.Marshal(body)
 	req = httptest.NewRequest(http.MethodPost, "/api/admin/external-access/link", bytes.NewReader(raw))
@@ -91,7 +91,7 @@ func TestExternalAccessIdleTimeoutShutsDownListener(t *testing.T) {
 		Services:        services,
 		AdminListenHost: "127.0.0.1",
 		AdminListenPort: "9501",
-		AdminURL:        "http://127.0.0.1:9501/",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
 		SetupURL:        "http://127.0.0.1:9501/setup",
 	})
 	base := time.Date(2026, 4, 10, 20, 0, 0, 0, time.UTC)
@@ -114,7 +114,7 @@ func TestExternalAccessIdleTimeoutShutsDownListener(t *testing.T) {
 
 	issued, err := app.IssueExternalAccessURL(context.Background(), externalaccess.IssueRequest{
 		Purpose:   externalaccess.PurposeDebug,
-		TargetURL: "http://127.0.0.1:9501/",
+		TargetURL: "http://127.0.0.1:9501/admin/",
 	})
 	if err != nil {
 		t.Fatalf("IssueExternalAccessURL: %v", err)
