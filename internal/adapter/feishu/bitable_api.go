@@ -19,6 +19,11 @@ type BitableRecordUpdate struct {
 	Fields   map[string]any
 }
 
+type BitablePermissionMember struct {
+	Perm     string
+	PermType string
+}
+
 type BitableAPI interface {
 	GetApp(context.Context, string) (*larkbitable.App, error)
 	CreateApp(context.Context, string, string) (*larkbitable.App, error)
@@ -33,8 +38,9 @@ type BitableAPI interface {
 	UpdateRecord(context.Context, string, string, string, map[string]any) (*larkbitable.AppTableRecord, error)
 	BatchCreateRecords(context.Context, string, string, []map[string]any) ([]*larkbitable.AppTableRecord, error)
 	BatchUpdateRecords(context.Context, string, string, []BitableRecordUpdate) ([]*larkbitable.AppTableRecord, error)
-	ListPermissionMembers(context.Context, string, string) (map[string]bool, error)
-	GrantPermission(context.Context, string, string, string, string, string) error
+	ListPermissionMembers(context.Context, string, string) (map[string]BitablePermissionMember, error)
+	GrantPermission(context.Context, string, string, string, string, string, string) error
+	UpdatePermission(context.Context, string, string, string, string, string, string, string) error
 }
 
 type liveBitableAPI struct {
@@ -397,7 +403,7 @@ func (a *liveBitableAPI) BatchUpdateRecords(ctx context.Context, appToken, table
 	return records, nil
 }
 
-func (a *liveBitableAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]bool, error) {
+func (a *liveBitableAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]BitablePermissionMember, error) {
 	resp, err := a.client.Drive.V1.PermissionMember.List(ctx, larkdrive.NewListPermissionMemberReqBuilder().
 		Token(token).
 		Type(docType).
@@ -408,7 +414,7 @@ func (a *liveBitableAPI) ListPermissionMembers(ctx context.Context, token, docTy
 	if !resp.Success() {
 		return nil, newAPIError("drive.v1.permission_member.list", resp.ApiResp, resp.CodeError)
 	}
-	values := map[string]bool{}
+	values := map[string]BitablePermissionMember{}
 	if resp.Data == nil {
 		return values, nil
 	}
@@ -421,19 +427,26 @@ func (a *liveBitableAPI) ListPermissionMembers(ctx context.Context, token, docTy
 		if memberType == "" || memberID == "" {
 			continue
 		}
-		values[memberType+":"+memberID] = true
+		values[memberType+":"+memberID] = BitablePermissionMember{
+			Perm:     strings.TrimSpace(stringValue(item.Perm)),
+			PermType: strings.TrimSpace(stringValue(item.PermType)),
+		}
 	}
 	return values, nil
 }
 
-func (a *liveBitableAPI) GrantPermission(ctx context.Context, token, docType, memberType, memberID, principalType string) error {
+func (a *liveBitableAPI) GrantPermission(ctx context.Context, token, docType, memberType, memberID, principalType, perm string) error {
+	perm = strings.TrimSpace(perm)
+	if perm == "" {
+		perm = "view"
+	}
 	resp, err := a.client.Drive.V1.PermissionMember.Create(ctx, larkdrive.NewCreatePermissionMemberReqBuilder().
 		Token(token).
 		Type(docType).
 		BaseMember(larkdrive.NewBaseMemberBuilder().
 			MemberType(strings.TrimSpace(memberType)).
 			MemberId(strings.TrimSpace(memberID)).
-			Perm("view").
+			Perm(perm).
 			Type(strings.TrimSpace(principalType)).
 			Build()).
 		Build())
@@ -442,6 +455,34 @@ func (a *liveBitableAPI) GrantPermission(ctx context.Context, token, docType, me
 	}
 	if !resp.Success() {
 		return newAPIError("drive.v1.permission_member.create", resp.ApiResp, resp.CodeError)
+	}
+	return nil
+}
+
+func (a *liveBitableAPI) UpdatePermission(ctx context.Context, token, docType, memberType, memberID, principalType, perm, permType string) error {
+	perm = strings.TrimSpace(perm)
+	if perm == "" {
+		perm = "view"
+	}
+	body := larkdrive.NewBaseMemberBuilder().
+		MemberType(strings.TrimSpace(memberType)).
+		MemberId(strings.TrimSpace(memberID)).
+		Perm(perm).
+		Type(strings.TrimSpace(principalType))
+	if strings.TrimSpace(permType) != "" {
+		body.PermType(strings.TrimSpace(permType))
+	}
+	resp, err := a.client.Drive.V1.PermissionMember.Update(ctx, larkdrive.NewUpdatePermissionMemberReqBuilder().
+		Token(token).
+		Type(docType).
+		MemberId(strings.TrimSpace(memberID)).
+		BaseMember(body.Build()).
+		Build())
+	if err != nil {
+		return err
+	}
+	if !resp.Success() {
+		return newAPIError("drive.v1.permission_member.update", resp.ApiResp, resp.CodeError)
 	}
 	return nil
 }

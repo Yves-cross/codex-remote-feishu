@@ -18,6 +18,7 @@ import (
 )
 
 const cronBitablePermissionDocType = "bitable"
+const cronBitablePermissionPermEdit = "edit"
 
 type cronFieldSpec struct {
 	Name     string
@@ -355,20 +356,7 @@ func (a *App) ensureCronTableSchemas(ctx context.Context, api feishu.BitableAPI,
 	}); err != nil {
 		return err
 	}
-	if err := a.ensureCronFields(ctx, api, binding.AppToken, binding.Tables.Tasks, []cronFieldSpec{
-		{Name: "启用", Type: 3, Property: cronSelectFieldProperty([]string{"启用", "停用"})},
-		{Name: "调度类型", Type: 3, Property: cronSelectFieldProperty([]string{cronScheduleTypeDaily, cronScheduleTypeInterval})},
-		{Name: "每天-时", Type: 2},
-		{Name: "每天-分", Type: 2},
-		{Name: "间隔", Type: 3, Property: cronSelectFieldProperty(cronIntervalLabels())},
-		{Name: "工作区", Type: 18, Property: larkbitable.NewAppTableFieldPropertyBuilder().TableId(binding.Tables.Workspaces).Multiple(false).Build()},
-		{Name: "提示词", Type: 1},
-		{Name: "超时（分钟）", Type: 2},
-		{Name: "最近运行时间", Type: 5},
-		{Name: "最近状态", Type: 1},
-		{Name: "最近结果摘要", Type: 1},
-		{Name: "最近错误", Type: 1},
-	}); err != nil {
+	if err := a.ensureCronFields(ctx, api, binding.AppToken, binding.Tables.Tasks, cronTaskFieldSpecs(binding.Tables.Workspaces)); err != nil {
 		return err
 	}
 	if err := a.ensureCronFields(ctx, api, binding.AppToken, binding.Tables.Runs, []cronFieldSpec{
@@ -415,7 +403,7 @@ func (a *App) ensureCronFields(ctx context.Context, api feishu.BitableAPI, appTo
 	}
 	for _, spec := range specs {
 		if field := existing[spec.Name]; field != nil {
-			if field.Type != nil && *field.Type != spec.Type {
+			if field.Type != nil && !cronFieldTypeMatches(spec, *field.Type) {
 				return fmt.Errorf("Cron 表 `%s` 字段 `%s` 类型不匹配：当前=%d 期望=%d", tableID, spec.Name, *field.Type, spec.Type)
 			}
 			if spec.Type == 18 && spec.Property != nil && spec.Property.TableId != nil && field.Property != nil && field.Property.TableId != nil && strings.TrimSpace(stringValue(field.Property.TableId)) != strings.TrimSpace(stringValue(spec.Property.TableId)) {
@@ -480,10 +468,58 @@ func (a *App) ensureCronUserPermission(ctx context.Context, api feishu.BitableAP
 	if err != nil {
 		return err
 	}
-	if existing[key] {
+	member, exists := existing[key]
+	if exists && cronPermissionSatisfies(member.Perm, cronBitablePermissionPermEdit) {
 		return nil
 	}
-	return api.GrantPermission(ctx, appToken, cronBitablePermissionDocType, memberType, strings.TrimSpace(actorUserID), principalType)
+	if exists {
+		return api.UpdatePermission(ctx, appToken, cronBitablePermissionDocType, memberType, strings.TrimSpace(actorUserID), principalType, cronBitablePermissionPermEdit, member.PermType)
+	}
+	return api.GrantPermission(ctx, appToken, cronBitablePermissionDocType, memberType, strings.TrimSpace(actorUserID), principalType, cronBitablePermissionPermEdit)
+}
+
+func cronTaskFieldSpecs(workspacesTableID string) []cronFieldSpec {
+	return []cronFieldSpec{
+		{Name: "启用", Type: 7},
+		{Name: "工作区", Type: 18, Property: larkbitable.NewAppTableFieldPropertyBuilder().TableId(workspacesTableID).Multiple(false).Build()},
+		{Name: "提示词", Type: 1},
+		{Name: "调度类型", Type: 3, Property: cronSelectFieldProperty([]string{cronScheduleTypeDaily, cronScheduleTypeInterval})},
+		{Name: "每天-时", Type: 2},
+		{Name: "每天-分", Type: 2},
+		{Name: "间隔", Type: 3, Property: cronSelectFieldProperty(cronIntervalLabels())},
+		{Name: "超时（分钟）", Type: 2},
+		{Name: "最近运行时间", Type: 5},
+		{Name: "最近状态", Type: 1},
+		{Name: "最近结果摘要", Type: 1},
+		{Name: "最近错误", Type: 1},
+	}
+}
+
+func cronFieldTypeMatches(spec cronFieldSpec, current int) bool {
+	if current == spec.Type {
+		return true
+	}
+	// Keep old select-based enable fields readable after switching new tables to checkbox.
+	return spec.Name == "启用" && spec.Type == 7 && current == 3
+}
+
+func cronPermissionSatisfies(current, desired string) bool {
+	return cronPermissionRank(current) >= cronPermissionRank(desired)
+}
+
+func cronPermissionRank(value string) int {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "view":
+		return 10
+	case "comment":
+		return 20
+	case "edit":
+		return 30
+	case "full_access":
+		return 40
+	default:
+		return 0
+	}
 }
 
 func (a *App) syncCronWorkspaceTable(ctx context.Context, api feishu.BitableAPI, binding cronBitableState, rows []cronWorkspaceRow) (map[string]string, error) {
@@ -727,12 +763,12 @@ func cronJobFromRecord(record *larkbitable.AppTableRecord, workspacesByRecord ma
 	if name == "" {
 		name = strings.TrimSpace(stringValue(record.RecordId))
 	}
-	enabled := strings.TrimSpace(cronValueString(record.Fields["启用"]))
-	if enabled == "" || enabled == "停用" {
+	enabled, valid := cronValueBool(record.Fields["启用"])
+	if !enabled && valid {
 		return cronJobState{}, true, nil
 	}
-	if enabled != "启用" {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 的启用值无效：%s", name, enabled)
+	if !valid {
+		return cronJobState{}, false, fmt.Errorf("任务 `%s` 的启用值无效：%s", name, strings.TrimSpace(cronValueString(record.Fields["启用"])))
 	}
 	scheduleType := strings.TrimSpace(cronValueString(record.Fields["调度类型"]))
 	prompt := strings.TrimSpace(cronValueString(record.Fields["提示词"]))
@@ -809,6 +845,66 @@ func cronValueString(value any) string {
 		return strings.Join(typed, "\n")
 	default:
 		return fmt.Sprint(value)
+	}
+}
+
+func cronValueBool(value any) (bool, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return false, true
+	case bool:
+		return typed, true
+	case int:
+		return typed != 0, true
+	case int32:
+		return typed != 0, true
+	case int64:
+		return typed != 0, true
+	case float32:
+		return typed != 0, true
+	case float64:
+		return typed != 0, true
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil {
+			return parsed != 0, true
+		}
+		return false, false
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "", "0", "false", "off", "no", "unchecked", "停用":
+			return false, true
+		case "1", "true", "on", "yes", "checked", "启用":
+			return true, true
+		default:
+			return false, false
+		}
+	case map[string]any:
+		for _, key := range []string{"checked", "value", "text", "name", "label"} {
+			if nested, ok := typed[key]; ok {
+				if enabled, valid := cronValueBool(nested); valid {
+					return enabled, true
+				}
+			}
+		}
+		return false, false
+	case []any:
+		if len(typed) == 0 {
+			return false, true
+		}
+		if len(typed) == 1 {
+			return cronValueBool(typed[0])
+		}
+		return false, false
+	case []string:
+		if len(typed) == 0 {
+			return false, true
+		}
+		if len(typed) == 1 {
+			return cronValueBool(typed[0])
+		}
+		return false, false
+	default:
+		return cronValueBool(fmt.Sprint(value))
 	}
 }
 

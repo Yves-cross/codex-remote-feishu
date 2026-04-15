@@ -21,6 +21,8 @@ type fakeCronBitableAPI struct {
 	mu            sync.Mutex
 	createRecords []fakeCronRecordWrite
 	updateRecords []fakeCronRecordWrite
+	grantCalls    []fakeCronPermissionGrant
+	permissions   map[string]feishu.BitablePermissionMember
 }
 
 type fakeCronRecordWrite struct {
@@ -28,6 +30,16 @@ type fakeCronRecordWrite struct {
 	TableID  string
 	RecordID string
 	Fields   map[string]any
+}
+
+type fakeCronPermissionGrant struct {
+	Token         string
+	DocType       string
+	MemberType    string
+	MemberID      string
+	PrincipalType string
+	Perm          string
+	PermType      string
 }
 
 func (f *fakeCronBitableAPI) GetApp(context.Context, string) (*larkbitable.App, error) {
@@ -124,11 +136,53 @@ func (f *fakeCronBitableAPI) BatchUpdateRecords(_ context.Context, appToken, tab
 	return records, nil
 }
 
-func (f *fakeCronBitableAPI) ListPermissionMembers(context.Context, string, string) (map[string]bool, error) {
-	return map[string]bool{}, nil
+func (f *fakeCronBitableAPI) ListPermissionMembers(context.Context, string, string) (map[string]feishu.BitablePermissionMember, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.permissions) == 0 {
+		return map[string]feishu.BitablePermissionMember{}, nil
+	}
+	values := make(map[string]feishu.BitablePermissionMember, len(f.permissions))
+	for key, member := range f.permissions {
+		values[key] = member
+	}
+	return values, nil
 }
 
-func (f *fakeCronBitableAPI) GrantPermission(context.Context, string, string, string, string, string) error {
+func (f *fakeCronBitableAPI) GrantPermission(_ context.Context, token, docType, memberType, memberID, principalType, perm string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grantCalls = append(f.grantCalls, fakeCronPermissionGrant{
+		Token:         token,
+		DocType:       docType,
+		MemberType:    memberType,
+		MemberID:      memberID,
+		PrincipalType: principalType,
+		Perm:          perm,
+	})
+	if f.permissions == nil {
+		f.permissions = map[string]feishu.BitablePermissionMember{}
+	}
+	f.permissions[memberType+":"+memberID] = feishu.BitablePermissionMember{Perm: perm, PermType: "container"}
+	return nil
+}
+
+func (f *fakeCronBitableAPI) UpdatePermission(_ context.Context, token, docType, memberType, memberID, principalType, perm, permType string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grantCalls = append(f.grantCalls, fakeCronPermissionGrant{
+		Token:         token,
+		DocType:       docType,
+		MemberType:    memberType,
+		MemberID:      memberID,
+		PrincipalType: principalType,
+		Perm:          perm,
+		PermType:      permType,
+	})
+	if f.permissions == nil {
+		f.permissions = map[string]feishu.BitablePermissionMember{}
+	}
+	f.permissions[memberType+":"+memberID] = feishu.BitablePermissionMember{Perm: perm, PermType: permType}
 	return nil
 }
 
@@ -422,7 +476,7 @@ func TestCronJobFromRecordParsesLinkedWorkspaceValues(t *testing.T) {
 		RecordId: stringPtr("rec-task-1"),
 		Fields: map[string]any{
 			"任务名":  "Nightly",
-			"启用":   "启用",
+			"启用":   true,
 			"调度类型": cronScheduleTypeInterval,
 			"间隔":   "15分钟",
 			"工作区": []any{
@@ -451,6 +505,78 @@ func TestCronJobFromRecordParsesLinkedWorkspaceValues(t *testing.T) {
 	}
 }
 
+func TestCronJobFromRecordSupportsLegacySelectEnabledValue(t *testing.T) {
+	now := time.Now()
+	record := &larkbitable.AppTableRecord{
+		RecordId: stringPtr("rec-task-legacy"),
+		Fields: map[string]any{
+			"任务名":  "Legacy",
+			"启用":   "启用",
+			"调度类型": cronScheduleTypeInterval,
+			"间隔":   "10分钟",
+			"工作区": []any{"rec-workspace-1"},
+			"提示词":  "check CI",
+		},
+	}
+	job, skip, err := cronJobFromRecord(record, map[string]cronWorkspaceRow{
+		"rec-workspace-1": {Key: "/tmp/project", Name: "project", Status: "可用"},
+	}, now)
+	if err != nil {
+		t.Fatalf("cronJobFromRecord legacy select: %v", err)
+	}
+	if skip {
+		t.Fatalf("expected legacy enabled job, got skip")
+	}
+	if job.IntervalMinutes != 10 {
+		t.Fatalf("unexpected interval from legacy select field: %#v", job)
+	}
+}
+
+func TestEnsureCronUserPermissionGrantsEditAccess(t *testing.T) {
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	api := &fakeCronBitableAPI{}
+
+	if err := app.ensureCronUserPermission(context.Background(), api, "app-cron", "ou_7588194bf7ffe98ef2845026aa398169"); err != nil {
+		t.Fatalf("ensureCronUserPermission: %v", err)
+	}
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.grantCalls) != 1 {
+		t.Fatalf("grantCalls = %d, want 1", len(api.grantCalls))
+	}
+	grant := api.grantCalls[0]
+	if grant.MemberType != "openid" || grant.PrincipalType != "user" {
+		t.Fatalf("unexpected principal mapping: %#v", grant)
+	}
+	if grant.Perm != cronBitablePermissionPermEdit {
+		t.Fatalf("perm = %q, want %q", grant.Perm, cronBitablePermissionPermEdit)
+	}
+}
+
+func TestEnsureCronUserPermissionUpgradesViewAccessToEdit(t *testing.T) {
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	api := &fakeCronBitableAPI{
+		permissions: map[string]feishu.BitablePermissionMember{
+			"openid:ou_7588194bf7ffe98ef2845026aa398169": {Perm: "view", PermType: "container"},
+		},
+	}
+
+	if err := app.ensureCronUserPermission(context.Background(), api, "app-cron", "ou_7588194bf7ffe98ef2845026aa398169"); err != nil {
+		t.Fatalf("ensureCronUserPermission upgrade: %v", err)
+	}
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.grantCalls) != 1 {
+		t.Fatalf("grantCalls = %d, want 1", len(api.grantCalls))
+	}
+	grant := api.grantCalls[0]
+	if grant.Perm != cronBitablePermissionPermEdit || grant.PermType != "container" {
+		t.Fatalf("unexpected upgraded permission: %#v", grant)
+	}
+}
+
 func cloneAnyMap(fields map[string]any) map[string]any {
 	if fields == nil {
 		return nil
@@ -474,6 +600,7 @@ type flakyCronBootstrapBitableAPI struct {
 	failCreateField  bool
 	tables           map[string]*larkbitable.AppTable
 	fieldsByTable    map[string][]*larkbitable.AppTableField
+	grantCalls       []fakeCronPermissionGrant
 }
 
 func newFlakyCronBootstrapBitableAPI() *flakyCronBootstrapBitableAPI {
@@ -637,11 +764,36 @@ func (f *flakyCronBootstrapBitableAPI) BatchUpdateRecords(_ context.Context, _ s
 	return records, nil
 }
 
-func (f *flakyCronBootstrapBitableAPI) ListPermissionMembers(context.Context, string, string) (map[string]bool, error) {
-	return map[string]bool{}, nil
+func (f *flakyCronBootstrapBitableAPI) ListPermissionMembers(context.Context, string, string) (map[string]feishu.BitablePermissionMember, error) {
+	return map[string]feishu.BitablePermissionMember{}, nil
 }
 
-func (f *flakyCronBootstrapBitableAPI) GrantPermission(context.Context, string, string, string, string, string) error {
+func (f *flakyCronBootstrapBitableAPI) GrantPermission(_ context.Context, token, docType, memberType, memberID, principalType, perm string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grantCalls = append(f.grantCalls, fakeCronPermissionGrant{
+		Token:         token,
+		DocType:       docType,
+		MemberType:    memberType,
+		MemberID:      memberID,
+		PrincipalType: principalType,
+		Perm:          perm,
+	})
+	return nil
+}
+
+func (f *flakyCronBootstrapBitableAPI) UpdatePermission(_ context.Context, token, docType, memberType, memberID, principalType, perm, permType string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grantCalls = append(f.grantCalls, fakeCronPermissionGrant{
+		Token:         token,
+		DocType:       docType,
+		MemberType:    memberType,
+		MemberID:      memberID,
+		PrincipalType: principalType,
+		Perm:          perm,
+		PermType:      permType,
+	})
 	return nil
 }
 
@@ -744,6 +896,65 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithoutCreatingExtraTasksTab
 	}
 	if got := app.cronState.Bitable.Tables.Tasks; got != "tbl-default" {
 		t.Fatalf("tasks table = %q, want tbl-default", got)
+	}
+}
+
+func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
+	api := newFlakyCronBootstrapBitableAPI()
+	api.failCreateField = false
+
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	app.headlessRuntime.Paths.StateDir = t.TempDir()
+	app.cronLoaded = true
+	app.cronState = &cronStateFile{
+		SchemaVersion:    cronStateSchemaVersion,
+		InstanceScopeKey: "stable",
+		InstanceLabel:    "stable",
+		GatewayID:        "gateway-1",
+		Bitable:          &cronBitableState{},
+		Jobs:             []cronJobState{},
+	}
+	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+
+	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("ensureCronBitable: %v", err)
+	}
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	fields := api.fieldsByTable[app.cronState.Bitable.Tables.Tasks]
+	gotNames := make([]string, 0, len(fields))
+	enableType := 0
+	for _, field := range fields {
+		if field == nil {
+			continue
+		}
+		name := stringValue(field.FieldName)
+		gotNames = append(gotNames, name)
+		if name == "启用" && field.Type != nil {
+			enableType = *field.Type
+		}
+	}
+	wantNames := []string{
+		"任务名",
+		"启用",
+		"工作区",
+		"提示词",
+		"调度类型",
+		"每天-时",
+		"每天-分",
+		"间隔",
+		"超时（分钟）",
+		"最近运行时间",
+		"最近状态",
+		"最近结果摘要",
+		"最近错误",
+	}
+	if fmt.Sprintf("%q", gotNames) != fmt.Sprintf("%q", wantNames) {
+		t.Fatalf("task field order = %v, want %v", gotNames, wantNames)
+	}
+	if enableType != 7 {
+		t.Fatalf("enable field type = %d, want 7 (checkbox)", enableType)
 	}
 }
 
