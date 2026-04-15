@@ -750,7 +750,7 @@ final `block.committed`：
 - 这条 `context left` 当前是估算值，不等价于协议中的精确上下文剩余值
 - 若正文里存在可识别的本地 `.md` Markdown 链接，发送前会先尝试重写成飞书云空间预览链接
 - Markdown 预览重写与最终 reply/create message 发送使用独立 timeout 预算
-- 预览物化失败时不会阻塞主回复，正文保持原样
+- 预览物化失败时不会阻塞主回复；显式远端 Markdown 链接保持可点击，本地 Markdown 链接会降级成稳定文本形态（例如 `说明文档 (`./docs/guide.md`)`），避免把整段 final card 的 Markdown 解析搞坏
 
 ### 7.4 代码块
 

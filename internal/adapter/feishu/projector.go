@@ -439,19 +439,21 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	if block.Kind == render.BlockAssistantCode {
 		body = fenced(block.Language, block.Text)
 	}
+	body = normalizeFinalCardMarkdown(body)
 	elements := p.finalBlockExtraElements(summary, finalSummary)
+	title := finalCardTitle(sourceMessagePreview)
 	return []Operation{{
 		Kind:             OperationSendCard,
 		GatewayID:        gatewayID,
 		SurfaceSessionID: surfaceSessionID,
 		ChatID:           chatID,
 		ReplyToMessageID: sourceMessageID,
-		CardTitle:        finalCardTitle(sourceMessagePreview),
+		CardTitle:        title,
 		CardBody:         body,
 		CardThemeKey:     cardThemeFinal,
 		CardElements:     elements,
 		cardEnvelope:     cardEnvelopeV2,
-		card:             legacyCardDocument(finalCardTitle(sourceMessagePreview), body, cardThemeFinal, elements),
+		card:             finalReplyCardDocument(title, body, cardThemeFinal, elements),
 	}}
 }
 

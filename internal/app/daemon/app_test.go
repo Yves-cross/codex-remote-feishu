@@ -1264,8 +1264,8 @@ func TestDaemonContinuesFinalReplyAfterPreviewTimeout(t *testing.T) {
 			finalBody = operation.CardBody
 		}
 	}
-	if finalBody != "查看 [设计文档](/data/dl/droid/docs/design.md)" {
-		t.Fatalf("expected original final body after preview timeout, got %#v", gateway.operations)
+	if finalBody != "查看 设计文档 (`/data/dl/droid/docs/design.md`)" {
+		t.Fatalf("expected normalized final body after preview timeout fallback, got %#v", gateway.operations)
 	}
 }
 
