@@ -270,6 +270,8 @@ wrapper 收到 `command` 后总是回传 accept/reject：
 
 当前 wrapper / translator 侧语义：
 
+- 若目标 thread 不是 wrapper 当前 native thread，translator 会先发一次 native `thread/resume`
+- `thread/resume` 成功后，再继续发 native `thread/compact/start`
 - translator 把它翻译成 native `thread/compact/start`
 - 该请求的同步成功响应会被 suppress，不额外回传独立 result event
 - 后续实际生命周期仍沿用标准 `turn.started` / `item.*` / `turn.completed`

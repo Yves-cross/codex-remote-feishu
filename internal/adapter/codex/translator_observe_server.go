@@ -108,7 +108,19 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		if pending, exists := t.pendingThreadResume[requestID]; exists {
 			delete(t.pendingThreadResume, requestID)
 			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
-				t.debugf("observe server thread/resume error: request=%s thread=%s error=%s", requestID, pending.ThreadID, errMsg)
+				t.debugf("observe server thread/resume error: request=%s thread=%s kind=%s error=%s", requestID, pending.ThreadID, pending.Command.Kind, errMsg)
+				if pending.Command.Kind == agentproto.CommandThreadCompactStart {
+					return Result{Events: []agentproto.Event{agentproto.NewSystemErrorEvent(agentproto.ErrorInfo{
+						Code:             "compact_start_failed",
+						Layer:            "server",
+						Stage:            "thread_resume_response",
+						Operation:        "thread.compact.start",
+						Message:          "Codex 拒绝了这次上下文整理请求。",
+						Details:          errMsg,
+						SurfaceSessionID: choose(pending.Command.Origin.Surface, pending.Command.Origin.ChatID),
+						ThreadID:         pending.ThreadID,
+					})}}, nil
+				}
 				return Result{Events: []agentproto.Event{{
 					Kind:         agentproto.EventTurnCompleted,
 					ThreadID:     pending.ThreadID,
@@ -120,15 +132,28 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			if pending.Command.Target.CWD != "" {
 				t.knownThreadCWD[pending.ThreadID] = pending.Command.Target.CWD
 			}
-			followup, followupID, err := t.directTurnStart(pending.ThreadID, pending.Command, false)
-			if err != nil {
-				return Result{}, err
+			switch pending.Command.Kind {
+			case agentproto.CommandThreadCompactStart:
+				followup, followupID, err := t.directCompactStart(pending.Command)
+				if err != nil {
+					return Result{}, err
+				}
+				t.debugf("observe server thread/resume result: request=%s thread=%s compactFollowup=%s", requestID, pending.ThreadID, followupID)
+				return Result{
+					Suppress:        true,
+					OutboundToCodex: [][]byte{followup},
+				}, nil
+			default:
+				followup, followupID, err := t.directTurnStart(pending.ThreadID, pending.Command, false)
+				if err != nil {
+					return Result{}, err
+				}
+				t.debugf("observe server thread/resume result: request=%s thread=%s followup=%s", requestID, pending.ThreadID, followupID)
+				return Result{
+					Suppress:        true,
+					OutboundToCodex: [][]byte{followup},
+				}, nil
 			}
-			t.debugf("observe server thread/resume result: request=%s thread=%s followup=%s", requestID, pending.ThreadID, followupID)
-			return Result{
-				Suppress:        true,
-				OutboundToCodex: [][]byte{followup},
-			}, nil
 		}
 		if pending, exists := t.pendingThreadNameSet[requestID]; exists {
 			delete(t.pendingThreadNameSet, requestID)

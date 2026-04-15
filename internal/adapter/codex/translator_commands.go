@@ -94,13 +94,38 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 		if threadID == "" {
 			return nil, fmt.Errorf("thread.compact.start requires thread id")
 		}
-		requestID := t.nextRequest("thread-compact-start")
-		surfaceID := choose(command.Origin.Surface, command.Origin.ChatID)
-		t.pendingRemoteTurnByThread[threadID] = surfaceID
-		t.pendingSuppressedResponse[requestID] = suppressedResponseContext{
-			Action:           "thread/compact/start",
-			ThreadID:         threadID,
-			SurfaceSessionID: surfaceID,
+		if t.currentThreadID == "" || threadID != t.currentThreadID {
+			requestID := t.nextRequest("thread-resume")
+			t.pendingThreadResume[requestID] = pendingThreadResume{
+				ThreadID: threadID,
+				Command:  command,
+			}
+			t.debugf(
+				"translate remote compact: command=%s action=thread/resume request=%s targetThread=%s currentThread=%s knownCWD=%s surface=%s",
+				command.CommandID,
+				requestID,
+				threadID,
+				t.currentThreadID,
+				t.knownThreadCWD[threadID],
+				choose(command.Origin.Surface, command.Origin.ChatID),
+			)
+			payload := map[string]any{
+				"id":     requestID,
+				"method": "thread/resume",
+				"params": map[string]any{
+					"threadId": threadID,
+					"cwd":      choose(command.Target.CWD, t.knownThreadCWD[threadID]),
+				},
+			}
+			bytes, err := json.Marshal(payload)
+			if err != nil {
+				return nil, err
+			}
+			return [][]byte{append(bytes, '\n')}, nil
+		}
+		payload, requestID, err := t.directCompactStart(command)
+		if err != nil {
+			return nil, err
 		}
 		t.debugf(
 			"translate remote compact: command=%s action=thread/compact/start request=%s targetThread=%s currentThread=%s surface=%s",
@@ -108,20 +133,9 @@ func (t *Translator) TranslateCommand(command agentproto.Command) ([][]byte, err
 			requestID,
 			threadID,
 			t.currentThreadID,
-			surfaceID,
+			choose(command.Origin.Surface, command.Origin.ChatID),
 		)
-		payload := map[string]any{
-			"id":     requestID,
-			"method": "thread/compact/start",
-			"params": map[string]any{
-				"threadId": threadID,
-			},
-		}
-		bytes, err := json.Marshal(payload)
-		if err != nil {
-			return nil, err
-		}
-		return [][]byte{append(bytes, '\n')}, nil
+		return [][]byte{payload}, nil
 	case agentproto.CommandTurnInterrupt:
 		payload := map[string]any{
 			"id":     t.nextRequest("turn-interrupt"),
@@ -286,6 +300,33 @@ func (t *Translator) directTurnStart(threadID string, command agentproto.Command
 		Action:           "turn/start",
 		ThreadID:         threadID,
 		SurfaceSessionID: choose(command.Origin.Surface, command.Origin.ChatID),
+	}
+	bytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, "", err
+	}
+	return append(bytes, '\n'), requestID, nil
+}
+
+func (t *Translator) directCompactStart(command agentproto.Command) ([]byte, string, error) {
+	threadID := strings.TrimSpace(command.Target.ThreadID)
+	if threadID == "" {
+		return nil, "", fmt.Errorf("thread.compact.start requires thread id")
+	}
+	requestID := t.nextRequest("thread-compact-start")
+	surfaceID := choose(command.Origin.Surface, command.Origin.ChatID)
+	t.pendingRemoteTurnByThread[threadID] = surfaceID
+	payload := map[string]any{
+		"id":     requestID,
+		"method": "thread/compact/start",
+		"params": map[string]any{
+			"threadId": threadID,
+		},
+	}
+	t.pendingSuppressedResponse[requestID] = suppressedResponseContext{
+		Action:           "thread/compact/start",
+		ThreadID:         threadID,
+		SurfaceSessionID: surfaceID,
 	}
 	bytes, err := json.Marshal(payload)
 	if err != nil {
