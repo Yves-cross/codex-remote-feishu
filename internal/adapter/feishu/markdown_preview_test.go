@@ -1004,7 +1004,11 @@ func TestDriveMarkdownPreviewerRewritesTextFileToWebPreviewLink(t *testing.T) {
 		t.Fatalf("unexpected manifest: %#v", manifest)
 	}
 	record := firstWebPreviewRecord(manifest)
-	if record == nil || record.SourcePath != notePath {
+	canonicalNotePath, err := previewCanonicalPath(notePath)
+	if err != nil {
+		t.Fatalf("canonical note path: %v", err)
+	}
+	if record == nil || record.SourcePath != canonicalNotePath {
 		t.Fatalf("unexpected record: %#v", record)
 	}
 	if _, err := os.Stat(previewer.previewBlobPath(record.BlobKey)); err != nil {
@@ -1086,14 +1090,17 @@ func TestDriveMarkdownPreviewerWebPreviewTracksPreviousVersion(t *testing.T) {
 	if manifest == nil || len(manifest.Records) != 2 {
 		t.Fatalf("unexpected manifest record count: %#v", manifest)
 	}
-	firstID := previewRecordID(scopeKey, docPath, sha256Hex("v1\n"))
-	secondID := previewRecordID(scopeKey, docPath, sha256Hex("v2\n"))
-	second := manifest.Records[secondID]
-	if second == nil {
+	canonicalDocPath, err := previewCanonicalPath(docPath)
+	if err != nil {
+		t.Fatalf("canonical doc path: %v", err)
+	}
+	first := findWebPreviewRecordBySourceAndHash(manifest, canonicalDocPath, sha256Hex("v1\n"))
+	second := findWebPreviewRecordBySourceAndHash(manifest, canonicalDocPath, sha256Hex("v2\n"))
+	if first == nil || second == nil {
 		t.Fatalf("missing second record in manifest: %#v", manifest.Records)
 	}
-	if second.PreviousID != firstID {
-		t.Fatalf("expected previous id %q, got %#v", firstID, second)
+	if second.PreviousID != first.PreviewID {
+		t.Fatalf("expected previous id %q, got %#v", first.PreviewID, second)
 	}
 }
 
@@ -1123,7 +1130,19 @@ func TestDriveMarkdownPreviewerServesWebPreviewSnapshot(t *testing.T) {
 
 	scopeKey := previewScopeKey(req.GatewayID, req.SurfaceSessionID, req.ChatID, req.ActorUserID)
 	scopePublicID := previewScopePublicID(scopeKey)
-	previewID := previewRecordID(scopeKey, notePath, sha256Hex("hello preview\n"))
+	manifest, err := previewer.loadWebPreviewScopeManifest(scopePublicID)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	canonicalNotePath, err := previewCanonicalPath(notePath)
+	if err != nil {
+		t.Fatalf("canonical note path: %v", err)
+	}
+	record := findWebPreviewRecordBySourceAndHash(manifest, canonicalNotePath, sha256Hex("hello preview\n"))
+	if record == nil {
+		t.Fatalf("missing preview record in manifest: %#v", manifest)
+	}
+	previewID := record.PreviewID
 	httpReq := httptest.NewRequest(http.MethodGet, "/preview/s/"+scopePublicID+"/"+previewID, nil)
 	rec := httptest.NewRecorder()
 	if ok := previewer.ServeWebPreview(rec, httpReq, scopePublicID, previewID, false); !ok {
@@ -1294,6 +1313,21 @@ func firstWebPreviewRecord(manifest *webPreviewScopeManifest) *webPreviewRecord 
 	}
 	for _, record := range manifest.Records {
 		if record != nil {
+			return record
+		}
+	}
+	return nil
+}
+
+func findWebPreviewRecordBySourceAndHash(manifest *webPreviewScopeManifest, sourcePath, contentHash string) *webPreviewRecord {
+	if manifest == nil {
+		return nil
+	}
+	for _, record := range manifest.Records {
+		if record == nil {
+			continue
+		}
+		if record.SourcePath == sourcePath && record.ContentHash == contentHash {
 			return record
 		}
 	}
