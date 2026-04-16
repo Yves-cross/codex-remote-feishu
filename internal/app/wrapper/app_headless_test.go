@@ -45,6 +45,15 @@ func TestBootstrapHeadlessCodexCompletesInitializeHandshake(t *testing.T) {
 	if got := lookupStringFromMap(frames[0], "id"); got != relayBootstrapInitializeID {
 		t.Fatalf("expected initialize id %q, got %q", relayBootstrapInitializeID, got)
 	}
+	params, _ := frames[0]["params"].(map[string]any)
+	capabilities, _ := params["capabilities"].(map[string]any)
+	if experimental, _ := capabilities["experimentalApi"].(bool); !experimental {
+		t.Fatalf("expected experimentalApi=true, got %#v", capabilities["experimentalApi"])
+	}
+	methods, _ := capabilities["optOutNotificationMethods"].([]any)
+	if len(methods) != 1 || methods[0] != "item/agentMessage/delta" {
+		t.Fatalf("unexpected optOutNotificationMethods: %#v", capabilities["optOutNotificationMethods"])
+	}
 	if got := lookupStringFromMap(frames[1], "method"); got != "initialized" {
 		t.Fatalf("expected second frame to be initialized, got %q", got)
 	}
@@ -76,6 +85,21 @@ func TestBootstrapHeadlessCodexFailsWhenInitializeRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Not initialized") {
 		t.Fatalf("expected initialize rejection in error, got %v", err)
+	}
+}
+
+func TestSyntheticInitializeFrameSkipsNonHeadless(t *testing.T) {
+	app := New(Config{
+		Source:  "vscode",
+		Version: "test",
+	})
+
+	frame, err := app.syntheticInitializeFrame()
+	if err != nil {
+		t.Fatalf("syntheticInitializeFrame: %v", err)
+	}
+	if len(frame) != 0 {
+		t.Fatalf("expected no initialize frame for non-headless source, got %#v", string(frame))
 	}
 }
 

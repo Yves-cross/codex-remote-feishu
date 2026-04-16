@@ -75,6 +75,9 @@ func (a *App) syntheticInitializeFrame() ([]byte, error) {
 			},
 			"capabilities": map[string]any{
 				"experimentalApi": true,
+				"optOutNotificationMethods": []string{
+					"item/agentMessage/delta",
+				},
 			},
 		},
 	}
