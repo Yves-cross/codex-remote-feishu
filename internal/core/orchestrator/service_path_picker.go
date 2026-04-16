@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -554,8 +555,8 @@ func resolvePathPickerExistingTarget(rootPath, targetPath string) (resolvedPathP
 }
 
 func pathWithinRoot(rootPath, targetPath string) bool {
-	rootPath = filepath.Clean(strings.TrimSpace(rootPath))
-	targetPath = filepath.Clean(strings.TrimSpace(targetPath))
+	rootPath = canonicalPathPickerPath(rootPath)
+	targetPath = canonicalPathPickerPath(targetPath)
 	if rootPath == "" || targetPath == "" {
 		return false
 	}
@@ -567,5 +568,22 @@ func pathWithinRoot(rootPath, targetPath string) bool {
 }
 
 func samePath(left, right string) bool {
-	return filepath.Clean(strings.TrimSpace(left)) == filepath.Clean(strings.TrimSpace(right))
+	return canonicalPathPickerPath(left) == canonicalPathPickerPath(right)
+}
+
+func canonicalPathPickerPath(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return ""
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = filepath.Clean(absolute)
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = filepath.Clean(resolved)
+	}
+	if runtime.GOOS == "windows" {
+		path = strings.ToLower(path)
+	}
+	return path
 }

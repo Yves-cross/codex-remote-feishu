@@ -212,6 +212,39 @@ func TestBuildPathPickerEntriesSortsDotDirectoriesAfterNormalDirectories(t *test
 	}
 }
 
+func TestBuildPathPickerEntriesAllowsResolvedChildrenUnderSymlinkRoot(t *testing.T) {
+	realRoot := t.TempDir()
+	linkParent := t.TempDir()
+	linkRoot := filepath.Join(linkParent, "workspace-link")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Skipf("symlink not available: %v", err)
+	}
+	for _, dir := range []string{"zeta", ".hidden", "alpha"} {
+		if err := os.Mkdir(filepath.Join(realRoot, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	entries, err := buildPathPickerEntries(&state.ActivePathPickerRecord{
+		Mode:        state.PathPickerModeDirectory,
+		RootPath:    linkRoot,
+		CurrentPath: linkRoot,
+	})
+	if err != nil {
+		t.Fatalf("build entries through symlink root: %v", err)
+	}
+
+	var directories []string
+	for _, entry := range entries {
+		if entry.Kind == control.PathPickerEntryDirectory {
+			directories = append(directories, entry.Name)
+		}
+	}
+	if got, want := directories, []string{"alpha", "zeta", ".hidden"}; !equalStringSlices(got, want) {
+		t.Fatalf("unexpected directory order through symlink root: got %v want %v", got, want)
+	}
+}
+
 func TestOpenPathPickerRejectsPathEscapesAndSymlinkEscapes(t *testing.T) {
 	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
