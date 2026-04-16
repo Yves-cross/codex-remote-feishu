@@ -125,6 +125,7 @@ Use the issue body for durable structure:
 - staged plan (`建议范围`) when work is not truly single-stage
 - implementation context (`实现参考`)
 - check context (`检查参考`)
+- low-priority deferred follow-ups in a dedicated `低优先级待办` section when they are too small to justify a standalone issue
 - finish / knowledge-sync context (`收尾参考`)
 
 Use comments only for live collaboration:
@@ -154,6 +155,10 @@ When picking up or re-assessing an issue:
    - `检查参考`: risky flows, regression points, exact docs/tests to re-check
    - `收尾参考`: likely knowledge write-back targets such as issue body, linked design docs, docs/general, state-machine docs, AGENTS, or repo skills
 8. If later investigation or implementation changes the staged plan or any execution-context section materially, update the issue body before continuing.
+9. If work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, append it to `低优先级待办` in the active issue body instead of leaving it only in chat.
+   - Keep entries concise and actionable.
+   - Include what is deferred and why it stayed in-body instead of becoming its own issue.
+   - Use this section as the canonical source for later backlog harvest.
 
 ## Reassessment Decision
 
@@ -210,6 +215,7 @@ If the issue was already implementable and still is after reassessment:
 - prefer staged delivery for medium or large work
 - write the current staged plan into the issue or a linked design doc before stage 1
 - update the staged plan back to the issue whenever the plan or stage split changes
+- when you intentionally defer a tiny follow-up that is not worth a new issue, record it under `低优先级待办` before moving on
 - continue through all planned stages in the same task unless a major assumption collapsed and the remaining direction would materially diverge
 - every stage must include sufficient validation, not only compilation or superficial smoke checks
 - each stage should end with implementation, stage-scoped validation, and a local commit

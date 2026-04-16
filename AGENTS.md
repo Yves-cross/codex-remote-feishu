@@ -197,6 +197,7 @@ When corresponding logic carriers changed:
 - Do not start code assessment against known-stale checkout when worktree is clean.
 - Tiny fixes that can be finished immediately do not require opening/normalizing an issue.
 - When an issue is implementable and not truly single-stage, keep `建议范围`, `实现参考`, `检查参考`, and `收尾参考` current in the issue body.
+- When issue work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, record it under a dedicated `低优先级待办` section in the active issue body instead of leaving it only in chat.
 - Before `finish`, explicitly re-check whether durable knowledge changed enough to require syncing the issue body, linked docs, state-machine docs, or repo workflow guidance.
 
 ## Commit / Push / Branch Policy
