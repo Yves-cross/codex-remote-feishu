@@ -264,7 +264,7 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 			return inlineResult
 		}
 		a.invalidateVSCodeCompatibilityCacheLocked()
-		promptEvents, _ := a.maybePromptVSCodeCompatibilityLocked(action.SurfaceSessionID)
+		promptEvents, _ := a.maybePromptVSCodeCompatibilityAtLocked(action.SurfaceSessionID, time.Now().UTC())
 		if inlineResult == nil {
 			a.handleUIEventsLocked(ctx, promptEvents)
 		}
@@ -548,7 +548,7 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	if refreshSent {
 		a.markStartupThreadsRefreshRequestedLocked(hello.Instance.InstanceID)
 	}
-	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)
 	vscodeRecoveryEvents := []control.UIEvent{}
 	if !vscodeBlocked {
@@ -610,7 +610,7 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 		}
 		switch event.Kind {
 		case agentproto.EventThreadsSnapshot, agentproto.EventThreadDiscovered, agentproto.EventThreadFocused:
-			vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+			vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 			uiEvents = append(uiEvents, vscodePromptEvents...)
 			if !vscodeBlocked {
 				uiEvents = append(uiEvents, a.maybeRecoverVSCodeSurfacesLocked(now)...)
@@ -754,7 +754,7 @@ func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 	if inst.Source == "vscode" {
 		a.invalidateVSCodeCompatibilityCacheLocked()
 	}
-	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityLocked("")
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)
 	vscodeRecoveryEvents := []control.UIEvent{}
 	if !vscodeBlocked {
@@ -786,13 +786,9 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.reapIdleHeadless(now)
 	a.syncManagedHeadlessLocked(now)
 	a.ensureMinIdleManagedHeadlessLocked(now)
-	vscodeBlocked := false
-	if a.vscodeStartupCheckDue || a.vscodeCompatibility.Checked {
-		a.vscodeStartupCheckDue = false
-		vscodePromptEvents, blocked := a.maybePromptVSCodeCompatibilityLocked("")
-		vscodeBlocked = blocked
-		a.handleUIEventsLocked(ctx, vscodePromptEvents)
-	}
+	a.vscodeStartupCheckDue = false
+	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
+	a.handleUIEventsLocked(ctx, vscodePromptEvents)
 	vscodeRecoveryEvents := []control.UIEvent{}
 	if !vscodeBlocked {
 		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)

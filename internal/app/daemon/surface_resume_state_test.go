@@ -443,7 +443,7 @@ func TestDaemonAttachedVSCodeSurfacePersistsResumeTargetAndRecoversOnReconnect(t
 		t.Fatalf("unexpected persisted vscode resume target: %#v", entry)
 	}
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	restarted := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 	restarted.SetHeadlessRuntime(HeadlessRuntimeConfig{
 		IdleTTL:    time.Hour,
@@ -475,23 +475,24 @@ func TestDaemonAttachedVSCodeSurfacePersistsResumeTargetAndRecoversOnReconnect(t
 		},
 	})
 
-	snapshot = restarted.service.SurfaceSnapshot("surface-1")
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		snapshot = restarted.service.SurfaceSnapshot("surface-1")
+		return snapshot != nil && snapshot.Attachment.InstanceID == "inst-vscode-1"
+	})
 	if snapshot == nil || snapshot.ProductMode != "vscode" || snapshot.Attachment.InstanceID != "inst-vscode-1" {
 		t.Fatalf("expected vscode resume to reattach target instance, got %#v", snapshot)
 	}
 	if snapshot.Attachment.SelectedThreadID != "" || snapshot.Attachment.RouteMode != "follow_local" {
 		t.Fatalf("expected vscode resume to re-enter follow waiting, got %#v", snapshot)
 	}
-	sawResumeNotice := false
-	for _, operation := range gateway.operations {
-		if strings.Contains(operation.CardBody, "已恢复到 VS Code 实例") && strings.Contains(operation.CardBody, "再说一句话") {
-			sawResumeNotice = true
-			break
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		for _, operation := range gateway.snapshotOperations() {
+			if strings.Contains(operation.CardBody, "已恢复到 VS Code 实例") && strings.Contains(operation.CardBody, "再说一句话") {
+				return true
+			}
 		}
-	}
-	if !sawResumeNotice {
-		t.Fatalf("expected vscode resume guidance notice, got %#v", gateway.operations)
-	}
+		return false
+	})
 }
 
 func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.T) {
@@ -519,7 +520,7 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 		ThreadCWD:        "/data/dl/droid",
 	})
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
 		IdleTTL:    time.Hour,
@@ -541,9 +542,10 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 	if headlessStarted {
 		t.Fatal("expected vscode resume path to avoid starting headless")
 	}
-	if len(gateway.operations) != 1 || !strings.Contains(gateway.operations[0].CardBody, "请先打开 VS Code 中的 Codex") {
-		t.Fatalf("expected one-time open VS Code guidance while waiting for exact instance, got %#v", gateway.operations)
-	}
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		ops := gateway.snapshotOperations()
+		return len(ops) == 1 && strings.Contains(ops[0].CardBody, "请先打开 VS Code 中的 Codex")
+	})
 
 	app.onHello(context.Background(), agentproto.Hello{
 		Instance: agentproto.InstanceHello{
@@ -560,8 +562,8 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 	if snapshot == nil || snapshot.Attachment.InstanceID != "" {
 		t.Fatalf("expected vscode resume to wait for exact instance, got %#v", snapshot)
 	}
-	if len(gateway.operations) != 1 {
-		t.Fatalf("expected open VS Code guidance to stay one-shot before exact instance reconnects, got %#v", gateway.operations)
+	if len(gateway.snapshotOperations()) != 1 {
+		t.Fatalf("expected open VS Code guidance to stay one-shot before exact instance reconnects, got %#v", gateway.snapshotOperations())
 	}
 	if headlessStarted {
 		t.Fatal("expected unrelated instance hello to keep headless disabled")
@@ -580,7 +582,7 @@ func TestDaemonDetachedVSCodeModePromptsOpenVSCodeAfterRestart(t *testing.T) {
 		ProductMode:      "vscode",
 	})
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
 		IdleTTL:    time.Hour,
@@ -596,13 +598,14 @@ func TestDaemonDetachedVSCodeModePromptsOpenVSCodeAfterRestart(t *testing.T) {
 	if snapshot == nil || snapshot.ProductMode != "vscode" || snapshot.Attachment.InstanceID != "" {
 		t.Fatalf("expected detached vscode surface after restart, got %#v", snapshot)
 	}
-	if len(gateway.operations) != 1 || !strings.Contains(gateway.operations[0].CardBody, "请先打开 VS Code 中的 Codex") {
-		t.Fatalf("expected one-time open VS Code guidance for detached vscode surface, got %#v", gateway.operations)
-	}
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		ops := gateway.snapshotOperations()
+		return len(ops) == 1 && strings.Contains(ops[0].CardBody, "请先打开 VS Code 中的 Codex")
+	})
 
 	app.onTick(context.Background(), time.Now().UTC().Add(time.Second))
-	if len(gateway.operations) != 1 {
-		t.Fatalf("expected detached vscode guidance to stay one-shot, got %#v", gateway.operations)
+	if len(gateway.snapshotOperations()) != 1 {
+		t.Fatalf("expected detached vscode guidance to stay one-shot, got %#v", gateway.snapshotOperations())
 	}
 }
 

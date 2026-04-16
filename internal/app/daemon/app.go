@@ -103,8 +103,11 @@ type surfaceResumeRecoveryState struct {
 }
 
 type vscodeCompatibilityCacheState struct {
-	Checked bool
-	Issue   *vscodeCompatibilityIssue
+	Checked         bool
+	Issue           *vscodeCompatibilityIssue
+	RefreshInFlight bool
+	NextRetryAt     time.Time
+	RefreshToken    uint64
 }
 
 type App struct {

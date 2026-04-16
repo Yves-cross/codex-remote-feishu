@@ -75,7 +75,7 @@ func TestDaemonModeSwitchToVSCodePromptsMigrationForLegacySettings(t *testing.T)
 	entrypoint := testVSCodeBundleEntrypoint(home, ".vscode-server", "1")
 	writeExecutableFile(t, entrypoint, "orig")
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
 
 	app.HandleAction(context.Background(), control.Action{
@@ -94,14 +94,11 @@ func TestDaemonModeSwitchToVSCodePromptsMigrationForLegacySettings(t *testing.T)
 		Text:             "/mode vscode",
 	})
 
-	card := findOperationByTitle(gateway.operations, "VS Code 接入需要迁移")
-	if card == nil {
-		t.Fatalf("expected migration card after switching to vscode mode, got %#v", gateway.operations)
-	}
+	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
 	if !strings.Contains(card.CardBody, "旧版 settings.json 覆盖") {
 		t.Fatalf("expected migration reason in card body, got %#v", card)
 	}
-	if !operationHasCommandButton(*card, "迁移并重新接入", vscodeMigrateCommandText) {
+	if !operationHasCommandButton(card, "迁移并重新接入", vscodeMigrateCommandText) {
 		t.Fatalf("expected migration card button, got %#v", card.CardElements)
 	}
 }
@@ -128,7 +125,7 @@ func TestDaemonVSCodeCompatibilityBlocksAutoResumeUntilMigrationApplied(t *testi
 		ResumeRouteMode:    "follow_local",
 	})
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
 
 	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/vscode/apply", `{"mode":"managed_shim"}`)
@@ -159,11 +156,8 @@ func TestDaemonVSCodeCompatibilityBlocksAutoResumeUntilMigrationApplied(t *testi
 		t.Fatalf("expected compatibility issue to keep vscode surface detached, got %#v", snapshot)
 	}
 
-	card := findOperationByTitle(gateway.operations, "VS Code 接入需要修复")
-	if card == nil {
-		t.Fatalf("expected repair card while managed shim is stale, got %#v", gateway.operations)
-	}
-	if !operationHasCommandButton(*card, "重新接入扩展入口", vscodeMigrateCommandText) {
+	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要修复")
+	if !operationHasCommandButton(card, "重新接入扩展入口", vscodeMigrateCommandText) {
 		t.Fatalf("expected repair card button, got %#v", card.CardElements)
 	}
 }
@@ -286,7 +280,7 @@ func TestDaemonTickChecksVSCodeCompatibilityOnlyOnceForRestoredVSCodeSurface(t *
 		ProductMode:      "vscode",
 	})
 
-	gateway := &recordingGateway{}
+	gateway := newLifecycleGateway()
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, false)
 	detectCalls := 0
 	app.vscodeDetect = func() (vscodeDetectResponse, error) {
@@ -300,12 +294,10 @@ func TestDaemonTickChecksVSCodeCompatibilityOnlyOnceForRestoredVSCodeSurface(t *
 	app.onTick(context.Background(), time.Now().UTC())
 	app.onTick(context.Background(), time.Now().UTC().Add(time.Second))
 
-	if detectCalls != 1 {
-		t.Fatalf("expected restored vscode surface to trigger exactly one compatibility detect, got %d", detectCalls)
-	}
-	card := findOperationByTitle(gateway.operations, "VS Code 接入需要迁移")
-	if card == nil {
-		t.Fatalf("expected migration card for restored vscode surface, got %#v", gateway.operations)
+	waitForDaemonCondition(t, 2*time.Second, func() bool { return detectCalls == 1 })
+	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
+	if card.CardTitle == "" {
+		t.Fatalf("expected migration card for restored vscode surface")
 	}
 }
 

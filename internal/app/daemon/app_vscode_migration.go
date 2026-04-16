@@ -1,16 +1,19 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const vscodeMigrateCommandText = "/vscode-migrate"
+const vscodeCompatibilityRetryBackoff = 30 * time.Second
 
 type vscodeCompatibilityIssue struct {
 	Key         string
@@ -96,6 +99,13 @@ func (a *App) currentVSCodeCompatibilityIssue() (*vscodeCompatibilityIssue, erro
 }
 
 func (a *App) maybePromptVSCodeCompatibilityLocked(surfaceFilter string) ([]control.UIEvent, bool) {
+	return a.maybePromptVSCodeCompatibilityAtLocked(surfaceFilter, time.Now().UTC())
+}
+
+func (a *App) maybePromptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.Time) ([]control.UIEvent, bool) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	a.syncVSCodeMigrationPromptStateLocked()
 	targets := a.detachedVSCodeCompatibilityTargetsLocked(surfaceFilter)
 	if len(targets) == 0 {
@@ -104,10 +114,9 @@ func (a *App) maybePromptVSCodeCompatibilityLocked(surfaceFilter string) ([]cont
 		}
 		return nil, false
 	}
-	issue, err := a.cachedVSCodeCompatibilityIssueLocked()
-	if err != nil {
-		log.Printf("detect vscode compatibility issue failed: err=%v", err)
-		return nil, false
+	issue, pending := a.cachedVSCodeCompatibilityIssueLocked(now)
+	if pending {
+		return nil, true
 	}
 	if issue == nil {
 		a.clearVSCodeMigrationPromptsLocked()
@@ -156,23 +165,74 @@ func (a *App) detectVSCodeCompatibility() (vscodeDetectResponse, error) {
 	return a.buildVSCodeDetectResponse()
 }
 
-func (a *App) cachedVSCodeCompatibilityIssueLocked() (*vscodeCompatibilityIssue, error) {
+func (a *App) cachedVSCodeCompatibilityIssueLocked(now time.Time) (*vscodeCompatibilityIssue, bool) {
 	if a.vscodeCompatibility.Checked {
-		return a.vscodeCompatibility.Issue, nil
+		return a.vscodeCompatibility.Issue, false
 	}
+	a.maybeStartVSCodeCompatibilityRefreshLocked(now)
+	return nil, a.vscodeCompatibility.RefreshInFlight
+}
+
+func (a *App) maybeStartVSCodeCompatibilityRefreshLocked(now time.Time) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if a.vscodeCompatibility.Checked || a.vscodeCompatibility.RefreshInFlight {
+		return
+	}
+	if !a.vscodeCompatibility.NextRetryAt.IsZero() && now.Before(a.vscodeCompatibility.NextRetryAt) {
+		return
+	}
+	token := a.vscodeCompatibility.RefreshToken
+	a.vscodeCompatibility.RefreshInFlight = true
+	go a.refreshVSCodeCompatibilityAsync(token, now)
+}
+
+func (a *App) refreshVSCodeCompatibilityAsync(token uint64, startedAt time.Time) {
 	issue, err := a.currentVSCodeCompatibilityIssue()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.finishVSCodeCompatibilityRefreshLocked(token, startedAt, issue, err)
+}
+
+func (a *App) finishVSCodeCompatibilityRefreshLocked(token uint64, startedAt time.Time, issue *vscodeCompatibilityIssue, err error) {
+	if token != a.vscodeCompatibility.RefreshToken {
+		return
+	}
+	a.vscodeCompatibility.RefreshInFlight = false
 	if err != nil {
-		return nil, err
+		log.Printf("detect vscode compatibility issue failed: err=%v", err)
+		a.vscodeCompatibility.Checked = false
+		a.vscodeCompatibility.Issue = nil
+		if startedAt.IsZero() {
+			startedAt = time.Now().UTC()
+		}
+		a.vscodeCompatibility.NextRetryAt = startedAt.Add(vscodeCompatibilityRetryBackoff)
+		return
 	}
-	a.vscodeCompatibility = vscodeCompatibilityCacheState{
-		Checked: true,
-		Issue:   issue,
+	a.vscodeCompatibility.Checked = true
+	a.vscodeCompatibility.Issue = issue
+	a.vscodeCompatibility.NextRetryAt = time.Time{}
+	if a.shuttingDown {
+		return
 	}
-	return issue, nil
+	now := time.Now().UTC()
+	promptEvents, blocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
+	a.handleUIEventsLocked(context.Background(), promptEvents)
+	if blocked {
+		return
+	}
+	vscodeRecoveryEvents := a.maybeRecoverVSCodeSurfacesLocked(now)
+	vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
+	a.handleUIEventsLocked(context.Background(), vscodeRecoveryEvents)
 }
 
 func (a *App) invalidateVSCodeCompatibilityCacheLocked() {
-	a.vscodeCompatibility = vscodeCompatibilityCacheState{}
+	a.vscodeCompatibility.Checked = false
+	a.vscodeCompatibility.Issue = nil
+	a.vscodeCompatibility.RefreshInFlight = false
+	a.vscodeCompatibility.NextRetryAt = time.Time{}
+	a.vscodeCompatibility.RefreshToken++
 }
 
 func (a *App) detachedVSCodeCompatibilityTargetsLocked(surfaceFilter string) []vscodeCompatibilityPromptTarget {
