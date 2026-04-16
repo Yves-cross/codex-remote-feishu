@@ -70,13 +70,14 @@ func (g *messageIDAssigningGateway) waitForOperationCount(n int, timeout time.Du
 }
 
 type secondChancePreviewer struct {
-	mu          sync.Mutex
-	calls       int
-	secondText  string
-	secondErr   error
-	secondGate  chan struct{}
-	secondStart chan struct{}
-	secondDone  chan struct{}
+	mu              sync.Mutex
+	calls           int
+	secondText      string
+	secondTransform func(string) string
+	secondErr       error
+	secondGate      chan struct{}
+	secondStart     chan struct{}
+	secondDone      chan struct{}
 }
 
 func (s *secondChancePreviewer) RewriteFinalBlock(ctx context.Context, req feishu.FinalBlockPreviewRequest) (feishu.FinalBlockPreviewResult, error) {
@@ -87,6 +88,7 @@ func (s *secondChancePreviewer) RewriteFinalBlock(ctx context.Context, req feish
 	secondStart := s.secondStart
 	secondDone := s.secondDone
 	secondText := s.secondText
+	secondTransform := s.secondTransform
 	secondErr := s.secondErr
 	s.mu.Unlock()
 
@@ -111,7 +113,9 @@ func (s *secondChancePreviewer) RewriteFinalBlock(ctx context.Context, req feish
 		}
 	}
 	block := req.Block
-	if secondText != "" {
+	if secondTransform != nil {
+		block.Text = secondTransform(req.Block.Text)
+	} else if secondText != "" {
 		block.Text = secondText
 	}
 	if secondDone != nil {
@@ -374,6 +378,85 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsAfterDetach(t *testing.T) {
 	for _, op := range ops {
 		if op.Kind == feishu.OperationUpdateCard && op.MessageID == "om-card-1" {
 			t.Fatalf("expected detach to suppress second-chance patch, got %#v", ops)
+		}
+	}
+}
+
+func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *testing.T) {
+	gateway := &messageIDAssigningGateway{notify: make(chan struct{}, 16)}
+	previewer := &secondChancePreviewer{
+		secondDone: make(chan struct{}),
+		secondTransform: func(text string) string {
+			return strings.Replace(text, "./docs/very/very/very/long/path/design.md", "https://p", 1)
+		},
+	}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetFinalBlockPreviewer(previewer)
+	app.finalPreviewTimeout = 10 * time.Millisecond
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {
+				ThreadID: "thread-1",
+				CWD:      "/data/dl/droid",
+				Loaded:   true,
+			},
+		},
+	})
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+
+	longBody := "请查看 [设计文档](./docs/very/very/very/long/path/design.md)\n\n" +
+		strings.Repeat("这里是较长的补充说明，会强制 final reply 进入应用层 split。\n第二行继续保留一些上下文。\n\n", 500)
+	event := control.UIEvent{
+		Kind:             control.UIEventBlockCommitted,
+		SurfaceSessionID: "feishu:chat:1",
+		SourceMessageID:  "msg-1",
+		Block: &render.Block{
+			Kind:       render.BlockAssistantMarkdown,
+			InstanceID: "inst-1",
+			ThreadID:   "thread-1",
+			TurnID:     "turn-1",
+			ItemID:     "item-1",
+			Text:       longBody,
+			Final:      true,
+		},
+	}
+	if err := app.deliverUIEventWithContext(context.Background(), event); err != nil {
+		t.Fatalf("deliver final block: %v", err)
+	}
+	initialOps := gateway.snapshotOperations()
+	if len(initialOps) < 2 {
+		t.Fatalf("expected initial final reply to split, got %#v", initialOps)
+	}
+	for _, op := range initialOps {
+		if op.Kind != feishu.OperationSendCard {
+			t.Fatalf("expected initial split send operations, got %#v", initialOps)
+		}
+	}
+	select {
+	case <-previewer.secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second-chance preview attempt")
+	}
+	ops := gateway.waitForOperationCount(len(initialOps)+1, 2*time.Second)
+	if len(ops) != len(initialOps)+1 {
+		t.Fatalf("expected one update after split final send, got %#v", ops)
+	}
+	update := ops[len(ops)-1]
+	if update.Kind != feishu.OperationUpdateCard || update.MessageID != initialOps[0].MessageID {
+		t.Fatalf("expected async patch to target only the primary split card, got %#v", update)
+	}
+	if !strings.Contains(update.CardBody, "[设计文档](https://p)") {
+		t.Fatalf("expected patched primary body to use rewritten preview link, got %#v", update.CardBody)
+	}
+	for _, op := range ops[len(initialOps):] {
+		if op.Kind == feishu.OperationSendCard {
+			t.Fatalf("expected no extra overflow cards during patch, got %#v", ops)
 		}
 	}
 }

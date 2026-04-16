@@ -225,7 +225,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 	}
 	a.recordUIEventDelivery(event, operations)
 	if didPreview {
-		a.maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID, event, previewReq, previewErr)
+		a.maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID, event, operations, previewReq, previewErr)
 	}
 	a.traceAssistantBlock(event)
 	return nil

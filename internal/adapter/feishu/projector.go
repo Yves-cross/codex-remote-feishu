@@ -44,6 +44,11 @@ type Operation struct {
 	CardUpdateMulti  bool
 	cardEnvelope     cardEnvelopeVersion
 	card             *cardDocument
+	finalSourceBody  string
+}
+
+func (operation Operation) FinalSourceBody() string {
+	return operation.finalSourceBody
 }
 
 const (
@@ -439,22 +444,9 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	if block.Kind == render.BlockAssistantCode {
 		body = fenced(block.Language, block.Text)
 	}
-	body = normalizeFinalCardMarkdown(body)
 	elements := p.finalBlockExtraElements(summary, finalSummary)
 	title := finalCardTitle(sourceMessagePreview)
-	return []Operation{{
-		Kind:             OperationSendCard,
-		GatewayID:        gatewayID,
-		SurfaceSessionID: surfaceSessionID,
-		ChatID:           chatID,
-		ReplyToMessageID: sourceMessageID,
-		CardTitle:        title,
-		CardBody:         body,
-		CardThemeKey:     cardThemeFinal,
-		CardElements:     elements,
-		cardEnvelope:     cardEnvelopeV2,
-		card:             finalReplyCardDocument(title, body, cardThemeFinal, elements),
-	}}
+	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
 }
 
 func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessageID string, supplement PreviewSupplement) (Operation, bool) {
@@ -509,6 +501,45 @@ func truncateFinalTitlePreview(text string) string {
 		return truncateFinalTitleWords(text, 10)
 	}
 	return truncateFinalTitleCharacters(text, 10)
+}
+
+func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, rawBody string, primaryElements []map[string]any) []Operation {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "✅ 最后答复"
+	}
+	chunks := splitFinalReplyBodies(rawBody, title, primaryElements)
+	if len(chunks) == 0 {
+		chunks = []string{rawBody}
+	}
+	ops := make([]Operation, 0, len(chunks))
+	for i, chunk := range chunks {
+		chunkTitle := title
+		elements := primaryElements
+		if i > 0 {
+			chunkTitle = "✅ 最后答复（续）"
+			elements = nil
+		}
+		body := normalizeFinalCardMarkdown(chunk)
+		op := Operation{
+			Kind:             OperationSendCard,
+			GatewayID:        gatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ReplyToMessageID: sourceMessageID,
+			CardTitle:        chunkTitle,
+			CardBody:         body,
+			CardThemeKey:     cardThemeFinal,
+			CardElements:     elements,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             finalReplyCardDocument(chunkTitle, body, cardThemeFinal, elements),
+		}
+		if i == 0 {
+			op.finalSourceBody = chunk
+		}
+		ops = append(ops, op)
+	}
+	return ops
 }
 
 func shouldUseWordBasedTitlePreview(text string) bool {

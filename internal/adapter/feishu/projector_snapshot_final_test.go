@@ -285,6 +285,101 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	}
 }
 
+func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testing.T) {
+	projector := NewProjector()
+	longBody := strings.Repeat("第一段说明包含较长的描述，以及 [设计文档](./docs/design.md)。\n第二行继续补充上下文。\n\n", 500)
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-long",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  longBody,
+			Final: true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 12 * time.Second,
+		},
+	})
+	if len(ops) < 2 {
+		t.Fatalf("expected oversized final reply to split into multiple cards, got %#v", ops)
+	}
+	if ops[0].CardTitle != "✅ 最后答复" {
+		t.Fatalf("expected primary final title, got %#v", ops[0].CardTitle)
+	}
+	if ops[0].ReplyToMessageID != "msg-long" {
+		t.Fatalf("expected primary final card to reply to source message, got %#v", ops[0])
+	}
+	if ops[0].finalSourceBody == "" {
+		t.Fatalf("expected primary final card to retain raw source body for follow-up patching, got %#v", ops[0])
+	}
+	if len(ops[0].CardElements) == 0 {
+		t.Fatalf("expected primary final card to keep footer elements, got %#v", ops[0])
+	}
+	for i, op := range ops {
+		if op.Kind != OperationSendCard {
+			t.Fatalf("expected send_card for chunk %d, got %#v", i, op)
+		}
+		if op.ReplyToMessageID != "msg-long" {
+			t.Fatalf("expected chunk %d to stay attached to original source reply, got %#v", i, op)
+		}
+		if i > 0 {
+			if op.CardTitle != "✅ 最后答复（续）" {
+				t.Fatalf("expected overflow title on chunk %d, got %#v", i, op.CardTitle)
+			}
+			if len(op.CardElements) != 0 {
+				t.Fatalf("expected overflow chunk %d to stay body-only, got %#v", i, op.CardElements)
+			}
+		}
+		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		size, err := jsonSize(payload)
+		if err != nil {
+			t.Fatalf("marshal chunk %d payload: %v", i, err)
+		}
+		if size > maxFeishuCardBytes {
+			t.Fatalf("expected chunk %d <= %d bytes, got %d", i, maxFeishuCardBytes, size)
+		}
+		if strings.Contains(op.CardBody, oversizedCardMessage) {
+			t.Fatalf("expected projector split to avoid gateway truncation marker on chunk %d, got %#v", i, op.CardBody)
+		}
+	}
+}
+
+func TestProjectFinalAssistantCodeBlockSplitsOversizedFenceSafely(t *testing.T) {
+	projector := NewProjector()
+	var code strings.Builder
+	for i := 0; i < 2000; i++ {
+		code.WriteString("line-")
+		code.WriteString(strings.Repeat("x", 20))
+		code.WriteString("\n")
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:            control.UIEventBlockCommitted,
+		SourceMessageID: "msg-code",
+		Block: &render.Block{
+			Kind:     render.BlockAssistantCode,
+			Language: "text",
+			Text:     code.String(),
+			Final:    true,
+		},
+	})
+	if len(ops) < 2 {
+		t.Fatalf("expected oversized code final reply to split, got %#v", ops)
+	}
+	for i, op := range ops {
+		if !strings.Contains(op.CardBody, "```text\n") || !strings.Contains(op.CardBody, "\n```") {
+			t.Fatalf("expected split code chunk %d to remain fenced, got %#v", i, op.CardBody)
+		}
+		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		size, err := jsonSize(payload)
+		if err != nil {
+			t.Fatalf("marshal chunk %d payload: %v", i, err)
+		}
+		if size > maxFeishuCardBytes {
+			t.Fatalf("expected fenced chunk %d <= %d bytes, got %d", i, maxFeishuCardBytes, size)
+		}
+	}
+}
+
 func TestProjectFinalAssistantBlockAppendsElapsedAfterFileChangeSummary(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

@@ -26,7 +26,7 @@ type secondChanceFinalPatchJob struct {
 	PreviewRequest       feishu.FinalBlockPreviewRequest
 }
 
-func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string, event control.UIEvent, previewReq feishu.FinalBlockPreviewRequest, rewriteErr error) {
+func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string, event control.UIEvent, operations []feishu.Operation, previewReq feishu.FinalBlockPreviewRequest, rewriteErr error) {
 	if a == nil || a.finalBlockPreviewer == nil || rewriteErr == nil || a.shuttingDown {
 		return
 	}
@@ -36,6 +36,13 @@ func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string
 	if previewReq.Block.Kind != render.BlockAssistantMarkdown || strings.TrimSpace(previewReq.Block.Text) == "" {
 		return
 	}
+	primary := firstFinalSendCard(operations)
+	if primary == nil || strings.TrimSpace(primary.FinalSourceBody()) == "" {
+		return
+	}
+	sentBlock := *event.Block
+	sentBlock.Text = primary.FinalSourceBody()
+	previewReq.Block = sentBlock
 	job := secondChanceFinalPatchJob{
 		GatewayID:            strings.TrimSpace(gatewayID),
 		ChatID:               strings.TrimSpace(chatID),
@@ -43,7 +50,7 @@ func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string
 		DaemonLifecycleID:    strings.TrimSpace(event.DaemonLifecycleID),
 		SourceMessageID:      strings.TrimSpace(event.SourceMessageID),
 		SourceMessagePreview: strings.TrimSpace(event.SourceMessagePreview),
-		SentBlock:            *event.Block,
+		SentBlock:            sentBlock,
 		PreviewRequest:       previewReq,
 	}
 	if event.FileChangeSummary != nil {
@@ -120,7 +127,7 @@ func (a *App) runSecondChanceFinalPatch(job secondChanceFinalPatchJob) {
 		FileChangeSummary:    job.FileChangeSummary,
 		FinalTurnSummary:     job.FinalTurnSummary,
 	})
-	if len(ops) == 0 {
+	if len(ops) != 1 {
 		return
 	}
 	op := ops[0]
@@ -161,6 +168,19 @@ func secondChanceFinalPreviewTimeout(base time.Duration) time.Duration {
 		return minSecondChanceFinalPreviewTimeout
 	}
 	return timeout
+}
+
+func firstFinalSendCard(operations []feishu.Operation) *feishu.Operation {
+	for i := range operations {
+		if operations[i].Kind != feishu.OperationSendCard {
+			continue
+		}
+		if strings.TrimSpace(operations[i].FinalSourceBody()) == "" {
+			continue
+		}
+		return &operations[i]
+	}
+	return nil
 }
 
 func sameFinalPatchBlock(left, right render.Block) bool {
