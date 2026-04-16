@@ -31,7 +31,7 @@ func (a *App) handleDaemonCommandLocked(command control.DaemonCommand) []control
 	case control.DaemonCommandDebug:
 		return a.handleDebugDaemonCommand(command)
 	case control.DaemonCommandCron:
-		return a.handleCronDaemonCommand(command)
+		return a.handleCronDaemonCommandLocked(command)
 	case control.DaemonCommandUpgrade:
 		return a.handleUpgradeDaemonCommand(command)
 	case control.DaemonCommandVSCodeMigrate:

@@ -11,13 +11,22 @@ import (
 )
 
 func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.shuttingDown {
+		return nil
+	}
+	return a.handleCronDaemonCommandLocked(command)
+}
+
+func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []control.UIEvent {
 	parsed, err := parseCronCommandText(command.Text)
 	if err != nil {
 		return cronUsageEvents(command.SurfaceSessionID, err.Error())
 	}
 	switch parsed.Mode {
 	case cronCommandShow:
-		catalog, err := a.prepareCronCatalog(command)
+		catalog, err := a.prepareCronCatalogLocked(command)
 		if err != nil {
 			return append([]control.UIEvent{
 				cronNoticeEvent(command.SurfaceSessionID, "cron_status_failed", fmt.Sprintf("Cron 状态读取失败：%v", err)),
@@ -110,15 +119,12 @@ func (a *App) cronBitableAPI(gatewayID string) (feishu.BitableAPI, error) {
 	return factory(strings.TrimSpace(gatewayID))
 }
 
-func (a *App) prepareCronCatalog(command control.DaemonCommand) (*control.UIEvent, error) {
-	a.mu.Lock()
+func (a *App) prepareCronCatalogLocked(command control.DaemonCommand) (*control.UIEvent, error) {
 	stateValue, err := a.loadCronStateLocked(false)
 	if err != nil {
-		a.mu.Unlock()
 		return nil, err
 	}
 	snapshot := cloneCronState(stateValue)
-	a.mu.Unlock()
 	ownerView := a.inspectCronOwnerView(snapshot)
 	return &control.UIEvent{
 		Kind:             control.UIEventFeishuDirectCommandCatalog,
