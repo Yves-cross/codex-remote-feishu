@@ -1,0 +1,4 @@
+interface:
+  display_name: "Issue 独立验收"
+  short_description: "GitHub issue 完成前的对齐验证与关闭建议"
+  default_prompt: "Use $issue-verifier to run an independent read-only acceptance pass for a nearly finished GitHub issue in this repository before closing it."

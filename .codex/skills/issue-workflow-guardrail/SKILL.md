@@ -1,6 +1,6 @@
 ---
 name: issue-workflow-guardrail
-description: "Use when handling a GitHub issue for this repository: run the fixed prepare/lint/finish workflow first, reassess the issue against the latest code, update issue state before acting, stop when the startability state changed, execute implementable work in staged delivery, keep plans synced back to the issue, and leave a validation-focused completion note when closing the issue."
+description: "Use when handling a GitHub issue for this repository, including raw issue shaping, implementability reassessment, parent/child issue orchestration, durable execution snapshots, product decision-gate handoff, staged execution, result roll-up, and verifier handoff. Run the fixed prepare/lint/finish workflow, keep the issue body current, and stop when the actionable state changed."
 ---
 
 # Issue Workflow Guardrail
@@ -10,11 +10,167 @@ Use this skill whenever the task is centered on a GitHub issue in this repositor
 Examples:
 
 - the user gives an issue number or URL
+- the issue is still raw and needs shaping before coding
 - the user asks to complete, triage, refine, or close an issue
+- the issue is large enough to need parent/child split or schedule management
+- multiple worker results must be rolled back into a mother issue
 - the issue may be blocked, underspecified, or waiting on clarification
 - the issue may have been opened by the user or by someone else
 
 Do not run a one-time cleanup pass over old issues. Normalize an issue only when it becomes active.
+
+For medium/large issue work, treat [docs/general/issue-orchestration-workflow.md](/data/dl/fschannel4/docs/general/issue-orchestration-workflow.md) as the durable process baseline and use this skill as the operational entrypoint.
+
+If repo-root `.codex/private/issue-orchestration-private.md` exists, read it after the public workflow doc and treat it as a local-only augmentation layer for orchestration heuristics, split quality, resume discipline, and product-decision timing. Do not assume that file exists in other clones.
+
+## Orchestration Model
+
+Use this skill as the repository's main issue orchestrator:
+
+- raw issue
+  - shape the issue into a stable problem statement
+  - decide whether it only has research closure or is ready for execution closure
+- parent issue
+  - hold the overall goal, schedule table, dependency order, and roll-up status
+  - prefer this mode when one issue would otherwise mix multiple goals or validation surfaces
+- child issue
+  - treat as the default worker unit
+  - do not hand it to implementation until it is an execution closure or a stable closure index
+- execution snapshot
+  - keep a durable current execution point and resume contract in the issue body or linked design doc
+- product decision gate
+  - when execution reaches a real product tradeoff, stop automation and hand back a minimal decision packet instead of guessing
+- verifier handoff
+  - when a medium/large issue is effectively complete, hand it to `$issue-verifier` for an independent read-only pass before close-out
+
+Prefer these closure levels:
+
+- `research closure`
+  - enough information to decide whether to proceed, split, or keep investigating
+- `execution closure`
+  - enough information for a worker to implement without rebuilding wide context
+
+If the active issue only reaches research closure, do not force direct implementation. Shape, split, or stop with the issue state updated.
+
+## Split and Roll-up Rules
+
+Split before coding when any of these are true:
+
+- the issue mixes multiple weakly related goals
+- the required background is no longer a single coherent closure
+- different parts need substantially different validation surfaces
+- the work is naturally parallelizable
+
+For a parent issue, keep the body or a linked design doc current with:
+
+- split structure
+- recommended order
+- dependency edges
+- parallel groups
+- current closure level for each unit
+- next recommended ready unit
+
+Roll results back into the parent issue whenever:
+
+- a worker finishes a child issue
+- a child issue changes the expected next stages
+- new findings invalidate the previous split or dependency assumptions
+
+Do not leave stage changes only in chat when they materially affect later execution.
+
+## Durable Execution Snapshot
+
+Do not rely on live chat context as the only execution memory.
+
+For medium/large issue work, maintain a durable execution snapshot in the active parent issue, child issue, or its linked design doc.
+
+The snapshot should contain at least:
+
+- current stage
+- current execution point
+- done
+- next step
+- current blocker
+- recently changed assumptions
+- last known-good consistent state
+- unfinished tail work
+- resume steps
+
+Update the snapshot at least:
+
+- at the end of every stage
+- before any normal stop path
+- before handing work to another worker
+- after a red inconsistency
+- before and after a product decision gate
+
+On resume, never continue from memory alone. Re-read the snapshot, linked closure material, and current code, then confirm the recorded next step is still valid. If not, refresh the snapshot first and only then continue.
+
+## Worker Boundary
+
+Workers own execution inside the current issue closure, not replanning outside it.
+
+Use this practical rule:
+
+- green inconsistency
+  - fix locally when goals, acceptance, dependencies, and sibling assumptions stay unchanged
+- yellow inconsistency
+  - do one bounded investigation
+  - continue only if the result still stays inside the current closure
+- red inconsistency
+  - stop local implementation
+  - update the issue with the contradiction
+  - return control to the orchestrating issue instead of repeatedly hacking through a broken assumption
+
+Common red signals:
+
+- goal or acceptance would need to change
+- dependency order would need to change
+- sibling issue assumptions are now invalid
+- the issue no longer forms a stable execution closure
+
+## Product Decision Gate
+
+Not every red inconsistency is purely technical.
+
+When execution hits a real product decision, do not keep pushing by guessing product intent.
+
+Treat it as a decision gate when any of these are true:
+
+- user-visible semantics would change depending on the choice
+- interaction or UX tradeoffs now matter to acceptance
+- a technical limitation forces a product compromise
+- multiple choices are implementable, but only product intent can decide the right one
+
+At a decision gate:
+
+1. stop autonomous implementation
+2. update the active parent issue or current issue with a dedicated `待决策` or `产品待拍板` section
+3. compress the problem into a minimal decision packet
+4. ask only for the decision that is actually needed
+5. after the user answers, sync the chosen direction back into the issue body before resuming work
+
+The minimal decision packet should contain:
+
+- trigger
+- current constraint or evidence
+- mutually exclusive options
+- impact of each option
+- recommended option
+- exact decision needed
+- affected child issues, stages, or validation surfaces
+
+Do not dump the whole project context back onto the user. The goal is to ask the smallest question that safely unblocks the workflow.
+
+## Verifier Hook
+
+Use `$issue-verifier` when:
+
+- implementation is done or nearly done
+- acceptance looks satisfied
+- you want an independent pass before closure
+
+The verifier pass is a role boundary, not just a longer self-review. Default to read-only verification unless the user explicitly asks for fixes as part of the same step.
 
 ## Workflow Modes
 
@@ -116,11 +272,14 @@ Only spend extra reasoning on the parts the scripts cannot decide:
 After `prepare` succeeds, read in this order:
 
 1. the current issue body
-2. current labels
-3. the latest comments
-4. the current code
+2. linked design doc or closure index when present
+3. current labels
+4. the latest comments
+5. the current code
 
 If later comments conflict with the body, treat the latest maintainer or user comment as the current direction. Update the body if that can be done cheaply and accurately.
+
+If a durable execution snapshot exists, treat it as the default restart point, but still verify it against the current code before acting.
 
 ## Body vs Comment
 
@@ -133,6 +292,7 @@ Use the issue body for durable structure:
 - related files
 - acceptance criteria
 - staged plan (`建议范围`) when work is not truly single-stage
+- execution snapshot (`当前执行点`, `恢复步骤`, and related fields) when work spans multiple stages or turns
 - implementation context (`实现参考`)
 - check context (`检查参考`)
 - low-priority deferred follow-ups in a dedicated `低优先级待办` section when they are too small to justify a standalone issue
@@ -160,10 +320,13 @@ When picking up or re-assessing an issue:
    - Mark missing original context as `待补充` when needed.
 5. If the issue is still too broad, narrow it or split follow-up issues before implementation.
 6. If staged implementation is expected, write the current staged plan into the issue body before coding.
+   - For larger work, also decide whether this issue should stay single-stage, become a parent issue, or be split into child issues.
 7. Once the issue is implementable, fill or refresh `实现参考`, `检查参考`, and `收尾参考`.
    - `实现参考`: recommended cut, key docs/files, current preferred solution, confirmed constraints
    - `检查参考`: risky flows, regression points, exact docs/tests to re-check
    - `收尾参考`: likely knowledge write-back targets such as issue body, linked design docs, docs/general, state-machine docs, AGENTS, or repo skills
+   - For multi-stage or multi-turn work, also create or refresh the execution snapshot instead of relying on chat memory.
+   - If a product decision gate already looks likely, prepare a `待决策` section early instead of waiting until implementation is confused.
 8. If later investigation or implementation changes the staged plan or any execution-context section materially, update the issue body before continuing.
 9. If work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, append it to `低优先级待办` in the active issue body instead of leaving it only in chat.
    - Keep entries concise and actionable.
@@ -210,6 +373,7 @@ When work cannot start, leave one concise comment that contains:
 - what reply or action would unblock the issue
 
 Keep it short and actionable. Do not restate the full issue body.
+If the blocker is a product decision gate, the comment should point to the in-body `待决策` section instead of duplicating all options in the comment.
 Before you stop on this path, prefer `finish --issue <number> --comment-file <file> --skip-checks` so `processing` is released mechanically.
 
 ## Implementation Rules
@@ -218,18 +382,22 @@ If the issue was already implementable and still is after reassessment:
 
 - do not leave a ritual “starting work” comment
 - implement against the refined issue
+- if the issue is actually serving as a parent issue, do not force coding in place; first refresh split/order/next-unit selection
 - before each implementation stage, re-read the issue body, latest comments, current code state, and `实现参考`
+- before each implementation stage, confirm the execution snapshot still matches reality; if not, update it before coding
 - before each implementation stage, re-run any repository skills already required by the task so the next step is based on current guidance
 - before validation/check work, re-read `检查参考`
 - if the best next stage or any execution-context section changed materially, update the issue body first instead of leaving the new plan only in a comment
 - prefer staged delivery for medium or large work
 - write the current staged plan into the issue or a linked design doc before stage 1
 - update the staged plan back to the issue whenever the plan or stage split changes
+- if implementation hits a product decision gate, stop and return a minimal decision packet instead of silently picking one branch
 - when you intentionally defer a tiny follow-up that is not worth a new issue, record it under `低优先级待办` before moving on
 - continue through all planned stages in the same task unless a major assumption collapsed and the remaining direction would materially diverge
 - every stage must include sufficient validation, not only compilation or superficial smoke checks
-- each stage should end with implementation, stage-scoped validation, and a local commit
+- each stage should end with implementation, stage-scoped validation, a refreshed execution snapshot, and a local commit
 - when the overall issue is finished, do not stop at “last stage implemented locally”; continue through publish/close-out work in the same turn unless blocked
+- for medium/large issue work, decide explicitly whether an independent verifier pass should run before close-out
 - posting a “locally complete” comment is not an acceptable substitute for commit/push/close when the user asked to complete the issue
 - validate the result
 - before any normal stop path, re-read `收尾参考` and decide whether durable knowledge changed enough to require write-back

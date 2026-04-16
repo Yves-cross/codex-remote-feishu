@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-16`
-> Summary: 新增 final message 对比审计文档，并补齐最新文档索引。
+> Summary: 新增 issue orchestration workflow 文档，并补齐最新文档索引。
 
 ## 1. 适用范围
 
@@ -119,6 +119,7 @@
 - [feishu-card-ui-state-machine.md](./general/feishu-card-ui-state-machine.md)
 - [go-test-strategy.md](./general/go-test-strategy.md)
 - [install-deploy-design.md](./general/install-deploy-design.md)
+- [issue-orchestration-workflow.md](./general/issue-orchestration-workflow.md)
 - [local-self-upgrade-flow.md](./general/local-self-upgrade-flow.md)
 - [release-roadmap-workflow.md](./general/release-roadmap-workflow.md)
 - [remote-surface-state-machine.md](./general/remote-surface-state-machine.md)

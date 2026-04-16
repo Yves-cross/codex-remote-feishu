@@ -102,7 +102,10 @@ Do not trigger only for pure copy/styling/logging/tests/refactor with no logic-c
 Use `.codex/skills/issue-workflow-guardrail/` when task is centered on a GitHub issue:
 
 - issue number or issue URL appears
+- raw issue needs shaping before execution
 - user asks to handle/complete/triage/refresh/close an issue
+- need parent/child issue split, schedule table, or staged orchestration
+- need result roll-up or next ready unit selection
 - need implementable-now reassessment / blocked-state update
 - need issue label/body/comment refinement
 
@@ -110,6 +113,18 @@ Mode override phrases:
 
 - force `fast`: `workflow:fast`, `fast path`, `快速处理`, `简化流程`
 - force `full`: `workflow:full`, `full path`, `完整流程`, `标准 issue workflow`
+
+### `issue-verifier`
+
+Use `.codex/skills/issue-verifier/` when issue work needs an independent validation pass:
+
+- `验收`
+- `独立验证`
+- `对齐验证`
+- `完成前复核`
+- medium/large issue is otherwise ready to close and needs a read-only acceptance check
+
+If the issue is still shaping, still missing execution closure, or still actively being implemented, stay on `issue-workflow-guardrail` first.
 
 ### `local-upgrade`
 
@@ -201,10 +216,18 @@ When corresponding logic carriers changed:
 ## GitHub Issue Workflow (Policy)
 
 - For medium/large issue work, use issue workflow skill and its fixed `prepare/lint/finish` entry points.
+- Raw issues are allowed to start rough; first shape them to at least research closure before trying to implement.
 - Do not start code assessment against known-stale checkout when worktree is clean.
 - Tiny fixes that can be finished immediately do not require opening/normalizing an issue.
+- Before handing a subtask to a worker, make sure the active child issue is an information closure or a stable closure index for execution.
+- Prefer parent issue + child issue orchestration when one issue would otherwise mix multiple goals, validation surfaces, or weakly related code areas.
 - When an issue is implementable and not truly single-stage, keep `建议范围`, `实现参考`, `检查参考`, and `收尾参考` current in the issue body.
+- For multi-stage or multi-turn issue work, keep a durable execution snapshot in the issue body or linked design doc, including at least `当前执行点`, `下一步`, `最后一致状态`, `未完成尾项`, and `恢复步骤`.
+- On resume, do not continue from chat memory alone. Re-read the execution snapshot and verify it against the current code and latest issue state before acting.
 - When issue work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, record it under a dedicated `低优先级待办` section in the active issue body instead of leaving it only in chat.
+- If implementation uncovers a red inconsistency that changes goals, acceptance, dependencies, or sibling issue assumptions, stop local patching and return the result to the orchestrating issue for replanning.
+- If issue work reaches a real product decision gate, do not guess. Add a dedicated `待决策` or `产品待拍板` section with the minimal decision packet, ask only for the smallest blocking decision, then resume after that decision is synced back into the issue body.
+- For medium/large finished issues, prefer an independent verifier pass before close-out.
 - Before `finish`, explicitly re-check whether durable knowledge changed enough to require syncing the issue body, linked docs, state-machine docs, or repo workflow guidance.
 - For issue work requested as `处理`, `完成`, or staged rollout, do not stop after local code/test completion while any of these remain unfinished without a real blocker:
   - commit
