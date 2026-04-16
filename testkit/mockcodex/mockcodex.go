@@ -17,6 +17,7 @@ type MockCodex struct {
 	EmitItemDeltas    bool
 	OmitFinalText     bool
 	RequireInitialize bool
+	InitializeSeen    bool
 	Initialized       bool
 	LastTurnStart     map[string]any
 	Responder         func(turn TurnStart) string
@@ -71,7 +72,15 @@ func (m *MockCodex) HandleRemoteCommand(raw []byte) ([][]byte, error) {
 
 	switch method {
 	case "initialize":
-		m.Initialized = true
+		if m.InitializeSeen {
+			return [][]byte{
+				mustJSON(map[string]any{"id": id, "error": map[string]any{
+					"code":    -32600,
+					"message": "Already initialized",
+				}}),
+			}, nil
+		}
+		m.InitializeSeen = true
 		return [][]byte{
 			mustJSON(map[string]any{"id": id, "result": map[string]any{
 				"userAgent":      "mockcodex/0.0.1",
@@ -80,6 +89,12 @@ func (m *MockCodex) HandleRemoteCommand(raw []byte) ([][]byte, error) {
 				"platformOs":     "linux",
 			}}),
 		}, nil
+	case "initialized":
+		if !m.InitializeSeen {
+			return nil, nil
+		}
+		m.Initialized = true
+		return nil, nil
 	case "thread/start":
 		if outputs := m.requireInitialized(id); outputs != nil {
 			return outputs, nil

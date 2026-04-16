@@ -2,7 +2,7 @@
 
 > Type: `inprogress`
 > Updated: `2026-04-16`
-> Summary: 对照 OpenAI 官方 Codex App Server 页面与 `openai/codex` 最新源码/schema（本轮复核到 HEAD `18d61f6923896aa273ae9a369d423ac75dd8963a`），按 VS Code 透传、relay/Feishu 归一化、headless 主动驱动三层审计当前仓库对各类状态机的遵循程度；本轮二次回写补上目标遵循策略、官方文档与 canonical schema 的漂移、遗漏的 realtime / MCP 启动 / skills 变化等状态机族群，以及后续实现优先级矩阵。
+> Summary: 对照 OpenAI 官方 Codex App Server 页面与 `openai/codex` 最新源码/schema（本轮复核到 HEAD `18d61f6923896aa273ae9a369d423ac75dd8963a`），按 VS Code 透传、relay/Feishu 归一化、headless 主动驱动三层审计当前仓库对各类状态机的遵循程度；本轮二次回写补上目标遵循策略、官方文档与 canonical schema 的漂移、遗漏的 realtime / MCP 启动 / skills 变化等状态机族群，并同步记录 `#228` 已补齐 headless `initialize -> initialized` 严格握手。
 
 ## 1. 审计范围与判定口径
 
@@ -92,22 +92,24 @@
 - 然后客户端还要发 `initialized`
 - 在这之前 server 可以拒绝其他请求
 
-当前实现结论：`部分遵循`
+当前实现结论：`遵循`
 
 - `VS Code 透传层`：
   - **大体可用**。wrapper 会把来自上游 client 的未知方法原样转发给 Codex，也会把未知响应/通知原样回传。
   - 所以如果本地 client 自己完整执行 `initialize -> initialized`，wrapper 一般不会破坏它。
   - 证据：`internal/app/wrapper/app_io.go`
 - `headless 主动驱动层`：
-  - **没有严格遵循**。目前只合成了 `initialize`，没有继续发 `initialized`。
-  - 证据：`internal/app/wrapper/app_headless.go`
+  - **已严格遵循**。wrapper 现在会在建立 relay client 之前先同步发送 `initialize`、等待对应 response、再发送 `initialized`，只有握手完成后才进入正常 stdout/relay 流程。
+  - 同步 bootstrap 期间如果提前读到其他 stdout 帧，会缓冲并回放给后续 `stdoutLoop`，避免吞掉非握手数据。
+  - 证据：`internal/app/wrapper/app_headless.go`、`internal/app/wrapper/app_headless_test.go`、`internal/app/wrapper/app_test.go`
 - `relay/Feishu 归一化层`：
-  - **没有建模**初始化状态，也没有把 `optOutNotificationMethods` 等连接级能力显式建模到 headless bootstrap。
+  - **仍未产品化连接级初始化状态**，也没有把 `optOutNotificationMethods` 等连接级能力显式建模到 headless bootstrap。
+  - 但 headless 已不再依赖“未初始化也能继续发业务请求”的侥幸行为。
 
 结论：
 
-- 这条在“本地 client 自己管”的 VS Code 模式下问题不大。
-- 但在 **headless 模式下不是严格遵循官方握手**，这是一个明确缺口。
+- 这条在 VS Code 透传与 headless 主动驱动两条主路径上都已经满足 canonical 握手顺序。
+- 当前剩余缺口主要是“连接级 capabilities / 初始化状态没有产品化暴露”，而不是握手 correctness 本身。
 
 ### 3.2 线程启动/恢复主路径：`thread/start | thread/resume | thread/fork`
 
@@ -503,7 +505,7 @@
 
 | 官方状态机 | 当前结论 | 备注 |
 | --- | --- | --- |
-| `initialize -> initialized` | 部分遵循 | VS Code 透传可用；headless 只发了 `initialize`，没发 `initialized` |
+| `initialize -> initialized` | 遵循 | VS Code 透传不乱序；headless 已在 relay 连接前同步补齐 `initialize -> initialized` 严格握手 |
 | `thread/start -> thread/started` | 遵循但有适配压缩 | relay remote prompt 已按这个顺序驱动 |
 | `thread/resume` | 遵循但有适配压缩 | remote prompt 恢复 thread 后再补 `turn/start` |
 | `thread/fork` | 未遵循/未实现 | 无 relay/headless command 建模 |
@@ -703,7 +705,7 @@
 如果后面要继续改，我建议按这个顺序讨论，而不是一次把所有官方 surface 都铺平：
 
 1. 先修“明确不严格遵循且已经影响我们产品判断 / correctness”的：
-   - `initialize -> initialized` 的 headless 缺口
+   - `initialize -> initialized` 的 headless 缺口（已由 `#228` 修复，后续不再作为待补 correctness 缺口）
    - `thread/status/changed`
    - `turn/diff/updated`
    - `model/rerouted`

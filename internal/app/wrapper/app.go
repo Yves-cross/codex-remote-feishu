@@ -231,7 +231,8 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		return 1, err
 	}
 
-	if err := a.bootstrapHeadlessCodex(childStdin, rawLogger, problems.Emit); err != nil {
+	bootstrappedStdout, err := a.bootstrapHeadlessCodex(childStdin, childStdout, rawLogger, problems.Emit)
+	if err != nil {
 		childCancel()
 		_ = cmd.Wait()
 		return 1, err
@@ -384,7 +385,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 
 	go writeLoop(ctx, childStdin, writeCh, errCh, a.debugf, rawLogger, problems.Emit)
 	go stdinLoop(ctx, stdin, writeCh, a.translator, client, errCh, a.debugf, rawLogger, problems.Emit)
-	go stdoutLoop(ctx, childStdout, stdout, writeCh, a.translator, client, commandResponses, errCh, a.debugf, rawLogger, problems.Emit)
+	go stdoutLoop(ctx, bootstrappedStdout, stdout, writeCh, a.translator, client, commandResponses, errCh, a.debugf, rawLogger, problems.Emit)
 	go streamCopy(childStderr, stderr, errCh)
 
 	waitErr := make(chan error, 1)

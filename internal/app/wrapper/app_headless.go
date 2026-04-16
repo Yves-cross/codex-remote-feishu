@@ -1,7 +1,10 @@
 package wrapper
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 
@@ -9,26 +12,60 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 )
 
-func (a *App) bootstrapHeadlessCodex(childStdin io.Writer, rawLogger *debuglog.RawLogger, reportProblem func(agentproto.ErrorInfo)) error {
-	frames, err := a.syntheticBootstrapFrames()
-	if err != nil || len(frames) == 0 {
-		return err
+const relayBootstrapInitializeID = "relay-bootstrap-initialize"
+
+func (a *App) bootstrapHeadlessCodex(childStdin io.Writer, childStdout io.Reader, rawLogger *debuglog.RawLogger, reportProblem func(agentproto.ErrorInfo)) (io.Reader, error) {
+	initializeFrame, err := a.syntheticInitializeFrame()
+	if err != nil || len(initializeFrame) == 0 {
+		return childStdout, err
 	}
-	a.debugf("headless bootstrap: frames=%s", summarizeFrames(frames))
-	for _, frame := range frames {
-		if err := writeCodexFrame(childStdin, frame, a.debugf, rawLogger, reportProblem); err != nil {
-			return err
+
+	a.debugf("headless bootstrap: sending initialize: %s", summarizeFrame(initializeFrame))
+	if err := writeCodexFrame(childStdin, initializeFrame, a.debugf, rawLogger, reportProblem); err != nil {
+		return nil, err
+	}
+
+	reader := bufio.NewReader(childStdout)
+	var replay bytes.Buffer
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			logRawFrame(rawLogger, "codex.stdout", "in", line, "", "")
+			a.debugf("headless bootstrap: stdout from codex: %s", summarizeFrame(line))
+			matched, err := matchBootstrapInitializeResponse(line)
+			if err != nil {
+				return nil, err
+			}
+			if matched {
+				initializedFrame, err := a.syntheticInitializedFrame()
+				if err != nil {
+					return nil, err
+				}
+				a.debugf("headless bootstrap: initialize acknowledged, sending initialized")
+				if err := writeCodexFrame(childStdin, initializedFrame, a.debugf, rawLogger, reportProblem); err != nil {
+					return nil, err
+				}
+				return io.MultiReader(bytes.NewReader(replay.Bytes()), reader), nil
+			}
+			replay.Write(line)
 		}
+
+		if readErr == nil {
+			continue
+		}
+		if readErr == io.EOF {
+			return nil, fmt.Errorf("headless bootstrap: initialize response %q not received before codex stdout closed", relayBootstrapInitializeID)
+		}
+		return nil, readErr
 	}
-	return nil
 }
 
-func (a *App) syntheticBootstrapFrames() ([][]byte, error) {
+func (a *App) syntheticInitializeFrame() ([]byte, error) {
 	if !strings.EqualFold(strings.TrimSpace(a.config.Source), "headless") {
 		return nil, nil
 	}
 	payload := map[string]any{
-		"id":     "relay-bootstrap-initialize",
+		"id":     relayBootstrapInitializeID,
 		"method": "initialize",
 		"params": map[string]any{
 			"clientInfo": map[string]any{
@@ -45,5 +82,36 @@ func (a *App) syntheticBootstrapFrames() ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return [][]byte{append(bytes, '\n')}, nil
+	return append(bytes, '\n'), nil
+}
+
+func (a *App) syntheticInitializedFrame() ([]byte, error) {
+	if !strings.EqualFold(strings.TrimSpace(a.config.Source), "headless") {
+		return nil, nil
+	}
+	bytes, err := json.Marshal(map[string]any{
+		"method": "initialized",
+		"params": map[string]any{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(bytes, '\n'), nil
+}
+
+func matchBootstrapInitializeResponse(line []byte) (bool, error) {
+	var message map[string]any
+	if err := json.Unmarshal(line, &message); err != nil {
+		return false, nil
+	}
+	if lookupStringFromMap(message, "id") != relayBootstrapInitializeID {
+		return false, nil
+	}
+	if errMsg := strings.TrimSpace(extractJSONRPCErrorMessage(message)); errMsg != "" {
+		return true, fmt.Errorf("headless bootstrap initialize failed: %s", errMsg)
+	}
+	if _, ok := message["result"]; !ok {
+		return true, fmt.Errorf("headless bootstrap initialize response missing result")
+	}
+	return true, nil
 }

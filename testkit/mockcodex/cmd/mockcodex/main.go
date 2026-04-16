@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	requireInitialize := flag.Bool("require-initialize", false, "require initialize before other requests")
+	requireInitialize := flag.Bool("require-initialize", false, "require initialize/initialized handshake before other requests")
 	noAutoComplete := flag.Bool("no-auto-complete", false, "keep turns active until interrupted or completed manually")
 	flag.Parse()
 
