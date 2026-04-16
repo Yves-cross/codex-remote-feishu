@@ -390,7 +390,7 @@ func instanceWorkspaceSelectionKeys(inst *state.InstanceRecord) []string {
 		if !threadBelongsToInstanceWorkspace(inst, thread) {
 			continue
 		}
-		key := state.ResolveWorkspaceKey(thread.CWD)
+		key := normalizeWorkspaceClaimKey(thread.CWD)
 		if key == "" {
 			continue
 		}
@@ -435,7 +435,7 @@ func workspaceVisibleThreads(inst *state.InstanceRecord, workspaceKey string) []
 		if !threadBelongsToInstanceWorkspace(inst, thread) {
 			continue
 		}
-		if state.ResolveWorkspaceKey(thread.CWD) != workspaceKey {
+		if normalizeWorkspaceClaimKey(thread.CWD) != workspaceKey {
 			continue
 		}
 		threads = append(threads, thread)
@@ -450,8 +450,8 @@ func threadBelongsToInstanceWorkspace(inst *state.InstanceRecord, thread *state.
 	if isVSCodeInstance(inst) {
 		return true
 	}
-	root := state.NormalizeWorkspaceKey(inst.WorkspaceRoot)
-	cwd := state.NormalizeWorkspaceKey(thread.CWD)
+	root := normalizeWorkspaceClaimKey(inst.WorkspaceRoot)
+	cwd := normalizeWorkspaceClaimKey(thread.CWD)
 	if root == "" || cwd == "" {
 		return true
 	}

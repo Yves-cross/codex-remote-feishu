@@ -2,7 +2,9 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -77,16 +79,54 @@ func (s *Service) openWorkspaceCreatePicker(surface *state.SurfaceConsoleRecord,
 	if strings.TrimSpace(initialPath) == "" {
 		initialPath = string(filepath.Separator)
 	}
+	rootPath := workspaceCreatePickerRoot(initialPath)
 	return s.openPathPicker(surface, surface.ActorUserID, control.PathPickerRequest{
 		Mode:         control.PathPickerModeDirectory,
 		Title:        "选择要接入的目录",
-		RootPath:     string(filepath.Separator),
+		RootPath:     rootPath,
 		InitialPath:  initialPath,
 		Hint:         strings.TrimSpace(hint),
 		ConfirmLabel: strings.TrimSpace(firstNonEmpty(confirmLabel, "接入为工作区")),
 		CancelLabel:  "取消",
 		ConsumerKind: strings.TrimSpace(consumerKind),
 	})
+}
+
+func workspaceCreatePickerRoot(initialPath string) string {
+	return workspaceCreatePickerRootForGOOS(runtime.GOOS, initialPath)
+}
+
+func workspaceCreatePickerRootForGOOS(goos, initialPath string) string {
+	initialPath = strings.TrimSpace(initialPath)
+	switch strings.ToLower(strings.TrimSpace(goos)) {
+	case "windows":
+		for _, candidate := range []string{initialPath, windowsWorkspaceCreateFallbackPath()} {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == "" {
+				continue
+			}
+			if volume := windowsVolumeRoot(candidate); volume != "" {
+				return volume
+			}
+		}
+	}
+	return string(filepath.Separator)
+}
+
+func windowsWorkspaceCreateFallbackPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(home)
+}
+
+func windowsVolumeRoot(path string) string {
+	path = strings.TrimSpace(path)
+	if !isWindowsVolumePath(path) {
+		return ""
+	}
+	return path[:2] + string(filepath.Separator)
 }
 
 func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {

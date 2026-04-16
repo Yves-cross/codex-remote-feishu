@@ -1,6 +1,9 @@
 package orchestrator
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -634,6 +637,66 @@ func TestTargetPickerAddWorkspacePathPickerConfirmEntersNewThreadReadyAndClearsS
 	}
 	if !sawReady {
 		t.Fatalf("expected new-thread ready notice after path confirm, got %#v", confirmEvents)
+	}
+}
+
+func TestTargetPickerAddWorkspacePathPickerConfirmTreatsSymlinkedCurrentWorkspaceAsSameWorkspace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink setup is not reliable on windows CI")
+	}
+
+	now := time.Date(2026, 4, 14, 15, 50, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	realWorkspace := filepath.Join(root, "real-workspace")
+	if err := os.MkdirAll(realWorkspace, 0o755); err != nil {
+		t.Fatalf("MkdirAll(realWorkspace): %v", err)
+	}
+	linkWorkspace := filepath.Join(root, "link-workspace")
+	if err := os.Symlink(realWorkspace, linkWorkspace); err != nil {
+		t.Fatalf("Symlink(%q -> %q): %v", linkWorkspace, realWorkspace, err)
+	}
+
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-web",
+		DisplayName:   "web",
+		WorkspaceRoot: linkWorkspace,
+		WorkspaceKey:  linkWorkspace,
+		ShortName:     "web",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachWorkspace,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		WorkspaceKey:     linkWorkspace,
+	})
+	surface := svc.root.Surfaces["surface-1"]
+	pathView := singlePathPickerEvent(t, svc.openTargetPickerWorkspaceCreatePicker(surface))
+
+	confirmEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pathView.PickerID,
+	})
+	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, realWorkspace) {
+		t.Fatalf("expected symlinked current workspace to stay on prepared new-thread route, got %#v", surface)
+	}
+	if surface.PendingHeadless != nil {
+		t.Fatalf("did not expect symlinked current workspace to start headless launch, got %#v", surface.PendingHeadless)
+	}
+	var sawReady bool
+	for _, event := range confirmEvents {
+		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
+			sawReady = true
+		}
+	}
+	if !sawReady {
+		t.Fatalf("expected new-thread-ready notice after symlinked workspace confirm, got %#v", confirmEvents)
 	}
 }
 

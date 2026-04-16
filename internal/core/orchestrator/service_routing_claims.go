@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -30,14 +31,52 @@ func (s *Service) surfaceThreadPickRouteMode(surface *state.SurfaceConsoleRecord
 }
 
 func normalizeWorkspaceClaimKey(value string) string {
-	return state.ResolveWorkspaceKey(value)
+	value = state.ResolveWorkspaceKey(value)
+	if value == "" {
+		return ""
+	}
+	if !looksLikeWorkspacePath(value) {
+		return value
+	}
+	if resolved, err := state.ResolveWorkspaceRootOnHost(value); err == nil {
+		if resolved = state.ResolveWorkspaceKey(resolved); resolved != "" {
+			return resolved
+		}
+	}
+	return value
+}
+
+func looksLikeWorkspacePath(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if filepath.IsAbs(value) {
+		return true
+	}
+	if isWindowsVolumePath(value) {
+		return true
+	}
+	return strings.Contains(value, "/") || strings.Contains(value, `\`)
+}
+
+func isWindowsVolumePath(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || value[1] != ':' {
+		return false
+	}
+	drive := value[0]
+	return (drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')
 }
 
 func instanceWorkspaceClaimKey(inst *state.InstanceRecord) string {
 	if inst == nil {
 		return ""
 	}
-	return state.ResolveWorkspaceKey(inst.WorkspaceKey, inst.WorkspaceRoot)
+	if key := normalizeWorkspaceClaimKey(inst.WorkspaceKey); key != "" {
+		return key
+	}
+	return normalizeWorkspaceClaimKey(inst.WorkspaceRoot)
 }
 
 func mergedThreadWorkspaceClaimKey(view *mergedThreadView) string {
