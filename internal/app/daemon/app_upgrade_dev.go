@@ -136,7 +136,7 @@ func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, m
 	pending.ChatID = a.service.SurfaceChatID(request.SurfaceSessionID)
 	pending.ActorUserID = a.service.SurfaceActorUserID(request.SurfaceSessionID)
 	pending.SourceMessageID = request.SourceMessageID
-	if a.surfaceIsIdleForUpgradeLocked(request.SurfaceSessionID) {
+	if a.surfaceAllowsManualUpgradePromptLocked(request.SurfaceSessionID) {
 		events := a.promptPendingUpgradeOnSurfaceLocked(request.SurfaceSessionID, stateValue, completedAt)
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
 			return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级状态失败：%v", err))}

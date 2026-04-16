@@ -399,7 +399,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 
 只要 `PendingHeadless != nil`：
 
-1. 允许：`/status`、`/autowhip`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 的兼容提示、消息撤回、reaction。
+1. 允许：`/status`、`/autowhip`、`/debug`、`/upgrade`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 的兼容提示、消息撤回、reaction。
 2. 其余 surface action 全部在 `ApplySurfaceAction()` 顶层被拦截。
 
 这意味着：
@@ -415,6 +415,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
    1. 启动阶段默认静默，不额外发 “headless_starting”。
    2. 成功后只发一条恢复成功 notice。
    3. 失败或超时后只发一条恢复失败 notice，并回到 `R0 Detached`。
+7. `PendingHeadless.AutoRestore=true` 时，手动 `/upgrade latest` / `/upgrade dev` 的检查结果 prompt 不再因为这条后台恢复占位被判成“当前窗口不空闲”；自动升级提示仍保持保守，不会优先挑这种 surface 弹卡。
 
 ### 4.4 选择卡片不再是服务端持久 modal 状态
 
@@ -1104,7 +1105,7 @@ transport degraded retained attachment
 
 | 覆盖状态 | 当前行为 |
 | --- | --- |
-| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autowhip`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效 |
+| `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autowhip`、`/debug`、`/upgrade`、`/mode`、`/detach`、旧 `/newinstance` / 旧 `/killinstance` / 历史 `resume_headless_thread` 兼容提示、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效。若当前 pending 只是后台 auto-restore 占位，手动 `/upgrade latest` / `/upgrade dev` 允许继续弹候选升级卡 |
 | `G2 PendingRequest` | 普通文本、图片、`/new`、`/compact` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。通用 approval 现在覆盖 approval、`approval_command`、`approval_file_change`、`approval_network`，并直接按归一化后的 `availableDecisions` 响应，当前包含 `accept`、`acceptForSession`、`decline`、`cancel`；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；用户点击“提交答案”后若仍有未答题，会先进入确认态，再决定是否留空提交并清 gate。顶层 `tool/requestUserInput` 与 `item` alias，以及 orchestrator 本地发起的 Git 导入参数表单，共用这套状态机。`permissions_request_approval` 现在会投影成权限授予卡，支持“允许本次 / 本会话允许 / 拒绝”；`mcp_server_elicitation` 现在会按 mode 投影成“继续/拒绝/取消”卡，或带 schema 派生字段的表单卡。表单型 elicitation 也会暂存局部答案，并在 `request_revision` 上做 same-daemon freshness 校验 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、`/new`、`/compact`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 CommandCapture` | 当前只可能来自旧 runtime 残留兼容态；下一条普通文本会被直接转换成 `/model <输入>` 并立即应用；图片会被拒绝；新的 slash command 或卡片动作会直接清掉这次 capture；超时后会发 `command_capture_expired` 并提示重新打开 `/model` 卡片 |

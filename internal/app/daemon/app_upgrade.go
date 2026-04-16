@@ -315,7 +315,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 			pending.ActorUserID = a.service.SurfaceActorUserID(request.SurfaceSessionID)
 			pending.SourceMessageID = request.SourceMessageID
 		}
-		if a.surfaceIsIdleForUpgradeLocked(request.SurfaceSessionID) {
+		if a.surfaceAllowsManualUpgradePromptLocked(request.SurfaceSessionID) {
 			events := a.promptPendingUpgradeOnSurfaceLocked(request.SurfaceSessionID, stateValue, completedAt)
 			if err := a.writeUpgradeStateLocked(stateValue); err != nil {
 				log.Printf("upgrade check write state before prompt failed: %v", err)
@@ -531,8 +531,32 @@ func (a *App) surfaceIsIdleForUpgradeLocked(surfaceID string) bool {
 	return a.surfaceIsIdleForUpgrade(surface)
 }
 
+func (a *App) surfaceAllowsManualUpgradePromptLocked(surfaceID string) bool {
+	surface := a.surfaceByIDLocked(surfaceID)
+	return a.surfaceAllowsManualUpgradePrompt(surface)
+}
+
 func (a *App) surfaceIsIdleForUpgrade(surface *state.SurfaceConsoleRecord) bool {
-	if surface == nil || surface.Abandoning || surface.PendingHeadless != nil {
+	if surface == nil || surface.Abandoning {
+		return false
+	}
+	if pending := surface.PendingHeadless; pending != nil {
+		return false
+	}
+	if surface.ActiveQueueItemID != "" || len(surface.QueuedQueueItemIDs) > 0 {
+		return false
+	}
+	if surface.ActiveRequestCapture != nil || len(surface.PendingRequests) > 0 {
+		return false
+	}
+	return true
+}
+
+func (a *App) surfaceAllowsManualUpgradePrompt(surface *state.SurfaceConsoleRecord) bool {
+	if surface == nil || surface.Abandoning {
+		return false
+	}
+	if pending := surface.PendingHeadless; pending != nil && !pending.AutoRestore {
 		return false
 	}
 	if surface.ActiveQueueItemID != "" || len(surface.QueuedQueueItemIDs) > 0 {

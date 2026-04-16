@@ -11,6 +11,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/externalaccess"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 	"github.com/kxn/codex-remote-feishu/internal/upgradeshim"
@@ -172,6 +173,68 @@ func TestTickDoesNotAutoCheckOrPromptUpgrade(t *testing.T) {
 		if op.CardTitle == "发现可升级版本" {
 			t.Fatalf("expected no automatic upgrade prompt, got %#v", op)
 		}
+	}
+}
+
+func TestUpgradeLatestManualCheckPromptsDuringAutoRestorePendingHeadless(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, statePath := newUpgradeTestApp(t, gateway)
+	app.upgradeLookup = func(context.Context, install.ReleaseTrack) (install.ReleaseInfo, error) {
+		return install.ReleaseInfo{TagName: "v1.1.0"}, nil
+	}
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionStatus,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	app.mu.Lock()
+	surface := app.surfaceByIDLocked("feishu:chat:1")
+	if surface == nil {
+		app.mu.Unlock()
+		t.Fatal("expected surface to exist")
+	}
+	surface.PendingHeadless = &state.HeadlessLaunchRecord{
+		InstanceID:  "inst-headless-1",
+		ThreadID:    "thread-1",
+		ThreadTitle: "修复登录流程",
+		ThreadCWD:   "/data/dl/droid",
+		AutoRestore: true,
+		RequestedAt: time.Now().UTC(),
+		ExpiresAt:   time.Now().UTC().Add(time.Minute),
+		Status:      state.HeadlessLaunchStarting,
+	}
+	app.mu.Unlock()
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUpgradeCommand,
+		SurfaceSessionID: "feishu:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "msg-1",
+		Text:             "/upgrade latest",
+	})
+
+	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
+		for _, op := range ops {
+			if op.SurfaceSessionID == "feishu:chat:1" && op.CardTitle == "发现可升级版本" {
+				return true
+			}
+		}
+		return false
+	})
+
+	updated, err := install.LoadState(statePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if updated.PendingUpgrade == nil {
+		t.Fatal("expected pending upgrade to be recorded")
+	}
+	if updated.PendingUpgrade.Phase != install.PendingUpgradePhasePrompted {
+		t.Fatalf("pending phase = %q, want %q", updated.PendingUpgrade.Phase, install.PendingUpgradePhasePrompted)
 	}
 }
 
