@@ -432,17 +432,22 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 
 func (a *App) loadUpgradeStateLocked(create bool) (install.InstallState, bool, error) {
 	path := a.installStatePath()
+	configPath := strings.TrimSpace(a.serverIdentity.ConfigPath)
+
+	a.upgradeStateIOMu.Lock()
+	a.mu.Unlock()
 	statePtr, err := loadInstallStateIfPresent(path)
+	currentBinary, binaryErr := a.currentBinaryPath()
+	a.upgradeStateIOMu.Unlock()
+	a.mu.Lock()
 	if err != nil {
 		return install.InstallState{}, false, err
 	}
 	if statePtr == nil && !create {
 		return install.InstallState{}, false, nil
 	}
-
-	currentBinary, err := a.currentBinaryPath()
-	if err != nil {
-		return install.InstallState{}, false, err
+	if binaryErr != nil {
+		return install.InstallState{}, false, binaryErr
 	}
 
 	var stateValue install.InstallState
@@ -456,7 +461,7 @@ func (a *App) loadUpgradeStateLocked(create bool) (install.InstallState, bool, e
 		InstalledBinary: currentBinary,
 		CurrentVersion:  a.currentBinaryVersion(),
 	})
-	stateValue.ConfigPath = firstNonEmpty(strings.TrimSpace(stateValue.ConfigPath), strings.TrimSpace(a.serverIdentity.ConfigPath))
+	stateValue.ConfigPath = firstNonEmpty(strings.TrimSpace(stateValue.ConfigPath), configPath)
 	stateValue.StatePath = path
 	stateValue.InstalledBinary = firstNonEmpty(strings.TrimSpace(stateValue.InstalledBinary), currentBinary)
 	stateValue.InstalledWrapperBinary = firstNonEmpty(strings.TrimSpace(stateValue.InstalledWrapperBinary), currentBinary)
@@ -469,7 +474,12 @@ func (a *App) writeUpgradeStateLocked(stateValue install.InstallState) error {
 	if strings.TrimSpace(stateValue.StatePath) == "" {
 		stateValue.StatePath = a.installStatePath()
 	}
-	return install.WriteState(stateValue.StatePath, stateValue)
+	a.upgradeStateIOMu.Lock()
+	a.mu.Unlock()
+	err := install.WriteState(stateValue.StatePath, stateValue)
+	a.upgradeStateIOMu.Unlock()
+	a.mu.Lock()
+	return err
 }
 
 func (a *App) selectIdleSurfaceLocked(preferredSurfaceID string) *state.SurfaceConsoleRecord {

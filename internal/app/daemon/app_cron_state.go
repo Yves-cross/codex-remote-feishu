@@ -149,10 +149,31 @@ func (a *App) loadCronStateLocked(create bool) (*cronStateFile, error) {
 		}
 		return a.cronState, nil
 	}
-	a.cronLoaded = true
-	raw, err := os.ReadFile(a.cronStatePath())
+	path := a.cronStatePath()
+	a.cronStateIOMu.Lock()
+	a.mu.Unlock()
+	raw, err := os.ReadFile(path)
+	a.cronStateIOMu.Unlock()
+	a.mu.Lock()
+	if a.cronLoaded {
+		if a.cronState != nil {
+			a.cronState = normalizeCronState(*a.cronState)
+		}
+		if a.cronState == nil && create {
+			stateValue, createErr := a.newCronStateLocked()
+			if createErr != nil {
+				return nil, createErr
+			}
+			a.cronState = stateValue
+			if err := a.writeCronStateLocked(); err != nil {
+				return nil, err
+			}
+		}
+		return a.cronState, nil
+	}
 	switch {
 	case os.IsNotExist(err):
+		a.cronLoaded = true
 		if !create {
 			return nil, nil
 		}
@@ -173,6 +194,7 @@ func (a *App) loadCronStateLocked(create bool) (*cronStateFile, error) {
 		return nil, err
 	}
 	stateValue = *normalizeCronState(stateValue)
+	a.cronLoaded = true
 	a.cronState = &stateValue
 	return a.cronState, nil
 }
@@ -210,9 +232,20 @@ func (a *App) writeCronStateLocked() error {
 	if a.cronState == nil {
 		return nil
 	}
+	updatedAt := time.Now().UTC()
 	a.cronState.SchemaVersion = cronStateSchemaVersion
-	a.cronState.UpdatedAt = time.Now().UTC()
-	return writeJSONFileAtomic(a.cronStatePath(), a.cronState, 0o600)
+	a.cronState.UpdatedAt = updatedAt
+	snapshot := cloneCronState(a.cronState)
+	if snapshot == nil {
+		return nil
+	}
+	path := a.cronStatePath()
+	a.cronStateIOMu.Lock()
+	a.mu.Unlock()
+	err := writeJSONFileAtomic(path, snapshot, 0o600)
+	a.cronStateIOMu.Unlock()
+	a.mu.Lock()
+	return err
 }
 
 func (a *App) cronInstanceMetadataLocked() (string, string, error) {

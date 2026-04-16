@@ -137,6 +137,8 @@ type App struct {
 	ingressRunMu       sync.Mutex
 	relayConnMu        sync.Mutex
 	feishuPermissionMu sync.RWMutex
+	upgradeStateIOMu   sync.Mutex
+	cronStateIOMu      sync.Mutex
 
 	pendingGatewayNotices           map[string][]control.UIEvent
 	headlessRuntime                 HeadlessRuntimeConfig
