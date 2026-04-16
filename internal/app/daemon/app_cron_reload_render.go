@@ -89,7 +89,7 @@ func cronReloadErrorNoticeLine(item cronReloadError) string {
 	if name != "" {
 		parts = append(parts, fmt.Sprintf("`%s`", name))
 	}
-	location := strings.TrimSpace(item.TableName)
+	location := cronReloadTableLabel(item.TableName)
 	if item.RowNumber > 0 {
 		location = fmt.Sprintf("%s 第 %d 行", firstNonEmpty(location, "任务配置表"), item.RowNumber)
 	}
@@ -106,4 +106,16 @@ func cronReloadErrorNoticeLine(item cronReloadError) string {
 		parts = append(parts, message)
 	}
 	return strings.Join(parts, "｜")
+}
+
+func cronReloadTableLabel(name string) string {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return ""
+	case strings.HasSuffix(name, "表"):
+		return name
+	default:
+		return name + "表"
+	}
 }

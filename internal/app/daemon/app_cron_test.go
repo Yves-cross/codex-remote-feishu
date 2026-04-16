@@ -858,7 +858,7 @@ func TestCronReloadNoticeShowsStructuredSections(t *testing.T) {
 		"本次停止：",
 		"`Delete`",
 		"配置错误：",
-		"任务配置 第 3 行",
+		"任务配置表 第 3 行",
 		"字段：提示词",
 		"记录：rec-error",
 	} {
