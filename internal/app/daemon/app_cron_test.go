@@ -628,6 +628,140 @@ func TestCronReloadUsesResolvedOwnerGateway(t *testing.T) {
 	}
 }
 
+func TestCronReloadResultTracksLoadedDisabledStoppedAndErrors(t *testing.T) {
+	api := &fakeCronBitableAPI{
+		recordsByTable: map[string][]*larkbitable.AppTableRecord{
+			"tbl-workspaces": {{
+				RecordId: stringPtr("rec-workspace-1"),
+				Fields: map[string]any{
+					"工作区名称": "project",
+					"工作区键":  "/tmp/project",
+					"当前状态":  "可用",
+				},
+			}},
+			"tbl-tasks": {
+				{
+					RecordId: stringPtr("rec-keep"),
+					Fields: map[string]any{
+						"任务名":    "Keep",
+						"启用":     true,
+						"调度类型":   cronScheduleTypeInterval,
+						"间隔":     "15分钟",
+						"工作区":    []any{"rec-workspace-1"},
+						"提示词":    "keep running",
+						"超时（分钟）": "20",
+					},
+				},
+				{
+					RecordId: stringPtr("rec-add"),
+					Fields: map[string]any{
+						"任务名":  "Add",
+						"启用":   true,
+						"调度类型": cronScheduleTypeDaily,
+						"调度时间": "09:30",
+						"工作区":  []any{"rec-workspace-1"},
+						"提示词":  "daily check",
+					},
+				},
+				{
+					RecordId: stringPtr("rec-disable"),
+					Fields: map[string]any{
+						"任务名":  "Disable",
+						"启用":   false,
+						"调度类型": cronScheduleTypeInterval,
+						"间隔":   "30分钟",
+						"工作区":  []any{"rec-workspace-1"},
+						"提示词":  "disabled for now",
+					},
+				},
+				{
+					RecordId: stringPtr("rec-error"),
+					Fields: map[string]any{
+						"任务名":  "Broken",
+						"启用":   true,
+						"调度类型": cronScheduleTypeInterval,
+						"间隔":   "15分钟",
+						"工作区":  []any{"rec-workspace-1"},
+					},
+				},
+			},
+		},
+	}
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	setCronGatewayLookup(app, "gateway-1", "app-1")
+	app.headlessRuntime.Paths.StateDir = t.TempDir()
+	app.cronLoaded = true
+	app.cronState = &cronStateFile{
+		SchemaVersion:    cronStateSchemaVersion,
+		InstanceScopeKey: "stable",
+		InstanceLabel:    "stable",
+		GatewayID:        "gateway-1",
+		OwnerGatewayID:   "gateway-1",
+		OwnerAppID:       "app-1",
+		OwnerBoundAt:     time.Now().UTC().Add(-time.Hour),
+		Bitable: &cronBitableState{
+			AppToken: "app-cron",
+			Tables: cronTableIDs{
+				Tasks:      "tbl-tasks",
+				Workspaces: "tbl-workspaces",
+			},
+		},
+		Jobs: []cronJobState{
+			{RecordID: "rec-keep", Name: "Keep", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 15, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(15 * time.Minute)},
+			{RecordID: "rec-disable", Name: "Disable", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 30, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(30 * time.Minute)},
+			{RecordID: "rec-delete", Name: "Delete", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 10, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(10 * time.Minute)},
+			{RecordID: "rec-error", Name: "Broken", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 15, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(15 * time.Minute)},
+		},
+	}
+	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+		if gatewayID != "gateway-1" {
+			return nil, fmt.Errorf("unexpected gateway %q", gatewayID)
+		}
+		return api, nil
+	}
+
+	result, err := app.reloadCronJobsResultNow(control.DaemonCommand{GatewayID: "gateway-1", SurfaceSessionID: "surface-1"})
+	if err != nil {
+		t.Fatalf("reloadCronJobsResultNow: %v", err)
+	}
+	if len(result.Loaded) != 2 {
+		t.Fatalf("loaded = %#v, want 2", result.Loaded)
+	}
+	if result.Loaded[0].RecordID != "rec-keep" || result.Loaded[0].ChangeKind != cronReloadTaskChangeKept {
+		t.Fatalf("expected kept loaded item first, got %#v", result.Loaded[0])
+	}
+	if result.Loaded[1].RecordID != "rec-add" || result.Loaded[1].ChangeKind != cronReloadTaskChangeAdded {
+		t.Fatalf("expected added loaded item second, got %#v", result.Loaded[1])
+	}
+	if len(result.Disabled) != 1 || result.Disabled[0].RecordID != "rec-disable" {
+		t.Fatalf("disabled = %#v, want rec-disable", result.Disabled)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("errors = %#v, want 1", result.Errors)
+	}
+	if result.Errors[0].RecordID != "rec-error" || result.Errors[0].FieldName != "提示词" || result.Errors[0].TableName != cronTasksTableName || result.Errors[0].RowNumber != 4 {
+		t.Fatalf("unexpected structured error: %#v", result.Errors[0])
+	}
+	if len(result.Stopped) != 3 {
+		t.Fatalf("stopped = %#v, want 3", result.Stopped)
+	}
+	if result.Stopped[0].RecordID != "rec-disable" || result.Stopped[0].Reason != "表格中已停用" {
+		t.Fatalf("expected disabled stopped reason, got %#v", result.Stopped[0])
+	}
+	if result.Stopped[1].RecordID != "rec-delete" || result.Stopped[1].Reason != "表格中已删除" {
+		t.Fatalf("expected deleted stopped reason, got %#v", result.Stopped[1])
+	}
+	if result.Stopped[2].RecordID != "rec-error" || result.Stopped[2].Reason != "配置错误，未继续生效" {
+		t.Fatalf("expected error stopped reason, got %#v", result.Stopped[2])
+	}
+	if len(app.cronState.Jobs) != 2 || app.cronState.Jobs[0].RecordID != "rec-keep" || app.cronState.Jobs[1].RecordID != "rec-add" {
+		t.Fatalf("persisted jobs = %#v, want only loaded jobs", app.cronState.Jobs)
+	}
+	if summary := app.cronState.LastReloadSummary; !strings.Contains(summary, "已加载 2 条任务") || !strings.Contains(summary, "停用 1 条") || !strings.Contains(summary, "停止 3 条") || !strings.Contains(summary, "发现 1 条配置错误") {
+		t.Fatalf("unexpected compact summary: %q", summary)
+	}
+}
+
 func TestCronCompletionUsesFrozenWritebackTargetAfterOwnerChange(t *testing.T) {
 	api1 := &fakeCronBitableAPI{}
 	api2 := &fakeCronBitableAPI{}

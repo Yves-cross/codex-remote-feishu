@@ -29,30 +29,8 @@ func (a *App) loadCronJobsFromBinding(api feishu.BitableAPI, binding *cronBitabl
 		return nil, "", err
 	}
 	now := time.Now().UTC()
-	var jobs []cronJobState
-	var invalid []string
-	disabled := 0
-	for _, record := range records {
-		job, skipDisabled, rowErr := cronJobFromRecord(record, workspacesByRecord, now)
-		if skipDisabled {
-			disabled++
-			continue
-		}
-		if rowErr != nil {
-			invalid = append(invalid, rowErr.Error())
-			continue
-		}
-		jobs = append(jobs, job)
-	}
-	summary := fmt.Sprintf("已加载 %d 条任务，停用 %d 条。", len(jobs), disabled)
-	if len(invalid) > 0 {
-		preview := invalid
-		if len(preview) > 5 {
-			preview = preview[:5]
-		}
-		summary += fmt.Sprintf("\n发现 %d 条配置错误：\n- %s", len(invalid), strings.Join(preview, "\n- "))
-	}
-	return jobs, summary, nil
+	result := cronBuildReloadResult(records, workspacesByRecord, now, nil)
+	return result.Jobs, result.CompactSummary(), nil
 }
 
 func (a *App) migrateCronOwnerNow(command control.DaemonCommand) (string, error) {

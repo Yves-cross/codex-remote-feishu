@@ -133,77 +133,76 @@ func (a *App) persistCronBitableBindingProgress(scopeKey, label string, binding 
 	return a.writeCronStateLocked()
 }
 
-func (a *App) reloadCronJobsNow(command control.DaemonCommand) (string, error) {
+func (a *App) reloadCronJobsResultNow(command control.DaemonCommand) (cronReloadResult, error) {
 	resolution, err := a.resolveCronOwner(command, cronOwnerResolveOptions{CreateStateIfEmpty: true})
 	if err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
 	if err := cronOwnerActionError("重新加载 Cron 配置", resolution); err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
 	if resolution.State == nil || resolution.State.Bitable == nil {
-		return "", fmt.Errorf("Cron 多维表格还没有初始化完成")
+		return cronReloadResult{}, fmt.Errorf("Cron 多维表格还没有初始化完成")
 	}
 	api, err := a.cronBitableAPI(resolution.Gateway.GatewayID)
 	if err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
 	workspaceCtx, cancelWorkspace := context.WithTimeout(context.Background(), cronReloadWorkspaceTTL)
 	defer cancelWorkspace()
 	workspacesByRecord, err := a.loadCronWorkspaceIndex(workspaceCtx, api, resolution.State.Bitable)
 	if err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
 	tasksCtx, cancelTasks := context.WithTimeout(context.Background(), cronReloadTasksTTL)
 	defer cancelTasks()
 	// Fetch all fields so reload stays compatible while task-table schema evolves.
 	records, err := api.ListRecords(tasksCtx, resolution.State.Bitable.AppToken, resolution.State.Bitable.Tables.Tasks, nil)
 	if err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
 
 	now := time.Now().UTC()
-	var jobs []cronJobState
-	var invalid []string
-	disabled := 0
-	for _, record := range records {
-		job, skipDisabled, rowErr := cronJobFromRecord(record, workspacesByRecord, now)
-		if skipDisabled {
-			disabled++
-			continue
-		}
-		if rowErr != nil {
-			invalid = append(invalid, rowErr.Error())
-			continue
-		}
-		jobs = append(jobs, job)
+	a.mu.Lock()
+	stateValue, err := a.loadCronStateLocked(true)
+	if err != nil {
+		a.mu.Unlock()
+		return cronReloadResult{}, err
 	}
-	summary := fmt.Sprintf("已加载 %d 条任务，停用 %d 条。", len(jobs), disabled)
-	if len(invalid) > 0 {
-		preview := invalid
-		if len(preview) > 5 {
-			preview = preview[:5]
-		}
-		summary += fmt.Sprintf("\n发现 %d 条配置错误：\n- %s", len(invalid), strings.Join(preview, "\n- "))
+	previousJobs := append([]cronJobState(nil), stateValue.Jobs...)
+	a.mu.Unlock()
+
+	result := cronBuildReloadResult(records, workspacesByRecord, now, previousJobs)
+	if resolution.PersistOwner != nil {
+		result.OwnerBoundFilled = true
 	}
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	stateValue, err := a.loadCronStateLocked(true)
+	stateValue, err = a.loadCronStateLocked(true)
 	if err != nil {
-		return "", err
+		return cronReloadResult{}, err
 	}
-	stateValue.Jobs = jobs
+	stateValue.Jobs = result.Jobs
 	if resolution.PersistOwner != nil {
 		applyCronOwnerBinding(stateValue, resolution.PersistOwner)
 	}
 	stateValue.LastReloadAt = now
-	stateValue.LastReloadSummary = summary
+	stateValue.LastReloadSummary = result.CompactSummary()
 	a.cronNextScheduleScan = time.Time{}
 	if err := a.writeCronStateLocked(); err != nil {
+		return cronReloadResult{}, err
+	}
+	return result, nil
+}
+
+func (a *App) reloadCronJobsNow(command control.DaemonCommand) (string, error) {
+	result, err := a.reloadCronJobsResultNow(command)
+	if err != nil {
 		return "", err
 	}
-	if resolution.PersistOwner != nil {
+	summary := result.CompactSummary()
+	if result.OwnerBoundFilled {
 		summary += "\n已回填正式 owner 绑定。"
 	}
 	return summary, nil
@@ -721,66 +720,11 @@ func cloneCronState(stateValue *cronStateFile) *cronStateFile {
 }
 
 func cronJobFromRecord(record *larkbitable.AppTableRecord, workspacesByRecord map[string]cronWorkspaceRow, now time.Time) (cronJobState, bool, error) {
-	if record == nil {
-		return cronJobState{}, false, fmt.Errorf("empty task record")
+	job, disabled, reloadErr := cronJobFromReloadRecord(record, workspacesByRecord, now, "", 0)
+	if reloadErr != nil {
+		return cronJobState{}, false, reloadErr
 	}
-	name := strings.TrimSpace(cronValueString(record.Fields["任务名"]))
-	if name == "" {
-		name = strings.TrimSpace(stringValue(record.RecordId))
-	}
-	enabled, valid := cronValueBool(record.Fields["启用"])
-	if !enabled && valid {
-		return cronJobState{}, true, nil
-	}
-	if !valid {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 的启用值无效：%s", name, strings.TrimSpace(cronValueString(record.Fields["启用"])))
-	}
-	scheduleType := strings.TrimSpace(cronValueString(record.Fields["调度类型"]))
-	prompt := strings.TrimSpace(cronValueString(record.Fields["提示词"]))
-	if prompt == "" {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 缺少提示词", name)
-	}
-	workspaceLinks := cronValueStringSlice(record.Fields["工作区"])
-	if len(workspaceLinks) != 1 {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 需要且只能选择一个工作区", name)
-	}
-	workspaceRow, ok := workspacesByRecord[workspaceLinks[0]]
-	if !ok || strings.TrimSpace(workspaceRow.Key) == "" {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 选择的工作区已不存在", name)
-	}
-	if strings.TrimSpace(workspaceRow.Status) == "已失效" {
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 选择的工作区已失效", name)
-	}
-	timeoutMinutes := cronDefaultTimeoutMinutes(cronValueInt(record.Fields["超时（分钟）"]))
-	job := cronJobState{
-		RecordID:          strings.TrimSpace(stringValue(record.RecordId)),
-		Name:              name,
-		ScheduleType:      scheduleType,
-		WorkspaceKey:      workspaceRow.Key,
-		WorkspaceRecordID: workspaceLinks[0],
-		Prompt:            prompt,
-		TimeoutMinutes:    timeoutMinutes,
-	}
-	switch scheduleType {
-	case cronScheduleTypeDaily:
-		hour, minute, ok := cronDailyTimeFromFields(record.Fields)
-		if !ok {
-			return cronJobState{}, false, fmt.Errorf("任务 `%s` 的每天定时时间无效，应填写为 HH:mm", name)
-		}
-		job.DailyHour = hour
-		job.DailyMinute = minute
-	case cronScheduleTypeInterval:
-		intervalLabel := strings.TrimSpace(cronValueString(record.Fields["间隔"]))
-		minutes, ok := intervalMinutesForLabel(intervalLabel)
-		if !ok {
-			return cronJobState{}, false, fmt.Errorf("任务 `%s` 的间隔值无效：%s", name, intervalLabel)
-		}
-		job.IntervalMinutes = minutes
-	default:
-		return cronJobState{}, false, fmt.Errorf("任务 `%s` 的调度类型无效：%s", name, scheduleType)
-	}
-	job.NextRunAt = cronNextRunAt(job, now)
-	return job, false, nil
+	return job, disabled, nil
 }
 
 func cronValueString(value any) string {
