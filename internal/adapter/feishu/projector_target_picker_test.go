@@ -247,9 +247,14 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 	if formElements[0]["name"] != control.FeishuTargetPickerGitRepoURLFieldName || formElements[1]["name"] != control.FeishuTargetPickerGitDirectoryNameFieldName {
 		t.Fatalf("unexpected git form input names: %#v", formElements)
 	}
+	if len(formElements) != 4 {
+		t.Fatalf("expected git form to keep two inputs plus two direct form buttons, got %#v", formElements)
+	}
+	if formElements[2]["tag"] != "button" || formElements[3]["tag"] != "button" {
+		t.Fatalf("expected git form actions to stay flat inside form, got %#v", formElements)
+	}
 
 	var sawOpenPath bool
-	var sawCancel bool
 	var sawConfirm bool
 	for _, action := range cardActionsFromElements(formElements) {
 		switch cardValueMap(action)[cardActionPayloadKeyKind] {
@@ -257,13 +262,83 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 			if cardValueMap(action)[cardActionPayloadKeyTargetValue] == control.FeishuTargetPickerPathFieldGitParentDir {
 				sawOpenPath = true
 			}
-		case cardActionKindTargetPickerCancel:
-			sawCancel = true
 		case cardActionKindTargetPickerConfirm:
 			sawConfirm = true
 		}
 	}
+	var sawCancel bool
+	for _, action := range cardActionsFromElements(elements) {
+		if cardValueMap(action)[cardActionPayloadKeyKind] == cardActionKindTargetPickerCancel {
+			sawCancel = true
+			break
+		}
+	}
 	if !sawOpenPath || !sawCancel || !sawConfirm {
-		t.Fatalf("expected git form to render open-path and confirm actions, got %#v", elements)
+		t.Fatalf("expected git form to render open-path/confirm in form and cancel outside form, got %#v", elements)
+	}
+}
+
+func TestProjectTargetPickerGitFormRendersFlatV2FormForInlineReplacement(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventFeishuTargetPicker,
+		SurfaceSessionID:  "surface-1",
+		DaemonLifecycleID: "life-5",
+		FeishuTargetPickerView: &control.FeishuTargetPickerView{
+			PickerID:         "picker-1",
+			Title:            "选择工作区与会话",
+			SelectedMode:     control.FeishuTargetPickerModeAddWorkspace,
+			SelectedSource:   control.FeishuTargetPickerSourceGitURL,
+			ShowModeSwitch:   true,
+			ShowSourceSelect: true,
+			ConfirmLabel:     "克隆并继续",
+			CanConfirm:       true,
+			GitParentDir:     "/data/dl",
+			GitRepoURL:       "https://github.com/kxn/codex-remote-feishu.git",
+			GitDirectoryName: "crf",
+			GitFinalPath:     "/data/dl/crf",
+			ModeOptions: []control.FeishuTargetPickerModeOption{
+				{Value: control.FeishuTargetPickerModeExistingWorkspace, Label: "已有工作区"},
+				{Value: control.FeishuTargetPickerModeAddWorkspace, Label: "添加工作区", Selected: true},
+			},
+			SourceOptions: []control.FeishuTargetPickerSourceOption{
+				{Value: control.FeishuTargetPickerSourceLocalDirectory, Label: "本地目录", Available: true},
+				{Value: control.FeishuTargetPickerSourceGitURL, Label: "Git URL", Available: true},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	rendered := renderedV2BodyElements(t, ops[0])
+	var form map[string]any
+	for _, element := range rendered {
+		if cardStringValue(element["tag"]) == "form" {
+			form = element
+			break
+		}
+	}
+	if form == nil {
+		t.Fatalf("expected rendered git form, got %#v", rendered)
+	}
+	formElements, _ := form["elements"].([]map[string]any)
+	if len(formElements) != 4 {
+		t.Fatalf("expected rendered git form to keep flat form structure, got %#v", form)
+	}
+	for i, element := range formElements {
+		if i < 2 {
+			continue
+		}
+		if element["tag"] != "button" {
+			t.Fatalf("expected rendered git form action %d to stay button, got %#v", i, element)
+		}
+		if element["form_action_type"] != "submit" {
+			t.Fatalf("expected rendered git form action %d to stay submit button, got %#v", i, element)
+		}
+	}
+	for _, element := range formElements {
+		if element["tag"] == "column_set" {
+			t.Fatalf("did not expect column_set inside rendered git form, got %#v", formElements)
+		}
 	}
 }

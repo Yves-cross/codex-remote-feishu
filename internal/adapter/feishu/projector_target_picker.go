@@ -88,6 +88,7 @@ func targetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID
 		})
 	}
 	if targetPickerUsesInlineGitForm(view) {
+		elements = append(elements, targetPickerInlineGitFormTerminalButtons(view, daemonLifecycleID)...)
 		return elements
 	}
 	elements = append(elements, cardButtonGroupElement([]map[string]any{
@@ -222,37 +223,49 @@ func targetPickerGitURLFormElement(view control.FeishuTargetPickerView, daemonLi
 		"不填写时，将根据仓库地址自动生成",
 		strings.TrimSpace(view.GitDirectoryName),
 	))
-	actionRow := cardButtonGroupElement([]map[string]any{
-		cardFormActionButtonElement(
-			"取消",
-			"default",
-			stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerCancel, view.PickerID), daemonLifecycleID),
-			false,
-			"",
-		),
-		cardFormActionButtonElement(
-			"选择目录",
-			"default",
-			stampActionValue(actionPayloadTargetPickerValue(cardActionKindTargetPickerOpenPathPicker, view.PickerID, control.FeishuTargetPickerPathFieldGitParentDir), daemonLifecycleID),
-			false,
-			"",
-		),
-		cardFormActionButtonElement(
-			strings.TrimSpace(firstNonEmpty(view.ConfirmLabel, "克隆并继续")),
-			"primary",
-			stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerConfirm, view.PickerID), daemonLifecycleID),
-			!view.CanConfirm,
-			"",
-		),
-	})
-	if len(actionRow) != 0 {
-		elements = append(elements, actionRow)
+	openPathButton := cardFormActionButtonElement(
+		"选择目录",
+		"default",
+		stampActionValue(actionPayloadTargetPickerValue(cardActionKindTargetPickerOpenPathPicker, view.PickerID, control.FeishuTargetPickerPathFieldGitParentDir), daemonLifecycleID),
+		false,
+		"",
+	)
+	if len(openPathButton) != 0 {
+		openPathButton["name"] = "target_picker_open_path"
+		elements = append(elements, openPathButton)
+	}
+	confirmButton := cardFormActionButtonElement(
+		strings.TrimSpace(firstNonEmpty(view.ConfirmLabel, "克隆并继续")),
+		"primary",
+		stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerConfirm, view.PickerID), daemonLifecycleID),
+		!view.CanConfirm,
+		"",
+	)
+	if len(confirmButton) != 0 {
+		confirmButton["name"] = "target_picker_confirm"
+		elements = append(elements, confirmButton)
 	}
 	return map[string]any{
 		"tag":      "form",
 		"name":     "target_picker_git_form_" + strings.TrimSpace(view.PickerID),
 		"elements": elements,
 	}
+}
+
+func targetPickerInlineGitFormTerminalButtons(view control.FeishuTargetPickerView, daemonLifecycleID string) []map[string]any {
+	buttons := []map[string]any{
+		cardCallbackButtonElement(
+			"取消",
+			"default",
+			stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerCancel, view.PickerID), daemonLifecycleID),
+			false,
+			"",
+		),
+	}
+	if group := cardButtonGroupElement(buttons); len(group) != 0 {
+		return []map[string]any{group}
+	}
+	return nil
 }
 
 func targetPickerInputElement(name, label, placeholder, value string) map[string]any {
