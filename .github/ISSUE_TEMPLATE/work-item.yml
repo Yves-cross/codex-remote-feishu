@@ -1,6 +1,5 @@
 name: Issue
 description: 人用的轻量问题 / 需求入口；先把问题、目标和证据说清，执行结构后续再补
-title: ""
 labels:
   - status:needs-investigation
 body:
