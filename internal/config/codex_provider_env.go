@@ -314,7 +314,7 @@ func lookupUserShellEnvValueReal(env []string, key string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), codexShellLookupTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, shellPath, "-lc", shellLookupScript(shellType, key))
+	cmd := exec.CommandContext(ctx, shellPath, shellLookupArgs(shellType, key)...)
 	cmd.Env = ensureHomeEnv(append([]string{}, env...))
 	output, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
@@ -324,6 +324,16 @@ func lookupUserShellEnvValueReal(env []string, key string) (string, error) {
 		return "", fmt.Errorf("lookup codex env %q via %s: %w", key, shellPath, err)
 	}
 	return parseShellLookupValue(output), nil
+}
+
+func shellLookupArgs(shellType codexShellType, key string) []string {
+	script := shellLookupScript(shellType, key)
+	switch shellType {
+	case codexShellBash, codexShellZsh:
+		return []string{"-ilc", script}
+	default:
+		return []string{"-lc", script}
+	}
 }
 
 func detectUserShell(env []string) (codexShellType, string) {

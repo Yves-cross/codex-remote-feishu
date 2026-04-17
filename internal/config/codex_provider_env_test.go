@@ -199,6 +199,30 @@ env_key = "CUSTOM_API_KEY"
 	}
 }
 
+func TestShellLookupArgsUseInteractiveLoginShellForBash(t *testing.T) {
+	got := shellLookupArgs(codexShellBash, "PATH")
+	want := []string{"-ilc", shellLookupScript(codexShellBash, "PATH")}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("shellLookupArgs(bash) = %#v, want %#v", got, want)
+	}
+}
+
+func TestShellLookupArgsUseInteractiveLoginShellForZsh(t *testing.T) {
+	got := shellLookupArgs(codexShellZsh, "PATH")
+	want := []string{"-ilc", shellLookupScript(codexShellZsh, "PATH")}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("shellLookupArgs(zsh) = %#v, want %#v", got, want)
+	}
+}
+
+func TestShellLookupArgsKeepLoginShellForSh(t *testing.T) {
+	got := shellLookupArgs(codexShellSh, "PATH")
+	want := []string{"-lc", shellLookupScript(codexShellSh, "PATH")}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("shellLookupArgs(sh) = %#v, want %#v", got, want)
+	}
+}
+
 func TestResolveCodexConfigPathUsesFSPrefixWhenHomeMissingInEnv(t *testing.T) {
 	homeDir := t.TempDir()
 	prefix := filepath.Join(t.TempDir(), "sandbox")
