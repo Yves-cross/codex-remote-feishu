@@ -12,7 +12,7 @@ import (
 func TestRunServiceInstallUserWritesUnitAndState(t *testing.T) {
 	baseDir := t.TempDir()
 	stubServiceUserHome(t, baseDir)
-	servicePath := filepath.Join(baseDir, "shell-bin") + string(os.PathListSeparator) + "/usr/bin"
+	servicePath := "/home/demo/.local/bin:/usr/bin"
 	t.Setenv("PATH", servicePath)
 	statePath := defaultInstallStatePath(baseDir)
 	state := InstallState{
@@ -193,7 +193,7 @@ func TestRenderSystemdUserUnitFallsBackToDefaultPATHWhenEnvironmentEmpty(t *test
 	if err != nil {
 		t.Fatalf("renderSystemdUserUnit: %v", err)
 	}
-	wantPath := strings.Join(defaultSystemdUserPATH, string(os.PathListSeparator))
+	wantPath := strings.Join(defaultSystemdUserPATH, servicePathListSeparator())
 	if !strings.Contains(unitText, "Environment=PATH="+systemdEscapeValue(wantPath)) {
 		t.Fatalf("unit missing fallback PATH env: %s", unitText)
 	}
@@ -210,10 +210,10 @@ func TestRenderSystemdUserUnitPrefersInteractiveShellPATH(t *testing.T) {
 
 	t.Setenv("PATH", "/usr/bin")
 	shellPath := strings.Join([]string{
-		filepath.Join(string(filepath.Separator), "home", "dl", ".nvm", "versions", "node", "v22.18.0", "bin"),
-		filepath.Join(string(filepath.Separator), "home", "dl", ".local", "bin"),
+		"/home/dl/.nvm/versions/node/v22.18.0/bin",
+		"/home/dl/.local/bin",
 		"/usr/bin",
-	}, string(os.PathListSeparator))
+	}, servicePathListSeparator())
 	systemdShellEnvLookup = func(env []string, key string) (string, error) {
 		if key != "PATH" {
 			t.Fatalf("lookup key = %q, want PATH", key)

@@ -109,6 +109,7 @@ func TestResolveNormalCodexBinaryFallsBackWhenConfiguredPATHCodexMissing(t *test
 	t.Setenv("PATH", filepath.Join(home, "empty-bin"))
 
 	vscodeRoot := filepath.Join(home, ".vscode-server", "extensions")
+	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", vscodeRoot)
 	entrypoint := filepath.Join(vscodeRoot, "openai.chatgpt-2", "bin", "linux-x86_64", "codex")
 	realPath := entrypoint + ".real"
 	writeResolverExecutable(t, entrypoint)

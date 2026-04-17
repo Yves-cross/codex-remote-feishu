@@ -97,12 +97,16 @@ func renderSystemdUserUnit(state InstallState) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	binaryPath := filepath.Clean(firstNonEmpty(strings.TrimSpace(state.InstalledBinary), strings.TrimSpace(state.CurrentBinaryPath)))
+	baseDir := normalizeServicePathValue(state.BaseDir)
+	binaryPath := normalizeServicePathValue(firstNonEmpty(strings.TrimSpace(state.InstalledBinary), strings.TrimSpace(state.CurrentBinaryPath)))
 	if binaryPath == "" {
 		return "", fmt.Errorf("installed binary path is missing")
 	}
 
 	layout := installLayoutForInstance(state.BaseDir, state.InstanceID)
+	configHome := normalizeServicePathValue(layout.ConfigHome)
+	dataHome := normalizeServicePathValue(layout.DataHome)
+	stateHome := normalizeServicePathValue(layout.StateHome)
 	description := "codex-remote service"
 	if !isDefaultInstance(state.InstanceID) {
 		description = fmt.Sprintf("codex-remote service (%s)", state.InstanceID)
@@ -116,12 +120,12 @@ func renderSystemdUserUnit(state InstallState) (string, error) {
 		"",
 		"[Service]",
 		"Type=simple",
-		"WorkingDirectory=" + systemdEscapeValue(state.BaseDir),
+		"WorkingDirectory=" + systemdEscapeValue(baseDir),
 		"ExecStart=" + systemdEscapeExecWord(binaryPath) + " daemon",
 		"Environment=PATH=" + systemdEscapeValue(systemdUserServicePATH()),
-		"Environment=XDG_CONFIG_HOME=" + systemdEscapeValue(layout.ConfigHome),
-		"Environment=XDG_DATA_HOME=" + systemdEscapeValue(layout.DataHome),
-		"Environment=XDG_STATE_HOME=" + systemdEscapeValue(layout.StateHome),
+		"Environment=XDG_CONFIG_HOME=" + systemdEscapeValue(configHome),
+		"Environment=XDG_DATA_HOME=" + systemdEscapeValue(dataHome),
+		"Environment=XDG_STATE_HOME=" + systemdEscapeValue(stateHome),
 		"Restart=on-failure",
 		"RestartSec=2s",
 		"",
@@ -315,14 +319,14 @@ func systemdUserServicePATH() string {
 	if shellPath, err := systemdShellEnvLookup(os.Environ(), "PATH"); err == nil {
 		parts := normalizePathList(shellPath)
 		if len(parts) > 0 {
-			return strings.Join(parts, string(os.PathListSeparator))
+			return strings.Join(parts, servicePathListSeparator())
 		}
 	}
 	parts := normalizePathList(os.Getenv("PATH"))
 	if len(parts) == 0 {
-		return strings.Join(defaultSystemdUserPATH, string(os.PathListSeparator))
+		return strings.Join(defaultSystemdUserPATH, servicePathListSeparator())
 	}
-	return strings.Join(parts, string(os.PathListSeparator))
+	return strings.Join(parts, servicePathListSeparator())
 }
 
 func normalizePathList(value string) []string {
@@ -330,14 +334,13 @@ func normalizePathList(value string) []string {
 		return nil
 	}
 	seen := make(map[string]struct{})
-	parts := strings.Split(value, string(os.PathListSeparator))
+	parts := strings.Split(value, servicePathListSeparator())
 	out := make([]string, 0, len(parts))
 	for _, part := range parts {
-		part = strings.TrimSpace(part)
+		part = normalizeServicePathValue(part)
 		if part == "" {
 			continue
 		}
-		part = filepath.Clean(part)
 		key := part
 		if serviceRuntimeGOOS == "windows" {
 			key = strings.ToLower(key)
@@ -349,4 +352,23 @@ func normalizePathList(value string) []string {
 		out = append(out, part)
 	}
 	return out
+}
+
+func servicePathListSeparator() string {
+	if serviceRuntimeGOOS == "windows" {
+		return string(os.PathListSeparator)
+	}
+	return ":"
+}
+
+func normalizeServicePathValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	value = filepath.Clean(value)
+	if serviceRuntimeGOOS != "windows" {
+		value = filepath.ToSlash(value)
+	}
+	return value
 }
