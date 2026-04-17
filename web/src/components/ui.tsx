@@ -1,4 +1,5 @@
 import { useId, useState, type MouseEvent, type PropsWithChildren, type ReactNode } from "react";
+import { BrandLogo } from "./BrandLogo";
 
 type ShellScaffoldProps = {
   routeLabel: string;
@@ -28,7 +29,7 @@ export function ShellScaffold(props: ShellScaffoldProps) {
       <aside className={`side-rail${railClassName ? ` ${railClassName}` : ""}`}>
         <div className="shell-rail-header">
           <div className="brand-lockup">
-            <div className="brand-mark">CR</div>
+            <BrandLogo className="brand-mark" />
             <div>
               <p className="brand-kicker">{routeLabel}</p>
               <h1>Codex Remote</h1>

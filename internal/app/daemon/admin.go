@@ -13,6 +13,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/adminauth"
 	"github.com/kxn/codex-remote-feishu/internal/app/daemon/adminui"
+	"github.com/kxn/codex-remote-feishu/internal/branding"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -160,6 +161,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 
+	mux.HandleFunc("GET "+branding.LogoSVGPath, handleBrandLogoSVG)
 	mux.Handle("GET /assets/", http.FileServerFS(adminui.FS()))
 	mux.HandleFunc("GET /", a.handleRootPage)
 	mux.HandleFunc("GET /setup", a.handleSetupPage)
@@ -663,6 +665,13 @@ func writeRootHelpPage(w http.ResponseWriter) {
 <p>Setup remains available at <a href="/setup">/setup</a>.</p>
 <p>This root page is intentionally lightweight so external access can keep separate module prefixes.</p>
 </body></html>`)
+}
+
+func handleBrandLogoSVG(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(branding.LogoSVG())
 }
 
 func writeAdminAppShell(w http.ResponseWriter) {

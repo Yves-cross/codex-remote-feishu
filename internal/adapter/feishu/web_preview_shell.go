@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/branding"
 )
 
 type webPreviewLayout string
@@ -75,6 +77,8 @@ html,body{height:100%%}
 body{margin:0;background:#f7f4ee;color:#1b1812;font-family:"Segoe UI",ui-sans-serif,system-ui,sans-serif;overflow:hidden}
 .preview-shell{height:100%%;display:flex;flex-direction:column;background:#f7f4ee}
 .preview-topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #e6ded1;background:rgba(250,248,243,.96);flex:0 0 auto}
+.preview-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.preview-logo{display:block;width:24px;height:24px;flex:0 0 auto}
 .preview-title{min-width:0;margin:0;font-size:14px;font-weight:600;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .preview-actions{display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .preview-download{display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;border:1px solid #d8cfbf;border-radius:999px;color:#1b1812;text-decoration:none;font-size:13px;font-weight:600;background:#fffdf8}
@@ -98,12 +102,14 @@ body{margin:0;background:#f7f4ee;color:#1b1812;font-family:"Segoe UI",ui-sans-se
 .preview-pdf{display:block;width:100%%;height:100%%;border:0;background:#fff}
 @media (max-width:640px){
 .preview-topbar{padding:10px 12px}
+.preview-logo{width:22px;height:22px}
 .preview-title{font-size:13px}
 .preview-content--document,.preview-content--message{padding:18px 14px 28px}
 .preview-body--image{padding:14px}
 }
-</style></head><body><div class="preview-shell"><header class="preview-topbar"><h1 class="preview-title">%s</h1><div class="preview-actions">%s</div></header><main class="%s"><div class="%s">%s%s</div></main></div></body></html>`,
+</style></head><body><div class="preview-shell"><header class="preview-topbar"><div class="preview-brand"><img class="preview-logo" src="%s" alt="" aria-hidden="true"><h1 class="preview-title">%s</h1></div><div class="preview-actions">%s</div></header><main class="%s"><div class="%s">%s%s</div></main></div></body></html>`,
 		escapePreviewText(title),
+		escapePreviewText(branding.LogoSVGDataURI()),
 		escapePreviewText(title),
 		downloadHTML,
 		contentClass,

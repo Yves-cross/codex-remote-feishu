@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="92" y1="76" x2="424" y2="438" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#163D4D"/>
+      <stop offset="0.56" stop-color="#112B39"/>
+      <stop offset="1" stop-color="#0A1824"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="120" y1="240" x2="322" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7EBD7"/>
+      <stop offset="1" stop-color="#E7D5B6"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="208" y1="110" x2="420" y2="282" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20CBB8"/>
+      <stop offset="1" stop-color="#0F9588"/>
+    </linearGradient>
+    <linearGradient id="link" x1="214" y1="292" x2="336" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB56F"/>
+      <stop offset="1" stop-color="#FFD48C"/>
+    </linearGradient>
+  </defs>
+  <rect x="56" y="56" width="400" height="400" rx="104" fill="url(#bg)"/>
+  <rect x="56.5" y="56.5" width="399" height="399" rx="103.5" stroke="#FFFDF8" stroke-opacity=".08"/>
+  <path d="M219 292C250 263 284 227 325 188" stroke="url(#link)" stroke-width="26" stroke-linecap="round"/>
+  <path d="M311 181 334 187 322 208" stroke="url(#link)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill="url(#bubble)" d="M247 110c-24 0-43 19-43 43v50c0 24 19 43 43 43h20v30c0 12 14 18 23 10l42-40h56c24 0 43-19 43-43v-50c0-24-19-43-43-43H247Z"/>
+  <rect x="244" y="157" width="122" height="14" rx="7" fill="#ECFFFC" fill-opacity=".92"/>
+  <rect x="244" y="186" width="88" height="14" rx="7" fill="#ECFFFC" fill-opacity=".82"/>
+  <rect x="108" y="236" width="222" height="162" rx="44" fill="url(#panel)"/>
+  <rect x="128" y="262" width="22" height="22" rx="11" fill="#173443" fill-opacity=".92"/>
+  <rect x="160" y="262" width="22" height="22" rx="11" fill="#173443" fill-opacity=".3"/>
+  <rect x="192" y="262" width="22" height="22" rx="11" fill="#173443" fill-opacity=".18"/>
+  <path d="m150 334 28-28m-28 28 28 28" stroke="#173443" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="196" y="325" width="68" height="18" rx="9" fill="#173443"/>
+  <path d="m281 391 33-25" stroke="#CCB287" stroke-width="14" stroke-linecap="round" opacity=".85"/>
+</svg>
