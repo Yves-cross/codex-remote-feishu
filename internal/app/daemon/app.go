@@ -180,7 +180,7 @@ type App struct {
 	cronSyncInFlight                bool
 	cronState                       *cronStateFile
 	cronRuns                        map[string]*cronRunState
-	cronJobActiveRuns               map[string]string
+	cronJobActiveRuns               map[string]map[string]struct{}
 	cronExitTargets                 map[string]*cronExitTarget
 	cronBitableFactory              func(string) (feishu.BitableAPI, error)
 	cronGatewayIdentityLookup       func(string) (cronGatewayIdentity, bool, error)
@@ -265,7 +265,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		feishuOnboarding:             map[string]*feishuOnboardingSession{},
 		feishuSetup:                  newLiveFeishuSetupClient(),
 		cronRuns:                     map[string]*cronRunState{},
-		cronJobActiveRuns:            map[string]string{},
+		cronJobActiveRuns:            map[string]map[string]struct{}{},
 		cronExitTargets:              map[string]*cronExitTarget{},
 		adminAuth:                    authManager,
 		webPreviewGrants:             map[string]*previewGrantRecord{},

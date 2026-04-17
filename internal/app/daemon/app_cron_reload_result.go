@@ -24,6 +24,7 @@ type cronReloadTaskItem struct {
 	DailyHour       int
 	DailyMinute     int
 	IntervalMinutes int
+	MaxConcurrency  int
 	SourceType      cronJobSourceType
 	SourceSummary   string
 	WorkspaceKey    string
@@ -82,6 +83,7 @@ func cronReloadTaskItemFromJob(job cronJobState) cronReloadTaskItem {
 		DailyHour:       job.DailyHour,
 		DailyMinute:     job.DailyMinute,
 		IntervalMinutes: job.IntervalMinutes,
+		MaxConcurrency:  cronDefaultMaxConcurrency(job.MaxConcurrency),
 		SourceType:      job.SourceType,
 		SourceSummary:   cronJobDisplaySource(job),
 		WorkspaceKey:    strings.TrimSpace(job.WorkspaceKey),
@@ -101,6 +103,7 @@ func cronReloadTaskPreviewFromRecord(record *larkbitable.AppTableRecord, workspa
 		item.Name = item.RecordID
 	}
 	item.ScheduleType = strings.TrimSpace(cronValueString(record.Fields["调度类型"]))
+	item.MaxConcurrency = cronDefaultMaxConcurrency(cronValueInt(record.Fields[cronTaskConcurrencyField]))
 	workspaceLinks := cronValueStringSlice(record.Fields[cronTaskWorkspaceField])
 	item.GitRepoInput = strings.TrimSpace(cronValueString(record.Fields[cronTaskGitRepoInputField]))
 	item.SourceType = cronInferJobSourceType(cronValueString(record.Fields[cronTaskSourceTypeField]), item.GitRepoInput, workspaceLinks)
@@ -129,6 +132,7 @@ func cronReloadTaskPreviewFromRecord(record *larkbitable.AppTableRecord, workspa
 		DailyHour:          item.DailyHour,
 		DailyMinute:        item.DailyMinute,
 		IntervalMinutes:    item.IntervalMinutes,
+		MaxConcurrency:     item.MaxConcurrency,
 		WorkspaceKey:       item.WorkspaceKey,
 		GitRepoSourceInput: item.GitRepoInput,
 	}
@@ -178,6 +182,7 @@ func cronJobFromReloadRecord(record *larkbitable.AppTableRecord, workspacesByRec
 	workspaceLinks := cronValueStringSlice(record.Fields[cronTaskWorkspaceField])
 	gitRepoInput := strings.TrimSpace(cronValueString(record.Fields[cronTaskGitRepoInputField]))
 	sourceType := cronInferJobSourceType(cronValueString(record.Fields[cronTaskSourceTypeField]), gitRepoInput, workspaceLinks)
+	maxConcurrency := cronDefaultMaxConcurrency(cronValueInt(record.Fields[cronTaskConcurrencyField]))
 	timeoutMinutes := cronDefaultTimeoutMinutes(cronValueInt(record.Fields["超时（分钟）"]))
 	job := cronJobState{
 		RecordID:       strings.TrimSpace(stringValue(record.RecordId)),
@@ -185,6 +190,7 @@ func cronJobFromReloadRecord(record *larkbitable.AppTableRecord, workspacesByRec
 		ScheduleType:   scheduleType,
 		SourceType:     sourceType,
 		Prompt:         prompt,
+		MaxConcurrency: maxConcurrency,
 		TimeoutMinutes: timeoutMinutes,
 	}
 	switch sourceType {

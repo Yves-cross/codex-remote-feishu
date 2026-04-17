@@ -49,6 +49,7 @@ func cronReloadTaskNoticeLine(item cronReloadTaskItem, plannedLabel string) stri
 	if schedule := cronReloadTaskScheduleText(item); schedule != "" {
 		segments = append(segments, schedule)
 	}
+	segments = append(segments, cronJobConcurrencyText(item.MaxConcurrency))
 	if next := cronReloadTaskNextRunText(item, plannedLabel); next != "" {
 		segments = append(segments, next)
 	}

@@ -229,6 +229,61 @@ func cronJobActiveKey(jobRecordID, jobName string) string {
 	return ""
 }
 
+func (a *App) addCronActiveRunLocked(jobRecordID, jobName, instanceID string) {
+	activeKey := cronJobActiveKey(jobRecordID, jobName)
+	instanceID = strings.TrimSpace(instanceID)
+	if activeKey == "" || instanceID == "" {
+		return
+	}
+	runs := a.cronJobActiveRuns[activeKey]
+	if runs == nil {
+		runs = map[string]struct{}{}
+		a.cronJobActiveRuns[activeKey] = runs
+	}
+	runs[instanceID] = struct{}{}
+}
+
+func (a *App) removeCronActiveRunLocked(jobRecordID, jobName, instanceID string) {
+	activeKey := cronJobActiveKey(jobRecordID, jobName)
+	instanceID = strings.TrimSpace(instanceID)
+	if activeKey == "" || instanceID == "" {
+		return
+	}
+	runs := a.cronJobActiveRuns[activeKey]
+	if len(runs) == 0 {
+		delete(a.cronJobActiveRuns, activeKey)
+		return
+	}
+	delete(runs, instanceID)
+	if len(runs) == 0 {
+		delete(a.cronJobActiveRuns, activeKey)
+	}
+}
+
+func (a *App) cronActiveRunCountLocked(jobRecordID, jobName string) int {
+	activeKey := cronJobActiveKey(jobRecordID, jobName)
+	if activeKey == "" {
+		return 0
+	}
+	runs := a.cronJobActiveRuns[activeKey]
+	if len(runs) == 0 {
+		delete(a.cronJobActiveRuns, activeKey)
+		return 0
+	}
+	activeCount := 0
+	for instanceID := range runs {
+		if a.cronRuns[instanceID] == nil {
+			delete(runs, instanceID)
+			continue
+		}
+		activeCount++
+	}
+	if len(runs) == 0 {
+		delete(a.cronJobActiveRuns, activeKey)
+	}
+	return activeCount
+}
+
 func (a *App) completeCronRunLocked(instanceID, status, errorMessage string, now time.Time, requestExit bool) {
 	run := a.cronRuns[instanceID]
 	if run == nil {
@@ -250,11 +305,7 @@ func (a *App) completeCronRunLocked(instanceID, status, errorMessage string, now
 	if run.StartedAt.IsZero() && run.Status == "timeout" {
 		run.StartedAt = run.TriggeredAt
 	}
-	if activeKey := cronJobActiveKey(run.JobRecordID, run.JobName); activeKey != "" {
-		if activeInstanceID := strings.TrimSpace(a.cronJobActiveRuns[activeKey]); activeInstanceID == instanceID {
-			delete(a.cronJobActiveRuns, activeKey)
-		}
-	}
+	a.removeCronActiveRunLocked(run.JobRecordID, run.JobName, instanceID)
 	writeTarget := run.WritebackTarget
 	if !writeTarget.valid() {
 		writeTarget = a.snapshotCronWritebackLocked()

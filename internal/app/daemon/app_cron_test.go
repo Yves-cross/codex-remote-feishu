@@ -344,8 +344,13 @@ func TestCronSchedulerLaunchesFreshHiddenRun(t *testing.T) {
 		t.Fatalf("cronRuns = %#v, want one active run", app.cronRuns)
 	}
 	active := app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")]
-	if !strings.HasPrefix(active, cronInstancePrefix) {
-		t.Fatalf("active cron instance id = %q, want prefix %q", active, cronInstancePrefix)
+	if len(active) != 1 {
+		t.Fatalf("active cron runs = %#v, want one instance", active)
+	}
+	for instanceID := range active {
+		if !strings.HasPrefix(instanceID, cronInstancePrefix) {
+			t.Fatalf("active cron instance id = %q, want prefix %q", instanceID, cronInstancePrefix)
+		}
 	}
 	if app.cronState.Jobs[0].NextRunAt.IsZero() || !app.cronState.Jobs[0].NextRunAt.After(time.Now()) {
 		t.Fatalf("next run was not advanced: %#v", app.cronState.Jobs[0].NextRunAt)
@@ -383,7 +388,7 @@ func TestCronHelloAndCompletionStayHiddenAndWriteBackFinalMessage(t *testing.T) 
 		TriggeredAt:    time.Now().UTC(),
 		PID:            4321,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = instanceID
+	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
 
 	var commands []agentproto.Command
 	app.sendAgentCommand = func(target string, command agentproto.Command) error {
@@ -481,7 +486,7 @@ func TestCronSchedulerSkipsWhenPreviousRunIsStillActive(t *testing.T) {
 		TriggeredAt:    time.Now().Add(-2 * time.Minute),
 		TimeoutMinutes: 15,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = "inst-running"
+	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
 	app.startHeadless = func(relayruntime.HeadlessLaunchOptions) (int, error) {
 		t.Fatalf("scheduler must not launch another hidden run while previous run is active")
 		return 0, nil
@@ -497,8 +502,8 @@ func TestCronSchedulerSkipsWhenPreviousRunIsStillActive(t *testing.T) {
 	if got := api.createRecords[0].Fields["状态"]; got != "跳过" {
 		t.Fatalf("history status = %#v, want 跳过", got)
 	}
-	if got := api.updateRecords[0].Fields["最近错误"]; !strings.Contains(got.(string), "跳过") {
-		t.Fatalf("skip reason = %#v, want contains 跳过", got)
+	if got := api.updateRecords[0].Fields["最近错误"]; !strings.Contains(got.(string), "并发上限") {
+		t.Fatalf("skip reason = %#v, want contains 并发上限", got)
 	}
 }
 
@@ -531,7 +536,7 @@ func TestCronSchedulerTimesOutRunAndRequestsExit(t *testing.T) {
 		TimeoutMinutes: 30,
 		PID:            9876,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = instanceID
+	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
 	var commands []agentproto.Command
 	app.sendAgentCommand = func(target string, command agentproto.Command) error {
 		if target != instanceID {
@@ -1291,7 +1296,7 @@ func TestCronJobFromRecordParsesLinkedWorkspaceValues(t *testing.T) {
 	if job.WorkspaceRecordID != "rec-workspace-1" || job.WorkspaceKey != "/tmp/project" {
 		t.Fatalf("unexpected workspace mapping: %#v", job)
 	}
-	if job.IntervalMinutes != 15 || job.TimeoutMinutes != 20 {
+	if job.IntervalMinutes != 15 || job.TimeoutMinutes != 20 || job.MaxConcurrency != 1 {
 		t.Fatalf("unexpected parsed job timing: %#v", job)
 	}
 }
@@ -1895,6 +1900,7 @@ func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
 		"调度类型",
 		"调度时间",
 		"间隔",
+		"并发度",
 		"超时（分钟）",
 		"最近运行时间",
 		"最近状态",

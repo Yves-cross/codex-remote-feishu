@@ -59,7 +59,7 @@ func (a *App) launchCronRequestsLocked(requests []cronLaunchRequest) {
 		}
 		run := prepared.Run
 		a.cronRuns[run.InstanceID] = &run
-		a.cronJobActiveRuns[cronJobActiveKey(run.JobRecordID, run.JobName)] = run.InstanceID
+		a.addCronActiveRunLocked(run.JobRecordID, run.JobName, run.InstanceID)
 		delete(a.cronExitTargets, run.InstanceID)
 
 		a.mu.Unlock()
@@ -69,11 +69,7 @@ func (a *App) launchCronRequestsLocked(requests []cronLaunchRequest) {
 		existing := a.cronRuns[run.InstanceID]
 		if launchErr != nil {
 			delete(a.cronRuns, run.InstanceID)
-			if activeKey := cronJobActiveKey(run.JobRecordID, run.JobName); activeKey != "" {
-				if activeInstanceID := strings.TrimSpace(a.cronJobActiveRuns[activeKey]); activeInstanceID == run.InstanceID {
-					delete(a.cronJobActiveRuns, activeKey)
-				}
-			}
+			a.removeCronActiveRunLocked(run.JobRecordID, run.JobName, run.InstanceID)
 			a.mu.Unlock()
 			a.cleanupCronRunResources(run)
 			a.mu.Lock()

@@ -13,22 +13,23 @@ import (
 )
 
 const (
-	cronStateSchemaVersion   = 3
-	cronDefaultTimeoutMinute = 30
-	cronScheduleScanEvery    = time.Second
-	cronExitGrace            = 20 * time.Second
-	cronBitableBootstrapTTL  = 2 * time.Minute
-	cronBitableWorkspaceTTL  = 90 * time.Second
-	cronBitablePermissionTTL = 30 * time.Second
-	cronReloadWorkspaceTTL   = 45 * time.Second
-	cronReloadTasksTTL       = 90 * time.Second
-	cronWritebackRunsTTL     = 30 * time.Second
-	cronWritebackTasksTTL    = 30 * time.Second
-	cronInstancePrefix       = "inst-cron-"
-	cronRunsTableName        = "运行记录"
-	cronTasksTableName       = "任务配置"
-	cronWorkspacesTableName  = "工作区清单"
-	cronMetaTableName        = "元信息"
+	cronStateSchemaVersion    = 4
+	cronDefaultTimeoutMinute  = 30
+	cronDefaultConcurrencyCap = 1
+	cronScheduleScanEvery     = time.Second
+	cronExitGrace             = 20 * time.Second
+	cronBitableBootstrapTTL   = 2 * time.Minute
+	cronBitableWorkspaceTTL   = 90 * time.Second
+	cronBitablePermissionTTL  = 30 * time.Second
+	cronReloadWorkspaceTTL    = 45 * time.Second
+	cronReloadTasksTTL        = 90 * time.Second
+	cronWritebackRunsTTL      = 30 * time.Second
+	cronWritebackTasksTTL     = 30 * time.Second
+	cronInstancePrefix        = "inst-cron-"
+	cronRunsTableName         = "运行记录"
+	cronTasksTableName        = "任务配置"
+	cronWorkspacesTableName   = "工作区清单"
+	cronMetaTableName         = "元信息"
 )
 
 type cronStateFile struct {
@@ -78,6 +79,7 @@ type cronJobState struct {
 	GitRepoURL         string            `json:"git_repo_url,omitempty"`
 	GitRef             string            `json:"git_ref,omitempty"`
 	Prompt             string            `json:"prompt,omitempty"`
+	MaxConcurrency     int               `json:"max_concurrency,omitempty"`
 	TimeoutMinutes     int               `json:"timeout_minutes,omitempty"`
 	NextRunAt          time.Time         `json:"next_run_at,omitempty"`
 }
@@ -304,6 +306,13 @@ func cronDefaultTimeoutMinutes(raw int) int {
 		return raw
 	}
 	return cronDefaultTimeoutMinute
+}
+
+func cronDefaultMaxConcurrency(raw int) int {
+	if raw > 0 {
+		return raw
+	}
+	return cronDefaultConcurrencyCap
 }
 
 func cronStateHasBinding(stateValue *cronStateFile) bool {

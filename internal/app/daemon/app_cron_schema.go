@@ -16,6 +16,7 @@ func cronTaskFieldSpecs(workspacesTableID string) []cronFieldSpec {
 		{Name: "调度类型", Type: 3, Property: cronSelectFieldProperty([]string{cronScheduleTypeDaily, cronScheduleTypeInterval})},
 		{Name: "调度时间", Type: 1},
 		{Name: "间隔", Type: 3, Property: cronSelectFieldProperty(cronIntervalLabels())},
+		{Name: cronTaskConcurrencyField, Type: 2},
 		{Name: "超时（分钟）", Type: 2},
 		{Name: "最近运行时间", Type: 5},
 		{Name: "最近状态", Type: 1},

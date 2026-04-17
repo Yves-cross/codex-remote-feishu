@@ -3,7 +3,6 @@ package daemon
 import (
 	"fmt"
 	"log"
-	"strings"
 	"time"
 )
 
@@ -40,14 +39,13 @@ func (a *App) maybeScheduleCronJobsLocked(now time.Time) {
 		}
 		currentDueAt := job.NextRunAt
 		nextRunAt := cronAdvanceRunAt(*job, currentDueAt, now)
-		if activeInstanceID := strings.TrimSpace(a.cronJobActiveRuns[cronJobActiveKey(job.RecordID, job.Name)]); activeInstanceID != "" {
-			if a.cronRuns[activeInstanceID] != nil {
-				a.recordCronImmediateResultLocked(*job, now, "skipped", "上一轮运行尚未结束，本次按 V1 规则跳过。")
-				job.NextRunAt = nextRunAt
-				dirty = true
-				continue
-			}
-			delete(a.cronJobActiveRuns, cronJobActiveKey(job.RecordID, job.Name))
+		activeCount := a.cronActiveRunCountLocked(job.RecordID, job.Name)
+		maxConcurrency := cronDefaultMaxConcurrency(job.MaxConcurrency)
+		if activeCount >= maxConcurrency {
+			a.recordCronImmediateResultLocked(*job, now, "skipped", fmt.Sprintf("当前运行中实例数已达到并发上限（%d），本轮跳过。", maxConcurrency))
+			job.NextRunAt = nextRunAt
+			dirty = true
+			continue
 		}
 		job.NextRunAt = nextRunAt
 		dirty = true

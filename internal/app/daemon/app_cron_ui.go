@@ -429,6 +429,7 @@ func cronLoadedJobLines(jobs []cronJobState) []string {
 		if next := cronReloadTaskNextRunText(item, "下次"); next != "" {
 			segments = append(segments, next)
 		}
+		segments = append(segments, cronJobConcurrencyText(job.MaxConcurrency))
 		if source := strings.TrimSpace(cronJobDisplaySource(job)); source != "" {
 			segments = append(segments, "来源："+source)
 		}

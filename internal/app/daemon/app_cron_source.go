@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
@@ -15,6 +16,7 @@ const (
 	cronTaskSourceTypeField     = "来源类型"
 	cronTaskWorkspaceField      = "工作区"
 	cronTaskGitRepoInputField   = "Git 仓库引用"
+	cronTaskConcurrencyField    = "并发度"
 	cronTaskSourceWorkspaceText = "工作区"
 	cronTaskSourceGitRepoText   = "Git 仓库"
 )
@@ -66,6 +68,7 @@ func cronNormalizeJobState(job cronJobState) cronJobState {
 	job.GitRef = strings.TrimSpace(job.GitRef)
 	job.WorkspaceKey = strings.TrimSpace(job.WorkspaceKey)
 	job.WorkspaceRecordID = strings.TrimSpace(job.WorkspaceRecordID)
+	job.MaxConcurrency = cronDefaultMaxConcurrency(job.MaxConcurrency)
 	if job.SourceType == cronJobSourceWorkspace {
 		job.GitRepoSourceInput = ""
 		job.GitRepoURL = ""
@@ -96,4 +99,8 @@ func cronJobDisplaySource(job cronJobState) string {
 		return firstNonEmpty(job.GitRepoSourceInput, "repo: unknown")
 	}
 	return strings.TrimSpace(job.WorkspaceKey)
+}
+
+func cronJobConcurrencyText(limit int) string {
+	return fmt.Sprintf("并发上限 %d", cronDefaultMaxConcurrency(limit))
 }
