@@ -110,8 +110,7 @@ func TestResolveNormalCodexBinaryFallsBackWhenConfiguredPATHCodexMissing(t *test
 
 	vscodeRoot := filepath.Join(home, ".vscode-server", "extensions")
 	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", vscodeRoot)
-	entrypoint := filepath.Join(vscodeRoot, "openai.chatgpt-2", "bin", "linux-x86_64", "codex")
-	realPath := entrypoint + ".real"
+	entrypoint, realPath := writeResolverRuntimeBundle(t, vscodeRoot, "openai.chatgpt-2")
 	writeResolverExecutable(t, entrypoint)
 	writeResolverExecutable(t, realPath)
 
@@ -185,6 +184,58 @@ func writeResolverExecutable(t *testing.T, path string) {
 	if runtime.GOOS == "windows" && filepath.Ext(path) == "" {
 		if err := os.WriteFile(path+".exe", []byte("resolver-bin"), 0o755); err != nil {
 			t.Fatalf("WriteFile(%q): %v", path+".exe", err)
+		}
+	}
+}
+
+func writeResolverRuntimeBundle(t *testing.T, vscodeRoot, version string) (string, string) {
+	t.Helper()
+	bundleDir := filepath.Join(vscodeRoot, version, "bin", resolverRuntimeBundleDir())
+	switch runtime.GOOS {
+	case "windows":
+		return filepath.Join(bundleDir, "codex.exe"), filepath.Join(bundleDir, "codex.real.exe")
+	default:
+		return filepath.Join(bundleDir, "codex"), filepath.Join(bundleDir, "codex.real")
+	}
+}
+
+func resolverRuntimeBundleDir() string {
+	switch runtime.GOOS {
+	case "windows":
+		return resolverRuntimeBundleDirForArch("windows", runtime.GOARCH)
+	case "darwin":
+		return resolverRuntimeBundleDirForArch("darwin", runtime.GOARCH)
+	default:
+		return resolverRuntimeBundleDirForArch("linux", runtime.GOARCH)
+	}
+}
+
+func resolverRuntimeBundleDirForArch(goos, goarch string) string {
+	switch goos {
+	case "windows":
+		switch goarch {
+		case "386":
+			return "windows-x86"
+		case "arm64":
+			return "windows-arm64"
+		default:
+			return "windows-x64"
+		}
+	case "darwin":
+		switch goarch {
+		case "amd64":
+			return "darwin-x86_64"
+		default:
+			return "darwin-arm64"
+		}
+	default:
+		switch goarch {
+		case "386":
+			return "linux-x86"
+		case "arm64":
+			return "linux-arm64"
+		default:
+			return "linux-x86_64"
 		}
 	}
 }

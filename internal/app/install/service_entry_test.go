@@ -129,10 +129,16 @@ func TestRunServiceStartRejectsDetachedManager(t *testing.T) {
 
 func TestRenderSystemdUserUnitEscapesPathsWithoutQuotedAssignments(t *testing.T) {
 	originalGOOS := serviceRuntimeGOOS
+	originalShellLookup := systemdShellEnvLookup
 	serviceRuntimeGOOS = "linux"
 	defer func() {
 		serviceRuntimeGOOS = originalGOOS
+		systemdShellEnvLookup = originalShellLookup
 	}()
+	t.Setenv("PATH", "/usr/bin")
+	systemdShellEnvLookup = func(env []string, key string) (string, error) {
+		return "/usr/bin", nil
+	}
 
 	state := InstallState{
 		BaseDir:         filepath.Join(string(filepath.Separator), "tmp", "codex remote"),
@@ -154,10 +160,10 @@ func TestRenderSystemdUserUnitEscapesPathsWithoutQuotedAssignments(t *testing.T)
 	if strings.Contains(unitText, `WorkingDirectory="`) {
 		t.Fatalf("unit should not quote WorkingDirectory assignment: %s", unitText)
 	}
-	if !strings.Contains(unitText, "WorkingDirectory="+systemdEscapeValue(state.BaseDir)) {
+	if !strings.Contains(unitText, "WorkingDirectory="+systemdEscapeValue(normalizeServicePathValue(state.BaseDir))) {
 		t.Fatalf("unit missing escaped WorkingDirectory: %s", unitText)
 	}
-	if !strings.Contains(unitText, "ExecStart="+systemdEscapeExecWord(state.InstalledBinary)+" daemon") {
+	if !strings.Contains(unitText, "ExecStart="+systemdEscapeExecWord(normalizeServicePathValue(state.InstalledBinary))+" daemon") {
 		t.Fatalf("unit missing escaped ExecStart path: %s", unitText)
 	}
 }
