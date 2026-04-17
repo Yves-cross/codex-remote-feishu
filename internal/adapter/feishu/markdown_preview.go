@@ -20,7 +20,6 @@ const (
 	previewPermissionView               = "view"
 )
 
-var markdownLinkPattern = regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
 var markdownLineSuffixPattern = regexp.MustCompile(`^(.*\.md)(:\d+(?::\d+)?)$`)
 
 type PreviewDriveAdminService interface {

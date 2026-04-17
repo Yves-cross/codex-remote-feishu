@@ -355,6 +355,70 @@ func TestDriveMarkdownPreviewerUploadsNewVersionWhenMarkdownChanges(t *testing.T
 	}
 }
 
+func TestDriveMarkdownPreviewerSkipsInlineCodeMarkdownLinks(t *testing.T) {
+	root := t.TempDir()
+	writeMarkdownFile(t, filepath.Join(root, "docs", "inside.md"), "# inside\n")
+	writeMarkdownFile(t, filepath.Join(root, "docs", "outside.md"), "# outside\n")
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		ProcessCWD: root,
+	})
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "保留字面量 `[inside](docs/inside.md)`，再打开 [outside](docs/outside.md)。",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	want := "保留字面量 `[inside](docs/inside.md)`，再打开 [outside](https://preview/file-1)。"
+	if result.Block.Text != want {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
+	}
+	if len(api.uploadFileCalls) != 1 || !strings.HasPrefix(api.uploadFileCalls[0].FileName, "outside--") {
+		t.Fatalf("expected only outside markdown link to be materialized, got %#v", api.uploadFileCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerSkipsFencedCodeMarkdownLinks(t *testing.T) {
+	root := t.TempDir()
+	writeMarkdownFile(t, filepath.Join(root, "docs", "inside.md"), "# inside\n")
+	writeMarkdownFile(t, filepath.Join(root, "docs", "outside.md"), "# outside\n")
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		ProcessCWD: root,
+	})
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "```md\n[inside](docs/inside.md)\n```\n\n然后打开 [outside](docs/outside.md)。",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	want := "```md\n[inside](docs/inside.md)\n```\n\n然后打开 [outside](https://preview/file-1)。"
+	if result.Block.Text != want {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
+	}
+	if len(api.uploadFileCalls) != 1 || !strings.HasPrefix(api.uploadFileCalls[0].FileName, "outside--") {
+		t.Fatalf("expected only outside markdown link to be materialized, got %#v", api.uploadFileCalls)
+	}
+}
+
 func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 	root := t.TempDir()
 	writeMarkdownFile(t, filepath.Join(root, "docs", "plan.md"), "# plan\n")

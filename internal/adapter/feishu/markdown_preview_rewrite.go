@@ -46,8 +46,8 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Fina
 
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, []PreviewSupplement, bool, bool, error) {
 	text := req.Block.Text
-	matches := markdownLinkPattern.FindAllStringSubmatchIndex(text, -1)
-	if len(matches) == 0 {
+	segments := splitFinalCardFenceSegments(text)
+	if len(segments) == 0 {
 		return text, nil, false, false, nil
 	}
 
@@ -57,58 +57,192 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req F
 	var supplements []PreviewSupplement
 
 	var builder strings.Builder
-	last := 0
 	changed := false
-	for _, match := range matches {
-		if len(match) < 4 {
+	offset := 0
+	for _, segment := range segments {
+		if segment.fenced {
+			builder.WriteString(segment.text)
+			offset += len(segment.text)
 			continue
 		}
-		targetStart := match[2]
-		targetEnd := match[3]
-		rawTarget := text[targetStart:targetEnd]
-
-		builder.WriteString(text[last:targetStart])
-		replacement := rawTarget
-		if cached, ok := rewrittenTargets[rawTarget]; ok {
-			replacement = cached
-			if replacement != rawTarget {
-				changed = true
-			}
-		} else {
-			ref := PreviewReference{
-				RawTarget:   rawTarget,
-				TargetStart: targetStart,
-				TargetEnd:   targetEnd,
-			}
-			published, ok, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
-			switch {
-			case err != nil:
-				errs = append(errs, err.Error())
-			case ok && published != nil:
-				if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
-					replacement = published.URL
-					rewrittenTargets[rawTarget] = published.URL
-					changed = true
-				} else {
-					rewrittenTargets[rawTarget] = rawTarget
-				}
-				if len(published.Supplements) > 0 {
-					supplements = append(supplements, published.Supplements...)
-				}
-			default:
-				rewrittenTargets[rawTarget] = rawTarget
-			}
+		rewrittenSegment, segmentSupplements, segmentChanged, segmentErrs := p.rewriteMarkdownLinksInline(
+			ctx,
+			req,
+			principals,
+			runtime,
+			scopeKey,
+			rewrittenTargets,
+			segment.text,
+			offset,
+		)
+		builder.WriteString(rewrittenSegment)
+		if segmentChanged {
+			changed = true
 		}
-		builder.WriteString(replacement)
-		last = targetEnd
+		if len(segmentSupplements) > 0 {
+			supplements = append(supplements, segmentSupplements...)
+		}
+		if len(segmentErrs) > 0 {
+			errs = append(errs, segmentErrs...)
+		}
+		offset += len(segment.text)
 	}
-	builder.WriteString(text[last:])
 
 	var rewriteErr error
 	if len(errs) > 0 {
 		rewriteErr = errors.New(strings.Join(errs, "; "))
 	}
 	return builder.String(), supplements, changed, runtime != nil && runtime.dirty, rewriteErr
+}
+
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
+	ctx context.Context,
+	req FinalBlockPreviewRequest,
+	principals []previewPrincipal,
+	runtime *previewRewriteRuntime,
+	scopeKey string,
+	rewrittenTargets map[string]string,
+	text string,
+	baseOffset int,
+) (string, []PreviewSupplement, bool, []string) {
+	if text == "" {
+		return "", nil, false, nil
+	}
+
+	var (
+		builder     strings.Builder
+		supplements []PreviewSupplement
+		errs        []string
+		changed     bool
+	)
+	last := 0
+	for i := 0; i < len(text); {
+		if text[i] != '`' {
+			i++
+			continue
+		}
+		run := consecutiveByteRun(text, i, '`')
+		close := closingBacktickRun(text, i+run, run)
+		if close < 0 {
+			break
+		}
+		rewritten, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
+			ctx,
+			req,
+			principals,
+			runtime,
+			scopeKey,
+			rewrittenTargets,
+			text[last:i],
+			baseOffset+last,
+		)
+		builder.WriteString(rewritten)
+		builder.WriteString(text[i : close+run])
+		if rewrittenChanged {
+			changed = true
+		}
+		if len(rewrittenSupplements) > 0 {
+			supplements = append(supplements, rewrittenSupplements...)
+		}
+		if len(rewrittenErrs) > 0 {
+			errs = append(errs, rewrittenErrs...)
+		}
+		i = close + run
+		last = i
+	}
+
+	rewritten, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
+		ctx,
+		req,
+		principals,
+		runtime,
+		scopeKey,
+		rewrittenTargets,
+		text[last:],
+		baseOffset+last,
+	)
+	builder.WriteString(rewritten)
+	if rewrittenChanged {
+		changed = true
+	}
+	if len(rewrittenSupplements) > 0 {
+		supplements = append(supplements, rewrittenSupplements...)
+	}
+	if len(rewrittenErrs) > 0 {
+		errs = append(errs, rewrittenErrs...)
+	}
+	return builder.String(), supplements, changed, errs
+}
+
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
+	ctx context.Context,
+	req FinalBlockPreviewRequest,
+	principals []previewPrincipal,
+	runtime *previewRewriteRuntime,
+	scopeKey string,
+	rewrittenTargets map[string]string,
+	text string,
+	baseOffset int,
+) (string, []PreviewSupplement, bool, []string) {
+	if text == "" {
+		return "", nil, false, nil
+	}
+
+	var (
+		builder     strings.Builder
+		supplements []PreviewSupplement
+		errs        []string
+		changed     bool
+	)
+	last := 0
+	for i := 0; i < len(text); {
+		if text[i] != '[' {
+			i++
+			continue
+		}
+		end, label, rawTarget, ok := parseMarkdownLinkAt(text, i)
+		if !ok {
+			i++
+			continue
+		}
+		builder.WriteString(text[last:i])
+		replacement := rawTarget
+		if cached, ok := rewrittenTargets[rawTarget]; ok {
+			replacement = cached
+		} else {
+			targetStart := i + len(label) + 3
+			ref := PreviewReference{
+				RawTarget:   rawTarget,
+				TargetStart: baseOffset + targetStart,
+				TargetEnd:   baseOffset + targetStart + len(rawTarget),
+			}
+			published, publishedOK, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
+			switch {
+			case err != nil:
+				errs = append(errs, err.Error())
+			case publishedOK && published != nil:
+				if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
+					replacement = published.URL
+				}
+				if len(published.Supplements) > 0 {
+					supplements = append(supplements, published.Supplements...)
+				}
+			}
+			rewrittenTargets[rawTarget] = replacement
+		}
+		builder.WriteByte('[')
+		builder.WriteString(label)
+		builder.WriteString("](")
+		builder.WriteString(replacement)
+		builder.WriteByte(')')
+		if replacement != rawTarget {
+			changed = true
+		}
+		i = end
+		last = i
+	}
+	builder.WriteString(text[last:])
+	return builder.String(), supplements, changed, errs
 }
 
 func (p *DriveMarkdownPreviewer) materializePreviewTarget(ctx context.Context, ref PreviewReference, req FinalBlockPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {
