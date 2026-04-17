@@ -24,6 +24,7 @@
 6. 打开“机器人菜单”，创建以下菜单 key：
    - `menu`
    - `stop`
+   - `steerall`
    - `new`
    - `reasoning`
    - `model`
@@ -40,14 +41,21 @@ WebSetup 里的推荐菜单、`app-template.json` 里的菜单清单，以及飞
 - `/new`
 - `/use`
 - `/useall`
+- `/history`
 - `/follow`
 - `/detach`
 - `/stop`
+- `/compact`
+- `/steerall`
+- `/sendfile`
 - `/mode`
-- `/autocontinue`
+- `/autowhip`
 - `/model`
 - `/reasoning`
 - `/access`
+- `/verbose`
+- `/cron`
+- `/upgrade`
 - `/debug`
 - `/help`
 - `/menu`
@@ -57,6 +65,7 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 - `/threads`、`/sessions` -> `/use`
 - `/approval` -> `/access`
 - `/effort` -> `/reasoning`
+- `/autocontinue` -> `/autowhip`
 - `menu` -> `/menu`
 
 ## 当前实现必需能力
@@ -109,7 +118,7 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 
 - `im.message.reaction.created_v1` 负责 queued 文本的 `ThumbsUp` steering
 - `im.message.recalled_v1` 负责撤回尚未发送的排队输入，或取消 staged image
-- `application.bot.menu_v6` 负责静态 bot 菜单里的 `menu/stop/new/reasoning/model/access`
+- `application.bot.menu_v6` 负责静态 bot 菜单里的 `menu/stop/steerall/new/reasoning/model/access`
 
 ### 3. 回调配置
 
@@ -133,9 +142,9 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 
 - `im:datasync.feed_card.time_sensitive:write`
 
-## `.md` 预览额外权限
+## 文档预览额外权限
 
-如果你希望 assistant 最终回复里的本地 `.md` Markdown 链接自动变成“飞书内可点击预览链接”，推荐直接给应用开通：
+如果你希望 assistant 最终回复里的本地文档链接自动变成“飞书内可点击预览链接”，推荐直接给应用开通：
 
 - `drive:drive`
 
@@ -149,9 +158,9 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 如果不开通这部分权限：
 
 - 机器人基础对话仍然可用
-- 但本地 `.md` 链接会保留原样，不会被替换成飞书预览链接
+- 但本地 `.md` 和单文件 `.html` 链接会保留原样，不会被替换成飞书预览链接
 
-## `.md` 预览的可见性与授权要求
+## 文档预览的可见性与授权要求
 
 当前实现不是“只上传文件”，而是“上传 + 授权”一起完成。
 
@@ -165,14 +174,14 @@ alias 仍兼容，但不建议继续当成新的主展示入口：
 因此在群聊里还要注意：
 
 - 应用需要已经在目标群中可见
-- 如果你用群聊测试 `.md` 预览，机器人本身必须已经被加入该群
+- 如果你用群聊测试文档预览，机器人本身必须已经被加入该群
 
 ## 运行时可观察行为
 
-当前 `.md` 预览实现只会处理：
+当前文档预览实现只会处理：
 
 - assistant 最终回复
-- Markdown 链接格式，例如 ``[README](docs/README.md)``
+- Markdown 链接格式，例如 ``[README](docs/README.md)`` 或 ``[mock](docs/mock.html)``
 
 当前不会处理：
 
