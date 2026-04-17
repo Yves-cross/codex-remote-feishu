@@ -221,6 +221,7 @@ When corresponding logic carriers changed:
 - Tiny fixes that can be finished immediately do not require opening/normalizing an issue.
 - Before handing a subtask to a worker, make sure the active child issue is an information closure or a stable closure index for execution.
 - Prefer parent issue + child issue orchestration when one issue would otherwise mix multiple goals, validation surfaces, or weakly related code areas.
+- Workflow-managed active issues should carry exactly one explicit workflow status label; use `status:implementable-now` for ready-to-start work instead of encoding readiness as “no status label”.
 - When an issue is implementable and not truly single-stage, keep `建议范围`, `实现参考`, `检查参考`, and `收尾参考` current in the issue body.
 - For multi-stage or multi-turn issue work, keep a durable execution snapshot in the issue body or linked design doc, including at least `当前执行点`, `下一步`, `最后一致状态`, `未完成尾项`, and `恢复步骤`.
 - On resume, do not continue from chat memory alone. Re-read the execution snapshot and verify it against the current code and latest issue state before acting.

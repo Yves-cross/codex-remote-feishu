@@ -104,7 +104,7 @@ func TestPrepareClaimsProcessingAndWritesSnapshot(t *testing.T) {
 				"## 完成标准",
 				"done",
 			}, "\n"),
-			Labels: []string{"bug", "area:daemon"},
+			Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 		},
 	}
 	svc := &Service{
@@ -170,16 +170,39 @@ func TestBuildLintReportFlagsMissingSectionsAndStatusLabels(t *testing.T) {
 			"## 完成标准",
 			"done",
 		}, "\n"),
-		Labels: []string{"status:blocked", "status:needs-investigation"},
+		Labels: []string{statusLabelBlocked, statusLabelInvestigation},
 	}, WorkflowModeFull)
 	if !containsSection(report.RequiredMissing, "目标") {
 		t.Fatalf("required missing = %#v, want 目标", report.RequiredMissing)
 	}
-	if report.CurrentRecordedState != "invalid-multiple-status-labels" {
+	if report.CurrentRecordedState != recordedStateMultiStatus {
 		t.Fatalf("current recorded state = %q", report.CurrentRecordedState)
 	}
 	if len(report.Findings) < 3 {
 		t.Fatalf("expected findings for missing section and label gaps, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportRequiresExplicitStatusLabel(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon"},
+	}, WorkflowModeFull)
+	if report.CurrentRecordedState != recordedStateMissing {
+		t.Fatalf("current recorded state = %q, want %q", report.CurrentRecordedState, recordedStateMissing)
+	}
+	if !hasFindingCode(report.Findings, "missing-status-label") {
+		t.Fatalf("expected missing-status-label finding, got %#v", report.Findings)
+	}
+	if hasFindingCode(report.Findings, "missing-staged-plan-section") {
+		t.Fatalf("did not expect implementable-only finding without explicit status label, got %#v", report.Findings)
 	}
 }
 
@@ -316,7 +339,7 @@ func TestBuildLintReportFastModeSkipsStagedPlanInfo(t *testing.T) {
 			"## 完成标准",
 			"done",
 		}, "\n"),
-		Labels: []string{"bug", "area:daemon"},
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 	}
 	fullReport := BuildLintReport(issue, WorkflowModeFull)
 	fastReport := BuildLintReport(issue, WorkflowModeFast)
@@ -346,7 +369,7 @@ func TestBuildLintReportFlagsMissingExecutionContextSections(t *testing.T) {
 			"## 建议范围",
 			"stage 1",
 		}, "\n"),
-		Labels: []string{"bug", "area:daemon"},
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 	}, WorkflowModeFull)
 	if !hasFindingCode(report.Findings, "missing-execution-context-sections") {
 		t.Fatalf("expected execution-context info finding, got %#v", report.Findings)
@@ -363,7 +386,7 @@ func TestBuildLintReportRequiresExecutionDecisionEvenInFastMode(t *testing.T) {
 			"## 完成标准",
 			"done",
 		}, "\n"),
-		Labels: []string{"bug", "area:daemon"},
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 	}, WorkflowModeFast)
 	if !hasFindingCode(report.Findings, "missing-execution-decision-section") {
 		t.Fatalf("expected execution decision finding in fast mode, got %#v", report.Findings)
@@ -382,7 +405,7 @@ func TestBuildLintReportFlagsIncompleteExecutionDecision(t *testing.T) {
 			"## 执行决策",
 			"- 是否拆分：不拆分",
 		}, "\n"),
-		Labels: []string{"bug", "area:daemon"},
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 	}, WorkflowModeFull)
 	if !hasFindingCode(report.Findings, "incomplete-execution-decision") {
 		t.Fatalf("expected incomplete execution decision finding, got %#v", report.Findings)
@@ -405,7 +428,7 @@ func TestBuildLintReportRequiresSnapshotWhenStagedPlanExists(t *testing.T) {
 			"- 当前执行单元：当前 issue",
 			"- 是否需要独立 verifier：需要，完成后再跑",
 		}, "\n"),
-		Labels: []string{"bug", "area:daemon"},
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
 	}, WorkflowModeFull)
 	if !hasFindingCode(report.Findings, "missing-execution-snapshot") {
 		t.Fatalf("expected snapshot finding, got %#v", report.Findings)
@@ -497,7 +520,7 @@ func TestFinishFailsWorkflowContractForImplementableIssue(t *testing.T) {
 				"## 完成标准",
 				"done",
 			}, "\n"),
-			Labels: []string{"bug", "area:daemon", "processing"},
+			Labels: []string{"bug", "area:daemon", statusLabelImplementable, "processing"},
 		},
 	}
 	svc := &Service{

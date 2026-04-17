@@ -13,15 +13,21 @@ import (
 )
 
 const (
-	defaultCommentsLimit = 8
-	processingLabel      = "processing"
+	defaultCommentsLimit     = 8
+	processingLabel          = "processing"
+	statusLabelImplementable = "status:implementable-now"
+	statusLabelInvestigation = "status:needs-investigation"
+	statusLabelClarification = "status:needs-clarification"
+	statusLabelBlocked       = "status:blocked"
+	recordedStateMissing     = "missing-status-label"
+	recordedStateMultiStatus = "invalid-multiple-status-labels"
 )
 
 var (
 	requiredSections               = []string{"背景", "目标", "完成标准"}
 	preferredSections              = []string{"范围", "非目标", "相关文档", "涉及文件", "建议范围", "实现参考", "检查参考", "收尾参考"}
 	executionSections              = []string{"实现参考", "检查参考", "收尾参考"}
-	statusLabels                   = []string{"status:needs-investigation", "status:needs-clarification", "status:blocked"}
+	statusLabels                   = []string{statusLabelImplementable, statusLabelInvestigation, statusLabelClarification, statusLabelBlocked}
 	categoryLabels                 = []string{"enhancement", "bug", "maintainability", "testing", "documentation"}
 	executionDecisionRequiredItems = []string{"是否拆分", "当前执行单元", "verifier 决策"}
 	executionSnapshotFields        = []string{"当前阶段", "当前执行点", "已完成", "下一步", "恢复步骤"}
@@ -254,13 +260,13 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 	sort.Strings(report.ScopeLabels)
 	switch len(report.StatusLabels) {
 	case 0:
-		report.CurrentRecordedState = "implementable-now-label-wise"
+		report.CurrentRecordedState = recordedStateMissing
 	case 1:
 		report.CurrentRecordedState = report.StatusLabels[0]
 	default:
-		report.CurrentRecordedState = "invalid-multiple-status-labels"
+		report.CurrentRecordedState = recordedStateMultiStatus
 	}
-	report.WorkflowGuardrails = detectWorkflowGuardrails(issue.Body, sections, len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 0)
+	report.WorkflowGuardrails = detectWorkflowGuardrails(issue.Body, sections, len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 1 && report.CurrentRecordedState == statusLabelImplementable)
 	if len(report.RequiredMissing) > 0 {
 		report.Findings = append(report.Findings, LintFinding{
 			Severity: LintSeverityError,
@@ -268,11 +274,18 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 			Message:  "issue body is missing required sections: " + strings.Join(report.RequiredMissing, ", "),
 		})
 	}
+	if len(report.StatusLabels) == 0 {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityError,
+			Code:     "missing-status-label",
+			Message:  "issue has no explicit workflow status label; add exactly one of " + strings.Join(statusLabels, ", "),
+		})
+	}
 	if len(report.StatusLabels) > 1 {
 		report.Findings = append(report.Findings, LintFinding{
 			Severity: LintSeverityError,
 			Code:     "multiple-status-labels",
-			Message:  "issue has multiple blocked-state labels: " + strings.Join(report.StatusLabels, ", "),
+			Message:  "issue has multiple workflow status labels: " + strings.Join(report.StatusLabels, ", "),
 		})
 	}
 	if len(report.CategoryLabels) == 0 {
@@ -314,22 +327,23 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 	if report.WorkflowMode == WorkflowModeFast {
 		return report
 	}
+	explicitlyImplementable := len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 1 && report.CurrentRecordedState == statusLabelImplementable
 	if !containsSection(report.PreferredMissing, "建议范围") && len(report.RequiredMissing) == 0 {
 		// no-op: explicit staged-plan section already present
-	} else if len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 0 && containsSection(report.PreferredMissing, "建议范围") {
+	} else if explicitlyImplementable && containsSection(report.PreferredMissing, "建议范围") {
 		report.Findings = append(report.Findings, LintFinding{
 			Severity: LintSeverityInfo,
 			Code:     "missing-staged-plan-section",
-			Message:  "issue is label-wise implementable but body does not yet include `建议范围`",
+			Message:  "issue is explicitly marked `status:implementable-now` but body does not yet include `建议范围`",
 		})
 	}
-	if len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 0 {
+	if explicitlyImplementable {
 		missingExecutionSections := intersectSections(report.PreferredMissing, executionSections)
 		if len(missingExecutionSections) > 0 {
 			report.Findings = append(report.Findings, LintFinding{
 				Severity: LintSeverityInfo,
 				Code:     "missing-execution-context-sections",
-				Message:  "issue is label-wise implementable but body does not yet include execution context sections: " + strings.Join(missingExecutionSections, ", "),
+				Message:  "issue is explicitly marked `status:implementable-now` but body does not yet include execution context sections: " + strings.Join(missingExecutionSections, ", "),
 			})
 		}
 	}

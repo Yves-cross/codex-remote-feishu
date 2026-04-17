@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-17`
-> Summary: 公开版 issue workflow 基线，定义母子 issue、未拆分直做单元、闭包、执行快照、产品决策门和 verifier 的最小运行规则。
+> Summary: 公开版 issue workflow 基线，定义母子 issue、未拆分直做单元、显式状态标签、执行快照、产品决策门和 verifier 的最小运行规则。
 
 ## 1. 文档定位
 
@@ -55,6 +55,32 @@
 - worker 不需要重建大范围背景
 - 即使遇到局部不一致，也通常能在当前边界内解决
 - 如果 issue 暂时不拆分，当前活动 issue 也必须满足同样标准，才能作为未拆分直做单元开工
+
+### 3.3 显式状态标签
+
+workflow 管理下的活动 issue 应显式携带且只携带一个 `status:*` 标签。
+
+允许值：
+
+- `status:implementable-now`
+- `status:needs-investigation`
+- `status:needs-clarification`
+- `status:blocked`
+
+其中：
+
+- `status:implementable-now`
+  - 表示该 issue 当前已达到可安全开工的执行闭包
+- 其余三项
+  - 表示该 issue 仍处于不同类型的不可直接开工状态
+
+不要再用“没有状态标签”来隐式表示可开工。
+
+这样做的原因是：
+
+- 空状态无法区分“尚未整形的旧 issue”与“已经确认可开工的 issue”
+- issue 列表和调度视图更容易被人和工具稳定识别
+- 恢复执行时可以减少对历史上下文的额外猜测
 
 ## 4. 拆分规则
 

@@ -247,7 +247,7 @@ What each command owns:
 - `lint`
   - checks required issue sections
   - checks status/category/scope label shape
-  - warns when the staged-plan section is still missing on a label-wise implementable issue
+  - warns when the staged-plan section is still missing on an issue explicitly marked `status:implementable-now`
 - `finish`
   - runs the fixed local mechanical checks
   - can post a comment, close the issue, and release `processing`
@@ -384,8 +384,12 @@ Compare the reassessed state with the issue's previously recorded actionable sta
 
 ## Status Labels
 
-If the issue cannot be started immediately, apply exactly one of:
+Workflow-managed issues should carry exactly one explicit workflow status label.
 
+Apply exactly one of:
+
+- `status:implementable-now`
+  - use when the issue has enough context to start implementation safely
 - `status:needs-investigation`
   - use when the code or runtime path must be researched before safe implementation
 - `status:needs-clarification`
@@ -393,7 +397,9 @@ If the issue cannot be started immediately, apply exactly one of:
 - `status:blocked`
   - use when an external dependency, upstream change, or awaited decision prevents progress
 
-Remove stale status labels when the issue moves to a different blocked state or becomes implementable again.
+Do not encode “ready to implement” as the absence of a status label.
+
+Remove stale status labels when the issue moves to a different workflow state.
 
 ## Blocking Comment Rules
 
