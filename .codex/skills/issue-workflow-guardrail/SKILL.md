@@ -36,6 +36,9 @@ Use this skill as the repository's main issue orchestrator:
 - child issue
   - treat as the default worker unit
   - do not hand it to implementation until it is an execution closure or a stable closure index
+- unsplit direct-execution unit
+  - when an issue stays unsplit, the active issue itself becomes the current worker unit
+  - direct execution is not a bypass; it inherits the same worker-boundary, snapshot, product-gate, and verifier-decision rules
 - execution snapshot
   - keep a durable current execution point and resume contract in the issue body or linked design doc
 - product decision gate
@@ -61,6 +64,8 @@ Split before coding when any of these are true:
 - different parts need substantially different validation surfaces
 - the work is naturally parallelizable
 
+If you decide not to split, treat the active issue as the current worker unit and record that decision durably before coding.
+
 For a parent issue, keep the body or a linked design doc current with:
 
 - split structure
@@ -77,6 +82,21 @@ Roll results back into the parent issue whenever:
 - new findings invalidate the previous split or dependency assumptions
 
 Do not leave stage changes only in chat when they materially affect later execution.
+
+## Execution Decision Record
+
+After `prepare` succeeds and before coding starts, write or refresh an execution decision record.
+
+This record must say at least:
+
+- whether the issue is being split
+- if not split, why the active issue can safely act as a single worker unit
+- what the current worker unit is
+- whether an independent verifier pass is expected before close-out
+- if verifier is not planned, why skipping it is acceptable for this run
+
+Put this record in the active issue body, the parent issue, or a linked design doc.
+Do not leave it only in chat.
 
 ## Durable Execution Snapshot
 
@@ -108,6 +128,8 @@ On resume, never continue from memory alone. Re-read the snapshot, linked closur
 
 ## Worker Boundary
 
+Workers include both child issues and an unsplit active issue doing direct execution.
+
 Workers own execution inside the current issue closure, not replanning outside it.
 
 Use this practical rule:
@@ -128,6 +150,7 @@ Common red signals:
 - dependency order would need to change
 - sibling issue assumptions are now invalid
 - the issue no longer forms a stable execution closure
+- the unsplit active issue no longer forms a stable single-worker closure
 
 ## Product Decision Gate
 
@@ -171,6 +194,7 @@ Use `$issue-verifier` when:
 - you want an independent pass before closure
 
 The verifier pass is a role boundary, not just a longer self-review. Default to read-only verification unless the user explicitly asks for fixes as part of the same step.
+Even when the decision is “no verifier for this run”, make that an explicit recorded decision before close-out. Direct execution is not exempt.
 
 ## Workflow Modes
 
@@ -291,6 +315,7 @@ Use the issue body for durable structure:
 - related docs
 - related files
 - acceptance criteria
+- execution decision (`是否拆分`, `当前执行单元`, verifier plan, and why)
 - staged plan (`建议范围`) when work is not truly single-stage
 - execution snapshot (`当前执行点`, `恢复步骤`, and related fields) when work spans multiple stages or turns
 - implementation context (`实现参考`)
@@ -321,14 +346,15 @@ When picking up or re-assessing an issue:
 5. If the issue is still too broad, narrow it or split follow-up issues before implementation.
 6. If staged implementation is expected, write the current staged plan into the issue body before coding.
    - For larger work, also decide whether this issue should stay single-stage, become a parent issue, or be split into child issues.
-7. Once the issue is implementable, fill or refresh `实现参考`, `检查参考`, and `收尾参考`.
+7. Once the issue is implementable, decide and record whether it remains an unsplit single-worker issue or should become a parent/child split, and record the current verifier plan.
+8. Once the issue is implementable, fill or refresh `实现参考`, `检查参考`, and `收尾参考`.
    - `实现参考`: recommended cut, key docs/files, current preferred solution, confirmed constraints
    - `检查参考`: risky flows, regression points, exact docs/tests to re-check
    - `收尾参考`: likely knowledge write-back targets such as issue body, linked design docs, docs/general, state-machine docs, AGENTS, or repo skills
    - For multi-stage or multi-turn work, also create or refresh the execution snapshot instead of relying on chat memory.
    - If a product decision gate already looks likely, prepare a `待决策` section early instead of waiting until implementation is confused.
-8. If later investigation or implementation changes the staged plan or any execution-context section materially, update the issue body before continuing.
-9. If work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, append it to `低优先级待办` in the active issue body instead of leaving it only in chat.
+9. If later investigation or implementation changes the staged plan, execution decision, or any execution-context section materially, update the issue body before continuing.
+10. If work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, append it to `低优先级待办` in the active issue body instead of leaving it only in chat.
    - Keep entries concise and actionable.
    - Include what is deferred and why it stayed in-body instead of becoming its own issue.
    - Use this section as the canonical source for later backlog harvest.
@@ -349,6 +375,7 @@ Compare the reassessed state with the issue's previously recorded actionable sta
 - If the state changed in either direction, update the issue body, labels, and concise evidence as needed, then run `finish --issue <number> --skip-checks` and stop there for this turn.
 - If the state did not change but the issue is still not implementable, update the issue with any newly confirmed evidence, then run `finish --issue <number> --skip-checks` and stop there for this turn.
 - Only when the issue was already implementable and remains implementable after reassessment may coding start immediately.
+- Even on that path, write or refresh the execution decision record before coding.
 
 ## Status Labels
 
@@ -382,8 +409,10 @@ If the issue was already implementable and still is after reassessment:
 
 - do not leave a ritual “starting work” comment
 - implement against the refined issue
+- if the issue remains unsplit, explicitly treat it as the current worker unit instead of as a bypass path
 - if the issue is actually serving as a parent issue, do not force coding in place; first refresh split/order/next-unit selection
 - before each implementation stage, re-read the issue body, latest comments, current code state, and `实现参考`
+- before each implementation stage, re-read the execution decision record and confirm it still matches reality; if not, update it before coding
 - before each implementation stage, confirm the execution snapshot still matches reality; if not, update it before coding
 - before each implementation stage, re-run any repository skills already required by the task so the next step is based on current guidance
 - before validation/check work, re-read `检查参考`
@@ -391,6 +420,7 @@ If the issue was already implementable and still is after reassessment:
 - prefer staged delivery for medium or large work
 - write the current staged plan into the issue or a linked design doc before stage 1
 - update the staged plan back to the issue whenever the plan or stage split changes
+- apply the same green/yellow/red worker-boundary rules to unsplit direct execution; do not keep coding through a red inconsistency
 - if implementation hits a product decision gate, stop and return a minimal decision packet instead of silently picking one branch
 - when you intentionally defer a tiny follow-up that is not worth a new issue, record it under `低优先级待办` before moving on
 - continue through all planned stages in the same task unless a major assumption collapsed and the remaining direction would materially diverge
@@ -398,6 +428,7 @@ If the issue was already implementable and still is after reassessment:
 - each stage should end with implementation, stage-scoped validation, a refreshed execution snapshot, and a local commit
 - when the overall issue is finished, do not stop at “last stage implemented locally”; continue through publish/close-out work in the same turn unless blocked
 - for medium/large issue work, decide explicitly whether an independent verifier pass should run before close-out
+- before close-out, record what local validation ran, whether verifier ran, and why any verifier skip was acceptable
 - posting a “locally complete” comment is not an acceptable substitute for commit/push/close when the user asked to complete the issue
 - validate the result
 - before any normal stop path, re-read `收尾参考` and decide whether durable knowledge changed enough to require write-back
@@ -430,6 +461,7 @@ When closing the issue, leave a short completion note with:
 - what was implemented
 - what was intentionally not changed, if relevant
 - how it was validated
+- whether verifier ran, or why it was intentionally skipped
 - what durable knowledge was synced back, or why none was needed
 - commit or PR reference
 - follow-up issue reference if work was intentionally deferred
