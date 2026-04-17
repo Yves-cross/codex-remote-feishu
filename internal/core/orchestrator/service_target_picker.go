@@ -394,8 +394,8 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 			}
 			gitFinalPath = strings.TrimSpace(gitState.FinalPath)
 			sourceMessages = append(sourceMessages, gitState.Messages...)
-			canConfirm = canConfirm && gitState.CanConfirm
 			confirmLabel = "克隆并继续"
+			hint = "填写完成后再点击下方按钮；系统会在点击时校验配置，并把错误直接显示在这张卡片里。"
 		default:
 			confirmLabel = "继续"
 		}
