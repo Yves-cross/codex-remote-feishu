@@ -907,6 +907,76 @@ func TestTargetPickerAddWorkspaceGitSourceShowsDisabledHintWhenGitMissing(t *tes
 	}
 }
 
+func TestTargetPickerGitImportKeepsConfirmEnabledAndValidatesOnSubmit(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 52, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	workspaceRoot := t.TempDir()
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-web",
+		DisplayName:   "web",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		ShortName:     "web",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachWorkspace,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		WorkspaceKey:     workspaceRoot,
+	})
+
+	view := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectMode,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          view.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
+	}))
+	gitSource := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectSource,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          addMode.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
+	}))
+	if !gitSource.CanConfirm {
+		t.Fatalf("expected git import confirm to stay clickable and validate on submit, got %#v", gitSource)
+	}
+
+	invalid := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTargetPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         gitSource.PickerID,
+		RequestAnswers: map[string][]string{
+			control.FeishuTargetPickerGitRepoURLFieldName:       {"https://github.com/kxn/codex-remote-feishu.git"},
+			control.FeishuTargetPickerGitDirectoryNameFieldName: {"test1122"},
+		},
+	}))
+	if !invalid.CanConfirm {
+		t.Fatalf("expected invalid submit to keep confirm clickable after inline validation, got %#v", invalid)
+	}
+	if invalid.GitRepoURL != "https://github.com/kxn/codex-remote-feishu.git" || invalid.GitDirectoryName != "test1122" {
+		t.Fatalf("expected invalid submit to preserve draft answers on main card, got %#v", invalid)
+	}
+	if len(invalid.SourceMessages) == 0 || invalid.SourceMessages[0].Level != control.FeishuTargetPickerMessageDanger ||
+		!strings.Contains(invalid.SourceMessages[0].Text, "落地目录") {
+		t.Fatalf("expected inline blocking error on main card, got %#v", invalid.SourceMessages)
+	}
+}
+
 func TestTargetPickerGitImportFlowBackfillsMainCardAndDispatchesDaemonCommand(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 55, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -950,6 +1020,9 @@ func TestTargetPickerGitImportFlowBackfillsMainCardAndDispatchesDaemonCommand(t 
 		PickerID:          addMode.PickerID,
 		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
 	}))
+	if !gitSource.CanConfirm {
+		t.Fatalf("expected git source confirm to stay enabled before preview, got %#v", gitSource)
+	}
 
 	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerOpenPathPicker,

@@ -367,13 +367,14 @@ func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleReco
 	}
 	gitState := s.buildTargetPickerGitImportState(record)
 	if !gitState.CanConfirm || strings.TrimSpace(gitState.ParentDir) == "" {
-		if message := targetPickerFirstBlockingMessage(gitState.Messages); message != "" {
-			return notice(surface, "git_import_clone_failed", message)
+		if message := targetPickerGitImportValidationMessage(record, gitState.Messages); message != "" &&
+			!targetPickerHasBlockingMessage(view.SourceMessages, message) {
+			view.SourceMessages = append([]control.FeishuTargetPickerMessage{{
+				Level: control.FeishuTargetPickerMessageDanger,
+				Text:  message,
+			}}, view.SourceMessages...)
 		}
-		if strings.TrimSpace(record.GitParentDir) == "" || strings.TrimSpace(record.GitRepoURL) == "" {
-			return notice(surface, "git_import_clone_failed", "请先补全落地目录和 Git 仓库地址。")
-		}
-		return notice(surface, "git_import_clone_failed", "当前 Git 工作区配置还不能执行，请先修正阻塞项。")
+		return []control.UIEvent{s.targetPickerViewEvent(surface, view, true)}
 	}
 	finalPath := strings.TrimSpace(firstNonEmpty(gitState.FinalPath, gitState.ParentDir))
 	noticeText := fmt.Sprintf("正在把 `%s` 拉取到 `%s`，完成后会直接进入新会话待命。", strings.TrimSpace(record.GitRepoURL), finalPath)
@@ -409,4 +410,38 @@ func targetPickerFirstBlockingMessage(messages []control.FeishuTargetPickerMessa
 		}
 	}
 	return ""
+}
+
+func targetPickerHasBlockingMessage(messages []control.FeishuTargetPickerMessage, text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	for _, message := range messages {
+		if message.Level != control.FeishuTargetPickerMessageDanger {
+			continue
+		}
+		if strings.TrimSpace(message.Text) == text {
+			return true
+		}
+	}
+	return false
+}
+
+func targetPickerGitImportValidationMessage(record *activeTargetPickerRecord, messages []control.FeishuTargetPickerMessage) string {
+	if message := targetPickerFirstBlockingMessage(messages); message != "" {
+		return message
+	}
+	missingParentDir := strings.TrimSpace(record.GitParentDir) == ""
+	missingRepoURL := strings.TrimSpace(record.GitRepoURL) == ""
+	switch {
+	case missingParentDir && missingRepoURL:
+		return "请先补全落地目录和 Git 仓库地址。"
+	case missingParentDir:
+		return "请先选择落地目录。"
+	case missingRepoURL:
+		return "请先填写 Git 仓库地址。"
+	default:
+		return "当前 Git 工作区配置还不能执行，请先修正阻塞项。"
+	}
 }
