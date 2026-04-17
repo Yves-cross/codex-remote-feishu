@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
@@ -137,7 +139,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 			baseOffset+last,
 		)
 		builder.WriteString(rewritten)
-		builder.WriteString(text[i : close+run])
 		if rewrittenChanged {
 			changed = true
 		}
@@ -146,6 +147,27 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 		}
 		if len(rewrittenErrs) > 0 {
 			errs = append(errs, rewrittenErrs...)
+		}
+		inlineRewritten, inlineSupplements, inlineChanged, inlineErrs := p.rewriteMarkdownLinksCodeSpan(
+			ctx,
+			req,
+			principals,
+			runtime,
+			scopeKey,
+			rewrittenTargets,
+			text[i:close+run],
+			text[i+run:close],
+			baseOffset+i+run,
+		)
+		builder.WriteString(inlineRewritten)
+		if inlineChanged {
+			changed = true
+		}
+		if len(inlineSupplements) > 0 {
+			supplements = append(supplements, inlineSupplements...)
+		}
+		if len(inlineErrs) > 0 {
+			errs = append(errs, inlineErrs...)
 		}
 		i = close + run
 		last = i
@@ -174,6 +196,63 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 	return builder.String(), supplements, changed, errs
 }
 
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksCodeSpan(
+	ctx context.Context,
+	req FinalBlockPreviewRequest,
+	principals []previewPrincipal,
+	runtime *previewRewriteRuntime,
+	scopeKey string,
+	rewrittenTargets map[string]string,
+	rawSpan string,
+	text string,
+	baseOffset int,
+) (string, []PreviewSupplement, bool, []string) {
+	if text == "" {
+		return rawSpan, nil, false, nil
+	}
+	trimStart, trimEnd := trimMarkdownInlineSpaceBounds(text)
+	if trimStart >= trimEnd {
+		return rawSpan, nil, false, nil
+	}
+	trimmed := text[trimStart:trimEnd]
+	if end, label, rawTarget, ok := parseMarkdownLinkAt(trimmed, 0); ok && end == len(trimmed) {
+		replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+			ctx,
+			req,
+			principals,
+			runtime,
+			scopeKey,
+			rewrittenTargets,
+			rawTarget,
+			baseOffset+trimStart+len(label)+3,
+			baseOffset+trimStart+len(label)+3+len(rawTarget),
+		)
+		if !rewrittenChanged {
+			return rawSpan, rewrittenSupplements, false, rewrittenErrs
+		}
+		return "[" + label + "](" + replacement + ")", rewrittenSupplements, true, rewrittenErrs
+	}
+	rawTarget, display, ok := parseStandalonePreviewReferenceWhole(trimmed)
+	if !ok {
+		return rawSpan, nil, false, nil
+	}
+	replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+		ctx,
+		req,
+		principals,
+		runtime,
+		scopeKey,
+		rewrittenTargets,
+		rawTarget,
+		baseOffset+trimStart,
+		baseOffset+trimStart+len(rawTarget),
+	)
+	if !rewrittenChanged {
+		return rawSpan, rewrittenSupplements, false, rewrittenErrs
+	}
+	return "[" + display + "](" + replacement + ")", rewrittenSupplements, true, rewrittenErrs
+}
+
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 	ctx context.Context,
 	req FinalBlockPreviewRequest,
@@ -196,53 +275,279 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 	)
 	last := 0
 	for i := 0; i < len(text); {
-		if text[i] != '[' {
-			i++
-			continue
+		if text[i] == '[' {
+			end, label, rawTarget, ok := parseMarkdownLinkAt(text, i)
+			if ok {
+				builder.WriteString(text[last:i])
+				replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+					ctx,
+					req,
+					principals,
+					runtime,
+					scopeKey,
+					rewrittenTargets,
+					rawTarget,
+					baseOffset+i+len(label)+3,
+					baseOffset+i+len(label)+3+len(rawTarget),
+				)
+				if rewrittenChanged {
+					builder.WriteByte('[')
+					builder.WriteString(label)
+					builder.WriteString("](")
+					builder.WriteString(replacement)
+					builder.WriteByte(')')
+					changed = true
+				} else {
+					builder.WriteString(text[i:end])
+				}
+				if len(rewrittenSupplements) > 0 {
+					supplements = append(supplements, rewrittenSupplements...)
+				}
+				if len(rewrittenErrs) > 0 {
+					errs = append(errs, rewrittenErrs...)
+				}
+				i = end
+				last = i
+				continue
+			}
 		}
-		end, label, rawTarget, ok := parseMarkdownLinkAt(text, i)
+		end, rawTarget, display, ok := parseStandalonePreviewReferenceAt(text, i)
 		if !ok {
 			i++
 			continue
 		}
 		builder.WriteString(text[last:i])
-		replacement := rawTarget
-		if cached, ok := rewrittenTargets[rawTarget]; ok {
-			replacement = cached
-		} else {
-			targetStart := i + len(label) + 3
-			ref := PreviewReference{
-				RawTarget:   rawTarget,
-				TargetStart: baseOffset + targetStart,
-				TargetEnd:   baseOffset + targetStart + len(rawTarget),
-			}
-			published, publishedOK, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
-			switch {
-			case err != nil:
-				errs = append(errs, err.Error())
-			case publishedOK && published != nil:
-				if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
-					replacement = published.URL
-				}
-				if len(published.Supplements) > 0 {
-					supplements = append(supplements, published.Supplements...)
-				}
-			}
-			rewrittenTargets[rawTarget] = replacement
-		}
-		builder.WriteByte('[')
-		builder.WriteString(label)
-		builder.WriteString("](")
-		builder.WriteString(replacement)
-		builder.WriteByte(')')
-		if replacement != rawTarget {
+		replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+			ctx,
+			req,
+			principals,
+			runtime,
+			scopeKey,
+			rewrittenTargets,
+			rawTarget,
+			baseOffset+i,
+			baseOffset+i+len(rawTarget),
+		)
+		if rewrittenChanged {
+			builder.WriteByte('[')
+			builder.WriteString(display)
+			builder.WriteString("](")
+			builder.WriteString(replacement)
+			builder.WriteByte(')')
 			changed = true
+		} else {
+			builder.WriteString(text[i:end])
+		}
+		if len(rewrittenSupplements) > 0 {
+			supplements = append(supplements, rewrittenSupplements...)
+		}
+		if len(rewrittenErrs) > 0 {
+			errs = append(errs, rewrittenErrs...)
 		}
 		i = end
 		last = i
 	}
 	builder.WriteString(text[last:])
 	return builder.String(), supplements, changed, errs
+}
+
+func (p *DriveMarkdownPreviewer) rewritePreviewReferenceTarget(
+	ctx context.Context,
+	req FinalBlockPreviewRequest,
+	principals []previewPrincipal,
+	runtime *previewRewriteRuntime,
+	scopeKey string,
+	rewrittenTargets map[string]string,
+	rawTarget string,
+	targetStart int,
+	targetEnd int,
+) (string, []PreviewSupplement, bool, []string) {
+	replacement := rawTarget
+	if cached, ok := rewrittenTargets[rawTarget]; ok {
+		return cached, nil, cached != rawTarget, nil
+	}
+	ref := PreviewReference{
+		RawTarget:   rawTarget,
+		TargetStart: targetStart,
+		TargetEnd:   targetEnd,
+	}
+	published, publishedOK, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
+	if err != nil {
+		rewrittenTargets[rawTarget] = replacement
+		return replacement, nil, false, []string{err.Error()}
+	}
+	var supplements []PreviewSupplement
+	if publishedOK && published != nil {
+		if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
+			replacement = published.URL
+		}
+		if len(published.Supplements) > 0 {
+			supplements = append(supplements, published.Supplements...)
+		}
+	}
+	rewrittenTargets[rawTarget] = replacement
+	return replacement, supplements, replacement != rawTarget, nil
+}
+
+func trimMarkdownInlineSpaceBounds(text string) (int, int) {
+	start := 0
+	for start < len(text) {
+		r, size := utf8.DecodeRuneInString(text[start:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		start += size
+	}
+	end := len(text)
+	for end > start {
+		r, size := utf8.DecodeLastRuneInString(text[:end])
+		if !unicode.IsSpace(r) {
+			break
+		}
+		end -= size
+	}
+	return start, end
+}
+
+func parseStandalonePreviewReferenceWhole(text string) (rawTarget, display string, ok bool) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", "", false
+	}
+	if !looksLikeStandalonePreviewTarget(text) {
+		return "", "", false
+	}
+	return normalizeStandalonePreviewDisplay(text), normalizeStandalonePreviewDisplay(text), true
+}
+
+func parseStandalonePreviewReferenceAt(text string, start int) (end int, rawTarget, display string, ok bool) {
+	if start < 0 || start >= len(text) || !hasStandalonePreviewBoundaryBefore(text, start) {
+		return 0, "", "", false
+	}
+	if text[start] == '<' {
+		closeOffset := strings.IndexByte(text[start+1:], '>')
+		if closeOffset < 0 {
+			return 0, "", "", false
+		}
+		candidateEnd := start + 1 + closeOffset + 1
+		if !hasStandalonePreviewBoundaryAfter(text, candidateEnd) {
+			return 0, "", "", false
+		}
+		candidate := text[start:candidateEnd]
+		if !looksLikeStandalonePreviewTarget(candidate) {
+			return 0, "", "", false
+		}
+		display = normalizeStandalonePreviewDisplay(candidate)
+		return candidateEnd, display, display, true
+	}
+	scanEnd := start
+	for scanEnd < len(text) && text[scanEnd] != '`' {
+		r, size := utf8.DecodeRuneInString(text[scanEnd:])
+		if unicode.IsSpace(r) || isStandalonePreviewTerminator(r) {
+			break
+		}
+		scanEnd += size
+	}
+	if scanEnd <= start {
+		return 0, "", "", false
+	}
+	trimmedEnd := trimStandalonePreviewTrailingPunctuation(text[start:scanEnd])
+	if trimmedEnd <= 0 {
+		return 0, "", "", false
+	}
+	candidateEnd := start + trimmedEnd
+	if !hasStandalonePreviewBoundaryAfter(text, candidateEnd) {
+		return 0, "", "", false
+	}
+	candidate := text[start:candidateEnd]
+	if !looksLikeStandalonePreviewTarget(candidate) {
+		return 0, "", "", false
+	}
+	display = normalizeStandalonePreviewDisplay(candidate)
+	return candidateEnd, display, display, true
+}
+
+func isStandalonePreviewTerminator(r rune) bool {
+	return strings.ContainsRune(",;!?，。；！？、)]}\"'》）】>”’", r)
+}
+
+func hasStandalonePreviewBoundaryBefore(text string, start int) bool {
+	if start <= 0 {
+		return true
+	}
+	r, _ := utf8.DecodeLastRuneInString(text[:start])
+	return unicode.IsSpace(r) || strings.ContainsRune("([{\"'<,.;:!?，。；：！？、（【《“‘", r)
+}
+
+func hasStandalonePreviewBoundaryAfter(text string, end int) bool {
+	if end >= len(text) {
+		return true
+	}
+	r, _ := utf8.DecodeRuneInString(text[end:])
+	return unicode.IsSpace(r) || strings.ContainsRune(")]}\"'>,.;:!?，。；：！？、）】》”’", r)
+}
+
+func trimStandalonePreviewTrailingPunctuation(text string) int {
+	end := len(text)
+	for end > 0 {
+		r, size := utf8.DecodeLastRuneInString(text[:end])
+		switch r {
+		case '.', ',', ';', '!', '?', '，', '。', '；', '！', '？', '"', '\'', '”', '’':
+			end -= size
+			continue
+		case ')', '）':
+			if strings.ContainsRune(text[:end-size], '(') || strings.ContainsRune(text[:end-size], '（') {
+				return end
+			}
+			end -= size
+			continue
+		case ']', '】':
+			if strings.ContainsRune(text[:end-size], '[') || strings.ContainsRune(text[:end-size], '【') {
+				return end
+			}
+			end -= size
+			continue
+		case '}', '》':
+			end -= size
+			continue
+		default:
+			return end
+		}
+	}
+	return end
+}
+
+func normalizeStandalonePreviewDisplay(text string) string {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "<") && strings.HasSuffix(text, ">") {
+		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(text, "<"), ">"))
+	}
+	return text
+}
+
+func looksLikeStandalonePreviewTarget(text string) bool {
+	target := normalizeStandalonePreviewDisplay(text)
+	if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "#") || strings.ContainsAny(target, " \t\r\n") {
+		return false
+	}
+	cleanTarget, _ := stripMarkdownLocationSuffix(target)
+	if cleanTarget == "" {
+		return false
+	}
+	if _, ok := previewLexicalAbsolutePath(cleanTarget); ok {
+		return true
+	}
+	if strings.HasPrefix(cleanTarget, "./") || strings.HasPrefix(cleanTarget, "../") {
+		return true
+	}
+	if strings.ContainsAny(cleanTarget, `/\`) {
+		return true
+	}
+	base := filepath.Base(cleanTarget)
+	if strings.HasPrefix(base, ".") {
+		return true
+	}
+	return filepath.Ext(base) != ""
 }
 
 func (p *DriveMarkdownPreviewer) materializePreviewTarget(ctx context.Context, ref PreviewReference, req FinalBlockPreviewRequest, scopeKey string, principals []previewPrincipal, runtime *previewRewriteRuntime) (*PreviewPublishResult, bool, error) {

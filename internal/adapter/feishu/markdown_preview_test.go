@@ -355,7 +355,7 @@ func TestDriveMarkdownPreviewerUploadsNewVersionWhenMarkdownChanges(t *testing.T
 	}
 }
 
-func TestDriveMarkdownPreviewerSkipsInlineCodeMarkdownLinks(t *testing.T) {
+func TestDriveMarkdownPreviewerRecoversStandaloneInlineCodeMarkdownLinks(t *testing.T) {
 	root := t.TempDir()
 	writeMarkdownFile(t, filepath.Join(root, "docs", "inside.md"), "# inside\n")
 	writeMarkdownFile(t, filepath.Join(root, "docs", "outside.md"), "# outside\n")
@@ -372,13 +372,48 @@ func TestDriveMarkdownPreviewerSkipsInlineCodeMarkdownLinks(t *testing.T) {
 		Block: render.Block{
 			Kind:  render.BlockAssistantMarkdown,
 			Final: true,
-			Text:  "保留字面量 `[inside](docs/inside.md)`，再打开 [outside](docs/outside.md)。",
+			Text:  "先看 `[inside](docs/inside.md)`，再打开 [outside](docs/outside.md)。",
 		},
 	})
 	if err != nil {
 		t.Fatalf("rewrite returned error: %v", err)
 	}
-	want := "保留字面量 `[inside](docs/inside.md)`，再打开 [outside](https://preview/file-1)。"
+	want := "先看 [inside](https://preview/file-1)，再打开 [outside](https://preview/file-2)。"
+	if result.Block.Text != want {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
+	}
+	if len(api.uploadFileCalls) != 2 {
+		t.Fatalf("expected inline and outside markdown links to be materialized, got %#v", api.uploadFileCalls)
+	}
+	if !strings.HasPrefix(api.uploadFileCalls[0].FileName, "inside--") || !strings.HasPrefix(api.uploadFileCalls[1].FileName, "outside--") {
+		t.Fatalf("unexpected uploaded files: %#v", api.uploadFileCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerSkipsCommandLikeInlineCodeReferences(t *testing.T) {
+	root := t.TempDir()
+	writeMarkdownFile(t, filepath.Join(root, "docs", "inside.md"), "# inside\n")
+	writeMarkdownFile(t, filepath.Join(root, "docs", "outside.md"), "# outside\n")
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		ProcessCWD: root,
+	})
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "保留命令 `cat docs/inside.md | head -n 5`，再打开 [outside](docs/outside.md)。",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	want := "保留命令 `cat docs/inside.md | head -n 5`，再打开 [outside](https://preview/file-1)。"
 	if result.Block.Text != want {
 		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
 	}
@@ -416,6 +451,59 @@ func TestDriveMarkdownPreviewerSkipsFencedCodeMarkdownLinks(t *testing.T) {
 	}
 	if len(api.uploadFileCalls) != 1 || !strings.HasPrefix(api.uploadFileCalls[0].FileName, "outside--") {
 		t.Fatalf("expected only outside markdown link to be materialized, got %#v", api.uploadFileCalls)
+	}
+}
+
+func TestDriveMarkdownPreviewerRewritesStandaloneBareFileReferences(t *testing.T) {
+	root := t.TempDir()
+	writeMarkdownFile(t, filepath.Join(root, "docs", "plain.md"), "# plain\n")
+	writeMarkdownFile(t, filepath.Join(root, "docs", "code.md"), "# code\n")
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		ProcessCWD: root,
+	})
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "先看 docs/plain.md，再看 `docs/code.md`。",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	want := "先看 [docs/plain.md](https://preview/file-1)，再看 [docs/code.md](https://preview/file-2)。"
+	if result.Block.Text != want {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
+	}
+	if len(api.uploadFileCalls) != 2 {
+		t.Fatalf("expected both standalone references to be materialized, got %#v", api.uploadFileCalls)
+	}
+	if !strings.HasPrefix(api.uploadFileCalls[0].FileName, "plain--") || !strings.HasPrefix(api.uploadFileCalls[1].FileName, "code--") {
+		t.Fatalf("unexpected uploaded files: %#v", api.uploadFileCalls)
+	}
+}
+
+func TestParseStandalonePreviewReferenceAtStopsAtChinesePunctuation(t *testing.T) {
+	text := "先看 docs/plain.md，再看"
+	start := strings.Index(text, "docs/plain.md")
+	if start < 0 {
+		t.Fatalf("failed to locate candidate in %q", text)
+	}
+	end, rawTarget, display, ok := parseStandalonePreviewReferenceAt(text, start)
+	if !ok {
+		t.Fatalf("expected standalone preview reference match in %q", text)
+	}
+	if got := text[start:end]; got != "docs/plain.md" {
+		t.Fatalf("unexpected matched text: %q", got)
+	}
+	if rawTarget != "docs/plain.md" || display != "docs/plain.md" {
+		t.Fatalf("unexpected parsed target/display: raw=%q display=%q", rawTarget, display)
 	}
 }
 
