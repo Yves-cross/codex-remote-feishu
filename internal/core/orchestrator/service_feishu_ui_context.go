@@ -25,7 +25,7 @@ func (s *Service) buildFeishuUISurfaceContext(surface *state.SurfaceConsoleRecor
 		CurrentWorkspaceKey:            s.surfaceCurrentWorkspaceKey(surface),
 		RouteMode:                      string(surface.RouteMode),
 		SelectedThreadID:               strings.TrimSpace(surface.SelectedThreadID),
-		Gate:                           snapshotGateSummary(surface),
+		Gate:                           s.snapshotGateSummary(surface),
 		InlineReplaceFreshness:         control.FeishuUIInlineReplaceFreshnessDaemonLifecycle,
 		InlineReplaceRequiresFreshness: true,
 		InlineReplaceViewSession:       control.FeishuUIInlineReplaceViewSessionSurfaceState,
@@ -37,7 +37,7 @@ func (s *Service) buildFeishuUISurfaceContext(surface *state.SurfaceConsoleRecor
 		context.RouteMutationBlockedBy = "request_capture"
 		return context
 	}
-	if surface.ActivePathPicker != nil {
+	if s.activePathPicker(surface) != nil {
 		context.RouteMutationBlocked = true
 		context.RouteMutationBlockedBy = "path_picker"
 		return context

@@ -50,7 +50,7 @@ func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Serv
 	}
 	events := s.enterTargetPickerNewThread(surface, workspaceKey)
 	if targetPickerNewThreadSucceeded(surface, workspaceKey) {
-		clearSurfaceTargetPicker(surface)
+		s.clearSurfaceTargetPicker(surface)
 	}
 	return events
 }

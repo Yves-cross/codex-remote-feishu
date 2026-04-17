@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
-	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
@@ -83,8 +82,8 @@ func persistNormalCodexBinary(configPath, target string) {
 func firstUsableVSCodeBundleCodex(configured string) string {
 	candidates := []string{configured}
 	candidates = append(candidates, siblingVSCodeBundleCodexCandidates(configured)...)
-	if defaults, err := install.DetectPlatformDefaults(); err == nil {
-		candidates = append(candidates, defaults.CandidateBundleEntrypoints...)
+	if defaults, err := editor.DetectRuntimeBundleEntrypoints(); err == nil {
+		candidates = append(candidates, defaults...)
 	}
 
 	seen := map[string]bool{}

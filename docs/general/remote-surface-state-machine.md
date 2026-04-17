@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-16`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 源消息时的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（顶部 `已有工作区` / `添加工作区` 模式切换；已有工作区路径仍是工作区下拉 + 会话下拉 + confirm；添加工作区路径改成 `本地目录` / `Git URL` 来源选择，其中 `Git URL` 先走本地 `request_user_input` 参数表单，再走父目录 path picker，并由 daemon-side non-interactive `git clone` 在持锁外执行；两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 confirm 禁用）；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义，以及 Feishu 同上下文卡片导航的原地替换行为与协议边界、`request_user_input` 在多题场景下的分题暂存与“提交后确认留空”路径、本地 Git 导入参数表单复用同一 request gate、`approval_command` / `approval_file_change` / `approval_network` 与顶层 `tool/requestUserInput` 现在也进入 renderable request card 与结构化回写链路、`surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载，以及 persisted sqlite recent-thread freshness 只补主交互会话并过滤内部 probe / agent-role 会话。
+> Updated: `2026-04-17`
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（顶部 `已有工作区` / `添加工作区` 模式切换；已有工作区路径仍是工作区下拉 + 会话下拉 + confirm；添加工作区路径改成 `本地目录` / `Git URL` 来源选择，其中 `Git URL` 先走本地 `request_user_input` 参数表单，再走父目录 path picker，并由 daemon-side non-interactive `git clone` 在持锁外执行；两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 confirm 禁用）；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义、request/path-picker/target-picker/thread-history 的 service-owned runtime 持有边界，以及 `surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载。
 
 ## 1. 文档定位
 
@@ -42,7 +42,7 @@
 25. [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
 26. [internal/core/orchestrator/service_path_picker.go](../../internal/core/orchestrator/service_path_picker.go)
 27. [internal/core/orchestrator/service_target_picker.go](../../internal/core/orchestrator/service_target_picker.go)
-28. [internal/core/state/target_picker.go](../../internal/core/state/target_picker.go)
+28. [internal/core/orchestrator/service_ui_runtime.go](../../internal/core/orchestrator/service_ui_runtime.go)
 29. [internal/core/control/feishu_target_picker.go](../../internal/core/control/feishu_target_picker.go)
 30. [internal/core/orchestrator/service_target_picker_git_import.go](../../internal/core/orchestrator/service_target_picker_git_import.go)
 31. [internal/app/daemon/app_git_workspace_import.go](../../internal/app/daemon/app_git_workspace_import.go)
@@ -251,21 +251,21 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 | `G2 PendingRequest` | `PendingRequests` 非空 | 普通文本/图片会被待处理请求门禁挡住；当前可能是 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval` 或 `mcp_server_elicitation`。顶层 `tool/requestUserInput` 与 `item` 形式共用同一 `request_user_input` gate；orchestrator 本地发起的 `request_user_input`（例如 Git 导入参数表单）也复用同一 gate；这些请求在 resolve 前都会继续保持 gate |
 | `G3 RequestCapture` | `ActiveRequestCapture != nil` | 下一条普通文本会被当成拒绝反馈 |
 | `G4 CommandCapture` | `ActiveCommandCapture != nil` | 仅保留旧 `/model` 历史兼容：当前 UI 不再创建新 capture；若 surface 上残留旧 capture，下一条普通文本会被直接转换成 `/model <输入>` |
-| `G5 PathPicker` | `ActivePathPicker != nil` | 当前存在一个仍有效的飞书路径选择器；core 只关心“gate 是否存在、是否阻断 competing UI / route mutation、confirm/cancel 后如何交给 consumer”，不关心目录浏览细节 |
+| `G5 PathPicker` | 当前 surface 的 active path picker runtime 非空 | 当前存在一个仍有效的飞书路径选择器；core 只关心“gate 是否存在、是否阻断 competing UI / route mutation、confirm/cancel 后如何交给 consumer”，不关心目录浏览细节 |
 | `G6 AbandoningGate` | `Abandoning=true` | 只有 `/status` 与 `/autowhip` 继续正常，其余动作被挡 |
 | `G7 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到 legacy `settings.json` override 或 stale managed shim | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发迁移/修复卡片 |
 
 补充说明：
 
 1. `ActivePathPicker` 当前是一个 coarse-grained modal overlay：
-   1. root / current / selected path、owner、expiresAt、consumer 元数据都挂在 surface 上的 `ActivePathPicker` 记录里。
+   1. root / current / selected path、owner、expiresAt、consumer 元数据当前由 orchestrator service 持有的 per-surface runtime 记录承载，不再直接挂在 `core/state.SurfaceConsoleRecord` 上。
    2. core 不引入新的 route mode，也不追踪“当前浏览到了第几层目录”这类 UI 细节。
    3. core 只在两类地方感知它：
       1. route-mutation / competing Feishu card flow gate
       2. confirm / cancel 的 gate 清理与 consumer handoff
       3. unauthorized 只回拒绝 notice，不清当前 gate
    4. `ApplySurfaceAction()` 入口当前会先做一次 expired picker 清理：
-      1. 若 `ActivePathPicker.ExpiresAt <= now`，先清 gate，再继续处理当前 action。
+      1. 若 active path picker runtime 的 `ExpiresAt <= now`，先清 gate，再继续处理当前 action。
       2. 这样即使用户不再点击旧 picker 卡片，只要发任意新动作，也不会卡在长期 `path_picker_active`。
 
 ### 3.5 草稿状态
@@ -557,7 +557,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 4. request gate：
    1. `PendingRequest`
    2. `RequestCapture`
-   3. `ActivePathPicker`
+   3. active path picker runtime
 5. dispatch / queue：
    1. `Dispatching`
    2. `Running`
@@ -784,12 +784,12 @@ R5 NewThreadReady
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。
    3. 当前 instance claim 会先释放，再 attach 到新目标。
-10. 当 surface 处于 `PendingRequest`、`RequestCapture` 或 `ActivePathPicker` 时：
+10. 当 surface 处于 `PendingRequest`、`RequestCapture` 或 active path picker runtime 存在时：
    1. same-instance `/use`
    2. `/follow`
    3. follow-local 自动重绑定
    当前都会被冻结，避免 UI 宣布的新目标和下一条普通输入的实际落点不一致。
-   4. 若是 `ActivePathPicker`，当前还会额外把 `/list`、`/menu`、bare config cards、`/detach` 等 competing Feishu card flow 一并挡住，只保留 picker 自身回调与 `/status`。
+   4. 若是 active path picker runtime，当前还会额外把 `/list`、`/menu`、bare config cards、`/detach` 等 competing Feishu card flow 一并挡住，只保留 picker 自身回调与 `/status`。
 11. 旧 `/newinstance` 在所有 route state 下都只会回迁移提示，不会创建 headless，也不会改动当前 route。
 12. daemon 侧后台 auto-restore 使用的是 headless-only resolver：
    1. 当前可见 thread 若只存在于 VS Code instance，不会被自动 attach 到 VS Code。

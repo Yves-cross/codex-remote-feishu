@@ -29,20 +29,20 @@ func TestCompleteTargetPickerGitImportEntersNewThreadReadyAndClearsPicker(t *tes
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	surface.ActiveTargetPicker = &state.ActiveTargetPickerRecord{
+	svc.setActiveTargetPicker(surface, &activeTargetPickerRecord{
 		PickerID:     "picker-1",
 		OwnerUserID:  "user-1",
 		Source:       control.TargetPickerRequestSourceList,
 		SelectedMode: control.FeishuTargetPickerModeAddWorkspace,
-	}
+	})
 
 	events := svc.CompleteTargetPickerGitImport("surface-1", "picker-1", workspaceRoot)
 
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, workspaceRoot) {
 		t.Fatalf("expected git import completion to enter new-thread-ready, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker != nil {
-		t.Fatalf("expected successful git import completion to clear target picker, got %#v", surface.ActiveTargetPicker)
+	if picker := svc.activeTargetPicker(surface); picker != nil {
+		t.Fatalf("expected successful git import completion to clear target picker, got %#v", picker)
 	}
 	var sawReady bool
 	for _, event := range events {
@@ -101,12 +101,12 @@ func TestCompleteTargetPickerGitImportAttachFailureMentionsDirectoryPreserved(t 
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	surface.ActiveTargetPicker = &state.ActiveTargetPickerRecord{
+	svc.setActiveTargetPicker(surface, &activeTargetPickerRecord{
 		PickerID:     "picker-1",
 		OwnerUserID:  "user-1",
 		Source:       control.TargetPickerRequestSourceList,
 		SelectedMode: control.FeishuTargetPickerModeAddWorkspace,
-	}
+	})
 
 	events := svc.CompleteTargetPickerGitImport("surface-1", "picker-1", workspaceRoot)
 

@@ -109,7 +109,7 @@ func TestTargetPickerConfirmExistingThreadAttachesSelection(t *testing.T) {
 	if surface.SelectedThreadID != "thread-web" || !testutil.SamePath(surface.ClaimedWorkspaceKey, "/data/dl/web") {
 		t.Fatalf("expected target picker confirm to attach selected thread, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker != nil {
+	if picker := svc.activeTargetPicker(surface); picker != nil {
 		t.Fatalf("expected successful confirm to clear active picker")
 	}
 	var sawAttached bool
@@ -164,7 +164,7 @@ func TestTargetPickerConfirmNewThreadOnAttachedWorkspaceEntersReadyState(t *test
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, "/data/dl/droid") {
 		t.Fatalf("expected target picker new-thread confirm to enter ready state, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker != nil {
+	if picker := svc.activeTargetPicker(surface); picker != nil {
 		t.Fatalf("expected successful confirm to clear active picker")
 	}
 	var sawReady bool
@@ -289,7 +289,7 @@ func TestTargetPickerConfirmRejectsStaleSessionFallback(t *testing.T) {
 	if surface.SelectedThreadID != "" {
 		t.Fatalf("expected stale confirm not to attach fallback session, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker == nil {
+	if svc.activeTargetPicker(surface) == nil {
 		t.Fatalf("expected stale confirm to keep active picker for retry")
 	}
 	var sawRefresh bool
@@ -499,7 +499,7 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryOpensDirectoryPickerWithou
 	if surface.RouteMode != state.RouteModeUnbound || !testutil.SamePath(surface.ClaimedWorkspaceKey, workspaceRoot) {
 		t.Fatalf("expected route to stay on current workspace until path confirm, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker == nil || surface.ActivePathPicker == nil {
+	if svc.activeTargetPicker(surface) == nil || svc.activePathPicker(surface) == nil {
 		t.Fatalf("expected both target picker and appended path picker to stay active, got %#v", surface)
 	}
 	if pathView.Title != "选择要接入的目录" || pathView.ConfirmLabel != "接入并准备新会话" || !strings.Contains(pathView.Hint, "未确认前不会切换当前工作目标。") {
@@ -558,7 +558,7 @@ func TestTargetPickerAddWorkspacePathPickerCancelKeepsCurrentTarget(t *testing.T
 		PickerID:         pathView.PickerID,
 	})
 	surface := svc.root.Surfaces["surface-1"]
-	if surface.ActivePathPicker != nil || surface.ActiveTargetPicker == nil {
+	if svc.activePathPicker(surface) != nil || svc.activeTargetPicker(surface) == nil {
 		t.Fatalf("expected cancel to close only the path picker and keep target picker alive, got %#v", surface)
 	}
 	if surface.RouteMode != state.RouteModeUnbound || !testutil.SamePath(surface.ClaimedWorkspaceKey, workspaceRoot) {
@@ -626,7 +626,7 @@ func TestTargetPickerAddWorkspacePathPickerConfirmEntersNewThreadReadyAndClearsS
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, workspaceRoot) {
 		t.Fatalf("expected path confirm to enter new-thread-ready on the selected directory, got %#v", surface)
 	}
-	if surface.ActivePathPicker != nil || surface.ActiveTargetPicker != nil {
+	if svc.activePathPicker(surface) != nil || svc.activeTargetPicker(surface) != nil {
 		t.Fatalf("expected success path to clear both pickers, got %#v", surface)
 	}
 	var sawReady bool

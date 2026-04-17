@@ -35,6 +35,10 @@ func (s *Service) Surfaces() []*state.SurfaceConsoleRecord {
 	return surfaces
 }
 
+func (s *Service) SurfaceUIRuntime(surfaceID string) SurfaceUIRuntimeSummary {
+	return s.SurfaceUIRuntimeSummary(surfaceID)
+}
+
 type RemoteTurnStatus struct {
 	InstanceID       string `json:"instanceId"`
 	SurfaceSessionID string `json:"surfaceSessionId"`

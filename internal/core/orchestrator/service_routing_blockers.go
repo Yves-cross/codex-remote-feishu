@@ -55,18 +55,18 @@ func (s *Service) blockFreshThreadAttach(surface *state.SurfaceConsoleRecord) []
 	return nil
 }
 
-func surfaceHasRouteMutationRequestState(surface *state.SurfaceConsoleRecord) bool {
+func (s *Service) surfaceHasRouteMutationRequestState(surface *state.SurfaceConsoleRecord) bool {
 	if surface == nil {
 		return false
 	}
-	return surface.ActiveRequestCapture != nil || activePendingRequest(surface) != nil || surface.ActivePathPicker != nil
+	return surface.ActiveRequestCapture != nil || activePendingRequest(surface) != nil || s.activePathPicker(surface) != nil
 }
 
 func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsoleRecord) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
-	if surface.ActivePathPicker != nil {
+	if s.activePathPicker(surface) != nil {
 		return notice(surface, "path_picker_active", "当前正在进行路径选择，请先在卡片里确认或取消；如需查看状态，可继续使用 /status。")
 	}
 	if surface.ActiveRequestCapture != nil {
@@ -80,7 +80,7 @@ func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsol
 }
 
 func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
-	if surface == nil || surface.ActivePathPicker == nil {
+	if surface == nil || s.activePathPicker(surface) == nil {
 		return nil
 	}
 	switch action.Kind {

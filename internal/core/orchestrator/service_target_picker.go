@@ -28,22 +28,22 @@ func (s *Service) openTargetPicker(surface *state.SurfaceConsoleRecord, source c
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	surface.ActiveTargetPicker = record
+	s.setActiveTargetPicker(surface, record)
 	view, err := s.buildTargetPickerView(surface, record)
 	if err != nil {
-		surface.ActiveTargetPicker = nil
+		s.clearSurfaceTargetPicker(surface)
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
 	return []control.UIEvent{s.targetPickerViewEvent(surface, view, inline)}
 }
 
-func (s *Service) newTargetPickerRecord(surface *state.SurfaceConsoleRecord, source control.TargetPickerRequestSource, preferredWorkspaceKey string) (*state.ActiveTargetPickerRecord, error) {
+func (s *Service) newTargetPickerRecord(surface *state.SurfaceConsoleRecord, source control.TargetPickerRequestSource, preferredWorkspaceKey string) (*activeTargetPickerRecord, error) {
 	if surface == nil {
 		return nil, fmt.Errorf("目标选择器不可用")
 	}
 	preferredWorkspaceKey = normalizeWorkspaceClaimKey(firstNonEmpty(preferredWorkspaceKey, s.surfaceCurrentWorkspaceKey(surface)))
 	expiresAt := s.now().Add(defaultTargetPickerTTL)
-	return &state.ActiveTargetPickerRecord{
+	return &activeTargetPickerRecord{
 		PickerID:             s.nextTargetPickerToken(),
 		OwnerUserID:          strings.TrimSpace(firstNonEmpty(surface.ActorUserID)),
 		Source:               source,
@@ -210,7 +210,7 @@ func (s *Service) dispatchTargetPickerConfirmed(surface *state.SurfaceConsoleRec
 		return notice(surface, "target_picker_selection_missing", "当前选择的目标无效，请重新选择。")
 	}
 	if succeeded {
-		clearSurfaceTargetPicker(surface)
+		s.clearSurfaceTargetPicker(surface)
 	}
 	return events
 }
@@ -241,13 +241,13 @@ func targetPickerNewThreadSucceeded(surface *state.SurfaceConsoleRecord, workspa
 		(surface.PendingHeadless != nil && normalizeWorkspaceClaimKey(surface.PendingHeadless.ThreadCWD) == workspaceKey && surface.PendingHeadless.PrepareNewThread)
 }
 
-func (s *Service) requireActiveTargetPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*state.ActiveTargetPickerRecord, []control.UIEvent) {
-	if surface == nil || surface.ActiveTargetPicker == nil {
+func (s *Service) requireActiveTargetPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeTargetPickerRecord, []control.UIEvent) {
+	if surface == nil || s.activeTargetPicker(surface) == nil {
 		return nil, notice(surface, "target_picker_expired", "这个目标选择卡片已失效，请重新发送 /list、/use 或 /useall。")
 	}
-	record := surface.ActiveTargetPicker
+	record := s.activeTargetPicker(surface)
 	if !record.ExpiresAt.IsZero() && !record.ExpiresAt.After(s.now()) {
-		clearSurfaceTargetPicker(surface)
+		s.clearSurfaceTargetPicker(surface)
 		return nil, notice(surface, "target_picker_expired", "这个目标选择卡片已过期，请重新发送 /list、/use 或 /useall。")
 	}
 	if strings.TrimSpace(pickerID) == "" || strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
@@ -260,14 +260,7 @@ func (s *Service) requireActiveTargetPicker(surface *state.SurfaceConsoleRecord,
 	return record, nil
 }
 
-func clearSurfaceTargetPicker(surface *state.SurfaceConsoleRecord) {
-	if surface == nil {
-		return
-	}
-	surface.ActiveTargetPicker = nil
-}
-
-func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, record *state.ActiveTargetPickerRecord) (control.FeishuTargetPickerView, error) {
+func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) (control.FeishuTargetPickerView, error) {
 	if surface == nil || record == nil {
 		return control.FeishuTargetPickerView{}, fmt.Errorf("目标选择器不存在")
 	}

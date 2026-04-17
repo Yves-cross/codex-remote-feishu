@@ -16,7 +16,7 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 		WorkspaceKey:     s.surfaceCurrentWorkspaceKey(surface),
 		AutoContinue:     snapshotAutoContinueSummary(surface),
 	}
-	snapshot.Gate = snapshotGateSummary(surface)
+	snapshot.Gate = s.snapshotGateSummary(surface)
 	if pending := surface.PendingHeadless; pending != nil {
 		snapshot.PendingHeadless = control.PendingHeadlessSummary{
 			InstanceID:  pending.InstanceID,
@@ -142,7 +142,7 @@ func snapshotAutoContinueSummary(surface *state.SurfaceConsoleRecord) control.Au
 	}
 }
 
-func snapshotGateSummary(surface *state.SurfaceConsoleRecord) control.GateSummary {
+func (s *Service) snapshotGateSummary(surface *state.SurfaceConsoleRecord) control.GateSummary {
 	if surface == nil {
 		return control.GateSummary{}
 	}
@@ -152,7 +152,7 @@ func snapshotGateSummary(surface *state.SurfaceConsoleRecord) control.GateSummar
 	if surface.ActiveRequestCapture != nil {
 		return control.GateSummary{Kind: "request_capture"}
 	}
-	if surface.ActivePathPicker != nil {
+	if s.activePathPicker(surface) != nil {
 		return control.GateSummary{Kind: "path_picker"}
 	}
 	count := 0

@@ -97,8 +97,8 @@ func TestHandleGitWorkspaceImportCommandLockedCompletesTargetPickerRoute(t *test
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, workspaceRoot) {
 		t.Fatalf("expected git import success to enter new-thread-ready, got %#v", surface)
 	}
-	if surface.ActiveTargetPicker != nil {
-		t.Fatalf("expected successful git import to clear active target picker, got %#v", surface.ActiveTargetPicker)
+	if runtime := app.service.SurfaceUIRuntime("surface-1"); runtime.ActiveTargetPickerID != "" {
+		t.Fatalf("expected successful git import to clear active target picker, got %#v", runtime)
 	}
 	var sawReady bool
 	for _, event := range commandEvents {

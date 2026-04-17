@@ -1,0 +1,212 @@
+package editor
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/pathscope"
+)
+
+func DetectRuntimeBundleEntrypoints() ([]string, error) {
+	homeDir, err := pathscope.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return DetectBundleEntrypoints(runtime.GOOS, runtime.GOARCH, homeDir), nil
+}
+
+func DetectBundleEntrypoints(goos, goarch, homeDir string) []string {
+	var roots []string
+	if envRoot := os.Getenv("VSCODE_SERVER_EXTENSIONS_DIR"); strings.TrimSpace(envRoot) != "" {
+		roots = append(roots, pathscope.ApplyPrefix(envRoot))
+	}
+	switch goos {
+	case "linux":
+		roots = append(roots,
+			filepath.Join(homeDir, ".vscode-server", "extensions"),
+			filepath.Join(homeDir, ".vscode", "extensions"),
+		)
+	default:
+		roots = append(roots, filepath.Join(homeDir, ".vscode", "extensions"))
+	}
+
+	type candidate struct {
+		path    string
+		modTime int64
+	}
+	var found []candidate
+	for _, root := range roots {
+		dirs, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, dir := range dirs {
+			if !dir.IsDir() || !strings.HasPrefix(dir.Name(), "openai.chatgpt-") {
+				continue
+			}
+			extensionDir := filepath.Join(root, dir.Name())
+			info, err := dir.Info()
+			if err != nil {
+				continue
+			}
+			entrypoint := detectExtensionBundleEntrypoint(goos, goarch, extensionDir)
+			if strings.TrimSpace(entrypoint) != "" {
+				found = append(found, candidate{path: entrypoint, modTime: info.ModTime().UnixNano()})
+			}
+		}
+	}
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].modTime == found[j].modTime {
+			return strings.Compare(found[i].path, found[j].path) < 0
+		}
+		return found[i].modTime > found[j].modTime
+	})
+	seen := map[string]bool{}
+	values := make([]string, 0, len(found))
+	for _, item := range found {
+		if seen[item.path] {
+			continue
+		}
+		seen[item.path] = true
+		values = append(values, item.path)
+	}
+	return values
+}
+
+func detectExtensionBundleEntrypoint(goos, goarch, extensionDir string) string {
+	binDir := filepath.Join(extensionDir, "bin")
+	dirs, err := os.ReadDir(binDir)
+	if err != nil {
+		return ""
+	}
+
+	type candidate struct {
+		path  string
+		score int
+	}
+	found := make([]candidate, 0, len(dirs))
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		score, ok := bundlePlatformDirScore(goos, goarch, dir.Name())
+		if !ok {
+			continue
+		}
+		entrypoint := detectBundleEntrypointFile(goos, filepath.Join(binDir, dir.Name()))
+		if strings.TrimSpace(entrypoint) == "" {
+			continue
+		}
+		found = append(found, candidate{path: entrypoint, score: score})
+	}
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].score == found[j].score {
+			return strings.Compare(found[i].path, found[j].path) < 0
+		}
+		return found[i].score > found[j].score
+	})
+	if len(found) == 0 {
+		return ""
+	}
+	return found[0].path
+}
+
+func detectBundleEntrypointFile(goos, bundleDir string) string {
+	for _, name := range bundleEntrypointNames(goos) {
+		path := filepath.Join(bundleDir, name)
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			continue
+		}
+		return path
+	}
+	return ""
+}
+
+func bundleEntrypointNames(goos string) []string {
+	switch goos {
+	case "windows":
+		return []string{"codex.exe", "codex"}
+	default:
+		return []string{"codex", "codex.exe"}
+	}
+}
+
+func bundlePlatformDirScore(goos, goarch, dirName string) (int, bool) {
+	name := strings.ToLower(strings.TrimSpace(dirName))
+	if name == "" {
+		return 0, false
+	}
+
+	remainder, ok := trimBundlePlatformPrefix(name, goos)
+	if !ok {
+		return 0, false
+	}
+	if remainder == "" {
+		return 100, true
+	}
+
+	tokens := strings.Split(remainder, "-")
+	for index, alias := range platformArchAliases(goarch) {
+		for _, token := range tokens {
+			if token == alias {
+				return 300 - index, true
+			}
+		}
+	}
+	if goos == "darwin" {
+		for _, token := range tokens {
+			if token == "universal" {
+				return 200, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func trimBundlePlatformPrefix(name, goos string) (string, bool) {
+	for _, alias := range platformOSAliases(goos) {
+		if name == alias {
+			return "", true
+		}
+		prefix := alias + "-"
+		if strings.HasPrefix(name, prefix) {
+			return strings.TrimPrefix(name, prefix), true
+		}
+	}
+	return "", false
+}
+
+func platformOSAliases(goos string) []string {
+	switch goos {
+	case "windows":
+		return []string{"windows", "win32"}
+	case "darwin":
+		return []string{"darwin", "macos"}
+	default:
+		return []string{goos}
+	}
+}
+
+func platformArchAliases(goarch string) []string {
+	switch strings.ToLower(strings.TrimSpace(goarch)) {
+	case "amd64":
+		return []string{"x86_64", "x64", "amd64"}
+	case "arm64":
+		return []string{"arm64", "aarch64"}
+	case "386":
+		return []string{"x86", "ia32", "386"}
+	default:
+		normalized := strings.ToLower(strings.TrimSpace(goarch))
+		if normalized == "" {
+			return nil
+		}
+		return []string{normalized}
+	}
+}

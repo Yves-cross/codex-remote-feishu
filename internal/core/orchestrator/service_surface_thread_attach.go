@@ -45,7 +45,7 @@ func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleReco
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
-	if (surface.RouteMode != routeMode || surface.SelectedThreadID != threadID) && surfaceHasRouteMutationRequestState(surface) {
+	if (surface.RouteMode != routeMode || surface.SelectedThreadID != threadID) && s.surfaceHasRouteMutationRequestState(surface) {
 		if blocked := s.blockRouteMutationForRequestState(surface); blocked != nil {
 			return blocked
 		}

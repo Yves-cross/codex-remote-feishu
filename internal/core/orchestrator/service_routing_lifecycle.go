@@ -29,7 +29,7 @@ func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) [
 	delete(s.pausedUntil, surface.SurfaceSessionID)
 	delete(s.abandoningUntil, surface.SurfaceSessionID)
 	clearSurfaceRequests(surface)
-	clearSurfacePathPicker(surface)
+	s.clearSurfacePathPicker(surface)
 	clearSurfaceFinalCards(surface)
 	surface.LastSelection = nil
 	if strings.TrimSpace(instanceID) == "" {
@@ -67,7 +67,7 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
-	if surfaceHasRouteMutationRequestState(surface) &&
+	if s.surfaceHasRouteMutationRequestState(surface) &&
 		(surface.RouteMode != state.RouteModeFollowLocal || s.followLocalWouldRetarget(surface, inst)) {
 		if blocked := s.blockRouteMutationForRequestState(surface); blocked != nil {
 			return blocked
@@ -143,7 +143,7 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 	if s.surfaceHasLiveRemoteWork(surface) {
 		return nil
 	}
-	if surfaceHasRouteMutationRequestState(surface) {
+	if s.surfaceHasRouteMutationRequestState(surface) {
 		return nil
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]

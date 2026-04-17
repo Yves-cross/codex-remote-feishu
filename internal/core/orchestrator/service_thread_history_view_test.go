@@ -43,8 +43,8 @@ func TestApplySurfaceActionHistoryStartsQueryForCurrentThread(t *testing.T) {
 	if events[1].DaemonCommand == nil || events[1].DaemonCommand.Kind != control.DaemonCommandThreadHistoryRead || events[1].DaemonCommand.ThreadID != "thread-1" {
 		t.Fatalf("expected history daemon command, got %#v", events[1])
 	}
-	if surface.ActiveThreadHistory == nil || surface.ActiveThreadHistory.ThreadID != "thread-1" {
-		t.Fatalf("expected active history record, got %#v", surface.ActiveThreadHistory)
+	if record := svc.activeThreadHistory(surface); record == nil || record.ThreadID != "thread-1" {
+		t.Fatalf("expected active history record, got %#v", record)
 	}
 }
 
@@ -66,14 +66,14 @@ func TestHandleSurfaceThreadHistoryLoadedBuildsNewestFirstList(t *testing.T) {
 	surface.AttachedInstanceID = "inst-1"
 	surface.RouteMode = state.RouteModePinned
 	surface.SelectedThreadID = "thread-1"
-	surface.ActiveThreadHistory = &state.ActiveThreadHistoryRecord{
+	svc.setActiveThreadHistory(surface, &activeThreadHistoryRecord{
 		PickerID:    "history-1",
 		OwnerUserID: "user-1",
 		ThreadID:    "thread-1",
 		ViewMode:    control.FeishuThreadHistoryViewList,
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(time.Minute),
-	}
+	})
 	svc.RecordSurfaceThreadHistory("surface-1", agentproto.ThreadHistoryRecord{
 		Thread: agentproto.ThreadSnapshotRecord{ThreadID: "thread-1", Name: "修复登录流程"},
 		Turns: []agentproto.ThreadHistoryTurnRecord{
@@ -142,7 +142,7 @@ func TestHandleSurfaceThreadHistoryLoadedBuildsDetailNavigation(t *testing.T) {
 	surface.AttachedInstanceID = "inst-1"
 	surface.RouteMode = state.RouteModePinned
 	surface.SelectedThreadID = "thread-1"
-	surface.ActiveThreadHistory = &state.ActiveThreadHistoryRecord{
+	svc.setActiveThreadHistory(surface, &activeThreadHistoryRecord{
 		PickerID:    "history-1",
 		OwnerUserID: "user-1",
 		ThreadID:    "thread-1",
@@ -150,7 +150,7 @@ func TestHandleSurfaceThreadHistoryLoadedBuildsDetailNavigation(t *testing.T) {
 		TurnID:      "turn-2",
 		CreatedAt:   now,
 		ExpiresAt:   now.Add(time.Minute),
-	}
+	})
 	svc.RecordSurfaceThreadHistory("surface-1", agentproto.ThreadHistoryRecord{
 		Thread: agentproto.ThreadSnapshotRecord{ThreadID: "thread-1", Name: "修复登录流程"},
 		Turns: []agentproto.ThreadHistoryTurnRecord{

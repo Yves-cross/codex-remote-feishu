@@ -251,10 +251,14 @@ func TestHandleActionPathPickerConfirmSendFileDoesNotDeadlock(t *testing.T) {
 		})
 	})
 	surfaces := app.service.Surfaces()
-	if len(surfaces) != 1 || surfaces[0].ActivePathPicker == nil {
+	if len(surfaces) != 1 {
 		t.Fatalf("expected active path picker, got %#v", surfaces)
 	}
-	pickerID := surfaces[0].ActivePathPicker.PickerID
+	runtime := app.service.SurfaceUIRuntime("surface-1")
+	if runtime.ActivePathPickerID == "" {
+		t.Fatalf("expected active path picker, got runtime=%#v surfaces=%#v", runtime, surfaces)
+	}
+	pickerID := runtime.ActivePathPickerID
 	if pickerID == "" {
 		t.Fatalf("expected picker id")
 	}

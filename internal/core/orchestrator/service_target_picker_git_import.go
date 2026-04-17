@@ -41,8 +41,8 @@ func (s *Service) openTargetPickerGitImportPrompt(surface *state.SurfaceConsoleR
 		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 	}
 	pickerID := ""
-	if surface.ActiveTargetPicker != nil {
-		pickerID = strings.TrimSpace(surface.ActiveTargetPicker.PickerID)
+	if record := s.activeTargetPicker(surface); record != nil {
+		pickerID = strings.TrimSpace(record.PickerID)
 	}
 	requestID := s.nextLocalRequestToken("git-import")
 	record := &state.RequestPromptRecord{
@@ -201,12 +201,13 @@ func (s *Service) CompleteTargetPickerGitImport(surfaceSessionID, pickerID, work
 	if workspaceKey == "" {
 		return notice(surface, "git_import_clone_failed", "仓库已拉取完成，但解析本地工作区目录失败。")
 	}
-	if surface.ActiveTargetPicker == nil || strings.TrimSpace(surface.ActiveTargetPicker.PickerID) != strings.TrimSpace(pickerID) {
+	record := s.activeTargetPicker(surface)
+	if record == nil || strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
 		return notice(surface, "git_import_flow_stale", fmt.Sprintf("仓库已拉取到 `%s`，但原始选择流程已经失效。目录会保留，你可以稍后通过“添加工作区 / 本地目录”继续接入。", workspaceKey))
 	}
 	events := s.enterTargetPickerNewThread(surface, workspaceKey)
 	if targetPickerNewThreadSucceeded(surface, workspaceKey) {
-		clearSurfaceTargetPicker(surface)
+		s.clearSurfaceTargetPicker(surface)
 		return events
 	}
 	return append(events, notice(surface, "git_import_workspace_attach_failed", fmt.Sprintf("仓库已拉取到 `%s`，但接入工作区失败。目录已保留，你可以稍后通过“添加工作区 / 本地目录”继续接入。", workspaceKey))...)

@@ -43,17 +43,17 @@ func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserI
 	if err != nil {
 		return notice(surface, "path_picker_invalid", err.Error())
 	}
-	surface.ActivePathPicker = record
+	s.setActivePathPicker(surface, record)
 	view, err := s.buildPathPickerView(record)
 	if err != nil {
-		surface.ActivePathPicker = nil
+		s.clearSurfacePathPicker(surface)
 		return notice(surface, "path_picker_invalid", err.Error())
 	}
 	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}
 }
 
-func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) (*state.ActivePathPickerRecord, error) {
-	mode, ok := statePathPickerMode(req.Mode)
+func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) (*activePathPickerRecord, error) {
+	mode, ok := runtimePathPickerMode(req.Mode)
 	if !ok {
 		return nil, fmt.Errorf("路径选择器模式无效。")
 	}
@@ -69,7 +69,7 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 	if req.ExpireAfter > 0 {
 		expiresAt = s.now().Add(req.ExpireAfter)
 	}
-	return &state.ActivePathPickerRecord{
+	return &activePathPickerRecord{
 		PickerID:     s.nextPathPickerToken(),
 		OwnerUserID:  strings.TrimSpace(firstNonEmpty(ownerUserID, surface.ActorUserID)),
 		Mode:         mode,
@@ -101,7 +101,7 @@ func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pic
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目标条目无效：%v", err))
 	}
-	if resolved.kind != state.PathPickerModeDirectory {
+	if resolved.kind != pathPickerModeDirectory {
 		return notice(surface, "path_picker_not_directory", "只能进入目录。")
 	}
 	record.CurrentPath = resolved.path
@@ -130,7 +130,7 @@ func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, picker
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("无法返回上一级：%v", err))
 	}
-	if resolved.kind != state.PathPickerModeDirectory {
+	if resolved.kind != pathPickerModeDirectory {
 		return notice(surface, "path_picker_invalid_entry", "上一级目录无效。")
 	}
 	record.CurrentPath = resolved.path
@@ -152,12 +152,12 @@ func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pi
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目标条目无效：%v", err))
 	}
 	switch record.Mode {
-	case state.PathPickerModeFile:
-		if resolved.kind != state.PathPickerModeFile {
+	case pathPickerModeFile:
+		if resolved.kind != pathPickerModeFile {
 			return notice(surface, "path_picker_not_file", "当前只可选择文件。")
 		}
-	case state.PathPickerModeDirectory:
-		if resolved.kind != state.PathPickerModeDirectory {
+	case pathPickerModeDirectory:
+		if resolved.kind != pathPickerModeDirectory {
 			return notice(surface, "path_picker_not_directory", "当前只可选择目录。")
 		}
 	}
@@ -179,7 +179,7 @@ func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, p
 		return notice(surface, "path_picker_selection_missing", err.Error())
 	}
 	result := pathPickerResultFromRecord(record, selectedPath)
-	clearSurfacePathPicker(surface)
+	s.clearSurfacePathPicker(surface)
 	return s.dispatchPathPickerConfirmed(surface, result)
 }
 
@@ -189,17 +189,17 @@ func (s *Service) handlePathPickerCancel(surface *state.SurfaceConsoleRecord, pi
 		return blocked
 	}
 	result := pathPickerResultFromRecord(record, currentSelectedPath(record))
-	clearSurfacePathPicker(surface)
+	s.clearSurfacePathPicker(surface)
 	return s.dispatchPathPickerCancelled(surface, result)
 }
 
-func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*state.ActivePathPickerRecord, []control.UIEvent) {
-	if surface == nil || surface.ActivePathPicker == nil {
+func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activePathPickerRecord, []control.UIEvent) {
+	if surface == nil || s.activePathPicker(surface) == nil {
 		return nil, notice(surface, "path_picker_expired", "这个路径选择器已失效，请重新发起。")
 	}
-	record := surface.ActivePathPicker
+	record := s.activePathPicker(surface)
 	if !record.ExpiresAt.IsZero() && !record.ExpiresAt.After(s.now()) {
-		clearSurfacePathPicker(surface)
+		s.clearSurfacePathPicker(surface)
 		return nil, notice(surface, "path_picker_expired", "这个路径选择器已过期，请重新发起。")
 	}
 	if strings.TrimSpace(pickerID) == "" || strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
@@ -212,7 +212,7 @@ func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, p
 	return record, nil
 }
 
-func (s *Service) buildPathPickerView(record *state.ActivePathPickerRecord) (control.FeishuPathPickerView, error) {
+func (s *Service) buildPathPickerView(record *activePathPickerRecord) (control.FeishuPathPickerView, error) {
 	if record == nil {
 		return control.FeishuPathPickerView{}, fmt.Errorf("路径选择器不存在")
 	}
@@ -220,7 +220,7 @@ func (s *Service) buildPathPickerView(record *state.ActivePathPickerRecord) (con
 	if err != nil {
 		return control.FeishuPathPickerView{}, err
 	}
-	if current.kind != state.PathPickerModeDirectory {
+	if current.kind != pathPickerModeDirectory {
 		return control.FeishuPathPickerView{}, fmt.Errorf("当前路径不是目录")
 	}
 	view := control.FeishuPathPickerView{
@@ -243,7 +243,7 @@ func (s *Service) buildPathPickerView(record *state.ActivePathPickerRecord) (con
 	if len(entries) == 0 {
 		view.Hint = "当前目录为空。"
 	}
-	if record.Mode == state.PathPickerModeFile && view.SelectedPath == "" {
+	if record.Mode == pathPickerModeFile && view.SelectedPath == "" {
 		view.Hint = strings.TrimSpace(firstNonEmpty(view.Hint, "请选择一个文件后再确认。"))
 	}
 	if extraHint := strings.TrimSpace(record.Hint); extraHint != "" {
@@ -256,7 +256,7 @@ func (s *Service) buildPathPickerView(record *state.ActivePathPickerRecord) (con
 	return view, nil
 }
 
-func buildPathPickerEntries(record *state.ActivePathPickerRecord) ([]control.FeishuPathPickerEntry, error) {
+func buildPathPickerEntries(record *activePathPickerRecord) ([]control.FeishuPathPickerEntry, error) {
 	dirEntries, err := os.ReadDir(record.CurrentPath)
 	if err != nil {
 		return nil, err
@@ -276,13 +276,13 @@ func buildPathPickerEntries(record *state.ActivePathPickerRecord) ([]control.Fei
 			continue
 		}
 		switch resolved.kind {
-		case state.PathPickerModeDirectory:
+		case pathPickerModeDirectory:
 			item.Kind = control.PathPickerEntryDirectory
 			item.ActionKind = control.PathPickerEntryActionEnter
 			item.Selected = samePath(currentSelectedPath(record), resolved.path)
-		case state.PathPickerModeFile:
+		case pathPickerModeFile:
 			item.Kind = control.PathPickerEntryFile
-			if record.Mode == state.PathPickerModeFile {
+			if record.Mode == pathPickerModeFile {
 				item.ActionKind = control.PathPickerEntryActionSelect
 				item.Selected = samePath(strings.TrimSpace(record.SelectedPath), resolved.path)
 			} else {
@@ -324,29 +324,22 @@ func pathPickerDirectorySortBucket(entry control.FeishuPathPickerEntry) int {
 	return 0
 }
 
-func clearSurfacePathPicker(surface *state.SurfaceConsoleRecord) {
-	if surface == nil {
-		return
-	}
-	surface.ActivePathPicker = nil
-}
-
 func (s *Service) pruneExpiredPathPicker(surface *state.SurfaceConsoleRecord) {
-	if s == nil || surface == nil || surface.ActivePathPicker == nil {
+	if s == nil || surface == nil || s.activePathPicker(surface) == nil {
 		return
 	}
-	expiresAt := surface.ActivePathPicker.ExpiresAt
+	expiresAt := s.activePathPicker(surface).ExpiresAt
 	if expiresAt.IsZero() || expiresAt.After(s.now()) {
 		return
 	}
-	clearSurfacePathPicker(surface)
+	s.clearSurfacePathPicker(surface)
 }
 
-func confirmedPathPickerSelection(record *state.ActivePathPickerRecord) (string, error) {
+func confirmedPathPickerSelection(record *activePathPickerRecord) (string, error) {
 	selectedPath := currentSelectedPath(record)
 	if strings.TrimSpace(selectedPath) == "" {
 		switch record.Mode {
-		case state.PathPickerModeDirectory:
+		case pathPickerModeDirectory:
 			return "", fmt.Errorf("当前没有可确认的目录。")
 		default:
 			return "", fmt.Errorf("请先选择一个文件。")
@@ -357,23 +350,23 @@ func confirmedPathPickerSelection(record *state.ActivePathPickerRecord) (string,
 		return "", fmt.Errorf("选中的路径已失效：%v", err)
 	}
 	switch record.Mode {
-	case state.PathPickerModeDirectory:
-		if resolved.kind != state.PathPickerModeDirectory {
+	case pathPickerModeDirectory:
+		if resolved.kind != pathPickerModeDirectory {
 			return "", fmt.Errorf("当前只可确认目录。")
 		}
-	case state.PathPickerModeFile:
-		if resolved.kind != state.PathPickerModeFile {
+	case pathPickerModeFile:
+		if resolved.kind != pathPickerModeFile {
 			return "", fmt.Errorf("当前只可确认文件。")
 		}
 	}
 	return resolved.path, nil
 }
 
-func currentSelectedPath(record *state.ActivePathPickerRecord) string {
+func currentSelectedPath(record *activePathPickerRecord) string {
 	if record == nil {
 		return ""
 	}
-	if record.Mode == state.PathPickerModeDirectory {
+	if record.Mode == pathPickerModeDirectory {
 		if strings.TrimSpace(record.SelectedPath) != "" {
 			return strings.TrimSpace(record.SelectedPath)
 		}
@@ -382,7 +375,7 @@ func currentSelectedPath(record *state.ActivePathPickerRecord) string {
 	return strings.TrimSpace(record.SelectedPath)
 }
 
-func pathPickerResultFromRecord(record *state.ActivePathPickerRecord, selectedPath string) control.PathPickerResult {
+func pathPickerResultFromRecord(record *activePathPickerRecord, selectedPath string) control.PathPickerResult {
 	if record == nil {
 		return control.PathPickerResult{}
 	}
@@ -438,14 +431,14 @@ func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, boo
 	return consumer, consumer != nil
 }
 
-func canConfirmPathPicker(record *state.ActivePathPickerRecord) bool {
+func canConfirmPathPicker(record *activePathPickerRecord) bool {
 	_, err := confirmedPathPickerSelection(record)
 	return err == nil
 }
 
-func defaultSelectedPathForMode(mode state.PathPickerMode, currentPath, selectedPath string) string {
+func defaultSelectedPathForMode(mode pathPickerMode, currentPath, selectedPath string) string {
 	switch mode {
-	case state.PathPickerModeDirectory:
+	case pathPickerModeDirectory:
 		if strings.TrimSpace(selectedPath) != "" {
 			return strings.TrimSpace(selectedPath)
 		}
@@ -455,9 +448,9 @@ func defaultSelectedPathForMode(mode state.PathPickerMode, currentPath, selected
 	}
 }
 
-func defaultPathPickerTitle(mode state.PathPickerMode) string {
+func defaultPathPickerTitle(mode pathPickerMode) string {
 	switch mode {
-	case state.PathPickerModeDirectory:
+	case pathPickerModeDirectory:
 		return "选择目录"
 	default:
 		return "选择文件"
@@ -482,12 +475,12 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return cloned
 }
 
-func statePathPickerMode(mode control.PathPickerMode) (state.PathPickerMode, bool) {
+func runtimePathPickerMode(mode control.PathPickerMode) (pathPickerMode, bool) {
 	switch mode {
 	case control.PathPickerModeDirectory:
-		return state.PathPickerModeDirectory, true
+		return pathPickerModeDirectory, true
 	case control.PathPickerModeFile:
-		return state.PathPickerModeFile, true
+		return pathPickerModeFile, true
 	default:
 		return "", false
 	}
@@ -495,14 +488,14 @@ func statePathPickerMode(mode control.PathPickerMode) (state.PathPickerMode, boo
 
 type resolvedPathPickerTarget struct {
 	path string
-	kind state.PathPickerMode
+	kind pathPickerMode
 }
 
 func resolvePathPickerRoot(rootPath string) (string, error) {
 	return state.ResolveWorkspaceRootOnHost(rootPath)
 }
 
-func resolvePathPickerInitialState(rootPath string, mode state.PathPickerMode, initialPath string) (string, string, error) {
+func resolvePathPickerInitialState(rootPath string, mode pathPickerMode, initialPath string) (string, string, error) {
 	if strings.TrimSpace(initialPath) == "" {
 		return rootPath, defaultSelectedPathForMode(mode, rootPath, ""), nil
 	}
@@ -511,13 +504,13 @@ func resolvePathPickerInitialState(rootPath string, mode state.PathPickerMode, i
 		return "", "", err
 	}
 	switch mode {
-	case state.PathPickerModeDirectory:
-		if resolved.kind != state.PathPickerModeDirectory {
+	case pathPickerModeDirectory:
+		if resolved.kind != pathPickerModeDirectory {
 			return "", "", fmt.Errorf("初始路径必须是目录")
 		}
 		return resolved.path, resolved.path, nil
-	case state.PathPickerModeFile:
-		if resolved.kind == state.PathPickerModeFile {
+	case pathPickerModeFile:
+		if resolved.kind == pathPickerModeFile {
 			return filepath.Dir(resolved.path), resolved.path, nil
 		}
 		return resolved.path, "", nil
@@ -557,9 +550,9 @@ func resolvePathPickerExistingTarget(rootPath, targetPath string) (resolvedPathP
 		return resolvedPathPickerTarget{}, err
 	}
 	if info.IsDir() {
-		return resolvedPathPickerTarget{path: resolved, kind: state.PathPickerModeDirectory}, nil
+		return resolvedPathPickerTarget{path: resolved, kind: pathPickerModeDirectory}, nil
 	}
-	return resolvedPathPickerTarget{path: resolved, kind: state.PathPickerModeFile}, nil
+	return resolvedPathPickerTarget{path: resolved, kind: pathPickerModeFile}, nil
 }
 
 func pathWithinRoot(rootPath, targetPath string) bool {

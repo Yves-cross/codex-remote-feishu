@@ -90,7 +90,7 @@ func TestOpenPathPickerDirectoryModeNavigatesAndConfirmsCurrentDirectory(t *test
 	if len(confirmEvents) != 1 || confirmEvents[0].Notice == nil || confirmEvents[0].Notice.Code != "path_picker_confirmed" {
 		t.Fatalf("expected confirmed notice, got %#v", confirmEvents)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+	if svc.activePathPicker(svc.root.Surfaces["surface-1"]) != nil {
 		t.Fatalf("expected picker state to clear after confirm")
 	}
 }
@@ -185,8 +185,8 @@ func TestBuildPathPickerEntriesSortsDotDirectoriesAfterNormalDirectories(t *test
 		}
 	}
 
-	entries, err := buildPathPickerEntries(&state.ActivePathPickerRecord{
-		Mode:        state.PathPickerModeFile,
+	entries, err := buildPathPickerEntries(&activePathPickerRecord{
+		Mode:        pathPickerModeFile,
 		RootPath:    root,
 		CurrentPath: root,
 	})
@@ -225,8 +225,8 @@ func TestBuildPathPickerEntriesAllowsResolvedChildrenUnderSymlinkRoot(t *testing
 		}
 	}
 
-	entries, err := buildPathPickerEntries(&state.ActivePathPickerRecord{
-		Mode:        state.PathPickerModeDirectory,
+	entries, err := buildPathPickerEntries(&activePathPickerRecord{
+		Mode:        pathPickerModeDirectory,
 		RootPath:    linkRoot,
 		CurrentPath: linkRoot,
 	})
@@ -389,7 +389,7 @@ func TestPathPickerRejectsNonOwnerAndPreservesGate(t *testing.T) {
 	if len(rejectEvents) != 1 || rejectEvents[0].Notice == nil || rejectEvents[0].Notice.Code != "path_picker_unauthorized" {
 		t.Fatalf("expected unauthorized notice, got %#v", rejectEvents)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker == nil {
+	if svc.activePathPicker(svc.root.Surfaces["surface-1"]) == nil {
 		t.Fatalf("expected unauthorized action to preserve active picker")
 	}
 
@@ -427,7 +427,7 @@ func TestPathPickerExpiresAndClearsGate(t *testing.T) {
 	if len(expiredEvents) != 1 || expiredEvents[0].Notice == nil || expiredEvents[0].Notice.Code != "path_picker_expired" {
 		t.Fatalf("expected expired notice, got %#v", expiredEvents)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+	if svc.activePathPicker(svc.root.Surfaces["surface-1"]) != nil {
 		t.Fatalf("expected expired picker to clear active state")
 	}
 }
@@ -465,7 +465,7 @@ func TestPathPickerExpiredGateAutoClearsOnRouteAction(t *testing.T) {
 	if len(listEvents) != 1 || listEvents[0].FeishuTargetPickerView == nil {
 		t.Fatalf("expected /list to proceed after picker expiry, got %#v", listEvents)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+	if svc.activePathPicker(svc.root.Surfaces["surface-1"]) != nil {
 		t.Fatalf("expected expired picker gate to be cleared on route action")
 	}
 }
@@ -598,7 +598,7 @@ func TestPathPickerConfirmHandsValidatedResultToConsumer(t *testing.T) {
 	if result.ConsumerMeta["flow"] != "send_file" || result.OwnerUserID != "user-1" {
 		t.Fatalf("unexpected consumer confirm metadata: %#v", result)
 	}
-	if svc.root.Surfaces["surface-1"].ActivePathPicker != nil {
+	if svc.activePathPicker(svc.root.Surfaces["surface-1"]) != nil {
 		t.Fatalf("expected confirm to clear active picker before consumer handoff")
 	}
 }

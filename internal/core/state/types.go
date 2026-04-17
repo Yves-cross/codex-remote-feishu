@@ -188,12 +188,9 @@ type SurfaceConsoleRecord struct {
 	PreparedAt           time.Time
 	PromptOverride       ModelConfigRecord
 	PendingHeadless      *HeadlessLaunchRecord
-	ActiveTargetPicker   *ActiveTargetPickerRecord
-	ActiveThreadHistory  *ActiveThreadHistoryRecord
 	PendingRequests      map[string]*RequestPromptRecord
 	ActiveRequestCapture *RequestCaptureRecord
 	ActiveCommandCapture *CommandCaptureRecord
-	ActivePathPicker     *ActivePathPickerRecord
 	ActiveExecProgress   *ExecCommandProgressRecord
 	RecentFinalCards     []*FinalCardRecord
 	LastThreadHistory    *agentproto.ThreadHistoryRecord

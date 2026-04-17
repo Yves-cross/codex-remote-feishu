@@ -1,8 +1,8 @@
 # 架构
 
 > Type: `general`
-> Updated: `2026-04-15`
-> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，并补充 Feishu ordinary inbound 的 early ACK + gateway-local FIFO lane 边界。
+> Updated: `2026-04-17`
+> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，并补充 Feishu ordinary inbound 的 early ACK + gateway-local FIFO lane 边界；同时同步 orchestrator service-owned UI runtime（target picker / thread history / path picker）与 editor 侧共享 VS Code bundle entrypoint 探测边界。
 
 ## 1. 当前状态
 
@@ -104,6 +104,14 @@ testkit/
 - `QueueItemRecord`
 - `StagedImageRecord`
 
+这里不再承载 UI-owned 的瞬时卡片运行态，例如：
+
+- active target picker
+- active thread history
+- active path picker
+
+这些瞬时 gate / picker runtime 现在由 orchestrator service 自己持有，不再直接挂进 `core/state`。
+
 ### 4.4 `internal/core/orchestrator`
 
 产品状态中心，负责：
@@ -114,6 +122,14 @@ testkit/
 - local-priority / handoff
 - model / reasoning override
 - 将 agent event 映射成 UIEvent 和 command
+
+另外，当前也负责 per-surface 的瞬时 UI runtime：
+
+- target picker
+- thread history
+- path picker
+
+这类状态只服务于当前进程内的交互门禁和回调继续处理，不作为领域状态根长期保存。
 
 ### 4.5 `internal/core/renderer`
 
@@ -162,6 +178,7 @@ Feishu 平台适配层，负责：
 
 - patch VS Code settings
 - patch VS Code Remote 扩展 bundle 入口
+- 探测当前平台可用的 VS Code extension bundle entrypoint 候选
 
 ### 4.10 `internal/app/daemon`
 
@@ -191,6 +208,8 @@ Feishu 平台适配层，负责：
 - 写 `install-state.json`
 - patch editor settings 或 managed shim
 
+安装器当前会复用 editor 侧的 VS Code bundle entrypoint 探测能力，而不是自己再维护一套平台候选解析逻辑。
+
 ## 5. 关键边界
 
 ### 5.1 Wrapper 不做产品语义
@@ -199,6 +218,7 @@ wrapper 只做：
 
 - 协议翻译
 - helper/internal 显式标注
+- 正常 codex binary 的本地自愈选择
 
 wrapper 不做：
 
@@ -206,6 +226,8 @@ wrapper 不做：
 - queue
 - 飞书渲染
 - 文本切分
+
+wrapper 当前不再直接依赖 `app/install`；如果需要探测 VS Code extension bundle 候选，会复用 `adapter/editor` 提供的共享探测能力。
 
 ### 5.2 Orchestrator 是唯一产品状态中心
 

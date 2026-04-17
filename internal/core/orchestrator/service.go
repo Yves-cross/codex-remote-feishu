@@ -53,6 +53,7 @@ type Service struct {
 	persistedThreadsLast []state.ThreadRecord
 	persistedWorkspaces  map[string]time.Time
 	pathPickerConsumers  map[string]PathPickerConsumer
+	surfaceUIRuntime     map[string]*surfaceUIRuntimeRecord
 }
 
 type itemBuffer struct {
@@ -218,6 +219,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		workspaceClaims:     map[string]*workspaceClaimRecord{},
 		threadClaims:        map[string]*threadClaimRecord{},
 		pathPickerConsumers: map[string]PathPickerConsumer{},
+		surfaceUIRuntime:    map[string]*surfaceUIRuntimeRecord{},
 	}
 	svc.RegisterPathPickerConsumer(workspaceCreatePathPickerConsumerKind, workspaceCreatePathPickerConsumer{})
 	svc.RegisterPathPickerConsumer(targetPickerWorkspaceCreatePathPickerConsumerKind, targetPickerWorkspaceCreatePathPickerConsumer{})
