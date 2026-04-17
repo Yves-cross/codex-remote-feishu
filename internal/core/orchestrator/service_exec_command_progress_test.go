@@ -563,6 +563,57 @@ func TestCommandExecutionExplorationProgressKeepsSeparatedReadGroups(t *testing.
 	}
 }
 
+func TestCommandExecutionExplorationProgressRecognizesQuotedRgRegexSearch(t *testing.T) {
+	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+	surface.Verbosity = state.SurfaceVerbosityVerbose
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "搜一下", "turn-1")
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "cmd-1",
+		ItemKind: "command_execution",
+		Status:   "in_progress",
+		Metadata: map[string]any{
+			"command": `bash -lc 'rg -n "surfaceProgressLabel|renderSurfaceProgressBlockRow" web/src/routes/admin/helpers.ts'`,
+		},
+	})
+	if len(started) != 1 || started[0].ExecCommandProgress == nil {
+		t.Fatalf("expected regex search exploration update, got %#v", started)
+	}
+	progress := started[0].ExecCommandProgress
+	if len(progress.Blocks) != 1 || len(progress.Blocks[0].Rows) != 1 {
+		t.Fatalf("expected single exploration block row, got %#v", progress.Blocks)
+	}
+	row := progress.Blocks[0].Rows[0]
+	if row.Kind != "search" || row.Summary != "surfaceProgressLabel|renderSurfaceProgressBlockRow" || row.Secondary != "web/src/routes/admin/helpers.ts" {
+		t.Fatalf("unexpected regex search exploration row: %#v", row)
+	}
+	if len(progress.Entries) != 0 {
+		t.Fatalf("expected regex search not to fall back to legacy entry, got %#v", progress.Entries)
+	}
+}
+
+func TestParseCommandExecutionExplorationActionHandlesBashLCQuotedRgGlob(t *testing.T) {
+	action, ok := parseCommandExecutionExplorationAction(`/bin/bash -lc "rg -n \"func execCommandMetadata|dynamicToolProgressArguments|dynamicToolProgressSummaryFromMetadata|metadataString\" internal/core/orchestrator -g '"'!**/*_test.go'"'"`)
+	if !ok {
+		t.Fatal("expected quoted rg command to parse as exploration search")
+	}
+	if action.Kind != "search" || action.Summary != `func execCommandMetadata|dynamicToolProgressArguments|dynamicToolProgressSummaryFromMetadata|metadataString` || action.Secondary != "internal/core/orchestrator" {
+		t.Fatalf("unexpected quoted rg exploration action: %#v", action)
+	}
+}
+
+func TestParseCommandExecutionExplorationActionRejectsPipelineSearch(t *testing.T) {
+	if action, ok := parseCommandExecutionExplorationAction(`bash -lc 'journalctl --user -u codex-remote.service -n 400 --no-pager | rg -n "rg |command_execution|tool_call|exec|progress"'`); ok {
+		t.Fatalf("expected piped command not to parse as exploration search, got %#v", action)
+	}
+}
+
 func TestExecCommandProgressStopsAfterAssistantTextAppears(t *testing.T) {
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

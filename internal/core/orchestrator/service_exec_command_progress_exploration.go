@@ -238,11 +238,11 @@ func parseDynamicToolExplorationAction(metadata map[string]any) (execProgressExp
 
 func parseCommandExecutionExplorationAction(command string) (execProgressExplorationAction, bool) {
 	command = normalizeExplorationCommand(command)
-	if command == "" || containsShellOperators(command) {
+	if command == "" {
 		return execProgressExplorationAction{}, false
 	}
-	args := strings.Fields(command)
-	if len(args) == 0 {
+	args, hasShellOperators, ok := splitExplorationShellWords(command)
+	if !ok || hasShellOperators || len(args) == 0 {
 		return execProgressExplorationAction{}, false
 	}
 	cmd := strings.ToLower(strings.TrimSpace(filepath.Base(args[0])))
@@ -284,23 +284,124 @@ func normalizeExplorationCommand(command string) string {
 	}
 	match := explorationShellLCCommandPattern.FindStringSubmatch(command)
 	if len(match) == 2 {
+		if words, hasShellOperators, ok := splitExplorationShellWords(match[1]); ok && !hasShellOperators && len(words) == 1 {
+			return strings.TrimSpace(words[0])
+		}
 		command = strings.TrimSpace(match[1])
 	}
-	if len(command) >= 2 && command[0] == '"' && command[len(command)-1] == '"' {
-		if unquoted, err := strconv.Unquote(command); err == nil {
-			command = strings.TrimSpace(unquoted)
+	if len(command) > 0 && (command[0] == '"' || command[0] == '\'') {
+		if words, hasShellOperators, ok := splitExplorationShellWords(command); ok && !hasShellOperators && len(words) == 1 {
+			return strings.TrimSpace(words[0])
 		}
-	} else if len(command) >= 2 && command[0] == '\'' && command[len(command)-1] == '\'' {
-		command = strings.TrimSpace(command[1 : len(command)-1])
 	}
-	return strings.Join(strings.Fields(command), " ")
+	return command
 }
 
-func containsShellOperators(command string) bool {
-	if strings.Contains(command, "&&") || strings.Contains(command, "||") {
-		return true
+func splitExplorationShellWords(command string) ([]string, bool, bool) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil, false, true
 	}
-	return strings.ContainsAny(command, "|;><")
+	var (
+		words            []string
+		current          strings.Builder
+		inSingleQuote    bool
+		inDoubleQuote    bool
+		hasShellOperator bool
+	)
+	flushCurrent := func() {
+		if current.Len() == 0 {
+			return
+		}
+		words = append(words, current.String())
+		current.Reset()
+	}
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if inSingleQuote {
+			if ch == '\'' {
+				inSingleQuote = false
+				continue
+			}
+			current.WriteByte(ch)
+			continue
+		}
+		if inDoubleQuote {
+			switch ch {
+			case '"':
+				inDoubleQuote = false
+			case '\\':
+				if i+1 >= len(command) {
+					current.WriteByte(ch)
+					continue
+				}
+				next := command[i+1]
+				switch next {
+				case '"', '\\', '$', '`':
+					current.WriteByte(next)
+					i++
+				case '\n':
+					i++
+				default:
+					current.WriteByte(ch)
+				}
+			default:
+				current.WriteByte(ch)
+			}
+			continue
+		}
+		switch ch {
+		case ' ', '\t', '\n', '\r':
+			flushCurrent()
+		case '\'':
+			inSingleQuote = true
+		case '"':
+			inDoubleQuote = true
+		case '\\':
+			if i+1 >= len(command) {
+				current.WriteByte(ch)
+				continue
+			}
+			i++
+			current.WriteByte(command[i])
+		case '|':
+			flushCurrent()
+			hasShellOperator = true
+			if i+1 < len(command) && command[i+1] == '|' {
+				i++
+			}
+		case ';':
+			flushCurrent()
+			hasShellOperator = true
+		case '>':
+			flushCurrent()
+			hasShellOperator = true
+			if i+1 < len(command) && (command[i+1] == '>' || command[i+1] == '&') {
+				i++
+			}
+		case '<':
+			flushCurrent()
+			hasShellOperator = true
+			if i+1 < len(command) && (command[i+1] == '<' || command[i+1] == '&') {
+				i++
+			}
+		case '&':
+			if i+1 < len(command) && command[i+1] == '&' {
+				flushCurrent()
+				hasShellOperator = true
+				i++
+				continue
+			}
+			current.WriteByte(ch)
+		default:
+			current.WriteByte(ch)
+		}
+	}
+	if inSingleQuote || inDoubleQuote {
+		return nil, false, false
+	}
+	flushCurrent()
+	return words, hasShellOperator, true
 }
 
 func positionalArgs(args []string, optionsWithValue map[string]bool) []string {
