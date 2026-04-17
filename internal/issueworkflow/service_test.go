@@ -353,6 +353,65 @@ func TestBuildLintReportFlagsMissingExecutionContextSections(t *testing.T) {
 	}
 }
 
+func TestBuildLintReportRequiresExecutionDecisionEvenInFastMode(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon"},
+	}, WorkflowModeFast)
+	if !hasFindingCode(report.Findings, "missing-execution-decision-section") {
+		t.Fatalf("expected execution decision finding in fast mode, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportFlagsIncompleteExecutionDecision(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 执行决策",
+			"- 是否拆分：不拆分",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon"},
+	}, WorkflowModeFull)
+	if !hasFindingCode(report.Findings, "incomplete-execution-decision") {
+		t.Fatalf("expected incomplete execution decision finding, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportRequiresSnapshotWhenStagedPlanExists(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 建议范围",
+			"stage 1",
+			"## 执行决策",
+			"- 是否拆分：不拆分",
+			"- 当前执行单元：当前 issue",
+			"- 是否需要独立 verifier：需要，完成后再跑",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon"},
+	}, WorkflowModeFull)
+	if !hasFindingCode(report.Findings, "missing-execution-snapshot") {
+		t.Fatalf("expected snapshot finding, got %#v", report.Findings)
+	}
+}
+
 func hasFindingCode(findings []LintFinding, code string) bool {
 	for _, finding := range findings {
 		if finding.Code == code {
@@ -369,6 +428,15 @@ func hasCheckName(checks []CheckResult, name string) bool {
 		}
 	}
 	return false
+}
+
+func findCheck(checks []CheckResult, name string) *CheckResult {
+	for i := range checks {
+		if checks[i].Name == name {
+			return &checks[i]
+		}
+	}
+	return nil
 }
 
 func TestValidateDocMetadataRejectsWrongType(t *testing.T) {
@@ -414,5 +482,82 @@ func TestFinishWarnsWhenKnowledgeWritebackNeedsReview(t *testing.T) {
 	}
 	if !hasCheckName(result.Checks, "knowledge_writeback_review") {
 		t.Fatalf("expected knowledge write-back warning, got %#v", result.Checks)
+	}
+}
+
+func TestFinishFailsWorkflowContractForImplementableIssue(t *testing.T) {
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number: 22,
+			Body: strings.Join([]string{
+				"## 背景",
+				"body",
+				"## 目标",
+				"goal",
+				"## 完成标准",
+				"done",
+			}, "\n"),
+			Labels: []string{"bug", "area:daemon", "processing"},
+		},
+	}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git: &fakeGitClient{
+			originURL:       "https://github.com/kxn/codex-remote-feishu.git",
+			diffCheckOutput: map[bool]string{false: "", true: ""},
+			diffCheckErr:    map[bool]error{},
+		},
+		GitHub: gh,
+		Now:    time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		ReleaseProcessing: true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	check := findCheck(result.Checks, "issue_workflow_contract")
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected workflow contract failure, got %#v", result.Checks)
+	}
+	if !result.ProcessingReleased {
+		t.Fatalf("expected processing release on workflow contract failure, got %#v", result)
+	}
+}
+
+func TestFinishSkipChecksDoesNotRequireExecutionDecisionForBlockedIssue(t *testing.T) {
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number: 22,
+			Body: strings.Join([]string{
+				"## 背景",
+				"body",
+				"## 目标",
+				"goal",
+				"## 完成标准",
+				"done",
+			}, "\n"),
+			Labels: []string{"bug", "area:daemon", "status:needs-investigation", "processing"},
+		},
+	}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git: &fakeGitClient{
+			originURL: "https://github.com/kxn/codex-remote-feishu.git",
+		},
+		GitHub: gh,
+		Now:    time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	if findCheck(result.Checks, "issue_workflow_contract") != nil {
+		t.Fatalf("did not expect workflow contract check for blocked issue, got %#v", result.Checks)
 	}
 }

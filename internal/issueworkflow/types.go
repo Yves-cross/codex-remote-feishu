@@ -70,14 +70,24 @@ type LintFinding struct {
 }
 
 type LintReport struct {
-	WorkflowMode         WorkflowMode  `json:"workflowMode,omitempty"`
-	CurrentRecordedState string        `json:"currentRecordedState"`
-	RequiredMissing      []string      `json:"requiredMissing,omitempty"`
-	PreferredMissing     []string      `json:"preferredMissing,omitempty"`
-	StatusLabels         []string      `json:"statusLabels,omitempty"`
-	CategoryLabels       []string      `json:"categoryLabels,omitempty"`
-	ScopeLabels          []string      `json:"scopeLabels,omitempty"`
-	Findings             []LintFinding `json:"findings,omitempty"`
+	WorkflowMode         WorkflowMode       `json:"workflowMode,omitempty"`
+	CurrentRecordedState string             `json:"currentRecordedState"`
+	RequiredMissing      []string           `json:"requiredMissing,omitempty"`
+	PreferredMissing     []string           `json:"preferredMissing,omitempty"`
+	StatusLabels         []string           `json:"statusLabels,omitempty"`
+	CategoryLabels       []string           `json:"categoryLabels,omitempty"`
+	ScopeLabels          []string           `json:"scopeLabels,omitempty"`
+	WorkflowGuardrails   WorkflowGuardrails `json:"workflowGuardrails,omitempty"`
+	Findings             []LintFinding      `json:"findings,omitempty"`
+}
+
+type WorkflowGuardrails struct {
+	ImplementableNow              bool     `json:"implementableNow,omitempty"`
+	ExecutionDecisionRequired     bool     `json:"executionDecisionRequired,omitempty"`
+	ExecutionDecisionSectionFound bool     `json:"executionDecisionSectionFound,omitempty"`
+	ExecutionDecisionMissingItems []string `json:"executionDecisionMissingItems,omitempty"`
+	SnapshotRequired              bool     `json:"snapshotRequired,omitempty"`
+	SnapshotMissingFields         []string `json:"snapshotMissingFields,omitempty"`
 }
 
 type PrepareOptions struct {
@@ -137,6 +147,7 @@ type FinishOptions struct {
 	CloseIssue        bool
 	ReleaseProcessing bool
 	SkipChecks        bool
+	WorkflowMode      WorkflowMode
 }
 
 type FinishResult struct {

@@ -18,12 +18,19 @@ const (
 )
 
 var (
-	requiredSections  = []string{"背景", "目标", "完成标准"}
-	preferredSections = []string{"范围", "非目标", "相关文档", "涉及文件", "建议范围", "实现参考", "检查参考", "收尾参考"}
-	executionSections = []string{"实现参考", "检查参考", "收尾参考"}
-	statusLabels      = []string{"status:needs-investigation", "status:needs-clarification", "status:blocked"}
-	categoryLabels    = []string{"enhancement", "bug", "maintainability", "testing", "documentation"}
+	requiredSections               = []string{"背景", "目标", "完成标准"}
+	preferredSections              = []string{"范围", "非目标", "相关文档", "涉及文件", "建议范围", "实现参考", "检查参考", "收尾参考"}
+	executionSections              = []string{"实现参考", "检查参考", "收尾参考"}
+	statusLabels                   = []string{"status:needs-investigation", "status:needs-clarification", "status:blocked"}
+	categoryLabels                 = []string{"enhancement", "bug", "maintainability", "testing", "documentation"}
+	executionDecisionRequiredItems = []string{"是否拆分", "当前执行单元", "verifier 决策"}
+	executionSnapshotFields        = []string{"当前阶段", "当前执行点", "已完成", "下一步", "恢复步骤"}
 )
+
+type documentSections struct {
+	Present map[string]bool
+	Bodies  map[string]string
+}
 
 type Service struct {
 	RootDir string
@@ -174,6 +181,16 @@ func (s *Service) Finish(ctx context.Context, opts FinishOptions) (result Finish
 			return result, nil
 		}
 	}
+	issue, err := s.GitHub.FetchIssue(ctx, repo, opts.IssueNumber, normalizedCommentsLimit(1))
+	if err != nil {
+		return result, err
+	}
+	if workflowCheck := workflowContractCheck(BuildLintReport(issue, opts.WorkflowMode)); workflowCheck != nil {
+		result.Checks = append(result.Checks, *workflowCheck)
+		if hasFailedCheck(result.Checks) {
+			return result, nil
+		}
+	}
 	if strings.TrimSpace(opts.CommentFile) != "" {
 		if _, err := os.Stat(opts.CommentFile); err != nil {
 			return result, err
@@ -211,14 +228,14 @@ func (s *Service) releaseProcessingLabel(ctx context.Context, repo Repo, issueNu
 
 func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 	report := LintReport{WorkflowMode: normalizeWorkflowMode(mode)}
-	sections := scanSections(issue.Body)
+	sections := scanDocumentSections(issue.Body)
 	for _, required := range requiredSections {
-		if !sections[required] {
+		if !sections.Present[required] {
 			report.RequiredMissing = append(report.RequiredMissing, required)
 		}
 	}
 	for _, preferred := range preferredSections {
-		if !sections[preferred] {
+		if !sections.Present[preferred] {
 			report.PreferredMissing = append(report.PreferredMissing, preferred)
 		}
 	}
@@ -243,6 +260,7 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 	default:
 		report.CurrentRecordedState = "invalid-multiple-status-labels"
 	}
+	report.WorkflowGuardrails = detectWorkflowGuardrails(issue.Body, sections, len(report.RequiredMissing) == 0 && len(report.StatusLabels) == 0)
 	if len(report.RequiredMissing) > 0 {
 		report.Findings = append(report.Findings, LintFinding{
 			Severity: LintSeverityError,
@@ -270,6 +288,28 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 			Code:     "missing-scope-label",
 			Message:  "issue has no area:* scope label",
 		})
+	}
+	if report.WorkflowGuardrails.ExecutionDecisionRequired {
+		if !report.WorkflowGuardrails.ExecutionDecisionSectionFound {
+			report.Findings = append(report.Findings, LintFinding{
+				Severity: LintSeverityError,
+				Code:     "missing-execution-decision-section",
+				Message:  "implementable issue is missing `执行决策`; direct execution cannot start without split/worker/verifier decisions",
+			})
+		} else if len(report.WorkflowGuardrails.ExecutionDecisionMissingItems) > 0 {
+			report.Findings = append(report.Findings, LintFinding{
+				Severity: LintSeverityError,
+				Code:     "incomplete-execution-decision",
+				Message:  "issue `执行决策` is missing required items: " + strings.Join(report.WorkflowGuardrails.ExecutionDecisionMissingItems, ", "),
+			})
+		}
+		if report.WorkflowGuardrails.SnapshotRequired && len(report.WorkflowGuardrails.SnapshotMissingFields) > 0 {
+			report.Findings = append(report.Findings, LintFinding{
+				Severity: LintSeverityError,
+				Code:     "missing-execution-snapshot",
+				Message:  "issue requires an execution snapshot before direct execution continues: " + strings.Join(report.WorkflowGuardrails.SnapshotMissingFields, ", "),
+			})
+		}
 	}
 	if report.WorkflowMode == WorkflowModeFast {
 		return report
@@ -306,19 +346,43 @@ func normalizeWorkflowMode(mode WorkflowMode) WorkflowMode {
 }
 
 func scanSections(body string) map[string]bool {
-	sections := map[string]bool{}
+	return scanDocumentSections(body).Present
+}
+
+func scanDocumentSections(body string) documentSections {
+	sections := documentSections{
+		Present: map[string]bool{},
+		Bodies:  map[string]string{},
+	}
 	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	current := ""
+	buffer := make([]string, 0)
+	flush := func() {
+		if current == "" {
+			return
+		}
+		sections.Bodies[current] = strings.TrimSpace(strings.Join(buffer, "\n"))
+		buffer = buffer[:0]
+	}
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "#") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") {
+			if current != "" {
+				buffer = append(buffer, line)
+			}
 			continue
 		}
-		title := strings.TrimSpace(strings.TrimLeft(line, "#"))
+		flush()
+		title := strings.TrimSpace(strings.TrimLeft(trimmed, "#"))
 		title = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(title, ":"), "："))
 		if title != "" {
-			sections[title] = true
+			sections.Present[title] = true
+			current = title
+			continue
 		}
+		current = ""
 	}
+	flush()
 	return sections
 }
 
@@ -396,6 +460,89 @@ func intersectSections(values []string, targets []string) []string {
 		}
 	}
 	return out
+}
+
+func detectWorkflowGuardrails(body string, sections documentSections, implementableNow bool) WorkflowGuardrails {
+	guardrails := WorkflowGuardrails{
+		ImplementableNow:          implementableNow,
+		ExecutionDecisionRequired: implementableNow,
+	}
+	if !implementableNow {
+		return guardrails
+	}
+	decisionBody, ok := sections.Bodies["执行决策"]
+	guardrails.ExecutionDecisionSectionFound = ok
+	if ok {
+		normalizedDecision := normalizeForContains(decisionBody)
+		if !strings.Contains(normalizedDecision, normalizeForContains("是否拆分")) {
+			guardrails.ExecutionDecisionMissingItems = append(guardrails.ExecutionDecisionMissingItems, executionDecisionRequiredItems[0])
+		}
+		if !strings.Contains(normalizedDecision, normalizeForContains("当前执行单元")) {
+			guardrails.ExecutionDecisionMissingItems = append(guardrails.ExecutionDecisionMissingItems, executionDecisionRequiredItems[1])
+		}
+		if !containsAny(normalizedDecision,
+			normalizeForContains("是否需要独立 verifier"),
+			normalizeForContains("是否运行 verifier"),
+			normalizeForContains("verifier"),
+		) {
+			guardrails.ExecutionDecisionMissingItems = append(guardrails.ExecutionDecisionMissingItems, executionDecisionRequiredItems[2])
+		}
+	}
+	guardrails.SnapshotRequired = sections.Present["建议范围"] || sections.Present["执行快照"]
+	normalizedBody := normalizeForContains(body)
+	for _, field := range executionSnapshotFields {
+		if strings.Contains(normalizedBody, normalizeForContains(field)) {
+			guardrails.SnapshotRequired = true
+			break
+		}
+	}
+	if !guardrails.SnapshotRequired {
+		return guardrails
+	}
+	for _, field := range executionSnapshotFields {
+		if !strings.Contains(normalizedBody, normalizeForContains(field)) {
+			guardrails.SnapshotMissingFields = append(guardrails.SnapshotMissingFields, field)
+		}
+	}
+	return guardrails
+}
+
+func workflowContractCheck(report LintReport) *CheckResult {
+	if !report.WorkflowGuardrails.ExecutionDecisionRequired {
+		return nil
+	}
+	problems := make([]string, 0)
+	if !report.WorkflowGuardrails.ExecutionDecisionSectionFound {
+		problems = append(problems, "missing `执行决策` section")
+	}
+	if len(report.WorkflowGuardrails.ExecutionDecisionMissingItems) > 0 {
+		problems = append(problems, "missing execution decision items: "+strings.Join(report.WorkflowGuardrails.ExecutionDecisionMissingItems, ", "))
+	}
+	if report.WorkflowGuardrails.SnapshotRequired && len(report.WorkflowGuardrails.SnapshotMissingFields) > 0 {
+		problems = append(problems, "missing execution snapshot fields: "+strings.Join(report.WorkflowGuardrails.SnapshotMissingFields, ", "))
+	}
+	if len(problems) == 0 {
+		return &CheckResult{Name: "issue_workflow_contract", Status: CheckStatusPass, Message: "ok"}
+	}
+	return &CheckResult{
+		Name:    "issue_workflow_contract",
+		Status:  CheckStatusFail,
+		Message: strings.Join(problems, "; "),
+	}
+}
+
+func normalizeForContains(value string) string {
+	replacer := strings.NewReplacer("`", "", "*", "", " ", "", "\t", "", "\r", "")
+	return replacer.Replace(strings.ToLower(value))
+}
+
+func containsAny(value string, targets ...string) bool {
+	for _, target := range targets {
+		if strings.Contains(value, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func diffCheckResult(name string, output string, err error) CheckResult {

@@ -137,11 +137,16 @@ func runFinish(ctx context.Context, svc *issueworkflow.Service, args []string) (
 	closeIssue := fs.Bool("close", false, "close the issue after posting the comment")
 	releaseProcessing := fs.Bool("release-processing", true, "remove the processing label before finishing")
 	skipChecks := fs.Bool("skip-checks", false, "skip local mechanical checks and only do GitHub cleanup")
+	modeValue := fs.String("mode", "full", "workflow mode: full or fast")
 	format := fs.String("format", "text", "output format: text or json")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0, nil
 		}
+		return 2, err
+	}
+	mode, err := parseWorkflowMode(*modeValue)
+	if err != nil {
 		return 2, err
 	}
 	repo, err := parseOptionalRepo(*repoValue)
@@ -159,6 +164,7 @@ func runFinish(ctx context.Context, svc *issueworkflow.Service, args []string) (
 		CloseIssue:        *closeIssue,
 		ReleaseProcessing: *releaseProcessing,
 		SkipChecks:        *skipChecks,
+		WorkflowMode:      mode,
 	})
 	if err != nil {
 		return 1, err
@@ -234,6 +240,13 @@ func renderPrepare(result issueworkflow.PrepareResult) string {
 		lines = append(lines, fmt.Sprintf("snapshot: %s", result.SnapshotPath))
 	}
 	lines = append(lines, renderLintSummary(result.Lint)...)
+	if result.Status == issueworkflow.PrepareStatusReady {
+		lines = append(lines, "next:")
+		lines = append(lines, "  - re-read docs/general/issue-orchestration-workflow.md and .codex/skills/issue-workflow-guardrail/SKILL.md after prepare sync")
+		lines = append(lines, "  - write or refresh `执行决策` before coding")
+		lines = append(lines, "  - if staged or multi-turn, refresh the execution snapshot before coding")
+		lines = append(lines, "  - run lint after the issue body is updated")
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -268,6 +281,23 @@ func renderLintSummary(report issueworkflow.LintReport) []string {
 	}
 	if len(report.ScopeLabels) > 0 {
 		lines = append(lines, "scope labels: "+strings.Join(report.ScopeLabels, ", "))
+	}
+	if report.WorkflowGuardrails.ExecutionDecisionRequired {
+		switch {
+		case !report.WorkflowGuardrails.ExecutionDecisionSectionFound:
+			lines = append(lines, "execution decision: missing `执行决策`")
+		case len(report.WorkflowGuardrails.ExecutionDecisionMissingItems) > 0:
+			lines = append(lines, "execution decision missing items: "+strings.Join(report.WorkflowGuardrails.ExecutionDecisionMissingItems, ", "))
+		default:
+			lines = append(lines, "execution decision: ok")
+		}
+		if report.WorkflowGuardrails.SnapshotRequired {
+			if len(report.WorkflowGuardrails.SnapshotMissingFields) > 0 {
+				lines = append(lines, "execution snapshot missing: "+strings.Join(report.WorkflowGuardrails.SnapshotMissingFields, ", "))
+			} else {
+				lines = append(lines, "execution snapshot: ok")
+			}
+		}
 	}
 	if len(report.Findings) > 0 {
 		lines = append(lines, "findings:")
@@ -324,5 +354,5 @@ func finishHasFailures(checks []issueworkflow.CheckResult) bool {
 
 func usageError(format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
-	return fmt.Errorf("%s\nusage:\n  go run ./cmd/issue-workflow prepare --issue 123 [--repo owner/name] [--format text|json]\n  go run ./cmd/issue-workflow lint --issue 123 [--repo owner/name] [--format text|json]\n  go run ./cmd/issue-workflow finish --issue 123 [--comment-file path] [--close] [--skip-checks]", msg)
+	return fmt.Errorf("%s\nusage:\n  go run ./cmd/issue-workflow prepare --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow lint --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow finish --issue 123 [--comment-file path] [--close] [--skip-checks] [--mode full|fast]", msg)
 }

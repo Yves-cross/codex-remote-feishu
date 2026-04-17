@@ -295,11 +295,15 @@ Only spend extra reasoning on the parts the scripts cannot decide:
 
 After `prepare` succeeds, read in this order:
 
-1. the current issue body
-2. linked design doc or closure index when present
-3. current labels
-4. the latest comments
-5. the current code
+1. `docs/general/issue-orchestration-workflow.md`
+2. this skill file
+3. the current issue body
+4. linked design doc or closure index when present
+5. current labels
+6. the latest comments
+7. the current code
+
+Reason: `prepare` may have pulled newer local workflow guidance, so do not rely on a previously loaded copy of the process rules.
 
 If later comments conflict with the body, treat the latest maintainer or user comment as the current direction. Update the body if that can be done cheaply and accurately.
 
@@ -376,6 +380,7 @@ Compare the reassessed state with the issue's previously recorded actionable sta
 - If the state did not change but the issue is still not implementable, update the issue with any newly confirmed evidence, then run `finish --issue <number> --skip-checks` and stop there for this turn.
 - Only when the issue was already implementable and remains implementable after reassessment may coding start immediately.
 - Even on that path, write or refresh the execution decision record before coding.
+- The minimum start sequence is: `prepare` -> re-read workflow doc and skill -> refresh `执行决策` -> refresh snapshot when applicable -> `lint` -> code.
 
 ## Status Labels
 
