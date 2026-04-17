@@ -46,6 +46,7 @@ func (f *fakeGitClient) GofmtList(context.Context, []string) ([]string, error) {
 
 type fakeGitHubClient struct {
 	issue         Issue
+	issues        map[int]Issue
 	addedLabels   []string
 	removedLabels []string
 	commentedFile string
@@ -56,9 +57,14 @@ type fakeGitHubClient struct {
 	closeErr      error
 }
 
-func (f *fakeGitHubClient) FetchIssue(context.Context, Repo, int, int) (Issue, error) {
+func (f *fakeGitHubClient) FetchIssue(_ context.Context, _ Repo, number int, _ int) (Issue, error) {
 	if f.fetchErr != nil {
 		return Issue{}, f.fetchErr
+	}
+	if len(f.issues) != 0 {
+		if issue, ok := f.issues[number]; ok {
+			return issue, nil
+		}
 	}
 	return f.issue, nil
 }
@@ -435,6 +441,65 @@ func TestBuildLintReportRequiresSnapshotWhenStagedPlanExists(t *testing.T) {
 	}
 }
 
+func TestBuildLintReportFlagsMissingParentSummaryColumns(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Number: 247,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 拆分结构",
+			"- #248",
+			"## 推荐顺序",
+			"1. #248",
+			"## 可并行组",
+			"- A",
+			"## 当前风险",
+			"- none",
+			"## 总调度表",
+			"| Issue | 状态 |",
+			"| --- | --- |",
+			"| #248 | done |",
+			"## 当前执行点",
+			"close",
+			"## 恢复步骤",
+			"resume",
+			"## 执行决策",
+			"- 是否拆分：是",
+			"- 当前执行单元：#247",
+			"- verifier 决策：需要",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable},
+	}, WorkflowModeFull)
+	if !hasFindingCode(report.Findings, "missing-parent-summary-columns") {
+		t.Fatalf("expected parent summary finding, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportWarnsOnLegacyChildParentReference(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"本 issue 由母 issue #247 跟踪。",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：#248",
+			"- verifier 决策：需要",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable},
+	}, WorkflowModeFull)
+	if !hasFindingCode(report.Findings, "legacy-child-parent-reference") {
+		t.Fatalf("expected legacy child parent warning, got %#v", report.Findings)
+	}
+}
+
 func hasFindingCode(findings []LintFinding, code string) bool {
 	for _, finding := range findings {
 		if finding.Code == code {
@@ -582,5 +647,340 @@ func TestFinishSkipChecksDoesNotRequireExecutionDecisionForBlockedIssue(t *testi
 	}
 	if findCheck(result.Checks, "issue_workflow_contract") != nil {
 		t.Fatalf("did not expect workflow contract check for blocked issue, got %#v", result.Checks)
+	}
+}
+
+func TestFinishCloseFailsWithoutVerifierPassForMediumIssue(t *testing.T) {
+	issue := Issue{
+		Number: 22,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 建议范围",
+			"stage 1",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：#22",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable, "processing"},
+	}
+	gh := &fakeGitHubClient{issue: issue}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git: &fakeGitClient{
+			originURL: "https://github.com/kxn/codex-remote-feishu.git",
+		},
+		GitHub: gh,
+		Now:    time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		CloseIssue:        true,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	check := findCheck(result.Checks, "issue_close_verifier_gate")
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected verifier close gate failure, got %#v", result.Checks)
+	}
+	if result.IssueClosed {
+		t.Fatalf("did not expect issue to close on verifier gate failure: %#v", result)
+	}
+}
+
+func TestFinishCloseFailsWhenChildRollupMissing(t *testing.T) {
+	child := Issue{
+		Number: 22,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 父 issue",
+			"#247",
+			"## 建议范围",
+			"stage 1",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：#22",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable, "processing"},
+		Comments: []IssueComment{
+			{Body: "独立 verifier 结果：pass"},
+		},
+	}
+	parent := Issue{
+		Number: 247,
+		Body: strings.Join([]string{
+			"## 背景",
+			"parent",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+		}, "\n"),
+	}
+	gh := &fakeGitHubClient{issues: map[int]Issue{22: child, 247: parent}}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git:     &fakeGitClient{originURL: "https://github.com/kxn/codex-remote-feishu.git"},
+		GitHub:  gh,
+		Now:     time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		CloseIssue:        true,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	check := findCheck(result.Checks, "issue_close_rollup_gate")
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected child roll-up gate failure, got %#v", result.Checks)
+	}
+}
+
+func TestFinishCloseFailsForLegacyChildContract(t *testing.T) {
+	child := Issue{
+		Number: 22,
+		Body: strings.Join([]string{
+			"## 背景",
+			"本 issue 由母 issue #247 跟踪。",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 建议范围",
+			"stage 1",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：#22",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Labels:   []string{"maintainability", "area:daemon", statusLabelImplementable, "processing"},
+		Comments: []IssueComment{{Body: "独立 verifier 结果：pass"}},
+	}
+	parent := Issue{
+		Number:   247,
+		Comments: []IssueComment{{Body: "子 issue `#22` 已完成并关闭，结果回卷如下：..."}},
+	}
+	gh := &fakeGitHubClient{issues: map[int]Issue{22: child, 247: parent}}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git:     &fakeGitClient{originURL: "https://github.com/kxn/codex-remote-feishu.git"},
+		GitHub:  gh,
+		Now:     time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       22,
+		CloseIssue:        true,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	check := findCheck(result.Checks, "issue_close_child_contract_gate")
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected legacy child contract gate failure, got %#v", result.Checks)
+	}
+}
+
+func TestFinishCloseFailsWhenParentSummaryIncomplete(t *testing.T) {
+	parent := Issue{
+		Number: 247,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 拆分结构",
+			"- #248",
+			"## 推荐顺序",
+			"1. #248",
+			"## 可并行组",
+			"- A",
+			"## 当前风险",
+			"- none",
+			"## 总调度表",
+			"| Issue | 状态 |",
+			"| --- | --- |",
+			"| #248 | done |",
+			"## 当前执行点",
+			"close",
+			"## 恢复步骤",
+			"resume",
+			"## 执行决策",
+			"- 是否拆分：是",
+			"- 当前执行单元：#247",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable, "processing"},
+		Comments: []IssueComment{
+			{Body: "独立 verifier 结果：pass"},
+			{Body: "子 issue `#248` 已完成并关闭，结果回卷如下：..."},
+		},
+	}
+	gh := &fakeGitHubClient{issue: parent}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git:     &fakeGitClient{originURL: "https://github.com/kxn/codex-remote-feishu.git"},
+		GitHub:  gh,
+		Now:     time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       247,
+		CloseIssue:        true,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	check := findCheck(result.Checks, "issue_close_parent_summary_gate")
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected parent summary gate failure, got %#v", result.Checks)
+	}
+}
+
+func TestFinishClosePassesWithVerifierAndRollups(t *testing.T) {
+	child := Issue{
+		Number: 248,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 父 issue",
+			"#247",
+			"## 建议范围",
+			"stage 1",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：#248",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Labels: []string{"maintainability", "area:daemon", statusLabelImplementable, "processing"},
+		Comments: []IssueComment{
+			{Body: "独立 verifier 结果：pass"},
+		},
+	}
+	parent := Issue{
+		Number: 247,
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 拆分结构",
+			"- #248",
+			"## 推荐顺序",
+			"1. #248",
+			"## 可并行组",
+			"- A",
+			"## 当前风险",
+			"- none",
+			"## 总调度表",
+			"| Issue | 状态 | 结果回卷 | verifier 状态 | 当前结论 |",
+			"| --- | --- | --- | --- | --- |",
+			"| #248 | done | yes | pass | ok |",
+			"## 当前执行点",
+			"close",
+			"## 恢复步骤",
+			"resume",
+			"## 执行决策",
+			"- 是否拆分：是",
+			"- 当前执行单元：#247",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：finish-ready",
+			"- 当前执行点：close",
+			"- 已完成：done",
+			"- 下一步：close",
+			"- 恢复步骤：resume",
+		}, "\n"),
+		Comments: []IssueComment{
+			{Body: "独立 verifier 结果：pass"},
+			{Body: "子 issue `#248` 已完成并关闭，结果回卷如下：..."},
+		},
+	}
+	gh := &fakeGitHubClient{
+		issues: map[int]Issue{
+			247: parent,
+			248: child,
+		},
+	}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git:     &fakeGitClient{originURL: "https://github.com/kxn/codex-remote-feishu.git"},
+		GitHub:  gh,
+		Now:     time.Now,
+	}
+	result, err := svc.Finish(context.Background(), FinishOptions{
+		IssueNumber:       248,
+		CloseIssue:        true,
+		ReleaseProcessing: true,
+		SkipChecks:        true,
+	})
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	if check := findCheck(result.Checks, "issue_close_verifier_gate"); check == nil || check.Status != CheckStatusPass {
+		t.Fatalf("expected verifier gate pass, got %#v", result.Checks)
+	}
+	if check := findCheck(result.Checks, "issue_close_rollup_gate"); check == nil || check.Status != CheckStatusPass {
+		t.Fatalf("expected roll-up gate pass, got %#v", result.Checks)
+	}
+	if !result.IssueClosed {
+		t.Fatalf("expected issue to close, got %#v", result)
 	}
 }

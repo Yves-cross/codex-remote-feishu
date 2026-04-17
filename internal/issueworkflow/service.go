@@ -14,6 +14,7 @@ import (
 
 const (
 	defaultCommentsLimit     = 8
+	closeGateCommentsLimit   = 100
 	processingLabel          = "processing"
 	statusLabelImplementable = "status:implementable-now"
 	statusLabelInvestigation = "status:needs-investigation"
@@ -187,12 +188,27 @@ func (s *Service) Finish(ctx context.Context, opts FinishOptions) (result Finish
 			return result, nil
 		}
 	}
-	issue, err := s.GitHub.FetchIssue(ctx, repo, opts.IssueNumber, normalizedCommentsLimit(1))
+	commentsLimit := 1
+	if opts.CloseIssue {
+		commentsLimit = closeGateCommentsLimit
+	}
+	issue, err := s.GitHub.FetchIssue(ctx, repo, opts.IssueNumber, normalizedCommentsLimit(commentsLimit))
 	if err != nil {
 		return result, err
 	}
-	if workflowCheck := workflowContractCheck(BuildLintReport(issue, opts.WorkflowMode)); workflowCheck != nil {
+	report := BuildLintReport(issue, opts.WorkflowMode)
+	if workflowCheck := workflowContractCheck(report); workflowCheck != nil {
 		result.Checks = append(result.Checks, *workflowCheck)
+		if hasFailedCheck(result.Checks) {
+			return result, nil
+		}
+	}
+	if opts.CloseIssue {
+		closeChecks, err := s.closeGateChecks(ctx, repo, issue, opts.WorkflowMode)
+		if err != nil {
+			return result, err
+		}
+		result.Checks = append(result.Checks, closeChecks...)
 		if hasFailedCheck(result.Checks) {
 			return result, nil
 		}
@@ -235,6 +251,7 @@ func (s *Service) releaseProcessingLabel(ctx context.Context, repo Repo, issueNu
 func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 	report := LintReport{WorkflowMode: normalizeWorkflowMode(mode)}
 	sections := scanDocumentSections(issue.Body)
+	structure := analyzeIssueStructure(issue.Number, issue.Body, sections)
 	for _, required := range requiredSections {
 		if !sections.Present[required] {
 			report.RequiredMissing = append(report.RequiredMissing, required)
@@ -300,6 +317,27 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 			Severity: LintSeverityWarning,
 			Code:     "missing-scope-label",
 			Message:  "issue has no area:* scope label",
+		})
+	}
+	if structure.IsParent && len(structure.MissingParentSections) > 0 {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityError,
+			Code:     "missing-parent-issue-sections",
+			Message:  "parent issue body is missing required parent sections: " + strings.Join(structure.MissingParentSections, ", "),
+		})
+	}
+	if structure.IsParent && len(structure.MissingParentSummaryCols) > 0 {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityError,
+			Code:     "missing-parent-summary-columns",
+			Message:  "parent issue `总调度表` is missing required columns: " + strings.Join(structure.MissingParentSummaryCols, ", "),
+		})
+	}
+	if structure.LegacyChildParentRef {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityWarning,
+			Code:     "legacy-child-parent-reference",
+			Message:  "child issue still references its parent only via free text; add a dedicated `父 issue` section before the next execution or close-out",
 		})
 	}
 	if report.WorkflowGuardrails.ExecutionDecisionRequired {

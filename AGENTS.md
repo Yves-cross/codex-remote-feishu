@@ -243,7 +243,10 @@ When corresponding logic carriers changed:
 - When issue work uncovers a small, non-blocking, low-priority follow-up that is not worth a standalone issue, record it under a dedicated `低优先级待办` section in the active issue body instead of leaving it only in chat.
 - If implementation uncovers a red inconsistency that changes goals, acceptance, dependencies, or sibling issue assumptions, stop local patching and return the result to the orchestrating issue for replanning.
 - If issue work reaches a real product decision gate, do not guess. Add a dedicated `待决策` or `产品待拍板` section with the minimal decision packet, ask only for the smallest blocking decision, then resume after that decision is synced back into the issue body.
-- For medium/large finished issues, prefer an independent verifier pass before close-out.
+- For medium/large finished issues, default to an independent verifier pass before close-out; only skip when the user explicitly waives it or the task is explicitly `workflow:fast`.
+- If a child issue has a parent issue, do not `finish --close` it until the parent has received a durable roll-up of the child result.
+- If a parent issue is being closed, make sure its total view includes child roll-up state, verifier state, and current close judgment before `finish --close`.
+- If an older issue is resumed under the current workflow, do not let it enter close-out with a legacy contract; first add the missing current workflow fields that the close gate depends on.
 - Before `finish`, explicitly re-check whether durable knowledge changed enough to require syncing the issue body, linked docs, state-machine docs, or repo workflow guidance.
 - For issue work requested as `处理`, `完成`, or staged rollout, do not stop after local code/test completion while any of these remain unfinished without a real blocker:
   - commit

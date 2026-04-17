@@ -42,12 +42,26 @@ Verify these dimensions explicitly:
 
 If the issue is medium/large, also check whether parent/child issue boundaries stayed coherent and whether deferred follow-ups were recorded in a durable place.
 
+If the issue is a parent issue, also check explicitly:
+
+- whether each finished child issue was durably rolled back into the parent
+- whether the parent's total view exposes roll-up state, verifier state, and current close judgment
+
+If the issue is a child issue, also check explicitly:
+
+- whether the parent link is durably recorded
+- whether the child result has already been rolled back into the parent before close-out
+
 ## Output Format
 
 Use a findings-first review style.
 
 Expected shape:
 
+- first line: fixed verifier result record
+  - `独立 verifier 结果：pass`
+  - `独立 verifier 结果：pass with gaps`
+  - `独立 verifier 结果：fail`
 - findings first
   - order by severity
   - include file references when the finding is code-specific
@@ -61,6 +75,8 @@ Expected shape:
   - whether durable knowledge sync is missing
 
 If there are no findings, say that explicitly and still note any residual validation gaps.
+
+`pass with gaps` means the issue is not close-ready yet. The gaps must be durably recorded before close-out.
 
 ## Guardrails
 

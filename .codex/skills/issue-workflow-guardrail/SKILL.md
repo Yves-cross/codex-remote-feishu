@@ -453,8 +453,11 @@ If the issue was already implementable and still is after reassessment:
 - every stage must include sufficient validation, not only compilation or superficial smoke checks
 - each stage should end with implementation, stage-scoped validation, a refreshed execution snapshot, and a local commit
 - when the overall issue is finished, do not stop at “last stage implemented locally”; continue through publish/close-out work in the same turn unless blocked
-- for medium/large issue work, decide explicitly whether an independent verifier pass should run before close-out
+- for medium/large issue work, default to an independent verifier pass before close-out; only skip when the user explicitly waived it or the task is explicitly `workflow:fast`
 - before close-out, record what local validation ran, whether verifier ran, and why any verifier skip was acceptable
+- if the current issue is a child issue, make sure its result has been durably rolled back into the parent issue before `finish --close`
+- if the current issue is a parent issue, make sure its total view already includes child roll-up state, verifier state, and current close judgment before `finish --close`
+- if the current issue is an older issue that predates the current workflow contract, rehab the missing parent/child link or close-out fields before attempting `finish --close`
 - posting a “locally complete” comment is not an acceptable substitute for commit/push/close when the user asked to complete the issue
 - validate the result
 - before any normal stop path, re-read `收尾参考` and decide whether durable knowledge changed enough to require write-back
@@ -491,6 +494,17 @@ When closing the issue, leave a short completion note with:
 - what durable knowledge was synced back, or why none was needed
 - commit or PR reference
 - follow-up issue reference if work was intentionally deferred
+
+Do not treat close-out as ready until all applicable close gates pass:
+
+- verifier close gate
+  - medium/large issues need a durable `独立 verifier 结果：pass` record unless explicitly waived or in `workflow:fast`
+- child roll-up gate
+  - child issues with a parent must already have a durable roll-up recorded on the parent
+- parent summary gate
+  - parent issues must already expose child roll-up state, verifier state, and current close judgment in their total view
+- legacy contract gate
+  - resumed older issues must first be upgraded to the current workflow contract fields that the close gate depends on
 
 The expected terminal state for a finished issue is:
 
