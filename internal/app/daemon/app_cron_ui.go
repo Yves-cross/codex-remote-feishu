@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -148,8 +149,8 @@ func buildCronStatusCatalog(stateValue *cronStateFile, ownerView cronOwnerView, 
 	} else {
 		summaryLines = append(summaryLines,
 			fmt.Sprintf("实例：%s", firstNonEmpty(strings.TrimSpace(stateValue.InstanceLabel), "unknown")),
-			cronBindingLinkLine(stateValue),
 		)
+		summaryLines = append(summaryLines, cronBindingLinkLines(stateValue)...)
 		if line := cronLoadedJobCountLine(stateValue, ownerView); line != "" {
 			summaryLines = append(summaryLines, line)
 		}
@@ -217,7 +218,7 @@ func buildCronEditCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 	} else {
 		summaryLines = append(summaryLines,
 			fmt.Sprintf("实例：%s", firstNonEmpty(strings.TrimSpace(stateValue.InstanceLabel), "unknown")),
-			cronBindingLinkLine(stateValue),
+			cronConfigLinkLine(stateValue),
 			"编辑 `任务配置` 或 `工作区清单` 后，执行 `/cron reload` 生效。",
 		)
 		if strings.TrimSpace(ownerView.StatusLabel) != "" {
@@ -256,14 +257,61 @@ func cronManualCommandSection() control.CommandCatalogSection {
 	}
 }
 
-func cronBindingLinkLine(stateValue *cronStateFile) string {
+func cronBindingLinkLines(stateValue *cronStateFile) []string {
+	if stateValue == nil || stateValue.Bitable == nil {
+		return []string{"配置表：未初始化"}
+	}
+	lines := []string{cronConfigLinkLine(stateValue)}
+	if line := cronRunsLinkLine(stateValue); line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func cronConfigLinkLine(stateValue *cronStateFile) string {
 	if stateValue == nil || stateValue.Bitable == nil {
 		return "配置表：未初始化"
 	}
-	if url := strings.TrimSpace(stateValue.Bitable.AppURL); url != "" {
+	if url := cronBitableTableURL(stateValue.Bitable.AppURL, stateValue.Bitable.Tables.Tasks); url != "" {
 		return fmt.Sprintf("配置表：[%s](%s)", "打开 Cron 配置表", url)
 	}
 	return fmt.Sprintf("配置表：%s", strings.TrimSpace(stateValue.Bitable.AppToken))
+}
+
+func cronRunsLinkLine(stateValue *cronStateFile) string {
+	if stateValue == nil || stateValue.Bitable == nil {
+		return ""
+	}
+	if strings.TrimSpace(stateValue.Bitable.Tables.Runs) == "" {
+		return ""
+	}
+	if url := cronBitableTableURL(stateValue.Bitable.AppURL, stateValue.Bitable.Tables.Runs); url != "" {
+		return fmt.Sprintf("运行状态：[%s](%s)", "打开运行记录", url)
+	}
+	return ""
+}
+
+func cronBitableTableURL(appURL, tableID string) string {
+	appURL = strings.TrimSpace(appURL)
+	if appURL == "" {
+		return ""
+	}
+	if strings.TrimSpace(tableID) == "" {
+		return appURL
+	}
+	parsed, err := url.Parse(appURL)
+	if err != nil || strings.TrimSpace(parsed.Host) == "" {
+		return appURL
+	}
+	query := parsed.Query()
+	query.Set("table", strings.TrimSpace(tableID))
+	query.Del("view")
+	query.Del("record")
+	query.Del("field")
+	query.Del("search")
+	parsed.RawQuery = query.Encode()
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func cronPrimaryMenuCommand(stateValue *cronStateFile, ownerView cronOwnerView) string {
