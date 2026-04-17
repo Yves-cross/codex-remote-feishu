@@ -126,6 +126,16 @@ Update the snapshot at least:
 
 On resume, never continue from memory alone. Re-read the snapshot, linked closure material, and current code, then confirm the recorded next step is still valid. If not, refresh the snapshot first and only then continue.
 
+For an unsplit direct-execution unit, a recorded stage or phase is execution sequencing only, not a default stopping point.
+When a stage ends, immediately decide among exactly these outcomes:
+
+- the overall issue is actually complete
+- a real blocker / contradiction / product decision gate now prevents safe continuation
+- the issue must be formally split before more implementation
+- continue directly into the next stage
+
+Do not stop merely because `phase A` or another recorded stage finished.
+
 ## Worker Boundary
 
 Workers include both child issues and an unsplit active issue doing direct execution.
@@ -426,6 +436,11 @@ If the issue was already implementable and still is after reassessment:
 - before each implementation stage, re-read the execution decision record and confirm it still matches reality; if not, update it before coding
 - before each implementation stage, confirm the execution snapshot still matches reality; if not, update it before coding
 - before each implementation stage, re-run any repository skills already required by the task so the next step is based on current guidance
+- after each completed stage on an unsplit issue, explicitly run the stage-end check:
+  - is the whole issue already complete?
+  - is there a hard blocker / contradiction / product gate?
+  - must the issue now be split before further coding?
+  - if none of the above, continue immediately into the next stage
 - before validation/check work, re-read `检查参考`
 - if the best next stage or any execution-context section changed materially, update the issue body first instead of leaving the new plan only in a comment
 - prefer staged delivery for medium or large work
