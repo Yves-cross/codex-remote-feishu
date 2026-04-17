@@ -31,9 +31,6 @@ type fakeAdminGatewayController struct {
 
 func (f *fakeAdminGatewayController) Start(context.Context, feishu.ActionHandler) error { return nil }
 func (f *fakeAdminGatewayController) Apply(context.Context, []feishu.Operation) error   { return nil }
-func (f *fakeAdminGatewayController) RewriteFinalBlock(_ context.Context, req feishu.FinalBlockPreviewRequest) (feishu.FinalBlockPreviewResult, error) {
-	return feishu.FinalBlockPreviewResult{Block: req.Block}, nil
-}
 func (f *fakeAdminGatewayController) UpsertApp(_ context.Context, cfg feishu.GatewayAppConfig) error {
 	f.upserted = append(f.upserted, cfg)
 	if len(f.upsertErrs) > 0 {

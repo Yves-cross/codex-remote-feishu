@@ -37,9 +37,8 @@ type LiveGatewayConfig struct {
 }
 
 type LiveGateway struct {
-	config    LiveGatewayConfig
-	client    *lark.Client
-	projector *Projector
+	config LiveGatewayConfig
+	client *lark.Client
 
 	downloadImageFn    func(context.Context, string, string) (string, string, error)
 	uploadImagePathFn  func(context.Context, string) (string, error)
@@ -95,7 +94,6 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway := &LiveGateway{
 		config:    config,
 		client:    client,
-		projector: NewProjector(),
 		reactions: map[string]string{},
 		messages:  map[string]string{},
 	}

@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"context"
+	"net/http"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -132,7 +133,7 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 		runtimes[cfg.GatewayID] = runtime
 		return runtime
 	}
-	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) FinalBlockPreviewService {
+	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) gatewayPreviewRuntime {
 		previewer := &fakePreviewer{
 			gatewayID: cfg.GatewayID,
 			supplements: []PreviewSupplement{{
@@ -295,7 +296,7 @@ func TestMultiGatewayControllerStartsAndStopsPreviewMaintenance(t *testing.T) {
 	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
 		return runtime
 	}
-	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) FinalBlockPreviewService {
+	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) gatewayPreviewRuntime {
 		previewer.gatewayID = cfg.GatewayID
 		return previewer
 	}
@@ -451,6 +452,12 @@ func (f *fakePreviewer) RewriteFinalBlock(_ context.Context, req FinalBlockPrevi
 		Block:       block,
 		Supplements: append([]PreviewSupplement(nil), f.supplements...),
 	}, nil
+}
+
+func (f *fakePreviewer) SetWebPreviewPublisher(WebPreviewPublisher) {}
+
+func (f *fakePreviewer) ServeWebPreview(http.ResponseWriter, *http.Request, string, string, bool) bool {
+	return false
 }
 
 func (f *fakePreviewer) RunBackgroundMaintenance(ctx context.Context) {
