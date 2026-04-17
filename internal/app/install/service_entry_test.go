@@ -28,11 +28,16 @@ func TestRunServiceInstallUserWritesUnitAndState(t *testing.T) {
 
 	originalGOOS := serviceRuntimeGOOS
 	originalRunner := systemctlUserRunner
+	originalShellLookup := systemdShellEnvLookup
 	serviceRuntimeGOOS = "linux"
 	defer func() {
 		serviceRuntimeGOOS = originalGOOS
 		systemctlUserRunner = originalRunner
+		systemdShellEnvLookup = originalShellLookup
 	}()
+	systemdShellEnvLookup = func(env []string, key string) (string, error) {
+		return servicePath, nil
+	}
 
 	var calls []string
 	systemctlUserRunner = func(_ context.Context, args ...string) (string, error) {
@@ -159,12 +164,17 @@ func TestRenderSystemdUserUnitEscapesPathsWithoutQuotedAssignments(t *testing.T)
 
 func TestRenderSystemdUserUnitFallsBackToDefaultPATHWhenEnvironmentEmpty(t *testing.T) {
 	originalGOOS := serviceRuntimeGOOS
+	originalShellLookup := systemdShellEnvLookup
 	serviceRuntimeGOOS = "linux"
 	defer func() {
 		serviceRuntimeGOOS = originalGOOS
+		systemdShellEnvLookup = originalShellLookup
 	}()
 
 	t.Setenv("PATH", "")
+	systemdShellEnvLookup = func(env []string, key string) (string, error) {
+		return "", nil
+	}
 
 	state := InstallState{
 		BaseDir:         filepath.Join(string(filepath.Separator), "tmp", "codex-remote"),
@@ -186,6 +196,50 @@ func TestRenderSystemdUserUnitFallsBackToDefaultPATHWhenEnvironmentEmpty(t *test
 	wantPath := strings.Join(defaultSystemdUserPATH, string(os.PathListSeparator))
 	if !strings.Contains(unitText, "Environment=PATH="+systemdEscapeValue(wantPath)) {
 		t.Fatalf("unit missing fallback PATH env: %s", unitText)
+	}
+}
+
+func TestRenderSystemdUserUnitPrefersInteractiveShellPATH(t *testing.T) {
+	originalGOOS := serviceRuntimeGOOS
+	originalShellLookup := systemdShellEnvLookup
+	serviceRuntimeGOOS = "linux"
+	defer func() {
+		serviceRuntimeGOOS = originalGOOS
+		systemdShellEnvLookup = originalShellLookup
+	}()
+
+	t.Setenv("PATH", "/usr/bin")
+	shellPath := strings.Join([]string{
+		filepath.Join(string(filepath.Separator), "home", "dl", ".nvm", "versions", "node", "v22.18.0", "bin"),
+		filepath.Join(string(filepath.Separator), "home", "dl", ".local", "bin"),
+		"/usr/bin",
+	}, string(os.PathListSeparator))
+	systemdShellEnvLookup = func(env []string, key string) (string, error) {
+		if key != "PATH" {
+			t.Fatalf("lookup key = %q, want PATH", key)
+		}
+		return shellPath, nil
+	}
+
+	state := InstallState{
+		BaseDir:         filepath.Join(string(filepath.Separator), "tmp", "codex-remote"),
+		StatePath:       filepath.Join(string(filepath.Separator), "tmp", "codex-remote", ".local", "share", "codex-remote", "install-state.json"),
+		ConfigPath:      filepath.Join(string(filepath.Separator), "tmp", "codex-remote", ".config", "codex-remote", "config.json"),
+		InstalledBinary: filepath.Join(string(filepath.Separator), "tmp", "codex-remote", "bin", "codex-remote"),
+		ServiceManager:  ServiceManagerSystemdUser,
+	}
+	ApplyStateMetadata(&state, StateMetadataOptions{
+		StatePath:      state.StatePath,
+		BaseDir:        state.BaseDir,
+		ServiceManager: state.ServiceManager,
+	})
+
+	unitText, err := renderSystemdUserUnit(state)
+	if err != nil {
+		t.Fatalf("renderSystemdUserUnit: %v", err)
+	}
+	if !strings.Contains(unitText, "Environment=PATH="+systemdEscapeValue(shellPath)) {
+		t.Fatalf("unit missing interactive shell PATH env: %s", unitText)
 	}
 }
 

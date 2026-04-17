@@ -10,16 +10,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/pathscope"
 )
 
 var (
-	serviceRuntimeGOOS  = runtime.GOOS
-	serviceUserHomeDir  = pathscope.UserHomeDir
-	serviceMkdirAll     = os.MkdirAll
-	serviceWriteFile    = os.WriteFile
-	serviceRemoveFile   = os.Remove
-	systemctlUserRunner = runSystemctlUser
+	serviceRuntimeGOOS    = runtime.GOOS
+	serviceUserHomeDir    = pathscope.UserHomeDir
+	serviceMkdirAll       = os.MkdirAll
+	serviceWriteFile      = os.WriteFile
+	serviceRemoveFile     = os.Remove
+	systemctlUserRunner   = runSystemctlUser
+	systemdShellEnvLookup = config.LookupUserShellEnvValue
 )
 
 var defaultSystemdUserPATH = []string{
@@ -310,6 +312,12 @@ func systemdEscapeExecWord(value string) string {
 }
 
 func systemdUserServicePATH() string {
+	if shellPath, err := systemdShellEnvLookup(os.Environ(), "PATH"); err == nil {
+		parts := normalizePathList(shellPath)
+		if len(parts) > 0 {
+			return strings.Join(parts, string(os.PathListSeparator))
+		}
+	}
 	parts := normalizePathList(os.Getenv("PATH"))
 	if len(parts) == 0 {
 		return strings.Join(defaultSystemdUserPATH, string(os.PathListSeparator))

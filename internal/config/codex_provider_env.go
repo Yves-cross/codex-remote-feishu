@@ -61,6 +61,10 @@ const (
 
 var lookupUserShellEnvValue = lookupUserShellEnvValueReal
 
+func LookupUserShellEnvValue(env []string, key string) (string, error) {
+	return lookupUserShellEnvValue(env, key)
+}
+
 func BuildCodexChildEnv(currentEnv, proxyEnv, args []string) []string {
 	env := FilterEnvWithoutProxy(append([]string{}, currentEnv...))
 	env = append(env, proxyEnv...)
