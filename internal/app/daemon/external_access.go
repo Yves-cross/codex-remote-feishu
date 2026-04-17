@@ -222,7 +222,7 @@ func (a *App) prepareExternalAccessShutdownLocked(reason string, closeProvider b
 	a.externalAccessListener = nil
 	a.externalAccessShutdownWait = waitCh
 	if closeProvider || len(a.webPreviewGrants) != 0 {
-		a.webPreviewGrants = map[string]*previewScopeGrant{}
+		a.webPreviewGrants = map[string]*previewGrantRecord{}
 	}
 	return externalAccessShutdownPlan{
 		reason:        reason,

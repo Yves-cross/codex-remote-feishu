@@ -1213,12 +1213,12 @@ func TestDriveMarkdownPreviewerLeavesUnhandledFileLinksUntouched(t *testing.T) {
 
 type fakeWebPreviewPublisher struct {
 	baseURL   string
-	issuedFor []string
+	issuedFor []WebPreviewGrantRequest
 	returnErr error
 }
 
-func (p *fakeWebPreviewPublisher) IssueScopePrefix(_ context.Context, scopePublicID string) (string, error) {
-	p.issuedFor = append(p.issuedFor, scopePublicID)
+func (p *fakeWebPreviewPublisher) IssueScopePrefix(_ context.Context, req WebPreviewGrantRequest) (string, error) {
+	p.issuedFor = append(p.issuedFor, req)
 	if p.returnErr != nil {
 		return "", p.returnErr
 	}
@@ -1255,8 +1255,8 @@ func TestDriveMarkdownPreviewerRewritesTextFileToWebPreviewLink(t *testing.T) {
 	}
 	scopeKey := previewScopeKey(req.GatewayID, req.SurfaceSessionID, req.ChatID, req.ActorUserID)
 	scopePublicID := previewScopePublicID(scopeKey)
-	if len(web.issuedFor) != 1 || web.issuedFor[0] != scopePublicID {
-		t.Fatalf("unexpected issued scopes: %#v want %q", web.issuedFor, scopePublicID)
+	if len(web.issuedFor) != 1 || web.issuedFor[0].ScopePublicID != scopePublicID || strings.TrimSpace(web.issuedFor[0].GrantKey) == "" {
+		t.Fatalf("unexpected issued requests: %#v want scope=%q grantKey!=empty", web.issuedFor, scopePublicID)
 	}
 	manifest, err := previewer.loadWebPreviewScopeManifest(scopePublicID)
 	if err != nil {
@@ -1275,6 +1275,46 @@ func TestDriveMarkdownPreviewerRewritesTextFileToWebPreviewLink(t *testing.T) {
 	}
 	if _, err := os.Stat(previewer.previewBlobPath(record.BlobKey)); err != nil {
 		t.Fatalf("expected preview blob to exist: %v", err)
+	}
+}
+
+func TestDriveMarkdownPreviewerUsesSameGrantKeyForMultipleLinksInOneMessage(t *testing.T) {
+	root := t.TempDir()
+	writePreviewFile(t, filepath.Join(root, "docs", "a.txt"), "a\n")
+	writePreviewFile(t, filepath.Join(root, "docs", "b.txt"), "b\n")
+	previewer := NewDriveMarkdownPreviewer(nil, MarkdownPreviewConfig{
+		ProcessCWD: root,
+		CacheDir:   filepath.Join(root, "preview-cache"),
+	})
+	web := &fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"}
+	previewer.SetWebPreviewPublisher(web)
+
+	req := MarkdownPreviewRequest{
+		GatewayID:        "main",
+		SurfaceSessionID: "feishu:main:user:ou_user",
+		ActorUserID:      "ou_user",
+		PreviewGrantKey:  "message|main|surface|thread|turn|item",
+		Block: render.Block{
+			ID:       "item-1",
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "item-1",
+			Kind:     render.BlockAssistantMarkdown,
+			Final:    true,
+			Text:     "Open [a](docs/a.txt) and [b](docs/b.txt).",
+		},
+	}
+	if _, err := previewer.RewriteFinalBlock(context.Background(), req); err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	if len(web.issuedFor) != 2 {
+		t.Fatalf("expected two publisher calls, got %#v", web.issuedFor)
+	}
+	if web.issuedFor[0].GrantKey != req.PreviewGrantKey || web.issuedFor[1].GrantKey != req.PreviewGrantKey {
+		t.Fatalf("expected stable grant key %q, got %#v", req.PreviewGrantKey, web.issuedFor)
+	}
+	if web.issuedFor[0].ScopePublicID != web.issuedFor[1].ScopePublicID {
+		t.Fatalf("expected same scope public id, got %#v", web.issuedFor)
 	}
 }
 

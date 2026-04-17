@@ -228,7 +228,7 @@ func (p *DriveMarkdownPreviewer) publishWebPreviewArtifact(ctx context.Context, 
 	}
 	p.webPreviewMu.Unlock()
 
-	url, err := p.issueWebPreviewURL(ctx, scopePublicID, previewID)
+	url, err := p.issueWebPreviewURL(ctx, req, scopePublicID, previewID)
 	if err != nil {
 		return WebPreviewPublishResult{}, err
 	}
@@ -255,11 +255,11 @@ func findPreviousPreviewRecord(manifest *webPreviewScopeManifest, lineageKey, cu
 	return candidates[0]
 }
 
-func (p *DriveMarkdownPreviewer) issueWebPreviewURL(ctx context.Context, scopePublicID, previewID string) (string, error) {
+func (p *DriveMarkdownPreviewer) issueWebPreviewURL(ctx context.Context, req PreviewPublishRequest, scopePublicID, previewID string) (string, error) {
 	if p == nil || p.webPublisher == nil {
 		return "", fmt.Errorf("web preview publisher is not configured")
 	}
-	prefix, err := p.webPublisher.IssueScopePrefix(ctx, scopePublicID)
+	prefix, err := p.webPublisher.IssueScopePrefix(ctx, webPreviewGrantRequest(req.Request, scopePublicID))
 	if err != nil {
 		return "", err
 	}
@@ -275,6 +275,35 @@ func (p *DriveMarkdownPreviewer) issueWebPreviewURL(ctx context.Context, scopePu
 		parsed.Path = strings.TrimRight(parsed.Path, "/")
 	}
 	return parsed.String(), nil
+}
+
+func webPreviewGrantRequest(req FinalBlockPreviewRequest, scopePublicID string) WebPreviewGrantRequest {
+	grantKey := strings.TrimSpace(req.PreviewGrantKey)
+	if grantKey == "" {
+		grantKey = fallbackWebPreviewGrantKey(req, scopePublicID)
+	}
+	return WebPreviewGrantRequest{
+		ScopePublicID: strings.TrimSpace(scopePublicID),
+		GrantKey:      grantKey,
+	}
+}
+
+func fallbackWebPreviewGrantKey(req FinalBlockPreviewRequest, scopePublicID string) string {
+	parts := []string{
+		strings.TrimSpace(scopePublicID),
+		strings.TrimSpace(req.GatewayID),
+		strings.TrimSpace(req.SurfaceSessionID),
+		strings.TrimSpace(req.Block.ThreadID),
+		strings.TrimSpace(req.Block.TurnID),
+		strings.TrimSpace(req.Block.ItemID),
+		strings.TrimSpace(req.Block.ID),
+	}
+	for _, part := range parts[3:] {
+		if part != "" {
+			return "message|" + strings.Join(parts, "|")
+		}
+	}
+	return "message|fallback|" + shortStablePreviewID(strings.Join(append(parts, strings.TrimSpace(req.Block.Text)), "|"))
 }
 
 func (p *DriveMarkdownPreviewer) loadWebPreviewArtifact(scopePublicID, previewID string) (*webPreviewArtifact, error) {

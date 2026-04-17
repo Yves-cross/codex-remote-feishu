@@ -192,7 +192,7 @@ type App struct {
 	externalAccess             *externalaccess.Service
 	externalAccessRuntime      ExternalAccessRuntimeConfig
 	externalAccessShutdownWait chan struct{}
-	webPreviewGrants           map[string]*previewScopeGrant
+	webPreviewGrants           map[string]*previewGrantRecord
 
 	relayListener          net.Listener
 	apiListener            net.Listener
@@ -268,7 +268,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		cronJobActiveRuns:            map[string]string{},
 		cronExitTargets:              map[string]*cronExitTarget{},
 		adminAuth:                    authManager,
-		webPreviewGrants:             map[string]*previewScopeGrant{},
+		webPreviewGrants:             map[string]*previewGrantRecord{},
 		workspaceContextRoots:        map[string]string{},
 		shutdownGracePeriod:          5 * time.Second,
 		shutdownNoticeTimeout:        2 * time.Second,

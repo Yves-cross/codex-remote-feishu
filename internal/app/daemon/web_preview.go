@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,12 +11,13 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/externalaccess"
 )
 
 const defaultPreviewGrantTTL = 30 * time.Minute
 
-type previewScopeGrant struct {
+type previewGrantRecord struct {
 	ExternalURL string
 	ExpiresAt   time.Time
 }
@@ -23,11 +26,11 @@ type daemonWebPreviewPublisher struct {
 	app *App
 }
 
-func (p daemonWebPreviewPublisher) IssueScopePrefix(ctx context.Context, scopePublicID string) (string, error) {
+func (p daemonWebPreviewPublisher) IssueScopePrefix(ctx context.Context, req feishu.WebPreviewGrantRequest) (string, error) {
 	if p.app == nil {
 		return "", fmt.Errorf("preview publisher app is not configured")
 	}
-	return p.app.issuePreviewScopePrefix(ctx, scopePublicID)
+	return p.app.issuePreviewScopePrefix(ctx, req)
 }
 
 func (a *App) handlePreviewPage(w http.ResponseWriter, r *http.Request) {
@@ -56,15 +59,19 @@ func (a *App) servePreviewRoute(w http.ResponseWriter, r *http.Request, download
 	}
 }
 
-func (a *App) issuePreviewScopePrefix(ctx context.Context, scopePublicID string) (string, error) {
-	scopePublicID = strings.TrimSpace(scopePublicID)
+func (a *App) issuePreviewScopePrefix(ctx context.Context, req feishu.WebPreviewGrantRequest) (string, error) {
+	scopePublicID := strings.TrimSpace(req.ScopePublicID)
 	if scopePublicID == "" {
 		return "", fmt.Errorf("preview scope id is required")
+	}
+	cacheKey := previewGrantCacheKey(scopePublicID, req.GrantKey)
+	if cacheKey == "" {
+		return "", fmt.Errorf("preview grant key is required")
 	}
 	now := time.Now().UTC()
 
 	a.mu.Lock()
-	if grant := a.webPreviewGrants[scopePublicID]; grant != nil && strings.TrimSpace(grant.ExternalURL) != "" && grant.ExpiresAt.After(now) {
+	if grant := a.webPreviewGrants[cacheKey]; grant != nil && strings.TrimSpace(grant.ExternalURL) != "" && grant.ExpiresAt.After(now) {
 		url := grant.ExternalURL
 		a.mu.Unlock()
 		return url, nil
@@ -87,12 +94,39 @@ func (a *App) issuePreviewScopePrefix(ctx context.Context, scopePublicID string)
 	}
 
 	a.mu.Lock()
-	a.webPreviewGrants[scopePublicID] = &previewScopeGrant{
+	a.webPreviewGrants[cacheKey] = &previewGrantRecord{
 		ExternalURL: issued.ExternalURL,
 		ExpiresAt:   issued.ExpiresAt,
 	}
 	a.mu.Unlock()
 	return issued.ExternalURL, nil
+}
+
+func (a *App) previewGrantKey(gatewayID, surfaceSessionID string, block render.Block) string {
+	parts := []string{
+		strings.TrimSpace(gatewayID),
+		strings.TrimSpace(surfaceSessionID),
+		strings.TrimSpace(block.ThreadID),
+		strings.TrimSpace(block.TurnID),
+		strings.TrimSpace(block.ItemID),
+		strings.TrimSpace(block.ID),
+	}
+	for _, part := range parts[3:] {
+		if part != "" {
+			return "message|" + strings.Join(parts, "|")
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.Join(append(parts, strings.TrimSpace(block.Text)), "|")))
+	return "message|fallback|" + hex.EncodeToString(sum[:8])
+}
+
+func previewGrantCacheKey(scopePublicID, grantKey string) string {
+	scopePublicID = strings.TrimSpace(scopePublicID)
+	grantKey = strings.TrimSpace(grantKey)
+	if scopePublicID == "" || grantKey == "" {
+		return ""
+	}
+	return scopePublicID + "|" + grantKey
 }
 
 func (a *App) previewScopeTarget(scopePublicID string) (string, string, error) {

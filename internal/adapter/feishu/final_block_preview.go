@@ -22,6 +22,7 @@ type FinalBlockPreviewRequest struct {
 	ActorUserID      string
 	WorkspaceRoot    string
 	ThreadCWD        string
+	PreviewGrantKey  string
 	Block            render.Block
 }
 
@@ -109,8 +110,13 @@ type FinalBlockPreviewPublisher interface {
 type MarkdownPreviewService = FinalBlockPreviewService
 type MarkdownPreviewRequest = FinalBlockPreviewRequest
 
+type WebPreviewGrantRequest struct {
+	ScopePublicID string
+	GrantKey      string
+}
+
 type WebPreviewPublisher interface {
-	IssueScopePrefix(context.Context, string) (string, error)
+	IssueScopePrefix(context.Context, WebPreviewGrantRequest) (string, error)
 }
 
 type WebPreviewConfigurable interface {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/externalaccess"
 )
 
@@ -39,7 +40,7 @@ func (f *fakePreviewRouteService) ServeWebPreview(w http.ResponseWriter, _ *http
 	return true
 }
 
-func TestIssuePreviewScopePrefixReusesGrantWithinTTL(t *testing.T) {
+func TestIssuePreviewScopePrefixReusesGrantWithinSameMessageTTL(t *testing.T) {
 	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
 	app.ConfigureAdmin(AdminRuntimeOptions{
 		AdminListenHost: "127.0.0.1",
@@ -58,11 +59,12 @@ func TestIssuePreviewScopePrefixReusesGrantWithinTTL(t *testing.T) {
 	})
 	defer app.Shutdown(nil)
 
-	first, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	req := feishu.WebPreviewGrantRequest{ScopePublicID: "scope-1", GrantKey: "message-1"}
+	first, err := app.issuePreviewScopePrefix(context.Background(), req)
 	if err != nil {
 		t.Fatalf("first issuePreviewScopePrefix: %v", err)
 	}
-	second, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	second, err := app.issuePreviewScopePrefix(context.Background(), req)
 	if err != nil {
 		t.Fatalf("second issuePreviewScopePrefix: %v", err)
 	}
@@ -71,6 +73,154 @@ func TestIssuePreviewScopePrefixReusesGrantWithinTTL(t *testing.T) {
 	}
 	if snapshot := app.externalAccess.Snapshot(); snapshot.GrantCount != 1 {
 		t.Fatalf("expected one active grant, got %#v", snapshot)
+	}
+}
+
+func TestPreviewGrantKeyFallsBackWhenOnlyThreadIDIsPresent(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+
+	keyA := app.previewGrantKey("gw", "surface-1", render.Block{
+		ThreadID: "thread-1",
+		Text:     "same output",
+	})
+	keyB := app.previewGrantKey("gw", "surface-1", render.Block{
+		ThreadID: "thread-1",
+		Text:     "different output",
+	})
+	if keyA == keyB {
+		t.Fatalf("expected text-based fallback key when only thread id is present, got same key %q", keyA)
+	}
+}
+
+func TestPreviewGrantKeyUsesTurnIdentityWhenAvailable(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+
+	keyA := app.previewGrantKey("gw", "surface-1", render.Block{
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ID:       "block-1",
+		Text:     "first",
+	})
+	keyB := app.previewGrantKey("gw", "surface-1", render.Block{
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ID:       "block-1",
+		Text:     "second",
+	})
+	if keyA != keyB {
+		t.Fatalf("expected stable key from turn identity, got %q vs %q", keyA, keyB)
+	}
+}
+
+func TestIssuePreviewScopePrefixUsesDifferentGrantForDifferentMessages(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+	app.ConfigureAdmin(AdminRuntimeOptions{
+		AdminListenHost: "127.0.0.1",
+		AdminListenPort: "9501",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
+		SetupURL:        "http://127.0.0.1:9501/setup",
+	})
+	app.SetExternalAccess(ExternalAccessRuntimeConfig{
+		Settings: externalAccessSettingsView{
+			ListenHost:        "127.0.0.1",
+			ListenPort:        0,
+			DefaultLinkTTL:    10 * time.Minute,
+			DefaultSessionTTL: 10 * time.Minute,
+			ProviderKind:      "disabled",
+		},
+	})
+	defer app.Shutdown(nil)
+
+	first, err := app.issuePreviewScopePrefix(context.Background(), feishu.WebPreviewGrantRequest{
+		ScopePublicID: "scope-1",
+		GrantKey:      "message-1",
+	})
+	if err != nil {
+		t.Fatalf("first issuePreviewScopePrefix: %v", err)
+	}
+	second, err := app.issuePreviewScopePrefix(context.Background(), feishu.WebPreviewGrantRequest{
+		ScopePublicID: "scope-1",
+		GrantKey:      "message-2",
+	})
+	if err != nil {
+		t.Fatalf("second issuePreviewScopePrefix: %v", err)
+	}
+	if first == second {
+		t.Fatalf("expected different grants for different messages, got same url %q", first)
+	}
+	if snapshot := app.externalAccess.Snapshot(); snapshot.GrantCount != 2 {
+		t.Fatalf("expected two active grants, got %#v", snapshot)
+	}
+}
+
+func TestIssuePreviewScopePrefixKeepsLaterMessageAliveAfterEarlierGrantExpires(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+	app.ConfigureAdmin(AdminRuntimeOptions{
+		AdminListenHost: "127.0.0.1",
+		AdminListenPort: "9501",
+		AdminURL:        "http://127.0.0.1:9501/admin/",
+		SetupURL:        "http://127.0.0.1:9501/setup",
+	})
+	now := time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC)
+	app.externalAccessRuntime = ExternalAccessRuntimeConfig{
+		Settings: externalAccessSettingsView{
+			ListenHost:        "127.0.0.1",
+			ListenPort:        0,
+			DefaultLinkTTL:    10 * time.Second,
+			DefaultSessionTTL: 30 * time.Second,
+			ProviderKind:      "disabled",
+		},
+	}
+	app.externalAccess = externalaccess.NewService(externalaccess.Options{
+		Now:               func() time.Time { return now },
+		DefaultLinkTTL:    10 * time.Second,
+		DefaultSessionTTL: 30 * time.Second,
+		IdleTTL:           5 * time.Minute,
+	})
+	defer app.Shutdown(nil)
+
+	first, err := app.issuePreviewScopePrefix(context.Background(), feishu.WebPreviewGrantRequest{
+		ScopePublicID: "scope-1",
+		GrantKey:      "message-1",
+	})
+	if err != nil {
+		t.Fatalf("first issuePreviewScopePrefix: %v", err)
+	}
+	now = now.Add(5 * time.Minute)
+	second, err := app.issuePreviewScopePrefix(context.Background(), feishu.WebPreviewGrantRequest{
+		ScopePublicID: "scope-1",
+		GrantKey:      "message-2",
+	})
+	if err != nil {
+		t.Fatalf("second issuePreviewScopePrefix: %v", err)
+	}
+	now = now.Add(26 * time.Minute)
+
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	firstResp, err := client.Get(first)
+	if err != nil {
+		t.Fatalf("first exchange request: %v", err)
+	}
+	_ = firstResp.Body.Close()
+	if firstResp.StatusCode != http.StatusGone {
+		t.Fatalf("first status = %d, want 410", firstResp.StatusCode)
+	}
+
+	secondResp, err := client.Get(second)
+	if err != nil {
+		t.Fatalf("second exchange request: %v", err)
+	}
+	_ = secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusFound {
+		t.Fatalf("second status = %d, want 302", secondResp.StatusCode)
 	}
 }
 
@@ -100,7 +250,8 @@ func TestIssuePreviewScopePrefixReissuesGrantAfterExternalAccessIdleShutdown(t *
 	})
 	defer app.Shutdown(nil)
 
-	first, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	reqGrant := feishu.WebPreviewGrantRequest{ScopePublicID: "scope-1", GrantKey: "message-1"}
+	first, err := app.issuePreviewScopePrefix(context.Background(), reqGrant)
 	if err != nil {
 		t.Fatalf("first issuePreviewScopePrefix: %v", err)
 	}
@@ -125,7 +276,7 @@ func TestIssuePreviewScopePrefixReissuesGrantAfterExternalAccessIdleShutdown(t *
 		t.Fatal("expected idle timeout to stop external access listener")
 	}
 
-	second, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	second, err := app.issuePreviewScopePrefix(context.Background(), reqGrant)
 	if err != nil {
 		t.Fatalf("second issuePreviewScopePrefix: %v", err)
 	}
@@ -179,7 +330,8 @@ func TestIssuePreviewScopePrefixReissuesGrantAfterIdleDeactivateAndReusesWarmPro
 	})
 	defer app.Shutdown(nil)
 
-	first, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	reqGrant := feishu.WebPreviewGrantRequest{ScopePublicID: "scope-1", GrantKey: "message-1"}
+	first, err := app.issuePreviewScopePrefix(context.Background(), reqGrant)
 	if err != nil {
 		t.Fatalf("first issuePreviewScopePrefix: %v", err)
 	}
@@ -207,7 +359,7 @@ func TestIssuePreviewScopePrefixReissuesGrantAfterIdleDeactivateAndReusesWarmPro
 		t.Fatalf("expected listener inactive and provider ready after idle deactivate, got %#v", snapshot)
 	}
 
-	second, err := app.issuePreviewScopePrefix(context.Background(), "scope-1")
+	second, err := app.issuePreviewScopePrefix(context.Background(), reqGrant)
 	if err != nil {
 		t.Fatalf("second issuePreviewScopePrefix: %v", err)
 	}

@@ -157,6 +157,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 			ActorUserID:      actorUserID,
 			WorkspaceRoot:    a.previewWorkspaceRoot(event.SurfaceSessionID, *event.Block),
 			ThreadCWD:        a.previewThreadCWD(event.SurfaceSessionID, *event.Block),
+			PreviewGrantKey:  a.previewGrantKey(gatewayID, event.SurfaceSessionID, *event.Block),
 			Block:            *event.Block,
 		}
 		var (
