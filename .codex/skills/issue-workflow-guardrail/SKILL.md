@@ -19,7 +19,7 @@ Examples:
 
 Do not run a one-time cleanup pass over old issues. Normalize an issue only when it becomes active.
 
-For medium/large issue work, treat [docs/general/issue-orchestration-workflow.md](/data/dl/fschannel4/docs/general/issue-orchestration-workflow.md) as the durable process baseline and use this skill as the operational entrypoint.
+For medium/large issue work, treat [docs/general/issue-orchestration-workflow.md](../../../docs/general/issue-orchestration-workflow.md) as the durable process baseline and use this skill as the operational entrypoint.
 
 If repo-root `.codex/private/issue-orchestration-private.md` exists, read it after the public workflow doc and treat it as a local-only augmentation layer for orchestration heuristics, split quality, resume discipline, and product-decision timing. Do not assume that file exists in other clones.
 

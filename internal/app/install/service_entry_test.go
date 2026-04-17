@@ -210,8 +210,8 @@ func TestRenderSystemdUserUnitPrefersInteractiveShellPATH(t *testing.T) {
 
 	t.Setenv("PATH", "/usr/bin")
 	shellPath := strings.Join([]string{
-		"/home/dl/.nvm/versions/node/v22.18.0/bin",
-		"/home/dl/.local/bin",
+		"/home/demo/.nvm/versions/node/v22.18.0/bin",
+		"/home/demo/.local/bin",
 		"/usr/bin",
 	}, servicePathListSeparator())
 	systemdShellEnvLookup = func(env []string, key string) (string, error) {
