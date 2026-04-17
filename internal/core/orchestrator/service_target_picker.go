@@ -44,7 +44,7 @@ func (s *Service) newTargetPickerRecord(surface *state.SurfaceConsoleRecord, sou
 	preferredWorkspaceKey = normalizeWorkspaceClaimKey(firstNonEmpty(preferredWorkspaceKey, s.surfaceCurrentWorkspaceKey(surface)))
 	expiresAt := s.now().Add(defaultTargetPickerTTL)
 	return &activeTargetPickerRecord{
-		PickerID:             s.nextTargetPickerToken(),
+		PickerID:             s.pickers.nextTargetPickerToken(),
 		OwnerUserID:          strings.TrimSpace(firstNonEmpty(surface.ActorUserID)),
 		Source:               source,
 		SelectedMode:         targetPickerDefaultMode(source),
@@ -54,11 +54,6 @@ func (s *Service) newTargetPickerRecord(surface *state.SurfaceConsoleRecord, sou
 		CreatedAt:            s.now(),
 		ExpiresAt:            expiresAt,
 	}, nil
-}
-
-func (s *Service) nextTargetPickerToken() string {
-	s.nextTargetPickerID++
-	return fmt.Sprintf("target-picker-%d", s.nextTargetPickerID)
 }
 
 func (s *Service) handleTargetPickerSelectMode(surface *state.SurfaceConsoleRecord, pickerID, value, actorUserID string, answers map[string][]string) []control.UIEvent {

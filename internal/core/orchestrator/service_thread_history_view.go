@@ -27,18 +27,13 @@ type threadHistoryTurnSummary struct {
 	UpdatedAt    time.Time
 }
 
-func (s *Service) nextThreadHistoryToken() string {
-	s.nextThreadHistoryID++
-	return fmt.Sprintf("thread-history-%d", s.nextThreadHistoryID)
-}
-
 func (s *Service) openThreadHistory(surface *state.SurfaceConsoleRecord, sourceMessageID string, inline bool) []control.UIEvent {
 	inst, threadID, noticeCode, noticeText := s.currentThreadHistoryTarget(surface)
 	if inst == nil || strings.TrimSpace(threadID) == "" {
 		return notice(surface, noticeCode, noticeText)
 	}
 	record := &activeThreadHistoryRecord{
-		PickerID:    s.nextThreadHistoryToken(),
+		PickerID:    s.pickers.nextThreadHistoryToken(),
 		OwnerUserID: strings.TrimSpace(firstNonEmpty(surface.ActorUserID)),
 		ThreadID:    strings.TrimSpace(threadID),
 		ViewMode:    control.FeishuThreadHistoryViewList,

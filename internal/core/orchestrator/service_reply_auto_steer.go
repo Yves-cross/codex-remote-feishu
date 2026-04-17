@@ -131,7 +131,7 @@ func (s *Service) activeReplySteerTarget(surface *state.SurfaceConsoleRecord, re
 	if activeThreadID == "" || activeTurnID == "" {
 		return nil, "", "", false
 	}
-	if s.isCompactTurn(inst.InstanceID, activeThreadID, activeTurnID) {
+	if s.progress.isCompactTurn(inst.InstanceID, activeThreadID, activeTurnID) {
 		return nil, "", "", false
 	}
 	if strings.TrimSpace(inst.ActiveThreadID) != activeThreadID || strings.TrimSpace(inst.ActiveTurnID) != activeTurnID {

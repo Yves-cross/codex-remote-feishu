@@ -27,33 +27,23 @@ type Service struct {
 	nextImageID          int
 	nextPromptID         int
 	nextRequestCommandID int
-	nextPathPickerID     int
-	nextTargetPickerID   int
 	nextLocalRequestID   int
-	nextThreadHistoryID  int
 	nextHeadlessID       int
 	handoffUntil         map[string]time.Time
 	pausedUntil          map[string]time.Time
 	abandoningUntil      map[string]time.Time
 	itemBuffers          map[string]*itemBuffer
-	turnPlanSnapshots    map[string]*turnPlanSnapshotRecord
-	mcpToolCallProgress  map[string]*mcpToolCallProgressRecord
 	threadRefreshes      map[string]bool
-	pendingTurnText      map[string]*completedTextItem
-	turnFileChanges      map[string]*turnFileChangeSummary
-	turnDiffSnapshots    map[string]*control.TurnDiffSnapshot
 	pendingRemote        map[string]*remoteTurnBinding
 	activeRemote         map[string]*remoteTurnBinding
-	compactTurns         map[string]*compactTurnBinding
 	pendingSteers        map[string]*pendingSteerBinding
 	instanceClaims       map[string]*instanceClaimRecord
 	workspaceClaims      map[string]*workspaceClaimRecord
 	threadClaims         map[string]*threadClaimRecord
-	persistedThreads     PersistedThreadCatalog
-	persistedThreadsLast []state.ThreadRecord
-	persistedWorkspaces  map[string]time.Time
-	pathPickerConsumers  map[string]PathPickerConsumer
 	surfaceUIRuntime     map[string]*surfaceUIRuntimeRecord
+	pickers              *servicePickerRuntime
+	catalog              *serviceCatalogRuntime
+	progress             *serviceProgressRuntime
 }
 
 type itemBuffer struct {
@@ -197,30 +187,26 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		planner = renderer.NewPlanner()
 	}
 	svc := &Service{
-		now:                 now,
-		config:              cfg,
-		root:                state.NewRoot(),
-		renderer:            planner,
-		handoffUntil:        map[string]time.Time{},
-		pausedUntil:         map[string]time.Time{},
-		abandoningUntil:     map[string]time.Time{},
-		itemBuffers:         map[string]*itemBuffer{},
-		turnPlanSnapshots:   map[string]*turnPlanSnapshotRecord{},
-		mcpToolCallProgress: map[string]*mcpToolCallProgressRecord{},
-		threadRefreshes:     map[string]bool{},
-		pendingTurnText:     map[string]*completedTextItem{},
-		turnFileChanges:     map[string]*turnFileChangeSummary{},
-		turnDiffSnapshots:   map[string]*control.TurnDiffSnapshot{},
-		pendingRemote:       map[string]*remoteTurnBinding{},
-		activeRemote:        map[string]*remoteTurnBinding{},
-		compactTurns:        map[string]*compactTurnBinding{},
-		pendingSteers:       map[string]*pendingSteerBinding{},
-		instanceClaims:      map[string]*instanceClaimRecord{},
-		workspaceClaims:     map[string]*workspaceClaimRecord{},
-		threadClaims:        map[string]*threadClaimRecord{},
-		pathPickerConsumers: map[string]PathPickerConsumer{},
-		surfaceUIRuntime:    map[string]*surfaceUIRuntimeRecord{},
+		now:              now,
+		config:           cfg,
+		root:             state.NewRoot(),
+		renderer:         planner,
+		handoffUntil:     map[string]time.Time{},
+		pausedUntil:      map[string]time.Time{},
+		abandoningUntil:  map[string]time.Time{},
+		itemBuffers:      map[string]*itemBuffer{},
+		threadRefreshes:  map[string]bool{},
+		pendingRemote:    map[string]*remoteTurnBinding{},
+		activeRemote:     map[string]*remoteTurnBinding{},
+		pendingSteers:    map[string]*pendingSteerBinding{},
+		instanceClaims:   map[string]*instanceClaimRecord{},
+		workspaceClaims:  map[string]*workspaceClaimRecord{},
+		threadClaims:     map[string]*threadClaimRecord{},
+		surfaceUIRuntime: map[string]*surfaceUIRuntimeRecord{},
 	}
+	svc.pickers = newServicePickerRuntime(svc)
+	svc.catalog = newServiceCatalogRuntime(svc)
+	svc.progress = newServiceProgressRuntime(svc)
 	svc.RegisterPathPickerConsumer(workspaceCreatePathPickerConsumerKind, workspaceCreatePathPickerConsumer{})
 	svc.RegisterPathPickerConsumer(targetPickerWorkspaceCreatePathPickerConsumerKind, targetPickerWorkspaceCreatePathPickerConsumer{})
 	svc.RegisterPathPickerConsumer(targetPickerAddWorkspacePathPickerConsumerKind, targetPickerAddWorkspacePathPickerConsumer{})
@@ -335,9 +321,10 @@ func (s *Service) UpsertInstance(inst *state.InstanceRecord) {
 }
 
 func (s *Service) SetPersistedThreadCatalog(catalog PersistedThreadCatalog) {
-	s.persistedThreads = catalog
-	s.persistedThreadsLast = nil
-	s.persistedWorkspaces = nil
+	if s == nil || s.catalog == nil {
+		return
+	}
+	s.catalog.setPersistedThreadCatalog(catalog)
 }
 
 func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
@@ -641,12 +628,12 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		events := append(preface, s.pauseForLocal(instanceID)...)
 		return s.filterEventsForSurfaceVisibility(append(events, s.reevaluateFollowSurfaces(instanceID)...))
 	case agentproto.EventThreadTokenUsageUpdated:
-		return s.filterEventsForSurfaceVisibility(append(preface, s.applyThreadTokenUsageUpdate(instanceID, event)...))
+		return s.filterEventsForSurfaceVisibility(append(preface, s.progress.applyThreadTokenUsageUpdate(instanceID, event)...))
 	case agentproto.EventTurnModelRerouted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
 		return s.filterEventsForSurfaceVisibility(append(preface, s.applyTurnModelReroute(instanceID, event)...))
 	case agentproto.EventTurnDiffUpdated:
-		s.recordTurnDiffSnapshot(instanceID, event)
+		s.progress.recordTurnDiffSnapshot(instanceID, event)
 		return s.filterEventsForSurfaceVisibility(preface)
 	case agentproto.EventTurnPlanUpdated:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
@@ -704,9 +691,9 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			surface.ActiveTurnOrigin = ""
 		}
 		deleteMatchingItemBuffers(s.itemBuffers, instanceID, event.ThreadID, event.TurnID)
-		summary := s.takeTurnFileChangeSummary(instanceID, event.ThreadID, event.TurnID)
-		turnDiff := s.takeTurnDiffSnapshot(instanceID, event.ThreadID, event.TurnID)
-		finalText := pendingTurnTextValue(s.pendingTurnText, instanceID, event.ThreadID, event.TurnID)
+		summary := s.progress.takeTurnFileChangeSummary(instanceID, event.ThreadID, event.TurnID)
+		turnDiff := s.progress.takeTurnDiffSnapshot(instanceID, event.ThreadID, event.TurnID)
+		finalText := pendingTurnTextValue(s.progress.pendingTurnText, instanceID, event.ThreadID, event.TurnID)
 		finalizeTurnOutput := shouldFinalizeTurnOutput(event)
 		finalRenderSummary := (*control.FileChangeSummary)(nil)
 		finalRenderTurnDiff := (*control.TurnDiffSnapshot)(nil)
@@ -726,8 +713,8 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			finalRenderTurnSummary,
 		)
 		events = append(events, s.finalizeExecCommandProgressForTurn(instanceID, event.ThreadID, event.TurnID, event.Status, finalText)...)
-		deleteMatchingTurnPlanSnapshots(s.turnPlanSnapshots, instanceID, event.ThreadID, event.TurnID)
-		deleteMatchingMCPToolCallProgress(s.mcpToolCallProgress, instanceID, event.ThreadID, event.TurnID)
+		deleteMatchingTurnPlanSnapshots(s.progress.turnPlanSnapshots, instanceID, event.ThreadID, event.TurnID)
+		deleteMatchingMCPToolCallProgress(s.progress.mcpToolCallProgress, instanceID, event.ThreadID, event.TurnID)
 		compactEvents := s.completeCompactTurn(instanceID, event.ThreadID, event.TurnID)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)

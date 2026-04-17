@@ -40,24 +40,24 @@ func compactCompletionProgressEntry(itemID string) control.ExecCommandProgressEn
 	}
 }
 
-func (s *Service) renderCompactNotice(instanceID string, event agentproto.Event) []control.UIEvent {
-	inst := s.root.Instances[instanceID]
+func (r *serviceProgressRuntime) renderCompactNotice(instanceID string, event agentproto.Event) []control.UIEvent {
+	inst := r.service.root.Instances[instanceID]
 	notice := compactCompletionNotice()
-	surface := s.surfaceForInitiator(instanceID, event)
+	surface := r.service.surfaceForInitiator(instanceID, event)
 	if surface == nil {
 		if inst != nil && strings.TrimSpace(event.ThreadID) != "" {
-			s.storeThreadReplayNotice(inst, event.ThreadID, notice)
+			r.service.storeThreadReplayNotice(inst, event.ThreadID, notice)
 		}
 		return nil
 	}
 	if inst != nil && strings.TrimSpace(event.ThreadID) != "" {
-		s.clearThreadReplay(inst, event.ThreadID)
+		r.service.clearThreadReplay(inst, event.ThreadID)
 	}
-	if !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
+	if !r.service.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
 	}
-	progress := s.activeOrEnsureExecCommandProgress(surface, instanceID, event.ThreadID, event.TurnID)
+	progress := r.service.activeOrEnsureExecCommandProgress(surface, instanceID, event.ThreadID, event.TurnID)
 	progress.ItemID = firstNonEmpty(strings.TrimSpace(event.ItemID), progress.ItemID)
 	upsertExecCommandProgressEntry(progress, compactCompletionProgressEntryRecord(event.ItemID))
-	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
+	return r.service.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }

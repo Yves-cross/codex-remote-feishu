@@ -23,7 +23,7 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 	if threadID == "" || !s.surfaceOwnsThread(surface, threadID) || !threadVisible(inst.Threads[threadID]) {
 		return notice(surface, "compact_requires_thread", "当前还没有可整理的会话。请先 /use 选择一个会话。")
 	}
-	if binding := s.compactTurns[inst.InstanceID]; binding != nil {
+	if binding := s.progress.compactTurns[inst.InstanceID]; binding != nil {
 		if binding.SurfaceSessionID == surface.SurfaceSessionID || binding.ThreadID == threadID {
 			return notice(surface, "compact_in_progress", "当前正在整理上下文，请稍候。")
 		}
@@ -44,7 +44,7 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 	if len(surface.QueuedQueueItemIDs) != 0 {
 		return notice(surface, "compact_busy", "当前还有排队消息，暂时不能整理上下文。请等待队列清空或先 /stop。")
 	}
-	s.compactTurns[inst.InstanceID] = &compactTurnBinding{
+	s.progress.compactTurns[inst.InstanceID] = &compactTurnBinding{
 		InstanceID:       inst.InstanceID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		ThreadID:         threadID,
@@ -68,37 +68,11 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 	}}
 }
 
-func (s *Service) instanceHasCompact(instanceID string) bool {
-	if strings.TrimSpace(instanceID) == "" {
-		return false
-	}
-	return s.compactTurns[instanceID] != nil
-}
-
-func (s *Service) surfaceHasPendingCompact(surface *state.SurfaceConsoleRecord) bool {
-	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" {
-		return false
-	}
-	binding := s.compactTurns[surface.AttachedInstanceID]
-	return binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID
-}
-
-func (s *Service) isCompactTurn(instanceID, threadID, turnID string) bool {
-	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(turnID) == "" {
-		return false
-	}
-	binding := s.compactTurns[instanceID]
-	if binding == nil || binding.TurnID != turnID {
-		return false
-	}
-	return binding.ThreadID == "" || threadID == "" || binding.ThreadID == threadID
-}
-
 func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) []control.UIEvent {
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
-	binding := s.compactTurns[instanceID]
+	binding := s.progress.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) != "" {
 		return nil
 	}
@@ -121,14 +95,14 @@ func (s *Service) completeCompactTurn(instanceID, threadID, turnID string) []con
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(turnID) == "" {
 		return nil
 	}
-	binding := s.compactTurns[instanceID]
+	binding := s.progress.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) == "" || binding.TurnID != turnID {
 		return nil
 	}
 	if binding.ThreadID != "" && strings.TrimSpace(threadID) != "" && binding.ThreadID != threadID {
 		return nil
 	}
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
 		return nil
@@ -142,11 +116,11 @@ func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode
 	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
-	binding := s.compactTurns[surface.AttachedInstanceID]
+	binding := s.progress.compactTurns[surface.AttachedInstanceID]
 	if binding == nil || binding.SurfaceSessionID != surfaceID || binding.CommandID != commandID {
 		return nil
 	}
-	delete(s.compactTurns, surface.AttachedInstanceID)
+	delete(s.progress.compactTurns, surface.AttachedInstanceID)
 	notice := NoticeForProblem(agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 		Code:             noticeCode,
 		Layer:            "daemon",
@@ -171,11 +145,11 @@ func (s *Service) restorePendingCompactCommand(instanceID, commandID string, pro
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
-	binding := s.compactTurns[instanceID]
+	binding := s.progress.compactTurns[instanceID]
 	if binding == nil || binding.CommandID != commandID {
 		return nil
 	}
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
 		return nil
@@ -204,7 +178,7 @@ func (s *Service) handleCompactProblem(instanceID string, problem agentproto.Err
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(problem.Operation) != "thread.compact.start" {
 		return nil
 	}
-	binding := s.compactTurns[instanceID]
+	binding := s.progress.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) != "" {
 		return nil
 	}
@@ -214,7 +188,7 @@ func (s *Service) handleCompactProblem(instanceID string, problem agentproto.Err
 	if strings.TrimSpace(problem.ThreadID) != "" && binding.ThreadID != "" && binding.ThreadID != problem.ThreadID {
 		return nil
 	}
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
 		return nil

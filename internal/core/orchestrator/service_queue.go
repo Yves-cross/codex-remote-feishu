@@ -139,7 +139,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.pendingRemote[inst.InstanceID] != nil {
 		return nil
 	}
-	if s.instanceHasCompact(inst.InstanceID) {
+	if s.progress.instanceHasCompact(inst.InstanceID) {
 		return nil
 	}
 
@@ -224,7 +224,7 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 		targetThreadID := strings.TrimSpace(firstNonEmpty(item.FrozenThreadID, threadID))
 		s.recordThreadUserMessage(inst, targetThreadID, item.SourceMessagePreview)
 	}
-	s.captureRemoteTurnStartTotalUsage(instanceID, binding, item.FrozenThreadID)
+	s.progress.captureRemoteTurnStartTotalUsage(instanceID, binding, item.FrozenThreadID)
 	if binding.StartedAt.IsZero() {
 		binding.StartedAt = s.now().UTC()
 	}
@@ -527,7 +527,7 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 	key := itemBufferKey(instanceID, event.ThreadID, event.TurnID, event.ItemID)
 	if event.ItemKind == "file_change" {
 		delete(s.itemBuffers, key)
-		s.recordTurnFileChanges(instanceID, event)
+		s.progress.recordTurnFileChanges(instanceID, event)
 		return nil
 	}
 	if isDynamicToolCallItem(event.ItemKind) {
@@ -540,7 +540,7 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 	}
 	if isContextCompactionItem(event.ItemKind) {
 		delete(s.itemBuffers, key)
-		return s.renderCompactNotice(instanceID, event)
+		return s.progress.renderCompactNotice(instanceID, event)
 	}
 	buf := s.itemBuffers[key]
 	if buf == nil {
@@ -571,8 +571,8 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 
 func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, itemKind, text string) []control.UIEvent {
 	key := turnRenderKey(instanceID, threadID, turnID)
-	previous := s.pendingTurnText[key]
-	s.pendingTurnText[key] = &completedTextItem{
+	previous := s.progress.pendingTurnText[key]
+	s.progress.pendingTurnText[key] = &completedTextItem{
 		InstanceID: instanceID,
 		ThreadID:   threadID,
 		TurnID:     turnID,
@@ -592,14 +592,14 @@ func (s *Service) flushPendingTurnText(instanceID, threadID, turnID string, fina
 
 func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []control.UIEvent {
 	key := turnRenderKey(instanceID, threadID, turnID)
-	pending := s.pendingTurnText[key]
+	pending := s.progress.pendingTurnText[key]
 	if pending == nil {
 		if final && (summary != nil || turnDiff != nil || finalSummary != nil) {
 			return s.renderTextItemWithSummary(instanceID, threadID, turnID, "file-change-summary", "", true, summary, turnDiff, finalSummary)
 		}
 		return nil
 	}
-	delete(s.pendingTurnText, key)
+	delete(s.progress.pendingTurnText, key)
 	return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, pending.ItemID, pending.Text, final, summary, turnDiff, finalSummary)
 }
 
@@ -611,7 +611,7 @@ func (s *Service) flushPendingTurnTextIfTurnContinues(instanceID string, event a
 		return nil
 	}
 	key := turnRenderKey(instanceID, event.ThreadID, event.TurnID)
-	pending := s.pendingTurnText[key]
+	pending := s.progress.pendingTurnText[key]
 	if pending == nil {
 		return nil
 	}

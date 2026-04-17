@@ -7,8 +7,8 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func (s *Service) recordTurnDiffSnapshot(instanceID string, event agentproto.Event) {
-	if s == nil {
+func (r *serviceProgressRuntime) recordTurnDiffSnapshot(instanceID string, event agentproto.Event) {
+	if r == nil {
 		return
 	}
 	threadID := strings.TrimSpace(event.ThreadID)
@@ -19,23 +19,23 @@ func (s *Service) recordTurnDiffSnapshot(instanceID string, event agentproto.Eve
 	key := turnRenderKey(instanceID, threadID, turnID)
 	diff := event.TurnDiff
 	if strings.TrimSpace(diff) == "" {
-		delete(s.turnDiffSnapshots, key)
+		delete(r.turnDiffSnapshots, key)
 		return
 	}
-	s.turnDiffSnapshots[key] = &control.TurnDiffSnapshot{
+	r.turnDiffSnapshots[key] = &control.TurnDiffSnapshot{
 		ThreadID: threadID,
 		TurnID:   turnID,
 		Diff:     diff,
 	}
 }
 
-func (s *Service) takeTurnDiffSnapshot(instanceID, threadID, turnID string) *control.TurnDiffSnapshot {
-	if s == nil {
+func (r *serviceProgressRuntime) takeTurnDiffSnapshot(instanceID, threadID, turnID string) *control.TurnDiffSnapshot {
+	if r == nil {
 		return nil
 	}
 	key := turnRenderKey(instanceID, threadID, turnID)
-	snapshot := s.turnDiffSnapshots[key]
-	delete(s.turnDiffSnapshots, key)
+	snapshot := r.turnDiffSnapshots[key]
+	delete(r.turnDiffSnapshots, key)
 	if snapshot == nil {
 		return nil
 	}

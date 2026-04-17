@@ -80,10 +80,10 @@ func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event)
 		return nil
 	}
 	key := turnPlanSnapshotKey(surface.SurfaceSessionID, instanceID, event.ThreadID, event.TurnID)
-	if existing := s.turnPlanSnapshots[key]; existing != nil && equalTurnPlanSnapshot(existing.Snapshot, event.PlanSnapshot) {
+	if existing := s.progress.turnPlanSnapshots[key]; existing != nil && equalTurnPlanSnapshot(existing.Snapshot, event.PlanSnapshot) {
 		return nil
 	}
-	s.turnPlanSnapshots[key] = &turnPlanSnapshotRecord{
+	s.progress.turnPlanSnapshots[key] = &turnPlanSnapshotRecord{
 		SurfaceSessionID: surface.SurfaceSessionID,
 		InstanceID:       instanceID,
 		ThreadID:         event.ThreadID,

@@ -505,7 +505,7 @@ func (s *Service) activeSteerTarget(surface *state.SurfaceConsoleRecord) (*state
 	if threadID == "" || turnID == "" {
 		return nil, "", "", false
 	}
-	if s.isCompactTurn(inst.InstanceID, threadID, turnID) {
+	if s.progress.isCompactTurn(inst.InstanceID, threadID, turnID) {
 		return nil, "", "", false
 	}
 	return inst, threadID, turnID, true
@@ -692,7 +692,7 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 			ThemeKey: "system",
 		}
 	} else if surface.ActiveQueueItemID != "" {
-		if s.surfaceHasPendingCompact(surface) {
+		if s.progress.surfaceHasPendingCompact(surface) {
 			notice = control.Notice{
 				Code:     "stop_not_interruptible",
 				Title:    "当前还不能停止",

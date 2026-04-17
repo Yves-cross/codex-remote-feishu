@@ -1,27 +1,19 @@
 package orchestrator
 
-import (
-	"strings"
-
-	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-)
+import "github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 
 func (s *Service) RecordSurfaceThreadHistory(surfaceID string, history agentproto.ThreadHistoryRecord) {
-	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
-	if surface == nil {
+	if s == nil || s.pickers == nil {
 		return
 	}
-	cloned := cloneThreadHistoryRecord(history)
-	surface.LastThreadHistory = &cloned
+	s.pickers.recordSurfaceThreadHistory(surfaceID, history)
 }
 
 func (s *Service) SurfaceThreadHistory(surfaceID string) *agentproto.ThreadHistoryRecord {
-	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
-	if surface == nil || surface.LastThreadHistory == nil {
+	if s == nil || s.pickers == nil {
 		return nil
 	}
-	cloned := cloneThreadHistoryRecord(*surface.LastThreadHistory)
-	return &cloned
+	return s.pickers.surfaceThreadHistory(surfaceID)
 }
 
 func cloneThreadHistoryRecord(history agentproto.ThreadHistoryRecord) agentproto.ThreadHistoryRecord {

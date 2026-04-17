@@ -581,10 +581,10 @@ func (s *Service) mergeWorkspaceSelectionRecencyFromOnlineThreads(latest map[str
 }
 
 func (s *Service) mergeWorkspaceSelectionRecencyFromPersistedWorkspaces(latest map[string]time.Time, seen map[string]bool, visible map[string]struct{}) {
-	if s == nil || s.persistedThreads == nil {
+	if s == nil || s.catalog.persistedThreads == nil {
 		return
 	}
-	for workspaceKey, usedAt := range s.recentPersistedWorkspaces(persistedRecentWorkspaceLimit) {
+	for workspaceKey, usedAt := range s.catalog.recentPersistedWorkspaces(persistedRecentWorkspaceLimit) {
 		workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
 		if workspaceKey == "" || workspaceSelectionInternalProbeWorkspace(workspaceKey) {
 			continue

@@ -250,7 +250,7 @@ func (s *Service) targetPickerDirectoryIsKnownWorkspace(surface *state.SurfaceCo
 			return true
 		}
 	}
-	_, ok := s.recentPersistedWorkspaces(persistedRecentWorkspaceLimit)[workspaceKey]
+	_, ok := s.catalog.recentPersistedWorkspaces(persistedRecentWorkspaceLimit)[workspaceKey]
 	return ok
 }
 

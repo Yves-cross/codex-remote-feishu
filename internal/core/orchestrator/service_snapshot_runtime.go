@@ -109,7 +109,7 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 		return
 	}
 	if surface.AttachedInstanceID != "" {
-		compact := s.compactTurns[surface.AttachedInstanceID]
+		compact := s.progress.compactTurns[surface.AttachedInstanceID]
 		if compact != nil && compact.SurfaceSessionID == surfaceID && compact.CommandID == "" {
 			compact.CommandID = commandID
 			return
@@ -541,7 +541,7 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 	}
 	inst.Online = false
 	inst.ActiveTurnID = ""
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 
 	for _, surface := range s.root.Surfaces {
 		if surface.PendingHeadless == nil || surface.PendingHeadless.InstanceID != instanceID {
@@ -602,7 +602,7 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 	}
 	inst.Online = false
 	inst.ActiveTurnID = ""
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 
 	delete(s.threadRefreshes, instanceID)
 
@@ -696,7 +696,7 @@ func (s *Service) RemoveInstance(instanceID string) {
 		inst.Online = false
 		inst.ActiveTurnID = ""
 	}
-	delete(s.compactTurns, instanceID)
+	delete(s.progress.compactTurns, instanceID)
 	s.restorePendingSteersForInstance(instanceID)
 	for _, surface := range s.root.Surfaces {
 		if surface == nil {
@@ -730,11 +730,11 @@ func (s *Service) RemoveInstance(instanceID string) {
 	delete(s.activeRemote, instanceID)
 	delete(s.threadRefreshes, instanceID)
 	deleteMatchingItemBuffers(s.itemBuffers, instanceID, "", "")
-	deleteMatchingMCPToolCallProgress(s.mcpToolCallProgress, instanceID, "", "")
-	for key, item := range s.pendingTurnText {
+	deleteMatchingMCPToolCallProgress(s.progress.mcpToolCallProgress, instanceID, "", "")
+	for key, item := range s.progress.pendingTurnText {
 		if item == nil || item.InstanceID != instanceID {
 			continue
 		}
-		delete(s.pendingTurnText, key)
+		delete(s.progress.pendingTurnText, key)
 	}
 }

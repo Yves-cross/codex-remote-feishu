@@ -84,14 +84,14 @@ func (s *Service) handleMCPToolCallItemProgress(instanceID string, event agentpr
 		return nil
 	}
 	key := mcpToolCallProgressKey(surface.SurfaceSessionID, instanceID, event.ThreadID, event.TurnID, event.ItemID)
-	if existing := s.mcpToolCallProgress[key]; existing != nil && equalMCPToolCallProgressRecord(existing, record) {
+	if existing := s.progress.mcpToolCallProgress[key]; existing != nil && equalMCPToolCallProgressRecord(existing, record) {
 		return nil
 	}
 	progress := s.ensureProgressForMCPToolCall(surface, instanceID, event.ThreadID, event.TurnID, event.ItemID, final)
 	if progress == nil {
 		return nil
 	}
-	s.mcpToolCallProgress[key] = record
+	s.progress.mcpToolCallProgress[key] = record
 	progress.ItemID = strings.TrimSpace(event.ItemID)
 	upsertExecCommandProgressEntry(progress, mcpToolCallProgressEntry(*record))
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)

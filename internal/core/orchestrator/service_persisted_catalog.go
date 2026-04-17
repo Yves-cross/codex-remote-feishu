@@ -8,39 +8,11 @@ import (
 
 const persistedRecentWorkspaceLimit = 500
 
-func (s *Service) recentPersistedThreads(limit int) []state.ThreadRecord {
-	if s == nil || s.persistedThreads == nil {
-		return nil
-	}
-	threads, err := s.persistedThreads.RecentThreads(limit)
-	if err != nil {
-		if len(s.persistedThreadsLast) == 0 {
-			return nil
-		}
-		return clonePersistedThreads(s.persistedThreadsLast)
-	}
-	s.persistedThreadsLast = clonePersistedThreads(threads)
-	return clonePersistedThreads(threads)
-}
-
-func (s *Service) recentPersistedWorkspaces(limit int) map[string]time.Time {
-	if s == nil || s.persistedThreads == nil {
-		return nil
-	}
-	workspaces, err := s.persistedThreads.RecentWorkspaces(limit)
-	if err == nil {
-		normalized := normalizePersistedWorkspaceRecency(workspaces)
-		s.persistedWorkspaces = clonePersistedWorkspaceRecency(normalized)
-		return normalized
-	}
-	if len(s.persistedWorkspaces) > 0 {
-		return clonePersistedWorkspaceRecency(s.persistedWorkspaces)
-	}
-	return workspaceRecencyFromThreads(s.recentPersistedThreads(persistedRecentThreadLimit))
-}
-
 func (s *Service) RecentPersistedWorkspaces(limit int) map[string]time.Time {
-	return clonePersistedWorkspaceRecency(s.recentPersistedWorkspaces(limit))
+	if s == nil || s.catalog == nil {
+		return nil
+	}
+	return clonePersistedWorkspaceRecency(s.catalog.recentPersistedWorkspaces(limit))
 }
 
 func workspaceRecencyFromThreads(threads []state.ThreadRecord) map[string]time.Time {

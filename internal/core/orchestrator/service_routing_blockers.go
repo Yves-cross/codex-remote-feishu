@@ -12,7 +12,7 @@ func (s *Service) blockThreadSwitch(surface *state.SurfaceConsoleRecord) []contr
 	if surface == nil {
 		return nil
 	}
-	if s.surfaceHasPendingCompact(surface) {
+	if s.progress.surfaceHasPendingCompact(surface) {
 		return notice(surface, "thread_switch_compacting", "当前正在整理上下文，暂时不能切换会话。请等待完成、/stop，或先 /detach。")
 	}
 	if s.surfaceHasPendingSteer(surface) {
@@ -104,7 +104,7 @@ func (s *Service) blockNewThreadPreparation(surface *state.SurfaceConsoleRecord)
 	if surface == nil {
 		return nil
 	}
-	if s.surfaceHasPendingCompact(surface) {
+	if s.progress.surfaceHasPendingCompact(surface) {
 		return notice(surface, "new_thread_blocked_compacting", "当前正在整理上下文，暂时不能新建会话。请等待完成、/stop，或先 /detach。")
 	}
 	if s.surfaceHasPendingSteer(surface) {
@@ -294,7 +294,7 @@ func (s *Service) surfaceNeedsDelayedDetach(surface *state.SurfaceConsoleRecord,
 	if inst != nil && !inst.Online {
 		return false
 	}
-	if s.surfaceHasPendingCompact(surface) {
+	if s.progress.surfaceHasPendingCompact(surface) {
 		return true
 	}
 	if s.surfaceHasPendingSteer(surface) {

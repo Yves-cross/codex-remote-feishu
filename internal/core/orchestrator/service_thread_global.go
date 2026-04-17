@@ -162,10 +162,10 @@ func (s *Service) mergedThreadView(surface *state.SurfaceConsoleRecord, threadID
 }
 
 func (s *Service) mergePersistedRecentThreads(viewsByID map[string]*mergedThreadView) {
-	if s == nil || s.persistedThreads == nil {
+	if s == nil || s.catalog.persistedThreads == nil {
 		return
 	}
-	threads := s.recentPersistedThreads(persistedRecentThreadLimit)
+	threads := s.catalog.recentPersistedThreads(persistedRecentThreadLimit)
 	for i := range threads {
 		thread := threads[i]
 		if strings.TrimSpace(thread.ThreadID) == "" || !threadVisible(&thread) {
@@ -185,10 +185,10 @@ func (s *Service) mergePersistedRecentThreads(viewsByID map[string]*mergedThread
 }
 
 func (s *Service) persistedThreadView(surface *state.SurfaceConsoleRecord, threadID string) *mergedThreadView {
-	if s == nil || s.persistedThreads == nil {
+	if s == nil || s.catalog.persistedThreads == nil {
 		return nil
 	}
-	thread, err := s.persistedThreads.ThreadByID(strings.TrimSpace(threadID))
+	thread, err := s.catalog.persistedThreads.ThreadByID(strings.TrimSpace(threadID))
 	if err != nil || !threadVisible(thread) {
 		return nil
 	}

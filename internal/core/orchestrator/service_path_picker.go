@@ -21,18 +21,10 @@ func (s *Service) OpenPathPicker(action control.Action, req control.PathPickerRe
 }
 
 func (s *Service) RegisterPathPickerConsumer(kind string, consumer PathPickerConsumer) {
-	if s == nil {
+	if s == nil || s.pickers == nil {
 		return
 	}
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return
-	}
-	if consumer == nil {
-		delete(s.pathPickerConsumers, kind)
-		return
-	}
-	s.pathPickerConsumers[kind] = consumer
+	s.pickers.registerPathPickerConsumer(kind, consumer)
 }
 
 func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) []control.UIEvent {
@@ -74,7 +66,7 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 		expiresAt = s.now().Add(req.ExpireAfter)
 	}
 	return &activePathPickerRecord{
-		PickerID:     s.nextPathPickerToken(),
+		PickerID:     s.pickers.nextPathPickerToken(),
 		OwnerUserID:  strings.TrimSpace(firstNonEmpty(ownerUserID, surface.ActorUserID)),
 		Mode:         mode,
 		Title:        strings.TrimSpace(firstNonEmpty(req.Title, defaultPathPickerTitle(mode))),
@@ -89,11 +81,6 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 		ConsumerKind: strings.TrimSpace(req.ConsumerKind),
 		ConsumerMeta: cloneStringMap(req.ConsumerMeta),
 	}, nil
-}
-
-func (s *Service) nextPathPickerToken() string {
-	s.nextPathPickerID++
-	return fmt.Sprintf("picker-%d", s.nextPathPickerID)
 }
 
 func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pickerID, entryName, actorUserID string) []control.UIEvent {
@@ -424,15 +411,10 @@ func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecor
 }
 
 func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, bool) {
-	if s == nil {
+	if s == nil || s.pickers == nil {
 		return nil, false
 	}
-	kind = strings.TrimSpace(kind)
-	if kind == "" {
-		return nil, false
-	}
-	consumer := s.pathPickerConsumers[kind]
-	return consumer, consumer != nil
+	return s.pickers.lookupPathPickerConsumer(kind)
 }
 
 func canConfirmPathPicker(record *activePathPickerRecord) bool {

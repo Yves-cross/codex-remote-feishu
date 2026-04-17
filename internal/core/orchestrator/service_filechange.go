@@ -9,7 +9,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) recordTurnFileChanges(instanceID string, event agentproto.Event) {
+func (r *serviceProgressRuntime) recordTurnFileChanges(instanceID string, event agentproto.Event) {
 	if event.ItemKind != "file_change" {
 		return
 	}
@@ -20,10 +20,10 @@ func (s *Service) recordTurnFileChanges(instanceID string, event agentproto.Even
 		return
 	}
 	key := turnRenderKey(instanceID, event.ThreadID, event.TurnID)
-	summary := s.turnFileChanges[key]
+	summary := r.turnFileChanges[key]
 	if summary == nil {
 		summary = &turnFileChangeSummary{Files: map[string]*turnFileChangeEntry{}}
-		s.turnFileChanges[key] = summary
+		r.turnFileChanges[key] = summary
 	}
 	for _, change := range event.FileChanges {
 		path := strings.TrimSpace(change.Path)
@@ -54,19 +54,19 @@ func (s *Service) recordTurnFileChanges(instanceID string, event agentproto.Even
 		entry.RemovedLines += removed
 	}
 	if len(summary.Files) == 0 {
-		delete(s.turnFileChanges, key)
+		delete(r.turnFileChanges, key)
 	}
 }
 
-func (s *Service) takeTurnFileChangeSummary(instanceID, threadID, turnID string) *control.FileChangeSummary {
+func (r *serviceProgressRuntime) takeTurnFileChangeSummary(instanceID, threadID, turnID string) *control.FileChangeSummary {
 	key := turnRenderKey(instanceID, threadID, turnID)
-	summary := s.turnFileChanges[key]
+	summary := r.turnFileChanges[key]
 	if summary == nil || len(summary.Files) == 0 {
-		delete(s.turnFileChanges, key)
+		delete(r.turnFileChanges, key)
 		return nil
 	}
-	delete(s.turnFileChanges, key)
-	inst := s.root.Instances[instanceID]
+	delete(r.turnFileChanges, key)
+	inst := r.service.root.Instances[instanceID]
 	var thread *state.ThreadRecord
 	if inst != nil && threadID != "" {
 		thread = inst.Threads[threadID]

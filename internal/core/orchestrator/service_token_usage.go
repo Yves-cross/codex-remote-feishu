@@ -9,22 +9,22 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) applyThreadTokenUsageUpdate(instanceID string, event agentproto.Event) []control.UIEvent {
-	inst := s.root.Instances[instanceID]
+func (r *serviceProgressRuntime) applyThreadTokenUsageUpdate(instanceID string, event agentproto.Event) []control.UIEvent {
+	inst := r.service.root.Instances[instanceID]
 	if inst == nil || strings.TrimSpace(event.ThreadID) == "" || event.TokenUsage == nil {
 		return nil
 	}
-	thread := s.ensureThread(inst, event.ThreadID)
+	thread := r.service.ensureThread(inst, event.ThreadID)
 	thread.TokenUsage = agentproto.CloneThreadTokenUsage(event.TokenUsage)
-	s.recordRemoteTurnTokenUsage(instanceID, event.ThreadID, event.TurnID, event.TokenUsage)
+	r.recordRemoteTurnTokenUsage(instanceID, event.ThreadID, event.TurnID, event.TokenUsage)
 	return nil
 }
 
-func (s *Service) recordRemoteTurnTokenUsage(instanceID, threadID, turnID string, usage *agentproto.ThreadTokenUsage) {
+func (r *serviceProgressRuntime) recordRemoteTurnTokenUsage(instanceID, threadID, turnID string, usage *agentproto.ThreadTokenUsage) {
 	if usage == nil {
 		return
 	}
-	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
+	binding := r.service.lookupRemoteTurn(instanceID, threadID, turnID)
 	if binding == nil {
 		return
 	}
@@ -32,11 +32,11 @@ func (s *Service) recordRemoteTurnTokenUsage(instanceID, threadID, turnID string
 	binding.HasLastUsage = true
 }
 
-func (s *Service) captureRemoteTurnStartTotalUsage(instanceID string, binding *remoteTurnBinding, threadID string) {
+func (r *serviceProgressRuntime) captureRemoteTurnStartTotalUsage(instanceID string, binding *remoteTurnBinding, threadID string) {
 	if binding == nil || binding.HasStartTotalUsage {
 		return
 	}
-	inst := s.root.Instances[instanceID]
+	inst := r.service.root.Instances[instanceID]
 	if inst == nil {
 		return
 	}
