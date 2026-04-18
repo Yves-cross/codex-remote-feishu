@@ -926,14 +926,16 @@ func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:   "Slash 命令帮助",
-			Summary: "当前支持的 slash command 如下。",
+			Title:                 "Slash 命令帮助",
+			Summary:               "当前支持的 slash command 如下。",
+			LegacySummaryMarkdown: true,
 			Sections: []control.CommandCatalogSection{{
 				Title: "帮助",
 				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/help", "menu"},
-					Description: "查看帮助或再次打开命令菜单。",
-					Examples:    []string{"/menu"},
+					Commands:       []string{"/help", "menu"},
+					Description:    "查看帮助或再次打开命令菜单。",
+					Examples:       []string{"/menu"},
+					LegacyMarkdown: true,
 				}},
 			}},
 		},
@@ -964,14 +966,16 @@ func TestProjectCommandHelpCatalogPreservesAmpersandsInCommandTags(t *testing.T)
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:   "命令帮助",
-			Summary: "常用联调命令。",
+			Title:                 "命令帮助",
+			Summary:               "常用联调命令。",
+			LegacySummaryMarkdown: true,
 			Sections: []control.CommandCatalogSection{{
 				Title: "联调",
 				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"go test ./internal/app/daemon ./internal/core/orchestrator"},
-					Description: "先跑 daemon/orchestrator。",
-					Examples:    []string{"cd web && npm test -- --run src/lib/api.test.ts"},
+					Commands:       []string{"go test ./internal/app/daemon ./internal/core/orchestrator"},
+					Description:    "先跑 daemon/orchestrator。",
+					Examples:       []string{"cd web && npm test -- --run src/lib/api.test.ts"},
+					LegacyMarkdown: true,
 				}},
 			}},
 		},
@@ -1034,14 +1038,16 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:       "命令菜单",
-			Summary:     "固定动作可直接点击。",
-			Interactive: true,
+			Title:                 "命令菜单",
+			Summary:               "固定动作可直接点击。",
+			LegacySummaryMarkdown: true,
+			Interactive:           true,
 			Sections: []control.CommandCatalogSection{{
 				Title: "实例与会话",
 				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/list"},
-					Description: "列出当前在线实例。",
+					Commands:       []string{"/list"},
+					Description:    "列出当前在线实例。",
+					LegacyMarkdown: true,
 					Buttons: []control.CommandCatalogButton{
 						{Label: "查看实例", CommandText: "/list"},
 					},
@@ -1085,10 +1091,11 @@ func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testin
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "推理强度",
-			Summary:      "当前：`high`；飞书覆盖：`high`。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+			Title:                 "推理强度",
+			Summary:               "当前：`high`；飞书覆盖：`high`。",
+			LegacySummaryMarkdown: true,
+			Interactive:           true,
+			DisplayStyle:          control.CommandCatalogDisplayCompactButtons,
 			Sections: []control.CommandCatalogSection{{
 				Title: "立即应用",
 				Entries: []control.CommandCatalogEntry{{
@@ -1187,11 +1194,12 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "模型",
-			Summary:      "直接在卡片里输入模型名。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-			Breadcrumbs:  []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
+			Title:                 "模型",
+			Summary:               "直接在卡片里输入模型名。",
+			LegacySummaryMarkdown: true,
+			Interactive:           true,
+			DisplayStyle:          control.CommandCatalogDisplayCompactButtons,
+			Breadcrumbs:           []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
 			Sections: []control.CommandCatalogSection{{
 				Title: "手动输入",
 				Entries: []control.CommandCatalogEntry{{
@@ -1342,10 +1350,11 @@ func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testin
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind: control.UIEventFeishuDirectCommandCatalog,
 		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "发送设置",
-			Summary:      "请选择操作。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayDefault,
+			Title:                 "发送设置",
+			Summary:               "请选择操作。",
+			LegacySummaryMarkdown: true,
+			Interactive:           true,
+			DisplayStyle:          control.CommandCatalogDisplayDefault,
 			RelatedButtons: []control.CommandCatalogButton{{
 				Label:       "返回菜单",
 				CommandText: "/menu",

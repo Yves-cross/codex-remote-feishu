@@ -10,6 +10,9 @@ func commandCatalogBody(catalog control.FeishuDirectCommandCatalog) string {
 	if len(catalog.SummarySections) != 0 {
 		return ""
 	}
+	if !catalog.LegacySummaryMarkdown {
+		return ""
+	}
 	return renderSystemInlineTags(strings.TrimSpace(catalog.Summary))
 }
 
@@ -23,6 +26,8 @@ func commandCatalogElements(catalog control.FeishuDirectCommandCatalog, daemonLi
 	}
 	if len(catalog.SummarySections) != 0 {
 		elements = appendCardTextSections(elements, catalog.SummarySections)
+	} else if !catalog.LegacySummaryMarkdown {
+		elements = appendCardTextSections(elements, commandCatalogSummaryFallbackSections(catalog.Summary))
 	}
 	for _, section := range catalog.Sections {
 		title := strings.TrimSpace(section.Title)
@@ -41,11 +46,15 @@ func commandCatalogElements(catalog control.FeishuDirectCommandCatalog, daemonLi
 					continue
 				}
 			}
-			if markdown := commandCatalogEntryMarkdown(entry); markdown != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": markdown,
-				})
+			if entry.LegacyMarkdown {
+				if markdown := commandCatalogEntryMarkdown(entry); markdown != "" {
+					elements = append(elements, map[string]any{
+						"tag":     "markdown",
+						"content": markdown,
+					})
+				}
+			} else {
+				elements = appendCardTextSections(elements, commandCatalogEntryFallbackSections(entry))
 			}
 			if catalog.Interactive && len(entry.Buttons) > 0 && !renderedCompactButtons {
 				if group := cardButtonGroupElement(commandCatalogButtons(entry.Buttons, daemonLifecycleID)); len(group) != 0 {
@@ -144,6 +153,47 @@ func commandCatalogEntryMarkdown(entry control.CommandCatalogEntry) string {
 	return line
 }
 
+func commandCatalogSummaryFallbackSections(summary string) []control.FeishuCardTextSection {
+	lines := splitCommandCatalogPlainTextLines(summary)
+	if len(lines) == 0 {
+		return nil
+	}
+	return []control.FeishuCardTextSection{{
+		Lines: lines,
+	}}
+}
+
+func commandCatalogEntryFallbackSections(entry control.CommandCatalogEntry) []control.FeishuCardTextSection {
+	lines := make([]string, 0, 4)
+	if title := strings.TrimSpace(entry.Title); title != "" {
+		lines = append(lines, title)
+	}
+	if commands := formatCommandPlainText(entry.Commands); commands != "" {
+		lines = append(lines, "命令："+commands)
+	}
+	if desc := strings.TrimSpace(entry.Description); desc != "" {
+		lines = append(lines, desc)
+	}
+	if examples := formatExamplesPlainText(entry.Examples); examples != "" {
+		lines = append(lines, "例如："+examples)
+	}
+	section := control.FeishuCardTextSection{Lines: lines}
+	if normalized := section.Normalized(); normalized.Label != "" || len(normalized.Lines) != 0 {
+		return []control.FeishuCardTextSection{normalized}
+	}
+	return nil
+}
+
+func splitCommandCatalogPlainTextLines(text string) []string {
+	lines := []string{}
+	for _, line := range strings.Split(text, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	return lines
+}
+
 func formatCommandTags(commands []string) string {
 	tags := make([]string, 0, len(commands))
 	for _, command := range commands {
@@ -156,6 +206,18 @@ func formatCommandTags(commands []string) string {
 	return strings.Join(tags, " / ")
 }
 
+func formatCommandPlainText(commands []string) string {
+	parts := make([]string, 0, len(commands))
+	for _, command := range commands {
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+		parts = append(parts, command)
+	}
+	return strings.Join(parts, " / ")
+}
+
 func formatCommandExamples(examples []string) string {
 	tags := make([]string, 0, len(examples))
 	for _, example := range examples {
@@ -166,6 +228,18 @@ func formatCommandExamples(examples []string) string {
 		tags = append(tags, formatCommandTextTag(example))
 	}
 	return strings.Join(tags, "，")
+}
+
+func formatExamplesPlainText(examples []string) string {
+	parts := make([]string, 0, len(examples))
+	for _, example := range examples {
+		example = strings.TrimSpace(example)
+		if example == "" {
+			continue
+		}
+		parts = append(parts, example)
+	}
+	return strings.Join(parts, "，")
 }
 
 func commandCatalogBreadcrumbMarkdown(items []control.CommandCatalogBreadcrumb) string {

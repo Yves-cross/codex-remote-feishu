@@ -47,10 +47,11 @@ func BuildFeishuCommandCatalogForDisplay(title, summary string, interactive bool
 				continue
 			}
 			entry := CommandCatalogEntry{
-				Title:       strings.TrimSpace(def.Title),
-				Commands:    []string{def.CanonicalSlash},
-				Description: def.Description,
-				Examples:    append([]string(nil), def.Examples...),
+				Title:          strings.TrimSpace(def.Title),
+				Commands:       []string{def.CanonicalSlash},
+				Description:    def.Description,
+				Examples:       append([]string(nil), def.Examples...),
+				LegacyMarkdown: true,
 			}
 			if interactive {
 				entry.Buttons = append(entry.Buttons, CommandCatalogButton{
@@ -70,9 +71,10 @@ func BuildFeishuCommandCatalogForDisplay(title, summary string, interactive bool
 		})
 	}
 	return FeishuDirectCommandCatalog{
-		Title:       title,
-		Summary:     summary,
-		Interactive: interactive,
-		Sections:    sections,
+		Title:                 title,
+		Summary:               summary,
+		LegacySummaryMarkdown: true,
+		Interactive:           interactive,
+		Sections:              sections,
 	}
 }

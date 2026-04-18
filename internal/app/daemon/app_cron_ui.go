@@ -126,10 +126,11 @@ func buildCronMenuCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 	canEdit := cronCanEdit(stateValue) && configReady
 	canReload := cronCanReload(stateValue, ownerView)
 	return &control.FeishuDirectCommandCatalog{
-		Title:        "Cron",
-		Summary:      strings.Join(summaryLines, "\n"),
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+		Title:                 "Cron",
+		Summary:               strings.Join(summaryLines, "\n"),
+		LegacySummaryMarkdown: true,
+		Interactive:           true,
+		DisplayStyle:          control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{
 			{
 				Title: "查看与编辑",
@@ -191,10 +192,11 @@ func buildCronStatusCatalog(stateValue *cronStateFile, ownerView cronOwnerView, 
 		summaryLines = append(summaryLines, strings.TrimSpace(extraSummary))
 	}
 	return &control.FeishuDirectCommandCatalog{
-		Title:        "Cron 状态",
-		Summary:      strings.Join(summaryLines, "\n"),
-		Interactive:  false,
-		DisplayStyle: control.CommandCatalogDisplayDefault,
+		Title:                 "Cron 状态",
+		Summary:               strings.Join(summaryLines, "\n"),
+		LegacySummaryMarkdown: true,
+		Interactive:           false,
+		DisplayStyle:          control.CommandCatalogDisplayDefault,
 	}
 }
 
@@ -231,11 +233,12 @@ func buildCronListCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 		summaryLines = append(summaryLines, "", strings.TrimSpace(extraSummary))
 	}
 	return &control.FeishuDirectCommandCatalog{
-		Title:        "Cron 任务",
-		Summary:      strings.Join(summaryLines, "\n"),
-		Interactive:  interactive,
-		DisplayStyle: control.CommandCatalogDisplayDefault,
-		Sections:     sections,
+		Title:                 "Cron 任务",
+		Summary:               strings.Join(summaryLines, "\n"),
+		LegacySummaryMarkdown: true,
+		Interactive:           interactive,
+		DisplayStyle:          control.CommandCatalogDisplayDefault,
+		Sections:              sections,
 	}
 }
 
@@ -264,10 +267,11 @@ func buildCronEditCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 		summaryLines = append(summaryLines, strings.TrimSpace(extraSummary))
 	}
 	return &control.FeishuDirectCommandCatalog{
-		Title:        "Cron 配置",
-		Summary:      strings.Join(summaryLines, "\n"),
-		Interactive:  false,
-		DisplayStyle: control.CommandCatalogDisplayDefault,
+		Title:                 "Cron 配置",
+		Summary:               strings.Join(summaryLines, "\n"),
+		LegacySummaryMarkdown: true,
+		Interactive:           false,
+		DisplayStyle:          control.CommandCatalogDisplayDefault,
 	}
 }
 
@@ -283,8 +287,9 @@ func cronManualCommandSection() control.CommandCatalogSection {
 				"/cron reload",
 				"/cron repair",
 			},
-			Description: "发送 `/cron` 打开菜单；`/cron status` 查看状态；`/cron list` 查看当前有效任务并可按钮立即触发；`/cron edit` 打开配置表；编辑后执行 `/cron reload` 生效；如需初始化、修 schema 或接管 Cron 配置，执行 `/cron repair`。",
-			Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandCron, ""),
+			Description:    "发送 `/cron` 打开菜单；`/cron status` 查看状态；`/cron list` 查看当前有效任务并可按钮立即触发；`/cron edit` 打开配置表；编辑后执行 `/cron reload` 生效；如需初始化、修 schema 或接管 Cron 配置，执行 `/cron repair`。",
+			LegacyMarkdown: true,
+			Form:           control.FeishuCommandFormWithDefault(control.FeishuCommandCron, ""),
 		}},
 	}
 }
@@ -474,8 +479,9 @@ func cronLoadedJobEntries(jobs []cronJobState, timeZone string) []control.Comman
 			segments = append(segments, "来源："+source)
 		}
 		entry := control.CommandCatalogEntry{
-			Title:       firstNonEmpty(strings.TrimSpace(job.Name), strings.TrimSpace(job.RecordID), "unnamed"),
-			Description: strings.Join(segments, "｜"),
+			Title:          firstNonEmpty(strings.TrimSpace(job.Name), strings.TrimSpace(job.RecordID), "unnamed"),
+			Description:    strings.Join(segments, "｜"),
+			LegacyMarkdown: true,
 		}
 		if commandText := cronRunCommandText(job.RecordID); commandText != "" {
 			entry.Buttons = []control.CommandCatalogButton{

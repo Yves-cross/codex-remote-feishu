@@ -99,8 +99,9 @@ func (s *Service) commandMenuGroupEntries() []control.CommandCatalogEntry {
 	entries := make([]control.CommandCatalogEntry, 0, len(control.FeishuCommandGroups()))
 	for _, group := range control.FeishuCommandGroups() {
 		entries = append(entries, control.CommandCatalogEntry{
-			Title:       group.Title,
-			Description: group.Description,
+			Title:          group.Title,
+			Description:    group.Description,
+			LegacyMarkdown: true,
 			Buttons: []control.CommandCatalogButton{{
 				Label:       submenuButtonLabel(group.Title),
 				Kind:        control.CommandCatalogButtonRunCommand,
@@ -113,10 +114,11 @@ func (s *Service) commandMenuGroupEntries() []control.CommandCatalogEntry {
 
 func commandEntryForDefinition(def control.FeishuCommandDefinition) control.CommandCatalogEntry {
 	return control.CommandCatalogEntry{
-		Title:       strings.TrimSpace(def.Title),
-		Commands:    []string{def.CanonicalSlash},
-		Description: strings.TrimSpace(def.Description),
-		Examples:    append([]string(nil), def.Examples...),
+		Title:          strings.TrimSpace(def.Title),
+		Commands:       []string{def.CanonicalSlash},
+		Description:    strings.TrimSpace(def.Description),
+		Examples:       append([]string(nil), def.Examples...),
+		LegacyMarkdown: true,
 		Buttons: []control.CommandCatalogButton{{
 			Label:       commandMenuButtonLabel(def),
 			Kind:        control.CommandCatalogButtonRunCommand,
@@ -186,11 +188,12 @@ func (s *Service) buildModelCatalog(surface *state.SurfaceConsoleRecord) control
 
 func (s *Service) buildAttachmentRequiredCatalog(surface *state.SurfaceConsoleRecord, def control.FeishuCommandDefinition) control.FeishuDirectCommandCatalog {
 	return control.FeishuDirectCommandCatalog{
-		Title:        def.Title,
-		Summary:      "还没接管目标。先开始或继续工作，再回来调整这个参数。",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:  commandBreadcrumbs(def.GroupID, def.Title),
+		Title:                 def.Title,
+		Summary:               "还没接管目标。先开始或继续工作，再回来调整这个参数。",
+		LegacySummaryMarkdown: true,
+		Interactive:           true,
+		DisplayStyle:          control.CommandCatalogDisplayCompactButtons,
+		Breadcrumbs:           commandBreadcrumbs(def.GroupID, def.Title),
 		Sections: []control.CommandCatalogSection{{
 			Title: "开始 / 继续工作",
 			Entries: []control.CommandCatalogEntry{
@@ -209,9 +212,10 @@ func recoveryEntry(commandID string) control.CommandCatalogEntry {
 		return control.CommandCatalogEntry{}
 	}
 	return control.CommandCatalogEntry{
-		Title:       def.Title,
-		Commands:    []string{def.CanonicalSlash},
-		Description: def.Description,
+		Title:          def.Title,
+		Commands:       []string{def.CanonicalSlash},
+		Description:    def.Description,
+		LegacyMarkdown: true,
 		Buttons: []control.CommandCatalogButton{{
 			Label:       commandMenuButtonLabel(def),
 			Kind:        control.CommandCatalogButtonRunCommand,

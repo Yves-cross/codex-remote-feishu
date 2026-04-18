@@ -430,8 +430,11 @@ type CommandCatalogEntry struct {
 	Commands    []string
 	Description string
 	Examples    []string
-	Buttons     []CommandCatalogButton
-	Form        *CommandCatalogForm
+	// LegacyMarkdown marks entry text as intentionally system-owned markdown.
+	// When false, the Feishu adapter should fall back to plain-text sections.
+	LegacyMarkdown bool
+	Buttons        []CommandCatalogButton
+	Form           *CommandCatalogForm
 }
 
 type CommandCatalogSection struct {
@@ -443,14 +446,17 @@ type CommandCatalogSection struct {
 // daemon-owned command cards that are intentionally not routed through the
 // newer command view path.
 type FeishuDirectCommandCatalog struct {
-	Title           string
-	Summary         string
-	SummarySections []FeishuCardTextSection
-	Interactive     bool
-	DisplayStyle    CommandCatalogDisplayStyle
-	Breadcrumbs     []CommandCatalogBreadcrumb
-	Sections        []CommandCatalogSection
-	RelatedButtons  []CommandCatalogButton
+	Title   string
+	Summary string
+	// LegacySummaryMarkdown marks Summary as an intentional legacy markdown body.
+	// When false, the Feishu adapter should render Summary via safer plain-text fallback.
+	LegacySummaryMarkdown bool
+	SummarySections       []FeishuCardTextSection
+	Interactive           bool
+	DisplayStyle          CommandCatalogDisplayStyle
+	Breadcrumbs           []CommandCatalogBreadcrumb
+	Sections              []CommandCatalogSection
+	RelatedButtons        []CommandCatalogButton
 }
 
 type FileChangeSummaryEntry struct {
