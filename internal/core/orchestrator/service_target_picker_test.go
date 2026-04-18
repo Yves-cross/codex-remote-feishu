@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -112,14 +113,11 @@ func TestTargetPickerConfirmExistingThreadAttachesSelection(t *testing.T) {
 	if picker := svc.activeTargetPicker(surface); picker != nil {
 		t.Fatalf("expected successful confirm to clear active picker")
 	}
-	var sawAttached bool
-	for _, event := range events {
-		if event.Notice != nil && event.Notice.Code == "attached" {
-			sawAttached = true
-		}
+	if len(events) != 1 || events[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success state after picker confirm, got %#v", events)
 	}
-	if !sawAttached {
-		t.Fatalf("expected attach notice after picker confirm, got %#v", events)
+	if got := events[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已切换会话" {
+		t.Fatalf("expected succeeded target picker card, got %#v", got)
 	}
 }
 
@@ -167,14 +165,11 @@ func TestTargetPickerConfirmNewThreadOnAttachedWorkspaceEntersReadyState(t *test
 	if picker := svc.activeTargetPicker(surface); picker != nil {
 		t.Fatalf("expected successful confirm to clear active picker")
 	}
-	var sawReady bool
-	for _, event := range events {
-		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
-			sawReady = true
-		}
+	if len(events) != 1 || events[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success state for new-thread confirm, got %#v", events)
 	}
-	if !sawReady {
-		t.Fatalf("expected new-thread ready notice, got %#v", events)
+	if got := events[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
+		t.Fatalf("expected succeeded new-thread target picker card, got %#v", got)
 	}
 }
 
@@ -221,6 +216,12 @@ func TestTargetPickerConfirmRecoverableWorkspaceNewThreadStartsHeadless(t *testi
 	if !sawStart {
 		t.Fatalf("expected headless start command, got %#v", events)
 	}
+	if len(events) == 0 || events[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected processing target picker card before headless completion, got %#v", events)
+	}
+	if got := events[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageProcessing {
+		t.Fatalf("expected processing stage while headless launch is pending, got %#v", got)
+	}
 
 	pending := surface.PendingHeadless
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -237,14 +238,75 @@ func TestTargetPickerConfirmRecoverableWorkspaceNewThreadStartsHeadless(t *testi
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, "/data/dl/picdetect") {
 		t.Fatalf("expected connected headless workspace to enter new-thread ready, got %#v", surface)
 	}
-	var sawReady bool
-	for _, event := range connectEvents {
-		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
-			sawReady = true
-		}
+	if len(connectEvents) != 1 || connectEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success after headless connect, got %#v", connectEvents)
 	}
-	if !sawReady {
-		t.Fatalf("expected new-thread ready notice after headless connect, got %#v", connectEvents)
+	if got := connectEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
+		t.Fatalf("expected succeeded target picker card after headless connect, got %#v", got)
+	}
+}
+
+func TestTargetPickerPendingNewThreadFailureFinishesSameCardAndClearsRuntime(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 17, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.SetPersistedThreadCatalog(&fakePersistedThreadCatalog{
+		recent: []state.ThreadRecord{
+			{
+				ThreadID:   "thread-picdetect",
+				Name:       "排查图片识别",
+				CWD:        "/data/dl/picdetect",
+				LastUsedAt: now.Add(-1 * time.Minute),
+			},
+		},
+		byID: map[string]state.ThreadRecord{},
+	})
+
+	view := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	svc.RecordTargetPickerMessage("surface-1", view.PickerID, "om-card-1")
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerConfirm,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          view.PickerID,
+		WorkspaceKey:      "/data/dl/picdetect",
+		TargetPickerValue: targetPickerNewThreadValue,
+	})
+	if len(events) == 0 || events[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected processing target picker card before headless failure, got %#v", events)
+	}
+	if got := events[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageProcessing || got.MessageID != "om-card-1" {
+		t.Fatalf("expected processing stage to target same owner card, got %#v", got)
+	}
+
+	surface := svc.root.Surfaces["surface-1"]
+	pending := surface.PendingHeadless
+	if pending == nil {
+		t.Fatalf("expected pending headless launch after processing stage")
+	}
+
+	failureEvents := svc.HandleHeadlessLaunchFailed("surface-1", pending.InstanceID, errors.New("dial failed"))
+	if len(failureEvents) != 1 || failureEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected single failed target picker card after headless failure, got %#v", failureEvents)
+	}
+	got := failureEvents[0].FeishuTargetPickerView
+	if got.Stage != control.FeishuTargetPickerStageFailed || got.StatusTitle != "切换失败" {
+		t.Fatalf("expected failed terminal target picker card, got %#v", got)
+	}
+	if got.MessageID != "om-card-1" {
+		t.Fatalf("expected failed terminal card to update original owner card, got %#v", got)
+	}
+	if strings.TrimSpace(got.StatusText) == "" {
+		t.Fatalf("expected failed terminal card to include failure detail, got %#v", got)
+	}
+	if svc.activeTargetPicker(surface) != nil || svc.activeOwnerCardFlow(surface) != nil {
+		t.Fatalf("expected failed terminal card to clear picker runtime, got runtime=%#v", svc.SurfaceUIRuntime("surface-1"))
 	}
 }
 
@@ -292,21 +354,15 @@ func TestTargetPickerConfirmRejectsStaleSessionFallback(t *testing.T) {
 	if svc.activeTargetPicker(surface) == nil {
 		t.Fatalf("expected stale confirm to keep active picker for retry")
 	}
-	var sawRefresh bool
-	var sawNotice bool
-	for _, event := range events {
-		if event.FeishuTargetPickerView != nil {
-			sawRefresh = true
-			if event.FeishuTargetPickerView.SelectedSessionValue != "" || event.FeishuTargetPickerView.CanConfirm {
-				t.Fatalf("expected refreshed picker to clear stale session selection, got %#v", event.FeishuTargetPickerView)
-			}
-		}
-		if event.Notice != nil && event.Notice.Code == "target_picker_selection_changed" {
-			sawNotice = true
-		}
+	if len(events) != 1 || events[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected refreshed picker after stale confirm, got %#v", events)
 	}
-	if !sawRefresh || !sawNotice {
-		t.Fatalf("expected refreshed picker and stale-selection notice, got %#v", events)
+	got := events[0].FeishuTargetPickerView
+	if got.SelectedSessionValue != "" || got.CanConfirm {
+		t.Fatalf("expected refreshed picker to clear stale session selection, got %#v", got)
+	}
+	if len(got.Messages) == 0 || !strings.Contains(got.Messages[0].Text, "刚刚发生变化") {
+		t.Fatalf("expected stale confirm to surface in-card warning, got %#v", got.Messages)
 	}
 }
 
@@ -569,8 +625,8 @@ func TestTargetPickerAddWorkspacePathPickerCancelRestoresTargetCard(t *testing.T
 	if surface.RouteMode != state.RouteModeUnbound || surface.PendingHeadless != nil {
 		t.Fatalf("expected cancel to keep current target unchanged, got %#v", surface)
 	}
-	if len(cancelEvents) != 1 || cancelEvents[0].FeishuTargetPickerView == nil || !cancelEvents[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected cancel to restore target picker inline, got %#v", cancelEvents)
+	if len(cancelEvents) != 1 || cancelEvents[0].FeishuTargetPickerView == nil || cancelEvents[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected cancel to restore target picker by updating the owner card, got %#v", cancelEvents)
 	}
 	if got := cancelEvents[0].FeishuTargetPickerView; got.LocalDirectoryPath != "" || got.CanConfirm {
 		t.Fatalf("expected cancel to preserve empty local-directory selection, got %#v", got)
@@ -631,11 +687,11 @@ func TestTargetPickerCancelClearsActivePickerAndKeepsSurfaceRoute(t *testing.T) 
 	if surface.RouteMode != beforeRouteMode || surface.ClaimedWorkspaceKey != beforeWorkspace || surface.AttachedInstanceID != beforeAttachedInstance || surface.SelectedThreadID != beforeSelectedThread {
 		t.Fatalf("expected cancel to keep surface route unchanged, got %#v", surface)
 	}
-	if len(cancelEvents) != 1 || !cancelEvents[0].InlineReplaceCurrentCard || cancelEvents[0].Notice == nil {
-		t.Fatalf("expected cancel to replace current card with a notice, got %#v", cancelEvents)
+	if len(cancelEvents) != 1 || !cancelEvents[0].InlineReplaceCurrentCard || cancelEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected cancel to seal the current owner card inline, got %#v", cancelEvents)
 	}
-	if cancelEvents[0].Notice.Code != "target_picker_cancelled" {
-		t.Fatalf("expected target_picker_cancelled notice, got %#v", cancelEvents[0].Notice)
+	if got := cancelEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageCancelled || got.StatusTitle != "已取消" {
+		t.Fatalf("expected cancelled target picker terminal card, got %#v", got)
 	}
 }
 
@@ -698,8 +754,8 @@ func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsLocalDirectoryAndWait
 	if svc.activePathPicker(surface) != nil || svc.activeTargetPicker(surface) == nil {
 		t.Fatalf("expected path confirm to close only the path picker, got %#v", surface)
 	}
-	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil || !confirmEvents[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected path confirm to restore target card inline, got %#v", confirmEvents)
+	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil || confirmEvents[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected path confirm to restore target card by updating the owner card, got %#v", confirmEvents)
 	}
 	got := confirmEvents[0].FeishuTargetPickerView
 	if !testutil.SamePath(got.LocalDirectoryPath, workspaceRoot) || !got.CanConfirm {
@@ -763,14 +819,11 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryEntersNewThreadReady(t *te
 	if svc.activeTargetPicker(surface) != nil || svc.activePathPicker(surface) != nil {
 		t.Fatalf("expected local-directory success path to clear active picker state, got %#v", surface)
 	}
-	var sawReady bool
-	for _, event := range confirmEvents {
-		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
-			sawReady = true
-		}
+	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success after local-directory confirm, got %#v", confirmEvents)
 	}
-	if !sawReady {
-		t.Fatalf("expected new-thread ready notice after main confirm, got %#v", confirmEvents)
+	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
+		t.Fatalf("expected succeeded target picker card after local-directory confirm, got %#v", got)
 	}
 }
 
@@ -839,14 +892,11 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryTreatsSymlinkedCurrentWork
 	if surface.PendingHeadless != nil {
 		t.Fatalf("did not expect symlinked current workspace to start headless launch, got %#v", surface.PendingHeadless)
 	}
-	var sawReady bool
-	for _, event := range confirmEvents {
-		if event.Notice != nil && event.Notice.Code == "new_thread_ready" {
-			sawReady = true
-		}
+	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success after symlinked workspace confirm, got %#v", confirmEvents)
 	}
-	if !sawReady {
-		t.Fatalf("expected new-thread-ready notice after symlinked workspace confirm, got %#v", confirmEvents)
+	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
+		t.Fatalf("expected succeeded target picker card after symlinked workspace confirm, got %#v", got)
 	}
 }
 

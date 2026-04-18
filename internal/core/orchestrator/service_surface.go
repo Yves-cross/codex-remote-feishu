@@ -176,7 +176,7 @@ func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pen
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           pendingHeadlessTimeoutNotice(pending),
 	})
-	return events
+	return s.maybeFinalizePendingTargetPicker(surface, events, pendingHeadlessTimeoutNotice(pending).Text)
 }
 
 func pendingHeadlessTimeoutNotice(pending *state.HeadlessLaunchRecord) *control.Notice {

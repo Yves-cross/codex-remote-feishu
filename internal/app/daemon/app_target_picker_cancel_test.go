@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -64,11 +65,11 @@ func TestHandleGatewayActionReplacesTargetPickerWithCancelNotice(t *testing.T) {
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "系统提示" {
+	if result.ReplaceCurrentCard.CardTitle != "选择当前工作目标" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
-	if !strings.Contains(result.ReplaceCurrentCard.CardBody, "已取消选择工作区/会话") {
-		t.Fatalf("expected cancel notice body, got %#v", result.ReplaceCurrentCard)
+	if !strings.Contains(fmt.Sprint(result.ReplaceCurrentCard.CardElements), "已取消") {
+		t.Fatalf("expected cancel terminal state in card elements, got %#v", result.ReplaceCurrentCard)
 	}
 	if runtime := app.service.SurfaceUIRuntime("surface-1"); runtime.ActiveTargetPickerID != "" {
 		t.Fatalf("expected cancel to clear active target picker, got %#v", runtime)

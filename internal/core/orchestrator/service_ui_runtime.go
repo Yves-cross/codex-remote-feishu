@@ -19,14 +19,19 @@ type ownerCardFlowKind string
 
 const (
 	ownerCardFlowKindThreadHistory ownerCardFlowKind = "thread_history"
+	ownerCardFlowKindTargetPicker  ownerCardFlowKind = "target_picker"
 )
 
 type ownerCardFlowPhase string
 
 const (
-	ownerCardFlowPhaseLoading  ownerCardFlowPhase = "loading"
-	ownerCardFlowPhaseResolved ownerCardFlowPhase = "resolved"
-	ownerCardFlowPhaseError    ownerCardFlowPhase = "error"
+	ownerCardFlowPhaseLoading   ownerCardFlowPhase = "loading"
+	ownerCardFlowPhaseResolved  ownerCardFlowPhase = "resolved"
+	ownerCardFlowPhaseError     ownerCardFlowPhase = "error"
+	ownerCardFlowPhaseEditing   ownerCardFlowPhase = "editing"
+	ownerCardFlowPhaseRunning   ownerCardFlowPhase = "running"
+	ownerCardFlowPhaseCompleted ownerCardFlowPhase = "completed"
+	ownerCardFlowPhaseCancelled ownerCardFlowPhase = "cancelled"
 )
 
 type activeOwnerCardFlowRecord struct {
@@ -44,6 +49,13 @@ type activeTargetPickerRecord struct {
 	PickerID             string
 	OwnerUserID          string
 	Source               control.TargetPickerRequestSource
+	Stage                control.FeishuTargetPickerStage
+	StatusTitle          string
+	StatusText           string
+	Messages             []control.FeishuTargetPickerMessage
+	PendingKind          targetPickerPendingKind
+	PendingWorkspaceKey  string
+	PendingThreadID      string
 	SelectedMode         control.FeishuTargetPickerMode
 	SelectedSource       control.FeishuTargetPickerSourceKind
 	SelectedWorkspaceKey string
@@ -66,6 +78,7 @@ type activeThreadHistoryRecord struct {
 type activePathPickerRecord struct {
 	PickerID     string
 	OwnerUserID  string
+	OwnerFlowID  string
 	Mode         pathPickerMode
 	Title        string
 	RootPath     string

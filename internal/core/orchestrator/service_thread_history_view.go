@@ -32,6 +32,7 @@ func (s *Service) openThreadHistory(surface *state.SurfaceConsoleRecord, sourceM
 	if inst == nil || strings.TrimSpace(threadID) == "" {
 		return notice(surface, noticeCode, noticeText)
 	}
+	s.clearTargetPickerRuntime(surface)
 	now := s.now()
 	flow := newOwnerCardFlowRecord(ownerCardFlowKindThreadHistory, s.pickers.nextThreadHistoryToken(), firstNonEmpty(surface.ActorUserID), now, defaultThreadHistoryTTL, ownerCardFlowPhaseLoading)
 	if inline {

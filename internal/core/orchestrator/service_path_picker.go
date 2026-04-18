@@ -68,6 +68,7 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 	return &activePathPickerRecord{
 		PickerID:     s.pickers.nextPathPickerToken(),
 		OwnerUserID:  strings.TrimSpace(firstNonEmpty(ownerUserID, surface.ActorUserID)),
+		OwnerFlowID:  strings.TrimSpace(req.OwnerFlowID),
 		Mode:         mode,
 		Title:        strings.TrimSpace(firstNonEmpty(req.Title, defaultPathPickerTitle(mode))),
 		RootPath:     rootPath,

@@ -26,8 +26,8 @@ func (s *Service) CompleteTargetPickerGitImport(surfaceSessionID, pickerID, work
 		return notice(surface, "git_import_flow_stale", fmt.Sprintf("仓库已拉取到 `%s`，但原始选择流程已经失效。目录会保留，你可以稍后通过“添加工作区 / 本地目录”继续接入。", workspaceKey))
 	}
 	events := s.enterTargetPickerNewThread(surface, workspaceKey)
-	if targetPickerNewThreadSucceeded(surface, workspaceKey) {
-		s.clearSurfaceTargetPicker(surface)
+	if targetPickerNewThreadReady(surface, workspaceKey) {
+		s.clearTargetPickerRuntime(surface)
 		return events
 	}
 	return append(events, notice(surface, "git_import_workspace_attach_failed", fmt.Sprintf("仓库已拉取到 `%s`，但接入工作区失败。目录已保留，你可以稍后通过“添加工作区 / 本地目录”继续接入。", workspaceKey))...)

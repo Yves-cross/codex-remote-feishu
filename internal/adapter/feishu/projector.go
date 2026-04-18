@@ -262,7 +262,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			title = "选择路径"
 		}
 		elements := pathPickerElements(view, event.DaemonLifecycleID)
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
@@ -270,10 +270,17 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			CardTitle:        title,
 			CardBody:         "",
 			CardThemeKey:     cardThemeInfo,
+			CardUpdateMulti:  true,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemeInfo, elements),
-		}}
+		}
+		if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
+			operation.Kind = OperationUpdateCard
+			operation.MessageID = messageID
+			operation.ReplyToMessageID = ""
+		}
+		return []Operation{operation}
 	case control.UIEventFeishuTargetPicker:
 		if event.FeishuTargetPickerView == nil {
 			return nil
@@ -284,18 +291,26 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			title = "选择工作区与会话"
 		}
 		elements := targetPickerElements(view, event.DaemonLifecycleID)
-		return []Operation{{
+		theme := targetPickerTheme(view)
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
-			CardThemeKey:     cardThemeInfo,
+			CardThemeKey:     theme,
+			CardUpdateMulti:  true,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument(title, "", cardThemeInfo, elements),
-		}}
+			card:             rawCardDocument(title, "", theme, elements),
+		}
+		if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
+			operation.Kind = OperationUpdateCard
+			operation.MessageID = messageID
+			operation.ReplyToMessageID = ""
+		}
+		return []Operation{operation}
 	case control.UIEventFeishuThreadHistory:
 		return p.projectThreadHistory(chatID, event)
 	case control.UIEventPendingInput:

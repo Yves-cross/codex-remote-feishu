@@ -9,15 +9,21 @@ import (
 
 func targetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID string) []map[string]any {
 	elements := make([]map[string]any, 0, 18)
-	showWorkspaceSelect := view.ShowWorkspaceSelect || (!view.ShowSourceSelect && len(view.WorkspaceOptions) != 0)
-	showSessionSelect := view.ShowSessionSelect || (!view.ShowSourceSelect && len(view.SessionOptions) != 0)
-	showSourceSelect := view.ShowSourceSelect
 	if summary := targetPickerSummaryMarkdown(view); summary != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": summary,
 		})
 	}
+	if view.Stage != "" && view.Stage != control.FeishuTargetPickerStageEditing {
+		if terminal := targetPickerTerminalElements(view); len(terminal) != 0 {
+			elements = append(elements, terminal...)
+		}
+		return elements
+	}
+	showWorkspaceSelect := view.ShowWorkspaceSelect || (!view.ShowSourceSelect && len(view.WorkspaceOptions) != 0)
+	showSessionSelect := view.ShowSessionSelect || (!view.ShowSourceSelect && len(view.SessionOptions) != 0)
+	showSourceSelect := view.ShowSourceSelect
 	if view.ShowModeSwitch && len(view.ModeOptions) != 0 {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -81,6 +87,9 @@ func targetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID
 			elements = append(elements, messages...)
 		}
 	}
+	if messages := targetPickerMessageElements(view.Messages); len(messages) != 0 {
+		elements = append(elements, messages...)
+	}
 	if hint := strings.TrimSpace(view.Hint); hint != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -99,9 +108,6 @@ func targetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID
 }
 
 func targetPickerSummaryMarkdown(view control.FeishuTargetPickerView) string {
-	if !(view.ShowWorkspaceSelect || (!view.ShowSourceSelect && len(view.WorkspaceOptions) != 0)) {
-		return ""
-	}
 	lines := make([]string, 0, 2)
 	if label := strings.TrimSpace(view.SelectedWorkspaceLabel); label != "" {
 		line := "**当前工作区**\n" + formatNeutralTextTag(label)
@@ -117,7 +123,46 @@ func targetPickerSummaryMarkdown(view control.FeishuTargetPickerView) string {
 		}
 		lines = append(lines, line)
 	}
+	if view.SelectedMode == control.FeishuTargetPickerModeAddWorkspace {
+		if path := strings.TrimSpace(view.LocalDirectoryPath); path != "" {
+			lines = append(lines, targetPickerFieldMarkdown("目录路径", path, "未选择"))
+		}
+		if parent := strings.TrimSpace(view.GitParentDir); parent != "" {
+			lines = append(lines, targetPickerFieldMarkdown("落地目录", parent, "未选择"))
+		}
+		if repo := strings.TrimSpace(view.GitRepoURL); repo != "" {
+			lines = append(lines, targetPickerFieldMarkdown("Git 仓库", repo, "未填写"))
+		}
+	}
 	return strings.Join(lines, "\n")
+}
+
+func targetPickerTerminalElements(view control.FeishuTargetPickerView) []map[string]any {
+	content := strings.TrimSpace(view.StatusText)
+	if title := strings.TrimSpace(view.StatusTitle); title != "" {
+		content = "**" + renderSystemInlineTags(title) + "**"
+		if text := strings.TrimSpace(view.StatusText); text != "" {
+			content += "\n" + renderSystemInlineTags(text)
+		}
+	}
+	if content == "" {
+		return nil
+	}
+	return []map[string]any{{
+		"tag":     "markdown",
+		"content": content,
+	}}
+}
+
+func targetPickerTheme(view control.FeishuTargetPickerView) string {
+	switch view.Stage {
+	case control.FeishuTargetPickerStageSucceeded, control.FeishuTargetPickerStageCancelled:
+		return cardThemeInfo
+	case control.FeishuTargetPickerStageFailed:
+		return cardThemeError
+	default:
+		return cardThemeInfo
+	}
 }
 
 func targetPickerModeButtons(view control.FeishuTargetPickerView, daemonLifecycleID string) map[string]any {

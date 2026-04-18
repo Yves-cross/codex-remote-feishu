@@ -32,6 +32,16 @@ const (
 	FeishuTargetPickerSourceGitURL         FeishuTargetPickerSourceKind = "git_url"
 )
 
+type FeishuTargetPickerStage string
+
+const (
+	FeishuTargetPickerStageEditing    FeishuTargetPickerStage = "editing"
+	FeishuTargetPickerStageProcessing FeishuTargetPickerStage = "processing"
+	FeishuTargetPickerStageSucceeded  FeishuTargetPickerStage = "succeeded"
+	FeishuTargetPickerStageFailed     FeishuTargetPickerStage = "failed"
+	FeishuTargetPickerStageCancelled  FeishuTargetPickerStage = "cancelled"
+)
+
 const (
 	FeishuTargetPickerPathFieldLocalDirectory   = "local_directory"
 	FeishuTargetPickerPathFieldGitParentDir     = "git_parent_dir"
@@ -51,8 +61,12 @@ const (
 // workspace/session target picker card.
 type FeishuTargetPickerView struct {
 	PickerID               string
+	MessageID              string
 	Title                  string
 	Source                 TargetPickerRequestSource
+	Stage                  FeishuTargetPickerStage
+	StatusTitle            string
+	StatusText             string
 	SelectedMode           FeishuTargetPickerMode
 	SelectedSource         FeishuTargetPickerSourceKind
 	ShowModeSwitch         bool
@@ -84,6 +98,7 @@ type FeishuTargetPickerView struct {
 	GitRepoURL             string
 	GitDirectoryName       string
 	GitFinalPath           string
+	Messages               []FeishuTargetPickerMessage
 	SourceMessages         []FeishuTargetPickerMessage
 }
 

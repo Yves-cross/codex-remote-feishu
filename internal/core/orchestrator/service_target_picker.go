@@ -17,21 +17,28 @@ const (
 	targetPickerAutoSession          = "__auto__"
 )
 
-func (s *Service) openTargetPicker(surface *state.SurfaceConsoleRecord, source control.TargetPickerRequestSource, preferredWorkspaceKey string, inline bool) []control.UIEvent {
+func (s *Service) openTargetPicker(surface *state.SurfaceConsoleRecord, source control.TargetPickerRequestSource, preferredWorkspaceKey, sourceMessageID string, inline bool) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
 	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 		return nil
 	}
+	s.clearThreadHistoryRuntime(surface)
+	s.clearTargetPickerRuntime(surface)
 	record, err := s.newTargetPickerRecord(surface, source, preferredWorkspaceKey)
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
+	flow := newOwnerCardFlowRecord(ownerCardFlowKindTargetPicker, record.PickerID, firstNonEmpty(surface.ActorUserID), s.now(), defaultTargetPickerTTL, ownerCardFlowPhaseEditing)
+	if inline {
+		flow.MessageID = strings.TrimSpace(sourceMessageID)
+	}
+	s.setActiveOwnerCardFlow(surface, flow)
 	s.setActiveTargetPicker(surface, record)
 	view, err := s.buildTargetPickerView(surface, record)
 	if err != nil {
-		s.clearSurfaceTargetPicker(surface)
+		s.clearTargetPickerRuntime(surface)
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
 	return []control.UIEvent{s.targetPickerViewEvent(surface, view, inline)}
@@ -47,6 +54,7 @@ func (s *Service) newTargetPickerRecord(surface *state.SurfaceConsoleRecord, sou
 		PickerID:             s.pickers.nextTargetPickerToken(),
 		OwnerUserID:          strings.TrimSpace(firstNonEmpty(surface.ActorUserID)),
 		Source:               source,
+		Stage:                control.FeishuTargetPickerStageEditing,
 		SelectedMode:         targetPickerDefaultMode(source),
 		SelectedSource:       control.FeishuTargetPickerSourceLocalDirectory,
 		SelectedWorkspaceKey: preferredWorkspaceKey,
@@ -61,6 +69,7 @@ func (s *Service) handleTargetPickerSelectMode(surface *state.SurfaceConsoleReco
 	if blocked != nil {
 		return blocked
 	}
+	resetTargetPickerEditingState(record)
 	s.applyTargetPickerDraftAnswers(record, answers)
 	mode := normalizeTargetPickerMode(value)
 	if mode == "" {
@@ -82,6 +91,7 @@ func (s *Service) handleTargetPickerSelectSource(surface *state.SurfaceConsoleRe
 	if blocked != nil {
 		return blocked
 	}
+	resetTargetPickerEditingState(record)
 	s.applyTargetPickerDraftAnswers(record, answers)
 	sourceKind := normalizeTargetPickerSourceKind(value)
 	if sourceKind == "" {
@@ -100,6 +110,7 @@ func (s *Service) handleTargetPickerSelectWorkspace(surface *state.SurfaceConsol
 	if blocked != nil {
 		return blocked
 	}
+	resetTargetPickerEditingState(record)
 	s.applyTargetPickerDraftAnswers(record, answers)
 	record.SelectedWorkspaceKey = normalizeTargetPickerWorkspaceSelection(workspaceKey)
 	record.SelectedSessionValue = ""
@@ -115,6 +126,7 @@ func (s *Service) handleTargetPickerSelectSession(surface *state.SurfaceConsoleR
 	if blocked != nil {
 		return blocked
 	}
+	resetTargetPickerEditingState(record)
 	s.applyTargetPickerDraftAnswers(record, answers)
 	record.SelectedSessionValue = strings.TrimSpace(value)
 	view, err := s.buildTargetPickerView(surface, record)
@@ -125,24 +137,15 @@ func (s *Service) handleTargetPickerSelectSession(surface *state.SurfaceConsoleR
 }
 
 func (s *Service) handleTargetPickerCancel(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []control.UIEvent {
-	if _, blocked := s.requireActiveTargetPicker(surface, pickerID, actorUserID); blocked != nil {
+	flow, record, blocked := s.requireActiveTargetPickerFlow(surface, pickerID, actorUserID)
+	if blocked != nil {
 		return blocked
 	}
-	s.clearSurfaceTargetPicker(surface)
-	return []control.UIEvent{{
-		Kind:                     control.UIEventNotice,
-		GatewayID:                surface.GatewayID,
-		SurfaceSessionID:         surface.SurfaceSessionID,
-		InlineReplaceCurrentCard: true,
-		Notice: &control.Notice{
-			Code: "target_picker_cancelled",
-			Text: "已取消选择工作区/会话。",
-		},
-	}}
+	return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageCancelled, "已取消", "当前选择流程已结束，工作目标保持不变。", true, nil)
 }
 
 func (s *Service) handleTargetPickerConfirm(surface *state.SurfaceConsoleRecord, pickerID, actorUserID, workspaceKey, sessionValue string, answers map[string][]string) []control.UIEvent {
-	record, blocked := s.requireActiveTargetPicker(surface, pickerID, actorUserID)
+	flow, record, blocked := s.requireActiveTargetPickerFlow(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
 	}
@@ -170,22 +173,37 @@ func (s *Service) handleTargetPickerConfirm(surface *state.SurfaceConsoleRecord,
 		(requestedMode == control.FeishuTargetPickerModeExistingWorkspace &&
 			((requestedWorkspaceKey != "" && view.SelectedWorkspaceKey != requestedWorkspaceKey) ||
 				(requestedSessionValue != "" && view.SelectedSessionValue != requestedSessionValue))) {
-		events := []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
-		events = append(events, notice(surface, "target_picker_selection_changed", "可选目标刚刚发生变化，请在最新卡片上重新确认。")...)
-		return events
+		setTargetPickerMessages(record, control.FeishuTargetPickerMessage{
+			Level: control.FeishuTargetPickerMessageWarning,
+			Text:  "可选目标刚刚发生变化，请在最新卡片上重新确认。",
+		})
+		view, err = s.buildTargetPickerView(surface, record)
+		if err != nil {
+			return notice(surface, "target_picker_unavailable", err.Error())
+		}
+		return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
 	}
 	if !view.CanConfirm {
+		message := "请选择工作区和会话后再确认。"
 		if view.SelectedMode == control.FeishuTargetPickerModeAddWorkspace {
 			switch view.SelectedSource {
 			case control.FeishuTargetPickerSourceLocalDirectory:
-				return notice(surface, "target_picker_selection_missing", "请先选择一个可接入的本地目录。")
+				message = "请先选择一个可接入的本地目录。"
 			case control.FeishuTargetPickerSourceGitURL:
-				return notice(surface, "target_picker_selection_missing", "请先补全可执行的 Git 工作区配置。")
+				message = "请先补全可执行的 Git 工作区配置。"
 			default:
-				return notice(surface, "target_picker_selection_missing", "请选择一个可用的工作区来源后再确认。")
+				message = "请选择一个可用的工作区来源后再确认。"
 			}
 		}
-		return notice(surface, "target_picker_selection_missing", "请选择工作区和会话后再确认。")
+		setTargetPickerMessages(record, control.FeishuTargetPickerMessage{
+			Level: control.FeishuTargetPickerMessageDanger,
+			Text:  message,
+		})
+		view, err = s.buildTargetPickerView(surface, record)
+		if err != nil {
+			return notice(surface, "target_picker_unavailable", err.Error())
+		}
+		return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
 	}
 	result := control.TargetPickerResult{
 		PickerID:     record.PickerID,
@@ -198,17 +216,17 @@ func (s *Service) handleTargetPickerConfirm(surface *state.SurfaceConsoleRecord,
 		CreatedAt:    record.CreatedAt,
 		ExpiresAt:    record.ExpiresAt,
 	}
-	return s.dispatchTargetPickerConfirmed(surface, record, result, view)
+	return s.dispatchTargetPickerConfirmed(surface, flow, record, result, view)
 }
 
-func (s *Service) dispatchTargetPickerConfirmed(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, result control.TargetPickerResult, view control.FeishuTargetPickerView) []control.UIEvent {
+func (s *Service) dispatchTargetPickerConfirmed(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, result control.TargetPickerResult, view control.FeishuTargetPickerView) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
 	if result.Mode == control.FeishuTargetPickerModeAddWorkspace {
 		switch normalizeTargetPickerSourceKind(string(result.SourceKind)) {
 		case control.FeishuTargetPickerSourceLocalDirectory:
-			return s.confirmTargetPickerLocalDirectory(surface, record, view)
+			return s.confirmTargetPickerLocalDirectory(surface, flow, record, view)
 		case control.FeishuTargetPickerSourceGitURL:
 			return s.confirmTargetPickerGitImport(surface, record, view)
 		default:
@@ -226,17 +244,37 @@ func (s *Service) dispatchTargetPickerConfirmed(surface *state.SurfaceConsoleRec
 	switch kind {
 	case control.FeishuTargetPickerSessionThread:
 		events = s.useThread(surface, threadID, true)
-		succeeded = surface.SelectedThreadID == threadID || (surface.PendingHeadless != nil && strings.TrimSpace(surface.PendingHeadless.ThreadID) == threadID)
+		succeeded = targetPickerThreadReady(surface, threadID)
 	case control.FeishuTargetPickerSessionNewThread:
 		events = s.enterTargetPickerNewThread(surface, workspaceKey)
-		succeeded = targetPickerNewThreadSucceeded(surface, workspaceKey)
+		succeeded = targetPickerNewThreadReady(surface, workspaceKey)
 	default:
 		return notice(surface, "target_picker_selection_missing", "当前选择的目标无效，请重新选择。")
 	}
 	if succeeded {
-		s.clearSurfaceTargetPicker(surface)
+		filtered := targetPickerFilteredFollowupEvents(events)
+		title := "已切换会话"
+		text := "当前工作目标已经切换完成。"
+		if kind == control.FeishuTargetPickerSessionNewThread {
+			title = "已进入新会话待命"
+			text = "当前工作目标已经准备完成，下一条文本会直接开启新会话。"
+		}
+		return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageSucceeded, title, text, false, filtered)
 	}
-	return events
+	if kind == control.FeishuTargetPickerSessionThread && surface.PendingHeadless != nil && strings.TrimSpace(surface.PendingHeadless.ThreadID) == threadID {
+		filtered := targetPickerFilteredFollowupEvents(events)
+		processing := s.startTargetPickerProcessing(surface, flow, record, targetPickerPendingUseThread, workspaceKey, threadID, "正在切换会话", "正在恢复目标会话，完成后会自动切换到新的工作目标。")
+		return append(processing, filtered...)
+	}
+	if kind == control.FeishuTargetPickerSessionNewThread && surface.PendingHeadless != nil && surface.PendingHeadless.PrepareNewThread &&
+		normalizeWorkspaceClaimKey(surface.PendingHeadless.ThreadCWD) == workspaceKey {
+		filtered := targetPickerFilteredFollowupEvents(events)
+		processing := s.startTargetPickerProcessing(surface, flow, record, targetPickerPendingNewThread, workspaceKey, "", "正在准备新会话", "正在准备新会话待命，完成后你就可以直接继续说话。")
+		return append(processing, filtered...)
+	}
+	filtered := targetPickerFilteredFollowupEvents(events)
+	failureText := strings.TrimSpace(firstNonEmpty(targetPickerFirstNoticeText(events), "当前工作目标切换失败，请重新发送 /list、/use 或 /useall 再试一次。"))
+	return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageFailed, "切换失败", failureText, false, filtered)
 }
 
 func (s *Service) enterTargetPickerNewThread(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
@@ -266,20 +304,9 @@ func targetPickerNewThreadSucceeded(surface *state.SurfaceConsoleRecord, workspa
 }
 
 func (s *Service) requireActiveTargetPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeTargetPickerRecord, []control.UIEvent) {
-	if surface == nil || s.activeTargetPicker(surface) == nil {
-		return nil, notice(surface, "target_picker_expired", "这个目标选择卡片已失效，请重新发送 /list、/use 或 /useall。")
-	}
-	record := s.activeTargetPicker(surface)
-	if !record.ExpiresAt.IsZero() && !record.ExpiresAt.After(s.now()) {
-		s.clearSurfaceTargetPicker(surface)
-		return nil, notice(surface, "target_picker_expired", "这个目标选择卡片已过期，请重新发送 /list、/use 或 /useall。")
-	}
-	if strings.TrimSpace(pickerID) == "" || strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
-		return nil, notice(surface, "target_picker_expired", "这个旧目标选择卡片已失效，请重新发送 /list、/use 或 /useall。")
-	}
-	actorUserID = strings.TrimSpace(firstNonEmpty(actorUserID, surface.ActorUserID))
-	if ownerUserID := strings.TrimSpace(record.OwnerUserID); ownerUserID != "" && actorUserID != "" && ownerUserID != actorUserID {
-		return nil, notice(surface, "target_picker_unauthorized", "这个目标选择卡片只允许发起者本人操作。")
+	_, record, blocked := s.requireActiveTargetPickerFlow(surface, pickerID, actorUserID)
+	if blocked != nil {
+		return nil, blocked
 	}
 	return record, nil
 }
@@ -287,6 +314,10 @@ func (s *Service) requireActiveTargetPicker(surface *state.SurfaceConsoleRecord,
 func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) (control.FeishuTargetPickerView, error) {
 	if surface == nil || record == nil {
 		return control.FeishuTargetPickerView{}, fmt.Errorf("目标选择器不存在")
+	}
+	stage := record.Stage
+	if stage == "" {
+		stage = control.FeishuTargetPickerStageEditing
 	}
 	workspaceEntries := s.targetPickerWorkspaceEntries(surface)
 	addSupported := targetPickerSupportsAddWorkspace(record.Source)
@@ -363,6 +394,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 	gitRepoURL := strings.TrimSpace(record.GitRepoURL)
 	gitDirectoryName := strings.TrimSpace(record.GitDirectoryName)
 	gitFinalPath := ""
+	messages := append([]control.FeishuTargetPickerMessage(nil), record.Messages...)
 	sourceMessages := []control.FeishuTargetPickerMessage(nil)
 	showWorkspaceSelect := mode == control.FeishuTargetPickerModeExistingWorkspace
 	showSessionSelect := mode == control.FeishuTargetPickerModeExistingWorkspace
@@ -405,6 +437,9 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		PickerID:               record.PickerID,
 		Title:                  targetPickerTitle(record.Source),
 		Source:                 record.Source,
+		Stage:                  stage,
+		StatusTitle:            strings.TrimSpace(record.StatusTitle),
+		StatusText:             strings.TrimSpace(record.StatusText),
 		SelectedMode:           mode,
 		SelectedSource:         sourceKind,
 		ShowModeSwitch:         addSupported,
@@ -436,6 +471,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		GitRepoURL:             gitRepoURL,
 		GitDirectoryName:       gitDirectoryName,
 		GitFinalPath:           gitFinalPath,
+		Messages:               messages,
 		SourceMessages:         sourceMessages,
 	}, nil
 }

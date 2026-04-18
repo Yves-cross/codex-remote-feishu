@@ -463,7 +463,7 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	pending := surface.PendingHeadless
 	surface.PendingHeadless = nil
 	if pending.AutoRestore {
-		return []control.UIEvent{{
+		events := []control.UIEvent{{
 			Kind:             control.UIEventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
@@ -472,6 +472,7 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 				Text:  "之前的会话暂时无法恢复，请稍后重试或尝试其他会话。",
 			},
 		}}
+		return s.maybeFinalizePendingTargetPicker(surface, events, "之前的会话暂时无法恢复，请稍后重试或尝试其他会话。")
 	}
 	if pending.Purpose == state.HeadlessLaunchPurposeFreshWorkspace {
 		notice := NoticeForProblem(agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
@@ -485,11 +486,12 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 		}))
 		notice.Code = "workspace_create_start_failed"
 		notice.Title = "工作区准备失败"
-		return []control.UIEvent{{
+		events := []control.UIEvent{{
 			Kind:             control.UIEventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &notice,
 		}}
+		return s.maybeFinalizePendingTargetPicker(surface, events, notice.Text)
 	}
 	problem := agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 		Code:             "headless_start_failed",
@@ -504,11 +506,12 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	notice := NoticeForProblem(problem)
 	notice.Code = "headless_start_failed"
 	notice.Title = "恢复准备失败"
-	return []control.UIEvent{{
+	events := []control.UIEvent{{
 		Kind:             control.UIEventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &notice,
 	}}
+	return s.maybeFinalizePendingTargetPicker(surface, events, notice.Text)
 }
 
 func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
@@ -525,7 +528,8 @@ func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
 		if pending == nil || pending.InstanceID != instanceID {
 			continue
 		}
-		events = append(events, s.attachHeadlessInstance(surface, inst, pending)...)
+		attachEvents := s.attachHeadlessInstance(surface, inst, pending)
+		events = append(events, s.maybeFinalizePendingTargetPicker(surface, attachEvents, "")...)
 	}
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		events = append(events, s.dispatchNext(surface)...)
@@ -542,16 +546,17 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 	inst.Online = false
 	inst.ActiveTurnID = ""
 	delete(s.progress.compactTurns, instanceID)
+	var events []control.UIEvent
 
 	for _, surface := range s.root.Surfaces {
 		if surface.PendingHeadless == nil || surface.PendingHeadless.InstanceID != instanceID {
 			continue
 		}
 		surface.PendingHeadless = nil
+		events = append(events, s.maybeFinalizePendingTargetPicker(surface, nil, "当前工作目标准备已中断，请重新发送 /list、/use 或 /useall 再试一次。")...)
 	}
 
 	surfaces := s.findAttachedSurfaces(instanceID)
-	var events []control.UIEvent
 	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	if len(surfaces) == 0 {
 		delete(s.instanceClaims, instanceID)

@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-18`
-> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`（顶部 `已有工作区` / `添加工作区` 模式按钮；已有工作区路径显示工作区下拉 + 会话下拉，并额外提供 `target_picker_cancel` 退出当前 modal；添加工作区路径显示来源按钮，本地目录会 inline replace 到 path picker 子步骤，Git URL 则在主卡内渲染仓库地址/目录名表单并通过 `target_picker_open_path_picker` 选择落地父目录；取消会清掉 active picker，并把当前卡 inline replace 成一张“已取消选择工作区/会话”的系统提示，不改 route）、`/history` 的 `FeishuThreadHistoryView`（现在由 owner-card runtime v1 承接 flow id / owner / message / revision / phase / ttl，history 专用记录仅保留 thread/page/turn 业务态；同卡 loading -> async query -> `message.patch` 回填列表/详情；文本触发首卡现为直接 append 到会话，不再 reply）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / owner-card history flow 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析，以及 target picker Git 内联表单草稿在 mode/source/path 子步骤之间的保留语义、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、`permissions_request_approval` / `approval_command` / `approval_file_change` / `approval_network`、顶层 `tool/requestUserInput` 与 `mcp_server_elicitation` 已一起进入 request 卡体系（按钮/表单、`availableDecisions` 归一化、权限按钮、url continue 卡、schema 派生表单、same-daemon `request_revision` freshness、`cancel` 决策回写）、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `context_compaction`，首次直接 append 到会话，后续 `message.patch` 同卡更新，正文出现后终结；共享过程卡当前统一只在 verbose 可见；卡底还支持一条瞬时 reasoning 状态，失效后会从旧卡清掉，必要时整卡删除；同类 `dynamic_tool_call` 会按 tool 名单行聚合并持续追加参数；compact 完成态也改为 `整理：上下文已整理。` 单行并入同卡）；final reply 当前已从“单卡 + 网关超限截断”升级成 projector 层的“主 final card + overflow reply cards”交付，主卡保留 recent final-card anchor、footer 与 second-chance patch，overflow cards 继续 append-only；`/sendfile` 文件模式路径选择器的目录下拉当前会在可返回时把 `..` 固定置顶，并把 `.` 开头目录排在普通目录之后。
+> Summary: 在阶段 1 的显式 Feishu UI query/context 边界和阶段 2 的 Feishu UI controller 分流之上，阶段 3 把 selection cards 拆成 view + adapter projection，阶段 4 又把 `/menu` 与 bare config cards 的最终投影 owner 下沉到 Feishu adapter；当前又补上了可复用 `FeishuPathPickerView`、normal `/list` / `/use` / `/useall` 共享的 `FeishuTargetPickerView`，并把 target picker 短路径迁到 owner-card runtime v2（顶部 `已有工作区` / `添加工作区` 模式按钮；已有工作区路径显示工作区下拉 + 会话下拉；添加工作区路径显示来源按钮，本地目录会 inline replace 到 path picker 子步骤，Git URL 则在主卡内渲染仓库地址/目录名表单并通过 `target_picker_open_path_picker` 选择落地父目录；`target_picker_cancel` 会把当前卡封成同卡终态“已取消”，`已有工作区 -> 会话` 与 `添加工作区 -> 本地目录` 的 confirm 会在同一张 owner card 上进入 processing / succeeded / failed 并通过 `message.patch` 收口；Git 导入长链路仍保持 append-only notice + daemon command）、`/history` 的 `FeishuThreadHistoryView`（现在由 owner-card runtime v1 承接 flow id / owner / message / revision / phase / ttl，history 专用记录仅保留 thread/page/turn 业务态；同卡 loading -> async query -> `message.patch` 回填列表/详情；文本触发首卡现为直接 append 到会话，不再 reply）、`path_picker_*` / `target_picker_*` / `history_*` callback 协议、active picker / owner-card history flow / owner-card target-picker flow 的 same-daemon freshness 边界、gateway 对 `select_static` 取值的 `option` / `options` / `form_value[field_name]` 兼容解析，以及 target picker Git 内联表单草稿在 mode/source/path 子步骤之间的保留语义、多题 `request_user_input` 的分题暂存与“仅为需要手填的问题渲染表单输入”的卡片语义、题级回答进度与已答/待答状态展示、“未答题先进入确认态，再显式确认留空提交”的 request 交互路径、`permissions_request_approval` / `approval_command` / `approval_file_change` / `approval_network`、顶层 `tool/requestUserInput` 与 `mcp_server_elicitation` 已一起进入 request 卡体系（按钮/表单、`availableDecisions` 归一化、权限按钮、url continue 卡、schema 派生表单、same-daemon `request_revision` freshness、`cancel` 决策回写）、“菜单命令提交态锚点卡”路径（同步 replace 提交态 + 结果继续 append，并支持 best-effort 自动撤回，当前包含 `/steerall`）、`/menu` 首页只保留分组导航（不再额外渲染“常用操作”区块）以及 `current_work` / `switch_target` 的阶段可见性矩阵（`/new` 仅 normal，`/follow` 仅 vscode，`/history` 默认双模式可见），以及无回调的共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `context_compaction`，首次直接 append 到会话，后续 `message.patch` 同卡更新，正文出现后终结；共享过程卡当前统一只在 verbose 可见；卡底还支持一条瞬时 reasoning 状态，失效后会从旧卡清掉，必要时整卡删除；同类 `dynamic_tool_call` 会按 tool 名单行聚合并持续追加参数；compact 完成态也改为 `整理：上下文已整理。` 单行并入同卡）；final reply 当前已从“单卡 + 网关超限截断”升级成 projector 层的“主 final card + overflow reply cards”交付，主卡保留 recent final-card anchor、footer 与 second-chance patch，overflow cards 继续 append-only；`/sendfile` 文件模式路径选择器的目录下拉当前会在可返回时把 `..` 固定置顶，并把 `.` 开头目录排在普通目录之后。
 
 ## 1. 文档定位
 
@@ -92,10 +92,10 @@
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | normal mode 下当前只负责用指定 workspace/source 重新打开 target picker；vscode / legacy selection path 下才继续承担旧分页导航 |
 | `target_picker_select_mode` / `target_picker_select_source` / `target_picker_select_workspace` / `target_picker_select_session` | `feishu-ui-owned` | unified target picker 的模式按钮、来源按钮与工作区/会话下拉回调；命中当前 active picker 时直接原地替换当前卡，不直接改 route；切模式时卡片会在“已有工作区”和“添加工作区”两套布局间切换；切真实 workspace 时会显式清空当前会话选择 |
 | `target_picker_open_path_picker` | `feishu-ui-owned` | unified target picker 的子步骤导航回调；当前用于从主卡打开“本地目录”或“Git 落地父目录”的 path picker，并在打开前保留 Git 内联表单草稿；命中当前 active picker 时直接原地替换当前卡 |
-| `target_picker_cancel` | `feishu-ui-owned` | unified target picker 的显式退出动作；命中当前 active picker 时会清掉 active target picker，并把当前卡 inline replace 成一张“已取消选择工作区/会话”的 notice；不改 attach/use/new-thread route |
-| `target_picker_confirm` | `mixed` | callback 协议、picker ownership 与 freshness 校验仍属 Feishu UI；真正 attach / switch / `新建会话`、按已选本地目录执行接入、或按主卡内联 Git 表单 + 已选父目录执行导入的产品语义仍由 orchestrator 决定，并保持 append-only |
+| `target_picker_cancel` | `feishu-ui-owned` | unified target picker 的显式退出动作；命中当前 active picker owner flow 时，会把当前卡同步 replace 成一张 sealed terminal card（`已取消`），随后清掉 active target picker / owner-card flow；不改 attach/use/new-thread route |
+| `target_picker_confirm` | `mixed` | callback 协议、picker ownership 与 freshness 校验仍属 Feishu UI；真正 attach / switch / `新建会话`、按已选本地目录执行接入、或按主卡内联 Git 表单 + 已选父目录执行导入的产品语义仍由 orchestrator 决定；其中 `已有工作区 -> 会话` 与 `添加工作区 -> 本地目录` 会把同一张 owner card 推进到 processing / succeeded / failed 并 `message.patch` 收口，Git 导入长链路仍保持 append-only |
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡。复用路径选择器 projector 当前统一渲染成紧凑 `select_static`：目录模式提供“进入目录”下拉，文件模式提供“进入目录 + 选择文件”双下拉；若当前不在根目录，目录下拉会把 `..` 固定放在第一项作为返回上一级入口，并承担原先单独“上一级”按钮的职责；真实目录项里普通目录排在前，`.` 开头目录排在后 |
-| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；真正确认后做什么、取消后回什么卡由 picker consumer 决定 |
+| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；默认仍交给 picker consumer 决定结果，但当 path picker 隶属于 target picker owner flow 时，confirm/cancel 会回填并 patch 回原 owner card，而不是再发一张外卡 |
 | bare `/history` / `history_page` / `history_detail` | `mixed` | 当前由 Feishu UI controller 先把 owner-card runtime v1 中的当前 history flow 同步切到 loading，再异步发起 `thread.history.read`；列表/详情结果与失败态默认继续 patch 回同一张 history owner card |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
 | `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
@@ -166,16 +166,16 @@
 | `target_picker_select_workspace` | `picker_id`、`field_name` | unified target picker 的工作区下拉回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取工作区键 |
 | `target_picker_select_session` | `picker_id`、`field_name` | unified target picker 的会话下拉回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取 thread 或 `new_thread` |
 | `target_picker_open_path_picker` | `picker_id`、`target_value`、`request_answers` | unified target picker 的子步骤导航；当前 `target_value` 表示 `local_directory` 或 `git_parent_dir`，`request_answers` 用来把 Git 主卡里的 `repo_url` / `directory_name` 草稿一起带回服务端 |
-| `target_picker_cancel` | `picker_id`、`request_answers` | unified target picker 的退出按钮；gateway 只需命中当前 active picker，并把 Git 内联表单草稿按同样方式带回，服务端随后清掉 active picker 并原地替换成 notice |
-| `target_picker_confirm` | `picker_id`、`target_picker_workspace`、`target_picker_session`、`request_answers` | unified target picker 的确认按钮；`已有工作区` 模式下把当前表单值送到产品层执行 attach / switch / `新建会话`；`添加工作区 / 本地目录` 下按已回填到主卡的目录执行接入；`添加工作区 / Git URL` 下按主卡 Git 表单 + 已选父目录执行导入 |
+| `target_picker_cancel` | `picker_id`、`request_answers` | unified target picker 的退出按钮；gateway 只需命中当前 active picker，并把 Git 内联表单草稿按同样方式带回；服务端随后把当前卡封成 `已取消` 终态并清掉 active picker / owner-card flow |
+| `target_picker_confirm` | `picker_id`、`target_picker_workspace`、`target_picker_session`、`request_answers` | unified target picker 的确认按钮；`已有工作区` 模式下把当前表单值送到产品层执行 attach / switch / `新建会话`；`添加工作区 / 本地目录` 下按已回填到主卡的目录执行接入；这两类短路径都会在同一张 owner card 上进入 processing / terminal；`添加工作区 / Git URL` 下按主卡 Git 表单 + 已选父目录执行导入，当前仍走 append-only daemon command |
 | `history_page` | `picker_id`、`page` | `/history` 列表页翻页；命中当前 history owner-card flow 时同步替换当前卡为 loading，然后异步重查当前 thread history |
 | `history_detail` | `picker_id`、`turn_id` 或 `field_name + selected option` | `/history` 进入某一轮详情，或在详情页前后切换；命中当前 history owner-card flow 时同样先切 loading；gateway 继续兼容 `form_value[field_name]` / `option` / `options` 取值 |
 | `run_command` | `command_text` 或 `command` | 把卡片按钮退化成文本命令解析 |
 | `path_picker_enter` | `picker_id`、`entry_name` 或 `field_name + selected option` | 进入当前 active picker 里的一个子目录；`/sendfile` 文件模式下通常来自目录下拉 |
 | `path_picker_up` | `picker_id` | 回到当前 active picker 的上一级目录 |
 | `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送 |
-| `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff |
-| `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice |
+| `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff；若 picker 带有 `owner_flow_id` 且命中 target picker owner card，consumer 可直接回填并 patch 原 owner card |
+| `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice；target picker 子步骤当前会直接恢复原 owner card，而不是额外发一张取消卡 |
 | `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。通用 approval 现在会保留归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`mcp_server_elicitation` 在 url 模式下直接承载 continue/decline/cancel，在 form 模式下也可用局部 `request_answers` 暂存字段后再显式提交 |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
 | `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation` |
@@ -308,6 +308,8 @@ MCP request 卡片当前新增的可视语义：
 - `ActionTargetPickerSelectSource`
 - `ActionTargetPickerSelectWorkspace`
 - `ActionTargetPickerSelectSession`
+- `ActionTargetPickerOpenPathPicker`
+- `ActionTargetPickerCancel`
 
 当前语义补充：
 
@@ -345,17 +347,19 @@ MCP request 卡片当前新增的可视语义：
   - 但工作区一旦变化，session 下拉不会再 silently fallback 到新的真实 workspace 默认会话
   - 若切到真实 workspace，session 会被主动清空，confirm 按钮随之禁用，直到用户重新选定会话
   - 若切到 `添加工作区`，卡片会改成来源按钮布局：`本地目录` 主卡展示路径字段 + `选择目录` 按钮 + `接入并继续` 主按钮；`Git URL` 主卡展示父目录字段、仓库地址/目录名表单、`选择目录` 按钮与 `克隆并继续` 主按钮
-  - `target_picker_open_path_picker` 当前会把主卡 inline replace 成 path picker；path picker confirm/cancel 后，会再 inline restore 回原 target picker 主卡
-  - `target_picker_cancel` 当前会直接关闭这张 modal：active picker 被清掉，当前卡 inline replace 成一张无后续动作的 notice；surface 保持原来的 attach/use/new-thread 状态
+  - `target_picker_open_path_picker` 当前会把主卡 inline replace 成 path picker 子步骤；path picker confirm/cancel 后不会再走同步 inline restore，而是异步 ack 后把最新 target picker 主卡 patch 回同一张 owner card
+  - `target_picker_cancel` 当前会直接把这张 owner card 封成 terminal `已取消` 状态；surface 保持原来的 attach/use/new-thread 状态
   - 若当前机器缺少 `git`，`Git URL` 仍显示在来源按钮里，但 `克隆并继续` 会禁用，并额外显示不可用说明
+  - `已有工作区 -> 会话` 与 `添加工作区 -> 本地目录` confirm 成功时，不再 append 一张新的主结果卡；当前 owner card 会直接进入 succeeded，必要时先短暂进入 processing，再由 headless 结果 `message.patch` 回终态
+  - 若这两条短路径在准备阶段失败，失败态也会封回同一张 owner card，而不是再额外发一张 notice 卡作为主承载
 
 ### 5.3 当前明确保持 append-only 的动作
 
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
 - 参数应用，例如 `/mode vscode`、`/autowhip on`
-- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理，最终结果交给 picker consumer，保持 append-only
-- `target_picker_confirm`；它会真正执行 attach / switch / `新建会话`，并且 stale selection 时会 append 最新 picker + notice，而不是同步 replace 当前卡
+- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理；大多数 consumer 结果仍保持 append-only，只有 target picker owner-flow 子步骤会改为 patch 回原 owner card
+- `target_picker_confirm` 的 Git 导入长链路；它会继续 append `正在导入 Git 工作区` notice + daemon command，不进入同步 replace / owner-card terminal 流
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
 - `/help` 这类静态帮助/目录卡，即使底层仍是 `FeishuDirectCommandCatalog`，当前也不属于 replaceable UI navigation
 - request approve / request submit 的处理结果
@@ -451,10 +455,10 @@ MCP request 卡片当前新增的可视语义：
     - 它不是每一步导航都变化的 per-view token
     - 但它要求 callback 必须命中当前 surface 上仍然 active 的 picker 生命周期
     - 同 daemon 生命周期里的旧 picker 卡片如果 `picker_id` 不匹配，会直接收到 `path_picker_expired`，不会继续替换当前 active picker
-  - target picker 当前也有一个 coarse-grained `picker_id`
-    - `target_picker_select_workspace` / `target_picker_select_session` 必须命中当前 active picker，才会继续 inline replace
+  - target picker 当前也有一个 coarse-grained `picker_id`，并且在短路径上再额外绑定 owner-card flow
+    - `target_picker_select_*` / `target_picker_open_path_picker` / `target_picker_cancel` 必须命中当前 active picker 与当前 active target-picker owner flow，才会继续 inline replace
     - `target_picker_confirm` 还会额外校验当前工作区 / 会话候选是否仍包含用户刚刚提交的组合
-    - 同 daemon 生命周期里的旧 target picker 如果 `picker_id` 不匹配或候选已变化，会返回 `target_picker_expired` 或 `target_picker_selection_changed`
+    - 同 daemon 生命周期里的旧 target picker 如果 `picker_id` 不匹配、owner flow 已结束，或候选已变化，会返回 `target_picker_expired` / 无权限提示，或刷新出最新 picker
     - 当前即使只是“原会话已不再有效”，刷新后的最新 picker 也会把 session 重新置空，而不是 silent fallback 到别的默认候选
   - `/history` 当前也有一个 coarse-grained `picker_id`
     - 它现在对应的是 owner-card runtime v1 的 `flow id`
@@ -482,6 +486,9 @@ MCP request 卡片当前新增的可视语义：
 - [internal/adapter/feishu/card_action_payload.go](../../internal/adapter/feishu/card_action_payload.go)
 - [internal/adapter/feishu/gateway_routing.go](../../internal/adapter/feishu/gateway_routing.go)
 - [internal/adapter/feishu/projector.go](../../internal/adapter/feishu/projector.go)
+- [internal/core/orchestrator/service_ui_runtime.go](../../internal/core/orchestrator/service_ui_runtime.go)
+- [internal/core/orchestrator/service_target_picker_owner_card.go](../../internal/core/orchestrator/service_target_picker_owner_card.go)
+- [internal/core/orchestrator/service_feishu_ui_context.go](../../internal/core/orchestrator/service_feishu_ui_context.go)
 - [internal/adapter/feishu/projector_exec_command_progress.go](../../internal/adapter/feishu/projector_exec_command_progress.go)
 - [internal/adapter/codex/translator_helpers.go](../../internal/adapter/codex/translator_helpers.go)
 - [internal/core/orchestrator/service_compact_notice.go](../../internal/core/orchestrator/service_compact_notice.go)
@@ -493,9 +500,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/adapter/feishu/projector_selection_view.go](../../internal/adapter/feishu/projector_selection_view.go)
 - [internal/adapter/feishu/projector_command_view.go](../../internal/adapter/feishu/projector_command_view.go)
 - [internal/adapter/feishu/projector_path_picker.go](../../internal/adapter/feishu/projector_path_picker.go)
-- [internal/core/orchestrator/service_feishu_ui_context.go](../../internal/core/orchestrator/service_feishu_ui_context.go)
 - [internal/core/orchestrator/service_feishu_ui_controller.go](../../internal/core/orchestrator/service_feishu_ui_controller.go)
-- [internal/core/orchestrator/service_ui_runtime.go](../../internal/core/orchestrator/service_ui_runtime.go)
 - [internal/core/orchestrator/service_thread_history_view.go](../../internal/core/orchestrator/service_thread_history_view.go)
 - [internal/core/orchestrator/service_target_picker.go](../../internal/core/orchestrator/service_target_picker.go)
 - [internal/core/orchestrator/service_path_picker.go](../../internal/core/orchestrator/service_path_picker.go)
@@ -516,9 +521,9 @@ MCP request 卡片当前新增的可视语义：
 - [internal/adapter/feishu/projector_test.go](../../internal/adapter/feishu/projector_test.go)
   - 锁定 `FeishuDirectSelectionPrompt` / `FeishuSelectionView` / `FeishuCommandView` / `FeishuDirectCommandCatalog` / `FeishuDirectRequestPrompt` 的 lifecycle stamp、projection 结果与 callback payload 结构
 - [internal/adapter/feishu/projector_target_picker_test.go](../../internal/adapter/feishu/projector_target_picker_test.go)
-  - 锁定 `FeishuTargetPickerView` 的双下拉 payload、`daemon_lifecycle_id` stamp 与 confirm 按钮结构
+  - 锁定 `FeishuTargetPickerView` 的双下拉 payload、`daemon_lifecycle_id` stamp、confirm 按钮结构，以及带 `MessageID` 时改走 `OperationUpdateCard`、terminal stage 移除交互控件
 - [internal/adapter/feishu/projector_path_picker_test.go](../../internal/adapter/feishu/projector_path_picker_test.go)
-  - 锁定 `FeishuPathPickerView` 的按钮 payload、`daemon_lifecycle_id` stamp 与 enter/select 按钮区分
+  - 锁定 `FeishuPathPickerView` 的按钮 payload、`daemon_lifecycle_id` stamp、enter/select 区分，以及带 `MessageID` 时改走 `OperationUpdateCard`
 - [internal/core/orchestrator/service_final_card_test.go](../../internal/core/orchestrator/service_final_card_test.go)
   - 锁定 final reply recent anchor 的 turn-scope 回查、同 turn 覆盖、lifecycle 匹配与 detach 清理
 - [internal/adapter/feishu/projector_snapshot_final_test.go](../../internal/adapter/feishu/projector_snapshot_final_test.go)
@@ -548,9 +553,11 @@ MCP request 卡片当前新增的可视语义：
 - [internal/core/orchestrator/service_image_output_test.go](../../internal/core/orchestrator/service_image_output_test.go)
   - 锁定 `dynamic_tool_call` 在有文本/图片输出时仍走原结果渲染路径，而空输出场景保持静默、不再补缺省 notice
 - [internal/core/orchestrator/service_target_picker_test.go](../../internal/core/orchestrator/service_target_picker_test.go)
-  - 锁定 target picker 的 inline refresh、confirm attach / `新建会话`、recoverable-only workspace headless 路径，以及 stale selection 不会 silent fallback
+  - 锁定 target picker 的 inline refresh、confirm attach / `新建会话`、recoverable-only workspace headless 路径、pending headless 失败时的同卡 failed terminal，以及 stale selection 不会 silent fallback
 - [internal/core/orchestrator/service_path_picker_test.go](../../internal/core/orchestrator/service_path_picker_test.go)
   - 锁定路径规范化、root 边界、symlink escape、owner / expire / active picker gate、consumer handoff
+- [internal/app/daemon/app_target_picker_cancel_test.go](../../internal/app/daemon/app_target_picker_cancel_test.go)
+  - 锁定 `target_picker_cancel` 在 callback replace 路径上会把当前卡封成 terminal `已取消`，而不是额外 append 一张 notice 卡
 - [internal/core/orchestrator/service_thread_history_view_test.go](../../internal/core/orchestrator/service_thread_history_view_test.go)
   - 锁定 `/history` 已迁到 owner-card runtime v1：flow 建立、loading/resolved phase 推进、列表/详情回填与 message patch 目标不漂移
 - [internal/app/daemon/app_thread_history_test.go](../../internal/app/daemon/app_thread_history_test.go)
@@ -581,7 +588,7 @@ MCP request 卡片当前新增的可视语义：
 2. 某个同上下文导航动作是否意外从 replace 退回 append，或反之
 3. path picker 的 `picker_id` / `entry_name` 是否与 gateway 解析和 active picker freshness 仍然一致
 4. old card 是否还能继续命中产品状态变更
-5. active picker confirm / cancel 是否意外变成 replace，掩盖了真正的 consumer 结果
+5. active picker confirm / cancel 是否意外变成 replace，或在 owner-card 子步骤里错误地退回 append 外卡，掩盖了真正的 consumer 结果
 6. 没有 `daemon_lifecycle_id` 的 callback 是否被错误地当成可同步 replace
 7. target picker confirm 是否会对 stale 选择 silent fallback 到别的默认候选
 8. request prompt / selection prompt / path picker / target picker 是否把产品状态机职责偷渡进 Feishu UI 层

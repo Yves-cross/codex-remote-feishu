@@ -44,6 +44,36 @@ func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 	}
 }
 
+func TestProjectPathPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventFeishuPathPicker,
+		SurfaceSessionID:  "surface-1",
+		DaemonLifecycleID: "life-1",
+		FeishuPathPickerView: &control.FeishuPathPickerView{
+			PickerID:     "picker-1",
+			MessageID:    "om-card-1",
+			Mode:         control.PathPickerModeDirectory,
+			Title:        "选择目录",
+			RootPath:     "/root",
+			CurrentPath:  "/root",
+			SelectedPath: "/root",
+			ConfirmLabel: "确认",
+			CancelLabel:  "返回",
+			CanConfirm:   true,
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one card op, got %#v", ops)
+	}
+	if ops[0].Kind != OperationUpdateCard || ops[0].MessageID != "om-card-1" || ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected update-card op for existing path picker message, got %#v", ops[0])
+	}
+	if !ops[0].CardUpdateMulti {
+		t.Fatalf("expected path picker update to remain multi-update capable, got %#v", ops[0])
+	}
+}
+
 func TestPathPickerElementsUseEnterAndSelectPayloadKinds(t *testing.T) {
 	elements := pathPickerElements(control.FeishuPathPickerView{
 		PickerID:     "picker-1",

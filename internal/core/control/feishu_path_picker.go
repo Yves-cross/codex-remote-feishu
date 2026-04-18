@@ -33,6 +33,7 @@ type PathPickerRequest struct {
 	ConfirmLabel string
 	CancelLabel  string
 	ExpireAfter  time.Duration
+	OwnerFlowID  string
 	ConsumerKind string
 	ConsumerMeta map[string]string
 }
@@ -54,6 +55,7 @@ type PathPickerResult struct {
 // file/directory picker.
 type FeishuPathPickerView struct {
 	PickerID     string
+	MessageID    string
 	Mode         PathPickerMode
 	Title        string
 	RootPath     string

@@ -47,6 +47,32 @@ func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 	}
 }
 
+func TestProjectTargetPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:              control.UIEventFeishuTargetPicker,
+		SurfaceSessionID:  "surface-1",
+		DaemonLifecycleID: "life-1",
+		FeishuTargetPickerView: &control.FeishuTargetPickerView{
+			PickerID:    "picker-1",
+			MessageID:   "om-card-1",
+			Title:       "选择工作区与会话",
+			Stage:       control.FeishuTargetPickerStageProcessing,
+			StatusTitle: "正在切换会话",
+			StatusText:  "正在恢复目标会话。",
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one card op, got %#v", ops)
+	}
+	if ops[0].Kind != OperationUpdateCard || ops[0].MessageID != "om-card-1" || ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected update-card op for existing target picker message, got %#v", ops[0])
+	}
+	if !ops[0].CardUpdateMulti {
+		t.Fatalf("expected target picker update to remain multi-update capable, got %#v", ops[0])
+	}
+}
+
 func TestTargetPickerElementsUseSelectCallbacksAndConfirm(t *testing.T) {
 	elements := targetPickerElements(control.FeishuTargetPickerView{
 		PickerID:             "picker-1",
@@ -90,6 +116,29 @@ func TestTargetPickerElementsUseSelectCallbacksAndConfirm(t *testing.T) {
 	}
 	if !sawWorkspace || !sawSession || !sawCancel || !sawConfirm {
 		t.Fatalf("expected target picker payload kinds, got %#v", actions)
+	}
+}
+
+func TestTargetPickerTerminalStageSealsCardWithoutInteractiveControls(t *testing.T) {
+	elements := targetPickerElements(control.FeishuTargetPickerView{
+		PickerID:               "picker-1",
+		Stage:                  control.FeishuTargetPickerStageSucceeded,
+		StatusTitle:            "已切换会话",
+		StatusText:             "当前工作目标已经切换完成。",
+		SelectedWorkspaceLabel: "web",
+		SelectedSessionLabel:   "整理样式",
+	}, "life-terminal")
+	if len(cardActionsFromElements(elements)) != 0 {
+		t.Fatalf("expected terminal target picker card to remove interactive controls, got %#v", elements)
+	}
+	for _, element := range elements {
+		tag := cardStringValue(element["tag"])
+		if tag == "select_static" || tag == "button" || tag == "form" || tag == "button_group" {
+			t.Fatalf("expected terminal target picker card to keep markdown-only body, got %#v", elements)
+		}
+	}
+	if !containsMarkdownWithPrefix(elements, "**已切换会话**") {
+		t.Fatalf("expected terminal target picker card to render final status text, got %#v", elements)
 	}
 }
 

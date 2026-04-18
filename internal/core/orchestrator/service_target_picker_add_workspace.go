@@ -60,6 +60,7 @@ func (s *Service) handleTargetPickerOpenPathPicker(surface *state.SurfaceConsole
 	if blocked != nil {
 		return blocked
 	}
+	resetTargetPickerEditingState(record)
 	s.applyTargetPickerDraftAnswers(record, answers)
 	switch strings.TrimSpace(fieldKind) {
 	case control.FeishuTargetPickerPathFieldLocalDirectory, control.FeishuTargetPickerPathFieldGitParentDir:
@@ -102,6 +103,7 @@ func (s *Service) openTargetPickerAddWorkspacePathPicker(surface *state.SurfaceC
 		Hint:         hint,
 		ConfirmLabel: confirmLabel,
 		CancelLabel:  cancelLabel,
+		OwnerFlowID:  strings.TrimSpace(record.PickerID),
 		ConsumerKind: targetPickerAddWorkspacePathPickerConsumerKind,
 		ConsumerMeta: map[string]string{
 			targetPickerAddWorkspaceMetaPickerID:  strings.TrimSpace(record.PickerID),
@@ -165,18 +167,23 @@ func (s *Service) restoreTargetPickerAfterPathReturn(surface *state.SurfaceConso
 	if surface == nil || record == nil {
 		return nil
 	}
+	if strings.TrimSpace(noticeCode) != "" && strings.TrimSpace(noticeText) != "" {
+		level := control.FeishuTargetPickerMessageInfo
+		if strings.Contains(strings.ToLower(strings.TrimSpace(noticeCode)), "invalid") || strings.Contains(strings.ToLower(strings.TrimSpace(noticeCode)), "missing") {
+			level = control.FeishuTargetPickerMessageDanger
+		}
+		setTargetPickerMessages(record, control.FeishuTargetPickerMessage{
+			Level: level,
+			Text:  strings.TrimSpace(noticeText),
+		})
+	} else {
+		resetTargetPickerEditingState(record)
+	}
 	view, err := s.buildTargetPickerView(surface, record)
 	if err != nil {
-		if noticeCode == "" {
-			return notice(surface, "target_picker_unavailable", err.Error())
-		}
-		return append([]control.UIEvent{}, notice(surface, noticeCode, noticeText)...)
+		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	events := []control.UIEvent{s.targetPickerViewEvent(surface, view, true)}
-	if strings.TrimSpace(noticeCode) != "" && strings.TrimSpace(noticeText) != "" {
-		events = append(events, notice(surface, noticeCode, noticeText)...)
-	}
-	return events
+	return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
 }
 
 func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) targetPickerLocalDirectoryState {
@@ -343,22 +350,38 @@ func errorAsImport(err error, target **gitworkspace.ImportError) bool {
 	return errors.As(err, target)
 }
 
-func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []control.UIEvent {
+func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []control.UIEvent {
 	if surface == nil || record == nil {
 		return nil
 	}
 	localState := s.buildTargetPickerLocalDirectoryState(surface, record)
 	if !localState.CanConfirm || strings.TrimSpace(localState.ResolvedPath) == "" {
-		if message := targetPickerFirstBlockingMessage(localState.Messages); message != "" {
-			return notice(surface, "workspace_create_invalid", message)
+		message := targetPickerFirstBlockingMessage(localState.Messages)
+		if message == "" {
+			message = "请先选择一个可接入的本地目录。"
 		}
-		return notice(surface, "workspace_create_invalid", "请先选择一个可接入的本地目录。")
+		setTargetPickerMessages(record, control.FeishuTargetPickerMessage{
+			Level: control.FeishuTargetPickerMessageDanger,
+			Text:  message,
+		})
+		updatedView, err := s.buildTargetPickerView(surface, record)
+		if err != nil {
+			return notice(surface, "target_picker_unavailable", err.Error())
+		}
+		return []control.UIEvent{s.targetPickerViewEvent(surface, updatedView, false)}
 	}
 	events := s.enterTargetPickerNewThread(surface, localState.ResolvedPath)
-	if targetPickerNewThreadSucceeded(surface, localState.ResolvedPath) {
-		s.clearSurfaceTargetPicker(surface)
+	filtered := targetPickerFilteredFollowupEvents(events)
+	if targetPickerNewThreadReady(surface, localState.ResolvedPath) {
+		return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageSucceeded, "已进入新会话待命", "工作区已经准备完成，下一条文本会直接开启新会话。", false, filtered)
 	}
-	return events
+	if surface.PendingHeadless != nil && surface.PendingHeadless.PrepareNewThread &&
+		normalizeWorkspaceClaimKey(surface.PendingHeadless.ThreadCWD) == normalizeWorkspaceClaimKey(localState.ResolvedPath) {
+		processing := s.startTargetPickerProcessing(surface, flow, record, targetPickerPendingNewThread, localState.ResolvedPath, "", "正在准备新会话", "正在接入工作区并准备新会话待命，完成后你就可以直接继续说话。")
+		return append(processing, filtered...)
+	}
+	failureText := strings.TrimSpace(firstNonEmpty(targetPickerFirstNoticeText(events), "当前目录暂时无法接入为工作区，请重新选择后再试。"))
+	return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageFailed, "接入失败", failureText, false, filtered)
 }
 
 func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []control.UIEvent {
@@ -374,7 +397,7 @@ func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleReco
 				Text:  message,
 			}}, view.SourceMessages...)
 		}
-		return []control.UIEvent{s.targetPickerViewEvent(surface, view, true)}
+		return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
 	}
 	finalPath := strings.TrimSpace(firstNonEmpty(gitState.FinalPath, gitState.ParentDir))
 	noticeText := fmt.Sprintf("正在把 `%s` 拉取到 `%s`，完成后会直接进入新会话待命。", strings.TrimSpace(record.GitRepoURL), finalPath)

@@ -748,7 +748,11 @@ func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecor
 			Notice:           notice,
 		})
 	}
-	return events
+	fallback := ""
+	if notice != nil {
+		fallback = notice.Text
+	}
+	return s.maybeFinalizePendingTargetPicker(surface, events, fallback)
 }
 
 func (s *Service) killHeadlessInstance(surface *state.SurfaceConsoleRecord) []control.UIEvent {

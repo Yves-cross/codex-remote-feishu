@@ -267,6 +267,22 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			break
 		}
 	}
+	if event.FeishuTargetPickerView != nil {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendCard {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordTargetPickerMessage(
+				event.SurfaceSessionID,
+				event.FeishuTargetPickerView.PickerID,
+				operation.MessageID,
+			)
+			break
+		}
+	}
 	if event.ExecCommandProgress == nil {
 		return
 	}

@@ -261,6 +261,11 @@ func (s *Service) feishuDirectRequestPromptEvent(surface *state.SurfaceConsoleRe
 }
 
 func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPathPickerView, inline bool) control.UIEvent {
+	if !inline {
+		if messageID := s.pathPickerOwnerCardMessageID(surface, view.PickerID); messageID != "" {
+			view.MessageID = messageID
+		}
+	}
 	return control.UIEvent{
 		Kind:                     control.UIEventFeishuPathPicker,
 		GatewayID:                surface.GatewayID,
@@ -272,6 +277,11 @@ func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view 
 }
 
 func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView, inline bool) control.UIEvent {
+	if !inline {
+		if flow := s.activeOwnerCardFlow(surface); flow != nil && flow.Kind == ownerCardFlowKindTargetPicker && strings.TrimSpace(flow.FlowID) == strings.TrimSpace(view.PickerID) {
+			view.MessageID = strings.TrimSpace(flow.MessageID)
+		}
+	}
 	return control.UIEvent{
 		Kind:                      control.UIEventFeishuTargetPicker,
 		GatewayID:                 surface.GatewayID,
@@ -280,6 +290,24 @@ func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, vie
 		FeishuTargetPickerView:    &view,
 		FeishuTargetPickerContext: s.buildFeishuTargetPickerContextFromView(surface, view),
 	}
+}
+
+func (s *Service) pathPickerOwnerCardMessageID(surface *state.SurfaceConsoleRecord, pickerID string) string {
+	record := s.activePathPicker(surface)
+	flow := s.activeOwnerCardFlow(surface)
+	if record == nil || flow == nil {
+		return ""
+	}
+	if strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
+		return ""
+	}
+	if flow.Kind != ownerCardFlowKindTargetPicker {
+		return ""
+	}
+	if strings.TrimSpace(record.OwnerFlowID) == "" || strings.TrimSpace(record.OwnerFlowID) != strings.TrimSpace(flow.FlowID) {
+		return ""
+	}
+	return strings.TrimSpace(flow.MessageID)
 }
 
 func (s *Service) threadHistoryViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuThreadHistoryView, inline bool, sourceMessageID string) control.UIEvent {
