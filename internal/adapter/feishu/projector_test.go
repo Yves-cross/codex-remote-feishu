@@ -1786,11 +1786,11 @@ func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *te
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "1/2") {
 		t.Fatalf("expected top progress markdown, got %#v", ops[0].CardElements[0])
 	}
-	firstQuestion := markdownContent(ops[0].CardElements[1])
+	firstQuestion := plainTextContent(ops[0].CardElements[1])
 	if !strings.Contains(firstQuestion, "状态：已回答") || !strings.Contains(firstQuestion, "当前答案：gpt-5.4") {
 		t.Fatalf("expected first question to include answered status and current answer, got %q", firstQuestion)
 	}
-	secondQuestion := markdownContent(ops[0].CardElements[3])
+	secondQuestion := plainTextContent(ops[0].CardElements[3])
 	if !strings.Contains(secondQuestion, "状态：待回答") {
 		t.Fatalf("expected second question to include pending status, got %q", secondQuestion)
 	}

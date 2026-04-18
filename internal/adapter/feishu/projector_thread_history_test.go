@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -88,5 +89,43 @@ func TestThreadHistoryListElementsUseHistoryCallbacks(t *testing.T) {
 	}
 	if !sawDetail || !sawPrev || !sawNext {
 		t.Fatalf("expected history detail and pagination callbacks, got %#v", actions)
+	}
+}
+
+func TestThreadHistoryDetailElementsKeepDynamicContentOutOfMarkdown(t *testing.T) {
+	elements := threadHistoryDetailElements(control.FeishuThreadHistoryView{
+		PickerID: "history-unsafe",
+		Detail: &control.FeishuThreadHistoryTurnDetail{
+			Ordinal:     3,
+			Status:      "completed",
+			TurnID:      "turn-unsafe",
+			UpdatedText: "刚刚",
+			ErrorText:   "错误详情：\n- 一条列表\n[本地链接](demo.md)",
+			Inputs: []string{
+				"# 用户输入\n- 列表项\n```bash\necho hi\n```",
+			},
+			Outputs: []string{
+				"返回内容：\n[设计文档](docs/design.md)",
+			},
+		},
+	}, "life-1")
+
+	if len(elements) < 7 {
+		t.Fatalf("expected summary, sections and buttons, got %#v", elements)
+	}
+	if !strings.Contains(markdownContent(elements[0]), "**第 3 轮**") {
+		t.Fatalf("expected summary markdown first, got %#v", elements[0])
+	}
+	if got := plainTextContent(elements[2]); !containsAll(got, "错误详情：", "- 一条列表", "[本地链接](demo.md)") {
+		t.Fatalf("expected error text to be rendered as plain text block, got %#v", elements[2])
+	}
+	if got := plainTextContent(elements[4]); !containsAll(got, "# 用户输入", "- 列表项", "```bash") {
+		t.Fatalf("expected input entry to stay plain text, got %#v", elements[4])
+	}
+	if got := plainTextContent(elements[6]); !containsAll(got, "返回内容：", "[设计文档](docs/design.md)") {
+		t.Fatalf("expected output entry to stay plain text, got %#v", elements[6])
+	}
+	if markdownContent(elements[4]) != "" || markdownContent(elements[6]) != "" {
+		t.Fatalf("expected dynamic history entries to stop using markdown blocks, got %#v", elements)
 	}
 }

@@ -149,29 +149,21 @@ func threadHistoryDetailElements(view control.FeishuThreadHistoryView, daemonLif
 	if updated := strings.TrimSpace(detail.UpdatedText); updated != "" {
 		lines = append(lines, "**更新时间**\n"+formatNeutralTextTag(updated))
 	}
-	if detail.ErrorText != "" {
-		lines = append(lines, "**错误**\n"+renderSystemInlineTags(detail.ErrorText))
-	}
-	lines = append(lines, "**你的输入**")
-	if len(detail.Inputs) == 0 {
-		lines = append(lines, "-")
-	} else {
-		for index, input := range detail.Inputs {
-			lines = append(lines, fmt.Sprintf("%d. %s", index+1, truncateThreadHistoryDetailText(input, 600)))
-		}
-	}
-	lines = append(lines, "**已产生的回复**")
-	if len(detail.Outputs) == 0 {
-		lines = append(lines, "-")
-	} else {
-		for index, output := range detail.Outputs {
-			lines = append(lines, fmt.Sprintf("%d. %s", index+1, truncateThreadHistoryDetailText(output, 600)))
-		}
-	}
 	elements := []map[string]any{{
 		"tag":     "markdown",
 		"content": strings.Join(lines, "\n"),
 	}}
+	if text := strings.TrimSpace(detail.ErrorText); text != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**错误**",
+		})
+		if block := cardPlainTextBlockElement(truncateThreadHistoryDetailText(text, 600)); len(block) != 0 {
+			elements = append(elements, block)
+		}
+	}
+	elements = appendThreadHistoryDetailSection(elements, "你的输入", detail.Inputs)
+	elements = appendThreadHistoryDetailSection(elements, "已产生的回复", detail.Outputs)
 	buttons := make([]map[string]any, 0, 3)
 	if detail.PrevTurnID != "" {
 		buttons = append(buttons, cardCallbackButtonElement("较新一轮", "default", stampActionValue(actionPayloadThreadHistory(cardActionKindHistoryDetail, view.PickerID, detail.PrevTurnID, 0), daemonLifecycleID), false, "fill"))
@@ -185,6 +177,29 @@ func threadHistoryDetailElements(view control.FeishuThreadHistoryView, daemonLif
 	elements = append(elements, cardButtonGroupElement([]map[string]any{
 		cardCallbackButtonElement("返回列表", "default", stampActionValue(actionPayloadThreadHistory(cardActionKindHistoryPage, view.PickerID, "", detail.ReturnPage), daemonLifecycleID), false, "fill"),
 	}))
+	return elements
+}
+
+func appendThreadHistoryDetailSection(elements []map[string]any, title string, items []string) []map[string]any {
+	title = strings.TrimSpace(title)
+	if title != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**" + title + "**",
+		})
+	}
+	if len(items) == 0 {
+		if block := cardPlainTextBlockElement("-"); len(block) != 0 {
+			elements = append(elements, block)
+		}
+		return elements
+	}
+	for index, item := range items {
+		content := fmt.Sprintf("%d. %s", index+1, truncateThreadHistoryDetailText(item, 600))
+		if block := cardPlainTextBlockElement(content); len(block) != 0 {
+			elements = append(elements, block)
+		}
+	}
 	return elements
 }
 

@@ -105,10 +105,9 @@ func requestUserInputPromptElements(prompt control.FeishuDirectRequestPrompt, da
 		}
 	}
 	for index, question := range prompt.Questions {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": requestPromptQuestionMarkdown(index, question),
-		})
+		if element := requestPromptQuestionElement(index, question); len(element) != 0 {
+			elements = append(elements, element)
+		}
 		if question.DirectResponse && len(question.Options) != 0 {
 			actions := make([]map[string]any, 0, len(question.Options))
 			for _, option := range question.Options {
@@ -211,11 +210,13 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 	return false
 }
 
-func requestPromptQuestionMarkdown(index int, question control.RequestPromptQuestion) string {
+func requestPromptQuestionElement(index int, question control.RequestPromptQuestion) map[string]any {
 	lines := make([]string, 0, 8)
 	title := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question))
 	if title != "" {
-		lines = append(lines, fmt.Sprintf("**问题 %d** %s", index+1, title))
+		lines = append(lines, fmt.Sprintf("问题 %d：%s", index+1, title))
+	} else {
+		lines = append(lines, fmt.Sprintf("问题 %d", index+1))
 	}
 	if question.Answered {
 		lines = append(lines, "状态：已回答")
@@ -247,7 +248,7 @@ func requestPromptQuestionMarkdown(index int, question control.RequestPromptQues
 		lines = append(lines, "")
 		lines = append(lines, "该答案按私密输入处理，不会在飞书卡片正文中回显。")
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return cardPlainTextBlockElement(strings.Join(lines, "\n"))
 }
 
 func requestPromptProgressMarkdown(prompt control.FeishuDirectRequestPrompt) string {

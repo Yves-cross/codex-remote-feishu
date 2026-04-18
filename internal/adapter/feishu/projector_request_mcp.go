@@ -47,10 +47,9 @@ func mcpElicitationPromptElements(prompt control.FeishuDirectRequestPrompt, daem
 		})
 	}
 	for index, question := range prompt.Questions {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": requestPromptQuestionMarkdown(index, question),
-		})
+		if element := requestPromptQuestionElement(index, question); len(element) != 0 {
+			elements = append(elements, element)
+		}
 		if question.DirectResponse && len(question.Options) != 0 {
 			actions := make([]map[string]any, 0, len(question.Options))
 			for _, option := range question.Options {

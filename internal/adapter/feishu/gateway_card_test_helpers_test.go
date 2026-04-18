@@ -13,6 +13,17 @@ func markdownContent(element map[string]any) string {
 	return cardStringValue(element["content"])
 }
 
+func plainTextContent(element map[string]any) string {
+	if cardStringValue(element["tag"]) != "div" {
+		return ""
+	}
+	text, _ := element["text"].(map[string]any)
+	if cardStringValue(text["tag"]) != "plain_text" {
+		return ""
+	}
+	return cardStringValue(text["content"])
+}
+
 func lastButtonLabel(elements []map[string]any) string {
 	for i := len(elements) - 1; i >= 0; i-- {
 		if cardStringValue(elements[i]["tag"]) != "button" {
