@@ -273,7 +273,7 @@
 当前主承载：
 
 - target picker owner card
-- 但 Git 长路径仍会脱回 append-only notice + daemon command
+- `#266` 之后，短路径与 Git 长路径的主异步结果都已能回收到同一张 owner card
 
 关键状态变化：
 
@@ -292,8 +292,7 @@
 - target picker 同卡 patch
 - path picker 子步骤卡
 - owner card processing / terminal patch
-- Git started notice
-- Git 完成 / 失败 notice
+- Git flow stale notice
 - block / busy / expired / unauthorized notice
 - pending headless timeout notice
 
@@ -312,11 +311,15 @@
   - `UIEventNotice`
   - `UIEventThreadSelectionChange`
   - pending headless timeout / command reject / attach failure 等异步结果
+- `#266` 已把 Git confirm 后的 started / clone failure / post-clone attach failure / success / cancel 收回 owner card
 
 当前还没做对的部分：
 
-- Git 长路径仍明显属于旁路发卡
-- busy / blocker / restore / transport degraded 等外围状态还没形成统一“哪些进主卡、哪些留全局”的规则
+- 剩下的 target picker 外发提示，更多是：
+  - direct invalid / expired / blocker 反馈
+  - flow stale 降级提示
+  - restore / transport / gateway failure 这类外围 runtime 提示
+- 也就是说，target picker 已不再是 `#267` 第一批里“最破碎”的 owner-flow；更适合作为 residual mop-up 面，而不是第一批 first adopter
 
 `#267` 归属判断：
 
@@ -731,15 +734,15 @@
 
 更现实的第一批是：
 
-1. target picker 现有 owner-card 流
-2. picker Git 长路径
-3. `/sendfile`
+1. `/sendfile`
+2. target picker 的 residual owner-flow 提示
+3. 其它仍已明确 owner-card 化、但结果还靠 notice 承载的短流
 
 原因：
 
-- 它们都已经明显是业务流
-- 用户还在等待结果
-- 当前旁路 notice 最容易把主卡顶走
+- `/sendfile` 现在仍是“path picker 负责选文件，confirm 后结果全靠独立 notice”，主承载断裂最明显
+- target picker 在 `#264` + `#266` 后主异步结果已经大体收口，更适合作为顺手清 residual 的第二优先级，而不是第一优先级
+- 这样可以先用一条新的业务流验证 `#267` 的规则，而不是反复在已经基本修顺的 target picker 上做小修小补
 
 ### 6.3 `turn-owned` 与 `global runtime` 要单独留出车道
 
@@ -762,11 +765,12 @@
 推荐拆成 3 段：
 
 1. `phase A`
-   - 只治理已有 owner-flow 的旁路提示回收
-   - 重点是 target picker 与 sendfile
+   - 只治理已有或明确要 owner-card 化的业务流旁路提示回收
+   - 第一优先级改成 `/sendfile`
+   - target picker 只处理剩余 residual 提示，不再把 Git 长路径当成第一主战场
 2. `phase B`
    - 处理 owner-flow 与 turn-owned 过程卡之间的主承载仲裁
-   - 重点是 Git running / request / progress / final 的边界
+   - 重点是 running owner-flow 与 request / progress / final 的边界
 3. `phase C`
    - 清理 global runtime 提示车道
    - 重点是 transport / resume / shutdown / gateway failure 的独立展示策略
@@ -776,7 +780,8 @@
 `#267` 下一步至少应明确 3 件事：
 
 1. 第一批只做哪些 `owner-flow`
-   - 当前建议：target picker 现有路径 + Git 长路径 + `/sendfile`
+   - 当前建议：先做 `/sendfile`
+   - target picker 只补 residual 提示，不再作为第一批主验证面
 2. 对 `turn-owned` 的保留边界是什么
    - request / progress / final / replay 先不吞回业务 owner card
 3. 对 `global runtime` 的独立展示边界是什么
