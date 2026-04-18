@@ -46,11 +46,8 @@ func useThreadSelectionPromptElements(prompt control.FeishuDirectSelectionPrompt
 			if button := cardButtonGroupElement([]map[string]any{selectionOptionButton(prompt, option, daemonLifecycleID)}); len(button) != 0 {
 				elements = append(elements, button)
 			}
-			if line := selectionOptionBody(prompt.Kind, option); line != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": line,
-				})
+			if block := cardPlainTextBlockElement(selectionOptionBody(prompt.Kind, option)); len(block) != 0 {
+				elements = append(elements, block)
 			}
 		}
 	}
@@ -104,10 +101,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 		})
 	}
 	if text := strings.TrimSpace(prompt.ContextText); text != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": renderSystemInlineTags(text),
-		})
+		if block := cardPlainTextBlockElement(text); len(block) != 0 {
+			elements = append(elements, block)
+		}
 	}
 
 	if len(current) > 0 {
@@ -118,10 +114,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 		for _, option := range current {
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": renderSystemInlineTags(meta),
-				})
+				if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+					elements = append(elements, block)
+				}
 			}
 		}
 	}
@@ -135,10 +130,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 		}
 		for index, option := range remaining {
 			meta := strings.TrimSpace(firstNonEmpty(option.MetaText, "时间未知"))
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": fmt.Sprintf("%d. %s", index+1, renderSystemInlineTags(meta)),
-			})
+			if block := cardPlainTextBlockElement(fmt.Sprintf("%d. %s", index+1, meta)); len(block) != 0 {
+				elements = append(elements, block)
+			}
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 		}
 	} else {
@@ -150,10 +144,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 			for _, option := range available {
 				elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 				if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-					elements = append(elements, map[string]any{
-						"tag":     "markdown",
-						"content": renderSystemInlineTags(meta),
-					})
+					if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+						elements = append(elements, block)
+					}
 				}
 			}
 		}
@@ -165,10 +158,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 			for _, option := range unavailable {
 				elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 				if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-					elements = append(elements, map[string]any{
-						"tag":     "markdown",
-						"content": renderSystemInlineTags(meta),
-					})
+					if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+						elements = append(elements, block)
+					}
 				}
 			}
 		}
@@ -182,10 +174,9 @@ func useThreadVSCodeInstanceElements(prompt control.FeishuDirectSelectionPrompt,
 		for _, option := range more {
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": renderSystemInlineTags(meta),
-				})
+				if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+					elements = append(elements, block)
+				}
 			}
 		}
 	}
@@ -269,10 +260,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 		for _, option := range currentOptions {
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": meta,
-				})
+				if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+					elements = append(elements, block)
+				}
 			}
 		}
 	}
@@ -285,10 +275,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 			})
 		}
 		if text := strings.TrimSpace(prompt.ContextText); text != "" {
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": renderSystemInlineTags(text),
-			})
+			if block := cardPlainTextBlockElement(text); len(block) != 0 {
+				elements = append(elements, block)
+			}
 		}
 		if contextKey := strings.TrimSpace(prompt.ContextKey); contextKey != "" {
 			label := "查看当前工作区全部会话"
@@ -307,10 +296,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 			if age := strings.TrimSpace(group.AgeText); age != "" {
 				header += " · " + age
 			}
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": "**" + header + "**",
-			})
+			if block := cardPlainTextBlockElement(header); len(block) != 0 {
+				elements = append(elements, block)
+			}
 		}
 		available := make([]control.SelectionOption, 0, len(group.Options))
 		var unavailableReason string
@@ -325,10 +313,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 		}
 		if len(available) == 0 {
 			if unavailableReason != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": renderSystemInlineTags(unavailableReason),
-				})
+				if block := cardPlainTextBlockElement(unavailableReason); len(block) != 0 {
+					elements = append(elements, block)
+				}
 			}
 			continue
 		}
@@ -338,10 +325,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 		}
 		for index, option := range visible {
 			meta := strings.TrimSpace(firstNonEmpty(option.MetaText, "时间未知"))
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": fmt.Sprintf("%d. %s", index+1, renderSystemInlineTags(meta)),
-			})
+			if block := cardPlainTextBlockElement(fmt.Sprintf("%d. %s", index+1, meta)); len(block) != 0 {
+				elements = append(elements, block)
+			}
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 		}
 		if !singleWorkspaceView && len(available) > useThreadWorkspacePreviewLimit {
@@ -360,10 +346,9 @@ func useThreadWorkspaceGroupedElements(prompt control.FeishuDirectSelectionPromp
 		for _, option := range moreOptions {
 			elements = append(elements, useThreadActionElement(prompt, option, daemonLifecycleID))
 			if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": renderSystemInlineTags(meta),
-				})
+				if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+					elements = append(elements, block)
+				}
 			}
 		}
 	}
@@ -418,10 +403,9 @@ func useThreadWorkspaceIndexElements(prompt control.FeishuDirectSelectionPrompt,
 		})
 	}
 	if text := strings.TrimSpace(prompt.ContextText); text != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": renderSystemInlineTags(text),
-		})
+		if block := cardPlainTextBlockElement(text); len(block) != 0 {
+			elements = append(elements, block)
+		}
 	}
 	if contextKey := strings.TrimSpace(prompt.ContextKey); contextKey != "" {
 		if button := cardButtonGroupElement([]map[string]any{workspaceThreadsButton("查看当前工作区全部会话", contextKey, prompt.Page, daemonLifecycleID)}); len(button) != 0 {

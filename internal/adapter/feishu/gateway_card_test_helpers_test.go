@@ -24,6 +24,13 @@ func plainTextContent(element map[string]any) string {
 	return cardStringValue(text["content"])
 }
 
+func cardTextContent(element map[string]any) string {
+	if content := markdownContent(element); content != "" {
+		return content
+	}
+	return plainTextContent(element)
+}
+
 func lastButtonLabel(elements []map[string]any) string {
 	for i := len(elements) - 1; i >= 0; i-- {
 		if cardStringValue(elements[i]["tag"]) != "button" {
@@ -62,6 +69,15 @@ func containsMarkdownWithPrefix(elements []map[string]any, prefix string) bool {
 func containsMarkdownExact(elements []map[string]any, want string) bool {
 	for _, element := range elements {
 		if markdownContent(element) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCardTextExact(elements []map[string]any, want string) bool {
+	for _, element := range elements {
+		if cardTextContent(element) == want {
 			return true
 		}
 	}

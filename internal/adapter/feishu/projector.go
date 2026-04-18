@@ -409,7 +409,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.ThreadSelection == nil {
 			return nil
 		}
-		body := projectThreadSelectionChangeBody(*event.ThreadSelection)
+		body, elements := projectThreadSelectionChangeCardContent(*event.ThreadSelection)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
@@ -417,18 +417,19 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			CardTitle:        "系统提示",
 			CardBody:         body,
+			CardElements:     elements,
 			CardThemeKey:     cardThemeInfo,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             legacyCardDocument("系统提示", body, cardThemeInfo, nil),
+			card:             legacyCardDocument("系统提示", body, cardThemeInfo, elements),
 		}}
 	default:
 		return nil
 	}
 }
 
-func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) string {
+func projectThreadSelectionChangeCardContent(selection control.ThreadSelectionChanged) (string, []map[string]any) {
 	if strings.TrimSpace(selection.RouteMode) == "new_thread_ready" {
-		return "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。"
+		return "已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。", nil
 	}
 	lines := []string{fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)}
 	if first := strings.TrimSpace(selection.FirstUserMessage); first != "" {
@@ -442,7 +443,11 @@ func projectThreadSelectionChangeBody(selection control.ThreadSelectionChanged) 
 	} else if preview := strings.TrimSpace(selection.Preview); preview != "" {
 		lines = append(lines, "", "最近回复：", preview)
 	}
-	return strings.Join(lines, "\n")
+	block := cardPlainTextBlockElement(strings.Join(lines, "\n"))
+	if len(block) == 0 {
+		return "", nil
+	}
+	return "", []map[string]any{block}
 }
 
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {

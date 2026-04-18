@@ -28,19 +28,13 @@ func selectionPromptElements(prompt control.FeishuDirectSelectionPrompt, daemonL
 			if len(button) != 0 {
 				elements = append(elements, button)
 			}
-			if line != "" {
-				elements = append(elements, map[string]any{
-					"tag":     "markdown",
-					"content": line,
-				})
+			if block := cardPlainTextBlockElement(line); len(block) != 0 {
+				elements = append(elements, block)
 			}
 			continue
 		}
-		if line != "" {
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": line,
-			})
+		if block := cardPlainTextBlockElement(line); len(block) != 0 {
+			elements = append(elements, block)
 		}
 		if len(button) != 0 {
 			elements = append(elements, button)
@@ -114,10 +108,9 @@ func buildAttachSelectionPromptElements(
 		})
 	}
 	if text := strings.TrimSpace(prompt.ContextText); text != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": renderSystemInlineTags(text),
-		})
+		if block := cardPlainTextBlockElement(text); len(block) != 0 {
+			elements = append(elements, block)
+		}
 	}
 
 	elements = appendAttachSelectionSection(elements, prompt, daemonLifecycleID, currentHeading, current)
@@ -156,10 +149,9 @@ func appendAttachSelectionSection(
 			elements = append(elements, button)
 		}
 		if meta := strings.TrimSpace(firstNonEmpty(option.MetaText, selectionOptionBody(prompt.Kind, option))); meta != "" {
-			elements = append(elements, map[string]any{
-				"tag":     "markdown",
-				"content": renderSystemInlineTags(meta),
-			})
+			if block := cardPlainTextBlockElement(meta); len(block) != 0 {
+				elements = append(elements, block)
+			}
 		}
 	}
 	return elements
@@ -183,7 +175,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 	case control.SelectionPromptAttachInstance:
 		if option.Subtitle != "" {
 			parts := strings.Split(option.Subtitle, "\n")
-			line := fmt.Sprintf("%d. %s - 工作目录 %s%s", option.Index, option.Label, formatNeutralTextTag(parts[0]), current)
+			line := fmt.Sprintf("%d. %s - 工作目录 %s%s", option.Index, option.Label, strings.TrimSpace(parts[0]), current)
 			if len(parts) > 1 {
 				line += "\n" + strings.Join(parts[1:], "\n")
 			}
@@ -192,7 +184,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 	case control.SelectionPromptAttachWorkspace:
 		if option.Subtitle != "" {
 			parts := strings.Split(option.Subtitle, "\n")
-			line := fmt.Sprintf("%d. %s - 工作区 %s%s", option.Index, option.Label, formatNeutralTextTag(parts[0]), current)
+			line := fmt.Sprintf("%d. %s - 工作区 %s%s", option.Index, option.Label, strings.TrimSpace(parts[0]), current)
 			if len(parts) > 1 {
 				line += "\n" + strings.Join(parts[1:], "\n")
 			}
@@ -204,13 +196,9 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 		}
 		parts := strings.Split(option.Subtitle, "\n")
 		lines := make([]string, 0, len(parts))
-		for i, part := range parts {
+		for _, part := range parts {
 			part = strings.TrimSpace(part)
 			if part == "" {
-				continue
-			}
-			if i == 0 && strings.HasPrefix(part, "/") {
-				lines = append(lines, formatNeutralTextTag(part))
 				continue
 			}
 			lines = append(lines, part)
@@ -221,7 +209,7 @@ func selectionOptionBody(kind control.SelectionPromptKind, option control.Select
 			parts := strings.Split(option.Subtitle, "\n")
 			line := fmt.Sprintf("%d. %s%s", option.Index, option.Label, current)
 			if len(parts) > 0 && parts[0] != "" {
-				line += "\n" + formatNeutralTextTag(parts[0])
+				line += "\n" + strings.TrimSpace(parts[0])
 			}
 			if len(parts) > 1 {
 				line += "\n" + strings.Join(parts[1:], "\n")

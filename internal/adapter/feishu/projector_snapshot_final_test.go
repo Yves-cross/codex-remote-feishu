@@ -1271,8 +1271,11 @@ func TestProjectThreadSelectionChangeDoesNotExposeThreadID(t *testing.T) {
 	if ops[0].CardTitle != "系统提示" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
-	if ops[0].CardBody != "当前输入目标已切换到：dl · 新会话\n\n最近回复：\n最近一条信息" {
-		t.Fatalf("unexpected card body: %#v", ops[0])
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected thread selection change card body to stay empty after moving dynamic text into plain_text blocks, got %#v", ops[0])
+	}
+	if len(ops[0].CardElements) != 1 || plainTextContent(ops[0].CardElements[0]) != "当前输入目标已切换到：dl · 新会话\n\n最近回复：\n最近一条信息" {
+		t.Fatalf("unexpected thread selection change elements: %#v", ops[0].CardElements)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected thread selection change to use structured V2 send path, got %#v", ops[0])

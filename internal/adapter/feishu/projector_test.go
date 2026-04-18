@@ -38,7 +38,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[0]["content"] != "**当前实例**" {
 		t.Fatalf("unexpected first element: %#v", ops[0].CardElements[0])
 	}
-	if ops[0].CardElements[1]["content"] != "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list" {
+	if plainTextContent(ops[0].CardElements[1]) != "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list" {
 		t.Fatalf("unexpected context summary: %#v", ops[0].CardElements[1])
 	}
 	if ops[0].CardElements[2]["content"] != "**可接管**" {
@@ -55,7 +55,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if value["kind"] != "attach_instance" || value["instance_id"] != "inst-2" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
-	if ops[0].CardElements[4]["content"] != "2分前 · 当前焦点可跟随" {
+	if plainTextContent(ops[0].CardElements[4]) != "2分前 · 当前焦点可跟随" {
 		t.Fatalf("unexpected available meta: %#v", ops[0].CardElements[4])
 	}
 	if ops[0].CardElements[5]["content"] != "**其他状态**" {
@@ -68,7 +68,7 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 	if cardButtonLabel(t, blockedRow[0]) != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
 		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
 	}
-	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
+	if plainTextContent(ops[0].CardElements[7]) != "1小时前 · 当前被其他飞书会话接管" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
@@ -123,7 +123,7 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if ops[0].CardElements[0]["content"] != "**当前工作区**" {
 		t.Fatalf("unexpected first element: %#v", ops[0].CardElements[0])
 	}
-	if ops[0].CardElements[1]["content"] != "droid · 5分前\n同工作区内继续工作可 /use，或直接发送文本（也可 /new）" {
+	if plainTextContent(ops[0].CardElements[1]) != "droid · 5分前\n同工作区内继续工作可 /use，或直接发送文本（也可 /new）" {
 		t.Fatalf("unexpected context summary: %#v", ops[0].CardElements[1])
 	}
 	if ops[0].CardElements[2]["content"] != "**可接管**" {
@@ -140,7 +140,7 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if value["kind"] != "attach_workspace" || value["workspace_key"] != "/data/dl/web" {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
-	if ops[0].CardElements[4]["content"] != "2分前 · 有 VS Code 活动" {
+	if plainTextContent(ops[0].CardElements[4]) != "2分前 · 有 VS Code 活动" {
 		t.Fatalf("unexpected available meta: %#v", ops[0].CardElements[4])
 	}
 	if ops[0].CardElements[5]["content"] != "**其他状态**" {
@@ -153,7 +153,7 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	if cardButtonLabel(t, blockedRow[0]) != "不可接管 · ops" || blockedRow[0]["disabled"] != true {
 		t.Fatalf("unexpected unavailable button: %#v", blockedRow[0])
 	}
-	if ops[0].CardElements[7]["content"] != "1小时前 · 当前被其他飞书会话接管" {
+	if plainTextContent(ops[0].CardElements[7]) != "1小时前 · 当前被其他飞书会话接管" {
 		t.Fatalf("unexpected unavailable meta: %#v", ops[0].CardElements[7])
 	}
 }
@@ -203,7 +203,7 @@ func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 	if value["kind"] != "use_thread" || value["thread_id"] != "thread-1" || value["allow_cross_workspace"] != true {
 		t.Fatalf("unexpected action payload: %#v", value)
 	}
-	if ops[0].CardElements[2]["content"] != "<text_tag color='neutral'>/data/dl/droid</text_tag>\n可接管" {
+	if plainTextContent(ops[0].CardElements[2]) != "/data/dl/droid\n可接管" {
 		t.Fatalf("unexpected option detail element: %#v", ops[0].CardElements[2])
 	}
 }
@@ -378,16 +378,9 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	wantHeaders := []string{"**当前会话**", "**当前工作区**", "**web · 2分前**", "**ops · 1小时前**"}
+	wantHeaders := []string{"**当前会话**", "**当前工作区**", "web · 2分前", "ops · 1小时前"}
 	for _, header := range wantHeaders {
-		found := false
-		for _, element := range ops[0].CardElements {
-			if element["content"] == header {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !containsCardTextExact(ops[0].CardElements, header) {
 			t.Fatalf("expected grouped header %q, got %#v", header, ops[0].CardElements)
 		}
 	}
@@ -405,7 +398,7 @@ func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 	}
 	var rendered []string
 	for _, element := range ops[0].CardElements {
-		if content, _ := element["content"].(string); content != "" {
+		if content := cardTextContent(element); content != "" {
 			rendered = append(rendered, content)
 		}
 	}
@@ -513,14 +506,14 @@ func TestProjectUseAllSelectionViewGroupsByWorkspace(t *testing.T) {
 	}
 	var rendered []string
 	for _, element := range ops[0].CardElements {
-		if content, _ := element["content"].(string); content != "" {
+		if content := cardTextContent(element); content != "" {
 			rendered = append(rendered, content)
 		}
 	}
 	for _, fragment := range []string{
 		"**当前工作区**",
 		"droid · 5分前\n同工作区内切换请直接用 /use",
-		"**web · 2分前**",
+		"web · 2分前",
 	} {
 		if !containsString(rendered, fragment) {
 			t.Fatalf("expected view-projected grouped content to include %q, got %#v", fragment, rendered)
@@ -905,7 +898,7 @@ func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 	}
 	var rendered []string
 	for _, element := range ops[0].CardElements {
-		if content, _ := element["content"].(string); content != "" {
+		if content := cardTextContent(element); content != "" {
 			rendered = append(rendered, content)
 		}
 	}
