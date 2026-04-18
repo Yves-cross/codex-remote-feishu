@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,40 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
+
+type messageIDAssigningFileGateway struct {
+	*messageIDAssigningGateway
+	sendFn func(context.Context, feishu.IMFileSendRequest) (feishu.IMFileSendResult, error)
+	calls  []feishu.IMFileSendRequest
+}
+
+func newMessageIDAssigningFileGateway() *messageIDAssigningFileGateway {
+	return &messageIDAssigningFileGateway{
+		messageIDAssigningGateway: &messageIDAssigningGateway{notify: make(chan struct{}, 16)},
+	}
+}
+
+func (g *messageIDAssigningFileGateway) SendIMFile(ctx context.Context, req feishu.IMFileSendRequest) (feishu.IMFileSendResult, error) {
+	g.mu.Lock()
+	g.calls = append(g.calls, req)
+	g.mu.Unlock()
+	if g.sendFn != nil {
+		return g.sendFn(ctx, req)
+	}
+	return feishu.IMFileSendResult{
+		GatewayID:        req.GatewayID,
+		SurfaceSessionID: req.SurfaceSessionID,
+		FileName:         filepath.Base(req.Path),
+		FileKey:          "file-key",
+		MessageID:        "msg-file",
+	}, nil
+}
+
+func (g *messageIDAssigningFileGateway) snapshotSendCalls() []feishu.IMFileSendRequest {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]feishu.IMFileSendRequest(nil), g.calls...)
+}
 
 func TestHandleSendIMFileCommandSendsFileToCurrentSurface(t *testing.T) {
 	sender := &fakeToolFileSender{}
@@ -297,6 +332,292 @@ func TestHandleActionPathPickerConfirmSendFileDoesNotDeadlock(t *testing.T) {
 	if len(sender.calls) != 1 {
 		t.Fatalf("expected one send call after confirm, got %#v", sender.calls)
 	}
+}
+
+func TestHandleActionPathPickerConfirmSendFileSealsCurrentCardAndSuppressesSuccessNotice(t *testing.T) {
+	gateway := newMessageIDAssigningFileGateway()
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	workspaceRoot := t.TempDir()
+	filePath := filepath.Join(workspaceRoot, "large.bin")
+	if err := os.WriteFile(filePath, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := os.Truncate(filePath, 101*1024*1024); err != nil {
+		t.Fatalf("Truncate() error = %v", err)
+	}
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	runtime := app.service.SurfaceUIRuntime("surface-1")
+	pickerID := runtime.ActivePathPickerID
+	if pickerID == "" {
+		t.Fatalf("expected active path picker, got %#v", runtime)
+	}
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		PickerEntry:      filepath.Base(filePath),
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+	})
+
+	ops := gateway.waitForOperationCount(4, 2*time.Second)
+	if len(ops) < 4 {
+		t.Fatalf("expected attach notice + picker send/select + terminal update, got %#v", ops)
+	}
+	var latestPickerCard *feishu.Operation
+	var terminalUpdate *feishu.Operation
+	for i := range ops {
+		op := &ops[i]
+		if op.Kind == feishu.OperationSendCard && op.CardTitle == "选择要发送的文件" {
+			latestPickerCard = op
+		}
+		if op.Kind == feishu.OperationUpdateCard && strings.Contains(strings.Join(cardMarkdownContents(op.CardElements), "\n"), "已开始发送，可继续其他操作") {
+			terminalUpdate = op
+		}
+	}
+	if latestPickerCard == nil || terminalUpdate == nil {
+		t.Fatalf("expected picker send card and terminal update, got %#v", ops)
+	}
+	if terminalUpdate.MessageID != latestPickerCard.MessageID {
+		t.Fatalf("expected terminal update to target latest picker card, got card=%#v update=%#v", latestPickerCard, terminalUpdate)
+	}
+	if got := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID; got != "" {
+		t.Fatalf("expected picker gate released after start, got %q", got)
+	}
+	cardText := strings.Join(cardMarkdownContents(terminalUpdate.CardElements), "\n")
+	for _, want := range []string{
+		"已开始发送，可继续其他操作",
+		"large.bin",
+		"101.0 MB",
+		"文件较大，请耐心等待",
+	} {
+		if !strings.Contains(cardText, want) {
+			t.Fatalf("expected terminal card to contain %q, got %q", want, cardText)
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(gateway.snapshotSendCalls()) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(gateway.snapshotSendCalls()) != 1 {
+		t.Fatalf("expected one background send call, got %#v", gateway.snapshotSendCalls())
+	}
+	time.Sleep(100 * time.Millisecond)
+	for _, op := range gateway.snapshotOperations() {
+		cardText := op.CardBody + "\n" + strings.Join(cardMarkdownContents(op.CardElements), "\n")
+		if strings.Contains(cardText, "已把 `large.bin` 发送到当前聊天") {
+			t.Fatalf("expected no extra success notice card, got %#v", gateway.snapshotOperations())
+		}
+	}
+}
+
+func TestHandleActionPathPickerConfirmSendFilePreflightFailureKeepsPickerOnSameCard(t *testing.T) {
+	gateway := &messageIDAssigningGateway{notify: make(chan struct{}, 16)}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	workspaceRoot := t.TempDir()
+	filePath := filepath.Join(workspaceRoot, "report.txt")
+	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	pickerID := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		PickerEntry:      filepath.Base(filePath),
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+	})
+
+	ops := gateway.waitForOperationCount(4, 2*time.Second)
+	if len(ops) < 4 {
+		t.Fatalf("expected attach notice + picker send/select + preflight failure update, got %#v", ops)
+	}
+	var latestPickerCard *feishu.Operation
+	var failureUpdate *feishu.Operation
+	for i := range ops {
+		op := &ops[i]
+		if op.Kind == feishu.OperationSendCard && op.CardTitle == "选择要发送的文件" {
+			latestPickerCard = op
+		}
+		if op.Kind == feishu.OperationUpdateCard && strings.Contains(strings.Join(cardMarkdownContents(op.CardElements), "\n"), "暂不支持发送飞书文件消息") {
+			failureUpdate = op
+		}
+	}
+	if latestPickerCard == nil || failureUpdate == nil {
+		t.Fatalf("expected picker failure to patch same card, got %#v", ops)
+	}
+	if failureUpdate.MessageID != latestPickerCard.MessageID {
+		t.Fatalf("expected preflight failure to update latest picker card, got card=%#v update=%#v", latestPickerCard, failureUpdate)
+	}
+	cardText := strings.Join(cardMarkdownContents(failureUpdate.CardElements), "\n")
+	if !strings.Contains(cardText, "暂不支持发送飞书文件消息") {
+		t.Fatalf("expected unsupported-sender hint on current card, got %q", cardText)
+	}
+	if got := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID; got != pickerID {
+		t.Fatalf("expected picker to remain active after preflight failure, got %q want %q", got, pickerID)
+	}
+}
+
+func TestHandleActionPathPickerConfirmSendFileBackgroundFailureEmitsLightNotice(t *testing.T) {
+	gateway := newMessageIDAssigningFileGateway()
+	gateway.sendFn = func(context.Context, feishu.IMFileSendRequest) (feishu.IMFileSendResult, error) {
+		return feishu.IMFileSendResult{}, &feishu.IMFileSendError{
+			Code: feishu.IMFileSendErrorUploadFailed,
+			Err:  errors.New("upload failed"),
+		}
+	}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	workspaceRoot := t.TempDir()
+	filePath := filepath.Join(workspaceRoot, "report.txt")
+	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	pickerID := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		PickerEntry:      filepath.Base(filePath),
+	})
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+	})
+
+	if got := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID; got != "" {
+		t.Fatalf("expected picker gate released after background failure, got %q", got)
+	}
+	var failureCard string
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, op := range gateway.snapshotOperations() {
+			cardText := op.CardBody + "\n" + strings.Join(cardMarkdownContents(op.CardElements), "\n")
+			if strings.Contains(cardText, "文件上传失败，请稍后重试") {
+				failureCard = cardText
+				break
+			}
+		}
+		if failureCard != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if failureCard == "" {
+		t.Fatalf("expected light failure notice after background send failure, got %#v", gateway.snapshotOperations())
+	}
+}
+
+func cardMarkdownContents(elements []map[string]any) []string {
+	var contents []string
+	for _, element := range elements {
+		if element["tag"] != "markdown" {
+			continue
+		}
+		if content, ok := element["content"].(string); ok && strings.TrimSpace(content) != "" {
+			contents = append(contents, content)
+		}
+	}
+	return contents
 }
 
 func assertDaemonContextHasDeadlineWithin(t *testing.T, ctx context.Context, max time.Duration) {

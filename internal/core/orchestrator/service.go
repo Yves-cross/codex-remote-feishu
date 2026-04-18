@@ -161,6 +161,10 @@ type PathPickerConsumer interface {
 	PathPickerCancelled(*Service, *state.SurfaceConsoleRecord, control.PathPickerResult) []control.UIEvent
 }
 
+type PathPickerConfirmLifecycleOwner interface {
+	PathPickerOwnsConfirmLifecycle() bool
+}
+
 const (
 	requestCaptureModeDeclineWithFeedback = "decline_with_feedback"
 	defaultModel                          = "gpt-5.4"

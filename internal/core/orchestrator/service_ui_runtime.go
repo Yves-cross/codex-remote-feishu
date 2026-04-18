@@ -78,6 +78,7 @@ type activeThreadHistoryRecord struct {
 
 type activePathPickerRecord struct {
 	PickerID     string
+	MessageID    string
 	OwnerUserID  string
 	OwnerFlowID  string
 	Mode         pathPickerMode

@@ -267,7 +267,7 @@ func (s *Service) feishuDirectRequestPromptEvent(surface *state.SurfaceConsoleRe
 
 func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPathPickerView, inline bool) control.UIEvent {
 	if !inline {
-		if messageID := s.pathPickerOwnerCardMessageID(surface, view.PickerID); messageID != "" {
+		if messageID := s.pathPickerMessageID(surface, view.PickerID); messageID != "" {
 			view.MessageID = messageID
 		}
 	}
@@ -279,6 +279,16 @@ func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view 
 		FeishuPathPickerView:     &view,
 		FeishuPathPickerContext:  s.buildFeishuPathPickerContextFromView(surface, view),
 	}
+}
+
+func (s *Service) pathPickerMessageID(surface *state.SurfaceConsoleRecord, pickerID string) string {
+	record := s.activePathPicker(surface)
+	if record != nil && strings.TrimSpace(record.PickerID) == strings.TrimSpace(pickerID) {
+		if messageID := strings.TrimSpace(record.MessageID); messageID != "" {
+			return messageID
+		}
+	}
+	return s.pathPickerOwnerCardMessageID(surface, pickerID)
 }
 
 func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView, inline bool) control.UIEvent {

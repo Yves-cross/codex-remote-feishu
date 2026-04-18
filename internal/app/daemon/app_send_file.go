@@ -4,16 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 )
 
 const sendIMFileCommandTimeout = 2 * time.Minute
+
+type preparedSendIMFile struct {
+	sender   feishu.IMFileSender
+	request  feishu.IMFileSendRequest
+	fileName string
+	fileSize int64
+}
 
 func (a *App) handleSendIMFileCommand(command control.DaemonCommand) []control.UIEvent {
 	a.mu.Lock()
@@ -25,60 +32,75 @@ func (a *App) handleSendIMFileCommand(command control.DaemonCommand) []control.U
 }
 
 func (a *App) handleSendIMFileCommandLocked(command control.DaemonCommand) []control.UIEvent {
+	prepared, failEvents, ok := a.prepareSendIMFileLocked(command)
+	if !ok {
+		return failEvents
+	}
+	if strings.TrimSpace(command.PickerID) != "" {
+		startEvents, started := a.service.HandleSendFileStarted(
+			command.SurfaceSessionID,
+			command.PickerID,
+			command.LocalPath,
+			prepared.fileSize,
+		)
+		if !started {
+			return startEvents
+		}
+		a.startSendIMFileBackground(command, prepared)
+		return startEvents
+	}
+	return a.runPreparedSendIMFileLocked(command, prepared)
+}
+
+func (a *App) prepareSendIMFileLocked(command control.DaemonCommand) (preparedSendIMFile, []control.UIEvent, bool) {
 	path := strings.TrimSpace(command.LocalPath)
 	if path == "" {
-		return sendFileNotice(command.SurfaceSessionID, "send_file_invalid", "文件路径无效，请重新选择后再试。")
+		return preparedSendIMFile{}, a.sendFilePreflightFailureLocked(command, "send_file_invalid", "文件路径无效，请重新选择后再试。"), false
 	}
-	info, err := os.Stat(path)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return sendFileNotice(command.SurfaceSessionID, "send_file_not_found", "所选文件已不存在，请重新选择。")
-	case err != nil:
-		return sendFileNotice(command.SurfaceSessionID, "send_file_access_failed", "读取文件失败，请确认这个文件当前可访问。")
-	case info.IsDir():
-		return sendFileNotice(command.SurfaceSessionID, "send_file_invalid", "当前只能发送文件，不能发送目录。")
+	fileSize, err := orchestrator.ValidateSendFilePath(path)
+	if err != nil {
+		code := "send_file_invalid"
+		switch {
+		case strings.Contains(err.Error(), "不存在"):
+			code = "send_file_not_found"
+		case strings.Contains(err.Error(), "可访问"):
+			code = "send_file_access_failed"
+		}
+		return preparedSendIMFile{}, a.sendFilePreflightFailureLocked(command, code, err.Error()), false
 	}
-
 	resolved, toolErr := a.resolveToolSurfaceContextLocked(command.SurfaceSessionID)
 	if toolErr != nil {
-		return sendFileNotice(command.SurfaceSessionID, "send_file_unavailable", sendFileToolErrorText(toolErr))
+		return preparedSendIMFile{}, a.sendFilePreflightFailureLocked(command, "send_file_unavailable", sendFileToolErrorText(toolErr)), false
 	}
-
 	sender, ok := a.gateway.(feishu.IMFileSender)
 	if !ok {
-		return sendFileNotice(command.SurfaceSessionID, "send_file_unavailable", "当前运行环境暂不支持发送飞书文件消息。")
+		return preparedSendIMFile{}, a.sendFilePreflightFailureLocked(command, "send_file_unavailable", "当前运行环境暂不支持发送飞书文件消息。"), false
 	}
+	return preparedSendIMFile{
+		sender: sender,
+		request: feishu.IMFileSendRequest{
+			GatewayID:        resolved.GatewayID,
+			SurfaceSessionID: resolved.SurfaceSessionID,
+			ChatID:           resolved.ChatID,
+			ActorUserID:      resolved.ActorUserID,
+			Path:             path,
+		},
+		fileName: filepath.Base(path),
+		fileSize: fileSize,
+	}, nil, true
+}
 
-	sendCtx, cancel := context.WithTimeout(context.Background(), sendIMFileCommandTimeout)
-	defer cancel()
-
-	// Do not hold the app lock across Feishu upload/send IO.
-	request := feishu.IMFileSendRequest{
-		GatewayID:        resolved.GatewayID,
-		SurfaceSessionID: resolved.SurfaceSessionID,
-		ChatID:           resolved.ChatID,
-		ActorUserID:      resolved.ActorUserID,
-		Path:             path,
-	}
+func (a *App) runPreparedSendIMFileLocked(command control.DaemonCommand, prepared preparedSendIMFile) []control.UIEvent {
 	a.mu.Unlock()
-	result, err := sender.SendIMFile(sendCtx, request)
+	result, err := a.sendPreparedIMFile(prepared)
 	a.mu.Lock()
 	if err != nil {
-		_ = a.observeFeishuPermissionError(resolved.GatewayID, err)
-		var sendErr *feishu.IMFileSendError
-		if errors.As(err, &sendErr) {
-			switch sendErr.Code {
-			case feishu.IMFileSendErrorUploadFailed:
-				return sendFileNotice(command.SurfaceSessionID, "send_file_upload_failed", "文件上传失败，请稍后重试。")
-			case feishu.IMFileSendErrorSendFailed, feishu.IMFileSendErrorMissingReceiveTarget, feishu.IMFileSendErrorGatewayNotRunning:
-				return sendFileNotice(command.SurfaceSessionID, "send_file_failed", "文件发送失败，请稍后重试。")
-			}
-		}
-		return sendFileNotice(command.SurfaceSessionID, "send_file_failed", "文件发送失败，请稍后重试。")
+		_ = a.observeFeishuPermissionError(prepared.request.GatewayID, err)
+		return sendFileFailureEvents(command.SurfaceSessionID, err)
 	}
 	fileName := strings.TrimSpace(result.FileName)
 	if fileName == "" {
-		fileName = filepath.Base(path)
+		fileName = strings.TrimSpace(prepared.fileName)
 	}
 	return []control.UIEvent{{
 		Kind:             control.UIEventNotice,
@@ -89,6 +111,59 @@ func (a *App) handleSendIMFileCommandLocked(command control.DaemonCommand) []con
 			Text:  fmt.Sprintf("已把 `%s` 发送到当前聊天。", fileName),
 		},
 	}}
+}
+
+func (a *App) startSendIMFileBackground(command control.DaemonCommand, prepared preparedSendIMFile) {
+	go func() {
+		result, err := a.sendPreparedIMFile(prepared)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.shuttingDown {
+			return
+		}
+		if err != nil {
+			_ = a.observeFeishuPermissionError(prepared.request.GatewayID, err)
+			a.handleUIEventsLocked(context.Background(), sendFileFailureEvents(command.SurfaceSessionID, err))
+			return
+		}
+		fileName := strings.TrimSpace(result.FileName)
+		if fileName == "" {
+			fileName = strings.TrimSpace(prepared.fileName)
+		}
+		a.debugf("send file background success: surface=%s file=%s size=%d", command.SurfaceSessionID, fileName, prepared.fileSize)
+	}()
+}
+
+func (a *App) sendPreparedIMFile(prepared preparedSendIMFile) (feishu.IMFileSendResult, error) {
+	sendCtx, cancel := context.WithTimeout(context.Background(), sendIMFileCommandTimeout)
+	defer cancel()
+	result, err := prepared.sender.SendIMFile(sendCtx, prepared.request)
+	if err != nil {
+		return feishu.IMFileSendResult{}, err
+	}
+	return result, nil
+}
+
+func (a *App) sendFilePreflightFailureLocked(command control.DaemonCommand, code, text string) []control.UIEvent {
+	if strings.TrimSpace(command.PickerID) != "" {
+		if events := a.service.HandleSendFilePreflightFailure(command.SurfaceSessionID, command.PickerID, text); len(events) != 0 {
+			return events
+		}
+	}
+	return sendFileNotice(command.SurfaceSessionID, code, text)
+}
+
+func sendFileFailureEvents(surfaceID string, err error) []control.UIEvent {
+	var sendErr *feishu.IMFileSendError
+	if errors.As(err, &sendErr) {
+		switch sendErr.Code {
+		case feishu.IMFileSendErrorUploadFailed:
+			return sendFileNotice(surfaceID, "send_file_upload_failed", "文件上传失败，请稍后重试。")
+		case feishu.IMFileSendErrorSendFailed, feishu.IMFileSendErrorMissingReceiveTarget, feishu.IMFileSendErrorGatewayNotRunning:
+			return sendFileNotice(surfaceID, "send_file_failed", "文件发送失败，请稍后重试。")
+		}
+	}
+	return sendFileNotice(surfaceID, "send_file_failed", "文件发送失败，请稍后重试。")
 }
 
 func sendFileToolErrorText(err *toolError) string {

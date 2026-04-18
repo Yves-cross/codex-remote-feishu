@@ -74,6 +74,35 @@ func TestProjectPathPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
 	}
 }
 
+func TestPathPickerTerminalElementsHideSelectorsAndButtons(t *testing.T) {
+	elements := pathPickerElements(control.FeishuPathPickerView{
+		PickerID:    "picker-1",
+		MessageID:   "om-card-1",
+		Mode:        control.PathPickerModeFile,
+		Title:       "发送文件",
+		Terminal:    true,
+		StatusTitle: "已开始发送，可继续其他操作",
+		StatusText:  "**文件**\n`report.txt`\n\n**大小**\n`101.0 MB`",
+	}, "life-terminal")
+	if len(elements) != 2 {
+		t.Fatalf("expected compact terminal picker elements, got %#v", elements)
+	}
+	if containsButtonLabel(elements, "确认") || containsButtonLabel(elements, "取消") {
+		t.Fatalf("expected terminal picker to omit buttons, got %#v", elements)
+	}
+	for _, element := range elements {
+		if cardStringValue(element["tag"]) == "select_static" {
+			t.Fatalf("expected terminal picker to omit selectors, got %#v", elements)
+		}
+	}
+	if !containsMarkdownExact(elements, "**已开始发送，可继续其他操作**") {
+		t.Fatalf("expected terminal status title, got %#v", elements)
+	}
+	if !containsMarkdownWithPrefix(elements, "**文件**") {
+		t.Fatalf("expected terminal status body, got %#v", elements)
+	}
+}
+
 func TestPathPickerElementsUseEnterAndSelectPayloadKinds(t *testing.T) {
 	elements := pathPickerElements(control.FeishuPathPickerView{
 		PickerID:     "picker-1",

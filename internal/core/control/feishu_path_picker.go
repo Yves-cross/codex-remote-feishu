@@ -66,6 +66,9 @@ type FeishuPathPickerView struct {
 	CanGoUp      bool
 	CanConfirm   bool
 	Hint         string
+	Terminal     bool
+	StatusTitle  string
+	StatusText   string
 	Entries      []FeishuPathPickerEntry
 }
 

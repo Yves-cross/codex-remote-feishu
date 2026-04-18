@@ -171,6 +171,11 @@ func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, p
 		return notice(surface, "path_picker_selection_missing", err.Error())
 	}
 	result := pathPickerResultFromRecord(record, selectedPath)
+	if consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind); ok {
+		if owner, ok := consumer.(PathPickerConfirmLifecycleOwner); ok && owner.PathPickerOwnsConfirmLifecycle() {
+			return consumer.PathPickerConfirmed(s, surface, result)
+		}
+	}
 	s.clearSurfacePathPicker(surface)
 	return s.dispatchPathPickerConfirmed(surface, result)
 }
@@ -416,6 +421,18 @@ func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, boo
 		return nil, false
 	}
 	return s.pickers.lookupPathPickerConsumer(kind)
+}
+
+func (s *Service) RecordPathPickerMessage(surfaceID, pickerID, messageID string) {
+	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
+	record := s.activePathPicker(surface)
+	if surface == nil || record == nil {
+		return
+	}
+	if strings.TrimSpace(record.PickerID) != strings.TrimSpace(pickerID) {
+		return
+	}
+	record.MessageID = strings.TrimSpace(messageID)
 }
 
 func canConfirmPathPicker(record *activePathPickerRecord) bool {

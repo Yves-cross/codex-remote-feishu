@@ -7,6 +7,9 @@ import (
 )
 
 func pathPickerElements(view control.FeishuPathPickerView, daemonLifecycleID string) []map[string]any {
+	if view.Terminal {
+		return terminalPathPickerElements(view)
+	}
 	switch view.Mode {
 	case control.PathPickerModeFile:
 		return fileModePathPickerElements(view, daemonLifecycleID)
@@ -15,6 +18,29 @@ func pathPickerElements(view control.FeishuPathPickerView, daemonLifecycleID str
 	default:
 		return directoryModePathPickerElements(view, daemonLifecycleID)
 	}
+}
+
+func terminalPathPickerElements(view control.FeishuPathPickerView) []map[string]any {
+	elements := make([]map[string]any, 0, 3)
+	if title := strings.TrimSpace(view.StatusTitle); title != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": "**" + title + "**",
+		})
+	}
+	if text := strings.TrimSpace(view.StatusText); text != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": text,
+		})
+	}
+	if hint := strings.TrimSpace(view.Hint); hint != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": renderSystemInlineTags(hint),
+		})
+	}
+	return elements
 }
 
 func fileModePathPickerElements(view control.FeishuPathPickerView, daemonLifecycleID string) []map[string]any {

@@ -283,6 +283,22 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			break
 		}
 	}
+	if event.FeishuPathPickerView != nil {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendCard {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordPathPickerMessage(
+				event.SurfaceSessionID,
+				event.FeishuPathPickerView.PickerID,
+				operation.MessageID,
+			)
+			break
+		}
+	}
 	if event.ExecCommandProgress == nil {
 		return
 	}
