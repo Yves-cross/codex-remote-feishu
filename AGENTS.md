@@ -187,6 +187,26 @@ Baseline requirements:
 - do not expose internal design-purpose text to end users
 - if baseline rules are intentionally changed, update `docs/general/web-design-guidelines.md` in the same change
 
+## Feishu Card Constraints Baseline
+
+For any design or implementation that touches Feishu cards, message-card patching, CardKit streaming, or card interaction pacing, consult:
+
+- `docs/general/feishu-card-api-constraints.md`
+
+Trigger area:
+
+- `internal/adapter/feishu/**`
+- `internal/core/orchestrator/**` when change alters Feishu-surface card payloads, update cadence, or interaction composition
+- `docs/general/feishu-card-ui-state-machine.md`
+- any design/doc discussing single-turn cards, live cards, approval cards, request cards, or plan/progress/final-card aggregation on Feishu
+
+Baseline requirements:
+
+- design against official hard limits first: card size, element count, per-message/per-card update qps, callback SLA, streaming/interaction switching
+- do not assume one giant card is safe without explicit size budget and degradation path
+- if a design may exceed limits, specify fallback up front: truncate, summarize, paginate, split card, or spill to text/file/link
+- when relying on a numeric Feishu platform limit in code or product design, re-check the latest official docs and sync `docs/general/feishu-card-api-constraints.md` if the baseline changed
+
 ## Documentation Convention
 
 For lifecycle/reference docs under `docs/`:

@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-16`
-> Summary: 新增 issue orchestration workflow 文档，并补齐最新文档索引。
+> Updated: `2026-04-18`
+> Summary: 新增飞书卡片与 OpenAPI 约束文档，并同步更新索引。
 
 ## 1. 适用范围
 
@@ -115,6 +115,7 @@
 - [dev-conversation-trace.md](./general/dev-conversation-trace.md)
 - [feishu-api-timeout-discipline.md](./general/feishu-api-timeout-discipline.md)
 - [feishu-business-card-interaction-principles.md](./general/feishu-business-card-interaction-principles.md)
+- [feishu-card-api-constraints.md](./general/feishu-card-api-constraints.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [feishu-im-message-research.md](./general/feishu-im-message-research.md)
 - [feishu-card-ui-state-machine.md](./general/feishu-card-ui-state-machine.md)
