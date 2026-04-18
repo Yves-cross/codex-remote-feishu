@@ -55,9 +55,53 @@ func TestApplyFeishuPermissionVerificationResultKeepsGapOnVerifyFailure(t *testi
 	}
 }
 
+func TestApplyFeishuPermissionVerificationResultClearsBrokerPermissionBlocks(t *testing.T) {
+	gateway := &permissionClearingGateway{}
+	app := New(":0", ":0", gateway, serverIdentityForTest())
+	if !app.observeFeishuPermissionError("app-1", &feishu.APIError{
+		API:  "im.v1.message.create",
+		Code: 99990001,
+		Msg:  "permission denied",
+		PermissionViolations: []feishu.APIErrorPermissionViolation{
+			{Type: "tenant", Subject: "im:message"},
+		},
+	}) {
+		t.Fatal("expected permission gap to be recorded")
+	}
+	app.applyFeishuPermissionVerificationResult("app-1", []feishu.AppScopeStatus{
+		{ScopeName: "im:message", ScopeType: "tenant", GrantStatus: 1},
+	}, nil)
+	if len(gateway.clearCalls) != 1 {
+		t.Fatalf("expected permission block clear to be forwarded once, got %#v", gateway.clearCalls)
+	}
+	if gateway.clearCalls[0].gatewayID != "app-1" {
+		t.Fatalf("unexpected gateway id: %#v", gateway.clearCalls[0])
+	}
+	if len(gateway.clearCalls[0].scopes) != 1 || gateway.clearCalls[0].scopes[0].ScopeName != "im:message" {
+		t.Fatalf("unexpected forwarded scopes: %#v", gateway.clearCalls[0].scopes)
+	}
+}
+
 func serverIdentityForTest() agentproto.ServerIdentity {
 	return agentproto.ServerIdentity{
 		PID:       42,
 		StartedAt: time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC),
 	}
+}
+
+type permissionClearingGateway struct {
+	recordingGateway
+	clearCalls []permissionClearCall
+}
+
+type permissionClearCall struct {
+	gatewayID string
+	scopes    []feishu.AppScopeStatus
+}
+
+func (g *permissionClearingGateway) ClearGrantedPermissionBlocks(gatewayID string, scopes []feishu.AppScopeStatus) {
+	g.clearCalls = append(g.clearCalls, permissionClearCall{
+		gatewayID: gatewayID,
+		scopes:    append([]feishu.AppScopeStatus(nil), scopes...),
+	})
 }

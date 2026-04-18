@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
@@ -149,19 +150,29 @@ func (g *LiveGateway) uploadFilePath(ctx context.Context, path string) (string, 
 			Err:  fmt.Errorf("upload file failed: %w", err),
 		}
 	}
-	resp, err := g.client.Im.V1.File.Create(ctx, larkim.NewCreateFileReqBuilder().
-		Body(body).
-		Build())
+	resp, err := DoSDK(ctx, g.broker, CallSpec{
+		GatewayID:  g.config.GatewayID,
+		API:        "im.v1.file.create",
+		Class:      CallClassIMSend,
+		Priority:   CallPriorityInteractive,
+		Retry:      RetryRateLimitOnly,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkim.CreateFileResp, error) {
+		resp, err := client.Im.V1.File.Create(callCtx, larkim.NewCreateFileReqBuilder().
+			Body(body).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		if !resp.Success() {
+			return resp, newAPIError("im.v1.file.create", resp.ApiResp, resp.CodeError)
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return "", "", &IMFileSendError{
 			Code: IMFileSendErrorUploadFailed,
 			Err:  fmt.Errorf("upload file failed: %w", err),
-		}
-	}
-	if !resp.Success() {
-		return "", "", &IMFileSendError{
-			Code: IMFileSendErrorUploadFailed,
-			Err:  newAPIError("im.v1.file.create", resp.ApiResp, resp.CodeError),
 		}
 	}
 	if resp.Data == nil {

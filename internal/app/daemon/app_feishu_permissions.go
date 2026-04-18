@@ -223,6 +223,10 @@ func (a *App) applyFeishuPermissionVerificationResult(gatewayID string, scopes [
 	}
 	if err != nil {
 		log.Printf("feishu permission verification failed: gateway=%s err=%v", gatewayID, err)
+		return
+	}
+	if clearer, ok := a.gateway.(feishu.PermissionBlockController); ok {
+		clearer.ClearGrantedPermissionBlocks(gatewayID, scopes)
 	}
 }
 

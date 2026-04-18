@@ -1,20 +1,16 @@
 package feishu
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
 	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
-	larkimv2 "github.com/larksuite/oapi-sdk-go/v3/service/im/v2"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
@@ -280,16 +276,13 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		}
 		resp, err := g.deleteMessageFn(ctx, operation.MessageID)
 		if err != nil {
-			return err
-		}
-		if !resp.Success() {
-			if ignoredMissingMessageDeleteError(resp.Code, resp.Msg) {
+			if resp != nil && ignoredMissingMessageDeleteError(resp.Code, resp.Msg) {
 				g.mu.Lock()
 				delete(g.messages, operation.MessageID)
 				g.mu.Unlock()
 				return nil
 			}
-			return newAPIError("im.v1.message.delete", resp.ApiResp, resp.CodeError)
+			return err
 		}
 		g.mu.Lock()
 		delete(g.messages, operation.MessageID)
@@ -299,20 +292,12 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		if operation.MessageID == "" {
 			return nil
 		}
-		resp, err := g.client.Im.V1.MessageReaction.Create(ctx, larkim.NewCreateMessageReactionReqBuilder().
-			MessageId(operation.MessageID).
-			Body(larkim.NewCreateMessageReactionReqBodyBuilder().
-				ReactionType(larkim.NewEmojiBuilder().EmojiType(operation.EmojiType).Build()).
-				Build()).
-			Build())
+		resp, err := g.createReactionFn(ctx, operation.MessageID, operation.EmojiType)
 		if err != nil {
-			return err
-		}
-		if !resp.Success() {
-			if ignoredMissingReactionCreateError(resp.Code, resp.Msg) {
+			if resp != nil && ignoredMissingReactionCreateError(resp.Code, resp.Msg) {
 				return nil
 			}
-			return newAPIError("im.v1.message_reaction.create", resp.ApiResp, resp.CodeError)
+			return err
 		}
 		g.mu.Lock()
 		if resp.Data != nil && resp.Data.ReactionId != nil {
@@ -327,21 +312,15 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		if reactionID == "" {
 			return nil
 		}
-		resp, err := g.client.Im.V1.MessageReaction.Delete(ctx, larkim.NewDeleteMessageReactionReqBuilder().
-			MessageId(operation.MessageID).
-			ReactionId(reactionID).
-			Build())
+		resp, err := g.deleteReactionFn(ctx, operation.MessageID, reactionID)
 		if err != nil {
-			return err
-		}
-		if !resp.Success() {
-			if ignoredMissingReactionDeleteError(resp.Code, resp.Msg) {
+			if resp != nil && ignoredMissingReactionDeleteError(resp.Code, resp.Msg) {
 				g.mu.Lock()
 				delete(g.reactions, reactionKey(operation.MessageID, operation.EmojiType))
 				g.mu.Unlock()
 				return nil
 			}
-			return newAPIError("im.v1.message_reaction.delete", resp.ApiResp, resp.CodeError)
+			return err
 		}
 		g.mu.Lock()
 		delete(g.reactions, reactionKey(operation.MessageID, operation.EmojiType))
@@ -587,291 +566,4 @@ func jsonSize(value any) (int, error) {
 		return 0, err
 	}
 	return len(data), nil
-}
-
-func (g *LiveGateway) botTimeSensitive(ctx context.Context, userIDType string, timeSensitive bool, userIDs []string) (*larkimv2.BotTimeSentiveFeedCardResp, error) {
-	return g.client.Im.V2.FeedCard.BotTimeSentive(
-		ctx,
-		larkimv2.NewBotTimeSentiveFeedCardReqBuilder().
-			UserIdType(userIDType).
-			Body(
-				larkimv2.NewBotTimeSentiveFeedCardReqBodyBuilder().
-					TimeSensitive(timeSensitive).
-					UserIds(userIDs).
-					Build(),
-			).
-			Build(),
-	)
-}
-
-func (g *LiveGateway) uploadOperationImage(ctx context.Context, operation Operation) (string, error) {
-	path := strings.TrimSpace(operation.ImagePath)
-	base64Data := strings.TrimSpace(operation.ImageBase64)
-	if path != "" {
-		imageKey, err := g.uploadImagePathFn(ctx, path)
-		if err == nil {
-			return imageKey, nil
-		}
-		if base64Data == "" {
-			return "", fmt.Errorf("upload image from saved path %q failed: %w", path, err)
-		}
-		log.Printf("feishu image upload path fallback: surface=%s path=%s err=%v", operation.SurfaceSessionID, path, err)
-		imageKey, fallbackErr := g.uploadImageBase64(ctx, base64Data)
-		if fallbackErr == nil {
-			return imageKey, nil
-		}
-		return "", fmt.Errorf("upload image failed: saved path %q: %v; base64 fallback: %w", path, err, fallbackErr)
-	}
-	if base64Data != "" {
-		return g.uploadImageBase64(ctx, base64Data)
-	}
-	return "", fmt.Errorf("upload image failed: missing image payload")
-}
-
-func (g *LiveGateway) uploadImageBase64(ctx context.Context, value string) (string, error) {
-	data, err := decodeBase64Image(value)
-	if err != nil {
-		return "", fmt.Errorf("decode image base64 failed: %w", err)
-	}
-	return g.uploadImageBytesFn(ctx, data)
-}
-
-func (g *LiveGateway) uploadImagePath(ctx context.Context, path string) (string, error) {
-	body, err := larkim.NewCreateImagePathReqBodyBuilder().
-		ImageType("message").
-		ImagePath(path).
-		Build()
-	if err != nil {
-		return "", err
-	}
-	resp, err := g.client.Im.V1.Image.Create(ctx, larkim.NewCreateImageReqBuilder().
-		Body(body).
-		Build())
-	if err != nil {
-		return "", err
-	}
-	if !resp.Success() {
-		return "", newAPIError("im.v1.image.create", resp.ApiResp, resp.CodeError)
-	}
-	if resp.Data == nil || strings.TrimSpace(stringPtr(resp.Data.ImageKey)) == "" {
-		return "", fmt.Errorf("upload image failed: missing image key")
-	}
-	return strings.TrimSpace(stringPtr(resp.Data.ImageKey)), nil
-}
-
-func (g *LiveGateway) uploadImageBytes(ctx context.Context, data []byte) (string, error) {
-	resp, err := g.client.Im.V1.Image.Create(ctx, larkim.NewCreateImageReqBuilder().
-		Body(larkim.NewCreateImageReqBodyBuilder().
-			ImageType("message").
-			Image(bytes.NewReader(data)).
-			Build()).
-		Build())
-	if err != nil {
-		return "", err
-	}
-	if !resp.Success() {
-		return "", newAPIError("im.v1.image.create", resp.ApiResp, resp.CodeError)
-	}
-	if resp.Data == nil || strings.TrimSpace(stringPtr(resp.Data.ImageKey)) == "" {
-		return "", fmt.Errorf("upload image failed: missing image key")
-	}
-	return strings.TrimSpace(stringPtr(resp.Data.ImageKey)), nil
-}
-
-func decodeBase64Image(value string) ([]byte, error) {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return nil, fmt.Errorf("empty image payload")
-	}
-	if strings.HasPrefix(strings.ToLower(trimmed), "data:") {
-		if comma := strings.Index(trimmed, ","); comma >= 0 {
-			trimmed = trimmed[comma+1:]
-		}
-	}
-	var builder strings.Builder
-	builder.Grow(len(trimmed))
-	for _, r := range trimmed {
-		switch r {
-		case ' ', '\n', '\r', '\t':
-			continue
-		default:
-			builder.WriteRune(r)
-		}
-	}
-	compact := builder.String()
-	decoders := []*base64.Encoding{
-		base64.StdEncoding,
-		base64.RawStdEncoding,
-		base64.URLEncoding,
-		base64.RawURLEncoding,
-	}
-	for _, decoder := range decoders {
-		data, err := decoder.DecodeString(compact)
-		if err == nil {
-			return data, nil
-		}
-	}
-	return nil, fmt.Errorf("invalid base64 image payload")
-}
-
-func (g *LiveGateway) createMessage(ctx context.Context, receiveIDType, receiveID, msgType, content string) (*larkim.CreateMessageResp, error) {
-	return g.client.Im.V1.Message.Create(ctx, larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(receiveIDType).
-		Body(larkim.NewCreateMessageReqBodyBuilder().
-			ReceiveId(receiveID).
-			MsgType(msgType).
-			Content(content).
-			Build()).
-		Build())
-}
-
-func (g *LiveGateway) replyMessage(ctx context.Context, messageID, msgType, content string) (*larkim.ReplyMessageResp, error) {
-	return g.client.Im.V1.Message.Reply(ctx, larkim.NewReplyMessageReqBuilder().
-		MessageId(messageID).
-		Body(larkim.NewReplyMessageReqBodyBuilder().
-			MsgType(msgType).
-			Content(content).
-			Build()).
-		Build())
-}
-
-func (g *LiveGateway) patchMessage(ctx context.Context, messageID, content string) (*larkim.PatchMessageResp, error) {
-	return g.client.Im.V1.Message.Patch(ctx, larkim.NewPatchMessageReqBuilder().
-		MessageId(messageID).
-		Body(larkim.NewPatchMessageReqBodyBuilder().
-			Content(content).
-			Build()).
-		Build())
-}
-
-func replyRespCode(resp *larkim.ReplyMessageResp) int {
-	if resp == nil {
-		return 0
-	}
-	return resp.Code
-}
-
-func replyRespMsg(resp *larkim.ReplyMessageResp) string {
-	if resp == nil {
-		return ""
-	}
-	return resp.Msg
-}
-
-func replyRespError(resp *larkim.ReplyMessageResp) error {
-	if resp == nil || resp.Success() {
-		return nil
-	}
-	return newAPIError("im.v1.message.reply", resp.ApiResp, larkcore.CodeError{
-		Code: resp.Code,
-		Msg:  resp.Msg,
-		Err:  resp.CodeError.Err,
-	})
-}
-
-func ignoredMissingReactionCreateError(_ int, msg string) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-	if msg == "" {
-		return false
-	}
-	if strings.Contains(msg, "message") {
-		if strings.Contains(msg, "not found") || strings.Contains(msg, "recalled") || strings.Contains(msg, "deleted") {
-			return true
-		}
-	}
-	missingHints := []string{
-		"目标消息不存在",
-		"消息不存在",
-		"消息已撤回",
-		"消息已删除",
-	}
-	for _, hint := range missingHints {
-		if strings.Contains(msg, strings.ToLower(hint)) {
-			return true
-		}
-	}
-	return false
-}
-
-func ignoredMissingReactionDeleteError(code int, msg string) bool {
-	if ignoredMissingReactionCreateError(code, msg) {
-		return true
-	}
-	msg = strings.ToLower(strings.TrimSpace(msg))
-	if msg == "" {
-		return false
-	}
-	if strings.Contains(msg, "reaction") {
-		if strings.Contains(msg, "not found") || strings.Contains(msg, "deleted") {
-			return true
-		}
-	}
-	missingHints := []string{
-		"表情不存在",
-		"表情已删除",
-	}
-	for _, hint := range missingHints {
-		if strings.Contains(msg, strings.ToLower(hint)) {
-			return true
-		}
-	}
-	return false
-}
-
-func ignoredMissingMessageDeleteError(_ int, msg string) bool {
-	msg = strings.ToLower(strings.TrimSpace(msg))
-	if msg == "" {
-		return false
-	}
-	if strings.Contains(msg, "not found") || strings.Contains(msg, "recalled") || strings.Contains(msg, "deleted") {
-		return true
-	}
-	missingHints := []string{
-		"目标消息不存在",
-		"消息不存在",
-		"消息已撤回",
-		"消息已删除",
-	}
-	for _, hint := range missingHints {
-		if strings.Contains(msg, strings.ToLower(hint)) {
-			return true
-		}
-	}
-	return false
-}
-
-func cardTemplate(themeKey, fallback string) string {
-	key := strings.ToLower(strings.TrimSpace(themeKey))
-	if key == "" {
-		key = strings.ToLower(strings.TrimSpace(fallback))
-	}
-	switch {
-	case key == cardThemeProgress:
-		return "wathet"
-	case key == cardThemePlan:
-		return "blue"
-	case key == cardThemeFinal:
-		return "blue"
-	case key == cardThemeSuccess, key == cardThemeApproval:
-		return "green"
-	case key == cardThemeError || strings.Contains(key, "error") || strings.Contains(key, "fail") || strings.Contains(key, "reject"):
-		return "red"
-	default:
-		return "grey"
-	}
-}
-
-func (g *LiveGateway) recordSurfaceMessage(messageID, surfaceSessionID string) {
-	if messageID == "" || surfaceSessionID == "" {
-		return
-	}
-	g.mu.Lock()
-	g.messages[messageID] = surfaceSessionID
-	g.mu.Unlock()
-}
-
-func (g *LiveGateway) deleteMessage(ctx context.Context, messageID string) (*larkim.DeleteMessageResp, error) {
-	return g.client.Im.V1.Message.Delete(ctx, larkim.NewDeleteMessageReqBuilder().
-		MessageId(messageID).
-		Build())
 }

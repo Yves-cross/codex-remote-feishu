@@ -3,8 +3,11 @@ package feishu
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -29,9 +32,12 @@ type APIError struct {
 	API                  string
 	Code                 int
 	Msg                  string
+	StatusCode           int
 	RequestID            string
 	LogID                string
 	Troubleshooter       string
+	RetryAfter           time.Duration
+	RateLimitResetAfter  time.Duration
 	Details              []APIErrorDetail
 	PermissionViolations []APIErrorPermissionViolation
 	Helps                []APIErrorHelp
@@ -62,6 +68,15 @@ type PermissionGapEvidence struct {
 	RequestID    string
 }
 
+type RateLimitEvidence struct {
+	API                 string
+	ErrorCode           int
+	StatusCode          int
+	RequestID           string
+	RetryAfter          time.Duration
+	RateLimitResetAfter time.Duration
+}
+
 var permissionScopePattern = regexp.MustCompile(`([a-z][a-z0-9_.-]*:[a-z0-9_.-]+)`)
 
 func newAPIError(api string, resp *larkcore.ApiResp, codeErr larkcore.CodeError) *APIError {
@@ -71,8 +86,11 @@ func newAPIError(api string, resp *larkcore.ApiResp, codeErr larkcore.CodeError)
 		Msg:  strings.TrimSpace(codeErr.Msg),
 	}
 	if resp != nil {
+		err.StatusCode = resp.StatusCode
 		err.RequestID = strings.TrimSpace(resp.RequestId())
 		err.LogID = strings.TrimSpace(resp.LogId())
+		err.RetryAfter = parseRetryAfterHeader(resp.Header)
+		err.RateLimitResetAfter = parseRateLimitResetHeader(resp.Header)
 	}
 	if codeErr.Err == nil {
 		return err
@@ -113,6 +131,10 @@ func newAPIError(api string, resp *larkcore.ApiResp, codeErr larkcore.CodeError)
 }
 
 func ExtractPermissionGap(err error) (PermissionGapEvidence, bool) {
+	var blockedErr *PermissionBlockedError
+	if errors.As(err, &blockedErr) {
+		return blockedErr.gap, blockedErr.gap.Scope != ""
+	}
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		if gap, ok := permissionGapFromAPIError(apiErr); ok {
@@ -126,6 +148,24 @@ func ExtractPermissionGap(err error) (PermissionGapEvidence, bool) {
 		}
 	}
 	return PermissionGapEvidence{}, false
+}
+
+func ExtractRateLimit(err error) (RateLimitEvidence, bool) {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr == nil {
+		return RateLimitEvidence{}, false
+	}
+	if apiErr.StatusCode != http.StatusTooManyRequests && apiErr.Code != 99991400 && apiErr.RetryAfter <= 0 && apiErr.RateLimitResetAfter <= 0 {
+		return RateLimitEvidence{}, false
+	}
+	return RateLimitEvidence{
+		API:                 strings.TrimSpace(apiErr.API),
+		ErrorCode:           apiErr.Code,
+		StatusCode:          apiErr.StatusCode,
+		RequestID:           firstNonEmpty(strings.TrimSpace(apiErr.RequestID), strings.TrimSpace(apiErr.LogID)),
+		RetryAfter:          apiErr.RetryAfter,
+		RateLimitResetAfter: apiErr.RateLimitResetAfter,
+	}, true
 }
 
 func permissionGapFromAPIError(err *APIError) (PermissionGapEvidence, bool) {
@@ -255,4 +295,64 @@ func detailValues(values []APIErrorDetail) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func parseRetryAfterHeader(header http.Header) time.Duration {
+	if header == nil {
+		return 0
+	}
+	return parseDurationHeaderValue(headerValue(header, "Retry-After"), time.Now())
+}
+
+func parseRateLimitResetHeader(header http.Header) time.Duration {
+	if header == nil {
+		return 0
+	}
+	return parseDurationHeaderValue(headerValue(header, "x-ogw-ratelimit-reset"), time.Now())
+}
+
+func parseDurationHeaderValue(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseFloat(value, 64); err == nil {
+		switch {
+		case secs > 1_000_000_000_000:
+			return positiveDuration(time.UnixMilli(int64(secs)).Sub(now))
+		case secs > 1_000_000_000:
+			return positiveDuration(time.Unix(int64(secs), 0).Sub(now))
+		default:
+			return positiveDuration(time.Duration(secs * float64(time.Second)))
+		}
+	}
+	if ts, err := http.ParseTime(value); err == nil {
+		return positiveDuration(ts.Sub(now))
+	}
+	return 0
+}
+
+func positiveDuration(value time.Duration) time.Duration {
+	if value < 0 {
+		return 0
+	}
+	return value
+}
+
+func headerValue(header http.Header, key string) string {
+	if header == nil {
+		return ""
+	}
+	if value := header.Get(key); strings.TrimSpace(value) != "" {
+		return value
+	}
+	for existingKey, values := range header {
+		if !strings.EqualFold(existingKey, key) || len(values) == 0 {
+			continue
+		}
+		if strings.TrimSpace(values[0]) != "" {
+			return values[0]
+		}
+	}
+	return ""
 }

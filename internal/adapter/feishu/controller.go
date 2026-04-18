@@ -22,6 +22,10 @@ type GatewayController interface {
 	GatewayAdminController
 }
 
+type PermissionBlockController interface {
+	ClearGrantedPermissionBlocks(gatewayID string, scopes []AppScopeStatus)
+}
+
 type GatewayAppConfig struct {
 	GatewayID             string
 	Name                  string

@@ -39,6 +39,7 @@ type LiveGatewayConfig struct {
 type LiveGateway struct {
 	config LiveGatewayConfig
 	client *lark.Client
+	broker *FeishuCallBroker
 
 	downloadImageFn    func(context.Context, string, string) (string, string, error)
 	uploadImagePathFn  func(context.Context, string) (string, error)
@@ -49,6 +50,8 @@ type LiveGateway struct {
 	replyMessageFn     func(context.Context, string, string, string) (*larkim.ReplyMessageResp, error)
 	patchMessageFn     func(context.Context, string, string) (*larkim.PatchMessageResp, error)
 	deleteMessageFn    func(context.Context, string) (*larkim.DeleteMessageResp, error)
+	createReactionFn   func(context.Context, string, string) (*larkim.CreateMessageReactionResp, error)
+	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
 
 	mu        sync.Mutex
@@ -94,6 +97,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway := &LiveGateway{
 		config:    config,
 		client:    client,
+		broker:    NewFeishuCallBroker(config.GatewayID, client),
 		reactions: map[string]string{},
 		messages:  map[string]string{},
 	}
@@ -106,6 +110,8 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway.replyMessageFn = gateway.replyMessage
 	gateway.patchMessageFn = gateway.patchMessage
 	gateway.deleteMessageFn = gateway.deleteMessage
+	gateway.createReactionFn = gateway.createReaction
+	gateway.deleteReactionFn = gateway.deleteReaction
 	gateway.botTimeSensitiveFn = gateway.botTimeSensitive
 	return gateway
 }
@@ -115,4 +121,11 @@ func (g *LiveGateway) Client() *lark.Client {
 		return nil
 	}
 	return g.client
+}
+
+func (g *LiveGateway) ClearGrantedPermissionBlocks(scopes []AppScopeStatus) {
+	if g == nil || g.broker == nil {
+		return
+	}
+	g.broker.ClearGrantedPermissionBlocks(scopes)
 }

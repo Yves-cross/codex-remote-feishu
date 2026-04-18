@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -196,14 +197,30 @@ func (g *LiveGateway) parsePostInputs(ctx context.Context, messageID, rawContent
 }
 
 func (g *LiveGateway) fetchMessage(ctx context.Context, messageID string) (*gatewayMessage, error) {
-	resp, err := g.client.Im.V1.Message.Get(ctx, larkim.NewGetMessageReqBuilder().
-		MessageId(messageID).
-		Build())
+	resp, err := DoSDK(ctx, g.broker, CallSpec{
+		GatewayID: g.config.GatewayID,
+		API:       "im.v1.message.get",
+		Class:     CallClassIMRead,
+		Priority:  CallPriorityReadAssist,
+		ResourceKey: FeishuResourceKey{
+			MessageID: messageID,
+		},
+		Retry:      RetrySafe,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkim.GetMessageResp, error) {
+		resp, err := client.Im.V1.Message.Get(callCtx, larkim.NewGetMessageReqBuilder().
+			MessageId(messageID).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		if !resp.Success() {
+			return resp, newAPIError("im.v1.message.get", resp.ApiResp, resp.CodeError)
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if !resp.Success() {
-		return nil, fmt.Errorf("get message failed: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 	if resp.Data == nil || len(resp.Data.Items) == 0 || resp.Data.Items[0] == nil {
 		return nil, fmt.Errorf("get message failed: empty response")
@@ -259,16 +276,33 @@ func (g *LiveGateway) fetchMessage(ctx context.Context, messageID string) (*gate
 }
 
 func (g *LiveGateway) downloadImage(ctx context.Context, messageID, imageKey string) (string, string, error) {
-	resp, err := g.client.Im.V1.MessageResource.Get(ctx, larkim.NewGetMessageResourceReqBuilder().
-		MessageId(messageID).
-		FileKey(imageKey).
-		Type("image").
-		Build())
+	resp, err := DoSDK(ctx, g.broker, CallSpec{
+		GatewayID: g.config.GatewayID,
+		API:       "im.v1.message_resource.get",
+		Class:     CallClassIMRead,
+		Priority:  CallPriorityReadAssist,
+		ResourceKey: FeishuResourceKey{
+			MessageID: messageID,
+			FileKey:   imageKey,
+		},
+		Retry:      RetrySafe,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkim.GetMessageResourceResp, error) {
+		resp, err := client.Im.V1.MessageResource.Get(callCtx, larkim.NewGetMessageResourceReqBuilder().
+			MessageId(messageID).
+			FileKey(imageKey).
+			Type("image").
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		if !resp.Success() {
+			return resp, newAPIError("im.v1.message_resource.get", resp.ApiResp, resp.CodeError)
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return "", "", err
-	}
-	if !resp.Success() {
-		return "", "", fmt.Errorf("download image failed: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 	dir := g.config.TempDir
 	if dir == "" {

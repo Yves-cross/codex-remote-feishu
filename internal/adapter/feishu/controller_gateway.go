@@ -132,6 +132,26 @@ func (c *MultiGatewayController) SendIMFile(ctx context.Context, req IMFileSendR
 	return result, nil
 }
 
+func (c *MultiGatewayController) ClearGrantedPermissionBlocks(gatewayID string, scopes []AppScopeStatus) {
+	gatewayID = normalizeGatewayID(gatewayID)
+	if gatewayID == "" {
+		return
+	}
+	c.mu.RLock()
+	worker := c.workers[gatewayID]
+	c.mu.RUnlock()
+	if worker == nil || worker.runtime == nil {
+		return
+	}
+	clearer, ok := worker.runtime.(interface {
+		ClearGrantedPermissionBlocks([]AppScopeStatus)
+	})
+	if !ok {
+		return
+	}
+	clearer.ClearGrantedPermissionBlocks(scopes)
+}
+
 func (c *MultiGatewayController) ensureWorkerRunningLocked(gatewayID string) error {
 	worker := c.workers[gatewayID]
 	if worker == nil || !worker.config.Enabled || !workerHasCredentials(worker.config) {

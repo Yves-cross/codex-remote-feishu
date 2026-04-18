@@ -284,6 +284,7 @@ type CallSpec struct {
     Priority    CallPriority
     ResourceKey FeishuResourceKey
     Retry       RetryPolicy
+    Permission  PermissionPolicy
 }
 ```
 
@@ -294,6 +295,7 @@ type CallSpec struct {
 - `Priority`：调度优先级
 - `ResourceKey`：资源键，用于细粒度限速
 - `Retry`：是否允许自动重试、最大次数、是否只对限流重试等
+- `Permission`：权限缺失命中后的本地策略，而不是把权限错误混进普通 retry
 
 ## 6. 分层与 lane 设计
 
@@ -523,7 +525,118 @@ type FeishuResourceKey struct {
 
 当前 SDK 能从 `ApiResp.Header` 取到原始 header，因此本设计在当前 SDK 版本上是可落地的。
 
-### 9.4 backoff 策略
+### 9.4 权限错误不是普通 retry，也不是纯永久失败
+
+权限错误和 rate-limit 不同：
+
+- 它通常不适合立刻自动重试
+- 但也不能简单归类为“永久失败后永不再管”
+- 因为一旦用户补齐权限，系统状态就已经变化
+
+因此 broker 里需要单独定义一类错误语义：
+
+- `PermissionBlocked`
+
+它和 `RateLimited`、`Transient`、`Permanent` 平级，而不是挂在 `RetrySafe` 下面的特例。
+
+### 9.5 权限缺失的第一版分型
+
+当前更适合先把权限缺失分成两类：
+
+#### A. 应用 scope 缺失
+
+典型场景：
+
+- 飞书 OpenAPI 返回缺少某个 `scope`
+- 返回里还带有更具体的 scope 名称和申请链接
+
+这类问题的特点是：
+
+- 当前请求立刻重试通常没有意义
+- 但用户补齐权限后，有可能自动恢复
+
+#### B. 资源 ACL / 文档级 / 群级权限拒绝
+
+典型场景：
+
+- 某个 Drive 文档当前没有访问权限
+- 某个群或资源对当前应用/用户不可操作
+
+这类错误虽然同样是“权限类问题”，但未必适合走和 app scope 完全相同的自动恢复路径。
+
+第一版建议：
+
+- app scope 缺失：做成可记录、可短路、可被后续权限刷新清除的 blocker
+- 资源 ACL 拒绝：先做成本地 cooldown/短路，不在第一版尝试“等权限恢复后自动回放”
+
+### 9.6 PermissionPolicy
+
+`CallSpec` 里的 `PermissionPolicy` 建议至少有三种：
+
+- `PermissionFailFast`
+  - 不做本地 blocker，直接把错误返回给调用方
+- `PermissionCooldownOnly`
+  - 记录权限缺失
+  - 对后续同类调用做本地短路，避免继续打飞书
+  - 但不在 broker 内挂起等待
+- `PermissionWaitForGrant`
+  - 为后续更强的“等权限恢复再重放”留接口
+  - 第一阶段先不作为主路径使用
+
+当前更建议第一阶段 IM 主链路先使用：
+
+- `PermissionCooldownOnly`
+
+理由是：
+
+- 当前仓库已经有 `app_feishu_permissions.go` 负责记录权限缺口与定期刷新
+- 先把“不要继续撞后端”和“status 能看到缺什么权限”打通，收益已经足够大
+- 真正的等待/重放语义可以后续再补，不必和第一阶段限速底座混在一起
+
+### 9.7 权限 breaker 的第一版形态
+
+第一版建议在 broker 内维护两层权限状态：
+
+1. `permission_key -> blocker`
+2. `api -> permission_key`
+
+其中：
+
+- `permission_key`
+  - 由 `scope + scopeType` 组成
+- `api -> permission_key`
+  - 来自最近一次真实命中的权限错误
+
+这样后续同一个 API 再进入 broker 时，就可以在本地先判断：
+
+- 这个 API 最近是否已经命中过某个已知权限缺失
+- 如果命中过，而且 blocker 仍有效，就先本地短路，而不是继续打飞书
+
+第一版不强求“一条权限能覆盖所有相关 API”的完全推理。
+先做到“同 API 不继续撞”已经能明显减少噪音和无意义请求。
+
+### 9.8 权限 blocker 的清除方式
+
+第一版建议尽量复用现有权限刷新逻辑，而不是在 broker 里再造一套探测器。
+
+当前仓库已经有：
+
+- `internal/app/daemon/app_feishu_permissions.go`
+
+它已经会：
+
+- 记录权限缺失
+- 定期调用 `application.v6.scope.list`
+- 在 scope 已授予后清理已知缺口
+
+因此 broker 更适合提供：
+
+- `MarkPermissionBlocked(...)`
+- `ClearGrantedPermissionBlocks(...)`
+
+由现有权限刷新结果来驱动清除，而不是 broker 自己不断额外探测。
+
+### 9.9 backoff 策略
 
 #### 第一优先：尊重 `x-ogw-ratelimit-reset`
 
@@ -550,7 +663,7 @@ type FeishuResourceKey struct {
 
 并叠加 jitter。
 
-### 9.5 为什么要共享 cooldown
+### 9.10 为什么要共享 cooldown
 
 如果只是让单个请求 sleep，会产生两个问题：
 
@@ -658,11 +771,25 @@ type FeishuResourceKey struct {
 - `message.get`
 - `message_resource.get`
 
+并且第一阶段只要求把这些底座先打通：
+
+- 统一 `DoSDK` 入口
+- app / class / resource 三层基础限速
+- rate-limit cooldown
+- 权限 blocker + 现有 permission refresh 清除联动
+
+第一阶段暂不要求：
+
+- Drive / Bitable / onboarding raw HTTP 接入
+- `PermissionWaitForGrant` 挂起重放
+- 完整 queue depth / metrics / admin debug 面
+- patch coalescing 与 read singleflight 一次性全上完
+
 原因：
 
 - 对用户体验收益最大
 - API 面足够集中
-- 能先验证资源键限速、patch coalescing、rate-limit backoff 是否好用
+- 能先验证资源键限速、权限 blocker、rate-limit backoff 是否好用
 
 ### 12.4 第二阶段接入范围
 
