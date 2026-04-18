@@ -35,7 +35,7 @@ func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory st
 		}
 		switch {
 		case snapshot.Attachment.SelectedThreadTitle != "":
-			lines = append(lines, snapshotField("当前输入目标", compactSnapshotStatusText(snapshot.Attachment.SelectedThreadTitle, snapshotStatusTitleLimit)))
+			lines = append(lines, snapshotField("当前输入目标", formatSnapshotDynamicValue(snapshot.Attachment.SelectedThreadTitle, snapshotStatusTitleLimit)))
 		case snapshot.Attachment.SelectedThreadID != "":
 			lines = append(lines, snapshotField("当前输入目标", "未命名会话"))
 		case snapshot.Attachment.RouteMode == "new_thread_ready":
@@ -46,15 +46,15 @@ func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory st
 			lines = append(lines, snapshotField("当前输入目标", "未绑定会话"))
 		}
 		if first := strings.TrimSpace(snapshot.Attachment.SelectedThreadFirstUserMessage); first != "" {
-			lines = append(lines, snapshotField("会话起点", compactSnapshotStatusText(first, snapshotStatusPreviewLimit)))
+			lines = append(lines, snapshotField("会话起点", formatSnapshotDynamicValue(first, snapshotStatusPreviewLimit)))
 		}
 		if lastUser := strings.TrimSpace(snapshot.Attachment.SelectedThreadLastUserMessage); lastUser != "" {
-			lines = append(lines, snapshotField("最近用户", compactSnapshotStatusText(lastUser, snapshotStatusPreviewLimit)))
+			lines = append(lines, snapshotField("最近用户", formatSnapshotDynamicValue(lastUser, snapshotStatusPreviewLimit)))
 		}
 		if lastAssistant := strings.TrimSpace(snapshot.Attachment.SelectedThreadLastAssistantMessage); lastAssistant != "" {
-			lines = append(lines, snapshotField("最近回复", compactSnapshotStatusText(lastAssistant, snapshotStatusPreviewLimit)))
+			lines = append(lines, snapshotField("最近回复", formatSnapshotDynamicValue(lastAssistant, snapshotStatusPreviewLimit)))
 		} else if preview := strings.TrimSpace(snapshot.Attachment.SelectedThreadPreview); preview != "" {
-			lines = append(lines, snapshotField("最近回复", compactSnapshotStatusText(preview, snapshotStatusPreviewLimit)))
+			lines = append(lines, snapshotField("最近回复", formatSnapshotDynamicValue(preview, snapshotStatusPreviewLimit)))
 		}
 		if age := strings.TrimSpace(snapshot.Attachment.SelectedThreadAgeText); age != "" && age != "时间未知" {
 			lines = append(lines, snapshotField("最近活跃", age))
@@ -87,7 +87,7 @@ func formatSnapshot(snapshot control.Snapshot, daemonBinary, currentDirectory st
 		lines = append(lines, "")
 		lines = append(lines, "**后台恢复中：**")
 		if snapshot.PendingHeadless.ThreadTitle != "" {
-			lines = append(lines, fmt.Sprintf("- %s", snapshotField("目标会话", snapshot.PendingHeadless.ThreadTitle)))
+			lines = append(lines, fmt.Sprintf("- %s", snapshotField("目标会话", formatSnapshotDynamicValue(snapshot.PendingHeadless.ThreadTitle, snapshotStatusTitleLimit))))
 		}
 		if snapshot.PendingHeadless.ThreadCWD != "" {
 			lines = append(lines, fmt.Sprintf("- %s", snapshotField("启动目录", formatNeutralTextTag(snapshot.PendingHeadless.ThreadCWD))))
@@ -223,6 +223,14 @@ func compactSnapshotStatusText(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit]) + "..."
+}
+
+func formatSnapshotDynamicValue(text string, limit int) string {
+	text = compactSnapshotStatusText(text, limit)
+	if text == "" {
+		return ""
+	}
+	return formatNeutralTextTag(text)
 }
 
 func displaySnapshotMode(mode string) string {

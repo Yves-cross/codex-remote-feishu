@@ -1245,13 +1245,81 @@ func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	if !containsAll(ops[0].CardBody,
-		"**当前输入目标：** droid · 这是一个特别长特别长特别长的当前输入目标...",
-		"**最近回复：** 这是一条特别长特别长特别长特别长的最近消息内容，...",
+		"**当前输入目标：** <text_tag color='neutral'>droid · 这是一个特别长特别长特别长的当前输入目标...</text_tag>",
+		"**最近回复：** <text_tag color='neutral'>这是一条特别长特别长特别长特别长的最近消息内容，...</text_tag>",
 	) {
 		t.Fatalf("expected snapshot body to compact long text, got %#v", ops[0].CardBody)
 	}
 	if strings.Contains(ops[0].CardBody, "**目标：**") {
 		t.Fatalf("snapshot body should not repeat target line, got %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotNeutralizesDynamicThreadText(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:                         "inst-1",
+				DisplayName:                        "droid",
+				SelectedThreadID:                   "thread-1",
+				SelectedThreadTitle:                "# 修复 `登录`",
+				SelectedThreadLastAssistantMessage: "[本地链接](docs/demo.md)\n- 列表项",
+				RouteMode:                          "pinned",
+			},
+			NextPrompt: control.PromptRouteSummary{
+				ThreadID:                 "thread-1",
+				ThreadTitle:              "# 修复 `登录`",
+				CWD:                      "/data/dl/droid",
+				EffectiveModel:           "gpt-5.4",
+				EffectiveReasoningEffort: "medium",
+				EffectiveAccessMode:      "confirm",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !containsAll(ops[0].CardBody,
+		"**当前输入目标：** <text_tag color='neutral'># 修复 `登录`</text_tag>",
+		"**最近回复：** <text_tag color='neutral'>[本地链接](docs/demo.md) - 列...</text_tag>",
+	) {
+		t.Fatalf("expected snapshot body to neutralize dynamic thread text, got %#v", ops[0].CardBody)
+	}
+}
+
+func TestProjectSnapshotNeutralizesPendingHeadlessThreadTitle(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventSnapshot,
+		Snapshot: &control.Snapshot{
+			Attachment: control.AttachmentSummary{
+				InstanceID:          "inst-1",
+				DisplayName:         "droid",
+				SelectedThreadID:    "thread-1",
+				SelectedThreadTitle: "修复登录流程",
+				RouteMode:           "pinned",
+			},
+			PendingHeadless: control.PendingHeadlessSummary{
+				InstanceID:  "inst-2",
+				ThreadTitle: "- 待恢复 `会话`",
+			},
+			NextPrompt: control.PromptRouteSummary{
+				ThreadID:                 "thread-1",
+				ThreadTitle:              "修复登录流程",
+				CWD:                      "/data/dl/droid",
+				EffectiveModel:           "gpt-5.4",
+				EffectiveReasoningEffort: "medium",
+				EffectiveAccessMode:      "confirm",
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if !strings.Contains(ops[0].CardBody, "- **目标会话：** <text_tag color='neutral'>- 待恢复 `会话`</text_tag>") {
+		t.Fatalf("expected pending headless title to be neutralized, got %#v", ops[0].CardBody)
 	}
 }
 
