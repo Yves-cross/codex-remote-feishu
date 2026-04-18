@@ -97,7 +97,7 @@
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡。复用路径选择器 projector 当前统一渲染成紧凑 `select_static`：目录模式提供“进入目录”下拉，文件模式提供“进入目录 + 选择文件”双下拉；若当前不在根目录，目录下拉会把 `..` 固定放在第一项作为返回上一级入口，并承担原先单独“上一级”按钮的职责；真实目录项里普通目录排在前，`.` 开头目录排在后 |
 | `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；默认仍交给 picker consumer 决定结果。当前已有两类同卡 patch 例外：一是 target picker owner-flow 子步骤会回填并 patch 原 owner card；二是独立 `/sendfile` 文件选择器会记录自身 message id，启动前失败继续 patch 当前 picker 卡，启动成功则把当前 picker 卡封成 terminal 状态 |
 | bare `/history` / `history_page` / `history_detail` | `mixed` | 当前由 Feishu UI controller 先把 owner-card runtime v1 中的当前 history flow 同步切到 loading，再异步发起 `thread.history.read`；列表/详情结果与失败态默认继续 patch 回同一张 history owner card |
-| bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；真正应用参数后仍进入产品状态变更，因此 apply 继续保持 append-only |
+| bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
 | `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
@@ -363,7 +363,6 @@ MCP request 卡片当前新增的可视语义：
 
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
-- 参数应用，例如 `/mode vscode`、`/autowhip on`
 - `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理；大多数 consumer 结果仍保持 append-only，当前例外只有 target picker owner-flow 子步骤会 patch 回原 owner card，以及独立 `/sendfile` picker 的启动前失败/启动成功终态会 patch 回当前 picker 卡
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
 - `/help` 这类静态帮助/目录卡，即使底层仍是 `FeishuDirectCommandCatalog`，当前也不属于 replaceable UI navigation
@@ -372,6 +371,11 @@ MCP request 卡片当前新增的可视语义：
 
 当前新增补充：
 
+- 参数卡 apply 当前是分流语义：
+  - 若动作来自当前参数卡的 stamped callback（也就是 callback payload 带有效 `daemon_lifecycle_id`，且命中当前 command card owner），`/mode` `/autowhip` `/verbose` `/model` `/reasoning` `/access` 的 apply 会走同卡 patch
+  - 成功与 no-op 会把原卡封成 sealed terminal card，并附带“如需再次调整，请重新发送对应命令”的 reopen 提示
+  - 校验失败、参数格式错误、或仍未接管目标等前置条件失败，会继续留在同一张参数卡上，保留可重试表单；必要时把刚才输入的参数回填到默认值
+  - 若动作不是从当前参数卡 callback 进入，例如用户直接发送 `/mode vscode`、`/autowhip on`，则仍保持 append-only，不会把普通文本 slash 升级成 inline replace
 - stamped 菜单命令里的非 inline 命令（例如 `/status`、`/stop`、`/steerall`、`/new`、`/follow`、`/detach`）会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡。
 - bare `/upgrade`、bare `/debug`、bare `/cron` 当前不再走“命令已提交”锚点，而是直接在当前卡内同步承接到下一张 command catalog。
 - 中间结果卡当前统一偏向直接 append 到会话，而不再 reply 到触发消息；当前命中的路径包括 `当前计划`、共享过程卡，以及文本触发 `/history` 的首张 patchable history card。保留 reply 语义的主路径只剩 final reply（以及图片输出这类非卡片结果）。
@@ -401,7 +405,7 @@ MCP request 卡片当前新增的可视语义：
     - 若 anchor 已因 detach、daemon lifecycle 变化或 turn identity 不匹配而失效，则静默放弃，不再尝试补丁
 - bare `/upgrade`、bare `/debug` 在 stamped 菜单卡里会直接同位承接为对应状态/输入卡（replace 当前菜单卡），不再先外跳 append 一张新卡。
 - “命令已提交”锚点卡当前会在短延时后尝试 best-effort 自动撤回；撤回失败时仅静默降级，不影响主流程。
-- 这条路径不会改变产品动作 owner，也不会把参数应用动作改成 inline replace。
+- 这条路径不会改变产品动作 owner；参数卡 apply 的同卡收口也不复用“命令已提交”锚点，而是由产品 handler 直接返回可 patch 的 command card 结果。
 - 共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `context_compaction`，并可在底部临时附着 reasoning 状态）不走 callback replace，也不属于旧卡 freshness 判定面：
   - 第一次直接 append 到当前会话，不再 reply 到触发这轮 turn 的源消息
   - 若同一 turn 内继续收到新的可见过程项，则改用 `message.patch` 更新同一消息；当前会把 `exec_command`、`web_search`、`mcp_tool_call`、`dynamic_tool_call` 与 `context_compaction` 累积到同一张“处理中”卡
@@ -576,8 +580,10 @@ MCP request 卡片当前新增的可视语义：
   - 锁定 `UIEvent` 现在会携带显式 `Feishu*Context` query/policy 元数据；selection/command view 的 UI owner 已切到 read model，但用户可见行为保持不变
 - [internal/core/orchestrator/service_local_request_menu_test.go](../../internal/core/orchestrator/service_local_request_menu_test.go)
   - 锁定 `/help` 与 `/menu` 当前共用 display projection：normal mode 会把 `/list` / `/use` / `/useall` 收口成 `选择工作区/会话`，vscode mode 继续保留三者分开展示
+- [internal/core/orchestrator/service_command_card_test.go](../../internal/core/orchestrator/service_command_card_test.go)
+  - 锁定参数卡 apply 的同卡收口边界：成功 / no-op 封成 sealed terminal card、格式错误保留同卡重试、未接管目标时回到同卡恢复态
 - [internal/app/daemon/app_test.go](../../internal/app/daemon/app_test.go)
-  - 锁定 daemon ingress 统一入口下的 inline replace 结果、菜单命令提交态锚点（replace 提交态 + append 结果）、`/help` 保持 append-only、active path picker 会阻断 competing `/menu`、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
+  - 锁定 daemon ingress 统一入口下的 inline replace 结果、菜单命令提交态锚点（replace 提交态 + append 结果）、参数卡 callback apply 走同卡 replace 而纯文本参数 apply 继续 append-only、`/help` 保持 append-only、active path picker 会阻断 competing `/menu`、same-daemon pure navigation 采用 current-surface rerender，以及 old-card 导航/命令被拒绝而不是继续 replace
 - [internal/app/daemon/app_menu_handoff_test.go](../../internal/app/daemon/app_menu_handoff_test.go)
   - 锁定 `/list` 在 normal / vscode 两种模式下都改走菜单同卡 handoff，以及 `/sendfile` 会直接把菜单卡替换成文件选择卡
 - [internal/app/daemon/app_submission_anchor_test.go](../../internal/app/daemon/app_submission_anchor_test.go)

@@ -34,6 +34,18 @@ func InlineCardReplacementPolicy(action Action) (FeishuUIInlineReplacePolicy, bo
 }
 
 func inlineReplaceableFeishuUIIntentAction(action Action) bool {
+	switch action.Kind {
+	case ActionModeCommand,
+		ActionAutoContinueCommand,
+		ActionReasoningCommand,
+		ActionAccessCommand,
+		ActionModelCommand,
+		ActionVerboseCommand:
+		if isSingleTokenSlashCommand(action.Text) {
+			break
+		}
+		return true
+	}
 	intent, ok := FeishuUIIntentFromAction(action)
 	if !ok || intent == nil {
 		return false

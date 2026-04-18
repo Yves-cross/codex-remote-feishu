@@ -1,0 +1,447 @@
+package orchestrator
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
+)
+
+func clearAutoContinueRuntime(surface *state.SurfaceConsoleRecord) {
+	if surface == nil {
+		return
+	}
+	surface.AutoContinue = state.AutoContinueRuntimeRecord{}
+}
+
+func parseProductMode(value string) (state.ProductMode, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "normal":
+		return state.ProductModeNormal, true
+	case "vscode", "vs-code", "vs_code":
+		return state.ProductModeVSCode, true
+	default:
+		return "", false
+	}
+}
+
+func parseSurfaceVerbosity(value string) (state.SurfaceVerbosity, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "quiet":
+		return state.SurfaceVerbosityQuiet, true
+	case "normal":
+		return state.SurfaceVerbosityNormal, true
+	case "verbose":
+		return state.SurfaceVerbosityVerbose, true
+	default:
+		return "", false
+	}
+}
+
+func commandCardOwnsInlineResult(action control.Action) bool {
+	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
+}
+
+func actionCommandArgumentText(action control.Action) string {
+	text := strings.TrimSpace(action.Text)
+	if text == "" {
+		return ""
+	}
+	idx := strings.IndexAny(text, " \t")
+	if idx < 0 || idx+1 >= len(text) {
+		return ""
+	}
+	return strings.TrimSpace(text[idx+1:])
+}
+
+func (s *Service) buildCommandConfigViewForAction(surface *state.SurfaceConsoleRecord, action control.Action, cardState control.FeishuCommandConfigView) control.FeishuCommandView {
+	switch action.Kind {
+	case control.ActionModeCommand:
+		return s.buildModeCommandViewState(surface, cardState)
+	case control.ActionAutoContinueCommand:
+		return s.buildAutoContinueCommandViewState(surface, cardState)
+	case control.ActionReasoningCommand:
+		return s.buildReasoningCommandViewState(surface, cardState)
+	case control.ActionAccessCommand:
+		return s.buildAccessCommandViewState(surface, cardState)
+	case control.ActionModelCommand:
+		return s.buildModelCommandViewState(surface, cardState)
+	case control.ActionVerboseCommand:
+		return s.buildVerboseCommandViewState(surface, cardState)
+	default:
+		return control.FeishuCommandView{}
+	}
+}
+
+func (s *Service) inlineCommandCardEvents(surface *state.SurfaceConsoleRecord, action control.Action, cardState control.FeishuCommandConfigView, extra ...control.UIEvent) []control.UIEvent {
+	view := s.buildCommandConfigViewForAction(surface, action, cardState)
+	events := []control.UIEvent{s.commandViewEvent(surface, view)}
+	return append(events, extra...)
+}
+
+func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	current := s.normalizeSurfaceProductMode(surface)
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildModeCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：/mode 查看当前状态；/mode normal；/mode vscode。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_mode_usage", "用法：/mode 查看当前状态；/mode normal；/mode vscode。")
+	}
+	target, ok := parseProductMode(parts[1])
+	if !ok {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：/mode 查看当前状态；/mode normal；/mode vscode。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_mode_usage", "用法：/mode 查看当前状态；/mode normal；/mode vscode。")
+	}
+	if target == current {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "info",
+				StatusText: fmt.Sprintf("当前已处于 %s 模式。", target),
+			})
+		}
+		return notice(surface, "surface_mode_current", fmt.Sprintf("当前已处于 %s 模式。", target))
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if s.surfaceHasLiveRemoteWork(surface) || s.surfaceNeedsDelayedDetach(surface, inst) {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind: "error",
+				StatusText: "当前仍有执行中的 turn、派发中的请求或排队消息，暂时不能切换模式。请等待完成、/stop，或先 /detach。",
+			})
+		}
+		return notice(surface, "surface_mode_busy", "当前仍有执行中的 turn、派发中的请求或排队消息，暂时不能切换模式。请等待完成、/stop，或先 /detach。")
+	}
+
+	events := s.discardDrafts(surface)
+	pending := surface.PendingHeadless
+	events = append(events, s.finalizeDetachedSurface(surface)...)
+	if pending != nil {
+		events = append(events, control.UIEvent{
+			Kind:             control.UIEventDaemonCommand,
+			SurfaceSessionID: surface.SurfaceSessionID,
+			DaemonCommand: &control.DaemonCommand{
+				Kind:             control.DaemonCommandKillHeadless,
+				SurfaceSessionID: surface.SurfaceSessionID,
+				InstanceID:       pending.InstanceID,
+				ThreadID:         pending.ThreadID,
+				ThreadTitle:      pending.ThreadTitle,
+				ThreadCWD:        pending.ThreadCWD,
+			},
+		})
+	}
+	surface.ProductMode = target
+	if commandCardOwnsInlineResult(action) {
+		statusText := fmt.Sprintf("已切换到 %s 模式。当前没有接管中的目标。", target)
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: statusText,
+		}, events...)
+	}
+	return append(events, notice(surface, "surface_mode_switched", fmt.Sprintf("已切换到 %s 模式。当前没有接管中的目标。", target))...)
+}
+
+func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildAutoContinueCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "auto_continue_usage", "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。")
+	}
+
+	switch strings.ToLower(parts[1]) {
+	case "on", "enable", "enabled", "true":
+		if surface.AutoContinue.Enabled {
+			if commandCardOwnsInlineResult(action) {
+				return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+					Sealed:     true,
+					StatusKind: "info",
+					StatusText: "当前飞书会话的 autowhip 已开启。",
+				})
+			}
+			return notice(surface, "auto_continue_enabled", "当前飞书会话的 autowhip 已开启。")
+		}
+		clearAutoContinueRuntime(surface)
+		surface.AutoContinue.Enabled = true
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已开启当前飞书会话的 autowhip。服务重启后不会恢复之前的 autowhip 状态。",
+			})
+		}
+		return notice(surface, "auto_continue_enabled", "已开启当前飞书会话的 autowhip。服务重启后不会恢复之前的 autowhip 状态。")
+	case "off", "disable", "disabled", "false":
+		clearAutoContinueRuntime(surface)
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已关闭当前飞书会话的 autowhip。",
+			})
+		}
+		return notice(surface, "auto_continue_disabled", "已关闭当前飞书会话的 autowhip。")
+	default:
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "auto_continue_usage", "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。")
+	}
+}
+
+func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildVerboseCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_verbose_usage", "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。")
+	}
+	target, ok := parseSurfaceVerbosity(parts[1])
+	if !ok {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_verbose_usage", "用法：`/verbose` 查看当前设置；`/verbose quiet`；`/verbose normal`；`/verbose verbose`。")
+	}
+	current := state.NormalizeSurfaceVerbosity(surface.Verbosity)
+	if target == current {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "info",
+				StatusText: fmt.Sprintf("当前飞书前端详细程度已经是 %s。", target),
+			})
+		}
+		return notice(surface, "surface_verbose_current", fmt.Sprintf("当前飞书前端详细程度已经是 %s。", target))
+	}
+	surface.Verbosity = target
+	if commandCardOwnsInlineResult(action) {
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: fmt.Sprintf("已将当前飞书会话的前端详细程度切换为 %s。", target),
+		})
+	}
+	return notice(surface, "surface_verbose_updated", fmt.Sprintf("已将当前飞书会话的前端详细程度切换为 %s。", target))
+}
+
+func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildModelCommandView(surface))}
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind: "error",
+				StatusText: s.notAttachedText(surface),
+			})
+		}
+		return notice(surface, "not_attached", s.notAttachedText(surface))
+	}
+	if len(parts) == 2 && isClearCommand(parts[1]) {
+		surface.PromptOverride.Model = ""
+		surface.PromptOverride.ReasoningEffort = ""
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已清除飞书临时模型覆盖。之后从飞书发送的消息将恢复使用底层真实配置。",
+			})
+		}
+		return notice(surface, "surface_override_cleared", "已清除飞书临时模型覆盖。之后从飞书发送的消息将恢复使用底层真实配置。")
+	}
+	if len(parts) > 3 {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/model` 查看当前配置；`/model <模型>`；`/model <模型> <推理强度>`；`/model clear`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_override_usage", "用法：`/model` 查看当前配置；`/model <模型>`；`/model <模型> <推理强度>`；`/model clear`。")
+	}
+	override := surface.PromptOverride
+	override.Model = parts[1]
+	if len(parts) == 3 {
+		if !looksLikeReasoningEffort(parts[2]) {
+			if commandCardOwnsInlineResult(action) {
+				return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+					StatusKind:       "error",
+					StatusText:       "推理强度建议使用 `low`、`medium`、`high` 或 `xhigh`。",
+					FormDefaultValue: actionCommandArgumentText(action),
+				})
+			}
+			return notice(surface, "surface_override_usage", "推理强度建议使用 `low`、`medium`、`high` 或 `xhigh`。")
+		}
+		override.ReasoningEffort = strings.ToLower(parts[2])
+	}
+	surface.PromptOverride = override
+	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	if commandCardOwnsInlineResult(action) {
+		_ = summary
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: "已更新飞书临时模型覆盖。",
+		})
+	}
+	return notice(surface, "surface_override_updated", formatOverrideNotice(summary, "已更新飞书临时模型覆盖。"))
+}
+
+func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildReasoningCommandView(surface))}
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind: "error",
+				StatusText: s.notAttachedText(surface),
+			})
+		}
+		return notice(surface, "not_attached", s.notAttachedText(surface))
+	}
+	if len(parts) == 2 && isClearCommand(parts[1]) {
+		surface.PromptOverride.ReasoningEffort = ""
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已清除飞书临时推理强度覆盖。",
+			})
+		}
+		return notice(surface, "surface_override_reasoning_cleared", "已清除飞书临时推理强度覆盖。")
+	}
+	if len(parts) != 2 || !looksLikeReasoningEffort(parts[1]) {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/reasoning` 查看当前配置；`/reasoning <推理强度>`；`/reasoning clear`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_override_usage", "用法：`/reasoning` 查看当前配置；`/reasoning <推理强度>`；`/reasoning clear`。")
+	}
+	surface.PromptOverride.ReasoningEffort = strings.ToLower(parts[1])
+	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	if commandCardOwnsInlineResult(action) {
+		_ = summary
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: "已更新飞书临时推理强度覆盖。",
+		})
+	}
+	return notice(surface, "surface_override_updated", formatOverrideNotice(summary, "已更新飞书临时推理强度覆盖。"))
+}
+
+func (s *Service) handleAccessCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildAccessCommandView(surface))}
+	}
+	inst := s.root.Instances[surface.AttachedInstanceID]
+	if inst == nil {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind: "error",
+				StatusText: s.notAttachedText(surface),
+			})
+		}
+		return notice(surface, "not_attached", s.notAttachedText(surface))
+	}
+	if len(parts) != 2 {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "用法：`/access` 查看当前配置；`/access full`；`/access confirm`；`/access clear`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_access_usage", "用法：`/access` 查看当前配置；`/access full`；`/access confirm`；`/access clear`。")
+	}
+	if isClearCommand(parts[1]) {
+		surface.PromptOverride.AccessMode = ""
+		surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+		summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+		if commandCardOwnsInlineResult(action) {
+			_ = summary
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已恢复飞书默认执行权限。",
+			})
+		}
+		return notice(surface, "surface_access_reset", formatOverrideNotice(summary, "已恢复飞书默认执行权限。"))
+	}
+	mode := agentproto.NormalizeAccessMode(parts[1])
+	if mode == "" {
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				StatusKind:       "error",
+				StatusText:       "执行权限建议使用 `full` 或 `confirm`。",
+				FormDefaultValue: actionCommandArgumentText(action),
+			})
+		}
+		return notice(surface, "surface_access_usage", "执行权限建议使用 `full` 或 `confirm`。")
+	}
+	surface.PromptOverride.AccessMode = mode
+	surface.PromptOverride = compactPromptOverride(surface.PromptOverride)
+	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	if commandCardOwnsInlineResult(action) {
+		_ = summary
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: "已更新飞书执行权限模式。",
+		})
+	}
+	return notice(surface, "surface_access_updated", formatOverrideNotice(summary, "已更新飞书执行权限模式。"))
+}

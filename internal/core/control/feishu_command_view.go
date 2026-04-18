@@ -20,4 +20,8 @@ type FeishuCommandConfigView struct {
 	EffectiveValue     string
 	OverrideValue      string
 	OverrideExtraValue string
+	FormDefaultValue   string
+	StatusKind         string
+	StatusText         string
+	Sealed             bool
 }

@@ -382,7 +382,7 @@ func TestHandleGatewayActionReplacesBareModeCardForCardNavigation(t *testing.T) 
 	}
 }
 
-func TestHandleGatewayActionKeepsParameterApplyAppendOnly(t *testing.T) {
+func TestHandleGatewayActionReplacesCardOwnedParameterApply(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
 		PID:       42,
@@ -402,8 +402,36 @@ func TestHandleGatewayActionKeepsParameterApplyAppendOnly(t *testing.T) {
 		},
 	})
 
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement for card-owned parameter apply, got %#v", result)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operation for card-owned parameter apply, got %#v", gateway.operations)
+	}
+	if result.ReplaceCurrentCard.CardTitle != "autowhip" {
+		t.Fatalf("unexpected replacement card: %#v", result.ReplaceCurrentCard)
+	}
+}
+
+func TestHandleGatewayActionKeepsTypedParameterApplyAppendOnly(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionAutoContinueCommand,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/autowhip on",
+	})
+
 	if result != nil {
-		t.Fatalf("expected append-only behavior for parameter apply, got %#v", result)
+		t.Fatalf("expected append-only behavior for typed parameter apply, got %#v", result)
 	}
 	if len(gateway.operations) != 1 {
 		t.Fatalf("expected one appended gateway operation, got %#v", gateway.operations)

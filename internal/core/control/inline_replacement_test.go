@@ -20,8 +20,8 @@ func TestInlineCardReplacementPolicy(t *testing.T) {
 	if _, ok := InlineCardReplacementPolicy(Action{
 		Kind: ActionModeCommand,
 		Text: "/mode vscode",
-	}); ok {
-		t.Fatal("expected parameter apply to stay append-only")
+	}); !ok {
+		t.Fatal("expected parameter apply to follow inline replacement policy when card freshness is present")
 	}
 }
 
@@ -64,12 +64,12 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 		{
 			name:   "parameter apply",
 			action: Action{Kind: ActionModeCommand, Text: "/mode vscode"},
-			want:   false,
+			want:   true,
 		},
 		{
 			name:   "verbose parameter apply",
 			action: Action{Kind: ActionVerboseCommand, Text: "/verbose quiet"},
-			want:   false,
+			want:   true,
 		},
 		{
 			name:   "scoped thread expansion",
@@ -176,6 +176,17 @@ func TestAllowsInlineCardReplacementForPathPickerNavigation(t *testing.T) {
 	}
 	if !AllowsInlineCardReplacement(action) {
 		t.Fatal("expected inline replacement for path picker navigation")
+	}
+}
+
+func TestAllowsInlineCardReplacementForCommandCardApply(t *testing.T) {
+	action := Action{
+		Kind:    ActionReasoningCommand,
+		Text:    "/reasoning high",
+		Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	}
+	if !AllowsInlineCardReplacement(action) {
+		t.Fatal("expected inline replacement for command-card apply")
 	}
 }
 

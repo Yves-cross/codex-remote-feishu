@@ -265,9 +265,7 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 		}
 		a.invalidateVSCodeCompatibilityCacheLocked()
 		promptEvents, _ := a.maybePromptVSCodeCompatibilityAtLocked(action.SurfaceSessionID, time.Now().UTC())
-		if inlineResult == nil {
-			a.handleUIEventsLocked(ctx, promptEvents)
-		}
+		a.handleUIEventsLocked(ctx, promptEvents)
 	}
 	return inlineResult
 }
