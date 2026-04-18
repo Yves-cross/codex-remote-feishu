@@ -323,6 +323,7 @@ type Notice struct {
 	Title    string
 	Text     string
 	ThemeKey string
+	Sections []FeishuCardTextSection
 }
 
 type ThreadSelectionChanged struct {

@@ -126,16 +126,19 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if title == "" {
 			title = "系统提示"
 		}
+		body, elements := projectNoticeContent(*event.Notice)
+		theme := noticeThemeKey(*event.Notice)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
-			CardBody:         projectNoticeBody(*event.Notice),
-			CardThemeKey:     noticeThemeKey(*event.Notice),
+			CardBody:         body,
+			CardThemeKey:     theme,
+			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             legacyCardDocument(title, projectNoticeBody(*event.Notice), noticeThemeKey(*event.Notice), nil),
+			card:             rawCardDocument(title, body, theme, elements),
 		}}
 	case control.UIEventPlanUpdated:
 		if event.PlanUpdate == nil {
@@ -794,18 +797,6 @@ func formatElapsedDuration(value time.Duration) string {
 		b.WriteString(fmt.Sprintf("%d秒", seconds))
 	}
 	return b.String()
-}
-
-func projectNoticeBody(notice control.Notice) string {
-	if strings.HasPrefix(strings.TrimSpace(notice.Title), "链路错误") {
-		return renderSystemInlineTags(notice.Text)
-	}
-	switch notice.Code {
-	case "debug_error", "surface_override_usage", "surface_access_usage", "message_recall_too_late":
-		return renderSystemInlineTags(notice.Text)
-	default:
-		return notice.Text
-	}
 }
 
 func renderSystemInlineTags(text string) string {
