@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-18`
-> Summary: 补充 owner-card 旁路提示触发源审计草稿，并更新 draft 文档索引。
+> Summary: 补充剩余 Feishu system-markdown 边界设计草稿，并更新 draft 文档索引。
 
 ## 1. 适用范围
 
@@ -162,6 +162,7 @@
 - [feishu-slash-menu-owner-card-audit-2026-04.md](./draft/feishu-slash-menu-owner-card-audit-2026-04.md)
 - [feishu-inline-card-update-design.md](./draft/feishu-inline-card-update-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
+- [feishu-system-markdown-boundary-design.md](./draft/feishu-system-markdown-boundary-design.md)
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
 - [non-linux-user-autostart-research.md](./draft/non-linux-user-autostart-research.md)
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
