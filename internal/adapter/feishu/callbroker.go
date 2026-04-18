@@ -164,6 +164,17 @@ func NewFeishuCallBroker(gatewayID string, sdkClient *lark.Client) *FeishuCallBr
 	}
 }
 
+func NewFeishuCallBrokerWithHTTPClient(gatewayID string, sdkClient *lark.Client, httpClient *http.Client) *FeishuCallBroker {
+	broker := NewFeishuCallBroker(gatewayID, sdkClient)
+	if broker == nil {
+		return nil
+	}
+	if httpClient != nil {
+		broker.httpClient = httpClient
+	}
+	return broker
+}
+
 func DoSDK[T any](ctx context.Context, broker *FeishuCallBroker, spec CallSpec, fn func(context.Context, *lark.Client) (T, error)) (T, error) {
 	var zero T
 	if fn == nil {

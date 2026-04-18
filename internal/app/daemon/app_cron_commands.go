@@ -197,7 +197,7 @@ func (a *App) defaultCronBitableFactory(gatewayID string) (feishu.BitableAPI, er
 	if !ok {
 		return nil, fmt.Errorf("找不到 gateway %q 对应的飞书运行时配置", gatewayID)
 	}
-	api := feishu.NewLiveBitableAPI(runtimeCfg.AppID, runtimeCfg.AppSecret)
+	api := feishu.NewLiveBitableAPI(runtimeCfg.GatewayID, runtimeCfg.AppID, runtimeCfg.AppSecret)
 	if api == nil {
 		return nil, fmt.Errorf("gateway %q 缺少可用的 App ID / App Secret", gatewayID)
 	}

@@ -12,22 +12,41 @@ import (
 
 type larkDrivePreviewAPI struct {
 	client *lark.Client
+	broker *FeishuCallBroker
 }
 
-func NewLarkDrivePreviewAPI(client *lark.Client) previewDriveAPI {
+func NewLarkDrivePreviewAPI(gatewayID string, client *lark.Client) previewDriveAPI {
 	if client == nil {
 		return nil
 	}
-	return &larkDrivePreviewAPI{client: client}
+	return &larkDrivePreviewAPI{
+		client: client,
+		broker: NewFeishuCallBroker(gatewayID, client),
+	}
 }
 
 func (a *larkDrivePreviewAPI) CreateFolder(ctx context.Context, name, parentToken string) (previewRemoteNode, error) {
-	resp, err := a.client.Drive.V1.File.CreateFolder(ctx, larkdrive.NewCreateFolderFileReqBuilder().
-		Body(larkdrive.NewCreateFolderFileReqBodyBuilder().
-			Name(name).
-			FolderToken(parentToken).
-			Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.file.create_folder",
+		Class:    CallClassDrive,
+		Priority: CallPriorityInteractive,
+		ResourceKey: FeishuResourceKey{
+			DocToken: parentToken,
+		},
+		Retry:      RetryOff,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.CreateFolderFileResp, error) {
+		resp, err := client.Drive.V1.File.CreateFolder(callCtx, larkdrive.NewCreateFolderFileReqBuilder().
+			Body(larkdrive.NewCreateFolderFileReqBodyBuilder().
+				Name(name).
+				FolderToken(parentToken).
+				Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return previewRemoteNode{}, err
 	}
@@ -52,15 +71,30 @@ func (a *larkDrivePreviewAPI) CreateFolder(ctx context.Context, name, parentToke
 }
 
 func (a *larkDrivePreviewAPI) UploadFile(ctx context.Context, parentToken, fileName string, content []byte) (string, error) {
-	resp, err := a.client.Drive.V1.File.UploadAll(ctx, larkdrive.NewUploadAllFileReqBuilder().
-		Body(larkdrive.NewUploadAllFileReqBodyBuilder().
-			FileName(fileName).
-			ParentType("explorer").
-			ParentNode(parentToken).
-			Size(len(content)).
-			File(bytes.NewReader(content)).
-			Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.file.upload_all",
+		Class:    CallClassDrive,
+		Priority: CallPriorityInteractive,
+		ResourceKey: FeishuResourceKey{
+			DocToken: parentToken,
+		},
+		Retry:      RetryOff,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.UploadAllFileResp, error) {
+		resp, err := client.Drive.V1.File.UploadAll(callCtx, larkdrive.NewUploadAllFileReqBuilder().
+			Body(larkdrive.NewUploadAllFileReqBodyBuilder().
+				FileName(fileName).
+				ParentType("explorer").
+				ParentNode(parentToken).
+				Size(len(content)).
+				File(bytes.NewReader(content)).
+				Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -80,17 +114,32 @@ func (a *larkDrivePreviewAPI) UploadFile(ctx context.Context, parentToken, fileN
 }
 
 func (a *larkDrivePreviewAPI) QueryMetaURL(ctx context.Context, token, docType string) (string, error) {
-	resp, err := a.client.Drive.V1.Meta.BatchQuery(ctx, larkdrive.NewBatchQueryMetaReqBuilder().
-		MetaRequest(larkdrive.NewMetaRequestBuilder().
-			RequestDocs([]*larkdrive.RequestDoc{
-				larkdrive.NewRequestDocBuilder().
-					DocToken(token).
-					DocType(docType).
-					Build(),
-			}).
-			WithUrl(true).
-			Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.meta.batch_query",
+		Class:    CallClassDrive,
+		Priority: CallPriorityReadAssist,
+		ResourceKey: FeishuResourceKey{
+			DocToken: token,
+		},
+		Retry:      RetrySafe,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.BatchQueryMetaResp, error) {
+		resp, err := client.Drive.V1.Meta.BatchQuery(callCtx, larkdrive.NewBatchQueryMetaReqBuilder().
+			MetaRequest(larkdrive.NewMetaRequestBuilder().
+				RequestDocs([]*larkdrive.RequestDoc{
+					larkdrive.NewRequestDocBuilder().
+						DocToken(token).
+						DocType(docType).
+						Build(),
+				}).
+				WithUrl(true).
+				Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -110,16 +159,31 @@ func (a *larkDrivePreviewAPI) QueryMetaURL(ctx context.Context, token, docType s
 }
 
 func (a *larkDrivePreviewAPI) GrantPermission(ctx context.Context, token, docType string, principal previewPrincipal) error {
-	resp, err := a.client.Drive.V1.PermissionMember.Create(ctx, larkdrive.NewCreatePermissionMemberReqBuilder().
-		Token(token).
-		Type(docType).
-		BaseMember(larkdrive.NewBaseMemberBuilder().
-			MemberType(principal.MemberType).
-			MemberId(principal.MemberID).
-			Perm(previewPermissionView).
-			Type(principal.Type).
-			Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.permission_member.create",
+		Class:    CallClassDrive,
+		Priority: CallPriorityInteractive,
+		ResourceKey: FeishuResourceKey{
+			DocToken: token,
+		},
+		Retry:      RetryOff,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.CreatePermissionMemberResp, error) {
+		resp, err := client.Drive.V1.PermissionMember.Create(callCtx, larkdrive.NewCreatePermissionMemberReqBuilder().
+			Token(token).
+			Type(docType).
+			BaseMember(larkdrive.NewBaseMemberBuilder().
+				MemberType(principal.MemberType).
+				MemberId(principal.MemberID).
+				Perm(previewPermissionView).
+				Type(principal.Type).
+				Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -136,10 +200,25 @@ func (a *larkDrivePreviewAPI) GrantPermission(ctx context.Context, token, docTyp
 }
 
 func (a *larkDrivePreviewAPI) DeleteFile(ctx context.Context, token, docType string) error {
-	resp, err := a.client.Drive.V1.File.Delete(ctx, larkdrive.NewDeleteFileReqBuilder().
-		FileToken(token).
-		Type(docType).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.file.delete",
+		Class:    CallClassDrive,
+		Priority: CallPriorityBackground,
+		ResourceKey: FeishuResourceKey{
+			DocToken: token,
+		},
+		Retry:      RetryOff,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.DeleteFileResp, error) {
+		resp, err := client.Drive.V1.File.Delete(callCtx, larkdrive.NewDeleteFileReqBuilder().
+			FileToken(token).
+			Type(docType).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -165,7 +244,22 @@ func (a *larkDrivePreviewAPI) ListFiles(ctx context.Context, folderToken string)
 		if strings.TrimSpace(pageToken) != "" {
 			req.PageToken(pageToken)
 		}
-		resp, err := a.client.Drive.V1.File.List(ctx, req.Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:      "drive.v1.file.list",
+			Class:    CallClassDrive,
+			Priority: CallPriorityReadAssist,
+			ResourceKey: FeishuResourceKey{
+				DocToken: folderToken,
+			},
+			Retry:      RetrySafe,
+			Permission: PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkdrive.ListFileResp, error) {
+			resp, err := client.Drive.V1.File.List(callCtx, req.Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -203,10 +297,25 @@ func (a *larkDrivePreviewAPI) ListFiles(ctx context.Context, folderToken string)
 }
 
 func (a *larkDrivePreviewAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]bool, error) {
-	resp, err := a.client.Drive.V1.PermissionMember.List(ctx, larkdrive.NewListPermissionMemberReqBuilder().
-		Token(token).
-		Type(docType).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:      "drive.v1.permission_member.list",
+		Class:    CallClassDrive,
+		Priority: CallPriorityReadAssist,
+		ResourceKey: FeishuResourceKey{
+			DocToken: token,
+		},
+		Retry:      RetrySafe,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.ListPermissionMemberResp, error) {
+		resp, err := client.Drive.V1.PermissionMember.List(callCtx, larkdrive.NewListPermissionMemberReqBuilder().
+			Token(token).
+			Type(docType).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}

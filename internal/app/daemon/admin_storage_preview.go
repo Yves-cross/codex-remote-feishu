@@ -11,9 +11,9 @@ import (
 )
 
 var newPreviewDriveAdminService = func(cfg feishu.GatewayAppConfig) feishu.PreviewDriveAdminService {
-	var api = feishu.NewLarkDrivePreviewAPI(nil)
+	var api = feishu.NewLarkDrivePreviewAPI(cfg.GatewayID, nil)
 	if strings.TrimSpace(cfg.AppID) != "" && strings.TrimSpace(cfg.AppSecret) != "" {
-		api = feishu.NewLarkDrivePreviewAPI(feishu.NewLarkClient(cfg.AppID, cfg.AppSecret))
+		api = feishu.NewLarkDrivePreviewAPI(cfg.GatewayID, feishu.NewLarkClient(cfg.AppID, cfg.AppSecret))
 	}
 	return feishu.NewDriveMarkdownPreviewer(api, feishu.MarkdownPreviewConfig{
 		StatePath: cfg.PreviewStatePath,

@@ -38,7 +38,8 @@ type feishuSetupClient interface {
 }
 
 type liveFeishuSetupClient struct {
-	httpClient *http.Client
+	httpClient   *http.Client
+	publicBroker *feishu.FeishuCallBroker
 }
 
 type feishuRegistrationStartResult struct {
@@ -151,8 +152,10 @@ type botInfoResponse struct {
 }
 
 func newLiveFeishuSetupClient() feishuSetupClient {
+	httpClient := &http.Client{Timeout: 15 * time.Second}
 	return &liveFeishuSetupClient{
-		httpClient: &http.Client{Timeout: 15 * time.Second},
+		httpClient:   httpClient,
+		publicBroker: feishu.NewFeishuCallBrokerWithHTTPClient("feishu-onboarding-registration", nil, httpClient),
 	}
 }
 
@@ -253,40 +256,69 @@ func (c *liveFeishuSetupClient) DescribeApp(ctx context.Context, appID, appSecre
 	if err != nil {
 		return feishuAppIdentity{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, feishuRegistrationOpenBaseURL+"/open-apis/auth/v3/tenant_access_token/internal", bytes.NewReader(payload))
-	if err != nil {
-		return feishuAppIdentity{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return feishuAppIdentity{}, err
-	}
-	defer resp.Body.Close()
-
 	var tokenResp tenantAccessTokenResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tokenResp); err != nil {
+	appBroker := feishu.NewFeishuCallBrokerWithHTTPClient("feishu-onboarding-"+appID, nil, c.httpClient)
+	_, err = feishu.DoHTTP(ctx, appBroker, feishu.CallSpec{
+		GatewayID:  "feishu-onboarding-" + appID,
+		API:        "auth.v3.tenant_access_token.internal",
+		Class:      feishu.CallClassMetaHTTP,
+		Priority:   feishu.CallPriorityInteractive,
+		Retry:      feishu.RetryOff,
+		Permission: feishu.PermissionFailFast,
+	}, func(callCtx context.Context, httpClient *http.Client) (struct{}, error) {
+		req, err := http.NewRequestWithContext(callCtx, http.MethodPost, feishuRegistrationOpenBaseURL+"/open-apis/auth/v3/tenant_access_token/internal", bytes.NewReader(payload))
+		if err != nil {
+			return struct{}{}, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return struct{}{}, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return struct{}{}, fmt.Errorf("tenant access token request failed: status=%d", resp.StatusCode)
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&tokenResp); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, nil
+	})
+	if err != nil {
 		return feishuAppIdentity{}, err
 	}
 	if tokenResp.Code != 0 || strings.TrimSpace(tokenResp.TenantAccessToken) == "" {
 		return feishuAppIdentity{}, fmt.Errorf("tenant access token failed: code=%d msg=%s", tokenResp.Code, tokenResp.Msg)
 	}
 
-	infoReq, err := http.NewRequestWithContext(ctx, http.MethodGet, feishuRegistrationOpenBaseURL+"/open-apis/bot/v3/info", nil)
-	if err != nil {
-		return feishuAppIdentity{}, err
-	}
-	infoReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(tokenResp.TenantAccessToken))
-
-	infoResp, err := c.httpClient.Do(infoReq)
-	if err != nil {
-		return feishuAppIdentity{}, err
-	}
-	defer infoResp.Body.Close()
-
 	var botResp botInfoResponse
-	if err := json.NewDecoder(io.LimitReader(infoResp.Body, 1<<20)).Decode(&botResp); err != nil {
+	_, err = feishu.DoHTTP(ctx, appBroker, feishu.CallSpec{
+		GatewayID:  "feishu-onboarding-" + appID,
+		API:        "bot.v3.info",
+		Class:      feishu.CallClassMetaHTTP,
+		Priority:   feishu.CallPriorityInteractive,
+		Retry:      feishu.RetrySafe,
+		Permission: feishu.PermissionFailFast,
+	}, func(callCtx context.Context, httpClient *http.Client) (struct{}, error) {
+		infoReq, err := http.NewRequestWithContext(callCtx, http.MethodGet, feishuRegistrationOpenBaseURL+"/open-apis/bot/v3/info", nil)
+		if err != nil {
+			return struct{}{}, err
+		}
+		infoReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(tokenResp.TenantAccessToken))
+		infoResp, err := httpClient.Do(infoReq)
+		if err != nil {
+			return struct{}{}, err
+		}
+		defer infoResp.Body.Close()
+		if infoResp.StatusCode != http.StatusOK {
+			return struct{}{}, fmt.Errorf("bot info request failed: status=%d", infoResp.StatusCode)
+		}
+		if err := json.NewDecoder(io.LimitReader(infoResp.Body, 1<<20)).Decode(&botResp); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, nil
+	})
+	if err != nil {
 		return feishuAppIdentity{}, err
 	}
 	if botResp.Code != 0 {
@@ -303,17 +335,37 @@ func (c *liveFeishuSetupClient) registrationCall(ctx context.Context, action str
 	for key, value := range params {
 		form.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, feishuRegistrationAccountsBaseURL+"/oauth/v1/app/registration", strings.NewReader(form.Encode()))
-	if err != nil {
-		return err
+	broker := c.publicBroker
+	if broker == nil {
+		broker = feishu.NewFeishuCallBrokerWithHTTPClient("feishu-onboarding-registration", nil, c.httpClient)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out)
+	_, err := feishu.DoHTTP(ctx, broker, feishu.CallSpec{
+		GatewayID:  "feishu-onboarding-registration",
+		API:        "oauth.v1.app.registration." + strings.TrimSpace(action),
+		Class:      feishu.CallClassMetaHTTP,
+		Priority:   feishu.CallPriorityInteractive,
+		Retry:      feishu.RetryOff,
+		Permission: feishu.PermissionFailFast,
+	}, func(callCtx context.Context, httpClient *http.Client) (struct{}, error) {
+		req, err := http.NewRequestWithContext(callCtx, http.MethodPost, feishuRegistrationAccountsBaseURL+"/oauth/v1/app/registration", strings.NewReader(form.Encode()))
+		if err != nil {
+			return struct{}{}, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return struct{}{}, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return struct{}{}, fmt.Errorf("registration %s failed: status=%d", strings.TrimSpace(action), resp.StatusCode)
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, nil
+	})
+	return err
 }
 
 func (a *App) snapshotFeishuOnboardingSession(sessionID string) (feishuOnboardingSessionView, bool) {

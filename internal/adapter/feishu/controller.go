@@ -98,7 +98,7 @@ func NewMultiGatewayController() *MultiGatewayController {
 		}
 		var api previewDriveAPI
 		if runtime != nil && runtime.Client() != nil {
-			api = NewLarkDrivePreviewAPI(runtime.Client())
+			api = NewLarkDrivePreviewAPI(cfg.GatewayID, runtime.Client())
 		}
 		return NewDriveMarkdownPreviewer(
 			api,

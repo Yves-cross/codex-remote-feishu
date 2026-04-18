@@ -3,6 +3,9 @@ package feishu
 import (
 	"context"
 	"strings"
+
+	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkapplication "github.com/larksuite/oapi-sdk-go/v3/service/application/v6"
 )
 
 type AppScopeStatus struct {
@@ -13,7 +16,21 @@ type AppScopeStatus struct {
 
 func ListAppScopes(ctx context.Context, cfg LiveGatewayConfig) ([]AppScopeStatus, error) {
 	client := NewLarkClient(cfg.AppID, cfg.AppSecret)
-	resp, err := client.Application.V6.Scope.List(ctx)
+	broker := NewFeishuCallBroker(cfg.GatewayID, client)
+	resp, err := DoSDK(ctx, broker, CallSpec{
+		GatewayID:  cfg.GatewayID,
+		API:        "application.v6.scope.list",
+		Class:      CallClassMetaHTTP,
+		Priority:   CallPriorityBackground,
+		Retry:      RetrySafe,
+		Permission: PermissionFailFast,
+	}, func(callCtx context.Context, sdkClient *lark.Client) (*larkapplication.ListScopeResp, error) {
+		resp, err := sdkClient.Application.V6.Scope.List(callCtx)
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}

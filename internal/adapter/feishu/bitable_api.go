@@ -45,21 +45,49 @@ type BitableAPI interface {
 
 type liveBitableAPI struct {
 	client *lark.Client
+	broker *FeishuCallBroker
 }
 
-func NewLiveBitableAPI(appID, appSecret string) BitableAPI {
+func NewLiveBitableAPI(gatewayID, appID, appSecret string) BitableAPI {
 	appID = strings.TrimSpace(appID)
 	appSecret = strings.TrimSpace(appSecret)
 	if appID == "" || appSecret == "" {
 		return nil
 	}
-	return &liveBitableAPI{client: NewLarkClient(appID, appSecret)}
+	client := NewLarkClient(appID, appSecret)
+	return &liveBitableAPI{
+		client: client,
+		broker: NewFeishuCallBroker(gatewayID, client),
+	}
+}
+
+func bitableResourceKey(appToken, tableID string) FeishuResourceKey {
+	return FeishuResourceKey{
+		TableID: firstNonEmpty(strings.TrimSpace(tableID), strings.TrimSpace(appToken)),
+	}
+}
+
+func driveDocResourceKey(token string) FeishuResourceKey {
+	return FeishuResourceKey{DocToken: strings.TrimSpace(token)}
 }
 
 func (a *liveBitableAPI) GetApp(ctx context.Context, appToken string) (*larkbitable.App, error) {
-	resp, err := a.client.Bitable.V1.App.Get(ctx, larkbitable.NewGetAppReqBuilder().
-		AppToken(appToken).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app.get",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityReadAssist,
+		ResourceKey: bitableResourceKey(appToken, ""),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.GetAppResp, error) {
+		resp, err := client.Bitable.V1.App.Get(callCtx, larkbitable.NewGetAppReqBuilder().
+			AppToken(appToken).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -86,9 +114,21 @@ func (a *liveBitableAPI) CreateApp(ctx context.Context, name, timeZone string) (
 	if strings.TrimSpace(timeZone) != "" {
 		reqApp.TimeZone(strings.TrimSpace(timeZone))
 	}
-	resp, err := a.client.Bitable.V1.App.Create(ctx, larkbitable.NewCreateAppReqBuilder().
-		ReqApp(reqApp.Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:        "bitable.v1.app.create",
+		Class:      CallClassBitable,
+		Priority:   CallPriorityBackground,
+		Retry:      RetryOff,
+		Permission: PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.CreateAppResp, error) {
+		resp, err := client.Bitable.V1.App.Create(callCtx, larkbitable.NewCreateAppReqBuilder().
+			ReqApp(reqApp.Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +151,20 @@ func (a *liveBitableAPI) ListTables(ctx context.Context, appToken string) ([]*la
 		if strings.TrimSpace(pageToken) != "" {
 			builder.PageToken(pageToken)
 		}
-		resp, err := a.client.Bitable.V1.AppTable.List(ctx, builder.Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:         "bitable.v1.app_table.list",
+			Class:       CallClassBitable,
+			Priority:    CallPriorityReadAssist,
+			ResourceKey: bitableResourceKey(appToken, ""),
+			Retry:       RetrySafe,
+			Permission:  PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkbitable.ListAppTableResp, error) {
+			resp, err := client.Bitable.V1.AppTable.List(callCtx, builder.Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -130,10 +183,23 @@ func (a *liveBitableAPI) ListTables(ctx context.Context, appToken string) ([]*la
 }
 
 func (a *liveBitableAPI) CreateTable(ctx context.Context, appToken string, table *larkbitable.ReqTable) (*larkbitable.AppTable, error) {
-	resp, err := a.client.Bitable.V1.AppTable.Create(ctx, larkbitable.NewCreateAppTableReqBuilder().
-		AppToken(appToken).
-		Body(&larkbitable.CreateAppTableReqBody{Table: table}).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table.create",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, ""),
+		Retry:       RetryOff,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.CreateAppTableResp, error) {
+		resp, err := client.Bitable.V1.AppTable.Create(callCtx, larkbitable.NewCreateAppTableReqBuilder().
+			AppToken(appToken).
+			Body(&larkbitable.CreateAppTableReqBody{Table: table}).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -156,11 +222,24 @@ func (a *liveBitableAPI) RenameTable(ctx context.Context, appToken, tableID, nam
 	if err != nil {
 		return err
 	}
-	resp, err := a.client.Bitable.V1.AppTable.Patch(ctx, larkbitable.NewPatchAppTableReqBuilder().
-		AppToken(appToken).
-		TableId(tableID).
-		Body(body).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table.patch",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, tableID),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.PatchAppTableResp, error) {
+		resp, err := client.Bitable.V1.AppTable.Patch(callCtx, larkbitable.NewPatchAppTableReqBuilder().
+			AppToken(appToken).
+			TableId(tableID).
+			Body(body).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -181,7 +260,20 @@ func (a *liveBitableAPI) ListFields(ctx context.Context, appToken, tableID strin
 		if strings.TrimSpace(pageToken) != "" {
 			builder.PageToken(pageToken)
 		}
-		resp, err := a.client.Bitable.V1.AppTableField.List(ctx, builder.Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:         "bitable.v1.app_table_field.list",
+			Class:       CallClassBitable,
+			Priority:    CallPriorityReadAssist,
+			ResourceKey: bitableResourceKey(appToken, tableID),
+			Retry:       RetrySafe,
+			Permission:  PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkbitable.ListAppTableFieldResp, error) {
+			resp, err := client.Bitable.V1.AppTableField.List(callCtx, builder.Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -213,11 +305,24 @@ func (a *liveBitableAPI) ListFields(ctx context.Context, appToken, tableID strin
 }
 
 func (a *liveBitableAPI) CreateField(ctx context.Context, appToken, tableID string, field *larkbitable.AppTableField) (*larkbitable.AppTableField, error) {
-	resp, err := a.client.Bitable.V1.AppTableField.Create(ctx, larkbitable.NewCreateAppTableFieldReqBuilder().
-		AppToken(appToken).
-		TableId(tableID).
-		AppTableField(field).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table_field.create",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, tableID),
+		Retry:       RetryOff,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.CreateAppTableFieldResp, error) {
+		resp, err := client.Bitable.V1.AppTableField.Create(callCtx, larkbitable.NewCreateAppTableFieldReqBuilder().
+			AppToken(appToken).
+			TableId(tableID).
+			AppTableField(field).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -231,12 +336,25 @@ func (a *liveBitableAPI) CreateField(ctx context.Context, appToken, tableID stri
 }
 
 func (a *liveBitableAPI) UpdateField(ctx context.Context, appToken, tableID, fieldID string, field *larkbitable.AppTableField) (*larkbitable.AppTableField, error) {
-	resp, err := a.client.Bitable.V1.AppTableField.Update(ctx, larkbitable.NewUpdateAppTableFieldReqBuilder().
-		AppToken(appToken).
-		TableId(tableID).
-		FieldId(fieldID).
-		AppTableField(field).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table_field.update",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, tableID),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.UpdateAppTableFieldResp, error) {
+		resp, err := client.Bitable.V1.AppTableField.Update(callCtx, larkbitable.NewUpdateAppTableFieldReqBuilder().
+			AppToken(appToken).
+			TableId(tableID).
+			FieldId(fieldID).
+			AppTableField(field).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +389,20 @@ func (a *liveBitableAPI) ListRecords(ctx context.Context, appToken, tableID stri
 		if strings.TrimSpace(pageToken) != "" {
 			builder.PageToken(pageToken)
 		}
-		resp, err := a.client.Bitable.V1.AppTableRecord.List(ctx, builder.Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:         "bitable.v1.app_table_record.list",
+			Class:       CallClassBitable,
+			Priority:    CallPriorityReadAssist,
+			ResourceKey: bitableResourceKey(appToken, tableID),
+			Retry:       RetrySafe,
+			Permission:  PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkbitable.ListAppTableRecordResp, error) {
+			resp, err := client.Bitable.V1.AppTableRecord.List(callCtx, builder.Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -290,11 +421,24 @@ func (a *liveBitableAPI) ListRecords(ctx context.Context, appToken, tableID stri
 }
 
 func (a *liveBitableAPI) CreateRecord(ctx context.Context, appToken, tableID string, fields map[string]any) (*larkbitable.AppTableRecord, error) {
-	resp, err := a.client.Bitable.V1.AppTableRecord.Create(ctx, larkbitable.NewCreateAppTableRecordReqBuilder().
-		AppToken(appToken).
-		TableId(tableID).
-		AppTableRecord(larkbitable.NewAppTableRecordBuilder().Fields(fields).Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table_record.create",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, tableID),
+		Retry:       RetryOff,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.CreateAppTableRecordResp, error) {
+		resp, err := client.Bitable.V1.AppTableRecord.Create(callCtx, larkbitable.NewCreateAppTableRecordReqBuilder().
+			AppToken(appToken).
+			TableId(tableID).
+			AppTableRecord(larkbitable.NewAppTableRecordBuilder().Fields(fields).Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -308,12 +452,25 @@ func (a *liveBitableAPI) CreateRecord(ctx context.Context, appToken, tableID str
 }
 
 func (a *liveBitableAPI) UpdateRecord(ctx context.Context, appToken, tableID, recordID string, fields map[string]any) (*larkbitable.AppTableRecord, error) {
-	resp, err := a.client.Bitable.V1.AppTableRecord.Update(ctx, larkbitable.NewUpdateAppTableRecordReqBuilder().
-		AppToken(appToken).
-		TableId(tableID).
-		RecordId(recordID).
-		AppTableRecord(larkbitable.NewAppTableRecordBuilder().Fields(fields).Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "bitable.v1.app_table_record.update",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: bitableResourceKey(appToken, tableID),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkbitable.UpdateAppTableRecordResp, error) {
+		resp, err := client.Bitable.V1.AppTableRecord.Update(callCtx, larkbitable.NewUpdateAppTableRecordReqBuilder().
+			AppToken(appToken).
+			TableId(tableID).
+			RecordId(recordID).
+			AppTableRecord(larkbitable.NewAppTableRecordBuilder().Fields(fields).Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -340,13 +497,26 @@ func (a *liveBitableAPI) BatchCreateRecords(ctx context.Context, appToken, table
 		for _, fields := range values[start:end] {
 			items = append(items, larkbitable.NewAppTableRecordBuilder().Fields(fields).Build())
 		}
-		resp, err := a.client.Bitable.V1.AppTableRecord.BatchCreate(ctx, larkbitable.NewBatchCreateAppTableRecordReqBuilder().
-			AppToken(appToken).
-			TableId(tableID).
-			Body(larkbitable.NewBatchCreateAppTableRecordReqBodyBuilder().
-				Records(items).
-				Build()).
-			Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:         "bitable.v1.app_table_record.batch_create",
+			Class:       CallClassBitable,
+			Priority:    CallPriorityBackground,
+			ResourceKey: bitableResourceKey(appToken, tableID),
+			Retry:       RetryOff,
+			Permission:  PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkbitable.BatchCreateAppTableRecordResp, error) {
+			resp, err := client.Bitable.V1.AppTableRecord.BatchCreate(callCtx, larkbitable.NewBatchCreateAppTableRecordReqBuilder().
+				AppToken(appToken).
+				TableId(tableID).
+				Body(larkbitable.NewBatchCreateAppTableRecordReqBodyBuilder().
+					Records(items).
+					Build()).
+				Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -382,13 +552,26 @@ func (a *liveBitableAPI) BatchUpdateRecords(ctx context.Context, appToken, table
 				Fields(update.Fields).
 				Build())
 		}
-		resp, err := a.client.Bitable.V1.AppTableRecord.BatchUpdate(ctx, larkbitable.NewBatchUpdateAppTableRecordReqBuilder().
-			AppToken(appToken).
-			TableId(tableID).
-			Body(larkbitable.NewBatchUpdateAppTableRecordReqBodyBuilder().
-				Records(items).
-				Build()).
-			Build())
+		resp, err := DoSDK(ctx, a.broker, CallSpec{
+			API:         "bitable.v1.app_table_record.batch_update",
+			Class:       CallClassBitable,
+			Priority:    CallPriorityBackground,
+			ResourceKey: bitableResourceKey(appToken, tableID),
+			Retry:       RetryOff,
+			Permission:  PermissionCooldownOnly,
+		}, func(callCtx context.Context, client *lark.Client) (*larkbitable.BatchUpdateAppTableRecordResp, error) {
+			resp, err := client.Bitable.V1.AppTableRecord.BatchUpdate(callCtx, larkbitable.NewBatchUpdateAppTableRecordReqBuilder().
+				AppToken(appToken).
+				TableId(tableID).
+				Body(larkbitable.NewBatchUpdateAppTableRecordReqBodyBuilder().
+					Records(items).
+					Build()).
+				Build())
+			if err != nil {
+				return resp, err
+			}
+			return resp, nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -404,10 +587,23 @@ func (a *liveBitableAPI) BatchUpdateRecords(ctx context.Context, appToken, table
 }
 
 func (a *liveBitableAPI) ListPermissionMembers(ctx context.Context, token, docType string) (map[string]BitablePermissionMember, error) {
-	resp, err := a.client.Drive.V1.PermissionMember.List(ctx, larkdrive.NewListPermissionMemberReqBuilder().
-		Token(token).
-		Type(docType).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "drive.v1.permission_member.list",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityReadAssist,
+		ResourceKey: driveDocResourceKey(token),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.ListPermissionMemberResp, error) {
+		resp, err := client.Drive.V1.PermissionMember.List(callCtx, larkdrive.NewListPermissionMemberReqBuilder().
+			Token(token).
+			Type(docType).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -440,16 +636,29 @@ func (a *liveBitableAPI) GrantPermission(ctx context.Context, token, docType, me
 	if perm == "" {
 		perm = "view"
 	}
-	resp, err := a.client.Drive.V1.PermissionMember.Create(ctx, larkdrive.NewCreatePermissionMemberReqBuilder().
-		Token(token).
-		Type(docType).
-		BaseMember(larkdrive.NewBaseMemberBuilder().
-			MemberType(strings.TrimSpace(memberType)).
-			MemberId(strings.TrimSpace(memberID)).
-			Perm(perm).
-			Type(strings.TrimSpace(principalType)).
-			Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "drive.v1.permission_member.create",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: driveDocResourceKey(token),
+		Retry:       RetryOff,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.CreatePermissionMemberResp, error) {
+		resp, err := client.Drive.V1.PermissionMember.Create(callCtx, larkdrive.NewCreatePermissionMemberReqBuilder().
+			Token(token).
+			Type(docType).
+			BaseMember(larkdrive.NewBaseMemberBuilder().
+				MemberType(strings.TrimSpace(memberType)).
+				MemberId(strings.TrimSpace(memberID)).
+				Perm(perm).
+				Type(strings.TrimSpace(principalType)).
+				Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return err
 	}
@@ -472,12 +681,25 @@ func (a *liveBitableAPI) UpdatePermission(ctx context.Context, token, docType, m
 	if strings.TrimSpace(permType) != "" {
 		body.PermType(strings.TrimSpace(permType))
 	}
-	resp, err := a.client.Drive.V1.PermissionMember.Update(ctx, larkdrive.NewUpdatePermissionMemberReqBuilder().
-		Token(token).
-		Type(docType).
-		MemberId(strings.TrimSpace(memberID)).
-		BaseMember(body.Build()).
-		Build())
+	resp, err := DoSDK(ctx, a.broker, CallSpec{
+		API:         "drive.v1.permission_member.update",
+		Class:       CallClassBitable,
+		Priority:    CallPriorityBackground,
+		ResourceKey: driveDocResourceKey(token),
+		Retry:       RetrySafe,
+		Permission:  PermissionCooldownOnly,
+	}, func(callCtx context.Context, client *lark.Client) (*larkdrive.UpdatePermissionMemberResp, error) {
+		resp, err := client.Drive.V1.PermissionMember.Update(callCtx, larkdrive.NewUpdatePermissionMemberReqBuilder().
+			Token(token).
+			Type(docType).
+			MemberId(strings.TrimSpace(memberID)).
+			BaseMember(body.Build()).
+			Build())
+		if err != nil {
+			return resp, err
+		}
+		return resp, nil
+	})
 	if err != nil {
 		return err
 	}

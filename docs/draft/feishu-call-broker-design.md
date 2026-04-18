@@ -186,8 +186,8 @@
 
 特点：
 
-- 主要是事件长连接和鉴权，不是本设计第一阶段的重点
-- 但其相关 HTTP 请求和鉴权过程长期来看也应纳入统一调用治理视角
+- 主要是事件长连接和鉴权，不属于普通业务 OpenAPI 调用
+- 当前更适合作为显式例外保留在 broker guardrail 白名单里，而不是和业务调用混在一起迁移
 
 ## 4. 当前主要风险
 
@@ -796,11 +796,13 @@ type FeishuResourceKey struct {
 - Drive preview
 - scope refresh
 - onboarding raw HTTP
+- Bitable / Cron
 
 ### 12.5 第三阶段接入范围
 
-- Bitable / Cron
-- 更复杂的后台批处理 lane
+- 结构性 guardrail
+- 例外白名单与原因收口
+- 后续再视需要补更复杂的后台批处理 lane
 
 ## 13. 与卡片交互时序的边界
 
@@ -818,7 +820,16 @@ type FeishuResourceKey struct {
 1. callback 的同步返回继续走快速旁路
 2. callback 之后触发的异步 OpenAPI 调用应进入 broker
 
-## 14. 当前待进一步调研的问题
+## 14. 结构性防回归约束
+
+除了 broker 本身的调用能力，还需要一层结构性约束，避免后续代码继续照着旧模式新增直调：
+
+1. 普通业务飞书 SDK 调用只允许出现在 `DoSDK(...)` 的 broker 闭包内
+2. 普通业务 raw HTTP 飞书请求只允许出现在 `DoHTTP(...)` 的 broker 闭包内
+3. 例外路径必须进入显式白名单，并记录“为什么不能按普通业务调用处理”
+4. 当前明确例外是 `internal/adapter/feishu/longconn.go`，因为它属于长连接握手与传输层基础设施
+
+## 15. 当前待进一步调研的问题
 
 这部分需要在关联 issue 中继续细化。
 

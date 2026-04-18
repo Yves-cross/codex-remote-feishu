@@ -49,6 +49,9 @@ jobs:
       - name: Check legacy names are gone
         run: bash scripts/check/no-legacy-names.sh
 
+      - name: Check Feishu broker guardrail
+        run: bash scripts/check/feishu-call-broker.sh
+
       - name: Check formatting
         run: |
           files="$(find cmd internal testkit -name '*.go' | sort)"
