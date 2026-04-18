@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-18`
-> Summary: 新增统一飞书调用入口设计草案，并补充索引。
+> Summary: 新增统一飞书调用入口设计草案，并补充 slash/menu owner-card 审计草稿索引。
 
 ## 1. 适用范围
 
@@ -158,6 +158,7 @@
 - [daemon-package-refactor-plan.md](./draft/daemon-package-refactor-plan.md)
 - [feishu-call-broker-design.md](./draft/feishu-call-broker-design.md)
 - [file-length-split-audit-2026-04.md](./draft/file-length-split-audit-2026-04.md)
+- [feishu-slash-menu-owner-card-audit-2026-04.md](./draft/feishu-slash-menu-owner-card-audit-2026-04.md)
 - [feishu-inline-card-update-design.md](./draft/feishu-inline-card-update-design.md)
 - [feishu-file-preview-handler-design.md](./draft/feishu-file-preview-handler-design.md)
 - [multi-feishu-app-design.md](./draft/multi-feishu-app-design.md)
