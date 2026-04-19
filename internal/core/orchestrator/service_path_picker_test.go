@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,10 @@ type fakePathPickerConsumer struct {
 	cancelled []control.PathPickerResult
 }
 
+type fakePathPickerEntryFilter struct {
+	hidden map[string]bool
+}
+
 func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
 	f.confirmed = append(f.confirmed, result)
 	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
@@ -24,6 +29,14 @@ func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.Surfac
 func (f *fakePathPickerConsumer) PathPickerCancelled(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
 	f.cancelled = append(f.cancelled, result)
 	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
+}
+
+func (f *fakePathPickerEntryFilter) PathPickerFilterEntry(_ *Service, _ *state.SurfaceConsoleRecord, _ *activePathPickerRecord, item control.FeishuPathPickerEntry, _ string) (control.FeishuPathPickerEntry, bool) {
+	if f == nil || !f.hidden[strings.TrimSpace(item.Name)] {
+		return item, true
+	}
+	item.DisabledReason = "filtered"
+	return item, false
 }
 
 func pathPickerViewFromEvent(t *testing.T, event control.UIEvent) *control.FeishuPathPickerView {
@@ -172,7 +185,52 @@ func TestOpenPathPickerFileModeAllowsParentDirectoryEntry(t *testing.T) {
 	}
 }
 
+func TestOpenPathPickerEntryFilterHidesAndBlocksFilteredEntries(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	for _, dir := range []string{"alpha", "beta"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+	svc.RegisterPathPickerEntryFilter("fake", &fakePathPickerEntryFilter{
+		hidden: map[string]bool{"beta": true},
+	})
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:            control.PathPickerModeDirectory,
+		RootPath:        root,
+		EntryFilterKind: "fake",
+	})
+	view := singlePathPickerEvent(t, events)
+
+	var directories []string
+	for _, entry := range view.Entries {
+		if entry.Kind == control.PathPickerEntryDirectory {
+			directories = append(directories, entry.Name)
+		}
+	}
+	if got, want := directories, []string{"alpha"}; !equalStringSlices(got, want) {
+		t.Fatalf("unexpected filtered directories: got %v want %v", got, want)
+	}
+
+	blocked := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerEnter,
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+		PickerEntry:      "beta",
+	})
+	if len(blocked) != 1 || blocked[0].Notice == nil || blocked[0].Notice.Code != "path_picker_invalid_entry" {
+		t.Fatalf("expected filtered directory to be rejected, got %#v", blocked)
+	}
+}
+
 func TestBuildPathPickerEntriesSortsDotDirectoriesAfterNormalDirectories(t *testing.T) {
+	svc := &Service{}
 	root := t.TempDir()
 	for _, dir := range []string{"zeta", ".hidden", "alpha"} {
 		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
@@ -185,7 +243,7 @@ func TestBuildPathPickerEntriesSortsDotDirectoriesAfterNormalDirectories(t *test
 		}
 	}
 
-	entries, err := buildPathPickerEntries(&activePathPickerRecord{
+	entries, err := svc.buildPathPickerEntries(nil, &activePathPickerRecord{
 		Mode:        pathPickerModeFile,
 		RootPath:    root,
 		CurrentPath: root,
@@ -213,6 +271,7 @@ func TestBuildPathPickerEntriesSortsDotDirectoriesAfterNormalDirectories(t *test
 }
 
 func TestBuildPathPickerEntriesAllowsResolvedChildrenUnderSymlinkRoot(t *testing.T) {
+	svc := &Service{}
 	realRoot := t.TempDir()
 	linkParent := t.TempDir()
 	linkRoot := filepath.Join(linkParent, "workspace-link")
@@ -225,7 +284,7 @@ func TestBuildPathPickerEntriesAllowsResolvedChildrenUnderSymlinkRoot(t *testing
 		}
 	}
 
-	entries, err := buildPathPickerEntries(&activePathPickerRecord{
+	entries, err := svc.buildPathPickerEntries(nil, &activePathPickerRecord{
 		Mode:        pathPickerModeDirectory,
 		RootPath:    linkRoot,
 		CurrentPath: linkRoot,

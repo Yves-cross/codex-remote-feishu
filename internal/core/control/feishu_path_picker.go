@@ -25,19 +25,21 @@ const (
 )
 
 type PathPickerRequest struct {
-	Mode         PathPickerMode
-	Title        string
-	StageLabel   string
-	Question     string
-	RootPath     string
-	InitialPath  string
-	Hint         string
-	ConfirmLabel string
-	CancelLabel  string
-	ExpireAfter  time.Duration
-	OwnerFlowID  string
-	ConsumerKind string
-	ConsumerMeta map[string]string
+	Mode            PathPickerMode
+	Title           string
+	StageLabel      string
+	Question        string
+	RootPath        string
+	InitialPath     string
+	Hint            string
+	ConfirmLabel    string
+	CancelLabel     string
+	ExpireAfter     time.Duration
+	OwnerFlowID     string
+	ConsumerKind    string
+	ConsumerMeta    map[string]string
+	EntryFilterKind string
+	EntryFilterMeta map[string]string
 }
 
 type PathPickerResult struct {

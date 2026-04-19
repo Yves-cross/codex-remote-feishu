@@ -98,7 +98,7 @@ func (s *Service) HandleSendFilePreflightFailure(surfaceID, pickerID, text strin
 		return notice(surface, "send_file_failed", strings.TrimSpace(text))
 	}
 	record.Hint = strings.TrimSpace(text)
-	view, err := s.buildPathPickerView(record)
+	view, err := s.buildPathPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "send_file_failed", strings.TrimSpace(text))
 	}

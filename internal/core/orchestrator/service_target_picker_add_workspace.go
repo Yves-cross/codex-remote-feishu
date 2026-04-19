@@ -12,12 +12,14 @@ import (
 )
 
 const (
-	targetPickerAddWorkspacePathPickerConsumerKind = "target_picker_add_workspace"
-	targetPickerAddWorkspaceMetaPickerID           = "picker_id"
-	targetPickerAddWorkspaceMetaFieldKind          = "field_kind"
+	targetPickerAddWorkspacePathPickerConsumerKind     = "target_picker_add_workspace"
+	targetPickerAddWorkspaceMetaPickerID               = "picker_id"
+	targetPickerAddWorkspaceMetaFieldKind              = "field_kind"
+	targetPickerBusyWorkspacePathPickerEntryFilterKind = "target_picker_hide_busy_workspaces"
 )
 
 type targetPickerAddWorkspacePathPickerConsumer struct{}
+type targetPickerBusyWorkspacePathPickerEntryFilter struct{}
 
 type targetPickerLocalDirectoryState struct {
 	ResolvedPath string
@@ -81,11 +83,13 @@ func (s *Service) openTargetPickerAddWorkspacePathPicker(surface *state.SurfaceC
 	hint := ""
 	confirmLabel := "使用这个目录"
 	cancelLabel := "返回"
+	reqEntryFilterKind := ""
 	switch strings.TrimSpace(fieldKind) {
 	case control.FeishuTargetPickerPathFieldLocalDirectory:
 		stageLabel = "目录/选择目录"
 		question = "选择要接入的目录"
 		hint = "确认后会回到上一张卡片继续确认。"
+		reqEntryFilterKind = targetPickerBusyWorkspacePathPickerEntryFilterKind
 		if current := strings.TrimSpace(record.LocalDirectoryPath); current != "" {
 			initialPath = current
 		}
@@ -115,7 +119,23 @@ func (s *Service) openTargetPickerAddWorkspacePathPicker(surface *state.SurfaceC
 			targetPickerAddWorkspaceMetaPickerID:  strings.TrimSpace(record.PickerID),
 			targetPickerAddWorkspaceMetaFieldKind: strings.TrimSpace(fieldKind),
 		},
+		EntryFilterKind: reqEntryFilterKind,
 	}, true)
+}
+
+func (targetPickerBusyWorkspacePathPickerEntryFilter) PathPickerFilterEntry(s *Service, surface *state.SurfaceConsoleRecord, _ *activePathPickerRecord, item control.FeishuPathPickerEntry, resolvedPath string) (control.FeishuPathPickerEntry, bool) {
+	if s == nil || surface == nil || item.Kind != control.PathPickerEntryDirectory {
+		return item, true
+	}
+	workspaceKey := normalizeWorkspaceClaimKey(resolvedPath)
+	if workspaceKey == "" {
+		return item, true
+	}
+	if owner := s.workspaceBusyOwnerForSurface(surface, workspaceKey); owner != nil {
+		item.DisabledReason = "该目录对应的工作区当前正被其他飞书会话接管，请重新选择。"
+		return item, false
+	}
+	return item, true
 }
 
 func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
@@ -132,6 +152,9 @@ func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service
 	}
 	switch strings.TrimSpace(result.ConsumerMeta[targetPickerAddWorkspaceMetaFieldKind]) {
 	case control.FeishuTargetPickerPathFieldLocalDirectory:
+		if owner := s.workspaceBusyOwnerForSurface(surface, normalizeWorkspaceClaimKey(selectedPath)); owner != nil {
+			return s.restoreTargetPickerAfterPathReturn(surface, record, "path_picker_invalid_busy", "该目录对应的工作区当前正被其他飞书会话接管，请重新选择。")
+		}
 		record.LocalDirectoryPath = selectedPath
 	case control.FeishuTargetPickerPathFieldGitParentDir:
 		record.GitParentDir = selectedPath
@@ -225,7 +248,7 @@ func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceCon
 		})
 		return localState
 	}
-	if owner := s.workspaceBusyOwnerForSurface(surface, resolvedPath); owner != nil {
+	if owner := s.workspaceBusyOwnerForSurface(surface, normalizeWorkspaceClaimKey(resolvedPath)); owner != nil {
 		localState.Messages = append(localState.Messages, control.FeishuTargetPickerMessage{
 			Level: control.FeishuTargetPickerMessageDanger,
 			Text:  "该目录对应的工作区当前正被其他飞书会话接管，暂时不能继续。",

@@ -163,6 +163,10 @@ type PathPickerConsumer interface {
 	PathPickerCancelled(*Service, *state.SurfaceConsoleRecord, control.PathPickerResult) []control.UIEvent
 }
 
+type PathPickerEntryFilter interface {
+	PathPickerFilterEntry(*Service, *state.SurfaceConsoleRecord, *activePathPickerRecord, control.FeishuPathPickerEntry, string) (control.FeishuPathPickerEntry, bool)
+}
+
 type PathPickerConfirmLifecycleOwner interface {
 	PathPickerOwnsConfirmLifecycle() bool
 }
@@ -217,6 +221,7 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 	svc.RegisterPathPickerConsumer(targetPickerWorkspaceCreatePathPickerConsumerKind, targetPickerWorkspaceCreatePathPickerConsumer{})
 	svc.RegisterPathPickerConsumer(targetPickerAddWorkspacePathPickerConsumerKind, targetPickerAddWorkspacePathPickerConsumer{})
 	svc.RegisterPathPickerConsumer(sendFilePathPickerConsumerKind, sendFilePathPickerConsumer{})
+	svc.RegisterPathPickerEntryFilter(targetPickerBusyWorkspacePathPickerEntryFilterKind, targetPickerBusyWorkspacePathPickerEntryFilter{})
 	return svc
 }
 

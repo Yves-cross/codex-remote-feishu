@@ -767,6 +767,72 @@ func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsLocalDirectoryAndWait
 	}
 }
 
+func TestTargetPickerAddWorkspaceLocalDirectoryPathPickerHidesBusyWorkspaceDirectory(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 47, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	parent := t.TempDir()
+	busyDir := filepath.Join(parent, "busy")
+	freeDir := filepath.Join(parent, "free")
+	for _, dir := range []string{busyDir, freeDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+	}
+
+	surface1 := svc.ensureSurface(control.Action{
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	if !svc.claimWorkspace(surface1, parent) {
+		t.Fatalf("expected surface-1 to claim parent workspace")
+	}
+	surface2 := svc.ensureSurface(control.Action{
+		SurfaceSessionID: "surface-2",
+		ChatID:           "chat-2",
+		ActorUserID:      "user-2",
+	})
+	if !svc.claimWorkspace(surface2, busyDir) {
+		t.Fatalf("expected surface-2 to claim busy directory")
+	}
+
+	view := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectMode,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          view.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
+	}))
+	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerOpenPathPicker,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          addMode.PickerID,
+		TargetPickerValue: control.FeishuTargetPickerPathFieldLocalDirectory,
+	}))
+
+	var directories []string
+	for _, entry := range pathView.Entries {
+		if entry.Kind == control.PathPickerEntryDirectory {
+			directories = append(directories, entry.Name)
+		}
+	}
+	if slicesContain(directories, "busy") {
+		t.Fatalf("expected busy workspace directory to be hidden, got %v", directories)
+	}
+	if !slicesContain(directories, "free") {
+		t.Fatalf("expected free directory to stay visible, got %v", directories)
+	}
+}
+
 func TestTargetPickerConfirmAddWorkspaceLocalDirectoryEntersNewThreadReady(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 48, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -1259,4 +1325,13 @@ func TestTargetPickerCancelGitImportProcessingSealsCardAndDispatchesCancel(t *te
 	if svc.activeTargetPicker(surface) != nil || svc.activeOwnerCardFlow(surface) != nil {
 		t.Fatalf("expected cancel to clear target picker runtime, got %#v", svc.SurfaceUIRuntime("surface-1"))
 	}
+}
+
+func slicesContain(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

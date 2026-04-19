@@ -27,6 +27,13 @@ func (s *Service) RegisterPathPickerConsumer(kind string, consumer PathPickerCon
 	s.pickers.registerPathPickerConsumer(kind, consumer)
 }
 
+func (s *Service) RegisterPathPickerEntryFilter(kind string, filter PathPickerEntryFilter) {
+	if s == nil || s.pickers == nil {
+		return
+	}
+	s.pickers.registerPathPickerEntryFilter(kind, filter)
+}
+
 func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) []control.UIEvent {
 	return s.openPathPickerWithInline(surface, ownerUserID, req, false)
 }
@@ -40,7 +47,7 @@ func (s *Service) openPathPickerWithInline(surface *state.SurfaceConsoleRecord, 
 		return notice(surface, "path_picker_invalid", err.Error())
 	}
 	s.setActivePathPicker(surface, record)
-	view, err := s.buildPathPickerView(record)
+	view, err := s.buildPathPickerView(surface, record)
 	if err != nil {
 		s.clearSurfacePathPicker(surface)
 		return notice(surface, "path_picker_invalid", err.Error())
@@ -66,23 +73,25 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 		expiresAt = s.now().Add(req.ExpireAfter)
 	}
 	return &activePathPickerRecord{
-		PickerID:     s.pickers.nextPathPickerToken(),
-		OwnerUserID:  strings.TrimSpace(firstNonEmpty(ownerUserID, surface.ActorUserID)),
-		OwnerFlowID:  strings.TrimSpace(req.OwnerFlowID),
-		Mode:         mode,
-		Title:        strings.TrimSpace(firstNonEmpty(req.Title, defaultPathPickerTitle(mode))),
-		StageLabel:   strings.TrimSpace(req.StageLabel),
-		Question:     strings.TrimSpace(req.Question),
-		RootPath:     rootPath,
-		CurrentPath:  currentPath,
-		SelectedPath: selectedPath,
-		Hint:         strings.TrimSpace(req.Hint),
-		ConfirmLabel: strings.TrimSpace(firstNonEmpty(req.ConfirmLabel, "确认")),
-		CancelLabel:  strings.TrimSpace(firstNonEmpty(req.CancelLabel, "取消")),
-		CreatedAt:    s.now(),
-		ExpiresAt:    expiresAt,
-		ConsumerKind: strings.TrimSpace(req.ConsumerKind),
-		ConsumerMeta: cloneStringMap(req.ConsumerMeta),
+		PickerID:        s.pickers.nextPathPickerToken(),
+		OwnerUserID:     strings.TrimSpace(firstNonEmpty(ownerUserID, surface.ActorUserID)),
+		OwnerFlowID:     strings.TrimSpace(req.OwnerFlowID),
+		Mode:            mode,
+		Title:           strings.TrimSpace(firstNonEmpty(req.Title, defaultPathPickerTitle(mode))),
+		StageLabel:      strings.TrimSpace(req.StageLabel),
+		Question:        strings.TrimSpace(req.Question),
+		RootPath:        rootPath,
+		CurrentPath:     currentPath,
+		SelectedPath:    selectedPath,
+		Hint:            strings.TrimSpace(req.Hint),
+		ConfirmLabel:    strings.TrimSpace(firstNonEmpty(req.ConfirmLabel, "确认")),
+		CancelLabel:     strings.TrimSpace(firstNonEmpty(req.CancelLabel, "取消")),
+		CreatedAt:       s.now(),
+		ExpiresAt:       expiresAt,
+		ConsumerKind:    strings.TrimSpace(req.ConsumerKind),
+		ConsumerMeta:    cloneStringMap(req.ConsumerMeta),
+		EntryFilterKind: strings.TrimSpace(req.EntryFilterKind),
+		EntryFilterMeta: cloneStringMap(req.EntryFilterMeta),
 	}, nil
 }
 
@@ -95,12 +104,16 @@ func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pic
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目标条目无效：%v", err))
 	}
+	item, allowed := s.filterPathPickerResolvedEntry(surface, record, pathPickerEntryFilterItem(entryName, resolved), resolved.path)
+	if !allowed || item.Disabled {
+		return notice(surface, "path_picker_invalid_entry", pathPickerEntryUnavailableText(item))
+	}
 	if resolved.kind != pathPickerModeDirectory {
 		return notice(surface, "path_picker_not_directory", "只能进入目录。")
 	}
 	record.CurrentPath = resolved.path
 	record.SelectedPath = defaultSelectedPathForMode(record.Mode, record.CurrentPath, "")
-	view, err := s.buildPathPickerView(record)
+	view, err := s.buildPathPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 	}
@@ -113,7 +126,7 @@ func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, picker
 		return blocked
 	}
 	if samePath(record.CurrentPath, record.RootPath) {
-		view, err := s.buildPathPickerView(record)
+		view, err := s.buildPathPickerView(surface, record)
 		if err != nil {
 			return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 		}
@@ -129,7 +142,7 @@ func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, picker
 	}
 	record.CurrentPath = resolved.path
 	record.SelectedPath = defaultSelectedPathForMode(record.Mode, record.CurrentPath, "")
-	view, err := s.buildPathPickerView(record)
+	view, err := s.buildPathPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 	}
@@ -145,6 +158,10 @@ func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pi
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目标条目无效：%v", err))
 	}
+	item, allowed := s.filterPathPickerResolvedEntry(surface, record, pathPickerEntryFilterItem(entryName, resolved), resolved.path)
+	if !allowed || item.Disabled {
+		return notice(surface, "path_picker_invalid_entry", pathPickerEntryUnavailableText(item))
+	}
 	switch record.Mode {
 	case pathPickerModeFile:
 		if resolved.kind != pathPickerModeFile {
@@ -156,7 +173,7 @@ func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pi
 		}
 	}
 	record.SelectedPath = resolved.path
-	view, err := s.buildPathPickerView(record)
+	view, err := s.buildPathPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 	}
@@ -171,6 +188,14 @@ func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, p
 	selectedPath, err := confirmedPathPickerSelection(record)
 	if err != nil {
 		return notice(surface, "path_picker_selection_missing", err.Error())
+	}
+	resolved, err := resolvePathPickerExistingTarget(record.RootPath, selectedPath)
+	if err != nil {
+		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目标条目无效：%v", err))
+	}
+	item, allowed := s.filterPathPickerResolvedEntry(surface, record, pathPickerEntryFilterItem(pathPickerEntryNameForPath(selectedPath), resolved), resolved.path)
+	if !allowed || item.Disabled {
+		return notice(surface, "path_picker_invalid_entry", pathPickerEntryUnavailableText(item))
 	}
 	result := pathPickerResultFromRecord(record, selectedPath)
 	if consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind); ok {
@@ -211,7 +236,7 @@ func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, p
 	return record, nil
 }
 
-func (s *Service) buildPathPickerView(record *activePathPickerRecord) (control.FeishuPathPickerView, error) {
+func (s *Service) buildPathPickerView(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord) (control.FeishuPathPickerView, error) {
 	if record == nil {
 		return control.FeishuPathPickerView{}, fmt.Errorf("路径选择器不存在")
 	}
@@ -236,7 +261,7 @@ func (s *Service) buildPathPickerView(record *activePathPickerRecord) (control.F
 		CanGoUp:      !samePath(current.path, record.RootPath),
 		CanConfirm:   canConfirmPathPicker(record),
 	}
-	entries, err := buildPathPickerEntries(record)
+	entries, err := s.buildPathPickerEntries(surface, record)
 	if err != nil {
 		return control.FeishuPathPickerView{}, err
 	}
@@ -257,7 +282,7 @@ func (s *Service) buildPathPickerView(record *activePathPickerRecord) (control.F
 	return view, nil
 }
 
-func buildPathPickerEntries(record *activePathPickerRecord) ([]control.FeishuPathPickerEntry, error) {
+func (s *Service) buildPathPickerEntries(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord) ([]control.FeishuPathPickerEntry, error) {
 	dirEntries, err := os.ReadDir(record.CurrentPath)
 	if err != nil {
 		return nil, err
@@ -268,28 +293,17 @@ func buildPathPickerEntries(record *activePathPickerRecord) ([]control.FeishuPat
 		if name == "" {
 			continue
 		}
-		item := control.FeishuPathPickerEntry{Name: name, Label: name}
 		resolved, err := resolvePathPickerEntry(record.RootPath, record.CurrentPath, name)
 		if err != nil {
+			item := control.FeishuPathPickerEntry{Name: name, Label: name}
 			item.Disabled = true
 			item.DisabledReason = err.Error()
 			items = append(items, item)
 			continue
 		}
-		switch resolved.kind {
-		case pathPickerModeDirectory:
-			item.Kind = control.PathPickerEntryDirectory
-			item.ActionKind = control.PathPickerEntryActionEnter
-			item.Selected = samePath(currentSelectedPath(record), resolved.path)
-		case pathPickerModeFile:
-			item.Kind = control.PathPickerEntryFile
-			if record.Mode == pathPickerModeFile {
-				item.ActionKind = control.PathPickerEntryActionSelect
-				item.Selected = samePath(strings.TrimSpace(record.SelectedPath), resolved.path)
-			} else {
-				item.Disabled = true
-				item.DisabledReason = "当前只可选择目录"
-			}
+		item, allowed := s.filterPathPickerResolvedEntry(surface, record, pathPickerEntryViewItem(record, name, resolved), resolved.path)
+		if !allowed {
+			continue
 		}
 		items = append(items, item)
 	}
@@ -312,6 +326,61 @@ func buildPathPickerEntries(record *activePathPickerRecord) ([]control.FeishuPat
 		return strings.TrimSpace(items[i].Name) < strings.TrimSpace(items[j].Name)
 	})
 	return items, nil
+}
+
+func pathPickerEntryViewItem(record *activePathPickerRecord, name string, resolved resolvedPathPickerTarget) control.FeishuPathPickerEntry {
+	item := pathPickerEntryFilterItem(name, resolved)
+	switch resolved.kind {
+	case pathPickerModeDirectory:
+		item.ActionKind = control.PathPickerEntryActionEnter
+		item.Selected = samePath(currentSelectedPath(record), resolved.path)
+	case pathPickerModeFile:
+		if record != nil && record.Mode == pathPickerModeFile {
+			item.ActionKind = control.PathPickerEntryActionSelect
+			item.Selected = samePath(strings.TrimSpace(record.SelectedPath), resolved.path)
+		} else {
+			item.Disabled = true
+			item.DisabledReason = "当前只可选择目录"
+		}
+	}
+	return item
+}
+
+func pathPickerEntryFilterItem(name string, resolved resolvedPathPickerTarget) control.FeishuPathPickerEntry {
+	item := control.FeishuPathPickerEntry{Name: strings.TrimSpace(name), Label: strings.TrimSpace(name)}
+	switch resolved.kind {
+	case pathPickerModeDirectory:
+		item.Kind = control.PathPickerEntryDirectory
+	case pathPickerModeFile:
+		item.Kind = control.PathPickerEntryFile
+	}
+	return item
+}
+
+func pathPickerEntryNameForPath(path string) string {
+	name := strings.TrimSpace(filepath.Base(strings.TrimSpace(path)))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return strings.TrimSpace(path)
+	}
+	return name
+}
+
+func pathPickerEntryUnavailableText(item control.FeishuPathPickerEntry) string {
+	if text := strings.TrimSpace(item.DisabledReason); text != "" {
+		return text
+	}
+	return "这个条目当前不可用，请刷新后重试。"
+}
+
+func (s *Service) filterPathPickerResolvedEntry(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, item control.FeishuPathPickerEntry, resolvedPath string) (control.FeishuPathPickerEntry, bool) {
+	if s == nil || record == nil {
+		return item, true
+	}
+	filter, ok := s.lookupPathPickerEntryFilter(record.EntryFilterKind)
+	if !ok {
+		return item, true
+	}
+	return filter.PathPickerFilterEntry(s, surface, record, item, resolvedPath)
 }
 
 func pathPickerDirectorySortBucket(entry control.FeishuPathPickerEntry) int {
@@ -425,6 +494,13 @@ func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, boo
 		return nil, false
 	}
 	return s.pickers.lookupPathPickerConsumer(kind)
+}
+
+func (s *Service) lookupPathPickerEntryFilter(kind string) (PathPickerEntryFilter, bool) {
+	if s == nil || s.pickers == nil {
+		return nil, false
+	}
+	return s.pickers.lookupPathPickerEntryFilter(kind)
 }
 
 func (s *Service) RecordPathPickerMessage(surfaceID, pickerID, messageID string) {

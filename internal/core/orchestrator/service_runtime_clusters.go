@@ -11,18 +11,20 @@ import (
 )
 
 type servicePickerRuntime struct {
-	service             *Service
-	nextPathPickerID    int
-	nextTargetPickerID  int
-	nextThreadHistoryID int
-	nextCompactFlowID   int
-	pathPickerConsumers map[string]PathPickerConsumer
+	service                *Service
+	nextPathPickerID       int
+	nextTargetPickerID     int
+	nextThreadHistoryID    int
+	nextCompactFlowID      int
+	pathPickerConsumers    map[string]PathPickerConsumer
+	pathPickerEntryFilters map[string]PathPickerEntryFilter
 }
 
 func newServicePickerRuntime(service *Service) *servicePickerRuntime {
 	return &servicePickerRuntime{
-		service:             service,
-		pathPickerConsumers: map[string]PathPickerConsumer{},
+		service:                service,
+		pathPickerConsumers:    map[string]PathPickerConsumer{},
+		pathPickerEntryFilters: map[string]PathPickerEntryFilter{},
 	}
 }
 
@@ -51,6 +53,33 @@ func (r *servicePickerRuntime) lookupPathPickerConsumer(kind string) (PathPicker
 	}
 	consumer := r.pathPickerConsumers[kind]
 	return consumer, consumer != nil
+}
+
+func (r *servicePickerRuntime) registerPathPickerEntryFilter(kind string, filter PathPickerEntryFilter) {
+	if r == nil {
+		return
+	}
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return
+	}
+	if filter == nil {
+		delete(r.pathPickerEntryFilters, kind)
+		return
+	}
+	r.pathPickerEntryFilters[kind] = filter
+}
+
+func (r *servicePickerRuntime) lookupPathPickerEntryFilter(kind string) (PathPickerEntryFilter, bool) {
+	if r == nil {
+		return nil, false
+	}
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		return nil, false
+	}
+	filter := r.pathPickerEntryFilters[kind]
+	return filter, filter != nil
 }
 
 func (r *servicePickerRuntime) nextPathPickerToken() string {

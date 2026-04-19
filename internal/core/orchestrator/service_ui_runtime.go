@@ -80,24 +80,26 @@ type activeThreadHistoryRecord struct {
 }
 
 type activePathPickerRecord struct {
-	PickerID     string
-	MessageID    string
-	OwnerUserID  string
-	OwnerFlowID  string
-	Mode         pathPickerMode
-	Title        string
-	StageLabel   string
-	Question     string
-	RootPath     string
-	CurrentPath  string
-	SelectedPath string
-	Hint         string
-	ConfirmLabel string
-	CancelLabel  string
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	ConsumerKind string
-	ConsumerMeta map[string]string
+	PickerID        string
+	MessageID       string
+	OwnerUserID     string
+	OwnerFlowID     string
+	Mode            pathPickerMode
+	Title           string
+	StageLabel      string
+	Question        string
+	RootPath        string
+	CurrentPath     string
+	SelectedPath    string
+	Hint            string
+	ConfirmLabel    string
+	CancelLabel     string
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
+	ConsumerKind    string
+	ConsumerMeta    map[string]string
+	EntryFilterKind string
+	EntryFilterMeta map[string]string
 }
 
 type surfaceUIRuntimeRecord struct {
