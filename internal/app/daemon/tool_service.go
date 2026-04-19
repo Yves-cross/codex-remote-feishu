@@ -25,30 +25,19 @@ const feishuSendIMFileDescription = "Send a local file to the current Feishu rem
 
 type toolServiceInfo struct {
 	URL         string    `json:"url"`
-	ManifestURL string    `json:"manifestUrl"`
-	CallURL     string    `json:"callUrl"`
+	Protocol    string    `json:"protocol,omitempty"`
+	Transport   string    `json:"transport,omitempty"`
+	ManifestURL string    `json:"manifestUrl,omitempty"`
+	CallURL     string    `json:"callUrl,omitempty"`
 	Token       string    `json:"token"`
 	TokenType   string    `json:"tokenType"`
 	GeneratedAt time.Time `json:"generatedAt"`
-}
-
-type toolManifestResponse struct {
-	Tools []toolDefinition `json:"tools"`
 }
 
 type toolDefinition struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
-}
-
-type toolCallRequest struct {
-	Tool      string         `json:"tool"`
-	Arguments map[string]any `json:"arguments"`
-}
-
-type toolCallResponse struct {
-	Result any `json:"result"`
 }
 
 type toolError struct {
@@ -78,8 +67,47 @@ type resolvedToolSurfaceContext struct {
 	Attached           bool
 }
 
-func (a *App) requireToolAuth(next func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func toolDefinitions() []toolDefinition {
+	return []toolDefinition{
+		{
+			Name:        feishuSurfaceResolverToolName,
+			Description: feishuSurfaceResolverDescription,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"surface_session_id": map[string]any{
+						"type":        "string",
+						"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
+					},
+				},
+				"required":             []string{"surface_session_id"},
+				"additionalProperties": false,
+			},
+		},
+		{
+			Name:        feishuSendIMFileToolName,
+			Description: feishuSendIMFileDescription,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"surface_session_id": map[string]any{
+						"type":        "string",
+						"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
+					},
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Existing local file path to send as a Feishu IM file message",
+					},
+				},
+				"required":             []string{"surface_session_id", "path"},
+				"additionalProperties": false,
+			},
+		},
+	}
+}
+
+func (a *App) requireToolAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !adminauth.IsLoopbackRequest(r) {
 			writeToolError(w, http.StatusForbidden, toolError{
 				Code:    "loopback_required",
@@ -103,81 +131,8 @@ func (a *App) requireToolAuth(next func(http.ResponseWriter, *http.Request)) htt
 			})
 			return
 		}
-		next(w, r)
-	}
-}
-
-func (a *App) handleToolManifest(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, toolManifestResponse{
-		Tools: []toolDefinition{
-			{
-				Name:        feishuSurfaceResolverToolName,
-				Description: feishuSurfaceResolverDescription,
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"surface_session_id": map[string]any{
-							"type":        "string",
-							"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
-						},
-					},
-					"required":             []string{"surface_session_id"},
-					"additionalProperties": false,
-				},
-			},
-			{
-				Name:        feishuSendIMFileToolName,
-				Description: feishuSendIMFileDescription,
-				InputSchema: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"surface_session_id": map[string]any{
-							"type":        "string",
-							"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
-						},
-						"path": map[string]any{
-							"type":        "string",
-							"description": "Existing local file path to send as a Feishu IM file message",
-						},
-					},
-					"required":             []string{"surface_session_id", "path"},
-					"additionalProperties": false,
-				},
-			},
-		},
+		next.ServeHTTP(w, r)
 	})
-}
-
-func (a *App) handleToolCall(w http.ResponseWriter, r *http.Request) {
-	var req toolCallRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeToolError(w, http.StatusBadRequest, toolError{
-			Code:    "invalid_request",
-			Message: "invalid tool call payload",
-		})
-		return
-	}
-	switch strings.TrimSpace(req.Tool) {
-	case feishuSurfaceResolverToolName:
-		result, apiErr := a.resolveSurfaceContextTool(req.Arguments)
-		if apiErr != nil {
-			writeToolError(w, http.StatusBadRequest, *apiErr)
-			return
-		}
-		writeJSON(w, http.StatusOK, toolCallResponse{Result: result})
-	case feishuSendIMFileToolName:
-		result, apiErr := a.sendIMFileTool(r.Context(), req.Arguments)
-		if apiErr != nil {
-			writeToolError(w, http.StatusBadRequest, *apiErr)
-			return
-		}
-		writeJSON(w, http.StatusOK, toolCallResponse{Result: result})
-	default:
-		writeToolError(w, http.StatusNotFound, toolError{
-			Code:    "tool_not_found",
-			Message: "unknown tool",
-		})
-	}
 }
 
 func (a *App) resolveSurfaceContextTool(arguments map[string]any) (map[string]any, *toolError) {

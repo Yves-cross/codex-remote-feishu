@@ -12,11 +12,7 @@ import (
 )
 
 func (a *App) SetToolRuntime(cfg ToolRuntimeConfig) {
-	a.toolRuntime.configure(
-		cfg,
-		a.requireToolAuth(a.handleToolManifest),
-		a.requireToolAuth(a.handleToolCall),
-	)
+	a.toolRuntime.configure(cfg, a.newToolRuntimeHandler())
 }
 
 func (a *App) bindToolListenerLocked() error {
@@ -27,7 +23,7 @@ func (a *App) removeToolServiceStateLocked() {
 	a.toolRuntime.removeStateLocked()
 }
 
-func (t *toolRuntimeState) configure(cfg ToolRuntimeConfig, manifestHandler, callHandler http.HandlerFunc) {
+func (t *toolRuntimeState) configure(cfg ToolRuntimeConfig, toolHandler http.Handler) {
 	if strings.TrimSpace(cfg.ListenAddr) == "" {
 		return
 	}
@@ -36,8 +32,7 @@ func (t *toolRuntimeState) configure(cfg ToolRuntimeConfig, manifestHandler, cal
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.HandleFunc("GET /v1/tools/manifest", manifestHandler)
-	mux.HandleFunc("POST /v1/tools/call", callHandler)
+	mux.Handle("/", toolHandler)
 	t.server = &http.Server{Addr: cfg.ListenAddr, Handler: mux}
 	t.statePath = strings.TrimSpace(cfg.StateFile)
 }
@@ -72,8 +67,8 @@ func (t *toolRuntimeState) persistStateLocked() error {
 	}
 	info := toolServiceInfo{
 		URL:         "http://" + t.listener.Addr().String(),
-		ManifestURL: "http://" + t.listener.Addr().String() + "/v1/tools/manifest",
-		CallURL:     "http://" + t.listener.Addr().String() + "/v1/tools/call",
+		Protocol:    "mcp",
+		Transport:   "streamable_http",
 		Token:       t.bearerToken,
 		TokenType:   "bearer",
 		GeneratedAt: time.Now().UTC(),

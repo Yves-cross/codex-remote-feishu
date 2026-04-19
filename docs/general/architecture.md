@@ -1,8 +1,8 @@
 # 架构
 
 > Type: `general`
-> Updated: `2026-04-18`
-> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，并补充 daemon 作为组合根的 runtime owner 收口、Feishu adapter 的 controller/gateway/projector/preview 边界、Feishu ordinary inbound 的 early ACK + gateway-local FIFO lane、orchestrator service-owned UI/runtime cluster，以及 editor 侧共享 VS Code bundle entrypoint 探测边界。
+> Updated: `2026-04-19`
+> Summary: 对齐当前统一二进制入口、兼容 launcher 与实际目录结构，并补充 daemon 作为组合根的 runtime owner 收口、Feishu adapter 的 controller/gateway/projector/preview 边界、Feishu ordinary inbound 的 early ACK + gateway-local FIFO lane、orchestrator service-owned UI/runtime cluster、daemon 本地 Feishu tool listener 升级为 MCP-native streamable HTTP 协议面，以及 editor 侧共享 VS Code bundle entrypoint 探测边界。
 
 ## 1. 当前状态
 
@@ -208,7 +208,7 @@ Feishu 平台适配层，负责：
 把这些模块组装成 daemon role：
 
 - relay websocket server
-- local tool service listener
+- local Feishu MCP tool listener
 - orchestrator
 - renderer
 - Feishu gateway
@@ -221,6 +221,13 @@ Feishu 平台适配层，负责：
 - `upgradeRuntime`
 
 这些 runtime 仍留在 `internal/app/daemon` 同包内，但状态拥有者、receiver 和顶层调度边界已经分开；`App` 主要保留 lifecycle、依赖注入、跨 runtime 编排，以及少量必须集中托管的共享资源。
+
+其中 daemon 自带的本地 Feishu tool listener 当前固定监听 `127.0.0.1:9502`，对外暴露的是 MCP-native streamable HTTP 协议面，而不再是仓库自定义 `manifest/call` 路由。它继续保留：
+
+- loopback-only 访问边界
+- bearer token 鉴权
+- daemon 侧 tool 业务逻辑作为唯一 source of truth
+- workspace `.codex-remote/surface-context.json` 作为当前 surface 上下文载体
 
 ### 4.11 `internal/app/wrapper`
 
@@ -299,7 +306,7 @@ normal 模式下的 workspace 排他接管
   -> daemon 在 workspace/.codex-remote/surface-context.json 写入当前 surface
   -> 本地 Feishu MCP tool description 要求 Codex 先读取该文件
   -> tool call 显式带回 surface_session_id
-  -> daemon local tool service 校验并解析 surface context
+  -> daemon local MCP tool service 校验 bearer token、解析 surface context 并执行 tools/list / tools/call
   -> `feishu_send_im_file` 可继续用显式 `surface_session_id` 把本地文件发送回当前 Feishu surface
 ```
 

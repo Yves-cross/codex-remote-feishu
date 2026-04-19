@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +50,7 @@ func newToolServiceTestApp(t *testing.T, gateway feishu.Gateway) (*App, relayrun
 	return app, paths
 }
 
-func TestToolManifestRequiresBearerAndPublishesDescription(t *testing.T) {
+func TestToolRuntimeRequiresBearerAndPublishesMCPState(t *testing.T) {
 	app, paths := newToolServiceTestApp(t, nil)
 	if err := app.Bind(); err != nil {
 		t.Fatalf("Bind() error = %v", err)
@@ -60,38 +59,24 @@ func TestToolManifestRequiresBearerAndPublishesDescription(t *testing.T) {
 		_ = app.Shutdown(context.Background())
 	}()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/tools/manifest", nil)
-	req.RemoteAddr = "127.0.0.1:12345"
-	rec := httptest.NewRecorder()
-	app.toolRuntime.server.Handler.ServeHTTP(rec, req)
+	rec := performToolMCPRequest(t, app.toolRuntime.server.Handler, toolMCPRequestOptions{
+		Method: http.MethodPost,
+		Body:   toolMCPInitializeRequestBody(),
+	})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected unauthorized without bearer, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/v1/tools/manifest", nil)
-	req.RemoteAddr = "127.0.0.1:12345"
-	req.Header.Set("Authorization", "Bearer "+app.toolRuntime.bearerToken)
-	rec = httptest.NewRecorder()
-	app.toolRuntime.server.Handler.ServeHTTP(rec, req)
+	rec = performToolMCPRequest(t, app.toolRuntime.server.Handler, toolMCPRequestOptions{
+		Method: http.MethodPost,
+		Token:  app.toolRuntime.bearerToken,
+		Body:   toolMCPInitializeRequestBody(),
+	})
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected manifest success, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("expected initialize success, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	var manifest toolManifestResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &manifest); err != nil {
-		t.Fatalf("unmarshal manifest: %v", err)
-	}
-	if len(manifest.Tools) != 2 {
-		t.Fatalf("unexpected manifest: %#v", manifest)
-	}
-	tools := map[string]toolDefinition{}
-	for _, tool := range manifest.Tools {
-		tools[tool.Name] = tool
-	}
-	if !strings.Contains(tools[feishuSurfaceResolverToolName].Description, ".codex-remote/surface-context.json") {
-		t.Fatalf("expected workspace context rule in resolver description, got %q", tools[feishuSurfaceResolverToolName].Description)
-	}
-	if !strings.Contains(tools[feishuSendIMFileToolName].Description, ".codex-remote/surface-context.json") {
-		t.Fatalf("expected workspace context rule in file-send description, got %q", tools[feishuSendIMFileToolName].Description)
+	if strings.TrimSpace(rec.Header().Get("Mcp-Session-Id")) == "" {
+		t.Fatalf("expected session id header, got headers=%v", rec.Header())
 	}
 	infoRaw, err := os.ReadFile(paths.ToolServiceFile)
 	if err != nil {
@@ -101,8 +86,14 @@ func TestToolManifestRequiresBearerAndPublishesDescription(t *testing.T) {
 	if err := json.Unmarshal(infoRaw, &info); err != nil {
 		t.Fatalf("unmarshal tool service file: %v", err)
 	}
-	if info.Token != app.toolRuntime.bearerToken || !strings.Contains(info.ManifestURL, "/v1/tools/manifest") {
+	if info.Token != app.toolRuntime.bearerToken {
+		t.Fatalf("unexpected tool service file token: %#v", info)
+	}
+	if info.URL == "" || info.Protocol != "mcp" || info.Transport != "streamable_http" {
 		t.Fatalf("unexpected tool service file: %#v", info)
+	}
+	if info.ManifestURL != "" || info.CallURL != "" {
+		t.Fatalf("expected deprecated custom endpoints to be empty, got %#v", info)
 	}
 }
 
