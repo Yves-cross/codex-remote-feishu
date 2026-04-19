@@ -203,12 +203,13 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	childCtx, childCancel := context.WithCancel(ctx)
 	defer childCancel()
 
-	cmd := exec.CommandContext(childCtx, a.config.CodexRealBinary, a.config.Args...)
+	childArgs, childEnv := a.buildCodexChildLaunch(a.config.Args)
+	cmd := exec.CommandContext(childCtx, a.config.CodexRealBinary, childArgs...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Dir = a.config.WorkspaceRoot
-	cmd.Env = childEnvWithProxy(a.config.ChildProxyEnv, a.config.Args)
+	cmd.Env = childEnv
 	configureCodexChildProcess(cmd, a.config)
 
 	childStdin, childStdout, childStderr, err := startChild(cmd)
