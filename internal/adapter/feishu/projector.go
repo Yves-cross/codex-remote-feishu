@@ -24,27 +24,28 @@ const (
 )
 
 type Operation struct {
-	Kind             OperationKind
-	GatewayID        string
-	SurfaceSessionID string
-	ReceiveID        string
-	ReceiveIDType    string
-	ChatID           string
-	MessageID        string
-	ReplyToMessageID string
-	EmojiType        string
-	TimeSensitive    bool
-	Text             string
-	ImagePath        string
-	ImageBase64      string
-	CardTitle        string
-	CardBody         string
-	CardThemeKey     string
-	CardElements     []map[string]any
-	CardUpdateMulti  bool
-	cardEnvelope     cardEnvelopeVersion
-	card             *cardDocument
-	finalSourceBody  string
+	Kind                 OperationKind
+	GatewayID            string
+	SurfaceSessionID     string
+	ReceiveID            string
+	ReceiveIDType        string
+	ChatID               string
+	MessageID            string
+	ReplyToMessageID     string
+	EmojiType            string
+	TimeSensitive        bool
+	Text                 string
+	ImagePath            string
+	ImageBase64          string
+	CardTitle            string
+	CardBody             string
+	CardThemeKey         string
+	CardElements         []map[string]any
+	CardUpdateMulti      bool
+	ProgressCardStartSeq int
+	cardEnvelope         cardEnvelopeVersion
+	card                 *cardDocument
+	finalSourceBody      string
 }
 
 func (operation Operation) FinalSourceBody() string {

@@ -238,6 +238,7 @@ type ExecCommandProgressRecord struct {
 	TurnID               string
 	ItemID               string
 	MessageID            string
+	CardStartSeq         int
 	Entries              []ExecCommandProgressEntryRecord
 	Commands             []string
 	Command              string

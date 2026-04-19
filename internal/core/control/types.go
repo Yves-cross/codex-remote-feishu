@@ -575,6 +575,7 @@ type ExecCommandProgress struct {
 	TurnID          string
 	ItemID          string
 	MessageID       string
+	CardStartSeq    int
 	Blocks          []ExecCommandProgressBlock
 	Entries         []ExecCommandProgressEntry
 	Timeline        []ExecCommandProgressTimelineItem

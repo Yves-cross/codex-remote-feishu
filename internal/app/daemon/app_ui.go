@@ -332,14 +332,14 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 		if strings.TrimSpace(operation.MessageID) == "" {
 			continue
 		}
-		a.service.RecordExecCommandProgressMessage(
+		a.service.RecordExecCommandProgressMessageStartSeq(
 			event.SurfaceSessionID,
 			event.ExecCommandProgress.ThreadID,
 			event.ExecCommandProgress.TurnID,
 			event.ExecCommandProgress.ItemID,
 			operation.MessageID,
+			operation.ProgressCardStartSeq,
 		)
-		return
 	}
 }
 

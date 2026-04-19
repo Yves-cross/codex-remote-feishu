@@ -89,6 +89,48 @@ func TestExecCommandProgressVerboseEmitsStartAndTracksCommandHistory(t *testing.
 	}
 }
 
+func TestRecordExecCommandProgressMessageStartSeqAdvancesActiveCardWindow(t *testing.T) {
+	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+	surface.Verbosity = state.SurfaceVerbosityVerbose
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "处理一下", "turn-1")
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "cmd-1",
+		ItemKind: "command_execution",
+		Metadata: map[string]any{
+			"command": "npm test",
+		},
+	})
+	if len(started) != 1 || started[0].ExecCommandProgress == nil {
+		t.Fatalf("expected initial progress event, got %#v", started)
+	}
+	svc.RecordExecCommandProgressMessageStartSeq("surface-1", "thread-1", "turn-1", "cmd-1", "om-progress-2", 7)
+
+	second := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "cmd-2",
+		ItemKind: "command_execution",
+		Metadata: map[string]any{
+			"command": "go test ./...",
+		},
+	})
+	if len(second) != 1 || second[0].ExecCommandProgress == nil {
+		t.Fatalf("expected follow-up progress event, got %#v", second)
+	}
+	progress := second[0].ExecCommandProgress
+	if progress.MessageID != "om-progress-2" || progress.CardStartSeq != 7 {
+		t.Fatalf("expected active progress card state to keep new message and window start, got %#v", progress)
+	}
+}
+
 func TestExecCommandProgressQuietVerbositySuppressesCard(t *testing.T) {
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

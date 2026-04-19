@@ -15,33 +15,42 @@ func (p *Projector) projectExecCommandProgress(chatID string, event control.UIEv
 		return nil
 	}
 	progress := *event.ExecCommandProgress
-	lines := execCommandProgressLines(progress)
-	if len(lines) == 0 {
+	renderedLines := execCommandProgressRenderedLines(progress)
+	if len(renderedLines) == 0 {
 		return nil
 	}
-	body := strings.Join(lines, "\n")
-	elements := execCommandProgressElements(lines)
-	operation := Operation{
-		GatewayID:        event.GatewayID,
-		SurfaceSessionID: event.SurfaceSessionID,
-		ChatID:           chatID,
-		MessageID:        progress.MessageID,
-		CardTitle:        "工作中",
-		CardBody:         body,
-		CardThemeKey:     cardThemeProgress,
-		CardElements:     elements,
-		CardUpdateMulti:  true,
-		cardEnvelope:     cardEnvelopeV2,
-		card:             rawCardDocument("工作中", "", cardThemeProgress, elements),
+	cardStartSeq := normalizeExecProgressCardStartSeq(progress, renderedLines)
+	chunks := partitionExecProgressChunks(renderedLines, cardStartSeq)
+	if len(chunks) == 0 {
+		return nil
 	}
-	if strings.TrimSpace(progress.MessageID) != "" {
-		operation.Kind = OperationUpdateCard
-		operation.ReplyToMessageID = ""
-	} else {
-		operation.Kind = OperationSendCard
-		operation.ReplyToMessageID = ""
+	ops := make([]Operation, 0, len(chunks))
+	for index, chunk := range chunks {
+		lines := execProgressRenderedContent(chunk.Lines)
+		elements := execCommandProgressElements(lines)
+		op := Operation{
+			GatewayID:            event.GatewayID,
+			SurfaceSessionID:     event.SurfaceSessionID,
+			ChatID:               chatID,
+			CardTitle:            "工作中",
+			CardBody:             strings.Join(lines, "\n"),
+			CardThemeKey:         cardThemeProgress,
+			CardElements:         elements,
+			CardUpdateMulti:      true,
+			ProgressCardStartSeq: chunk.StartSeq,
+			cardEnvelope:         cardEnvelopeV2,
+			card:                 rawCardDocument("工作中", "", cardThemeProgress, elements),
+		}
+		switch {
+		case index == 0 && strings.TrimSpace(progress.MessageID) != "":
+			op.Kind = OperationUpdateCard
+			op.MessageID = progress.MessageID
+		default:
+			op.Kind = OperationSendCard
+		}
+		ops = append(ops, op)
 	}
-	return []Operation{operation}
+	return ops
 }
 
 func execCommandProgressBody(progress control.ExecCommandProgress) string {
@@ -80,24 +89,21 @@ func execCommandProgressMarkdownLine(line string) string {
 }
 
 func execCommandProgressLines(progress control.ExecCommandProgress) []string {
-	items := normalizedExecProgressTimeline(progress)
-	lines := make([]string, 0, len(items)*2)
-	for _, item := range items {
-		if rendered := renderExecProgressTimelineItem(item); rendered != "" {
-			lines = append(lines, rendered)
-		}
-	}
-	if progress.TransientStatus != nil {
-		if rendered := renderExecProgressTransientStatus(*progress.TransientStatus); rendered != "" {
-			lines = append(lines, rendered)
-		}
+	rendered := execCommandProgressRenderedLines(progress)
+	lines := make([]string, 0, len(rendered))
+	for _, line := range rendered {
+		lines = append(lines, line.Content)
 	}
 	return lines
 }
 
 func normalizedExecProgressTimeline(progress control.ExecCommandProgress) []control.ExecCommandProgressTimelineItem {
-	items := make([]control.ExecCommandProgressTimelineItem, 0, len(progress.Timeline))
-	for _, item := range progress.Timeline {
+	timeline := append([]control.ExecCommandProgressTimelineItem(nil), progress.Timeline...)
+	if len(timeline) == 0 {
+		timeline = control.BuildExecCommandProgressTimeline(progress)
+	}
+	items := make([]control.ExecCommandProgressTimelineItem, 0, len(timeline))
+	for _, item := range timeline {
 		if normalized, ok := normalizeExecProgressTimelineItem(item); ok {
 			items = append(items, normalized)
 		}

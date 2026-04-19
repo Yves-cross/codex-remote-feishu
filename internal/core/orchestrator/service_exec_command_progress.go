@@ -273,6 +273,10 @@ func (s *Service) finalizeExecCommandProgressForTurn(instanceID, threadID, turnI
 }
 
 func (s *Service) RecordExecCommandProgressMessage(surfaceID, threadID, turnID, itemID, messageID string) {
+	s.RecordExecCommandProgressMessageStartSeq(surfaceID, threadID, turnID, itemID, messageID, 0)
+}
+
+func (s *Service) RecordExecCommandProgressMessageStartSeq(surfaceID, threadID, turnID, itemID, messageID string, cardStartSeq int) {
 	if strings.TrimSpace(surfaceID) == "" || strings.TrimSpace(messageID) == "" {
 		return
 	}
@@ -288,6 +292,9 @@ func (s *Service) RecordExecCommandProgressMessage(surfaceID, threadID, turnID, 
 		return
 	}
 	progress.MessageID = strings.TrimSpace(messageID)
+	if cardStartSeq > 0 {
+		progress.CardStartSeq = cardStartSeq
+	}
 }
 
 func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, progress *state.ExecCommandProgressRecord, threadID, turnID string, final bool) []control.UIEvent {
@@ -329,6 +336,7 @@ func ExecCommandProgressSnapshot(progress *state.ExecCommandProgressRecord) *con
 		TurnID:          progress.TurnID,
 		ItemID:          progress.ItemID,
 		MessageID:       progress.MessageID,
+		CardStartSeq:    progress.CardStartSeq,
 		Blocks:          execCommandProgressBlocks(progress),
 		Entries:         entries,
 		Commands:        append([]string(nil), progress.Commands...),

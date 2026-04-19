@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -368,6 +369,142 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *t
 	}
 	if strings.Contains(second, "<text_tag") {
 		t.Fatalf("expected progress lines to avoid raw text_tag markup, got %#v", elements[1])
+	}
+}
+
+func TestProjectExecCommandProgressContinuesIntoNewCardWhenOversized(t *testing.T) {
+	projector := NewProjector()
+	entries := make([]control.ExecCommandProgressEntry, 0, 480)
+	for i := 1; i <= 480; i++ {
+		entries = append(entries, control.ExecCommandProgressEntry{
+			ItemID:  "cmd-" + strconv.Itoa(i),
+			Kind:    "command_execution",
+			Label:   "执行",
+			Summary: "go test ./pkg/" + strconv.Itoa(i),
+			LastSeq: i,
+		})
+	}
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID:     "thread-1",
+			TurnID:       "turn-1",
+			ItemID:       "cmd-480",
+			MessageID:    "om-progress-1",
+			CardStartSeq: 1,
+			Entries:      entries,
+		},
+	})
+	if len(ops) < 2 {
+		t.Fatalf("expected oversized shared progress to continue into a new card, got %#v", ops)
+	}
+	if ops[0].Kind != OperationUpdateCard || ops[0].MessageID != "om-progress-1" {
+		t.Fatalf("expected first chunk to seal existing progress card, got %#v", ops[0])
+	}
+	last := ops[len(ops)-1]
+	if last.Kind != OperationSendCard {
+		t.Fatalf("expected last chunk to create a continuation card, got %#v", last)
+	}
+	if last.ProgressCardStartSeq <= 1 {
+		t.Fatalf("expected continuation card to advance start seq, got %#v", last)
+	}
+	for i, op := range ops {
+		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		size, err := jsonSize(payload)
+		if err != nil {
+			t.Fatalf("marshal chunk %d payload: %v", i, err)
+		}
+		if size > maxFeishuCardBytes {
+			t.Fatalf("expected shared progress chunk %d <= %d bytes, got %d", i, maxFeishuCardBytes, size)
+		}
+		if strings.Contains(op.CardBody, oversizedCardMessage) {
+			t.Fatalf("expected projector continuation to avoid gateway truncation marker on chunk %d, got %#v", i, op.CardBody)
+		}
+	}
+}
+
+func TestProjectExecCommandProgressUsesContinuationWindowStartSeq(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID:     "thread-1",
+			TurnID:       "turn-1",
+			ItemID:       "cmd-4",
+			MessageID:    "om-progress-2",
+			CardStartSeq: 3,
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: "go test ./one", LastSeq: 1},
+				{ItemID: "cmd-2", Kind: "command_execution", Label: "执行", Summary: "go test ./two", LastSeq: 2},
+				{ItemID: "cmd-3", Kind: "command_execution", Label: "执行", Summary: "go test ./three", LastSeq: 3},
+				{ItemID: "cmd-4", Kind: "command_execution", Label: "执行", Summary: "go test ./four", LastSeq: 4},
+			},
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected continuation window to stay on one card, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	if strings.Contains(body, "./one") || strings.Contains(body, "./two") {
+		t.Fatalf("expected old lines before current continuation window to stay out of active card, got %#v", ops[0])
+	}
+	if !strings.Contains(body, "./three") || !strings.Contains(body, "./four") {
+		t.Fatalf("expected active continuation window lines to stay visible, got %#v", ops[0])
+	}
+}
+
+func TestProjectExecCommandProgressFallsBackWhenContinuationWindowIsStale(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID:     "thread-1",
+			TurnID:       "turn-1",
+			ItemID:       "cmd-2",
+			MessageID:    "om-progress-3",
+			CardStartSeq: 99,
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: "go test ./one", LastSeq: 1},
+				{ItemID: "cmd-2", Kind: "command_execution", Label: "执行", Summary: "go test ./two", LastSeq: 2},
+			},
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected stale continuation window to fall back to visible lines, got %#v", ops)
+	}
+	if !strings.Contains(ops[0].CardBody, "./one") || !strings.Contains(ops[0].CardBody, "./two") {
+		t.Fatalf("expected stale continuation window to fall back to earliest visible chunk, got %#v", ops[0])
+	}
+}
+
+func TestProjectExecCommandProgressDropsTransientOverflowWithoutNewCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID:     "thread-1",
+			TurnID:       "turn-1",
+			ItemID:       "cmd-1",
+			MessageID:    "om-progress-1",
+			CardStartSeq: 1,
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: "npm test", LastSeq: 1},
+			},
+			TransientStatus: &control.ExecCommandProgressTransientStatus{
+				Kind: "reasoning",
+				Text: strings.Repeat("正在思考", 10000),
+			},
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected transient overflow to stay on current card without continuation, got %#v", ops)
+	}
+	if strings.Contains(ops[0].CardBody, "正在思考") {
+		t.Fatalf("expected oversized transient status to be dropped instead of forcing continuation, got %#v", ops[0])
 	}
 }
 
