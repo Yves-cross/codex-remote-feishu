@@ -202,6 +202,7 @@
   - 参数默认从 `form_value["command_args"]` 读取
   - 若 `value.field_name` 存在，则改为读取该字段
   - 命令表单当前同时兼容普通 `input` 与 `select_static`
+  - `select_static` 命令字段当前只投影 `placeholder/options/initial_option`；组件级 `label` 不会下发，因为飞书会把它判成非法字段
   - 若字段是下拉，gateway 当前按 `form_value[field_name] -> action.option -> action.options[0]` 的顺序提取第一条非空选项值
   - 若上面都为空，则最后回退 `input_value`
 - `submit_request_form`

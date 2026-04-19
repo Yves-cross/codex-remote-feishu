@@ -149,6 +149,12 @@ func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testi
 	if formElements[0]["tag"] != "select_static" {
 		t.Fatalf("expected select_static field, got %#v", formElements[0])
 	}
+	if _, ok := formElements[0]["label"]; ok {
+		t.Fatalf("expected select_static to omit unsupported label property, got %#v", formElements[0])
+	}
+	if _, ok := formElements[0]["label_position"]; ok {
+		t.Fatalf("expected select_static to omit unsupported label_position property, got %#v", formElements[0])
+	}
 	if formElements[0]["initial_option"] != "gpt-5.4-mini" {
 		t.Fatalf("expected initial option, got %#v", formElements[0])
 	}
