@@ -1,7 +1,6 @@
 package orchestrator
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -39,16 +38,7 @@ func (s *Service) commandMenuStage(surface *state.SurfaceConsoleRecord) commandM
 }
 
 func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	sections := []control.CommandCatalogSection{{
-		Title:   "全部分组",
-		Entries: s.commandMenuGroupEntries(),
-	}}
-	return control.FeishuDirectCommandCatalog{
-		Title:        "命令菜单",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-		Sections:     sections,
-	}
+	return control.BuildFeishuCommandMenuHomeCatalog()
 }
 
 func (s *Service) buildCommandHelpCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
@@ -62,108 +52,7 @@ func (s *Service) buildCommandHelpCatalog(surface *state.SurfaceConsoleRecord) c
 }
 
 func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleRecord, stage commandMenuStage, groupID string) control.FeishuDirectCommandCatalog {
-	group, ok := control.FeishuCommandGroupByID(groupID)
-	if !ok {
-		return s.buildCommandMenuHomeCatalog(surface)
-	}
-	entries := make([]control.CommandCatalogEntry, 0, 6)
-	productMode := string(s.normalizeSurfaceProductMode(surface))
-	for _, def := range control.FeishuCommandDefinitionsForGroup(groupID) {
-		def, ok := control.FeishuCommandDefinitionForDisplay(def, productMode, true, string(stage))
-		if !ok {
-			continue
-		}
-		entries = append(entries, commandEntryForDefinition(def))
-	}
-	return control.FeishuDirectCommandCatalog{
-		Title:        "命令菜单",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs: []control.CommandCatalogBreadcrumb{
-			{Label: "菜单首页"},
-			{Label: group.Title},
-		},
-		Sections: []control.CommandCatalogSection{{
-			Title:   group.Title,
-			Entries: entries,
-		}},
-		RelatedButtons: []control.CommandCatalogButton{{
-			Label:       "返回上一层",
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: menuCommandText(""),
-		}},
-	}
-}
-
-func (s *Service) commandMenuGroupEntries() []control.CommandCatalogEntry {
-	entries := make([]control.CommandCatalogEntry, 0, len(control.FeishuCommandGroups()))
-	for _, group := range control.FeishuCommandGroups() {
-		entries = append(entries, control.CommandCatalogEntry{
-			Title:          group.Title,
-			Description:    group.Description,
-			LegacyMarkdown: true,
-			Buttons: []control.CommandCatalogButton{{
-				Label:       submenuButtonLabel(group.Title),
-				Kind:        control.CommandCatalogButtonRunCommand,
-				CommandText: menuCommandText(group.ID),
-			}},
-		})
-	}
-	return entries
-}
-
-func commandEntryForDefinition(def control.FeishuCommandDefinition) control.CommandCatalogEntry {
-	return control.CommandCatalogEntry{
-		Title:          strings.TrimSpace(def.Title),
-		Commands:       []string{def.CanonicalSlash},
-		Description:    strings.TrimSpace(def.Description),
-		Examples:       append([]string(nil), def.Examples...),
-		LegacyMarkdown: true,
-		Buttons: []control.CommandCatalogButton{{
-			Label:       commandMenuButtonLabel(def),
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: def.CanonicalSlash,
-		}},
-	}
-}
-
-func commandMenuButtonLabel(def control.FeishuCommandDefinition) string {
-	title := strings.TrimSpace(def.Title)
-	command := strings.TrimSpace(def.CanonicalSlash)
-	switch {
-	case title == "":
-		return command
-	case command == "":
-		return title
-	default:
-		return title + " " + command
-	}
-}
-
-func submenuButtonLabel(label string) string {
-	label = strings.TrimSpace(label)
-	if label == "" {
-		return "打开子菜单"
-	}
-	return label + " ›"
-}
-
-func menuCommandText(view string) string {
-	if strings.TrimSpace(view) == "" {
-		return "/menu"
-	}
-	return "/menu " + strings.TrimSpace(view)
-}
-
-func commandBackButtons(groupID string) []control.CommandCatalogButton {
-	if group, ok := control.FeishuCommandGroupByID(groupID); ok {
-		return []control.CommandCatalogButton{{
-			Label:       "返回" + group.Title,
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: menuCommandText(groupID),
-		}}
-	}
-	return nil
+	return control.BuildFeishuCommandMenuGroupCatalog(groupID, string(s.normalizeSurfaceProductMode(surface)), string(stage))
 }
 
 func (s *Service) buildModeCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
@@ -184,55 +73,6 @@ func (s *Service) buildAccessCatalog(surface *state.SurfaceConsoleRecord) contro
 
 func (s *Service) buildModelCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
 	return s.commandCatalogFromView(surface, s.buildModelCommandView(surface))
-}
-
-func (s *Service) buildAttachmentRequiredCatalog(surface *state.SurfaceConsoleRecord, def control.FeishuCommandDefinition) control.FeishuDirectCommandCatalog {
-	return control.FeishuDirectCommandCatalog{
-		Title:                 def.Title,
-		Summary:               "还没接管目标。先开始或继续工作，再回来调整这个参数。",
-		LegacySummaryMarkdown: true,
-		Interactive:           true,
-		DisplayStyle:          control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:           commandBreadcrumbs(def.GroupID, def.Title),
-		Sections: []control.CommandCatalogSection{{
-			Title: "开始 / 继续工作",
-			Entries: []control.CommandCatalogEntry{
-				recoveryEntry(control.FeishuCommandList),
-				recoveryEntry(control.FeishuCommandUse),
-				recoveryEntry(control.FeishuCommandStatus),
-			},
-		}},
-		RelatedButtons: commandBackButtons(def.GroupID),
-	}
-}
-
-func recoveryEntry(commandID string) control.CommandCatalogEntry {
-	def, ok := control.FeishuCommandDefinitionByID(commandID)
-	if !ok {
-		return control.CommandCatalogEntry{}
-	}
-	return control.CommandCatalogEntry{
-		Title:          def.Title,
-		Commands:       []string{def.CanonicalSlash},
-		Description:    def.Description,
-		LegacyMarkdown: true,
-		Buttons: []control.CommandCatalogButton{{
-			Label:       commandMenuButtonLabel(def),
-			Kind:        control.CommandCatalogButtonRunCommand,
-			CommandText: def.CanonicalSlash,
-		}},
-	}
-}
-
-func commandBreadcrumbs(groupID, title string) []control.CommandCatalogBreadcrumb {
-	breadcrumbs := []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}}
-	if group, ok := control.FeishuCommandGroupByID(groupID); ok {
-		breadcrumbs = append(breadcrumbs, control.CommandCatalogBreadcrumb{Label: group.Title})
-	}
-	if strings.TrimSpace(title) != "" {
-		breadcrumbs = append(breadcrumbs, control.CommandCatalogBreadcrumb{Label: title})
-	}
-	return breadcrumbs
 }
 
 func choiceCommandButton(label, commandText string, disabled bool, style string) control.CommandCatalogButton {
@@ -278,39 +118,6 @@ func choiceButtonsFromOptions(options []control.FeishuCommandOption, currentOver
 		})
 	}
 	return buttons
-}
-
-func reasoningCatalogSummary(summary control.PromptRouteSummary) string {
-	return fmt.Sprintf(
-		"当前：`%s`；飞书覆盖：`%s`。",
-		displayPromptValue(summary.EffectiveReasoningEffort, "未设置"),
-		displayPromptValue(summary.OverrideReasoningEffort, "无"),
-	)
-}
-
-func accessCatalogSummary(summary control.PromptRouteSummary) string {
-	return fmt.Sprintf(
-		"当前：`%s`；飞书覆盖：`%s`。",
-		displayPromptValue(summary.EffectiveAccessMode, "未设置"),
-		displayPromptValue(summary.OverrideAccessMode, "无"),
-	)
-}
-
-func modelCatalogSummary(summary control.PromptRouteSummary) string {
-	lines := []string{
-		fmt.Sprintf("当前模型：`%s`；飞书覆盖：`%s`。", displayPromptValue(summary.EffectiveModel, "未设置"), displayPromptValue(summary.OverrideModel, "无")),
-	}
-	if strings.TrimSpace(summary.OverrideReasoningEffort) != "" {
-		lines = append(lines, fmt.Sprintf("附带推理覆盖：`%s`。", summary.OverrideReasoningEffort))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func displayPromptValue(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return strings.TrimSpace(value)
 }
 
 func (s *Service) startCommandCapture(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

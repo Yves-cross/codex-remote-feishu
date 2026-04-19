@@ -214,9 +214,9 @@ func modeCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDir
 		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections:        sections,
-		RelatedButtons:  commandBackButtons(def.GroupID),
+		RelatedButtons:  control.FeishuCommandBackButtons(def.GroupID),
 	}
 }
 
@@ -243,9 +243,9 @@ func autoContinueCatalogFromView(view control.FeishuCommandConfigView) control.F
 		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections:        sections,
-		RelatedButtons:  commandBackButtons(def.GroupID),
+		RelatedButtons:  control.FeishuCommandBackButtons(def.GroupID),
 	}
 }
 
@@ -253,7 +253,7 @@ func reasoningCatalogFromView(view control.FeishuCommandConfigView) control.Feis
 	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandReasoning)
 	summarySections := control.BuildFeishuCommandConfigSummarySections(def, view)
 	if view.RequiresAttachment {
-		return attachmentRequiredCatalogForDefinition(def, view)
+		return control.BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
 		return sealedCommandCatalogForDefinition(def, summarySections)
@@ -275,9 +275,9 @@ func reasoningCatalogFromView(view control.FeishuCommandConfigView) control.Feis
 		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections:        sections,
-		RelatedButtons:  commandBackButtons(def.GroupID),
+		RelatedButtons:  control.FeishuCommandBackButtons(def.GroupID),
 	}
 }
 
@@ -285,7 +285,7 @@ func accessCatalogFromView(view control.FeishuCommandConfigView) control.FeishuD
 	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandAccess)
 	summarySections := control.BuildFeishuCommandConfigSummarySections(def, view)
 	if view.RequiresAttachment {
-		return attachmentRequiredCatalogForDefinition(def, view)
+		return control.BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
 		return sealedCommandCatalogForDefinition(def, summarySections)
@@ -307,9 +307,9 @@ func accessCatalogFromView(view control.FeishuCommandConfigView) control.FeishuD
 		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections:        sections,
-		RelatedButtons:  commandBackButtons(def.GroupID),
+		RelatedButtons:  control.FeishuCommandBackButtons(def.GroupID),
 	}
 }
 
@@ -317,7 +317,7 @@ func modelCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDi
 	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandModel)
 	summarySections := control.BuildFeishuCommandConfigSummarySections(def, view)
 	if view.RequiresAttachment {
-		return attachmentRequiredCatalogForDefinition(def, view)
+		return control.BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
 		return sealedCommandCatalogForDefinition(def, summarySections)
@@ -336,7 +336,7 @@ func modelCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDi
 		Title:        def.Title,
 		Interactive:  true,
 		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:  commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:  control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections: []control.CommandCatalogSection{
 			{
 				Title: "常见模型",
@@ -349,29 +349,10 @@ func modelCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDi
 				Entries: []control.CommandCatalogEntry{manualEntry},
 			},
 		},
-		RelatedButtons: commandBackButtons(def.GroupID),
+		RelatedButtons: control.FeishuCommandBackButtons(def.GroupID),
 	}
 	catalog.SummarySections = summarySections
 	return catalog
-}
-
-func attachmentRequiredCatalogForDefinition(def control.FeishuCommandDefinition, view control.FeishuCommandConfigView) control.FeishuDirectCommandCatalog {
-	return control.FeishuDirectCommandCatalog{
-		Title:           def.Title,
-		SummarySections: control.BuildFeishuCommandConfigSummarySections(def, view),
-		Interactive:     true,
-		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
-		Sections: []control.CommandCatalogSection{{
-			Title: "开始 / 继续工作",
-			Entries: []control.CommandCatalogEntry{
-				recoveryEntry(control.FeishuCommandList),
-				recoveryEntry(control.FeishuCommandUse),
-				recoveryEntry(control.FeishuCommandStatus),
-			},
-		}},
-		RelatedButtons: commandBackButtons(def.GroupID),
-	}
 }
 
 func verboseCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDirectCommandCatalog {
@@ -398,9 +379,9 @@ func verboseCatalogFromView(view control.FeishuCommandConfigView) control.Feishu
 		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 		Sections:        sections,
-		RelatedButtons:  commandBackButtons(def.GroupID),
+		RelatedButtons:  control.FeishuCommandBackButtons(def.GroupID),
 	}
 }
 
@@ -414,7 +395,7 @@ func sealedCommandCatalogForDefinition(def control.FeishuCommandDefinition, summ
 		SummarySections: append([]control.FeishuCardTextSection(nil), summarySections...),
 		Interactive:     false,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:     commandBreadcrumbs(def.GroupID, def.Title),
+		Breadcrumbs:     control.FeishuCommandBreadcrumbs(def.GroupID, def.Title),
 	}
 }
 

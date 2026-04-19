@@ -1005,29 +1005,32 @@ func TestProjectBuiltinCommandHelpCatalogPreservesPlaceholdersAndHidesKillInstan
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	var rendered strings.Builder
-	rendered.WriteString(ops[0].CardBody)
-	for _, element := range ops[0].CardElements {
-		content, _ := element["content"].(string)
-		if content == "" {
-			continue
-		}
-		rendered.WriteByte('\n')
-		rendered.WriteString(content)
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected builtin help summary to stay out of markdown body, got %#v", ops[0])
 	}
-	body := rendered.String()
+	var rendered []string
+	for _, element := range ops[0].CardElements {
+		if content := cardTextContent(element); content != "" {
+			rendered = append(rendered, content)
+		}
+	}
+	body := strings.Join(rendered, "\n")
 	if strings.Contains(body, "/killinstance") {
 		t.Fatalf("expected builtin help catalog to hide /killinstance, got %q", body)
 	}
 	if strings.Contains(body, "&lt;") || strings.Contains(body, "&gt;") {
 		t.Fatalf("expected command placeholders to preserve angle brackets, got %q", body)
 	}
+	if strings.Contains(body, "<text_tag") {
+		t.Fatalf("expected builtin help catalog to avoid legacy markdown tags, got %q", body)
+	}
 	if !containsAll(body,
-		"<text_tag color='neutral'>/model</text_tag>",
-		"<text_tag color='neutral'>/reasoning</text_tag>",
-		"<text_tag color='neutral'>/access</text_tag>",
-		"<text_tag color='neutral'>/use</text_tag>",
-		"<text_tag color='neutral'>/menu</text_tag>",
+		"以下是当前主展示的 canonical slash command。历史 alias 仍可兼容，但不再作为新的主展示入口。",
+		"命令：/model",
+		"命令：/reasoning",
+		"命令：/access",
+		"命令：/use",
+		"命令：/menu",
 	) {
 		t.Fatalf("unexpected builtin help catalog body: %q", body)
 	}
@@ -1160,6 +1163,11 @@ func TestCommandCatalogFromViewBuildsDetachedMenuHome(t *testing.T) {
 	}
 	if got := firstCommandTexts(catalog.Sections[0].Entries); len(got) != 0 {
 		t.Fatalf("detached menu home should only expose group navigation entries, got %#v", got)
+	}
+	for _, entry := range catalog.Sections[0].Entries {
+		if entry.LegacyMarkdown {
+			t.Fatalf("expected menu home to use non-legacy entries, got %#v", entry)
+		}
 	}
 }
 
