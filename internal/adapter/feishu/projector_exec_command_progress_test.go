@@ -651,7 +651,7 @@ func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T)
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "**读取** `README.md`、`types.go`") || !strings.Contains(body, "**列目录** internal/core") || !strings.Contains(body, "**搜索** `compact`（范围：internal/）") {
+	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "**读取** `README.md`、`types.go`") || !strings.Contains(body, "**列目录** internal/core") || !strings.Contains(body, "**搜索** `compact`（目录：`internal/`）") {
 		t.Fatalf("expected exploration block rendering, got %#v", ops[0])
 	}
 }
