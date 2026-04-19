@@ -27,6 +27,11 @@ If repo-root `.codex/private/issue-orchestration-private.md` exists, read it aft
 
 Use this skill as the repository's main issue orchestrator:
 
+- external reporter issue
+  - preserve the reporter-owned body as the public communication record
+  - before normalization or execution, create a new internal execution issue linked back to the external issue
+  - use the internal issue as the workflow-managed unit for shaping, staged plans, snapshots, and close-out
+  - if more splitting is needed later, split under the internal issue instead of rewriting the reporter-owned issue into a parent scheduler
 - raw issue
   - shape the issue into a stable problem statement
   - decide whether it only has research closure or is ready for execution closure
@@ -54,6 +59,23 @@ Prefer these closure levels:
   - enough information for a worker to implement without rebuilding wide context
 
 If the active issue only reaches research closure, do not force direct implementation. Shape, split, or stop with the issue state updated.
+
+## External Reporter Flow
+
+When the active GitHub issue was opened by someone else and still acts as the public bug report or feature request:
+
+1. do not rewrite the original reporter-owned body into the internal workflow format
+2. create a new internal execution issue first
+3. link the two issues both ways
+4. put all workflow structure on the internal issue:
+   - background / goal / acceptance
+   - execution decision
+   - staged plan
+   - execution snapshot
+   - implementation / check / finish context
+5. use the original external issue only for clarification, evidence requests, and final result comments
+6. close the internal execution issue when its close gates pass
+7. do not auto-close the original external issue; leave a concise completion comment there instead
 
 ## Split and Roll-up Rules
 
@@ -337,6 +359,8 @@ Use the issue body for durable structure:
 - low-priority deferred follow-ups in a dedicated `低优先级待办` section when they are too small to justify a standalone issue
 - finish / knowledge-sync context (`收尾参考`)
 
+If the work started from an external reporter issue, keep this durable structure on the internal execution issue body, not on the original reporter-owned issue body.
+
 Use comments only for live collaboration:
 
 - blocking questions
@@ -494,6 +518,13 @@ When closing the issue, leave a short completion note with:
 - what durable knowledge was synced back, or why none was needed
 - commit or PR reference
 - follow-up issue reference if work was intentionally deferred
+
+If the work originated from an external reporter issue:
+
+- close the internal execution issue only
+- post the completion note back to the external issue as a comment
+- include the internal issue link and validation summary in that comment
+- do not auto-close the external issue
 
 Do not treat close-out as ready until all applicable close gates pass:
 

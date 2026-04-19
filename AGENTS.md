@@ -268,6 +268,11 @@ When corresponding logic carriers changed:
 
 - For medium/large issue work, use issue workflow skill and its fixed `prepare/lint/finish` entry points.
 - Raw issues are allowed to start rough; first shape them to at least research closure before trying to implement.
+- If an issue was opened by an external reporter, do not rewrite their original issue body into the repository's internal workflow template.
+- For an external reporter issue, first create a new internal execution issue; use that internal issue as the workflow-managed unit for shaping, execution snapshots, staged plans, and close-out.
+- If later split is needed, split under the internal execution issue rather than turning the external reporter issue itself into the parent scheduler.
+- Treat the original external reporter issue as a communication surface: keep the original description, link the internal execution issue both ways, and sync results back there by comment.
+- By default, close only the internal execution issue; do not auto-close the original external reporter issue unless the user explicitly asks for that policy.
 - Do not start code assessment against known-stale checkout when worktree is clean.
 - Tiny fixes that can be finished immediately do not require opening/normalizing an issue.
 - Before handing a subtask to a worker, make sure the active child issue is an information closure or a stable closure index for execution.
