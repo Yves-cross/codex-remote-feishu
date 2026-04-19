@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 func TestDaemonTickRunsVSCodeCompatibilityDetectInBackgroundAndAvoidsDuplicateLaunch(t *testing.T) {
@@ -109,6 +111,58 @@ func TestDaemonTickRetriesVSCodeCompatibilityDetectAfterBackoff(t *testing.T) {
 	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
 	if !operationHasCommandButton(card, "迁移并重新接入", vscodeMigrateCommandText) {
 		t.Fatalf("expected migration button after retry succeeds, got %#v", card.CardElements)
+	}
+}
+
+func TestDaemonTickVSCodeFollowupGuidancePatchesAsyncCompatibilityCard(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	binaryPath := filepath.Join(home, "bin", "codex-remote")
+	writeExecutableFile(t, binaryPath, "wrapper-binary")
+
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ProductMode:      "vscode",
+	})
+
+	gateway := newLifecycleGateway()
+	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, false)
+	app.vscodeDetect = func() (vscodeDetectResponse, error) {
+		return vscodeDetectResponse{
+			CurrentMode:            "editor_settings",
+			LatestBundleEntrypoint: "/tmp/fake-entrypoint",
+		}, nil
+	}
+
+	app.onTick(context.Background(), time.Now().UTC())
+	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
+
+	app.handleUIEvents(context.Background(), []control.UIEvent{{
+		Kind:             control.UIEventNotice,
+		SurfaceSessionID: "surface-1",
+		Notice: &control.Notice{
+			Code:  "surface_resume_open_vscode",
+			Title: "请先打开 VS Code",
+			Text:  "还没有找到之前的 VS Code 实例。请先打开 VS Code 中的 Codex，然后再回来使用。",
+		},
+	}})
+
+	ops := gateway.snapshotOperations()
+	if len(ops) != 2 {
+		t.Fatalf("expected async vscode guidance to reuse compatibility card, got %#v", ops)
+	}
+	if ops[0].Kind != feishu.OperationSendCard || ops[1].Kind != feishu.OperationUpdateCard {
+		t.Fatalf("expected send then in-place update, got %#v", ops)
+	}
+	if ops[1].MessageID != card.MessageID {
+		t.Fatalf("expected follow-up guidance to patch original compatibility card %q, got %#v", card.MessageID, ops[1])
+	}
+	if ops[1].CardTitle != "请先打开 VS Code" || !strings.Contains(operationCardText(ops[1]), "请先打开 VS Code") {
+		t.Fatalf("expected open-vscode guidance update, got %#v", ops[1].CardElements)
 	}
 }
 

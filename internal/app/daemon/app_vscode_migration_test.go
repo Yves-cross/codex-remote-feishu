@@ -15,6 +15,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func TestVSCodeApplyManagedShimClearsLegacySettingsOverride(t *testing.T) {
@@ -273,7 +274,7 @@ func TestDaemonVSCodeMigrateCommandAppliesManagedShimAndPromptsReopen(t *testing
 
 	found := false
 	for _, operation := range gateway.operations {
-		if strings.Contains(operation.CardBody, "请重新打开 VS Code 开始使用") {
+		if strings.Contains(operationCardText(operation), "请重新打开 VS Code 开始使用") {
 			found = true
 			break
 		}
@@ -328,6 +329,63 @@ func TestHandleGatewayActionReplacesVSCodeMigrationCardWithResult(t *testing.T) 
 	}
 	if _, err := os.Stat(editor.ManagedShimRealBinaryPath(entrypoint)); err != nil {
 		t.Fatalf("expected shim backup after in-place migration: %v", err)
+	}
+}
+
+func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, ".vscode-server", "extensions"))
+
+	binaryPath := filepath.Join(home, "bin", "codex-remote")
+	writeExecutableFile(t, binaryPath, "wrapper-binary")
+
+	entrypoint := testVSCodeBundleEntrypoint(home, ".vscode-server", "1")
+	writeExecutableFile(t, entrypoint, "orig")
+
+	gateway := newLifecycleGateway()
+	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
+	app.service.MaterializeSurfaceResume("surface-1", "app-1", "chat-1", "user-1", state.ProductModeVSCode, state.SurfaceVerbosityNormal)
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionVSCodeMigrate,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-vscode-migrate-1",
+		Text:             "/vscode-migrate",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected stamped /vscode-migrate to replace current card, got %#v", result)
+	}
+
+	app.handleUIEvents(context.Background(), []control.UIEvent{{
+		Kind:             control.UIEventNotice,
+		SurfaceSessionID: "surface-1",
+		Notice: &control.Notice{
+			Code:  "not_attached_vscode",
+			Title: "请先选择实例",
+			Text:  "vscode 模式下请先 /list 选择一个 VS Code 实例，再使用 /use 或 /useall。",
+		},
+	}})
+
+	ops := gateway.snapshotOperations()
+	if len(ops) != 1 {
+		t.Fatalf("expected later vscode guidance to patch same card instead of appending, got %#v", ops)
+	}
+	if ops[0].Kind != feishu.OperationUpdateCard || ops[0].MessageID != "om-vscode-migrate-1" {
+		t.Fatalf("expected in-place vscode guidance update on migrate card, got %#v", ops[0])
+	}
+	if !strings.Contains(operationCardText(ops[0]), "/list") {
+		t.Fatalf("expected follow-up guidance text to keep /list hint, got %#v", ops[0].CardElements)
+	}
+	if !operationHasCommandButton(ops[0], "选择实例", "/list") {
+		t.Fatalf("expected follow-up guidance to keep select-instance button, got %#v", ops[0].CardElements)
 	}
 }
 

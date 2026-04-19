@@ -21,6 +21,12 @@ type surfaceResumeRecoveryState struct {
 	LastFailureCode string
 }
 
+type vscodeGuidanceCardState struct {
+	SurfaceSessionID string
+	MessageID        string
+	ExpiresAt        time.Time
+}
+
 type toolRuntimeState struct {
 	server      *http.Server
 	listener    net.Listener
@@ -31,6 +37,7 @@ type toolRuntimeState struct {
 type surfaceResumeRuntimeState struct {
 	store                  *surfaceResumeStore
 	recovery               map[string]*surfaceResumeRecoveryState
+	vscodeGuidanceCards    map[string]*vscodeGuidanceCardState
 	vscodeResumeNotices    map[string]bool
 	vscodeMigrationPrompts map[string]string
 	vscodeStartupCheckDue  bool
@@ -61,6 +68,7 @@ type upgradeRuntimeState struct {
 func newSurfaceResumeRuntimeState() surfaceResumeRuntimeState {
 	return surfaceResumeRuntimeState{
 		recovery:               map[string]*surfaceResumeRecoveryState{},
+		vscodeGuidanceCards:    map[string]*vscodeGuidanceCardState{},
 		vscodeResumeNotices:    map[string]bool{},
 		vscodeMigrationPrompts: map[string]string{},
 		headlessRestore:        map[string]*headlessRestoreRecoveryState{},

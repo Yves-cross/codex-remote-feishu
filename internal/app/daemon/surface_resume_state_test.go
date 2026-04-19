@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -487,7 +488,8 @@ func TestDaemonAttachedVSCodeSurfacePersistsResumeTargetAndRecoversOnReconnect(t
 	}
 	waitForDaemonCondition(t, 2*time.Second, func() bool {
 		for _, operation := range gateway.snapshotOperations() {
-			if strings.Contains(operation.CardBody, "已恢复到 VS Code 实例") && strings.Contains(operation.CardBody, "再说一句话") {
+			text := operationCardText(operation)
+			if strings.Contains(text, "已恢复到 VS Code 实例") && strings.Contains(text, "再说一句话") {
 				return true
 			}
 		}
@@ -544,7 +546,7 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 	}
 	waitForDaemonCondition(t, 2*time.Second, func() bool {
 		ops := gateway.snapshotOperations()
-		return len(ops) == 1 && strings.Contains(ops[0].CardBody, "请先打开 VS Code 中的 Codex")
+		return len(ops) == 1 && strings.Contains(operationCardText(ops[0]), "请先打开 VS Code 中的 Codex")
 	})
 
 	app.onHello(context.Background(), agentproto.Hello{
@@ -600,13 +602,62 @@ func TestDaemonDetachedVSCodeModePromptsOpenVSCodeAfterRestart(t *testing.T) {
 	}
 	waitForDaemonCondition(t, 2*time.Second, func() bool {
 		ops := gateway.snapshotOperations()
-		return len(ops) == 1 && strings.Contains(ops[0].CardBody, "请先打开 VS Code 中的 Codex")
+		return len(ops) == 1 && strings.Contains(operationCardText(ops[0]), "请先打开 VS Code 中的 Codex")
 	})
 
 	app.onTick(context.Background(), time.Now().UTC().Add(time.Second))
 	if len(gateway.snapshotOperations()) != 1 {
 		t.Fatalf("expected detached vscode guidance to stay one-shot, got %#v", gateway.snapshotOperations())
 	}
+}
+
+func TestDaemonVSCodeResumeOpenPromptPatchesIntoSameCardOnExactReconnect(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ProductMode:      "vscode",
+		ResumeInstanceID: "inst-vscode-1",
+	})
+
+	gateway := newLifecycleGateway()
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetHeadlessRuntime(HeadlessRuntimeConfig{
+		IdleTTL:    time.Hour,
+		KillGrace:  time.Second,
+		Paths:      relayruntime.Paths{StateDir: stateDir},
+		BinaryPath: "codex",
+	})
+	app.sendAgentCommand = func(string, agentproto.Command) error { return nil }
+
+	app.onTick(context.Background(), time.Now().UTC())
+	initial := waitForLifecycleOperationTitle(t, gateway, "请先打开 VS Code")
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-vscode-1",
+			DisplayName:   "droid",
+			WorkspaceRoot: "/data/dl/droid",
+			WorkspaceKey:  "/data/dl/droid",
+			ShortName:     "droid",
+			Source:        "vscode",
+		},
+	})
+
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		for _, op := range gateway.snapshotOperations() {
+			if op.Kind == feishu.OperationUpdateCard &&
+				op.MessageID == initial.MessageID &&
+				strings.Contains(operationCardText(op), "已恢复到 VS Code 实例") {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func TestDaemonTickDoesNotRewriteSurfaceResumeStateWithoutStateChange(t *testing.T) {

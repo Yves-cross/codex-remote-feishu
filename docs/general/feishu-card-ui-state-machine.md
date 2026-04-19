@@ -1,8 +1,8 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-19`
-> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续保留在 verbose 共享过程卡里；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（no-op / requested / accepted / failed 都封回当前菜单卡），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，bare `/vscode-migrate` 的结果同样改成原卡收口；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
+> Updated: `2026-04-20`
+> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续保留在 verbose 共享过程卡里；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（no-op / requested / accepted / failed 都封回当前菜单卡），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，且同一 surface 后续异步到达的 VS Code guidance（兼容修复、open prompt、恢复成功/失败、未接管 `/list` 提示）也会继续 patch 回这张 guidance 卡；bare `/vscode-migrate` 的结果同样改成原卡收口，并继续承接后续 VS Code guidance；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
 
 ## 1. 文档定位
 
@@ -106,8 +106,8 @@
 | stamped `/menu switch_target -> /list` / `/use` / `/useall` | `mixed` | 当前不再走 submission-anchor；点击后 daemon 会把首个可投影结果卡直接作为 `ReplaceCurrentCard`。`/list` 的空态、实例列表与 attach 结果，`/use` / `/useall` 的 detached 提示、线程列表与 `use_thread` 结果，都会继续在原菜单卡收口；attach 若同一事件流后面还带 `thread_selection_change`，daemon 会抑制这条重复 append，避免原卡收口后再补第二张选择卡 |
 | stamped `/menu current_work|switch_target -> /stop` / `/new` / `/follow` / `/detach` | `mixed` | 当前不再走提交态锚点；点击后 daemon 会把 handler 返回的首个 notice / thread-selection 结果卡直接作为 `ReplaceCurrentCard`，并把重复 notice 留在原卡内收口，不再额外 append 终态 notice，也不再做 recall |
 | stamped `/menu current_work -> /steerall` | `mixed` | 当前不再走提交态锚点；点击后会把当前菜单卡直接封成 steer-all owner/terminal card。no-op、requested、accepted、failed / disconnect restore 都继续回写同一张原卡，不再留下可重复点击的旧菜单 |
-| bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` / `/verbose` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；其中 `/mode` `/autowhip` `/reasoning` `/access` `/verbose` 只保留固定选项，`/model` 额外保留一张手动输入表单；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；其中 stamped `/mode vscode` 若切换后立刻命中 VS Code 兼容修复、open prompt 或恢复提示，daemon 会优先把首张可投影提示卡同位替回当前卡；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
-| stamped bare `/vscode-migrate` | `mixed` | 当前只由 VS Code 迁移/修复卡发出；若来自带 `daemon_lifecycle_id` 的当前迁移卡 callback，daemon 会沿 bare continuation 路径把迁移结果卡同位替回当前卡，不再额外 append 独立 catalog / notice |
+| bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` / `/verbose` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；其中 `/mode` `/autowhip` `/reasoning` `/access` `/verbose` 只保留固定选项，`/model` 额外保留一张手动输入表单；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；其中 stamped `/mode vscode` 若切换后立刻命中 VS Code 兼容修复、open prompt 或恢复提示，daemon 会优先把首张可投影提示卡同位替回当前卡，并把该 surface 记录成可继续 patch 的 VS Code guidance card；后续异步 runtime 提示只要仍命中这块 card，就继续回写同一张卡；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
+| stamped bare `/vscode-migrate` | `mixed` | 当前只由 VS Code 迁移/修复卡发出；若来自带 `daemon_lifecycle_id` 的当前迁移卡 callback，daemon 会沿 bare continuation 路径把迁移结果卡同位替回当前卡，不再额外 append 独立 catalog / notice；并且这张迁移卡会直接升级为当前 surface 的 VS Code guidance card，承接后续 `/list` / open VS Code / 恢复提示等异步 follow-up |
 | `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
@@ -413,8 +413,8 @@ MCP request 卡片当前新增的可视语义：
   - `/stop`、`/new`、`/follow`、`/detach` 会把首个 notice / thread-selection 结果卡直接作为当前菜单卡；不再走 submission anchor，也不再 recall
   - `/compact`、`/steerall`、`/sendfile` 的 `current_work` 菜单入口不再复用锚点路径，而是直接把原菜单卡交给 owner/terminal card 流继续收口
 - stamped 参数卡与迁移卡的非 inline 命令当前额外分两类：
-  - stamped `/mode vscode` 若切换后立刻命中 VS Code 兼容修复、open prompt 或恢复提示，daemon 会优先把首张可投影提示卡替回当前参数卡；这条强制同步兼容性检测只用于 stamped callback，纯文本 `/mode vscode` 仍保持旧的异步提示语义
-  - bare `/vscode-migrate` 当前会沿 bare continuation 路径把迁移结果卡继续承接在当前迁移/修复卡上，不再额外 append 独立 command catalog / notice
+  - stamped `/mode vscode` 若切换后立刻命中 VS Code 兼容修复、open prompt 或恢复提示，daemon 会优先把首张可投影提示卡替回当前参数卡；并把这张卡登记为当前 surface 的 `vscode guidance card`，后续异步命中的兼容修复、open prompt、恢复成功/失败、`not_attached_vscode` `/list` 提示，都会继续以 `message.patch` 回到同一张卡；这条强制同步兼容性检测只用于 stamped callback，纯文本 `/mode vscode` 仍保持旧的异步提示语义
+  - bare `/vscode-migrate` 当前会沿 bare continuation 路径把迁移结果卡继续承接在当前迁移/修复卡上，不再额外 append 独立 command catalog / notice；若当前 surface 仍处于 vscode mode，这张卡也会继续承担 `vscode guidance card`，承接后续异步 guidance
 - bare `/upgrade`、bare `/debug`、bare `/cron` 当前不再走“命令已提交”锚点，而是直接在当前卡内同步承接到下一张 command catalog。
 - `/upgrade latest` 当前不走 callback 同步 replace；但只要进入 daemon owner-card 流，同一张升级卡会继续通过 `message.patch` 在 `checking -> confirm -> running/cancelling -> restarting(sealed)` 之间推进，不再依赖“再次发送 `/upgrade latest`”。
 - turn-owned 的投递策略当前已经改成“高价值文本 reply、过程卡仍顶层 append”：
@@ -453,9 +453,9 @@ MCP request 卡片当前新增的可视语义：
 - `global runtime` 提示当前也明确保持 append-only，但它和普通 turn-owned notice 的差异不再是 reply anchor，而是独立 delivery lane：
   - 它们通过 `control.Notice.DeliveryClass=global_runtime` 明确标记，不再只靠“刚好没传 `SourceMessageID`”这种隐式约定
   - projector 当前对所有 notice 都不会 reply 到任何 turn 源消息；`global runtime` 的特殊点只剩 dedupe / family 与独立系统车道
-  - 当前这条车道覆盖真正脱离当前 owner-card 上下文的：surface / VS Code resume failure、`open VS Code` prompt、`attached_instance_transport_degraded`、`daemon_shutting_down`、`gateway_apply_failed`
-  - 若 `VS Code` 兼容修复、`open VS Code` prompt 或恢复提示是由 stamped `/mode vscode` callback 同步显露出来，daemon 会先尝试把首张可投影提示卡承接到当前卡；只有脱离当前 card 上下文的后台 runtime 路径才会落到这条独立车道
-- 这些提示不会 patch 当前 owner-card，也不会借用 final-card anchor 或 turn reply-chain；它们始终作为独立系统提示出现在主时间线
+  - 当前这条车道覆盖真正脱离当前 owner-card / guidance-card 上下文的：surface resume failure、无 active guidance card 可复用的 VS Code resume failure / `open VS Code` prompt、`attached_instance_transport_degraded`、`daemon_shutting_down`、`gateway_apply_failed`
+  - 若 `VS Code` 兼容修复、`open VS Code` prompt、恢复成功/失败或 `not_attached_vscode` guidance 已经拥有当前 surface 的 active `vscode guidance card`，daemon 会先把 notice 改写成 patchable direct-command card 并回写同一张 guidance card；只有没有可复用 guidance card 的后台 runtime 路径才会落到这条独立车道
+- 这些真正的 global runtime 系统提示不会借用 final-card anchor 或 turn reply-chain；它们仍作为独立系统提示出现在主时间线
 - bare `/upgrade`、bare `/debug` 在 stamped 菜单卡里会直接同位承接为对应状态/输入卡（replace 当前菜单卡），不再先外跳 append 一张新卡。
 - “命令已提交”锚点卡当前只剩少量命令继续使用（主要是 `/use`、`/useall`）；这批锚点卡会在短延时后尝试 best-effort 自动撤回，撤回失败时仅静默降级，不影响主流程。
 - 这条路径不会改变产品动作 owner；参数卡 apply、VS Code 菜单 handoff 与迁移卡收口都不复用“命令已提交”锚点，而是由产品 handler 直接返回可 replace / patch 的结果卡。
@@ -662,7 +662,11 @@ MCP request 卡片当前新增的可视语义：
 - [internal/app/daemon/app_submission_anchor_test.go](../../internal/app/daemon/app_submission_anchor_test.go)
   - 锁定 `/status` 已退出菜单提交态锚点并直接改成同卡状态结果，同时纯文本 `/status` 继续 append-only；bare `/upgrade` / `/cron` 仍保持同位承接 replace，而 stamped current-card 路径不再命中提交态锚点
 - [internal/app/daemon/app_vscode_migration_test.go](../../internal/app/daemon/app_vscode_migration_test.go)
-  - 锁定 stamped `/mode vscode` 命中的兼容修复提示会继续替换当前卡，以及 stamped `/vscode-migrate` 的结果会同位收口到当前迁移卡
+  - 锁定 stamped `/mode vscode` 命中的兼容修复提示会继续替换当前卡，以及 stamped `/vscode-migrate` 的结果会同位收口到当前迁移卡；迁移卡后续命中的 `not_attached_vscode` `/list` guidance 也会继续 patch 回原卡
+- [internal/app/daemon/app_vscode_migration_async_test.go](../../internal/app/daemon/app_vscode_migration_async_test.go)
+  - 锁定后台异步送达的 VS Code 兼容修复卡，后续 `open VS Code` guidance 会复用同一张 tracked guidance card，而不是额外 append 第二张卡
+- [internal/app/daemon/surface_resume_state_test.go](../../internal/app/daemon/surface_resume_state_test.go)
+  - 锁定 detached vscode surface 的 open prompt 在 exact reconnect 后，会继续 patch 回原 guidance card，而不是追加独立“恢复成功”卡
 - [internal/core/control/inline_replacement_test.go](../../internal/core/control/inline_replacement_test.go)
   - 锁定 `AllowsCommandCardResultReplacement(...)` 已把 `/list`、`/use`、`/useall`、`attach_instance`、`use_thread` 纳入 stamped result replacement，同时 `/vscode-migrate` 进入 bare continuation，stamped current-card 路径不再命中 submission-anchor
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)

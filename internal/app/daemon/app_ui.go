@@ -115,6 +115,7 @@ func (a *App) handleUIEventsLocked(ctx context.Context, events []control.UIEvent
 		if isGlobalRuntimeNotice && a.shouldSuppressGlobalRuntimeNoticeLocked(event, time.Now()) {
 			continue
 		}
+		event = a.rewriteVSCodeGuidanceEventLocked(event, "", false)
 		if err := a.deliverUIEventLocked(context.Background(), event); err != nil {
 			chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 			log.Printf("gateway apply failed: chat=%s event=%s err=%v", chatID, event.Kind, err)
@@ -319,6 +320,7 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 				operation.MessageID,
 			)
 			a.recordUpgradeOwnerCardMessageLocked(event.FeishuDirectCommandCatalog.TrackingKey, operation.MessageID)
+			a.recordVSCodeGuidanceCardMessageLocked(event.FeishuDirectCommandCatalog.TrackingKey, operation.MessageID)
 			break
 		}
 	}

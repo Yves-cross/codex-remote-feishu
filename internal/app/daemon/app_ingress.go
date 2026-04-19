@@ -462,6 +462,7 @@ func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event c
 	if strings.TrimSpace(event.SurfaceSessionID) == "" {
 		event.SurfaceSessionID = action.SurfaceSessionID
 	}
+	event = a.rewriteVSCodeGuidanceEventLocked(event, action.MessageID, true)
 	event.DaemonLifecycleID = a.daemonLifecycleID
 	ops := a.projector.Project(a.service.SurfaceChatID(event.SurfaceSessionID), event)
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
