@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -70,7 +71,7 @@ func fileModePathPickerElements(view control.FeishuPathPickerView, daemonLifecyc
 	})
 
 	directoryOptions := fileModeDirectoryOptions(view)
-	if len(directoryOptions) != 0 {
+	if len(directoryOptions.Options) != 0 {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "**进入目录**",
@@ -79,8 +80,8 @@ func fileModePathPickerElements(view control.FeishuPathPickerView, daemonLifecyc
 			cardPathPickerDirectorySelectFieldName,
 			".. 返回上一级，或选择子目录",
 			stampActionValue(pathPickerFieldActionPayload(cardActionKindPathPickerEnter, view.PickerID, cardPathPickerDirectorySelectFieldName), daemonLifecycleID),
-			directoryOptions,
-			"",
+			directoryOptions.Options,
+			directoryOptions.InitialOption,
 		))
 	}
 
@@ -99,7 +100,7 @@ func fileModePathPickerElements(view control.FeishuPathPickerView, daemonLifecyc
 		))
 	}
 
-	if len(directoryOptions) == 0 {
+	if !directoryOptions.HasChildDirectories {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "当前目录下没有可进入的子目录。",
@@ -143,7 +144,7 @@ func directoryModePathPickerElements(view control.FeishuPathPickerView, daemonLi
 	})
 
 	directoryOptions := directoryModeDirectoryOptions(view)
-	if len(directoryOptions) != 0 {
+	if len(directoryOptions.Options) != 0 {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "**进入目录**",
@@ -152,10 +153,11 @@ func directoryModePathPickerElements(view control.FeishuPathPickerView, daemonLi
 			cardPathPickerDirectorySelectFieldName,
 			".. 返回上一级，或选择子目录",
 			stampActionValue(pathPickerFieldActionPayload(cardActionKindPathPickerEnter, view.PickerID, cardPathPickerDirectorySelectFieldName), daemonLifecycleID),
-			directoryOptions,
-			"",
+			directoryOptions.Options,
+			directoryOptions.InitialOption,
 		))
-	} else {
+	}
+	if !directoryOptions.HasChildDirectories {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "当前目录下没有可进入的子目录。",
@@ -194,7 +196,7 @@ func ownerSubpageDirectoryModePathPickerElements(view control.FeishuPathPickerVi
 		}
 	}
 	directoryOptions := directoryModeDirectoryOptions(view)
-	if len(directoryOptions) != 0 {
+	if len(directoryOptions.Options) != 0 {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "**进入目录**",
@@ -203,10 +205,11 @@ func ownerSubpageDirectoryModePathPickerElements(view control.FeishuPathPickerVi
 			cardPathPickerDirectorySelectFieldName,
 			".. 返回上一级，或选择子目录",
 			stampActionValue(pathPickerFieldActionPayload(cardActionKindPathPickerEnter, view.PickerID, cardPathPickerDirectorySelectFieldName), daemonLifecycleID),
-			directoryOptions,
-			"",
+			directoryOptions.Options,
+			directoryOptions.InitialOption,
 		))
-	} else {
+	}
+	if !directoryOptions.HasChildDirectories {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": "当前目录下没有可进入的子目录。",
@@ -224,25 +227,56 @@ func ownerSubpageDirectoryModePathPickerElements(view control.FeishuPathPickerVi
 	return elements
 }
 
-func fileModeDirectoryOptions(view control.FeishuPathPickerView) []map[string]any {
+func fileModeDirectoryOptions(view control.FeishuPathPickerView) pathPickerDirectorySelectModel {
 	return pathPickerDirectoryOptions(view)
 }
 
-func directoryModeDirectoryOptions(view control.FeishuPathPickerView) []map[string]any {
+func directoryModeDirectoryOptions(view control.FeishuPathPickerView) pathPickerDirectorySelectModel {
 	return pathPickerDirectoryOptions(view)
 }
 
-func pathPickerDirectoryOptions(view control.FeishuPathPickerView) []map[string]any {
-	options, _ := pathPickerSelectStaticOptions(view, control.PathPickerEntryDirectory)
-	if !view.CanGoUp {
-		return options
+type pathPickerDirectorySelectModel struct {
+	Options             []map[string]any
+	InitialOption       string
+	HasChildDirectories bool
+}
+
+func pathPickerDirectoryOptions(view control.FeishuPathPickerView) pathPickerDirectorySelectModel {
+	childOptions, _ := pathPickerSelectStaticOptions(view, control.PathPickerEntryDirectory)
+	options := make([]map[string]any, 0, len(childOptions)+2)
+	options = append(options, currentDirectoryPathPickerOption(view.CurrentPath))
+	if view.CanGoUp {
+		options = append(options, map[string]any{
+			"text":  cardPlainText(".."),
+			"value": "..",
+		})
 	}
-	parentOption := map[string]any{
-		"text":  cardPlainText(".."),
-		"value": "..",
+	options = append(options, childOptions...)
+	return pathPickerDirectorySelectModel{
+		Options:             options,
+		InitialOption:       ".",
+		HasChildDirectories: len(childOptions) != 0,
 	}
-	options = append([]map[string]any{parentOption}, options...)
-	return options
+}
+
+func currentDirectoryPathPickerOption(currentPath string) map[string]any {
+	label := pathPickerCurrentDirectoryLabel(currentPath)
+	return map[string]any{
+		"text":  cardPlainText(label),
+		"value": ".",
+	}
+}
+
+func pathPickerCurrentDirectoryLabel(currentPath string) string {
+	currentPath = strings.TrimSpace(currentPath)
+	name := strings.TrimSpace(filepath.Base(currentPath))
+	if name == "" || name == "." {
+		name = currentPath
+	}
+	if name == "" {
+		name = "当前目录"
+	}
+	return name + "（当前目录）"
 }
 
 func pathPickerSelectStaticOptions(view control.FeishuPathPickerView, kind control.PathPickerEntryKind) ([]map[string]any, string) {

@@ -47,6 +47,29 @@ func (s *Service) handleProcessProgressItemDelta(instanceID string, event agentp
 	}
 }
 
+func (s *Service) tickExecCommandProgressAnimations(surface *state.SurfaceConsoleRecord, now time.Time) []control.UIEvent {
+	if surface == nil || surface.ActiveExecProgress == nil {
+		return nil
+	}
+	progress := surface.ActiveExecProgress
+	if strings.TrimSpace(progress.MessageID) == "" || !execCommandProgressHasVisibleTransientStatus(progress) {
+		return nil
+	}
+	record := progress.TransientStatus
+	if record == nil {
+		return nil
+	}
+	if !record.LastAnimatedAt.IsZero() && now.Sub(record.LastAnimatedAt) < execCommandProgressTransientAnimationInterval {
+		return nil
+	}
+	if !progress.LastEmittedAt.IsZero() && now.Sub(progress.LastEmittedAt) < execCommandProgressTransientAnimationInterval {
+		return nil
+	}
+	record.AnimationStep = (record.AnimationStep + 1) % 3
+	record.LastAnimatedAt = now
+	return s.emitExecCommandProgress(surface, progress, progress.ThreadID, progress.TurnID, false)
+}
+
 func (s *Service) handleProcessProgressItemCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
 	switch strings.TrimSpace(event.ItemKind) {
 	case "agent_message":

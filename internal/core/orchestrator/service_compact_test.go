@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -410,6 +411,9 @@ func TestCompactTurnLifecycleKeepsUpdatingSameOwnerCard(t *testing.T) {
 	running := commandCatalogFromEvent(t, started[0])
 	if running.MessageID != "om-compact-1" || running.Title != "正在压缩上下文" || running.ThemeKey != "progress" {
 		t.Fatalf("unexpected running owner-card update: %#v", running)
+	}
+	if summary := commandCatalogSummaryText(running); !strings.Contains(summary, "正在压缩当前会话的上下文。") || strings.Contains(summary, "压缩期间普通输入会排队") {
+		t.Fatalf("expected running compact owner card to keep only the primary ongoing line, got %#v", running)
 	}
 
 	completedItem := svc.ApplyAgentEvent("inst-1", agentproto.Event{

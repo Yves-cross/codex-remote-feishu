@@ -258,6 +258,8 @@ type ExecCommandProgressTransientStatusRecord struct {
 	VisibleSummaryIndex int
 	Buffer              string
 	BufferSummaryIndex  int
+	AnimationStep       int
+	LastAnimatedAt      time.Time
 }
 
 type DynamicToolProgressGroupRecord struct {

@@ -119,7 +119,7 @@ func targetPickerGitImportCloneProcessingStatus(repoURL, finalPath string) feish
 			"⚪ 准备新会话",
 		},
 		[]string{"正在执行 git clone ..."},
-		"普通输入已暂停，请等待完成或取消；如需查看状态，可继续使用 /status。",
+		"",
 	)
 }
 
@@ -132,7 +132,7 @@ func targetPickerGitImportPostCloneProcessingStatus(repoURL, finalPath string) f
 			"⚪ 准备新会话",
 		},
 		[]string{"仓库已拉取完成，正在接入工作区并准备新会话。"},
-		"普通输入已暂停，请等待完成或取消；如需查看状态，可继续使用 /status。",
+		"",
 	)
 }
 

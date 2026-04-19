@@ -303,7 +303,12 @@ func parseCommandExecutionExplorationAction(command string) (execProgressExplora
 			return execProgressExplorationAction{Kind: "list", Summary: command}, true
 		}
 		return execProgressExplorationAction{Kind: "list", Summary: strings.Join(items, " ")}, true
+	case "fd", "fdfind", "find":
+		return execProgressExplorationAction{Kind: "list", Summary: command}, true
 	case "rg", "grep":
+		if cmd == "rg" && commandHasStandaloneOption(args[1:], "--files") {
+			return execProgressExplorationAction{Kind: "list", Summary: command}, true
+		}
 		query, scope := parseSearchArgs(args[1:])
 		if query == "" {
 			return execProgressExplorationAction{}, false
@@ -311,6 +316,20 @@ func parseCommandExecutionExplorationAction(command string) (execProgressExplora
 		return execProgressExplorationAction{Kind: "search", Summary: query, Secondary: scope}, true
 	}
 	return execProgressExplorationAction{}, false
+}
+
+func commandHasStandaloneOption(args []string, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for _, arg := range args {
+		arg = strings.TrimSpace(arg)
+		if arg == target {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeExplorationCommand(command string) string {

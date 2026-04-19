@@ -313,15 +313,15 @@ func normalizeExecProgressEntry(entry control.ExecCommandProgressEntry) (control
 func renderExecProgressBlockRow(row control.ExecCommandProgressBlockRow) string {
 	switch strings.ToLower(strings.TrimSpace(row.Kind)) {
 	case "read":
-		return "读取 " + strings.Join(execProgressReadNames(row.Items), "、")
+		return execProgressMarkdownLabel("读取") + " " + strings.Join(execProgressReadNames(row.Items), "、")
 	case "list":
-		return "列目录 " + truncateExecProgressSummary(row.Summary, 60)
+		return execProgressMarkdownLabel("列目录") + " " + truncateExecProgressSummary(row.Summary, 60)
 	case "search":
 		summary := row.Summary
 		if row.Secondary != "" {
 			summary = summary + "（范围：" + row.Secondary + "）"
 		}
-		return "搜索 " + truncateExecProgressSummary(summary, 60)
+		return execProgressMarkdownLabel("搜索") + " " + truncateExecProgressSummary(summary, 60)
 	default:
 		text := row.Summary
 		if text == "" && len(row.Items) != 0 {
@@ -347,7 +347,7 @@ func execProgressReadNames(items []string) []string {
 			continue
 		}
 		seen[name] = true
-		names = append(names, name)
+		names = append(names, markdownCodeSpan(name))
 	}
 	return names
 }
@@ -357,32 +357,25 @@ func renderExecProgressEntry(entry control.ExecCommandProgressEntry) string {
 	if label == "" {
 		label = "工作中"
 	}
+	prefix := execProgressMarkdownLabel(label)
 	switch strings.TrimSpace(entry.Kind) {
 	case "command_execution":
-		return label + "：" + markdownCodeSpan(truncateExecProgressSummary(entry.Summary, 30))
+		return prefix + " " + markdownCodeSpan(truncateExecProgressSummary(entry.Summary, 30))
 	default:
-		return label + "：" + truncateExecProgressSummary(entry.Summary, 40)
+		return prefix + " " + truncateExecProgressSummary(entry.Summary, 40)
 	}
 }
 
 func renderExecProgressTransientStatus(status control.ExecCommandProgressTransientStatus) string {
-	text := ensureExecProgressTransientEllipsis(strings.TrimSpace(status.Text))
-	if text == "" {
-		return ""
-	}
-	return "• " + text
+	return strings.TrimSpace(status.Text)
 }
 
-func ensureExecProgressTransientEllipsis(text string) string {
-	text = strings.TrimSpace(text)
-	switch {
-	case text == "":
+func execProgressMarkdownLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
 		return ""
-	case strings.HasSuffix(text, "..."), strings.HasSuffix(text, "…"):
-		return text
-	default:
-		return text + "..."
 	}
+	return "**" + label + "**"
 }
 
 var shellLCCommandPattern = regexp.MustCompile(`^(?:/usr/bin/|/bin/)?(?:bash|sh|zsh)\s+-lc\s+(.+)$`)

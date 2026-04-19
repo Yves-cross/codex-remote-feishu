@@ -2,11 +2,14 @@ package orchestrator
 
 import (
 	"strings"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
+
+const execCommandProgressTransientAnimationInterval = 1500 * time.Millisecond
 
 func (s *Service) handleAssistantMessageProgressStart(instanceID string, event agentproto.Event) []control.UIEvent {
 	return s.clearTransientExecCommandProgressStatus(instanceID, event.ThreadID, event.TurnID)
@@ -24,7 +27,7 @@ func (s *Service) handleReasoningSummaryProgressDelta(instanceID string, event a
 	if strings.TrimSpace(event.ItemID) != "" {
 		progress.ItemID = strings.TrimSpace(event.ItemID)
 	}
-	if !upsertExecCommandProgressTransientStatus(progress, event) {
+	if !upsertExecCommandProgressTransientStatus(progress, event, s.now()) {
 		return nil
 	}
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
@@ -50,11 +53,11 @@ func execCommandProgressTransientStatus(progress *state.ExecCommandProgressRecor
 	}
 	return &control.ExecCommandProgressTransientStatus{
 		Kind: strings.TrimSpace(progress.TransientStatus.Kind),
-		Text: text,
+		Text: formatExecProgressTransientStatus(text, progress.TransientStatus.AnimationStep),
 	}
 }
 
-func upsertExecCommandProgressTransientStatus(progress *state.ExecCommandProgressRecord, event agentproto.Event) bool {
+func upsertExecCommandProgressTransientStatus(progress *state.ExecCommandProgressRecord, event agentproto.Event, now time.Time) bool {
 	if progress == nil || strings.TrimSpace(event.Delta) == "" {
 		return false
 	}
@@ -83,6 +86,8 @@ func upsertExecCommandProgressTransientStatus(progress *state.ExecCommandProgres
 	record.RawText = title
 	record.Text = display
 	record.VisibleSummaryIndex = summaryIndex
+	record.AnimationStep = 0
+	record.LastAnimatedAt = now
 	return true
 }
 
@@ -95,6 +100,8 @@ func clearExecCommandProgressTransientStatus(progress *state.ExecCommandProgress
 	progress.TransientStatus.VisibleSummaryIndex = 0
 	progress.TransientStatus.Buffer = ""
 	progress.TransientStatus.BufferSummaryIndex = 0
+	progress.TransientStatus.AnimationStep = 0
+	progress.TransientStatus.LastAnimatedAt = time.Time{}
 }
 
 func execCommandProgressHasVisibleTransientStatus(progress *state.ExecCommandProgressRecord) bool {
@@ -129,7 +136,7 @@ func localizeExecProgressTransientStatus(raw string) string {
 		return ""
 	}
 	if containsHan(raw) {
-		return raw
+		return normalizeExecProgressTransientBaseText(raw)
 	}
 	normalized := strings.ToLower(strings.Join(strings.Fields(raw), " "))
 	switch normalized {
@@ -147,9 +154,68 @@ func localizeExecProgressTransientStatus(raw string) string {
 		return "探索中"
 	case "investigating":
 		return "排查中"
-	default:
-		return "处理中"
 	}
+	switch transientStatusVerb(normalized) {
+	case "thinking", "considering", "evaluating", "assessing", "deciding", "using", "continuing":
+		return "思考中"
+	case "planning":
+		return "规划中"
+	case "analyzing":
+		return "分析中"
+	case "reviewing":
+		return "审查中"
+	case "checking", "verifying", "inspecting", "monitoring":
+		return "检查中"
+	case "exploring":
+		return "探索中"
+	case "investigating", "troubleshooting", "debugging":
+		return "排查中"
+	case "searching", "locating", "identifying":
+		return "查找中"
+	case "preparing", "finalizing", "creating", "restoring":
+		return "准备中"
+	case "summarizing", "clarifying", "refining":
+		return "整理中"
+	case "modifying", "updating", "editing":
+		return "修改中"
+	default:
+		return "思考中"
+	}
+}
+
+func transientStatusVerb(normalized string) string {
+	if normalized == "" {
+		return ""
+	}
+	head := normalized
+	if idx := strings.IndexByte(head, ' '); idx >= 0 {
+		head = head[:idx]
+	}
+	head = strings.Trim(head, ".,:;!?()[]{}\"'")
+	return head
+}
+
+func normalizeExecProgressTransientBaseText(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.TrimRight(text, ".")
+	text = strings.TrimRight(text, "。")
+	text = strings.TrimRight(text, "…")
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "正在")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return text
+}
+
+func formatExecProgressTransientStatus(text string, step int) string {
+	text = normalizeExecProgressTransientBaseText(text)
+	if text == "" {
+		return ""
+	}
+	dotCount := (step % 3) + 1
+	return "正在" + text + strings.Repeat(".", dotCount)
 }
 
 func containsHan(value string) bool {

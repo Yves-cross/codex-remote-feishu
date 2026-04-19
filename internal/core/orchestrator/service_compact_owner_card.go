@@ -105,7 +105,6 @@ func (s *Service) emitCompactOwnerDispatching(surface *state.SurfaceConsoleRecor
 		binding.ThreadID,
 		s.compactThreadForBinding(binding),
 		"正在向本地 Codex 发起上下文压缩请求。",
-		"压缩期间普通输入会排队，完成后会自动恢复。",
 	)
 	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
 }
@@ -120,7 +119,6 @@ func (s *Service) emitCompactOwnerRunning(surface *state.SurfaceConsoleRecord, b
 		binding.ThreadID,
 		s.compactThreadForBinding(binding),
 		"正在压缩当前会话的上下文。",
-		"压缩期间普通输入会排队，完成后会自动恢复。",
 	)
 	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
 }

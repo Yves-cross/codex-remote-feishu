@@ -743,6 +743,41 @@ func TestParseCommandExecutionExplorationActionHandlesBashLCQuotedRgGlob(t *test
 	}
 }
 
+func TestParseCommandExecutionExplorationActionRecognizesListCommands(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     string
+		wantSummary string
+	}{
+		{
+			name:        "rg files",
+			command:     `bash -lc "rg --files -g '*.css' -g '*.scss'"`,
+			wantSummary: `rg --files -g '*.css' -g '*.scss'`,
+		},
+		{
+			name:        "fd",
+			command:     `fd -t f src`,
+			wantSummary: `fd -t f src`,
+		},
+		{
+			name:        "find",
+			command:     `find internal -maxdepth 1`,
+			wantSummary: `find internal -maxdepth 1`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			action, ok := parseCommandExecutionExplorationAction(tt.command)
+			if !ok {
+				t.Fatalf("expected %q to parse as list action", tt.command)
+			}
+			if action.Kind != "list" || action.Summary != tt.wantSummary {
+				t.Fatalf("unexpected list action: %#v", action)
+			}
+		})
+	}
+}
+
 func TestParseCommandExecutionExplorationActionRejectsPipelineSearch(t *testing.T) {
 	if action, ok := parseCommandExecutionExplorationAction(`bash -lc 'journalctl --user -u codex-remote.service -n 400 --no-pager | rg -n "rg |command_execution|tool_call|exec|progress"'`); ok {
 		t.Fatalf("expected piped command not to parse as exploration search, got %#v", action)
@@ -864,7 +899,7 @@ func TestReasoningSummaryProgressVerboseEmitsLocalizedTransientStatus(t *testing
 		TurnID:   "turn-1",
 		ItemID:   "reasoning-1",
 		ItemKind: "reasoning_summary",
-		Delta:    "**Thinking**",
+		Delta:    "**Considering Git commands**",
 		Metadata: map[string]any{
 			"summaryIndex": 1,
 		},
@@ -873,11 +908,83 @@ func TestReasoningSummaryProgressVerboseEmitsLocalizedTransientStatus(t *testing
 		t.Fatalf("expected one transient reasoning progress event, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress
-	if progress.TransientStatus == nil || progress.TransientStatus.Text != "思考中" {
+	if progress.TransientStatus == nil || progress.TransientStatus.Text != "正在思考中." {
 		t.Fatalf("expected localized transient status, got %#v", progress)
 	}
 	if svc.root.Surfaces["surface-1"].ActiveExecProgress == nil {
 		t.Fatal("expected transient status to retain shared progress state")
+	}
+	if svc.root.Surfaces["surface-1"].ActiveExecProgress.TransientStatus == nil || svc.root.Surfaces["surface-1"].ActiveExecProgress.TransientStatus.Text != "思考中" {
+		t.Fatalf("expected transient status record to keep base localized text, got %#v", svc.root.Surfaces["surface-1"].ActiveExecProgress.TransientStatus)
+	}
+}
+
+func TestReasoningSummaryProgressMapsCheckingPhraseToLocalizedTransientStatus(t *testing.T) {
+	now := time.Date(2026, 4, 17, 10, 5, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+	surface.Verbosity = state.SurfaceVerbosityVerbose
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续", "turn-1")
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "reasoning-1",
+		ItemKind: "reasoning_summary",
+		Delta:    "**Checking workflow progress**",
+		Metadata: map[string]any{
+			"summaryIndex": 1,
+		},
+	})
+	if len(events) != 1 || events[0].ExecCommandProgress == nil {
+		t.Fatalf("expected localized checking progress event, got %#v", events)
+	}
+	if got := events[0].ExecCommandProgress.TransientStatus; got == nil || got.Text != "正在检查中." {
+		t.Fatalf("expected checking phrase to localize to 检查中, got %#v", got)
+	}
+}
+
+func TestExecCommandProgressTransientAnimationTicksSlowly(t *testing.T) {
+	now := time.Date(2026, 4, 17, 10, 6, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	surface := setupAutoContinueSurface(t, svc)
+	surface.Verbosity = state.SurfaceVerbosityVerbose
+
+	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续", "turn-1")
+
+	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "reasoning-1",
+		ItemKind: "reasoning_summary",
+		Delta:    "**Thinking**",
+		Metadata: map[string]any{
+			"summaryIndex": 1,
+		},
+	})
+	if len(first) != 1 || first[0].ExecCommandProgress == nil {
+		t.Fatalf("expected initial transient status event, got %#v", first)
+	}
+	if got := first[0].ExecCommandProgress.TransientStatus; got == nil || got.Text != "正在思考中." {
+		t.Fatalf("expected first frame to start with one dot, got %#v", got)
+	}
+	svc.RecordExecCommandProgressMessage("surface-1", "thread-1", "turn-1", "reasoning-1", "om-progress-1")
+
+	now = now.Add(execCommandProgressTransientAnimationInterval - time.Millisecond)
+	if tick := svc.Tick(now); len(tick) != 0 {
+		t.Fatalf("expected no animation tick before interval, got %#v", tick)
+	}
+
+	now = now.Add(time.Millisecond)
+	second := svc.Tick(now)
+	if len(second) != 1 || second[0].ExecCommandProgress == nil {
+		t.Fatalf("expected second animation frame, got %#v", second)
+	}
+	if got := second[0].ExecCommandProgress.TransientStatus; got == nil || got.Text != "正在思考中.." {
+		t.Fatalf("expected second frame with two dots, got %#v", got)
 	}
 }
 

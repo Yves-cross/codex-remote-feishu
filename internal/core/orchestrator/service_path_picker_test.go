@@ -185,6 +185,45 @@ func TestOpenPathPickerFileModeAllowsParentDirectoryEntry(t *testing.T) {
 	}
 }
 
+func TestOpenPathPickerFileModeCurrentDirectoryEntryIsNoOp(t *testing.T) {
+	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	events := svc.OpenPathPicker(control.Action{
+		SurfaceSessionID: "surface-1",
+		ActorUserID:      "user-1",
+	}, control.PathPickerRequest{
+		Mode:     control.PathPickerModeFile,
+		RootPath: root,
+	})
+	view := singlePathPickerEvent(t, events)
+
+	selectedEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		PickerID:         view.PickerID,
+		PickerEntry:      "file.txt",
+	})
+	selected := singlePathPickerEvent(t, selectedEvents)
+	if !testutil.SamePath(selected.SelectedPath, filepath.Join(root, "file.txt")) {
+		t.Fatalf("expected selected file before current-directory no-op, got %#v", selected)
+	}
+
+	noopEvents := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionPathPickerEnter,
+		SurfaceSessionID: "surface-1",
+		PickerID:         view.PickerID,
+		PickerEntry:      ".",
+	})
+	noop := singlePathPickerEvent(t, noopEvents)
+	if !testutil.SamePath(noop.CurrentPath, root) || !testutil.SamePath(noop.SelectedPath, filepath.Join(root, "file.txt")) {
+		t.Fatalf("expected current-directory entry to preserve current state, got %#v", noop)
+	}
+}
+
 func TestOpenPathPickerEntryFilterHidesAndBlocksFilteredEntries(t *testing.T) {
 	now := time.Date(2026, 4, 12, 20, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

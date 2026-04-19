@@ -165,6 +165,8 @@ func TestCompleteTargetPickerGitImportStartsFreshWorkspacePreparationOnSameCard(
 	}
 	if got := events[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageProcessing || got.StatusTitle != "正在接入工作区" {
 		t.Fatalf("expected processing same-card transition after clone, got %#v", got)
+	} else if got.StatusFooter != "" {
+		t.Fatalf("expected git-import processing card to drop trailing footer, got %#v", got)
 	}
 	if got := events[1].DaemonCommand; got.Kind != control.DaemonCommandStartHeadless {
 		t.Fatalf("expected headless start command after clone completion, got %#v", got)

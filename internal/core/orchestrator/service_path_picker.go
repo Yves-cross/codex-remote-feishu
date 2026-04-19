@@ -112,6 +112,13 @@ func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pic
 	if resolved.kind != pathPickerModeDirectory {
 		return notice(surface, "path_picker_not_directory", "只能进入目录。")
 	}
+	if samePath(record.CurrentPath, resolved.path) {
+		view, err := s.buildPathPickerView(surface, record)
+		if err != nil {
+			return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
+		}
+		return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+	}
 	record.CurrentPath = resolved.path
 	record.SelectedPath = defaultSelectedPathForMode(record.Mode, record.CurrentPath, "")
 	view, err := s.buildPathPickerView(surface, record)

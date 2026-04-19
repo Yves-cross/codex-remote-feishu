@@ -221,8 +221,14 @@ func TestDirectoryModePathPickerUsesCompactDirectorySelect(t *testing.T) {
 		t.Fatalf("expected directory picker to avoid verbose entry listing, got %#v", elements)
 	}
 	options := selectStaticOptionValues(t, elements, cardPathPickerDirectorySelectFieldName)
-	if got, want := options, []string{"subdir", ".hidden"}; !equalPathPickerTestStrings(got, want) {
+	if got, want := options, []string{".", "subdir", ".hidden"}; !equalPathPickerTestStrings(got, want) {
 		t.Fatalf("unexpected directory options: got %v want %v", got, want)
+	}
+	if got, want := selectStaticOptionLabels(t, elements, cardPathPickerDirectorySelectFieldName), []string{"root（当前目录）", "subdir/", ".hidden/"}; !equalPathPickerTestStrings(got, want) {
+		t.Fatalf("unexpected directory option labels: got %v want %v", got, want)
+	}
+	if initial := selectStaticInitialOption(t, elements, cardPathPickerDirectorySelectFieldName); initial != "." {
+		t.Fatalf("expected current-directory initial option, got %q", initial)
 	}
 	if placeholder := selectStaticPlaceholder(t, elements, cardPathPickerDirectorySelectFieldName); placeholder != ".. 返回上一级，或选择子目录" {
 		t.Fatalf("unexpected directory placeholder: %q", placeholder)
@@ -257,11 +263,17 @@ func TestDirectoryModePathPickerPrependsParentOptionWhenCanGoUp(t *testing.T) {
 	}, "life-dir-up")
 
 	options := selectStaticOptionValues(t, elements, cardPathPickerDirectorySelectFieldName)
-	if got, want := options, []string{"..", "alpha", ".hidden"}; !equalPathPickerTestStrings(got, want) {
+	if got, want := options, []string{".", "..", "alpha", ".hidden"}; !equalPathPickerTestStrings(got, want) {
 		t.Fatalf("unexpected directory options with parent: got %v want %v", got, want)
+	}
+	if got, want := selectStaticOptionLabels(t, elements, cardPathPickerDirectorySelectFieldName), []string{"subdir（当前目录）", "..", "alpha/", ".hidden/"}; !equalPathPickerTestStrings(got, want) {
+		t.Fatalf("unexpected directory option labels with parent: got %v want %v", got, want)
 	}
 	if placeholder := selectStaticPlaceholder(t, elements, cardPathPickerDirectorySelectFieldName); placeholder != ".. 返回上一级，或选择子目录" {
 		t.Fatalf("unexpected directory placeholder: %q", placeholder)
+	}
+	if initial := selectStaticInitialOption(t, elements, cardPathPickerDirectorySelectFieldName); initial != "." {
+		t.Fatalf("expected current-directory initial option, got %q", initial)
 	}
 }
 
@@ -314,11 +326,17 @@ func TestFileModePathPickerPrependsParentOptionWhenCanGoUp(t *testing.T) {
 	}, "life-3")
 
 	options := selectStaticOptionValues(t, elements, cardPathPickerDirectorySelectFieldName)
-	if got, want := options, []string{"..", "alpha", ".hidden"}; !equalPathPickerTestStrings(got, want) {
+	if got, want := options, []string{".", "..", "alpha", ".hidden"}; !equalPathPickerTestStrings(got, want) {
 		t.Fatalf("unexpected directory options: got %v want %v", got, want)
+	}
+	if got, want := selectStaticOptionLabels(t, elements, cardPathPickerDirectorySelectFieldName), []string{"subdir（当前目录）", "..", "alpha/", ".hidden/"}; !equalPathPickerTestStrings(got, want) {
+		t.Fatalf("unexpected file-mode directory option labels: got %v want %v", got, want)
 	}
 	if placeholder := selectStaticPlaceholder(t, elements, cardPathPickerDirectorySelectFieldName); placeholder != ".. 返回上一级，或选择子目录" {
 		t.Fatalf("unexpected directory placeholder: %q", placeholder)
+	}
+	if initial := selectStaticInitialOption(t, elements, cardPathPickerDirectorySelectFieldName); initial != "." {
+		t.Fatalf("expected current-directory initial option, got %q", initial)
 	}
 }
 
@@ -337,8 +355,14 @@ func TestFileModePathPickerOmitsParentOptionAtRoot(t *testing.T) {
 	}, "life-4")
 
 	options := selectStaticOptionValues(t, elements, cardPathPickerDirectorySelectFieldName)
-	if got, want := options, []string{"alpha"}; !equalPathPickerTestStrings(got, want) {
+	if got, want := options, []string{".", "alpha"}; !equalPathPickerTestStrings(got, want) {
 		t.Fatalf("unexpected root directory options: got %v want %v", got, want)
+	}
+	if got, want := selectStaticOptionLabels(t, elements, cardPathPickerDirectorySelectFieldName), []string{"root（当前目录）", "alpha/"}; !equalPathPickerTestStrings(got, want) {
+		t.Fatalf("unexpected root directory option labels: got %v want %v", got, want)
+	}
+	if initial := selectStaticInitialOption(t, elements, cardPathPickerDirectorySelectFieldName); initial != "." {
+		t.Fatalf("expected current-directory initial option, got %q", initial)
 	}
 }
 
@@ -348,11 +372,23 @@ func selectStaticOptionValues(t *testing.T, elements []map[string]any, fieldName
 	return cardOptionValues(selectElement["options"])
 }
 
+func selectStaticOptionLabels(t *testing.T, elements []map[string]any, fieldName string) []string {
+	t.Helper()
+	selectElement := findSelectStaticElement(t, elements, fieldName)
+	return cardOptionLabels(selectElement["options"])
+}
+
 func selectStaticPlaceholder(t *testing.T, elements []map[string]any, fieldName string) string {
 	t.Helper()
 	selectElement := findSelectStaticElement(t, elements, fieldName)
 	placeholder, _ := selectElement["placeholder"].(map[string]any)
 	return cardStringValue(placeholder["content"])
+}
+
+func selectStaticInitialOption(t *testing.T, elements []map[string]any, fieldName string) string {
+	t.Helper()
+	selectElement := findSelectStaticElement(t, elements, fieldName)
+	return cardStringValue(selectElement["initial_option"])
 }
 
 func findSelectStaticElement(t *testing.T, elements []map[string]any, fieldName string) map[string]any {
@@ -389,6 +425,33 @@ func cardOptionValues(raw any) []string {
 			}
 		}
 		return values
+	default:
+		return nil
+	}
+}
+
+func cardOptionLabels(raw any) []string {
+	switch typed := raw.(type) {
+	case []map[string]any:
+		labels := make([]string, 0, len(typed))
+		for _, option := range typed {
+			if text, ok := option["text"].(map[string]any); ok {
+				labels = append(labels, cardStringValue(text["content"]))
+			}
+		}
+		return labels
+	case []any:
+		labels := make([]string, 0, len(typed))
+		for _, item := range typed {
+			option, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			if text, ok := option["text"].(map[string]any); ok {
+				labels = append(labels, cardStringValue(text["content"]))
+			}
+		}
+		return labels
 	default:
 		return nil
 	}
