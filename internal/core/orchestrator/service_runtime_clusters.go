@@ -15,6 +15,7 @@ type servicePickerRuntime struct {
 	nextPathPickerID    int
 	nextTargetPickerID  int
 	nextThreadHistoryID int
+	nextCompactFlowID   int
 	pathPickerConsumers map[string]PathPickerConsumer
 }
 
@@ -65,6 +66,11 @@ func (r *servicePickerRuntime) nextTargetPickerToken() string {
 func (r *servicePickerRuntime) nextThreadHistoryToken() string {
 	r.nextThreadHistoryID++
 	return fmt.Sprintf("thread-history-%d", r.nextThreadHistoryID)
+}
+
+func (r *servicePickerRuntime) nextCompactFlowToken() string {
+	r.nextCompactFlowID++
+	return fmt.Sprintf("compact-%d", r.nextCompactFlowID)
 }
 
 func (r *servicePickerRuntime) recordSurfaceThreadHistory(surfaceID string, history agentproto.ThreadHistoryRecord) {

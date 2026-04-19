@@ -307,6 +307,11 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			if strings.TrimSpace(operation.MessageID) == "" {
 				continue
 			}
+			a.service.RecordOwnerCardFlowMessage(
+				event.SurfaceSessionID,
+				event.FeishuDirectCommandCatalog.TrackingKey,
+				operation.MessageID,
+			)
 			a.recordUpgradeOwnerCardMessageLocked(event.FeishuDirectCommandCatalog.TrackingKey, operation.MessageID)
 			break
 		}

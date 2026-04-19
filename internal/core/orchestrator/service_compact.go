@@ -44,13 +44,27 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 	if len(surface.QueuedQueueItemIDs) != 0 {
 		return notice(surface, "compact_busy", "当前还有排队消息，暂时不能整理上下文。请等待队列清空或先 /stop。")
 	}
-	s.progress.compactTurns[inst.InstanceID] = &compactTurnBinding{
+	s.clearThreadHistoryRuntime(surface)
+	s.clearTargetPickerRuntime(surface)
+	flow := newOwnerCardFlowRecord(
+		ownerCardFlowKindCompact,
+		s.pickers.nextCompactFlowToken(),
+		firstNonEmpty(surface.ActorUserID),
+		s.now(),
+		defaultCompactOwnerTTL,
+		ownerCardFlowPhaseLoading,
+	)
+	s.setActiveOwnerCardFlow(surface, flow)
+	binding := &compactTurnBinding{
 		InstanceID:       inst.InstanceID,
 		SurfaceSessionID: surface.SurfaceSessionID,
+		FlowID:           flow.FlowID,
 		ThreadID:         threadID,
 		Status:           compactTurnStatusDispatching,
 	}
-	return []control.UIEvent{{
+	s.progress.compactTurns[inst.InstanceID] = binding
+	events := s.emitCompactOwnerDispatching(surface, binding)
+	events = append(events, control.UIEvent{
 		Kind:             control.UIEventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
@@ -65,7 +79,8 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 				ThreadID: threadID,
 			},
 		},
-	}}
+	})
+	return events
 }
 
 func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) []control.UIEvent {
@@ -88,18 +103,51 @@ func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) 
 	binding.ThreadID = firstNonEmpty(binding.ThreadID, strings.TrimSpace(event.ThreadID))
 	binding.TurnID = strings.TrimSpace(event.TurnID)
 	binding.Status = compactTurnStatusRunning
-	return nil
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	return s.emitCompactOwnerRunning(surface, binding)
 }
 
-func (s *Service) completeCompactTurn(instanceID, threadID, turnID string) []control.UIEvent {
-	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(turnID) == "" {
+func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event) []control.UIEvent {
+	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(event.TurnID) == "" {
 		return nil
 	}
 	binding := s.progress.compactTurns[instanceID]
-	if binding == nil || strings.TrimSpace(binding.TurnID) == "" || binding.TurnID != turnID {
+	if binding == nil || strings.TrimSpace(binding.TurnID) == "" || binding.TurnID != strings.TrimSpace(event.TurnID) {
 		return nil
 	}
-	if binding.ThreadID != "" && strings.TrimSpace(threadID) != "" && binding.ThreadID != threadID {
+	if binding.ThreadID != "" && strings.TrimSpace(event.ThreadID) != "" && binding.ThreadID != event.ThreadID {
+		return nil
+	}
+	surface := s.root.Surfaces[binding.SurfaceSessionID]
+	delete(s.progress.compactTurns, instanceID)
+	if surface == nil {
+		return nil
+	}
+	events := []control.UIEvent{}
+	if !binding.CompletionSeen {
+		if shouldFinalizeTurnOutput(event) {
+			events = append(events, s.emitCompactOwnerCompleted(surface, binding)...)
+		} else {
+			detail := strings.TrimSpace(event.ErrorMessage)
+			if event.Problem != nil {
+				detail = compactFailureText(*event.Problem, detail)
+			}
+			if detail == "" {
+				detail = "上下文整理在完成前中断。"
+			}
+			events = append(events, s.emitCompactOwnerFailed(surface, binding, detail)...)
+		}
+	}
+	events = append(events, s.dispatchNext(surface)...)
+	return append(events, s.finishSurfaceAfterWork(surface)...)
+}
+
+func (s *Service) failCompactTurn(instanceID string, fallback string, problem *agentproto.ErrorInfo, resumeSurface bool) []control.UIEvent {
+	if strings.TrimSpace(instanceID) == "" {
+		return nil
+	}
+	binding := s.progress.compactTurns[instanceID]
+	if binding == nil {
 		return nil
 	}
 	delete(s.progress.compactTurns, instanceID)
@@ -107,8 +155,19 @@ func (s *Service) completeCompactTurn(instanceID, threadID, turnID string) []con
 	if surface == nil {
 		return nil
 	}
-	events := s.dispatchNext(surface)
-	return append(events, s.finishSurfaceAfterWork(surface)...)
+	detail := strings.TrimSpace(fallback)
+	if problem != nil {
+		detail = compactFailureText(*problem, detail)
+	}
+	if detail == "" {
+		detail = "上下文整理未完成。"
+	}
+	events := s.emitCompactOwnerFailed(surface, binding, detail)
+	if resumeSurface {
+		events = append(events, s.dispatchNext(surface)...)
+		events = append(events, s.finishSurfaceAfterWork(surface)...)
+	}
+	return events
 }
 
 func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode string, err error) []control.UIEvent {
@@ -120,8 +179,7 @@ func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode
 	if binding == nil || binding.SurfaceSessionID != surfaceID || binding.CommandID != commandID {
 		return nil
 	}
-	delete(s.progress.compactTurns, surface.AttachedInstanceID)
-	notice := NoticeForProblem(agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
+	problem := agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
 		Code:             noticeCode,
 		Layer:            "daemon",
 		Stage:            "dispatch_command",
@@ -130,15 +188,8 @@ func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode
 		SurfaceSessionID: surfaceID,
 		CommandID:        commandID,
 		ThreadID:         binding.ThreadID,
-	}))
-	notice.Code = noticeCode
-	events := []control.UIEvent{{
-		Kind:             control.UIEventNotice,
-		SurfaceSessionID: surfaceID,
-		Notice:           &notice,
-	}}
-	events = append(events, s.dispatchNext(surface)...)
-	return append(events, s.finishSurfaceAfterWork(surface)...)
+	})
+	return s.failCompactTurn(surface.AttachedInstanceID, "上下文整理请求未成功发送到本地 Codex。", &problem, true)
 }
 
 func (s *Service) restorePendingCompactCommand(instanceID, commandID string, problem agentproto.ErrorInfo) []control.UIEvent {
@@ -149,12 +200,7 @@ func (s *Service) restorePendingCompactCommand(instanceID, commandID string, pro
 	if binding == nil || binding.CommandID != commandID {
 		return nil
 	}
-	delete(s.progress.compactTurns, instanceID)
-	surface := s.root.Surfaces[binding.SurfaceSessionID]
-	if surface == nil {
-		return nil
-	}
-	notice := NoticeForProblem(problem.WithDefaults(agentproto.ErrorInfo{
+	problem = problem.WithDefaults(agentproto.ErrorInfo{
 		Code:             "command_rejected",
 		Layer:            "wrapper",
 		Stage:            "command_ack",
@@ -163,15 +209,8 @@ func (s *Service) restorePendingCompactCommand(instanceID, commandID string, pro
 		SurfaceSessionID: binding.SurfaceSessionID,
 		CommandID:        commandID,
 		ThreadID:         binding.ThreadID,
-	}))
-	notice.Code = "command_rejected"
-	events := []control.UIEvent{{
-		Kind:             control.UIEventNotice,
-		SurfaceSessionID: binding.SurfaceSessionID,
-		Notice:           &notice,
-	}}
-	events = append(events, s.dispatchNext(surface)...)
-	return append(events, s.finishSurfaceAfterWork(surface)...)
+	})
+	return s.failCompactTurn(instanceID, "本地 Codex 拒绝了这次上下文整理请求。", &problem, true)
 }
 
 func (s *Service) handleCompactProblem(instanceID string, problem agentproto.ErrorInfo) []control.UIEvent {
@@ -188,11 +227,5 @@ func (s *Service) handleCompactProblem(instanceID string, problem agentproto.Err
 	if strings.TrimSpace(problem.ThreadID) != "" && binding.ThreadID != "" && binding.ThreadID != problem.ThreadID {
 		return nil
 	}
-	delete(s.progress.compactTurns, instanceID)
-	surface := s.root.Surfaces[binding.SurfaceSessionID]
-	if surface == nil {
-		return nil
-	}
-	events := s.dispatchNext(surface)
-	return append(events, s.finishSurfaceAfterWork(surface)...)
+	return s.failCompactTurn(instanceID, "上下文整理在启动前中断。", &problem, true)
 }

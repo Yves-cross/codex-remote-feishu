@@ -42,6 +42,19 @@ func compactCompletionProgressEntry(itemID string) control.ExecCommandProgressEn
 
 func (r *serviceProgressRuntime) renderCompactNotice(instanceID string, event agentproto.Event) []control.UIEvent {
 	inst := r.service.root.Instances[instanceID]
+	if binding := r.compactTurns[instanceID]; binding != nil && strings.TrimSpace(binding.TurnID) != "" && binding.TurnID == strings.TrimSpace(event.TurnID) {
+		if binding.ThreadID == "" || strings.TrimSpace(event.ThreadID) == "" || binding.ThreadID == event.ThreadID {
+			binding.CompletionSeen = true
+			if inst != nil && strings.TrimSpace(event.ThreadID) != "" {
+				r.service.clearThreadReplay(inst, event.ThreadID)
+			}
+			surface := r.service.root.Surfaces[binding.SurfaceSessionID]
+			if surface == nil {
+				return nil
+			}
+			return r.service.emitCompactOwnerCompleted(surface, binding)
+		}
+	}
 	notice := compactCompletionNotice()
 	surface := r.service.surfaceForInitiator(instanceID, event)
 	if surface == nil {

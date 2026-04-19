@@ -1,8 +1,8 @@
 # Remote Surface 核心状态机
 
 > Type: `general`
-> Updated: `2026-04-18`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（顶部 `已有工作区` / `添加工作区` 模式切换；已有工作区路径仍是工作区下拉 + 会话下拉 + confirm，并新增 `target_picker_cancel` 作为显式退出动作；添加工作区路径改成 `本地目录` / `Git URL` 来源选择，其中 `本地目录` 通过 `target_picker_open_path_picker` 打开目录子步骤再回到主卡确认，`Git URL` 则在主卡内联填写仓库地址/目录名并通过同一子步骤选择父目录，最终由 daemon-side non-interactive `git clone` 在持锁外执行；Git confirm 后先让同一张 owner card 进入 processing，并在 clone 完成后继续推进“接入工作区 / 准备会话”；processing 期间普通输入会被 `target_picker` gate 显式阻断，仅保留 `/status` 与同卡取消；成功/失败/取消都封回同卡 terminal。两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 `克隆并继续` 禁用）；同时补进 `/upgrade latest` 的 daemon owner-card gate：文本触发先 append patchable checking card，再同卡进入 confirm / running / cancelling / restarting(sealed)；running 期间普通输入与其它 competing action 会在 daemon `handleAction(...)` 顶层被显式阻断，只保留 `/status`、`/upgrade`、`/debug`、reaction/recall 与同卡 confirm/cancel；helper 重启完成后只补一条结果 notice，不再恢复旧卡 patch；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义、request/path-picker/target-picker/thread-history 的 service-owned runtime 持有边界，以及 `surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载。
+> Updated: `2026-04-19`
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating，以及显式 `/compact` 现在会在前台建立 compact owner-card flow（dispatching -> running -> completed/failed 同卡 patch；这条前台 compact 卡对 `quiet` / `normal` / `verbose` 都可见，而被动 compact completion 仍留在 verbose 共享过程卡里）、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（顶部 `已有工作区` / `添加工作区` 模式切换；已有工作区路径仍是工作区下拉 + 会话下拉 + confirm，并新增 `target_picker_cancel` 作为显式退出动作；添加工作区路径改成 `本地目录` / `Git URL` 来源选择，其中 `本地目录` 通过 `target_picker_open_path_picker` 打开目录子步骤再回到主卡确认，`Git URL` 则在主卡内联填写仓库地址/目录名并通过同一子步骤选择父目录，最终由 daemon-side non-interactive `git clone` 在持锁外执行；Git confirm 后先让同一张 owner card 进入 processing，并在 clone 完成后继续推进“接入工作区 / 准备会话”；processing 期间普通输入会被 `target_picker` gate 显式阻断，仅保留 `/status` 与同卡取消；成功/失败/取消都封回同卡 terminal。两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 `克隆并继续` 禁用）；同时补进 `/upgrade latest` 的 daemon owner-card gate：文本触发先 append patchable checking card，再同卡进入 confirm / running / cancelling / restarting(sealed)；running 期间普通输入与其它 competing action 会在 daemon `handleAction(...)` 顶层被显式阻断，只保留 `/status`、`/upgrade`、`/debug`、reaction/recall 与同卡 confirm/cancel；helper 重启完成后只补一条结果 notice，不再恢复旧卡 patch；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义、request/path-picker/target-picker/thread-history 的 service-owned runtime 持有边界，以及 `surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载。
 
 ## 1. 文档定位
 
@@ -826,16 +826,20 @@ E3 Running
   -- reply 当前 processing source message（文本/图片，且命中当前 surface active running item） --> `SteerPending` overlay
 
 `CompactPending` overlay
+  -- 显式 `/compact` 已提交 --> 同时创建前台 compact owner-card，首卡阶段为 `dispatching`
   -- command dispatch accepted，等待 compact 对应 `turn.started` --> 保持 `CompactPending`
-  -- turn.started(remote_surface，命中当前 compact 请求) --> `CompactRunning` overlay
-  -- command rejected / dispatch failure / `system.error(operation=thread.compact.start)` --> 清 compact overlay，并恢复后续 queue 出队
-  -- transport degraded / disconnect / remove instance --> 清 compact overlay；disconnect/remove 继续走 detach，degraded 保留 route 但不再视为 compact 进行中
+  -- turn.started(remote_surface，命中当前 compact 请求) --> `CompactRunning` overlay，同时把 compact owner-card patch 到 `running`
+  -- command rejected / dispatch failure / `system.error(operation=thread.compact.start)` --> 清 compact overlay，把 compact owner-card patch 到 `failed`，并恢复后续 queue 出队
+  -- transport degraded / disconnect --> 清 compact overlay；若 surface 仍在且当前 flow 仍是 compact owner-card，则 best-effort patch 到 `failed`；disconnect 继续走 detach，degraded 保留 route 但不再视为 compact 进行中
+  -- remove instance --> 清 compact overlay；后续实例级移除语义继续按 detach / cleanup 处理，不再视为 compact 进行中
 
 `CompactRunning` overlay
-  -- turn.completed(remote_surface) --> 清 compact overlay，并继续 dispatchNext / finishSurfaceAfterWork
+  -- `item.completed(context_compaction)` --> 若这是显式 `/compact` 的当前 turn，则直接把 compact owner-card patch 到 `completed`；若是被动 compact，则仍走 verbose-only 共享过程卡
+  -- turn.completed(remote_surface) --> 清 compact overlay；若前面没收到 compact item，则按 `turn.completed` 的最终状态 fallback 把 compact owner-card patch 到 `completed` 或 `failed`；随后继续 dispatchNext / finishSurfaceAfterWork
   -- compact 期间新文本 --> 先按普通 queued follow-up 入队，不立即派发
   -- compact 期间 reply auto-steer / `/steerall` --> 不命中 compact turn
-  -- transport degraded / disconnect / remove instance --> 清 compact overlay；后续 reconnect 后可重新 `/compact`
+  -- transport degraded / disconnect --> 清 compact overlay，并 best-effort 封 compact owner-card 为 `failed`；后续 reconnect 后可重新 `/compact`
+  -- remove instance --> 清 compact overlay；compact owner-card 不再继续 patch，surface 继续进入实例移除后的常规 cleanup
 
 `SteerPending` overlay
   -- `turn.steer` command ack accepted --> 被并入的 item 逐条转 `steered`，并给对应主文本 + 已绑定图片补 `ThumbsUp`
@@ -858,13 +862,18 @@ E3 Running
    2. 若已进入 retained-offline / transport degraded，则仍以 offline notice 为准，不会因为 retained binding 存在而伪造 interrupt
 7. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
 8. compact 当前不是普通 queue item，也不会占用 `ActiveQueueItemID`；它按 instance 级 `compactTurns` 单独跟踪 pending/running 状态。
-9. 只要 compact 仍在 pending/running，`dispatchNext` 就不会再把后续 queued 输入发给同一实例。
-10. `/steerall` 当前会把同一 active thread 下所有 queued 项聚合为一次 `turn.steer`；若没有可并入项，只返回 noop 提示，不改队列状态；compact turn 本身不会成为 steer 目标。
-11. compact pending/running 也属于 `surfaceHasLiveRemoteWork`：
+9. 显式 `/compact` 还会在当前 surface 建立一条 compact owner-card flow：
+   1. 首卡由 orchestrator 直接 append 一张 patchable `FeishuDirectCommandCatalog`
+   2. 首次发送时靠 `TrackingKey` 回写 `message_id`
+   3. 后续 running / terminal 都继续 patch 同一张卡
+   4. 这条显式 owner-card 不受 verbosity 影响
+10. 只要 compact 仍在 pending/running，`dispatchNext` 就不会再把后续 queued 输入发给同一实例。
+11. `/steerall` 当前会把同一 active thread 下所有 queued 项聚合为一次 `turn.steer`；若没有可并入项，只返回 noop 提示，不改队列状态；compact turn 本身不会成为 steer 目标。
+12. compact pending/running 也属于 `surfaceHasLiveRemoteWork`：
    1. `/mode` 会直接拒绝
    2. `/detach` 会进入 delayed detach / abandoning
    3. `/use`、`/follow`、`/new` 这类 route mutation 会被挡住，不会在 compact 期间偷偷切走当前 thread
-12. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
+13. remote turn 在 `turn.completed` 时，若当前 item 满足 autowhip 触发条件：
    1. surface 不会立刻同步 enqueue 新 item
    2. 只会把 surface 置入 `A2 Scheduled`
    3. 后续等 `Tick()` 到期后再真正 enqueue
@@ -1243,7 +1252,7 @@ retained-offline overlay 额外规则：
 31. **vscode mode 进入或 daemon 重启恢复时，会在 legacy `settings.json` / stale managed shim 状态下继续尝试恢复，导致用户看起来进入了 vscode mode，但底层仍沿用旧接入方式或失效入口**：已修复。当前 detached-vscode 恢复会先做本机 VS Code 兼容性检查；命中旧 `settings.json` override 或 stale managed shim 时，会保持 detached，发迁移/修复卡片，并在点击后统一迁移到 managed shim，同时清掉旧 `chatgpt.cliExecutable`。
 32. **同一张 `/menu` 或 `/use` 导航卡每点一步就继续在消息流里堆新卡，导致用户停留在同一选择上下文却要反复找最新卡**：已修复。当前限定范围内的 same-context 导航已经改成 card callback 同步替换当前卡，不再制造额外历史噪音。
 33. **normal `/list` 只能展示仍有 online instance 的 workspace，导致仅能从 persisted/offline thread 恢复的 workspace（例如 `picdetect`）完全不可见**：已修复。当前 normal `/list` 会把 recoverable-only workspace 也列出来，但不会伪装成 attach；按钮会直接进入该 workspace 的会话列表，再复用现有 `/use` 恢复链路。
-34. **transport degraded / hard disconnect / remove instance 后 compact overlay 可能残留，导致后续 `/compact` 永久 busy**：已修复。当前这三条路径都会清掉 `compactTurns`，不会再把实例卡在伪 `compact_in_progress`。
+34. **transport degraded / hard disconnect / remove instance 后 compact overlay 可能残留，导致后续 `/compact` 永久 busy**：已修复。当前这三条路径都会清掉 `compactTurns`，不会再把实例卡在伪 `compact_in_progress`；若仍保留当前 surface + compact owner-card，上层还会 best-effort 把显式 `/compact` 卡封成失败态。
 35. **hard disconnect 时 pending steer 没恢复，steering 中的 queued 输入会脱离普通队列后直接消失**：已修复。当前 disconnect 也会按原顺序恢复 `pendingSteers`，再继续 offline/detach 语义。
 
 当前审计范围内，未再发现“attach/use 成功后用户没有任何可恢复下一步”的 bug-grade 状态。

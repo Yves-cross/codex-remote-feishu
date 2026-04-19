@@ -36,15 +36,22 @@ func TestCompactCommandDispatchesThreadCompactStart(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(events) != 1 || events[0].Command == nil || events[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact agent command, got %#v", events)
+	catalog, command := requireCompactStartEvents(t, events)
+	if catalog.Title != "正在整理上下文" || catalog.ThemeKey != "progress" || !catalog.Patchable || catalog.TrackingKey == "" {
+		t.Fatalf("unexpected compact owner card: %#v", catalog)
 	}
-	if events[0].Command.Target.ThreadID != "thread-1" {
-		t.Fatalf("unexpected compact target: %#v", events[0].Command.Target)
+	if command.Target.ThreadID != "thread-1" {
+		t.Fatalf("unexpected compact target: %#v", command.Target)
 	}
 	binding := svc.progress.compactTurns["inst-1"]
 	if binding == nil || binding.SurfaceSessionID != "surface-1" || binding.ThreadID != "thread-1" || binding.Status != compactTurnStatusDispatching {
 		t.Fatalf("unexpected compact binding: %#v", binding)
+	}
+	if binding.FlowID != catalog.TrackingKey {
+		t.Fatalf("expected compact binding flow to match owner card tracking key, binding=%#v catalog=%#v", binding, catalog)
+	}
+	if flow := svc.activeOwnerCardFlow(svc.root.Surfaces["surface-1"]); flow == nil || flow.Kind != ownerCardFlowKindCompact || flow.FlowID != binding.FlowID || flow.Phase != ownerCardFlowPhaseLoading {
+		t.Fatalf("unexpected compact owner flow: %#v", flow)
 	}
 }
 
@@ -77,9 +84,7 @@ func TestCompactPendingQueuesLaterMessageUntilTurnCompletes(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(first) != 1 || first[0].Command == nil || first[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact command, got %#v", first)
-	}
+	requireCompactStartEvents(t, first)
 	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-1")
 
 	queued := svc.ApplySurfaceAction(control.Action{
@@ -138,9 +143,7 @@ func TestCompactRunningBlocksThreadSwitchAndNewThread(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(first) != 1 || first[0].Command == nil || first[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact command, got %#v", first)
-	}
+	requireCompactStartEvents(t, first)
 	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-3")
 	svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:      agentproto.EventTurnStarted,
@@ -178,9 +181,7 @@ func TestDetachDuringCompactWaitsForCompactCompletion(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(first) != 1 || first[0].Command == nil || first[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact command, got %#v", first)
-	}
+	requireCompactStartEvents(t, first)
 	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-4")
 	svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:      agentproto.EventTurnStarted,
@@ -235,9 +236,7 @@ func TestCompactStartFailureRestoresQueuedDispatch(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(first) != 1 || first[0].Command == nil {
-		t.Fatalf("expected compact command, got %#v", first)
-	}
+	requireCompactStartEvents(t, first)
 	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-2")
 
 	svc.ApplySurfaceAction(control.Action{
@@ -259,17 +258,17 @@ func TestCompactStartFailureRestoresQueuedDispatch(t *testing.T) {
 		ThreadID:         "thread-1",
 	}))
 	dispatched := false
-	gotNotice := false
+	gotFailedCard := false
 	for _, event := range events {
-		if event.Notice != nil && event.Notice.Code != "" {
-			gotNotice = true
+		if catalog, ok := eventCommandCatalog(event); ok && catalog.Title == "上下文整理失败" && catalog.ThemeKey == "error" {
+			gotFailedCard = true
 		}
 		if event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
 			dispatched = true
 		}
 	}
-	if !gotNotice || !dispatched {
-		t.Fatalf("expected compact failure notice plus queued dispatch, got %#v", events)
+	if !gotFailedCard || !dispatched {
+		t.Fatalf("expected compact failure owner card plus queued dispatch, got %#v", events)
 	}
 	if svc.progress.compactTurns["inst-1"] != nil {
 		t.Fatalf("expected compact binding to clear after failure, got %#v", svc.progress.compactTurns["inst-1"])
@@ -306,9 +305,7 @@ func TestCompactDisconnectClearsBindingAndAllowsRetryAfterReconnect(t *testing.T
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(retry) != 1 || retry[0].Command == nil || retry[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact retry after reconnect, got %#v", retry)
-	}
+	requireCompactStartEvents(t, retry)
 }
 
 func TestCompactTransportDegradedClearsBindingAndAllowsRetryAfterReconnect(t *testing.T) {
@@ -328,9 +325,7 @@ func TestCompactTransportDegradedClearsBindingAndAllowsRetryAfterReconnect(t *te
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(retry) != 1 || retry[0].Command == nil || retry[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact retry after reconnect, got %#v", retry)
-	}
+	requireCompactStartEvents(t, retry)
 }
 
 func TestCompactRemoveInstanceClearsBinding(t *testing.T) {
@@ -358,10 +353,115 @@ func startCompactDispatching(t *testing.T, svc *Service) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(first) != 1 || first[0].Command == nil || first[0].Command.Kind != agentproto.CommandThreadCompactStart {
-		t.Fatalf("expected compact command, got %#v", first)
-	}
+	requireCompactStartEvents(t, first)
 	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-audit")
+}
+
+func TestCompactTurnLifecycleKeepsUpdatingSameOwnerCard(t *testing.T) {
+	now := time.Date(2026, 4, 14, 18, 28, 0, 0, time.UTC)
+	svc := newCompactServiceFixture(&now)
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+
+	start := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionCompact,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	catalog, _ := requireCompactStartEvents(t, start)
+	svc.RecordOwnerCardFlowMessage("surface-1", catalog.TrackingKey, "om-compact-1")
+	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-5")
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-compact-5",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+	if len(started) != 1 {
+		t.Fatalf("expected one running owner-card update, got %#v", started)
+	}
+	running := commandCatalogFromEvent(t, started[0])
+	if running.MessageID != "om-compact-1" || running.Title != "正在整理上下文" || running.ThemeKey != "progress" {
+		t.Fatalf("unexpected running owner-card update: %#v", running)
+	}
+
+	completedItem := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-compact-5",
+		ItemID:   "compact-5",
+		ItemKind: "context_compaction",
+	})
+	if len(completedItem) != 1 {
+		t.Fatalf("expected one completion owner-card update, got %#v", completedItem)
+	}
+	completedCatalog := commandCatalogFromEvent(t, completedItem[0])
+	if completedCatalog.MessageID != "om-compact-1" || completedCatalog.Title != "上下文已整理" || completedCatalog.ThemeKey != "success" {
+		t.Fatalf("unexpected completion owner-card update: %#v", completedCatalog)
+	}
+
+	completedTurn := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-compact-5",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+	for _, event := range completedTurn {
+		if _, ok := eventCommandCatalog(event); ok {
+			t.Fatalf("expected completion item to avoid duplicate terminal compact card, got %#v", completedTurn)
+		}
+	}
+}
+
+func TestCompactTurnCompletedWithoutCompactionItemFallsBackToTerminalOwnerCard(t *testing.T) {
+	now := time.Date(2026, 4, 14, 18, 29, 0, 0, time.UTC)
+	svc := newCompactServiceFixture(&now)
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+
+	start := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionCompact,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	catalog, _ := requireCompactStartEvents(t, start)
+	svc.RecordOwnerCardFlowMessage("surface-1", catalog.TrackingKey, "om-compact-2")
+	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-6")
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-compact-6",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+	completedTurn := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-compact-6",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+	if len(completedTurn) != 1 {
+		t.Fatalf("expected one fallback terminal owner-card update, got %#v", completedTurn)
+	}
+	completedCatalog := commandCatalogFromEvent(t, completedTurn[0])
+	if completedCatalog.MessageID != "om-compact-2" || completedCatalog.Title != "上下文已整理" || completedCatalog.ThemeKey != "success" {
+		t.Fatalf("unexpected fallback terminal owner-card update: %#v", completedCatalog)
+	}
+}
+
+func requireCompactStartEvents(t *testing.T, events []control.UIEvent) (*control.FeishuDirectCommandCatalog, *agentproto.Command) {
+	t.Helper()
+	if len(events) != 2 {
+		t.Fatalf("expected compact owner card plus agent command, got %#v", events)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if events[1].Command == nil || events[1].Command.Kind != agentproto.CommandThreadCompactStart {
+		t.Fatalf("expected compact agent command as second event, got %#v", events)
+	}
+	return catalog, events[1].Command
 }
 
 func newCompactServiceFixture(now *time.Time) *Service {

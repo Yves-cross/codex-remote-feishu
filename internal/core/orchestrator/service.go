@@ -95,10 +95,12 @@ const (
 type compactTurnBinding struct {
 	InstanceID       string
 	SurfaceSessionID string
+	FlowID           string
 	ThreadID         string
 	CommandID        string
 	TurnID           string
 	Status           compactTurnStatus
+	CompletionSeen   bool
 }
 
 type pendingSteerBinding struct {
@@ -739,7 +741,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		events = append(events, s.finalizeExecCommandProgressForTurn(instanceID, event.ThreadID, event.TurnID, event.Status, finalText)...)
 		deleteMatchingTurnPlanSnapshots(s.progress.turnPlanSnapshots, instanceID, event.ThreadID, event.TurnID)
 		deleteMatchingMCPToolCallProgress(s.progress.mcpToolCallProgress, instanceID, event.ThreadID, event.TurnID)
-		compactEvents := s.completeCompactTurn(instanceID, event.ThreadID, event.TurnID)
+		compactEvents := s.completeCompactTurn(instanceID, event)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
 			events = append(events, compactEvents...)

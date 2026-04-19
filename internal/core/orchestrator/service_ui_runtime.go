@@ -20,6 +20,7 @@ type ownerCardFlowKind string
 const (
 	ownerCardFlowKindThreadHistory ownerCardFlowKind = "thread_history"
 	ownerCardFlowKindTargetPicker  ownerCardFlowKind = "target_picker"
+	ownerCardFlowKindCompact       ownerCardFlowKind = "compact"
 )
 
 type ownerCardFlowPhase string

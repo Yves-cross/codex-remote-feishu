@@ -94,6 +94,43 @@ func TestContextCompactionNormalVerbositySuppressesAttachedSurfaceCard(t *testin
 	}
 }
 
+func TestManualCompactStillUsesForegroundOwnerCardOutsideVerbose(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 3, 0, 0, time.UTC)
+	svc := newCompactServiceFixture(&now)
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+
+	start := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionCompact,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	catalog, _ := requireCompactStartEvents(t, start)
+	svc.RecordOwnerCardFlowMessage("surface-1", catalog.TrackingKey, "om-compact-notice")
+	svc.BindPendingRemoteCommand("surface-1", "cmd-compact-notice")
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-compact-notice",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-compact-notice",
+		ItemID:   "compact-notice",
+		ItemKind: "context_compaction",
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected explicit compact to emit one owner-card update outside verbose, got %#v", events)
+	}
+	got := commandCatalogFromEvent(t, events[0])
+	if got.MessageID != "om-compact-notice" || got.Title != "上下文已整理" || got.ThemeKey != "success" {
+		t.Fatalf("unexpected explicit compact owner-card update: %#v", got)
+	}
+}
+
 func TestContextCompactionStoresReplayWhenNoSurfaceAndReplaysOnce(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 5, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
