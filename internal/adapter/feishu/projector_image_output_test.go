@@ -22,8 +22,8 @@ func TestProjectImageOutputAsImageMessage(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendImage {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].ReplyToMessageID != "om-source-1" {
-		t.Fatalf("expected image output to reply to source message, got %#v", ops[0])
+	if ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected image output to stay top-level, got %#v", ops[0])
 	}
 	if ops[0].ImagePath != "/tmp/generated.png" || ops[0].ImageBase64 != "" {
 		t.Fatalf("unexpected image output operation payload: %#v", ops[0])

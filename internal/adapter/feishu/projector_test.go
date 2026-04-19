@@ -1418,8 +1418,8 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].ReplyToMessageID != "om-source-1" {
-		t.Fatalf("expected request prompt to reply to source message, got %#v", ops[0])
+	if ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected request prompt to stay top-level, got %#v", ops[0])
 	}
 	if ops[0].CardTitle != "需要确认" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
@@ -1868,7 +1868,7 @@ func TestProjectNoticeAsSystemCard(t *testing.T) {
 	}
 }
 
-func TestProjectTurnOwnedNoticeRepliesToSourceMessage(t *testing.T) {
+func TestProjectTurnOwnedNoticeStaysTopLevel(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:            control.UIEventNotice,
@@ -1881,8 +1881,8 @@ func TestProjectTurnOwnedNoticeRepliesToSourceMessage(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].ReplyToMessageID != "om-source-1" {
-		t.Fatalf("expected notice to reply to source message, got %#v", ops[0])
+	if ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected turn-owned notice to stay top-level, got %#v", ops[0])
 	}
 }
 

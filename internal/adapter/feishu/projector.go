@@ -86,13 +86,13 @@ func (p *Projector) SetSnapshotBinary(value string) {
 	p.snapshotBinary = strings.TrimSpace(value)
 }
 
-func (p *Projector) ProjectPreviewSupplements(gatewayID, surfaceSessionID, chatID, replyToMessageID string, supplements []PreviewSupplement) []Operation {
+func (p *Projector) ProjectPreviewSupplements(gatewayID, surfaceSessionID, chatID, _ string, supplements []PreviewSupplement) []Operation {
 	if len(supplements) == 0 {
 		return nil
 	}
 	var ops []Operation
 	for _, supplement := range supplements {
-		op, ok := projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessageID, supplement)
+		op, ok := projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, supplement)
 		if ok {
 			ops = append(ops, op)
 		}
@@ -126,10 +126,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if title == "" {
 			title = "系统提示"
 		}
-		replyToMessageID := event.SourceMessageID
-		if event.Notice.IsGlobalRuntime() {
-			replyToMessageID = ""
-		}
 		body, elements := projectNoticeContent(*event.Notice)
 		theme := noticeThemeKey(*event.Notice)
 		return []Operation{{
@@ -137,7 +133,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
-			ReplyToMessageID: replyToMessageID,
 			CardTitle:        title,
 			CardBody:         body,
 			CardThemeKey:     theme,
@@ -157,7 +152,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
-			ReplyToMessageID: event.SourceMessageID,
 			CardTitle:        title,
 			CardBody:         body,
 			CardThemeKey:     cardThemePlan,
@@ -260,7 +254,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
-			ReplyToMessageID: event.SourceMessageID,
 			CardTitle:        title,
 			CardBody:         body,
 			CardThemeKey:     cardThemeApproval,
@@ -412,7 +405,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
-			ReplyToMessageID: event.SourceMessageID,
 			ImagePath:        strings.TrimSpace(event.ImageOutput.SavedPath),
 			ImageBase64:      strings.TrimSpace(event.ImageOutput.ImageBase64),
 		}}
@@ -485,7 +477,7 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
 }
 
-func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessageID string, supplement PreviewSupplement) (Operation, bool) {
+func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID string, supplement PreviewSupplement) (Operation, bool) {
 	switch strings.TrimSpace(supplement.Kind) {
 	case "card":
 		title, _ := supplement.Data["title"].(string)
@@ -506,7 +498,6 @@ func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, replyToMessag
 			GatewayID:        gatewayID,
 			SurfaceSessionID: surfaceSessionID,
 			ChatID:           chatID,
-			ReplyToMessageID: replyToMessageID,
 			CardTitle:        title,
 			CardBody:         body,
 			CardThemeKey:     theme,
