@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -143,6 +144,275 @@ func TestHandleGatewayActionReplacesMenuCardForSendFileHandoff(t *testing.T) {
 	}
 	if result.ReplaceCurrentCard.CardTitle != "选择要发送的文件" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
+	}
+}
+
+func TestHandleGatewayActionReplacesMenuCardForHelpHandoff(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 19, 9, 10, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandHelp,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-help-1",
+		Text:             "/help",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected inline replacement result, got %#v", result)
+	}
+	if result.ReplaceCurrentCard.CardTitle != "Slash 命令帮助" {
+		t.Fatalf("unexpected help replacement title: %#v", result.ReplaceCurrentCard)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+}
+
+func TestHandleGatewayActionSealsMenuCardForStopHandoff(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 19, 9, 12, 0, 0, time.UTC),
+	})
+	var sent []agentproto.Command
+	app.sendAgentCommand = func(_ string, command agentproto.Command) error {
+		sent = append(sent, command)
+		return nil
+	}
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "proj1",
+		WorkspaceRoot: "/data/dl/proj1",
+		WorkspaceKey:  "/data/dl/proj1",
+		ShortName:     "proj1",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "会话1", CWD: "/data/dl/proj1", Loaded: true},
+		},
+		ActiveThreadID: "thread-1",
+		ActiveTurnID:   "turn-1",
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ThreadID:         "thread-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionStop,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-stop-1",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected stop handoff to seal current card, got %#v", result)
+	}
+	if !strings.Contains(operationCardText(*result.ReplaceCurrentCard), "已向当前运行中的 turn 发送停止请求。") {
+		t.Fatalf("expected stop replacement card text, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	if len(sent) != 1 || sent[0].Kind != agentproto.CommandTurnInterrupt {
+		t.Fatalf("expected one interrupt command, got %#v", sent)
+	}
+}
+
+func TestHandleGatewayActionSealsMenuCardForNewThreadHandoff(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 19, 9, 14, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "proj1",
+		WorkspaceRoot: "/data/dl/proj1",
+		WorkspaceKey:  "/data/dl/proj1",
+		ShortName:     "proj1",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "会话1", CWD: "/data/dl/proj1", Loaded: true},
+		},
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionUseThread,
+		SurfaceSessionID: "surface-1",
+		ThreadID:         "thread-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionNewThread,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-new-1",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected new-thread handoff to seal current card, got %#v", result)
+	}
+	if !strings.Contains(operationCardText(*result.ReplaceCurrentCard), "已准备新建会话") {
+		t.Fatalf("expected new-thread replacement card text, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.RouteMode != string(state.RouteModeNewThreadReady) {
+		t.Fatalf("expected surface to enter new-thread-ready route, got %#v", snapshot)
+	}
+}
+
+func TestHandleGatewayActionSealsMenuCardForFollowHandoff(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 19, 9, 16, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/mode vscode",
+	})
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "vscode-1",
+		WorkspaceRoot:           "/data/dl/proj1",
+		WorkspaceKey:            "/data/dl/proj1",
+		ShortName:               "vscode-1",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "会话1", CWD: "/data/dl/proj1", Loaded: true},
+		},
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionFollowLocal,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-follow-1",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected follow handoff to seal current card, got %#v", result)
+	}
+	if result.ReplaceCurrentCard.CardTitle == "命令已提交" {
+		t.Fatalf("did not expect follow handoff to fall back to submitted-anchor card, got %#v", result.ReplaceCurrentCard)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.RouteMode != string(state.RouteModeFollowLocal) || snapshot.Attachment.SelectedThreadID != "thread-1" {
+		t.Fatalf("expected surface to enter follow-local route, got %#v", snapshot)
+	}
+}
+
+func TestHandleGatewayActionSealsMenuCardForDetachHandoff(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 19, 9, 18, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "proj1",
+		WorkspaceRoot: "/data/dl/proj1",
+		WorkspaceKey:  "/data/dl/proj1",
+		ShortName:     "proj1",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "会话1", CWD: "/data/dl/proj1", Loaded: true},
+		},
+	})
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionDetach,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-detach-1",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected detach handoff to seal current card, got %#v", result)
+	}
+	if !strings.Contains(operationCardText(*result.ReplaceCurrentCard), "已断开当前工作区接管") {
+		t.Fatalf("expected detach replacement card text, got %#v", result.ReplaceCurrentCard.CardElements)
+	}
+	if len(gateway.operations) != 0 {
+		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
+	}
+	snapshot := app.service.SurfaceSnapshot("surface-1")
+	if snapshot == nil || snapshot.Attachment.InstanceID != "" {
+		t.Fatalf("expected detach to clear current attachment, got %#v", snapshot)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func TestHandleCardActionTriggerWaitsForCommandSubmissionAnchorAction(t *testing.T) {
+func TestHandleCardActionTriggerWaitsForCommandResultReplacementAction(t *testing.T) {
 	action := control.Action{
 		Kind: control.ActionStatus,
 		Inbound: &control.ActionInboundMeta{
@@ -27,8 +27,8 @@ func TestHandleCardActionTriggerWaitsForCommandSubmissionAnchorAction(t *testing
 		return &ActionResult{
 			ReplaceCurrentCard: &Operation{
 				Kind:         OperationSendCard,
-				CardTitle:    "命令已提交",
-				CardBody:     "已执行 `/status`，结果会显示在下方。",
+				CardTitle:    "当前状态",
+				CardBody:     "当前模式：normal",
 				CardThemeKey: cardThemeInfo,
 			},
 		}

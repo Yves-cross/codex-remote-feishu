@@ -97,11 +97,34 @@ func AllowsInlineCardReplacement(action Action) bool {
 	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
 }
 
+// AllowsCommandCardResultReplacement returns whether this stamped card-triggered
+// command should synchronously replace the current card with its first real
+// result card instead of acknowledging immediately or using a submitted anchor.
+func AllowsCommandCardResultReplacement(action Action) bool {
+	if AllowsInlineCardReplacement(action) {
+		return false
+	}
+	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
+		return false
+	}
+	switch action.Kind {
+	case ActionShowCommandHelp,
+		ActionStatus,
+		ActionStop,
+		ActionNewThread,
+		ActionFollowLocal,
+		ActionDetach:
+		return true
+	default:
+		return false
+	}
+}
+
 // AllowsCommandSubmissionAnchorReplacement returns whether this card-triggered
 // command should synchronously return a lightweight "已提交" replacement card
 // while keeping command results append-only.
 func AllowsCommandSubmissionAnchorReplacement(action Action) bool {
-	if AllowsInlineCardReplacement(action) {
+	if AllowsInlineCardReplacement(action) || AllowsCommandCardResultReplacement(action) {
 		return false
 	}
 	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
@@ -110,12 +133,7 @@ func AllowsCommandSubmissionAnchorReplacement(action Action) bool {
 	switch action.Kind {
 	case ActionShowThreads,
 		ActionShowAllThreads,
-		ActionStatus,
-		ActionStop,
-		ActionSteerAll,
-		ActionNewThread,
-		ActionFollowLocal,
-		ActionDetach:
+		ActionSteerAll:
 		return true
 	case ActionUpgradeCommand, ActionDebugCommand:
 		return isSingleTokenSlashCommand(action.Text)

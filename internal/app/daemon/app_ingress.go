@@ -242,6 +242,9 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	inlineResult, appendEvents := a.inlineCardActionResultLocked(action, events)
 	commandSubmissionAnchorReplace := false
 	if inlineResult == nil {
+		inlineResult, appendEvents = a.commandCardResultReplacementLocked(action, events)
+	}
+	if inlineResult == nil {
 		inlineResult, appendEvents = a.bareCommandContinuationResultLocked(action, events)
 	}
 	if inlineResult == nil {
@@ -294,6 +297,53 @@ func (a *App) inlineCardActionResultLocked(action control.Action, events []contr
 		return nil, events
 	}
 	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}, events[1:]
+}
+
+func commandCardTerminalResult(action control.Action) bool {
+	switch action.Kind {
+	case control.ActionStop, control.ActionNewThread, control.ActionFollowLocal, control.ActionDetach:
+		return true
+	default:
+		return false
+	}
+}
+
+func removeUIEventAt(events []control.UIEvent, idx int) []control.UIEvent {
+	if idx < 0 || idx >= len(events) {
+		return append([]control.UIEvent(nil), events...)
+	}
+	out := make([]control.UIEvent, 0, len(events)-1)
+	out = append(out, events[:idx]...)
+	return append(out, events[idx+1:]...)
+}
+
+func filterNoticeUIEvents(events []control.UIEvent) []control.UIEvent {
+	out := make([]control.UIEvent, 0, len(events))
+	for _, event := range events {
+		if event.Notice != nil {
+			continue
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
+func (a *App) commandCardResultReplacementLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+	if !control.AllowsCommandCardResultReplacement(action) || len(events) == 0 {
+		return nil, events
+	}
+	for i, event := range events {
+		replace := a.projectFirstCardAsReplacementLocked(action, event)
+		if replace == nil {
+			continue
+		}
+		appendEvents := removeUIEventAt(events, i)
+		if commandCardTerminalResult(action) {
+			appendEvents = filterNoticeUIEvents(appendEvents)
+		}
+		return replace, appendEvents
+	}
+	return nil, events
 }
 
 func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu.ActionResult {
@@ -406,16 +456,6 @@ func commandSubmissionAnchorCommandText(action control.Action) string {
 		return "/use"
 	case control.ActionShowAllThreads:
 		return "/useall"
-	case control.ActionStatus:
-		return "/status"
-	case control.ActionStop:
-		return "/stop"
-	case control.ActionNewThread:
-		return "/new"
-	case control.ActionFollowLocal:
-		return "/follow"
-	case control.ActionDetach:
-		return "/detach"
 	case control.ActionUpgradeCommand, control.ActionDebugCommand:
 		fields := strings.Fields(strings.TrimSpace(action.Text))
 		if len(fields) == 1 {

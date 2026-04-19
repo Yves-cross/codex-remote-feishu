@@ -449,7 +449,7 @@ func TestHandleGatewayActionKeepsTypedParameterApplyAppendOnly(t *testing.T) {
 	}
 }
 
-func TestHandleGatewayActionKeepsHelpAppendOnlyEvenWithDaemonLifecycle(t *testing.T) {
+func TestHandleGatewayActionKeepsTypedHelpAppendOnly(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
 		PID:       42,
@@ -464,13 +464,10 @@ func TestHandleGatewayActionKeepsHelpAppendOnlyEvenWithDaemonLifecycle(t *testin
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/help",
-		Inbound: &control.ActionInboundMeta{
-			CardDaemonLifecycleID: app.daemonLifecycleID,
-		},
 	})
 
 	if result != nil {
-		t.Fatalf("expected help card to stay append-only, got %#v", result)
+		t.Fatalf("expected typed /help to stay append-only, got %#v", result)
 	}
 	if len(gateway.operations) != 1 || gateway.operations[0].CardTitle != "Slash 命令帮助" {
 		t.Fatalf("expected appended help card, got %#v", gateway.operations)

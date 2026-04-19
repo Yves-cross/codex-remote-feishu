@@ -190,6 +190,55 @@ func TestAllowsInlineCardReplacementForCommandCardApply(t *testing.T) {
 	}
 }
 
+func TestAllowsCommandCardResultReplacement(t *testing.T) {
+	tests := []struct {
+		name   string
+		action Action
+		want   bool
+	}{
+		{
+			name: "help from stamped card callback",
+			action: Action{
+				Kind:    ActionShowCommandHelp,
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "status from stamped card callback",
+			action: Action{
+				Kind:    ActionStatus,
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "typed status stays append-only",
+			action: Action{
+				Kind: ActionStatus,
+				Text: "/status",
+			},
+			want: false,
+		},
+		{
+			name: "list does not become stamped result replacement",
+			action: Action{
+				Kind:    ActionListInstances,
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := AllowsCommandCardResultReplacement(tt.action); got != tt.want {
+				t.Fatalf("AllowsCommandCardResultReplacement(%#v) = %v, want %v", tt.action, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAllowsCommandSubmissionAnchorReplacement(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -202,7 +251,7 @@ func TestAllowsCommandSubmissionAnchorReplacement(t *testing.T) {
 				Kind:    ActionStatus,
 				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name: "list from stamped card callback",
