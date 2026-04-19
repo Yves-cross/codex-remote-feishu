@@ -31,6 +31,7 @@ type PathPickerRequest struct {
 	Question        string
 	RootPath        string
 	InitialPath     string
+	SourceMessageID string
 	Hint            string
 	ConfirmLabel    string
 	CancelLabel     string
@@ -44,6 +45,7 @@ type PathPickerRequest struct {
 
 type PathPickerResult struct {
 	PickerID     string
+	MessageID    string
 	Mode         PathPickerMode
 	RootPath     string
 	CurrentPath  string

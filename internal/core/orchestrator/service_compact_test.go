@@ -55,6 +55,32 @@ func TestCompactCommandDispatchesThreadCompactStart(t *testing.T) {
 	}
 }
 
+func TestCompactMenuActionBindsOwnerFlowToCurrentCard(t *testing.T) {
+	now := time.Date(2026, 4, 19, 8, 0, 0, 0, time.UTC)
+	svc := newCompactServiceFixture(&now)
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionUseThread, SurfaceSessionID: "surface-1", ThreadID: "thread-1"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionCompact,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-compact-1",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	})
+	catalog, _ := requireCompactStartEvents(t, events)
+	if catalog.MessageID != "om-menu-compact-1" {
+		t.Fatalf("expected compact menu flow to target current card, got %#v", catalog)
+	}
+	if catalog.TrackingKey != "" {
+		t.Fatalf("expected compact menu flow not to require detached tracking key, got %#v", catalog)
+	}
+	flow := svc.activeOwnerCardFlow(svc.root.Surfaces["surface-1"])
+	if flow == nil || flow.MessageID != "om-menu-compact-1" {
+		t.Fatalf("expected compact owner flow to bind current card, got %#v", flow)
+	}
+}
+
 func TestCompactCommandRejectsWhileRegularTurnRunning(t *testing.T) {
 	now := time.Date(2026, 4, 14, 18, 10, 0, 0, time.UTC)
 	svc := newCompactServiceFixture(&now)

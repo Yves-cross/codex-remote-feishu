@@ -104,16 +104,17 @@ type compactTurnBinding struct {
 }
 
 type pendingSteerBinding struct {
-	InstanceID       string
-	SurfaceSessionID string
-	QueueItemID      string
-	QueueItemIDs     []string
-	QueueIndices     map[string]int
-	SourceMessageID  string
-	CommandID        string
-	ThreadID         string
-	TurnID           string
-	QueueIndex       int
+	InstanceID         string
+	SurfaceSessionID   string
+	QueueItemID        string
+	QueueItemIDs       []string
+	QueueIndices       map[string]int
+	SourceMessageID    string
+	OwnerCardMessageID string
+	CommandID          string
+	ThreadID           string
+	TurnID             string
+	QueueIndex         int
 }
 
 type completedTextItem struct {
@@ -384,11 +385,11 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionNewThread:
 		events = s.prepareNewThread(surface)
 	case control.ActionCompact:
-		events = s.handleCompactCommand(surface)
+		events = s.handleCompactCommand(surface, action)
 	case control.ActionSendFile:
 		events = s.openSendFilePicker(surface)
 	case control.ActionSteerAll:
-		events = s.handleSteerAllCommand(surface)
+		events = s.handleSteerAllCommand(surface, action)
 	case control.ActionKillInstance:
 		events = s.killHeadlessInstance(surface)
 	case control.ActionRemovedCommand:

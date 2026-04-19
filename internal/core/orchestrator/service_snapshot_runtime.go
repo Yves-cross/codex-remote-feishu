@@ -212,6 +212,9 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 	}
 	delete(s.pendingSteers, key)
 	events := []control.UIEvent{}
+	if strings.TrimSpace(binding.OwnerCardMessageID) != "" {
+		events = append(events, steerAllCompletedOwnerCardEvent(surface.SurfaceSessionID, binding.OwnerCardMessageID, len(pendingSteerQueueItemIDs(binding))))
+	}
 	for _, queueItemID := range pendingSteerQueueItemIDs(binding) {
 		item := surface.QueueItems[queueItemID]
 		if item == nil || item.Status != state.QueueItemSteering {
@@ -347,6 +350,16 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 		surface.QueuedQueueItemIDs = insertString(surface.QueuedQueueItemIDs, restore.queueIndex, restore.queueItemID)
 	}
 	var events []control.UIEvent
+	if strings.TrimSpace(binding.OwnerCardMessageID) != "" {
+		text := ""
+		if notice != nil {
+			text = notice.Text
+		}
+		if strings.TrimSpace(text) == "" {
+			text = "本地连接已断开，排队输入已恢复原位置。"
+		}
+		events = append(events, steerAllFailedOwnerCardEvent(surface.SurfaceSessionID, binding.OwnerCardMessageID, appendSteerRestoreHint(text)))
+	}
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
 		events = append(events, control.UIEvent{
 			Kind:             control.UIEventNotice,

@@ -34,7 +34,7 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		}
 		return s.presentInstanceSelectionWithInline(surface, true)
 	case control.FeishuUIIntentOpenSendFilePicker:
-		return s.openSendFilePickerWithInline(surface, true)
+		return s.openSendFilePickerWithInline(surface, intent.SourceMessageID, true)
 	case control.FeishuUIIntentShowRecentWorkspaces:
 		return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, intent.WorkspaceKey, intent.SourceMessageID, true)
 	case control.FeishuUIIntentShowAllWorkspaces:

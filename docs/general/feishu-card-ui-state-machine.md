@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-19`
-> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（dispatching / running / completed / failed 同卡 patch，且不受 `verbose` 影响）、被动 compact 继续保留在 verbose 共享过程卡里，同时 `/upgrade latest`、bare `/cron`、`/sendfile` 子步骤与共享过程卡也都已同步到同卡 patch / append-only 的最新边界；Feishu turn delivery 当前已统一成 final-only reply：只有 final reply（含 overflow continuation）继续 reply 触发消息，request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 都保持顶层 append-only。
+> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续保留在 verbose 共享过程卡里；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（no-op / requested / accepted / failed 都封回当前菜单卡），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；Feishu turn delivery 当前已统一成 final-only reply：只有 final reply（含 overflow continuation）继续 reply 触发消息，request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 都保持顶层 append-only。
 
 ## 1. 文档定位
 
@@ -55,7 +55,7 @@
   - 负责只在安全条件下把同上下文导航转成 `ReplaceCurrentCard`
   - 当前有两条 replace 路径：
     - inline navigation：当 action 命中 **inline-replace allow-list**（并非所有 `FeishuUIIntent`）、且 controller 产出的 `UIEvent` 显式标记 `InlineReplaceCurrentCard`
-    - command submission anchor：当 action 命中提交态锚点 allow-list（如 `/status`、`/stop`、`/steerall`）时，daemon 回一张轻量“命令已提交”替换卡，同时保留原结果 append
+    - command submission anchor：当 action 命中提交态锚点 allow-list（如 `/status`、`/stop`、`/new`、`/follow`、`/detach`）时，daemon 回一张轻量“命令已提交”替换卡，同时保留原结果 append
 - `orchestrator / Feishu UI controller`
   - 负责 `show_*`、`/menu`、bare config-card 这类 pure navigation 的 controller 分流与事件构建
   - 负责通过阶段 1 暴露的 `Feishu*Context` query/policy 边界生成 UI-owned read model 与 request 事件
@@ -96,9 +96,10 @@
 | `target_picker_cancel` | `feishu-ui-owned` | unified target picker 的显式退出动作；命中当前 active picker owner flow 时，会把当前卡同步 replace 成 sealed terminal card；普通编辑态是 `已取消`，Git processing 态是 `已取消导入`，并会 best-effort 停掉 clone / prepare；随后清掉 active target picker / owner-card flow |
 | `target_picker_confirm` | `mixed` | callback 协议、picker ownership 与 freshness 校验仍属 Feishu UI；真正 attach / switch / `新建会话`、按已选目录执行接入、或按主卡内联 Git 表单 + 已选父目录执行导入的产品语义仍由 orchestrator 决定；当前三条主路径都会把同一张 owner card 推进到 processing / succeeded / failed 并 `message.patch` 收口，其中 `新建工作区` 两条路径会先前置阻塞已知必败条件，Git 长链路还会在 processing 期间显式阻断普通输入，只保留 `/status` 与同卡取消 |
 | `path_picker_enter` / `path_picker_up` / `path_picker_select` | `feishu-ui-owned` | 当前由 Feishu UI controller 处理同一张路径选择器卡片内的浏览、返回与文件选择；命中当前 active picker 时直接原地替换当前卡。复用路径选择器 projector 当前统一渲染成紧凑 `select_static`：目录模式提供“进入目录”下拉，文件模式提供“进入目录 + 选择文件”双下拉；若当前不在根目录，目录下拉会把 `..` 固定放在第一项作为返回上一级入口，并承担原先单独“上一级”按钮的职责；真实目录项里普通目录排在前，`.` 开头目录排在后 |
-| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；默认仍交给 picker consumer 决定结果。当前已有两类同卡 patch 例外：一是 target picker owner-flow 子步骤会回填并 patch 原 owner card；二是独立 `/sendfile` 文件选择器会记录自身 message id，启动前失败继续 patch 当前 picker 卡，启动成功则把当前 picker 卡封成 terminal 状态 |
+| `path_picker_confirm` / `path_picker_cancel` | `mixed` | callback 协议与 owner/freshness 校验仍属 Feishu UI；这两类动作当前不在 inline-replace allow-list，回调会立即 ack 并异步处理；默认仍交给 picker consumer 决定结果。当前已有两类同卡 patch 例外：一是 target picker owner-flow 子步骤会回填并 patch 原 owner card；二是独立 `/sendfile` 文件选择器会记录自身 message id，因此 cancel、启动前失败与启动成功终态都能继续 patch 当前 picker 卡 |
 | bare `/history` / `history_page` / `history_detail` | `mixed` | 当前由 Feishu UI controller 先把 owner-card runtime v1 中的当前 history flow 同步切到 loading，再异步发起 `thread.history.read`；列表/详情结果与失败态默认继续 patch 回同一张 history owner card |
-| bare `/compact` | `mixed` | 文本入口当前会先由 orchestrator 建立 compact owner-card flow，并 append 一张 patchable direct-command card；dispatching / running / completed / failed 都继续 patch 同一张卡。被动 compact completion 不复用这条前台 owner card，仍走 verbose-only 共享过程卡 |
+| bare `/compact` | `mixed` | 文本入口当前会先由 orchestrator 建立 compact owner-card flow，并 append 一张 patchable direct-command card；若入口来自 stamped `/menu current_work` 卡，则当前菜单卡会直接被绑定成 compact owner card。dispatching / running / completed / failed 都继续 patch 同一张卡。被动 compact completion 不复用这条前台 owner card，仍走 verbose-only 共享过程卡 |
+| stamped `/menu current_work -> /steerall` | `mixed` | 当前不再走提交态锚点；点击后会把当前菜单卡直接封成 steer-all owner/terminal card。no-op、requested、accepted、failed / disconnect restore 都继续回写同一张原卡，不再留下可重复点击的旧菜单 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
 | `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
@@ -357,7 +358,9 @@ MCP request 卡片当前新增的可视语义：
   - 若切到 `新建工作区`，卡片会改成来源按钮布局，并用 `切换来源` 次级标签承接来源选择：`已有目录` 主卡展示目录字段 + `选择目录` 按钮 + `接入并继续` 主按钮；`从 Git URL` 主卡展示落地父目录字段、仓库地址/目录名表单、`选择目录` 按钮与 `克隆并继续` 主按钮
   - `target_picker_open_path_picker` 当前会把主卡 inline replace 成 path picker 子步骤；子步骤复用 owner-card 标题，并展示 step tag、单题问题、允许范围与当前位置；path picker confirm/cancel 后不会再走同步 inline restore，而是异步 ack 后把最新 target picker 主卡 patch 回同一张 owner card
   - 独立 path picker 卡现在也会在首次发送后把自身 `message_id` 记回 runtime；因此后续非 inline 的异步结果不再只能回退成外发 notice，而是可以显式 patch 当前这张 picker 卡
-  - `/sendfile` 文件模式 picker 当前基于这条规则形成“前台启动 + 后台发送”的单卡 handoff：confirm 后先做启动前校验，失败则把错误提示继续留在当前 picker 卡；启动成功则把当前卡封成 `已开始发送，可继续其他操作`，展示文件名/大小，超 `100 MB` 时再追加 `文件较大，请耐心等待`
+  - `/sendfile` 文件模式 picker 当前基于这条规则形成“菜单卡/独立 picker -> 前台启动 -> 后台发送”的单卡 handoff：打开 picker 时若来自 stamped 菜单卡，会先把当前菜单卡直接替换成文件选择器；若前置条件不满足（例如 VS Code 模式或尚未接管工作区），则当前菜单卡会直接封成不可交互的错误终态，而不是回退成额外 notice
+  - `/sendfile` confirm 后会先做启动前校验，失败则把错误提示继续留在当前 picker 卡；启动成功则把当前卡封成 `已开始发送，可继续其他操作`，展示文件名/大小，超 `100 MB` 时再追加 `文件较大，请耐心等待`
+  - `/sendfile` cancel 当前也会把当前 picker 卡封成 `已取消发送文件` 终态，而不是把旧卡留在原地再额外 append 一条取消 notice
   - `/sendfile` 启动成功后，真实文件消息会直接出现在聊天流里作为成功结果；不再额外补一张成功确认卡。只有后台异步失败才补轻量 notice
   - `target_picker_cancel` 当前会直接把这张 owner card 封成 terminal 状态；普通编辑态为 `已取消`，Git processing 态为 `已取消导入`，并会 best-effort 停止 clone / prepare
   - `新建工作区 / 已有目录` 与 `新建工作区 / 从 Git URL` 的主按钮当前都会前置阻塞已知必败条件；只有目录 / repo / 落地父目录预览都可执行时，主按钮才会启用；若旧卡或强制 confirm 绕过禁用态，服务端也会回具体阻塞原因而不是笼统提示“请先补全”
@@ -370,7 +373,7 @@ MCP request 卡片当前新增的可视语义：
 
 下面这些动作即使来自卡片，也不会同步 replace 当前卡：
 
-- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理；大多数 consumer 结果仍保持 append-only，当前例外只有 target picker owner-flow 子步骤会 patch 回原 owner card，以及独立 `/sendfile` picker 的启动前失败/启动成功终态会 patch 回当前 picker 卡
+- `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理；大多数 consumer 结果仍保持 append-only，当前例外只有 target picker owner-flow 子步骤会 patch 回原 owner card，以及独立 `/sendfile` picker 的 cancel / 启动前失败 / 启动成功终态会 patch 回当前 picker 卡
 - attach / use / follow / `/new` 这类真正改变产品状态的动作
 - `/help` 这类静态帮助/目录卡，即使底层仍是 `FeishuDirectCommandCatalog`，当前也不属于 replaceable UI navigation
 - request approve / request submit 的处理结果
@@ -383,7 +386,9 @@ MCP request 卡片当前新增的可视语义：
   - 成功与 no-op 会把原卡封成 sealed terminal card，并附带“如需再次调整，请重新发送对应命令”的 reopen 提示
   - 校验失败、参数格式错误、或仍未接管目标等前置条件失败，会继续留在同一张参数卡上，保留可重试表单；必要时把刚才输入的参数回填到默认值
   - 若动作不是从当前参数卡 callback 进入，例如用户直接发送 `/mode vscode`、`/autowhip on`，则仍保持 append-only，不会把普通文本 slash 升级成 inline replace
-- stamped 菜单命令里的非 inline 命令（例如 `/status`、`/stop`、`/steerall`、`/new`、`/follow`、`/detach`）会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡。
+- stamped 菜单命令里的非 inline 命令当前分成两类：
+  - `/status`、`/stop`、`/new`、`/follow`、`/detach` 仍会先同步 replace 为“命令已提交”锚点卡，再继续 append 原命令结果卡
+  - `/compact`、`/steerall`、`/sendfile` 的 `current_work` 菜单入口不再复用这条路径，而是直接把原菜单卡交给 owner/terminal card 流继续收口
 - bare `/upgrade`、bare `/debug`、bare `/cron` 当前不再走“命令已提交”锚点，而是直接在当前卡内同步承接到下一张 command catalog。
 - `/upgrade latest` 当前不走 callback 同步 replace；但只要进入 daemon owner-card 流，同一张升级卡会继续通过 `message.patch` 在 `checking -> confirm -> running/cancelling -> restarting(sealed)` 之间推进，不再依赖“再次发送 `/upgrade latest`”。
 - turn-owned 的投递策略当前已经统一成 final-only reply：
@@ -594,7 +599,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/app/daemon/app_target_picker_cancel_test.go](../../internal/app/daemon/app_target_picker_cancel_test.go)
   - 锁定 `target_picker_cancel` 在 callback replace 路径上会把当前卡封成 terminal `已取消`，而不是额外 append 一张 notice 卡
 - [internal/app/daemon/app_send_file_test.go](../../internal/app/daemon/app_send_file_test.go)
-  - 锁定 `/sendfile` 当前会在独立 file picker 卡上完成启动前校验与 terminal handoff：启动前失败继续 patch 当前卡、启动成功封成 `已开始发送，可继续其他操作`、后台成功不额外发成功卡、后台失败只补轻量 notice
+  - 锁定 `/sendfile` 当前会在独立 file picker 卡上完成启动前校验与 terminal handoff：cancel、启动前失败继续 patch 当前卡、启动成功封成 `已开始发送，可继续其他操作`、后台成功不额外发成功卡、后台失败只补轻量 notice；menu handoff 路径也会复用同一张 picker/message id
 - [internal/core/orchestrator/service_thread_history_view_test.go](../../internal/core/orchestrator/service_thread_history_view_test.go)
   - 锁定 `/history` 已迁到 owner-card runtime v1：flow 建立、loading/resolved phase 推进、列表/详情回填与 message patch 目标不漂移
 - [internal/app/daemon/app_thread_history_test.go](../../internal/app/daemon/app_thread_history_test.go)
@@ -612,7 +617,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/app/daemon/app_global_runtime_notice_test.go](../../internal/app/daemon/app_global_runtime_notice_test.go)
   - 锁定 `global runtime` 提示维持独立 delivery lane，并按 family + dedupe key 做短窗节流 / pending queue 去重
 - [internal/app/daemon/app_menu_handoff_test.go](../../internal/app/daemon/app_menu_handoff_test.go)
-  - 锁定 `/list` 在 normal / vscode 两种模式下都改走菜单同卡 handoff，以及 `/sendfile` 会直接把菜单卡替换成文件选择卡
+  - 锁定 `/list` 在 normal / vscode 两种模式下都改走菜单同卡 handoff，以及 `/compact`、`/sendfile` 会直接把菜单卡交给后续 owner/picker 卡继续收口；`/sendfile` 不可用时也会直接 seal 当前菜单卡
 - [internal/app/daemon/app_submission_anchor_test.go](../../internal/app/daemon/app_submission_anchor_test.go)
   - 锁定阶段 A/B/C 菜单提交承接行为：普通命令“提交态锚点 + append 结果 + 延时自动撤回”、bare `/upgrade` / `/cron` 同位承接 replace
 - [internal/app/daemon/app_inbound_lifecycle_test.go](../../internal/app/daemon/app_inbound_lifecycle_test.go)

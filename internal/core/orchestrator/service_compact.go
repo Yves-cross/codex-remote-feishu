@@ -8,7 +8,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	if surface == nil {
 		return nil
 	}
@@ -54,6 +54,9 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord) []co
 		defaultCompactOwnerTTL,
 		ownerCardFlowPhaseLoading,
 	)
+	if commandCardOwnsInlineResult(action) {
+		flow.MessageID = strings.TrimSpace(action.MessageID)
+	}
 	s.setActiveOwnerCardFlow(surface, flow)
 	binding := &compactTurnBinding{
 		InstanceID:       inst.InstanceID,

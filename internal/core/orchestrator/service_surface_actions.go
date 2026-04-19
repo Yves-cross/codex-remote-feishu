@@ -270,22 +270,37 @@ func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, act
 		if !queueItemHasSourceMessage(candidate.Item, targetMessageID) {
 			continue
 		}
-		return s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, []steerCandidate{candidate}, targetMessageID)
+		return s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, []steerCandidate{candidate}, targetMessageID, "")
 	}
 	return nil
 }
 
-func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	ownerCardMessageID := ""
+	if commandCardOwnsInlineResult(action) {
+		ownerCardMessageID = strings.TrimSpace(action.MessageID)
+	}
 	inst, activeThreadID, activeTurnID, ok := s.activeSteerTarget(surface)
 	if !ok {
+		if ownerCardMessageID != "" {
+			return []control.UIEvent{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
+		}
 		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
 	}
 	candidates := s.steerCandidates(surface, activeThreadID)
 	if len(candidates) == 0 {
+		if ownerCardMessageID != "" {
+			return []control.UIEvent{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
+		}
 		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
 	}
-	events := notice(surface, "steer_all_requested", fmt.Sprintf("正在把 %d 条排队输入并入当前执行。", len(candidates)))
-	return append(events, s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, candidates, "")...)
+	var events []control.UIEvent
+	if ownerCardMessageID != "" {
+		events = []control.UIEvent{steerAllRequestedOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID, len(candidates))}
+	} else {
+		events = notice(surface, "steer_all_requested", fmt.Sprintf("正在把 %d 条排队输入并入当前执行。", len(candidates)))
+	}
+	return append(events, s.dispatchSteerCandidates(surface, inst, activeThreadID, activeTurnID, candidates, "", ownerCardMessageID)...)
 }
 
 type steerCandidate struct {
@@ -340,6 +355,7 @@ func (s *Service) dispatchSteerCandidates(
 	activeTurnID string,
 	candidates []steerCandidate,
 	explicitSourceMessageID string,
+	ownerCardMessageID string,
 ) []control.UIEvent {
 	if surface == nil || inst == nil || strings.TrimSpace(activeThreadID) == "" || strings.TrimSpace(activeTurnID) == "" || len(candidates) == 0 {
 		return nil
@@ -367,15 +383,16 @@ func (s *Service) dispatchSteerCandidates(
 	}
 	primaryQueueItemID := queueItemIDs[0]
 	s.pendingSteers[primaryQueueItemID] = &pendingSteerBinding{
-		InstanceID:       inst.InstanceID,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		QueueItemID:      primaryQueueItemID,
-		QueueItemIDs:     queueItemIDs,
-		QueueIndices:     queueIndices,
-		SourceMessageID:  sourceMessageID,
-		ThreadID:         activeThreadID,
-		TurnID:           activeTurnID,
-		QueueIndex:       queueIndices[primaryQueueItemID],
+		InstanceID:         inst.InstanceID,
+		SurfaceSessionID:   surface.SurfaceSessionID,
+		QueueItemID:        primaryQueueItemID,
+		QueueItemIDs:       queueItemIDs,
+		QueueIndices:       queueIndices,
+		SourceMessageID:    sourceMessageID,
+		OwnerCardMessageID: strings.TrimSpace(ownerCardMessageID),
+		ThreadID:           activeThreadID,
+		TurnID:             activeTurnID,
+		QueueIndex:         queueIndices[primaryQueueItemID],
 	}
 	return []control.UIEvent{{
 		Kind:             control.UIEventAgentCommand,

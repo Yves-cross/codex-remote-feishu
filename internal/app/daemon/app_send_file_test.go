@@ -527,6 +527,150 @@ func TestHandleActionPathPickerConfirmSendFilePreflightFailureKeepsPickerOnSameC
 	}
 }
 
+func TestHandleGatewayActionPathPickerCancelSendFileSealsMenuCard(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	workspaceRoot := t.TempDir()
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-sendfile-2",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: app.daemonLifecycleID},
+	})
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected menu sendfile picker replacement, got %#v", result)
+	}
+	pickerID := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID
+	if pickerID == "" {
+		t.Fatalf("expected active picker after menu handoff")
+	}
+
+	cancel := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerCancel,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		MessageID:        "om-menu-sendfile-2",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: app.daemonLifecycleID},
+	})
+	if cancel != nil {
+		t.Fatalf("expected cancel terminal state to go through gateway update, got %#v", cancel)
+	}
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected one update-card operation for cancel, got %#v", gateway.operations)
+	}
+	op := gateway.operations[0]
+	if op.Kind != feishu.OperationUpdateCard || op.MessageID != "om-menu-sendfile-2" {
+		t.Fatalf("unexpected cancel operation: %#v", op)
+	}
+	if !strings.Contains(operationCardText(op), "已取消发送文件") {
+		t.Fatalf("expected cancel card text on current menu card, got %#v", op)
+	}
+}
+
+func TestHandleGatewayActionPathPickerConfirmSendFilePreflightFailureKeepsMenuCard(t *testing.T) {
+	gateway := &messageIDAssigningGateway{notify: make(chan struct{}, 8)}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	workspaceRoot := t.TempDir()
+	filePath := filepath.Join(workspaceRoot, "report.txt")
+	if err := os.WriteFile(filePath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.service.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	result := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionSendFile,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-sendfile-3",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: app.daemonLifecycleID},
+	})
+	if result == nil || result.ReplaceCurrentCard == nil {
+		t.Fatalf("expected menu sendfile picker replacement, got %#v", result)
+	}
+	pickerID := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID
+	app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerSelect,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		PickerEntry:      filepath.Base(filePath),
+		MessageID:        "om-menu-sendfile-3",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: app.daemonLifecycleID},
+	})
+	confirm := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionPathPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		GatewayID:        "app-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         pickerID,
+		MessageID:        "om-menu-sendfile-3",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: app.daemonLifecycleID},
+	})
+	if confirm != nil {
+		t.Fatalf("expected preflight failure to patch current card asynchronously, got %#v", confirm)
+	}
+
+	ops := gateway.waitForOperationCount(1, 2*time.Second)
+	if len(ops) != 1 {
+		t.Fatalf("expected one update-card operation for preflight failure, got %#v", ops)
+	}
+	op := ops[0]
+	if op.Kind != feishu.OperationUpdateCard || op.MessageID != "om-menu-sendfile-3" {
+		t.Fatalf("unexpected preflight failure operation: %#v", op)
+	}
+	if !strings.Contains(operationCardText(op), "暂不支持发送飞书文件消息") {
+		t.Fatalf("expected preflight failure hint on current menu card, got %#v", op)
+	}
+	if got := app.service.SurfaceUIRuntime("surface-1").ActivePathPickerID; got != pickerID {
+		t.Fatalf("expected picker to remain active after preflight failure, got %q want %q", got, pickerID)
+	}
+}
+
 func TestHandleActionPathPickerConfirmSendFileBackgroundFailureEmitsLightNotice(t *testing.T) {
 	gateway := newMessageIDAssigningFileGateway()
 	gateway.sendFn = func(context.Context, feishu.IMFileSendRequest) (feishu.IMFileSendResult, error) {

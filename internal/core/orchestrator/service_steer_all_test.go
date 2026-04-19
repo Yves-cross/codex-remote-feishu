@@ -25,6 +25,28 @@ func TestSteerAllCommandNoEligibleQueueReturnsNoopNotice(t *testing.T) {
 	}
 }
 
+func TestSteerAllMenuActionNoEligibleQueueSealsCurrentCard(t *testing.T) {
+	now := time.Date(2026, 4, 19, 8, 10, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSteerAll,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-steer-1",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	})
+
+	if len(events) != 1 {
+		t.Fatalf("expected one owner-card event, got %#v", events)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.MessageID != "om-menu-steer-1" || catalog.Title != "没有可并入的排队输入" || catalog.ThemeKey != "system" {
+		t.Fatalf("unexpected menu noop owner card: %#v", catalog)
+	}
+}
+
 func TestSteerAllCommandDispatchesSingleSteerWithAllEligibleQueuedInputs(t *testing.T) {
 	now := time.Date(2026, 4, 14, 10, 5, 0, 0, time.UTC)
 	svc := newSteerAllServiceFixture(&now)
@@ -98,6 +120,41 @@ func TestSteerAllCommandAcceptedMarksAllQueuedItemsSteered(t *testing.T) {
 	}
 }
 
+func TestSteerAllMenuActionAcceptedPatchesSameCard(t *testing.T) {
+	now := time.Date(2026, 4, 19, 8, 15, 0, 0, time.UTC)
+	svc := newSteerAllServiceFixture(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSteerAll,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-steer-2",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	})
+	if len(events) != 2 || events[1].Command == nil {
+		t.Fatalf("expected owner-card event plus steer command, got %#v", events)
+	}
+	requested := commandCatalogFromEvent(t, events[0])
+	if requested.MessageID != "om-menu-steer-2" || requested.Title != "正在并入排队输入" || requested.ThemeKey != "progress" {
+		t.Fatalf("unexpected requested owner card: %#v", requested)
+	}
+	binding := svc.pendingSteers["queue-2"]
+	if binding == nil || binding.OwnerCardMessageID != "om-menu-steer-2" {
+		t.Fatalf("expected owner-card message id to persist on pending steer, got %#v", binding)
+	}
+
+	svc.BindPendingRemoteCommand("surface-1", "cmd-steer-all-menu-1")
+	accepted := svc.HandleCommandAccepted("inst-1", agentproto.CommandAck{CommandID: "cmd-steer-all-menu-1", Accepted: true})
+	if len(accepted) != 3 {
+		t.Fatalf("expected owner-card completion plus two pending-input updates, got %#v", accepted)
+	}
+	completed := commandCatalogFromEvent(t, accepted[0])
+	if completed.MessageID != "om-menu-steer-2" || completed.Title != "已并入排队输入" || completed.ThemeKey != "success" {
+		t.Fatalf("unexpected completed owner card: %#v", completed)
+	}
+}
+
 func TestSteerAllCommandRejectedRestoresOriginalQueueOrder(t *testing.T) {
 	now := time.Date(2026, 4, 14, 10, 15, 0, 0, time.UTC)
 	svc := newSteerAllServiceFixture(&now)
@@ -128,6 +185,40 @@ func TestSteerAllCommandRejectedRestoresOriginalQueueOrder(t *testing.T) {
 	}
 	if surface.QueueItems["queue-2"].Status != state.QueueItemQueued || surface.QueueItems["queue-3"].Status != state.QueueItemQueued {
 		t.Fatalf("expected queued statuses restored, got queue-2=%#v queue-3=%#v", surface.QueueItems["queue-2"], surface.QueueItems["queue-3"])
+	}
+}
+
+func TestSteerAllMenuActionRejectedPatchesSameCard(t *testing.T) {
+	now := time.Date(2026, 4, 19, 8, 20, 0, 0, time.UTC)
+	svc := newSteerAllServiceFixture(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionSteerAll,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-steer-3",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	})
+	if len(events) != 2 || events[1].Command == nil {
+		t.Fatalf("expected steer command, got %#v", events)
+	}
+
+	svc.BindPendingRemoteCommand("surface-1", "cmd-steer-all-menu-2")
+	rejected := svc.HandleCommandRejected("inst-1", agentproto.CommandAck{
+		CommandID: "cmd-steer-all-menu-2",
+		Accepted:  false,
+		Error:     "steer rejected",
+	})
+	if len(rejected) < 2 {
+		t.Fatalf("expected owner-card failure plus notice, got %#v", rejected)
+	}
+	failed := commandCatalogFromEvent(t, rejected[0])
+	if failed.MessageID != "om-menu-steer-3" || failed.Title != "并入失败" || failed.ThemeKey != "error" {
+		t.Fatalf("unexpected failed owner card: %#v", failed)
+	}
+	if rejected[1].Notice == nil || rejected[1].Notice.Code != "steer_failed" {
+		t.Fatalf("expected steer_failed notice after owner-card failure, got %#v", rejected)
 	}
 }
 
