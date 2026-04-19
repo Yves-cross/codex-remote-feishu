@@ -83,14 +83,9 @@ func execCommandProgressLines(progress control.ExecCommandProgress) []string {
 	items := normalizedExecProgressTimeline(progress)
 	lines := make([]string, 0, len(items)*2)
 	for _, item := range items {
-		if item.entry != nil {
-			lines = append(lines, renderExecProgressEntry(*item.entry))
-			continue
+		if rendered := renderExecProgressTimelineItem(item); rendered != "" {
+			lines = append(lines, rendered)
 		}
-		if item.row == nil {
-			continue
-		}
-		lines = append(lines, renderExecProgressBlockRow(*item.row))
 	}
 	if progress.TransientStatus != nil {
 		if rendered := renderExecProgressTransientStatus(*progress.TransientStatus); rendered != "" {
@@ -100,214 +95,107 @@ func execCommandProgressLines(progress control.ExecCommandProgress) []string {
 	return lines
 }
 
-type execProgressTimelineBlock struct {
-	BlockID string
-	Kind    string
-	Status  string
-}
-
-type execProgressTimelineItem struct {
-	seq   int
-	order int
-	block execProgressTimelineBlock
-	row   *control.ExecCommandProgressBlockRow
-	entry *control.ExecCommandProgressEntry
-}
-
-func normalizedExecProgressTimeline(progress control.ExecCommandProgress) []execProgressTimelineItem {
-	blocks := normalizedExecProgressBlocks(progress)
-	entries := normalizedExecProgressEntries(progress)
-	maxSeq := 0
-	for _, block := range blocks {
-		for _, row := range block.Rows {
-			if row.LastSeq > maxSeq {
-				maxSeq = row.LastSeq
-			}
+func normalizedExecProgressTimeline(progress control.ExecCommandProgress) []control.ExecCommandProgressTimelineItem {
+	items := make([]control.ExecCommandProgressTimelineItem, 0, len(progress.Timeline))
+	for _, item := range progress.Timeline {
+		if normalized, ok := normalizeExecProgressTimelineItem(item); ok {
+			items = append(items, normalized)
 		}
 	}
-	for _, entry := range entries {
-		if entry.LastSeq > maxSeq {
-			maxSeq = entry.LastSeq
+	if len(items) == 0 {
+		return nil
+	}
+	maxSeq := 0
+	for _, item := range items {
+		if item.LastSeq > maxSeq {
+			maxSeq = item.LastSeq
 		}
 	}
 	nextFallbackSeq := maxSeq
-	items := make([]execProgressTimelineItem, 0, len(entries))
-	order := 0
-	for _, block := range blocks {
-		blockMeta := execProgressTimelineBlock{
-			BlockID: block.BlockID,
-			Kind:    block.Kind,
-			Status:  block.Status,
+	for i := range items {
+		if items[i].LastSeq > 0 {
+			continue
 		}
-		for i := range block.Rows {
-			row := block.Rows[i]
-			seq := row.LastSeq
-			if seq <= 0 {
-				nextFallbackSeq++
-				seq = nextFallbackSeq
-				row.LastSeq = seq
-			}
-			rowCopy := row
-			items = append(items, execProgressTimelineItem{
-				seq:   seq,
-				order: order,
-				block: blockMeta,
-				row:   &rowCopy,
-			})
-			order++
-		}
-	}
-	for i := range entries {
-		entry := entries[i]
-		seq := entry.LastSeq
-		if seq <= 0 {
-			nextFallbackSeq++
-			seq = nextFallbackSeq
-			entry.LastSeq = seq
-		}
-		entryCopy := entry
-		items = append(items, execProgressTimelineItem{
-			seq:   seq,
-			order: order,
-			entry: &entryCopy,
-		})
-		order++
+		nextFallbackSeq++
+		items[i].LastSeq = nextFallbackSeq
 	}
 	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].seq != items[j].seq {
-			return items[i].seq < items[j].seq
-		}
-		return items[i].order < items[j].order
+		return items[i].LastSeq < items[j].LastSeq
 	})
 	return items
 }
 
-func normalizedExecProgressBlocks(progress control.ExecCommandProgress) []control.ExecCommandProgressBlock {
-	blocks := make([]control.ExecCommandProgressBlock, 0, len(progress.Blocks))
-	for _, block := range progress.Blocks {
-		if normalized, ok := normalizeExecProgressBlock(block); ok {
-			blocks = append(blocks, normalized)
+func normalizeExecProgressTimelineItem(item control.ExecCommandProgressTimelineItem) (control.ExecCommandProgressTimelineItem, bool) {
+	item.ID = strings.TrimSpace(item.ID)
+	item.Kind = strings.TrimSpace(item.Kind)
+	item.Label = strings.TrimSpace(item.Label)
+	item.Summary = strings.TrimSpace(item.Summary)
+	item.Secondary = strings.TrimSpace(item.Secondary)
+	item.Status = strings.TrimSpace(item.Status)
+	trimmedItems := make([]string, 0, len(item.Items))
+	for _, entry := range item.Items {
+		if text := strings.TrimSpace(entry); text != "" {
+			trimmedItems = append(trimmedItems, text)
 		}
 	}
-	return blocks
-}
-
-func normalizedExecProgressEntries(progress control.ExecCommandProgress) []control.ExecCommandProgressEntry {
-	entries := make([]control.ExecCommandProgressEntry, 0, len(progress.Entries))
-	for _, entry := range progress.Entries {
-		if normalized, ok := normalizeExecProgressEntry(entry); ok {
-			entries = append(entries, normalized)
-		}
-	}
-	if len(entries) > 0 {
-		return entries
-	}
-	commands := normalizedExecProgressCommands(progress)
-	if len(commands) == 0 {
-		return nil
-	}
-	entries = make([]control.ExecCommandProgressEntry, 0, len(commands))
-	for _, command := range commands {
-		entries = append(entries, control.ExecCommandProgressEntry{
-			Kind:    "command_execution",
-			Label:   "执行",
-			Summary: command,
-		})
-	}
-	return entries
-}
-
-func normalizedExecProgressCommands(progress control.ExecCommandProgress) []string {
-	commands := make([]string, 0, len(progress.Commands))
-	for _, command := range progress.Commands {
-		if normalized := normalizeExecProgressCommand(command); normalized != "" {
-			commands = append(commands, normalized)
-		}
-	}
-	if len(commands) > 0 {
-		return commands
-	}
-	if normalized := normalizeExecProgressCommand(progress.Command); normalized != "" {
-		return []string{normalized}
-	}
-	return nil
-}
-
-func normalizeExecProgressBlock(block control.ExecCommandProgressBlock) (control.ExecCommandProgressBlock, bool) {
-	block.BlockID = strings.TrimSpace(block.BlockID)
-	block.Kind = strings.TrimSpace(block.Kind)
-	block.Status = strings.TrimSpace(block.Status)
-	rows := make([]control.ExecCommandProgressBlockRow, 0, len(block.Rows))
-	for _, row := range block.Rows {
-		if normalized, ok := normalizeExecProgressBlockRow(row); ok {
-			rows = append(rows, normalized)
-		}
-	}
-	block.Rows = rows
-	if block.Kind == "" || len(block.Rows) == 0 {
-		return control.ExecCommandProgressBlock{}, false
-	}
-	return block, true
-}
-
-func normalizeExecProgressBlockRow(row control.ExecCommandProgressBlockRow) (control.ExecCommandProgressBlockRow, bool) {
-	row.RowID = strings.TrimSpace(row.RowID)
-	row.Kind = strings.TrimSpace(row.Kind)
-	row.Summary = strings.TrimSpace(row.Summary)
-	row.Secondary = strings.TrimSpace(row.Secondary)
-	items := make([]string, 0, len(row.Items))
-	for _, item := range row.Items {
-		if text := strings.TrimSpace(item); text != "" {
-			items = append(items, text)
-		}
-	}
-	row.Items = items
-	switch row.Kind {
+	item.Items = trimmedItems
+	switch item.Kind {
 	case "read":
-		if len(row.Items) == 0 {
-			return control.ExecCommandProgressBlockRow{}, false
+		if len(item.Items) == 0 {
+			return control.ExecCommandProgressTimelineItem{}, false
 		}
 	case "list", "search":
-		if row.Summary == "" {
-			return control.ExecCommandProgressBlockRow{}, false
+		if item.Summary == "" {
+			return control.ExecCommandProgressTimelineItem{}, false
+		}
+	case "command_execution":
+		item.Summary = normalizeExecProgressCommand(item.Summary)
+		if item.Label == "" {
+			item.Label = "执行"
+		}
+		if item.Summary == "" {
+			return control.ExecCommandProgressTimelineItem{}, false
 		}
 	default:
-		if row.Summary == "" && len(row.Items) == 0 {
-			return control.ExecCommandProgressBlockRow{}, false
+		if item.Label == "" {
+			switch item.Kind {
+			case "web_search":
+				item.Label = "搜索"
+			case "mcp_tool_call":
+				item.Label = "MCP"
+			case "dynamic_tool_call":
+				item.Label = "工具"
+			case "context_compaction":
+				item.Label = "压缩"
+			default:
+				item.Label = "工作中"
+			}
+		} else if item.Kind == "context_compaction" {
+			item.Label = "压缩"
+		}
+		if item.Summary == "" {
+			return control.ExecCommandProgressTimelineItem{}, false
 		}
 	}
-	return row, true
+	return item, true
 }
 
-func normalizeExecProgressEntry(entry control.ExecCommandProgressEntry) (control.ExecCommandProgressEntry, bool) {
-	entry.Kind = strings.TrimSpace(entry.Kind)
-	entry.Label = strings.TrimSpace(entry.Label)
-	entry.Summary = strings.TrimSpace(entry.Summary)
-	if entry.Kind == "command_execution" {
-		entry.Summary = normalizeExecProgressCommand(entry.Summary)
-		if entry.Label == "" {
-			entry.Label = "执行"
-		}
-	} else if entry.Label == "" {
-		switch entry.Kind {
-		case "web_search":
-			entry.Label = "搜索"
-		case "mcp_tool_call":
-			entry.Label = "MCP"
-		case "dynamic_tool_call":
-			entry.Label = "工具"
-		case "context_compaction":
-			entry.Label = "压缩"
-		default:
-			entry.Label = "工作中"
-		}
-	} else if entry.Kind == "context_compaction" {
-		entry.Label = "压缩"
+func renderExecProgressTimelineItem(item control.ExecCommandProgressTimelineItem) string {
+	switch strings.ToLower(strings.TrimSpace(item.Kind)) {
+	case "read", "list", "search":
+		return renderExecProgressBlockRow(control.ExecCommandProgressBlockRow{
+			Kind:      item.Kind,
+			Items:     append([]string(nil), item.Items...),
+			Summary:   item.Summary,
+			Secondary: item.Secondary,
+		})
+	default:
+		return renderExecProgressEntry(control.ExecCommandProgressEntry{
+			Kind:    item.Kind,
+			Label:   item.Label,
+			Summary: item.Summary,
+		})
 	}
-	if entry.Summary == "" {
-		return control.ExecCommandProgressEntry{}, false
-	}
-	return entry, true
 }
 
 func renderExecProgressBlockRow(row control.ExecCommandProgressBlockRow) string {

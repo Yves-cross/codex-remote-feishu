@@ -538,6 +538,17 @@ type ExecCommandProgressEntry struct {
 	LastSeq int
 }
 
+type ExecCommandProgressTimelineItem struct {
+	ID        string
+	Kind      string
+	Label     string
+	Items     []string
+	Summary   string
+	Secondary string
+	Status    string
+	LastSeq   int
+}
+
 type ExecCommandProgressBlockRow struct {
 	RowID     string
 	Kind      string
@@ -566,6 +577,7 @@ type ExecCommandProgress struct {
 	MessageID       string
 	Blocks          []ExecCommandProgressBlock
 	Entries         []ExecCommandProgressEntry
+	Timeline        []ExecCommandProgressTimelineItem
 	Commands        []string
 	Command         string
 	CWD             string

@@ -7,13 +7,20 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
+func progressWithTimeline(progress control.ExecCommandProgress) *control.ExecCommandProgress {
+	if len(progress.Timeline) == 0 {
+		progress.Timeline = control.BuildExecCommandProgressTimeline(progress)
+	}
+	return &progress
+}
+
 func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "cmd-1",
@@ -21,7 +28,7 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 				`/bin/bash -lc "npm test"`,
 				`bash -lc 'go test ./...'`,
 			},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -59,7 +66,7 @@ func TestProjectExecCommandProgressUpdatesExistingCard(t *testing.T) {
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID:  "thread-1",
 			TurnID:    "turn-1",
 			ItemID:    "cmd-1",
@@ -67,7 +74,7 @@ func TestProjectExecCommandProgressUpdatesExistingCard(t *testing.T) {
 			Command:   "npm test",
 			Status:    "completed",
 			Final:     true,
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -87,7 +94,7 @@ func TestProjectExecCommandProgressRendersTransientReasoningStatusAtBottom(t *te
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "cmd-1",
@@ -98,7 +105,7 @@ func TestProjectExecCommandProgressRendersTransientReasoningStatusAtBottom(t *te
 				Kind: "reasoning",
 				Text: "正在思考中.",
 			},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -111,18 +118,138 @@ func TestProjectExecCommandProgressRendersTransientReasoningStatusAtBottom(t *te
 	}
 }
 
-func TestProjectExecCommandProgressDoesNotRetractEmptyTransientCard(t *testing.T) {
+func TestProjectExecCommandProgressUsesCanonicalTimelineOnly(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "compact-1",
+			Blocks: []control.ExecCommandProgressBlock{{
+				BlockID: "exploration",
+				Kind:    "exploration",
+				Status:  "running",
+				Rows: []control.ExecCommandProgressBlockRow{
+					{RowID: "read-legacy", Kind: "read", Items: []string{"legacy.txt"}, LastSeq: 1},
+				},
+			}},
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-legacy", Kind: "command_execution", Label: "执行", Summary: "legacy command", LastSeq: 2},
+			},
+			Commands: []string{`bash -lc "legacy command"`},
+			Timeline: []control.ExecCommandProgressTimelineItem{
+				{ID: "read-1", Kind: "read", Items: []string{"foo.txt"}, LastSeq: 1},
+				{ID: "compact-1", Kind: "context_compaction", Summary: "上下文已压缩。", LastSeq: 2},
+			},
+		},
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one operation, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	if !strings.Contains(body, "**读取** `foo.txt`") || !strings.Contains(body, "**压缩** 上下文已压缩。") {
+		t.Fatalf("expected canonical timeline items to render, got %#v", ops[0])
+	}
+	if strings.Contains(body, "legacy.txt") || strings.Contains(body, "legacy command") {
+		t.Fatalf("expected projector to ignore legacy timeline carriers once canonical timeline exists, got %#v", ops[0])
+	}
+}
+
+func TestProjectExecCommandProgressDoesNotRenderFallbackCommandsAlongsideExplorationBlocks(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "exploration",
+			Commands: []string{
+				`bash -lc "cat foo.txt"`,
+				`bash -lc "cat bar.txt"`,
+			},
+			Blocks: []control.ExecCommandProgressBlock{{
+				BlockID: "exploration",
+				Kind:    "exploration",
+				Status:  "running",
+				Rows: []control.ExecCommandProgressBlockRow{
+					{RowID: "read-1", Kind: "read", Items: []string{"foo.txt"}, LastSeq: 1},
+					{RowID: "read-2", Kind: "read", Items: []string{"bar.txt"}, LastSeq: 2},
+				},
+			}},
+		}),
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one operation, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	if !strings.Contains(body, "**读取** `foo.txt`") || !strings.Contains(body, "**读取** `bar.txt`") {
+		t.Fatalf("expected exploration rows to stay visible, got %#v", ops[0])
+	}
+	if strings.Contains(body, "**执行** `cat foo.txt`") || strings.Contains(body, "**执行** `cat bar.txt`") {
+		t.Fatalf("expected fallback command rows to stay hidden when real exploration blocks exist, got %#v", ops[0])
+	}
+}
+
+func TestProjectExecCommandProgressKeepsRealEntriesOnSameTimelineAsExplorationRows(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "compact-1",
+			Blocks: []control.ExecCommandProgressBlock{{
+				BlockID: "exploration",
+				Kind:    "exploration",
+				Status:  "running",
+				Rows: []control.ExecCommandProgressBlockRow{
+					{RowID: "read-1", Kind: "read", Items: []string{"foo.txt"}, LastSeq: 1},
+					{RowID: "read-2", Kind: "read", Items: []string{"bar.txt"}, LastSeq: 3},
+				},
+			}},
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "compact-1", Kind: "context_compaction", Label: "压缩", Summary: "上下文已压缩。", LastSeq: 2},
+			},
+			Commands: []string{
+				`bash -lc "cat foo.txt"`,
+				`bash -lc "cat bar.txt"`,
+			},
+		}),
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one operation, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	readFoo := strings.Index(body, "**读取** `foo.txt`")
+	compact := strings.Index(body, "**压缩** 上下文已压缩。")
+	readBar := strings.Index(body, "**读取** `bar.txt`")
+	if readFoo == -1 || compact == -1 || readBar == -1 || !(readFoo < compact && compact < readBar) {
+		t.Fatalf("expected real entries and exploration rows to share one seq timeline, got %#v", ops[0])
+	}
+	if strings.Contains(body, "**执行** `cat foo.txt`") || strings.Contains(body, "**执行** `cat bar.txt`") {
+		t.Fatalf("expected command fallback rows to stay hidden when real timeline items already exist, got %#v", ops[0])
+	}
+}
+
+func TestProjectExecCommandProgressDoesNotRetractEmptyTransientCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID:  "thread-1",
 			TurnID:    "turn-1",
 			ItemID:    "reasoning-1",
 			MessageID: "om-progress-1",
-		},
+		}),
 	})
 	if len(ops) != 0 {
 		t.Fatalf("expected empty transient clear to leave the old card in place, got %#v", ops)
@@ -135,7 +262,7 @@ func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "web-1",
@@ -154,7 +281,7 @@ func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
 					{RowID: "read", Kind: "read", Items: []string{"a.cpp", "b.cpp"}},
 				},
 			}},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -174,7 +301,7 @@ func TestProjectExecCommandProgressInterleavesExplorationRowsAndEntriesByVisible
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "cmd-3",
@@ -190,7 +317,7 @@ func TestProjectExecCommandProgressInterleavesExplorationRowsAndEntriesByVisible
 			Entries: []control.ExecCommandProgressEntry{
 				{ItemID: "cmd-2", Kind: "command_execution", Label: "执行", Summary: "npm test", LastSeq: 2},
 			},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -213,7 +340,7 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *t
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "cmd-2",
@@ -221,7 +348,7 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *t
 				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: `bash -lc "rg -n 'x' | sed -n '1,2p'"`, LastSeq: 1},
 				{ItemID: "cmd-2", Kind: "command_execution", Label: "执行", Summary: `bash -lc "rg --files -g '*.css' -g '*.scss'"`, LastSeq: 2},
 			},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -250,7 +377,7 @@ func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T)
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "exploration",
@@ -264,7 +391,7 @@ func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T)
 					{RowID: "search::compact::internal/", Kind: "search", Summary: "compact", Secondary: "internal/"},
 				},
 			}},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -281,7 +408,7 @@ func TestProjectExecCommandProgressRendersExploredHeaderForFailedExploration(t *
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "exploration",
@@ -293,7 +420,7 @@ func TestProjectExecCommandProgressRendersExploredHeaderForFailedExploration(t *
 					{RowID: "read::1", Kind: "read", Items: []string{"/dev/null"}},
 				},
 			}},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -310,7 +437,7 @@ func TestProjectExecCommandProgressKeepsMergedReadFilenamesVisible(t *testing.T)
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "read-1",
@@ -328,7 +455,7 @@ func TestProjectExecCommandProgressKeepsMergedReadFilenamesVisible(t *testing.T)
 					},
 				}},
 			}},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
@@ -345,14 +472,14 @@ func TestProjectExecCommandProgressTruncatesLongCommandSummary(t *testing.T) {
 		Kind:             control.UIEventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
-		ExecCommandProgress: &control.ExecCommandProgress{
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID: "thread-1",
 			TurnID:   "turn-1",
 			ItemID:   "cmd-1",
 			Commands: []string{
 				`/bin/bash -lc "python scripts/really_long_task.py --workspace /tmp/demo --mode dry-run --verbose"`,
 			},
-		},
+		}),
 	})
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)

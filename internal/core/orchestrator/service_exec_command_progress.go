@@ -324,7 +324,7 @@ func ExecCommandProgressSnapshot(progress *state.ExecCommandProgressRecord) *con
 			LastSeq: entry.LastSeq,
 		})
 	}
-	return &control.ExecCommandProgress{
+	snapshot := &control.ExecCommandProgress{
 		ThreadID:        progress.ThreadID,
 		TurnID:          progress.TurnID,
 		ItemID:          progress.ItemID,
@@ -337,6 +337,8 @@ func ExecCommandProgressSnapshot(progress *state.ExecCommandProgressRecord) *con
 		Status:          progress.Status,
 		TransientStatus: execCommandProgressTransientStatus(progress),
 	}
+	snapshot.Timeline = control.BuildExecCommandProgressTimeline(*snapshot)
+	return snapshot
 }
 
 func (s *Service) ensureExecCommandProgress(surface *state.SurfaceConsoleRecord, instanceID, threadID, turnID string) *state.ExecCommandProgressRecord {

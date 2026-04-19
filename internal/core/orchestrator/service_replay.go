@@ -164,17 +164,19 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 			if !s.surfaceAllowsProcessProgress(surface, "context_compaction") {
 				return nil
 			}
-			return []control.UIEvent{{
-				Kind:             control.UIEventExecCommandProgress,
-				GatewayID:        surface.GatewayID,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				SourceMessageID:  replay.SourceMessageID,
-				ExecCommandProgress: &control.ExecCommandProgress{
-					ThreadID: threadID,
-					Entries: []control.ExecCommandProgressEntry{
-						compactCompletionProgressEntry("context_compaction"),
-					},
+			progress := &control.ExecCommandProgress{
+				ThreadID: threadID,
+				Entries: []control.ExecCommandProgressEntry{
+					compactCompletionProgressEntry("context_compaction"),
 				},
+			}
+			progress.Timeline = control.BuildExecCommandProgressTimeline(*progress)
+			return []control.UIEvent{{
+				Kind:                control.UIEventExecCommandProgress,
+				GatewayID:           surface.GatewayID,
+				SurfaceSessionID:    surface.SurfaceSessionID,
+				SourceMessageID:     replay.SourceMessageID,
+				ExecCommandProgress: progress,
 			}}
 		}
 		notice := control.Notice{
