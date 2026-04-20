@@ -149,11 +149,11 @@ func TestMCPToolCallProgressDoesNotReviveAfterAssistantText(t *testing.T) {
 	}
 }
 
-func TestMCPToolCallProgressNormalVerbositySuppressesSharedProcessCard(t *testing.T) {
+func TestMCPToolCallProgressNormalVerbosityShowsSharedProcessCard(t *testing.T) {
 	svc := prepareRemotePlanTurnForTest(t)
 	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityNormal
 
-	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemStarted,
 		ThreadID: "thread-1",
 		TurnID:   "turn-1",
@@ -169,10 +169,37 @@ func TestMCPToolCallProgressNormalVerbositySuppressesSharedProcessCard(t *testin
 			"tool":   "lookup",
 		},
 	})
-	if len(events) != 0 {
-		t.Fatalf("expected normal verbosity to suppress mcp progress, got %#v", events)
+	if len(started) != 1 || started[0].Kind != control.UIEventExecCommandProgress || started[0].ExecCommandProgress == nil {
+		t.Fatalf("expected normal verbosity to show mcp progress, got %#v", started)
 	}
-	if svc.root.Surfaces["surface-1"].ActiveExecProgress != nil {
-		t.Fatalf("expected normal verbosity not to retain shared progress state, got %#v", svc.root.Surfaces["surface-1"].ActiveExecProgress)
+	progress := started[0].ExecCommandProgress
+	if len(progress.Entries) != 1 || progress.Entries[0].Kind != "mcp_tool_call" || progress.Entries[0].Summary != "docs.lookup" {
+		t.Fatalf("unexpected normal mcp progress payload: %#v", progress)
+	}
+	svc.RecordExecCommandProgressMessage("surface-1", "thread-1", "turn-1", "mcp-1", "om-progress-1")
+
+	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "mcp-1",
+		ItemKind: "mcp_tool_call",
+		Status:   "completed",
+		Initiator: agentproto.Initiator{
+			Kind:             agentproto.InitiatorRemoteSurface,
+			SurfaceSessionID: "surface-1",
+		},
+		Metadata: map[string]any{
+			"server":     "docs",
+			"tool":       "lookup",
+			"durationMs": 12,
+		},
+	})
+	if len(completed) != 1 || completed[0].ExecCommandProgress == nil {
+		t.Fatalf("expected normal verbosity to update mcp progress on completion, got %#v", completed)
+	}
+	progress = completed[0].ExecCommandProgress
+	if progress.MessageID != "om-progress-1" || len(progress.Entries) != 1 || progress.Entries[0].Summary != "docs.lookup（12 ms）" {
+		t.Fatalf("unexpected normal completion payload: %#v", progress)
 	}
 }

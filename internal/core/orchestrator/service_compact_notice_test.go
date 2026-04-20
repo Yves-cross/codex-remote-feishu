@@ -56,7 +56,7 @@ func TestContextCompactionRendersSingleNoticeOnAttachedSurface(t *testing.T) {
 	}
 }
 
-func TestContextCompactionNormalVerbositySuppressesAttachedSurfaceCard(t *testing.T) {
+func TestContextCompactionNormalVerbosityShowsAttachedSurfaceCard(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 2, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -78,6 +78,7 @@ func TestContextCompactionNormalVerbositySuppressesAttachedSurfaceCard(t *testin
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
+	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityNormal
 
 	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemCompleted,
@@ -86,14 +87,18 @@ func TestContextCompactionNormalVerbositySuppressesAttachedSurfaceCard(t *testin
 		ItemID:   "compact-1",
 		ItemKind: "context_compaction",
 	})
-	if len(events) != 0 {
-		t.Fatalf("expected normal verbosity to suppress compact card, got %#v", events)
+	if len(events) != 1 || events[0].Kind != control.UIEventExecCommandProgress || events[0].ExecCommandProgress == nil {
+		t.Fatalf("expected normal verbosity to show compact card, got %#v", events)
+	}
+	progress := events[0].ExecCommandProgress
+	if len(progress.Entries) != 1 || progress.Entries[0].Kind != "context_compaction" || progress.Entries[0].Summary != "上下文已压缩。" {
+		t.Fatalf("unexpected compact progress payload in normal verbosity: %#v", progress)
 	}
 	if replay := svc.root.Instances["inst-1"].Threads["thread-1"].UndeliveredReplay; replay != nil {
 		t.Fatalf("expected attached compact completion not to leave replay, got %#v", replay)
 	}
-	if svc.root.Surfaces["surface-1"].ActiveExecProgress != nil {
-		t.Fatalf("expected normal verbosity not to retain compact progress, got %#v", svc.root.Surfaces["surface-1"].ActiveExecProgress)
+	if svc.root.Surfaces["surface-1"].ActiveExecProgress == nil {
+		t.Fatal("expected normal verbosity to retain shared progress state for the active card")
 	}
 }
 
@@ -201,7 +206,7 @@ func TestContextCompactionStoresReplayWhenNoSurfaceAndReplaysOnce(t *testing.T) 
 	}
 }
 
-func TestContextCompactionReplayStaysSilentWhenAttachedSurfaceNotVerbose(t *testing.T) {
+func TestContextCompactionReplayShowsSharedProgressWhenAttachedSurfaceNormal(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 7, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -225,6 +230,68 @@ func TestContextCompactionReplayStaysSilentWhenAttachedSurfaceNotVerbose(t *test
 		ItemKind: "context_compaction",
 	})
 
+	surface := svc.ensureSurface(control.Action{
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	surface.Verbosity = state.SurfaceVerbosityNormal
+
+	attach := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+	var sawProgress bool
+	for _, event := range attach {
+		if event.ExecCommandProgress != nil && len(event.ExecCommandProgress.Entries) == 1 {
+			entry := event.ExecCommandProgress.Entries[0]
+			if entry.Kind == "context_compaction" && entry.Summary == "上下文已压缩。" {
+				sawProgress = true
+			}
+		}
+	}
+	if !sawProgress {
+		t.Fatalf("expected normal attach to replay compact progress, got %#v", attach)
+	}
+	if replay := svc.root.Instances["inst-1"].Threads["thread-1"].UndeliveredReplay; replay != nil {
+		t.Fatalf("expected replay to drain after normal attach, got %#v", replay)
+	}
+}
+
+func TestContextCompactionReplayStaysSilentWhenAttachedSurfaceQuiet(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 7, 30, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-1",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", Loaded: true},
+		},
+	})
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		ItemID:   "compact-1",
+		ItemKind: "context_compaction",
+	})
+
+	surface := svc.ensureSurface(control.Action{
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+	surface.Verbosity = state.SurfaceVerbosityQuiet
+
 	attach := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,
 		SurfaceSessionID: "surface-1",
@@ -234,14 +301,14 @@ func TestContextCompactionReplayStaysSilentWhenAttachedSurfaceNotVerbose(t *test
 	})
 	for _, event := range attach {
 		if event.Notice != nil && event.Notice.Code == "context_compacted" {
-			t.Fatalf("expected compact replay to stay silent outside verbose, got %#v", attach)
+			t.Fatalf("expected quiet compact replay to stay silent, got %#v", attach)
 		}
 		if event.ExecCommandProgress != nil {
-			t.Fatalf("expected compact replay to stay silent outside verbose, got %#v", attach)
+			t.Fatalf("expected quiet compact replay not to emit shared progress, got %#v", attach)
 		}
 	}
 	if replay := svc.root.Instances["inst-1"].Threads["thread-1"].UndeliveredReplay; replay != nil {
-		t.Fatalf("expected suppressed compact replay to drain after attach, got %#v", replay)
+		t.Fatalf("expected suppressed quiet replay to drain after attach, got %#v", replay)
 	}
 }
 
