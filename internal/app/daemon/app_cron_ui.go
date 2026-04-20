@@ -89,17 +89,8 @@ func parseCronCommandText(text string) (parsedCronCommand, error) {
 	}
 }
 
-func cronUsageEvents(surfaceID, message string) []control.UIEvent {
-	events := []control.UIEvent{}
-	if strings.TrimSpace(message) != "" {
-		events = append(events, cronNoticeEvent(surfaceID, "cron_usage_error", message))
-	}
-	events = append(events, control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID:           surfaceID,
-		FeishuDirectCommandCatalog: buildCronMenuCatalog(nil, cronOwnerView{}, "", false),
-	})
-	return events
+func cronUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+	return commandPageEvents(surfaceID, buildCronRootPageView(nil, cronOwnerView{}, "", false, formDefault, "error", message))
 }
 
 func buildCronMenuCatalog(stateValue *cronStateFile, ownerView cronOwnerView, extraSummary string, configReady bool) *control.FeishuDirectCommandCatalog {

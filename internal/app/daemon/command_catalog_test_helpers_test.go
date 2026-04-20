@@ -26,6 +26,22 @@ func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
 	return strings.Join(parts, "\n")
 }
 
+func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectCommandCatalog {
+	t.Helper()
+	if event.FeishuDirectCommandCatalog != nil {
+		return event.FeishuDirectCommandCatalog
+	}
+	if event.FeishuCommandView != nil {
+		catalog, ok := feishu.FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
+		if !ok {
+			t.Fatalf("expected command view to project into catalog, got %#v", event.FeishuCommandView)
+		}
+		return &catalog
+	}
+	t.Fatalf("expected catalog or command view event, got %#v", event)
+	return nil
+}
+
 func assertCatalogUsesPlainTextContracts(t *testing.T, catalog *control.FeishuDirectCommandCatalog) {
 	t.Helper()
 	if catalog == nil {

@@ -67,7 +67,7 @@ func (a *App) defaultReleaseLookup(ctx context.Context, track install.ReleaseTra
 func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.UIEvent {
 	parsed, err := parseDebugCommandText(command.Text)
 	if err != nil {
-		return debugUsageEvents(command.SurfaceSessionID, err.Error())
+		return debugUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
 	if parsed.Mode == debugCommandAdmin {
 		return a.handleDebugAdminCommand(command)
@@ -80,11 +80,7 @@ func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.
 
 	switch parsed.Mode {
 	case debugCommandShowStatus:
-		return []control.UIEvent{{
-			Kind:                       control.UIEventFeishuDirectCommandCatalog,
-			SurfaceSessionID:           command.SurfaceSessionID,
-			FeishuDirectCommandCatalog: buildDebugStatusCatalog(stateValue, a.upgradeRuntime.checkInFlight),
-		}}
+		return commandPageEvents(command.SurfaceSessionID, buildDebugRootPageView(stateValue, a.upgradeRuntime.checkInFlight, "", "", ""))
 	case debugCommandShowTrack:
 		return trackSummaryEvents(command.SurfaceSessionID, stateValue, true)
 	case debugCommandSetTrack:
@@ -93,7 +89,7 @@ func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.
 		command.Text = "/upgrade latest"
 		return a.handleUpgradeLatestCommand(command, stateValue)
 	default:
-		return debugUsageEvents(command.SurfaceSessionID, "不支持的 /debug 子命令。")
+		return debugUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), "不支持的 /debug 子命令。")
 	}
 }
 
@@ -140,7 +136,7 @@ func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []control.U
 func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []control.UIEvent {
 	parsed, err := parseUpgradeCommandText(command.Text)
 	if err != nil {
-		return upgradeUsageEvents(command.SurfaceSessionID, err.Error())
+		return upgradeUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
 
 	stateValue, _, err := a.loadUpgradeStateLocked(true)
@@ -150,11 +146,7 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []contro
 
 	switch parsed.Mode {
 	case upgradeCommandShowStatus:
-		return []control.UIEvent{{
-			Kind:                       control.UIEventFeishuDirectCommandCatalog,
-			SurfaceSessionID:           command.SurfaceSessionID,
-			FeishuDirectCommandCatalog: buildUpgradeStatusCatalog(stateValue, a.upgradeRuntime.checkInFlight),
-		}}
+		return commandPageEvents(command.SurfaceSessionID, buildUpgradeRootPageView(stateValue, "", "", ""))
 	case upgradeCommandShowTrack:
 		return trackSummaryEvents(command.SurfaceSessionID, stateValue, false)
 	case upgradeCommandSetTrack:
@@ -166,7 +158,7 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []contro
 	case upgradeCommandLocal:
 		return a.handleUpgradeLocalCommand(command, stateValue)
 	default:
-		return upgradeUsageEvents(command.SurfaceSessionID, "不支持的 /upgrade 子命令。")
+		return upgradeUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), "不支持的 /upgrade 子命令。")
 	}
 }
 
@@ -190,10 +182,6 @@ func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateVal
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceDev) {
 		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 dev 构建升级候选，请改用 `/upgrade dev` 继续，或重新检查当前来源。")}
-	}
-	track := stateValue.CurrentTrack
-	if track == "" {
-		track = defaultUpgradeTrackForState(stateValue)
 	}
 	return a.startUpgradeLatestOwnerCheckLocked(command, stateValue)
 }

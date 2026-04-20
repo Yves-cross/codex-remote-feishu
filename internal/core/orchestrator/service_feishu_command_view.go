@@ -158,6 +158,8 @@ func (s *Service) commandCatalogFromView(surface *state.SurfaceConsoleRecord, vi
 		return s.commandMenuCatalogFromView(surface, *view.Menu)
 	case view.Config != nil:
 		return s.commandConfigCatalogFromView(*view.Config)
+	case view.Page != nil:
+		return control.BuildFeishuCommandPageCatalog(*view.Page)
 	default:
 		return control.FeishuDirectCommandCatalog{}
 	}

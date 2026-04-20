@@ -355,6 +355,19 @@ func (a *App) commandCardResultReplacementLocked(action control.Action, events [
 		return nil, events
 	}
 	replace, appendEvents := a.firstProjectableCardReplacementLocked(action, events)
+	if replace == nil && len(events) == 1 && events[0].DaemonCommand != nil {
+		daemonCommand := *events[0].DaemonCommand
+		if daemonCommandMatchesCommandCardResultReplacement(action, daemonCommand) {
+			followup := a.handleDaemonCommandLocked(daemonCommand)
+			if len(followup) == 0 {
+				return nil, nil
+			}
+			replace, appendEvents = a.firstProjectableCardReplacementLocked(action, followup)
+			if replace == nil {
+				return nil, followup
+			}
+		}
+	}
 	if replace == nil {
 		return nil, events
 	}
@@ -365,6 +378,19 @@ func (a *App) commandCardResultReplacementLocked(action control.Action, events [
 		appendEvents = filterThreadSelectionUIEvents(appendEvents)
 	}
 	return replace, appendEvents
+}
+
+func daemonCommandMatchesCommandCardResultReplacement(action control.Action, command control.DaemonCommand) bool {
+	switch action.Kind {
+	case control.ActionUpgradeCommand:
+		return command.Kind == control.DaemonCommandUpgrade
+	case control.ActionDebugCommand:
+		return command.Kind == control.DaemonCommandDebug
+	case control.ActionCronCommand:
+		return command.Kind == control.DaemonCommandCron
+	default:
+		return false
+	}
 }
 
 func (a *App) firstProjectableCardReplacementLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {

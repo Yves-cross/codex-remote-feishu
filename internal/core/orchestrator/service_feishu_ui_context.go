@@ -176,6 +176,11 @@ func (s *Service) buildFeishuCommandContextFromView(surface *state.SurfaceConsol
 		context.MenuView = commandID
 		context.CommandID = commandID
 		context.NeedsTarget = view.Config.RequiresAttachment
+	case view.Page != nil:
+		commandID := strings.TrimSpace(view.Page.CommandID)
+		context.ViewKind = "page"
+		context.MenuView = commandID
+		context.CommandID = commandID
 	}
 	return context
 }

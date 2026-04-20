@@ -50,17 +50,14 @@ func TestCronMenuCatalogUsesSteadyStateActions(t *testing.T) {
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
 	})
-	if len(events) != 1 || events[0].FeishuDirectCommandCatalog == nil {
-		t.Fatalf("events = %#v, want one command catalog", events)
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one command catalog event", events)
 	}
-	catalog := events[0].FeishuDirectCommandCatalog
+	catalog := catalogFromUIEvent(t, events[0])
 	assertCatalogUsesPlainTextContracts(t, catalog)
 	summary := catalogSummaryText(catalog)
-	if !strings.Contains(summary, "当前状态：正常") {
-		t.Fatalf("summary = %q, want healthy state", summary)
-	}
-	if !strings.Contains(summary, "当前已加载任务：1 条") {
-		t.Fatalf("summary = %q, want loaded job count", summary)
+	if strings.Contains(summary, "当前状态：正常") || strings.Contains(summary, "当前已加载任务：1 条") {
+		t.Fatalf("summary = %q, want root page without default status dump", summary)
 	}
 	buttons := collectCronCatalogButtons(catalog)
 	if _, ok := buttons["/cron migrate-owner"]; ok {
@@ -132,10 +129,10 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 			GatewayID:        "gateway-1",
 			SurfaceSessionID: "surface-1",
 		})
-		if len(events) != 1 || events[0].FeishuDirectCommandCatalog == nil {
+		if len(events) != 1 {
 			t.Fatalf("%s events = %#v, want one command catalog", commandText, events)
 		}
-		catalog := events[0].FeishuDirectCommandCatalog
+		catalog := catalogFromUIEvent(t, events[0])
 		if catalog.Title != wantTitle {
 			t.Fatalf("%s title = %q, want %q", commandText, catalog.Title, wantTitle)
 		}
@@ -146,8 +143,8 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 				t.Fatalf("%s summary missing %q: %q", commandText, fragment, summary)
 			}
 		}
-		if len(catalog.RelatedButtons) != 0 {
-			t.Fatalf("%s related buttons = %#v, want none", commandText, catalog.RelatedButtons)
+		if len(catalog.RelatedButtons) != 1 || catalog.RelatedButtons[0].CommandText != "/cron" {
+			t.Fatalf("%s related buttons = %#v, want back-to-root", commandText, catalog.RelatedButtons)
 		}
 	}
 
@@ -162,22 +159,22 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 	)
 	assertCatalog("/cron edit", "Cron 配置", "配置表：可从下方外部入口打开", "执行 /cron reload 生效")
 
-	statusCatalog := app.handleCronDaemonCommand(control.DaemonCommand{
+	statusCatalog := catalogFromUIEvent(t, app.handleCronDaemonCommand(control.DaemonCommand{
 		Text:             "/cron status",
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
-	})[0].FeishuDirectCommandCatalog
+	})[0])
 	if !catalogHasOpenURLButton(statusCatalog, "打开 Cron 配置表", "https://example.feishu.cn/base/app-cron?table=tbl-tasks") {
 		t.Fatalf("expected status catalog to expose config url button, got %#v", statusCatalog.Sections)
 	}
 	if !catalogHasOpenURLButton(statusCatalog, "打开运行记录", "https://example.feishu.cn/base/app-cron?table=tbl-runs") {
 		t.Fatalf("expected status catalog to expose runs url button, got %#v", statusCatalog.Sections)
 	}
-	editCatalog := app.handleCronDaemonCommand(control.DaemonCommand{
+	editCatalog := catalogFromUIEvent(t, app.handleCronDaemonCommand(control.DaemonCommand{
 		Text:             "/cron edit",
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
-	})[0].FeishuDirectCommandCatalog
+	})[0])
 	if !catalogHasOpenURLButton(editCatalog, "打开 Cron 配置表", "https://example.feishu.cn/base/app-cron?table=tbl-tasks") {
 		t.Fatalf("expected edit catalog to expose config url button, got %#v", editCatalog.Sections)
 	}
@@ -190,10 +187,10 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
 	})
-	if len(listEvents) != 1 || listEvents[0].FeishuDirectCommandCatalog == nil {
+	if len(listEvents) != 1 {
 		t.Fatalf("/cron list events = %#v, want one command catalog", listEvents)
 	}
-	listCatalog := listEvents[0].FeishuDirectCommandCatalog
+	listCatalog := catalogFromUIEvent(t, listEvents[0])
 	assertCatalogUsesPlainTextContracts(t, listCatalog)
 	if listCatalog.Title != "Cron 任务" {
 		t.Fatalf("/cron list title = %q, want %q", listCatalog.Title, "Cron 任务")
@@ -255,15 +252,12 @@ func TestCronCatalogHidesConfigEntryWhenWorkspaceSyncFails(t *testing.T) {
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
 	})
-	if len(menuEvents) != 1 || menuEvents[0].FeishuDirectCommandCatalog == nil {
+	if len(menuEvents) != 1 {
 		t.Fatalf("menu events = %#v, want one catalog", menuEvents)
 	}
-	menuCatalog := menuEvents[0].FeishuDirectCommandCatalog
+	menuCatalog := catalogFromUIEvent(t, menuEvents[0])
 	assertCatalogUsesPlainTextContracts(t, menuCatalog)
 	menuSummary := catalogSummaryText(menuCatalog)
-	if !strings.Contains(menuSummary, "配置入口：工作区清单未同步，暂不可用。") {
-		t.Fatalf("menu summary = %q, want sync-failed hint", menuSummary)
-	}
 	if !strings.Contains(menuSummary, "工作区清单同步失败") {
 		t.Fatalf("menu summary = %q, want failure reason", menuSummary)
 	}
@@ -277,10 +271,10 @@ func TestCronCatalogHidesConfigEntryWhenWorkspaceSyncFails(t *testing.T) {
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
 	})
-	if len(statusEvents) != 1 || statusEvents[0].FeishuDirectCommandCatalog == nil {
+	if len(statusEvents) != 1 {
 		t.Fatalf("status events = %#v, want one catalog", statusEvents)
 	}
-	statusCatalog := statusEvents[0].FeishuDirectCommandCatalog
+	statusCatalog := catalogFromUIEvent(t, statusEvents[0])
 	assertCatalogUsesPlainTextContracts(t, statusCatalog)
 	statusSummary := catalogSummaryText(statusCatalog)
 	if strings.Contains(statusSummary, "[打开 Cron 配置表]") {
@@ -298,10 +292,10 @@ func TestCronCatalogHidesConfigEntryWhenWorkspaceSyncFails(t *testing.T) {
 		GatewayID:        "gateway-1",
 		SurfaceSessionID: "surface-1",
 	})
-	if len(editEvents) != 1 || editEvents[0].FeishuDirectCommandCatalog == nil {
+	if len(editEvents) != 1 {
 		t.Fatalf("edit events = %#v, want one catalog", editEvents)
 	}
-	editCatalog := editEvents[0].FeishuDirectCommandCatalog
+	editCatalog := catalogFromUIEvent(t, editEvents[0])
 	assertCatalogUsesPlainTextContracts(t, editCatalog)
 	editSummary := catalogSummaryText(editCatalog)
 	if strings.Contains(editSummary, "[打开 Cron 配置表]") {

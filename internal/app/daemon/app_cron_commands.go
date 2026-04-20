@@ -13,7 +13,7 @@ import (
 func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.UIEvent {
 	parsed, err := parseCronCommandText(command.Text)
 	if err != nil {
-		return cronUsageEvents(command.SurfaceSessionID, err.Error())
+		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
 	switch parsed.Mode {
 	case cronCommandMenu, cronCommandStatus, cronCommandList, cronCommandEdit:
@@ -27,10 +27,10 @@ func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.U
 		if err != nil {
 			return append([]control.UIEvent{
 				cronNoticeEvent(command.SurfaceSessionID, "cron_catalog_failed", fmt.Sprintf("Cron 信息读取失败：%v", err)),
-			}, cronUsageEvents(command.SurfaceSessionID, "")...)
+			}, cronUsageEvents(command.SurfaceSessionID, "", "")...)
 		}
 		if catalog == nil {
-			return cronUsageEvents(command.SurfaceSessionID, "")
+			return cronUsageEvents(command.SurfaceSessionID, "", "")
 		}
 		return []control.UIEvent{*catalog}
 	default:
@@ -46,7 +46,7 @@ func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.U
 func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []control.UIEvent {
 	parsed, err := parseCronCommandText(command.Text)
 	if err != nil {
-		return cronUsageEvents(command.SurfaceSessionID, err.Error())
+		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
 	switch parsed.Mode {
 	case cronCommandMenu, cronCommandStatus, cronCommandList, cronCommandEdit:
@@ -56,10 +56,10 @@ func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []con
 		if err != nil {
 			return append([]control.UIEvent{
 				cronNoticeEvent(command.SurfaceSessionID, "cron_catalog_failed", fmt.Sprintf("Cron 信息读取失败：%v", err)),
-			}, cronUsageEvents(command.SurfaceSessionID, "")...)
+			}, cronUsageEvents(command.SurfaceSessionID, "", "")...)
 		}
 		if catalog == nil {
-			return cronUsageEvents(command.SurfaceSessionID, "")
+			return cronUsageEvents(command.SurfaceSessionID, "", "")
 		}
 		return []control.UIEvent{*catalog}
 	default:
@@ -90,7 +90,7 @@ func (a *App) handleCronMutatingDaemonCommandLocked(command control.DaemonComman
 		go a.runCronTriggerCommand(command, parsed.JobRecordID)
 		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_run_started", "正在立即触发所选 Cron 任务。")}
 	default:
-		return cronUsageEvents(command.SurfaceSessionID, "不支持的 /cron 子命令。")
+		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), "不支持的 /cron 子命令。")
 	}
 }
 
@@ -217,24 +217,21 @@ func (a *App) prepareCronCatalog(command control.DaemonCommand, mode cronCommand
 	if err != nil {
 		return nil, err
 	}
-	var catalog *control.FeishuDirectCommandCatalog
+	var view control.FeishuCommandPageView
 	switch mode {
 	case cronCommandMenu:
-		catalog = buildCronMenuCatalog(stateValue, ownerView, extraSummary, configReady)
+		view = buildCronRootPageView(stateValue, ownerView, extraSummary, configReady, "", "", "")
 	case cronCommandStatus:
-		catalog = buildCronStatusCatalog(stateValue, ownerView, extraSummary, configReady)
+		view = buildCronStatusPageView(stateValue, ownerView, extraSummary, configReady)
 	case cronCommandList:
-		catalog = buildCronListCatalog(stateValue, ownerView, extraSummary)
+		view = buildCronListPageView(stateValue, ownerView, extraSummary)
 	case cronCommandEdit:
-		catalog = buildCronEditCatalog(stateValue, ownerView, extraSummary, configReady)
+		view = buildCronEditPageView(stateValue, ownerView, extraSummary, configReady)
 	default:
 		return nil, fmt.Errorf("unsupported cron catalog mode: %s", mode)
 	}
-	return &control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID:           command.SurfaceSessionID,
-		FeishuDirectCommandCatalog: catalog,
-	}, nil
+	event := commandPageEvent(command.SurfaceSessionID, view)
+	return &event, nil
 }
 
 func (a *App) prepareCronCatalogState(command control.DaemonCommand, mode cronCommandMode) (*cronStateFile, cronOwnerView, string, bool, error) {

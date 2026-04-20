@@ -95,7 +95,7 @@ func TestHandleGatewayActionContinuesBareUpgradeInPlace(t *testing.T) {
 	if result == nil || result.ReplaceCurrentCard == nil {
 		t.Fatalf("expected inline continuation replacement result, got %#v", result)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "Upgrade" {
+	if result.ReplaceCurrentCard.CardTitle != "升级" {
 		t.Fatalf("expected in-place upgrade card, got %#v", result.ReplaceCurrentCard)
 	}
 	if len(gateway.operations) != 0 {
@@ -126,7 +126,7 @@ func TestHandleGatewayActionContinuesBareCronInPlace(t *testing.T) {
 	if result == nil || result.ReplaceCurrentCard == nil {
 		t.Fatalf("expected inline continuation replacement result, got %#v", result)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "Cron" {
+	if result.ReplaceCurrentCard.CardTitle != "定时任务" {
 		t.Fatalf("expected in-place cron card, got %#v", result.ReplaceCurrentCard)
 	}
 	if len(gateway.operations) != 0 {

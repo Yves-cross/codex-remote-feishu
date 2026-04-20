@@ -1,36 +1,16 @@
 package daemon
 
 import (
-	"strings"
-
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func debugUsageEvents(surfaceID, message string) []control.UIEvent {
-	events := []control.UIEvent{}
-	if strings.TrimSpace(message) != "" {
-		events = append(events, debugNoticeEvent(surfaceID, "debug_usage_error", message))
-	}
-	events = append(events, control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID:           surfaceID,
-		FeishuDirectCommandCatalog: buildDebugStatusCatalog(install.InstallState{}, false),
-	})
-	return events
+func debugUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+	return commandPageEvents(surfaceID, buildDebugRootPageView(install.InstallState{}, false, formDefault, "error", message))
 }
 
-func upgradeUsageEvents(surfaceID, message string) []control.UIEvent {
-	events := []control.UIEvent{}
-	if strings.TrimSpace(message) != "" {
-		events = append(events, upgradeNoticeEvent(surfaceID, "upgrade_usage_error", message))
-	}
-	events = append(events, control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID:           surfaceID,
-		FeishuDirectCommandCatalog: buildUpgradeStatusCatalog(install.InstallState{}, false),
-	})
-	return events
+func upgradeUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+	return commandPageEvents(surfaceID, buildUpgradeRootPageView(install.InstallState{}, formDefault, "error", message))
 }
 
 func runCommandButton(label, commandText, style string, disabled bool) control.CommandCatalogButton {

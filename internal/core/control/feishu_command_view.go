@@ -6,6 +6,7 @@ package control
 type FeishuCommandView struct {
 	Menu   *FeishuCommandMenuView
 	Config *FeishuCommandConfigView
+	Page   *FeishuCommandPageView
 }
 
 type FeishuCommandMenuView struct {
@@ -24,4 +25,17 @@ type FeishuCommandConfigView struct {
 	StatusKind         string
 	StatusText         string
 	Sealed             bool
+}
+
+type FeishuCommandPageView struct {
+	CommandID       string
+	Title           string
+	Breadcrumbs     []CommandCatalogBreadcrumb
+	SummarySections []FeishuCardTextSection
+	StatusKind      string
+	StatusText      string
+	Interactive     bool
+	DisplayStyle    CommandCatalogDisplayStyle
+	Sections        []CommandCatalogSection
+	RelatedButtons  []CommandCatalogButton
 }

@@ -1,7 +1,7 @@
 # 使用说明书
 
 > Type: `general`
-> Updated: `2026-04-17`
+> Updated: `2026-04-20`
 > Summary: 补充 1.6 用户可见能力，包括添加工作区、reply steer、手动 compact、发送文件、Cron 和共享过程卡语义。
 
 ## 1. 这是什么
@@ -480,7 +480,7 @@ Windows PowerShell：
 /cron
 ```
 
-常见流程是：
+这会先打开 Cron 根页。常见流程是：
 
 1. `/cron edit`
 2. 打开并编辑任务配置表
@@ -569,7 +569,7 @@ Windows PowerShell：
 - `/sendfile`
   - 打开文件选择卡，从当前工作区挑一个文件直接发到当前聊天
 - `/cron`
-  - 打开当前实例专属的定时任务菜单
+  - 打开当前实例的 Cron 根页；状态、任务列表和配置入口都在子页里
 - `/cron reload`
   - 重新加载当前 Cron 配置表里的任务
 - `/upgrade latest`

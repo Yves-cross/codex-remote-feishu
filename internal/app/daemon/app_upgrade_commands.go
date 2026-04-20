@@ -383,11 +383,7 @@ func firstNonEmptyTrack(values ...install.ReleaseTrack) install.ReleaseTrack {
 }
 
 func trackSummaryEvents(surfaceID string, stateValue install.InstallState, legacyAlias bool) []control.UIEvent {
-	text := buildTrackSummary(stateValue)
-	if legacyAlias {
-		text = legacyTrackAliasMessage("/upgrade track", text)
-	}
-	return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_status", text)}
+	return commandPageEvents(surfaceID, buildUpgradeTrackPageView(stateValue, legacyAlias))
 }
 
 func (a *App) setTrackEvents(surfaceID string, stateValue install.InstallState, nextTrack install.ReleaseTrack, legacyAlias bool) []control.UIEvent {

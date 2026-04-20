@@ -119,7 +119,7 @@ func AllowsCommandCardResultReplacement(action Action) bool {
 		ActionDetach:
 		return true
 	default:
-		return false
+		return allowsCommandPageResultReplacement(action)
 	}
 }
 
@@ -137,7 +137,82 @@ func AllowsBareCommandContinuation(action Action) bool {
 		return false
 	}
 	switch action.Kind {
-	case ActionUpgradeCommand, ActionDebugCommand, ActionCronCommand, ActionVSCodeMigrate:
+	case ActionVSCodeMigrate:
+		return true
+	default:
+		return false
+	}
+}
+
+func allowsCommandPageResultReplacement(action Action) bool {
+	switch action.Kind {
+	case ActionCronCommand:
+		return !cronCommandRunsImmediately(action.Text)
+	case ActionUpgradeCommand:
+		return !upgradeCommandRunsImmediately(action.Text)
+	case ActionDebugCommand:
+		return !debugCommandRunsImmediately(action.Text)
+	default:
+		return false
+	}
+}
+
+func cronCommandRunsImmediately(text string) bool {
+	fields := normalizedCommandFields(text)
+	if len(fields) == 0 || fields[0] != "/cron" {
+		return false
+	}
+	switch {
+	case len(fields) == 2 && (fields[1] == "reload" || fields[1] == "repair"):
+		return true
+	case len(fields) == 3 && fields[1] == "run" && strings.TrimSpace(fields[2]) != "":
+		return true
+	default:
+		return false
+	}
+}
+
+func upgradeCommandRunsImmediately(text string) bool {
+	fields := normalizedCommandFields(text)
+	if len(fields) == 0 || fields[0] != "/upgrade" {
+		return false
+	}
+	switch {
+	case len(fields) == 2 && (fields[1] == "latest" || fields[1] == "dev" || fields[1] == "local"):
+		return true
+	case len(fields) == 3 && fields[1] == "track" && isReleaseTrackToken(fields[2]):
+		return true
+	default:
+		return false
+	}
+}
+
+func debugCommandRunsImmediately(text string) bool {
+	fields := normalizedCommandFields(text)
+	if len(fields) == 0 || fields[0] != "/debug" {
+		return false
+	}
+	switch {
+	case len(fields) == 2 && (fields[1] == "admin" || fields[1] == "upgrade"):
+		return true
+	case len(fields) == 3 && fields[1] == "track" && isReleaseTrackToken(fields[2]):
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizedCommandFields(text string) []string {
+	fields := strings.Fields(strings.ToLower(strings.TrimSpace(text)))
+	for i := range fields {
+		fields[i] = strings.TrimSpace(fields[i])
+	}
+	return fields
+}
+
+func isReleaseTrackToken(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "alpha", "beta", "production":
 		return true
 	default:
 		return false

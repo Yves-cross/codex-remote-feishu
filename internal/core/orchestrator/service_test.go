@@ -400,6 +400,62 @@ func TestApplyFeishuUIIntentBuildsVerboseCatalog(t *testing.T) {
 	}
 }
 
+func TestApplySurfaceActionModeInvalidArgsReturnsCommandView(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModeCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/mode nope",
+	})
+	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+		t.Fatalf("expected invalid mode to reopen command view, got %#v", events)
+	}
+	if got := events[0].FeishuCommandView.Config.StatusKind; got != "error" {
+		t.Fatalf("expected error status kind, got %#v", events[0].FeishuCommandView.Config)
+	}
+	if got := events[0].FeishuCommandView.Config.FormDefaultValue; got != "nope" {
+		t.Fatalf("expected invalid mode args to stay in form, got %#v", events[0].FeishuCommandView.Config)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.Title != "切换模式" {
+		t.Fatalf("unexpected mode error catalog: %#v", catalog)
+	}
+}
+
+func TestApplySurfaceActionModelInvalidReasoningReturnsCommandView(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	surface := svc.root.Surfaces["surface-1"]
+	surface.AttachedInstanceID = "inst-1"
+	svc.root.Instances["inst-1"] = &state.InstanceRecord{InstanceID: "inst-1"}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModelCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/model gpt-5.4 nope",
+	})
+	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+		t.Fatalf("expected invalid model args to reopen command view, got %#v", events)
+	}
+	if got := events[0].FeishuCommandView.Config.StatusKind; got != "error" {
+		t.Fatalf("expected error status kind, got %#v", events[0].FeishuCommandView.Config)
+	}
+	if got := events[0].FeishuCommandView.Config.FormDefaultValue; got != "gpt-5.4 nope" {
+		t.Fatalf("expected invalid model args to stay in form, got %#v", events[0].FeishuCommandView.Config)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.Title != "模型" {
+		t.Fatalf("unexpected model error catalog: %#v", catalog)
+	}
+}
+
 func TestApplySurfaceActionVerboseCommandUpdatesSurface(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

@@ -252,6 +252,60 @@ func TestAllowsCommandCardResultReplacement(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "bare upgrade root page can replace stamped command card",
+			action: Action{
+				Kind:    ActionUpgradeCommand,
+				Text:    "/upgrade",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "upgrade track page can replace stamped command card",
+			action: Action{
+				Kind:    ActionUpgradeCommand,
+				Text:    "/upgrade track",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "upgrade latest stays append-only",
+			action: Action{
+				Kind:    ActionUpgradeCommand,
+				Text:    "/upgrade latest",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: false,
+		},
+		{
+			name: "bare debug root page can replace stamped command card",
+			action: Action{
+				Kind:    ActionDebugCommand,
+				Text:    "/debug",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "bare cron root page can replace stamped command card",
+			action: Action{
+				Kind:    ActionCronCommand,
+				Text:    "/cron",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: true,
+		},
+		{
+			name: "cron reload stays append-only",
+			action: Action{
+				Kind:    ActionCronCommand,
+				Text:    "/cron reload",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -270,31 +324,31 @@ func TestAllowsBareCommandContinuation(t *testing.T) {
 		want   bool
 	}{
 		{
-			name: "bare upgrade from stamped card callback",
+			name: "bare upgrade no longer uses bare continuation",
 			action: Action{
 				Kind:    ActionUpgradeCommand,
 				Text:    "/upgrade",
 				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 			},
-			want: true,
+			want: false,
 		},
 		{
-			name: "bare debug from stamped card callback",
+			name: "bare debug no longer uses bare continuation",
 			action: Action{
 				Kind:    ActionDebugCommand,
 				Text:    "/debug",
 				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 			},
-			want: true,
+			want: false,
 		},
 		{
-			name: "bare cron from stamped card callback",
+			name: "bare cron no longer uses bare continuation",
 			action: Action{
 				Kind:    ActionCronCommand,
 				Text:    "/cron",
 				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name: "cron with args stays async",

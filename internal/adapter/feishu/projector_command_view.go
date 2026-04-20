@@ -14,6 +14,8 @@ func FeishuDirectCommandCatalogFromView(view control.FeishuCommandView, ctx *con
 		return commandMenuCatalogFromView(*view.Menu, ctx), true
 	case view.Config != nil:
 		return commandConfigCatalogFromView(*view.Config), true
+	case view.Page != nil:
+		return commandPageCatalogFromView(*view.Page), true
 	default:
 		return control.FeishuDirectCommandCatalog{}, false
 	}
@@ -37,4 +39,8 @@ func commandMenuCatalogFromView(view control.FeishuCommandMenuView, ctx *control
 
 func commandConfigCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDirectCommandCatalog {
 	return control.BuildFeishuCommandConfigCatalog(view)
+}
+
+func commandPageCatalogFromView(view control.FeishuCommandPageView) control.FeishuDirectCommandCatalog {
+	return control.BuildFeishuCommandPageCatalog(view)
 }

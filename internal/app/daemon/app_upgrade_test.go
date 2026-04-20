@@ -426,15 +426,15 @@ func TestPrepareUpgradeHelperShimWritesEmbeddedShimAndSidecar(t *testing.T) {
 	}
 }
 
-func TestBuildDebugStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
-	catalog := buildDebugStatusCatalog(install.InstallState{
+func TestBuildDebugRootPageIsInteractiveAndIncludesForm(t *testing.T) {
+	catalog := control.BuildFeishuCommandPageCatalog(buildDebugRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackBeta,
 		CurrentVersion: "v1.0.0",
-	}, false)
-	if catalog == nil || !catalog.Interactive {
+	}, false, "", "", ""))
+	if !catalog.Interactive {
 		t.Fatalf("expected interactive debug catalog, got %#v", catalog)
 	}
-	assertCatalogUsesPlainTextContracts(t, catalog)
+	assertCatalogUsesPlainTextContracts(t, &catalog)
 	if len(catalog.Sections) != 2 {
 		t.Fatalf("expected quick actions + form sections, got %#v", catalog.Sections)
 	}
@@ -450,21 +450,21 @@ func TestBuildDebugStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
 			t.Fatalf("debug catalog should not promote /debug track anymore: %#v", catalog.Sections[0].Entries[0].Buttons)
 		}
 	}
-	summary := catalogSummaryText(catalog)
-	if !strings.Contains(summary, "升级检查：仅手动触发") {
-		t.Fatalf("expected debug catalog summary to reflect manual-only checks, got %#v", summary)
+	summary := catalogSummaryText(&catalog)
+	if strings.Contains(summary, "当前版本：") || strings.Contains(summary, "当前 track：") {
+		t.Fatalf("expected debug root page to avoid default status dump, got %#v", summary)
 	}
 }
 
-func TestBuildUpgradeStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
-	catalog := buildUpgradeStatusCatalog(install.InstallState{
+func TestBuildUpgradeRootPageIsInteractiveAndIncludesForm(t *testing.T) {
+	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
-	}, false)
-	if catalog == nil || !catalog.Interactive {
+	}, "", "", ""))
+	if !catalog.Interactive {
 		t.Fatalf("expected interactive upgrade catalog, got %#v", catalog)
 	}
-	assertCatalogUsesPlainTextContracts(t, catalog)
+	assertCatalogUsesPlainTextContracts(t, &catalog)
 	if len(catalog.Sections) != 3 {
 		t.Fatalf("expected quick actions + track + form sections, got %#v", catalog.Sections)
 	}
@@ -478,12 +478,9 @@ func TestBuildUpgradeStatusCatalogIsInteractiveAndIncludesForm(t *testing.T) {
 	if form == nil || form.CommandText != "/upgrade" {
 		t.Fatalf("expected upgrade form entry, got %#v", catalog.Sections[2].Entries[0])
 	}
-	summary := catalogSummaryText(catalog)
-	if !strings.Contains(summary, "本地升级产物：") {
-		t.Fatalf("expected upgrade summary to keep artifact path, got %#v", summary)
-	}
-	if !strings.Contains(summary, "升级检查：仅手动触发") {
-		t.Fatalf("expected upgrade catalog summary to reflect manual-only checks, got %#v", summary)
+	summary := catalogSummaryText(&catalog)
+	if strings.Contains(summary, "当前版本：") || strings.Contains(summary, "当前 track：") || strings.Contains(summary, "本地升级产物：") {
+		t.Fatalf("expected upgrade root page to avoid default status dump, got %#v", summary)
 	}
 }
 
