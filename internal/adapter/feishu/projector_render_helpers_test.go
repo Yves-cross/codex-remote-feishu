@@ -115,6 +115,25 @@ func assertNoDuplicateNamedCardElementsAny(t *testing.T, value any, seen map[str
 	}
 }
 
+func assertRenderedCardPayloadBasicInvariants(t *testing.T, payload map[string]any) {
+	t.Helper()
+	if payload == nil {
+		t.Fatal("expected rendered card payload, got nil")
+	}
+	if payload["schema"] != "2.0" {
+		return
+	}
+	body, _ := payload["body"].(map[string]any)
+	if body == nil {
+		t.Fatalf("expected V2 body, got %#v", payload)
+	}
+	elements, _ := body["elements"].([]map[string]any)
+	if elements == nil {
+		t.Fatalf("expected V2 body elements, got %#v", payload)
+	}
+	assertNoDuplicateNamedCardElements(t, elements)
+}
+
 func cardButtonLabel(t *testing.T, button map[string]any) string {
 	t.Helper()
 	textValue, _ := button["text"].(map[string]any)
@@ -150,6 +169,7 @@ func renderedV2BodyElements(t *testing.T, operation Operation) []map[string]any 
 	if payload["schema"] != "2.0" {
 		t.Fatalf("expected V2 schema, got %#v", payload)
 	}
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
 	return elements

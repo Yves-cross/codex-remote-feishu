@@ -48,6 +48,7 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 		t.Fatalf("expected command list body to strip shell wrapper, got %#v", op)
 	}
 	payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
 	if !ok || len(elements) != 2 {
@@ -460,6 +461,7 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *t
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	payload := renderOperationCard(ops[0], ops[0].ordinaryCardEnvelope())
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
 	if !ok || len(elements) != 2 {
@@ -512,6 +514,7 @@ func TestProjectExecCommandProgressDropsOldLinesWhenOversized(t *testing.T) {
 		t.Fatalf("expected oversized shared progress to advance visible window start, got %#v", op)
 	}
 	payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 	size, err := jsonSize(payload)
 	if err != nil {
 		t.Fatalf("marshal shared progress payload: %v", err)

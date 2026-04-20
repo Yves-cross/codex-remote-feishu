@@ -331,6 +331,7 @@ func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testi
 			}
 		}
 		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		assertRenderedCardPayloadBasicInvariants(t, payload)
 		size, err := jsonSize(payload)
 		if err != nil {
 			t.Fatalf("marshal chunk %d payload: %v", i, err)
@@ -370,6 +371,7 @@ func TestProjectFinalAssistantCodeBlockSplitsOversizedFenceSafely(t *testing.T) 
 			t.Fatalf("expected split code chunk %d to remain fenced, got %#v", i, op.CardBody)
 		}
 		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		assertRenderedCardPayloadBasicInvariants(t, payload)
 		size, err := jsonSize(payload)
 		if err != nil {
 			t.Fatalf("marshal chunk %d payload: %v", i, err)

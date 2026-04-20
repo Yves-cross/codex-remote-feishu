@@ -13,6 +13,7 @@ func TestRenderOperationCardLegacyEnvelopeFromOperationFields(t *testing.T) {
 			"content": "**附加内容**",
 		}},
 	}, cardEnvelopeLegacy)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	if payload["schema"] != nil {
 		t.Fatalf("expected legacy envelope without schema, got %#v", payload)
@@ -39,6 +40,7 @@ func TestRenderOperationCardV2EnvelopeFromOperationFields(t *testing.T) {
 			"content": "**发送设置**",
 		}},
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	if payload["schema"] != "2.0" {
 		t.Fatalf("expected v2 schema, got %#v", payload)
@@ -63,6 +65,7 @@ func TestRenderOperationCardV2EnvelopeCanEnableSharedCardUpdates(t *testing.T) {
 		CardThemeKey:    cardThemeInfo,
 		CardUpdateMulti: true,
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	config, _ := payload["config"].(map[string]any)
 	if config["update_multi"] != true {
@@ -96,6 +99,7 @@ func TestRenderOperationCardV2EnvelopeFromOperationFieldsPreservesNativeV2Intera
 			},
 		},
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	if payload["schema"] != "2.0" {
 		t.Fatalf("expected v2 schema, got %#v", payload)
@@ -137,6 +141,7 @@ func TestRenderOperationCardPrefersStructuredDocument(t *testing.T) {
 			cardMarkdownComponent{Content: "doc body"},
 		),
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	header, _ := payload["header"].(map[string]any)
 	title, _ := header["title"].(map[string]any)
@@ -174,6 +179,7 @@ func TestRenderOperationCardV2DoesNotTranslateLegacyActionRow(t *testing.T) {
 			}},
 		}},
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	body, _ := payload["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
@@ -212,6 +218,7 @@ func TestRenderOperationCardV2DoesNotTranslateLegacyFormSubmitButton(t *testing.
 			},
 		}},
 	}, cardEnvelopeV2)
+	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	body, _ := payload["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
