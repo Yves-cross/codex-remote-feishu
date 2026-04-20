@@ -62,8 +62,8 @@ func TestDaemonSuppressesImmediatePermissionFailureAndProjectsItInStatus(t *test
 	if len(gateway.operations) != 1 {
 		t.Fatalf("expected one status card after retry, got %#v", gateway.operations)
 	}
-	body := gateway.operations[0].CardBody
-	if !strings.Contains(body, "**已知缺权限：**") || !strings.Contains(body, "drive:drive") {
+	body := operationCardText(gateway.operations[0])
+	if !strings.Contains(body, "**已知缺权限**") || !strings.Contains(body, "drive:drive") {
 		t.Fatalf("expected status card to include known permission gap, got %#v", body)
 	}
 	if !strings.Contains(body, "https://open.feishu.cn/permission/apply") {
