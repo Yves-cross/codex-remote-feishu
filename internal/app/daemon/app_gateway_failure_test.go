@@ -43,26 +43,30 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 	for _, element := range gateway.operations[1].CardElements {
 		content, _ := element["content"].(string)
 		sawAddWorkspaceText = sawAddWorkspaceText ||
-			strings.Contains(content, "模式/来源/目录") ||
-			strings.Contains(content, "要接入哪个本地目录？") ||
-			strings.Contains(content, "切换来源")
+			strings.Contains(content, "模式") ||
+			strings.Contains(content, "这次要做什么")
 	}
 	if !sawAddWorkspaceText {
 		t.Fatalf("expected recovered target picker to expose add-workspace flow, got %#v", gateway.operations[1])
 	}
-	sawChooseDirectory := false
-	sawDisabledAttach := false
+	sawExistingWorkspace := false
+	sawDisabledExistingWorkspace := false
+	sawAddWorkspace := false
+	sawNextStep := false
 	for _, button := range operationCardButtons(gateway.operations[1]) {
 		textNode, _ := button["text"].(map[string]any)
 		label, _ := textNode["content"].(string)
 		switch label {
-		case "选择目录":
-			sawChooseDirectory = true
-		case "接入并继续":
-			sawDisabledAttach = button["disabled"] == true
+		case "进入已有工作区":
+			sawExistingWorkspace = true
+			sawDisabledExistingWorkspace = button["disabled"] == true
+		case "新建工作区":
+			sawAddWorkspace = true
+		case "下一步":
+			sawNextStep = true
 		}
 	}
-	if !sawChooseDirectory || !sawDisabledAttach {
-		t.Fatalf("expected recovered target picker to expose choose-directory and disabled attach actions, got %#v", gateway.operations[1])
+	if !sawExistingWorkspace || !sawDisabledExistingWorkspace || !sawAddWorkspace || !sawNextStep {
+		t.Fatalf("expected recovered target picker to expose mode selection actions, got %#v", gateway.operations[1])
 	}
 }
