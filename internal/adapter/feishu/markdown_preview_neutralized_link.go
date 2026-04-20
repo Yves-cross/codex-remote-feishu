@@ -8,11 +8,10 @@ import (
 )
 
 type neutralizedLocalMarkdownRewrite struct {
-	text        string
-	supplements []PreviewSupplement
-	errs        []string
-	end         int
-	changed     bool
+	text    string
+	errs    []string
+	end     int
+	changed bool
 }
 
 func parseNeutralizedLocalMarkdownLinkPrefix(prefix string) (head, label string, ok bool) {
@@ -75,7 +74,7 @@ func (p *DriveMarkdownPreviewer) tryRewriteNeutralizedLocalMarkdownLink(
 	if !ok {
 		return neutralizedLocalMarkdownRewrite{}, false
 	}
-	rewrittenHead, headSupplements, headChanged, headErrs := p.rewriteMarkdownLinksPlain(
+	rewrittenHead, headChanged, headErrs := p.rewriteMarkdownLinksPlain(
 		ctx,
 		req,
 		principals,
@@ -85,7 +84,7 @@ func (p *DriveMarkdownPreviewer) tryRewriteNeutralizedLocalMarkdownLink(
 		head,
 		baseOffset+last,
 	)
-	replacement, linkSupplements, linkChanged, linkErrs := p.rewritePreviewReferenceTarget(
+	replacement, linkChanged, linkErrs := p.rewritePreviewReferenceTarget(
 		ctx,
 		req,
 		principals,
@@ -109,10 +108,9 @@ func (p *DriveMarkdownPreviewer) tryRewriteNeutralizedLocalMarkdownLink(
 		builder.WriteString(text[index-2 : close+run+1])
 	}
 	return neutralizedLocalMarkdownRewrite{
-		text:        builder.String(),
-		supplements: append(headSupplements, linkSupplements...),
-		errs:        append(headErrs, linkErrs...),
-		end:         close + run + 1,
-		changed:     headChanged || linkChanged,
+		text:    builder.String(),
+		errs:    append(headErrs, linkErrs...),
+		end:     close + run + 1,
+		changed: headChanged || linkChanged,
 	}, true
 }

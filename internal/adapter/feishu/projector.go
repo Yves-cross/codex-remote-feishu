@@ -87,20 +87,6 @@ func (p *Projector) SetSnapshotBinary(value string) {
 	p.snapshotBinary = strings.TrimSpace(value)
 }
 
-func (p *Projector) ProjectPreviewSupplements(gatewayID, surfaceSessionID, chatID, _ string, supplements []PreviewSupplement) []Operation {
-	if len(supplements) == 0 {
-		return nil
-	}
-	var ops []Operation
-	for _, supplement := range supplements {
-		op, ok := projectPreviewSupplement(gatewayID, surfaceSessionID, chatID, supplement)
-		if ok {
-			ops = append(ops, op)
-		}
-	}
-	return ops
-}
-
 func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 	switch event.Kind {
 	case control.UIEventSnapshot:
@@ -494,39 +480,6 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	elements := p.finalBlockExtraElements(summary, finalSummary)
 	title := finalCardTitle(sourceMessagePreview)
 	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
-}
-
-func projectPreviewSupplement(gatewayID, surfaceSessionID, chatID string, supplement PreviewSupplement) (Operation, bool) {
-	switch strings.TrimSpace(supplement.Kind) {
-	case "card":
-		title, _ := supplement.Data["title"].(string)
-		body, _ := supplement.Data["body"].(string)
-		theme, _ := supplement.Data["theme"].(string)
-		elements, _ := supplement.Data["elements"].([]map[string]any)
-		if strings.TrimSpace(title) == "" && strings.TrimSpace(body) == "" && len(elements) == 0 {
-			return Operation{}, false
-		}
-		if strings.TrimSpace(title) == "" {
-			title = "补充信息"
-		}
-		if strings.TrimSpace(theme) == "" {
-			theme = cardThemeInfo
-		}
-		return Operation{
-			Kind:             OperationSendCard,
-			GatewayID:        gatewayID,
-			SurfaceSessionID: surfaceSessionID,
-			ChatID:           chatID,
-			CardTitle:        title,
-			CardBody:         body,
-			CardThemeKey:     theme,
-			CardElements:     elements,
-			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument(title, body, theme, elements),
-		}, true
-	default:
-		return Operation{}, false
-	}
 }
 
 func finalCardTitle(sourceMessagePreview string) string {

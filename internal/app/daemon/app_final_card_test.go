@@ -139,15 +139,7 @@ func materializeAttachedSurfaceForFinalCardTest(app *App, surfaceID, gatewayID, 
 func TestDeliverUIEventRecordsFinalCardAnchorFromPrimaryFinalReply(t *testing.T) {
 	gateway := &messageIDAssigningGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
-	app.SetFinalBlockPreviewer(&stubMarkdownPreviewer{
-		supplements: []feishu.PreviewSupplement{{
-			Kind: "card",
-			Data: map[string]any{
-				"title": "补充信息",
-				"body":  "preview link",
-			},
-		}},
-	})
+	app.SetFinalBlockPreviewer(&stubMarkdownPreviewer{})
 
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-1",
@@ -192,10 +184,10 @@ func TestDeliverUIEventRecordsFinalCardAnchorFromPrimaryFinalReply(t *testing.T)
 		t.Fatalf("unexpected final card anchor: %#v", got)
 	}
 	ops := gateway.snapshotOperations()
-	if len(ops) != 2 {
-		t.Fatalf("expected final card plus supplement send ops, got %#v", ops)
+	if len(ops) != 1 {
+		t.Fatalf("expected only one final card send op, got %#v", ops)
 	}
-	if ops[0].MessageID != "om-card-1" || ops[1].MessageID != "om-card-2" {
+	if ops[0].MessageID != "om-card-1" {
 		t.Fatalf("unexpected sent message ids: %#v", ops)
 	}
 }

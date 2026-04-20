@@ -31,11 +31,10 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Fina
 	}
 
 	runtime := &previewRewriteRuntime{}
-	rewritten, supplements, changed, dirty, rewriteErr := p.rewriteMarkdownLinks(ctx, req, principals, runtime)
+	rewritten, changed, dirty, rewriteErr := p.rewriteMarkdownLinks(ctx, req, principals, runtime)
 	if changed {
 		result.Block.Text = rewritten
 	}
-	result.Supplements = append(result.Supplements, supplements...)
 	if changed || dirty {
 		p.stateMu.Lock()
 		if err := p.saveStateLocked(); err != nil && rewriteErr == nil {
@@ -46,17 +45,16 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Fina
 	return result, rewriteErr
 }
 
-func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, []PreviewSupplement, bool, bool, error) {
+func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, bool, bool, error) {
 	text := req.Block.Text
 	segments := splitFinalCardFenceSegments(text)
 	if len(segments) == 0 {
-		return text, nil, false, false, nil
+		return text, false, false, nil
 	}
 
 	scopeKey := previewScopeKey(req.GatewayID, req.SurfaceSessionID, req.ChatID, req.ActorUserID)
 	rewrittenTargets := map[string]string{}
 	var errs []string
-	var supplements []PreviewSupplement
 
 	var builder strings.Builder
 	changed := false
@@ -67,7 +65,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req F
 			offset += len(segment.text)
 			continue
 		}
-		rewrittenSegment, segmentSupplements, segmentChanged, segmentErrs := p.rewriteMarkdownLinksInline(
+		rewrittenSegment, segmentChanged, segmentErrs := p.rewriteMarkdownLinksInline(
 			ctx,
 			req,
 			principals,
@@ -81,9 +79,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req F
 		if segmentChanged {
 			changed = true
 		}
-		if len(segmentSupplements) > 0 {
-			supplements = append(supplements, segmentSupplements...)
-		}
 		if len(segmentErrs) > 0 {
 			errs = append(errs, segmentErrs...)
 		}
@@ -94,7 +89,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req F
 	if len(errs) > 0 {
 		rewriteErr = errors.New(strings.Join(errs, "; "))
 	}
-	return builder.String(), supplements, changed, runtime != nil && runtime.dirty, rewriteErr
+	return builder.String(), changed, runtime != nil && runtime.dirty, rewriteErr
 }
 
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
@@ -106,16 +101,15 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 	rewrittenTargets map[string]string,
 	text string,
 	baseOffset int,
-) (string, []PreviewSupplement, bool, []string) {
+) (string, bool, []string) {
 	if text == "" {
-		return "", nil, false, nil
+		return "", false, nil
 	}
 
 	var (
-		builder     strings.Builder
-		supplements []PreviewSupplement
-		errs        []string
-		changed     bool
+		builder strings.Builder
+		errs    []string
+		changed bool
 	)
 	last := 0
 	for i := 0; i < len(text); {
@@ -135,9 +129,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 			if rewrittenLink.changed {
 				changed = true
 			}
-			if len(rewrittenLink.supplements) > 0 {
-				supplements = append(supplements, rewrittenLink.supplements...)
-			}
 			if len(rewrittenLink.errs) > 0 {
 				errs = append(errs, rewrittenLink.errs...)
 			}
@@ -154,7 +145,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 		if close < 0 {
 			break
 		}
-		rewritten, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
+		rewritten, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
 			ctx,
 			req,
 			principals,
@@ -168,13 +159,10 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 		if rewrittenChanged {
 			changed = true
 		}
-		if len(rewrittenSupplements) > 0 {
-			supplements = append(supplements, rewrittenSupplements...)
-		}
 		if len(rewrittenErrs) > 0 {
 			errs = append(errs, rewrittenErrs...)
 		}
-		inlineRewritten, inlineSupplements, inlineChanged, inlineErrs := p.rewriteMarkdownLinksCodeSpan(
+		inlineRewritten, inlineChanged, inlineErrs := p.rewriteMarkdownLinksCodeSpan(
 			ctx,
 			req,
 			principals,
@@ -189,9 +177,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 		if inlineChanged {
 			changed = true
 		}
-		if len(inlineSupplements) > 0 {
-			supplements = append(supplements, inlineSupplements...)
-		}
 		if len(inlineErrs) > 0 {
 			errs = append(errs, inlineErrs...)
 		}
@@ -199,7 +184,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 		last = i
 	}
 
-	rewritten, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
+	rewritten, rewrittenChanged, rewrittenErrs := p.rewriteMarkdownLinksPlain(
 		ctx,
 		req,
 		principals,
@@ -213,13 +198,10 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksInline(
 	if rewrittenChanged {
 		changed = true
 	}
-	if len(rewrittenSupplements) > 0 {
-		supplements = append(supplements, rewrittenSupplements...)
-	}
 	if len(rewrittenErrs) > 0 {
 		errs = append(errs, rewrittenErrs...)
 	}
-	return builder.String(), supplements, changed, errs
+	return builder.String(), changed, errs
 }
 
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksCodeSpan(
@@ -232,17 +214,17 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksCodeSpan(
 	rawSpan string,
 	text string,
 	baseOffset int,
-) (string, []PreviewSupplement, bool, []string) {
+) (string, bool, []string) {
 	if text == "" {
-		return rawSpan, nil, false, nil
+		return rawSpan, false, nil
 	}
 	trimStart, trimEnd := trimMarkdownInlineSpaceBounds(text)
 	if trimStart >= trimEnd {
-		return rawSpan, nil, false, nil
+		return rawSpan, false, nil
 	}
 	trimmed := text[trimStart:trimEnd]
 	if end, label, rawTarget, ok := parseMarkdownLinkAt(trimmed, 0); ok && end == len(trimmed) {
-		replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+		replacement, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
 			ctx,
 			req,
 			principals,
@@ -254,15 +236,15 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksCodeSpan(
 			baseOffset+trimStart+len(label)+3+len(rawTarget),
 		)
 		if !rewrittenChanged {
-			return rawSpan, rewrittenSupplements, false, rewrittenErrs
+			return rawSpan, false, rewrittenErrs
 		}
-		return "[" + label + "](" + replacement + ")", rewrittenSupplements, true, rewrittenErrs
+		return "[" + label + "](" + replacement + ")", true, rewrittenErrs
 	}
 	rawTarget, display, ok := parseStandalonePreviewReferenceWhole(trimmed)
 	if !ok {
-		return rawSpan, nil, false, nil
+		return rawSpan, false, nil
 	}
-	replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+	replacement, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
 		ctx,
 		req,
 		principals,
@@ -274,9 +256,9 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksCodeSpan(
 		baseOffset+trimStart+len(rawTarget),
 	)
 	if !rewrittenChanged {
-		return rawSpan, rewrittenSupplements, false, rewrittenErrs
+		return rawSpan, false, rewrittenErrs
 	}
-	return "[" + display + "](" + replacement + ")", rewrittenSupplements, true, rewrittenErrs
+	return "[" + display + "](" + replacement + ")", true, rewrittenErrs
 }
 
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
@@ -288,16 +270,15 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 	rewrittenTargets map[string]string,
 	text string,
 	baseOffset int,
-) (string, []PreviewSupplement, bool, []string) {
+) (string, bool, []string) {
 	if text == "" {
-		return "", nil, false, nil
+		return "", false, nil
 	}
 
 	var (
-		builder     strings.Builder
-		supplements []PreviewSupplement
-		errs        []string
-		changed     bool
+		builder strings.Builder
+		errs    []string
+		changed bool
 	)
 	last := 0
 	for i := 0; i < len(text); {
@@ -305,7 +286,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 			end, label, rawTarget, ok := parseMarkdownLinkAt(text, i)
 			if ok {
 				builder.WriteString(text[last:i])
-				replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+				replacement, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
 					ctx,
 					req,
 					principals,
@@ -326,9 +307,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 				} else {
 					builder.WriteString(text[i:end])
 				}
-				if len(rewrittenSupplements) > 0 {
-					supplements = append(supplements, rewrittenSupplements...)
-				}
 				if len(rewrittenErrs) > 0 {
 					errs = append(errs, rewrittenErrs...)
 				}
@@ -343,7 +321,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 			continue
 		}
 		builder.WriteString(text[last:i])
-		replacement, rewrittenSupplements, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
+		replacement, rewrittenChanged, rewrittenErrs := p.rewritePreviewReferenceTarget(
 			ctx,
 			req,
 			principals,
@@ -364,9 +342,6 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 		} else {
 			builder.WriteString(text[i:end])
 		}
-		if len(rewrittenSupplements) > 0 {
-			supplements = append(supplements, rewrittenSupplements...)
-		}
 		if len(rewrittenErrs) > 0 {
 			errs = append(errs, rewrittenErrs...)
 		}
@@ -374,7 +349,7 @@ func (p *DriveMarkdownPreviewer) rewriteMarkdownLinksPlain(
 		last = i
 	}
 	builder.WriteString(text[last:])
-	return builder.String(), supplements, changed, errs
+	return builder.String(), changed, errs
 }
 
 func (p *DriveMarkdownPreviewer) rewritePreviewReferenceTarget(
@@ -387,10 +362,10 @@ func (p *DriveMarkdownPreviewer) rewritePreviewReferenceTarget(
 	rawTarget string,
 	targetStart int,
 	targetEnd int,
-) (string, []PreviewSupplement, bool, []string) {
+) (string, bool, []string) {
 	replacement := rawTarget
 	if cached, ok := rewrittenTargets[rawTarget]; ok {
-		return cached, nil, cached != rawTarget, nil
+		return cached, cached != rawTarget, nil
 	}
 	ref := PreviewReference{
 		RawTarget:   rawTarget,
@@ -401,19 +376,15 @@ func (p *DriveMarkdownPreviewer) rewritePreviewReferenceTarget(
 	published, publishedOK, err := p.materializePreviewTarget(ctx, ref, req, scopeKey, principals, runtime)
 	if err != nil {
 		rewrittenTargets[rawTarget] = replacement
-		return replacement, nil, false, []string{err.Error()}
+		return replacement, false, []string{err.Error()}
 	}
-	var supplements []PreviewSupplement
 	if publishedOK && published != nil {
 		if published.Mode == PreviewPublishModeInlineLink && strings.TrimSpace(published.URL) != "" {
 			replacement = published.URL
 		}
-		if len(published.Supplements) > 0 {
-			supplements = append(supplements, published.Supplements...)
-		}
 	}
 	rewrittenTargets[rawTarget] = replacement
-	return replacement, supplements, replacement != rawTarget, nil
+	return replacement, replacement != rawTarget, nil
 }
 
 func previewReferenceLocation(rawTarget string) PreviewLocation {

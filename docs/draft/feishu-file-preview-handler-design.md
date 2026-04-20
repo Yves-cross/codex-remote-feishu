@@ -259,13 +259,7 @@ type PublishResult struct {
 }
 
 type PreviewApplyResult struct {
-    Block        render.Block
-    Supplements  []PreviewSupplement
-}
-
-type PreviewSupplement struct {
-    Kind string // preview_file_action_row
-    Data map[string]any
+    Block render.Block
 }
 ```
 
@@ -298,14 +292,16 @@ type PreviewSupplement struct {
 所以总控层应该返回的不是单纯一个 `render.Block`，而是：
 
 - 改写后的 block
-- 再加一组 supplements
 
-不过 supplements 的使用要收紧：
+当前实现里曾经尝试过 sibling supplement 这类补卡通道，但该链路已经删除。
 
-- 不是每条 final message 都补一张卡片
-- 只有当某些文件无法被改写为可打开链接时，才为这些失败文件生成紧凑动作区
+因此这里更合理的约束应改成：
 
-这样后续 projector / gateway 才有空间把“正文输出”和“失败文件动作区”组合投影出来，同时避免把正常消息都变成卡片流。
+- 预览改写阶段只返回改写后的 block
+- 如果某些文件无法被改写为可打开链接，后续能力应落在单一 final-card 语义里解决
+- 不能再依赖“正文输出 + 额外补一张 preview supplement card”这种 append-only sibling reply 方案
+
+这样后续 projector / gateway 的职责边界会更干净，也能避免把 preview 失败兜底重新做成第四条文本/卡片路径。
 
 ## 6. `.md` 的推荐落地路径
 

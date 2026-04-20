@@ -194,8 +194,12 @@ Feidex 的 SDK 调用很清楚：
 2. 先建立 `finalPreviewTimeout`，默认 90 秒；
 3. 同步调用 `finalBlockPreviewer.RewriteFinalBlock(...)`；
 4. rewrite 结果会直接覆写 `event.Block`；
-5. 同步得到的 supplements 会立刻转成 `previewSupplementOps`；
-6. 然后才走 projector 和 gateway 发送。
+5. 然后才走 projector 和 gateway 发送。
+
+补充说明：
+
+- 此前这里还存在一条 preview supplements sibling-card 通道；
+- 该通道已在后续治理中删除，当前同步热路径只保留 block rewrite，不再额外投影补充卡片。
 
 也就是说，当前实现只有一次“发送前 rewrite”机会：
 
@@ -255,19 +259,19 @@ Feidex 的 SDK 调用很清楚：
 
 因此虽然网关层已经有 `OperationUpdateCard -> message.patch` 能力，**当前 final path 本身并没有把 message id 留下来用于后续 patch**。
 
-### 4.5 supplements 是 append-only sibling reply，不是 final card patch
+### 4.5 历史补卡链路已删除，不再属于当前实现
 
-当前 supplements 的投影路径是：
+此前仓库里曾有一条 preview supplements 通道：
 
-- `internal/app/daemon/app_ui.go` `ProjectPreviewSupplements(...)`
-- `internal/adapter/feishu/projector.go` `ProjectPreviewSupplements(...)`
+- rewrite 结果除了改写 block，还可附带 supplement
+- supplement 会被单独投影成新的 `OperationSendCard`
+- reply anchor 仍然是 `event.SourceMessageID`，不是刚刚发出的 final card message id
 
-注意点：
+这条链路说明过一个历史事实：
 
-- supplements 不是 patch 到 final card；
-- 它们会被单独投影成新的 `OperationSendCard`；
-- reply anchor 仍然是 `event.SourceMessageID`，不是刚刚发出的 final card message id；
-- 这意味着我们现在的补充预览是“同轮新增一张卡”，不是“原 final card 内容增强”。
+- 当时的“补充预览”并不是 final card patch，而是同轮新增 sibling card
+
+但截至当前代码状态，这条通道已经删除，因此它不再构成当前 final path 的能力面，也不应再作为后续设计的默认落点。
 
 ### 4.6 我们现有的 patch 能力主要用于共享过程卡，不用于 final card
 

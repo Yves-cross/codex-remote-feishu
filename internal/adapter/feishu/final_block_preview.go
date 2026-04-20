@@ -27,8 +27,7 @@ type FinalBlockPreviewRequest struct {
 }
 
 type FinalBlockPreviewResult struct {
-	Block       render.Block
-	Supplements []PreviewSupplement
+	Block render.Block
 }
 
 type PreviewLocation struct {
@@ -55,11 +54,6 @@ func (l PreviewLocation) FragmentID() string {
 		return ""
 	}
 	return "L" + previewItoa(l.Line)
-}
-
-type PreviewSupplement struct {
-	Kind string         `json:"kind,omitempty"`
-	Data map[string]any `json:"data,omitempty"`
 }
 
 type PreviewReference struct {
@@ -102,14 +96,12 @@ type PreviewPublishMode string
 
 const (
 	PreviewPublishModeInlineLink PreviewPublishMode = "inline_link"
-	PreviewPublishModeSupplement PreviewPublishMode = "supplement"
 )
 
 type PreviewPublishResult struct {
 	PublisherID string
 	Mode        PreviewPublishMode
 	URL         string
-	Supplements []PreviewSupplement
 }
 
 type PreviewPublishRequest struct {

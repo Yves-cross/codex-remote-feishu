@@ -149,7 +149,6 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 		return nil
 	}
 	log.Printf("ui event: surface=%s chat=%s actor=%s kind=%s", event.SurfaceSessionID, chatID, actorUserID, event.Kind)
-	var previewSupplementOps []feishu.Operation
 	var (
 		previewReq feishu.FinalBlockPreviewRequest
 		previewErr error
@@ -182,10 +181,9 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 		previewCancel()
 		previewErr = err
 		event.Block = &previewResult.Block
-		previewSupplementOps = a.projector.ProjectPreviewSupplements(gatewayID, event.SurfaceSessionID, chatID, event.SourceMessageID, previewResult.Supplements)
 		if err != nil {
 			log.Printf(
-				"final block preview rewrite failed (continuing without preview rewrite or supplements): surface=%s instance=%s thread=%s item=%s err=%v",
+				"final block preview rewrite failed (continuing without preview rewrite): surface=%s instance=%s thread=%s item=%s err=%v",
 				event.SurfaceSessionID,
 				previewResult.Block.InstanceID,
 				previewResult.Block.ThreadID,
@@ -199,7 +197,6 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 		a.populateSnapshotFeishuPermissionGaps(event.Snapshot, event.SurfaceSessionID)
 	}
 	operations := a.projector.Project(chatID, event)
-	operations = append(operations, previewSupplementOps...)
 	for i := range operations {
 		if operations[i].GatewayID == "" {
 			operations[i].GatewayID = gatewayID

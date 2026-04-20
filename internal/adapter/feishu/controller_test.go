@@ -134,13 +134,7 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 		return runtime
 	}
 	controller.newPreviewer = func(_ gatewayRuntime, cfg GatewayAppConfig) gatewayPreviewRuntime {
-		previewer := &fakePreviewer{
-			gatewayID: cfg.GatewayID,
-			supplements: []PreviewSupplement{{
-				Kind: "test",
-				Data: map[string]any{"gateway_id": cfg.GatewayID},
-			}},
-		}
+		previewer := &fakePreviewer{gatewayID: cfg.GatewayID}
 		previewers[cfg.GatewayID] = previewer
 		return previewer
 	}
@@ -177,9 +171,6 @@ func TestMultiGatewayControllerRoutesPreviewByGatewayID(t *testing.T) {
 	}
 	if result.Block.Text != "app-2:hello" {
 		t.Fatalf("unexpected rewritten block: %#v", result.Block)
-	}
-	if len(result.Supplements) != 1 || result.Supplements[0].Data["gateway_id"] != "app-2" {
-		t.Fatalf("unexpected preview supplements: %#v", result.Supplements)
 	}
 	if previewers["app-1"].calls != 0 || previewers["app-2"].calls != 1 {
 		t.Fatalf("unexpected previewer calls: app-1=%d app-2=%d", previewers["app-1"].calls, previewers["app-2"].calls)
@@ -439,7 +430,6 @@ func (f *fakeGatewayRuntime) emitState(state GatewayState, err error) {
 type fakePreviewer struct {
 	gatewayID          string
 	calls              int
-	supplements        []PreviewSupplement
 	maintenanceStarted chan struct{}
 	maintenanceStopped chan struct{}
 }
@@ -448,10 +438,7 @@ func (f *fakePreviewer) RewriteFinalBlock(_ context.Context, req FinalBlockPrevi
 	f.calls++
 	block := req.Block
 	block.Text = f.gatewayID + ":" + block.Text
-	return FinalBlockPreviewResult{
-		Block:       block,
-		Supplements: append([]PreviewSupplement(nil), f.supplements...),
-	}, nil
+	return FinalBlockPreviewResult{Block: block}, nil
 }
 
 func (f *fakePreviewer) SetWebPreviewPublisher(WebPreviewPublisher) {}
