@@ -98,9 +98,15 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	if got := markdownContent(ops[0].CardElements[1]); !strings.Contains(got, "填写进度") || !strings.Contains(got, "0/2") {
 		t.Fatalf("expected mcp form progress markdown, got %#v", ops[0].CardElements[1])
 	}
-	optionRow := cardElementButtons(t, ops[0].CardElements[3])
+	if got := markdownContent(ops[0].CardElements[2]); !strings.Contains(got, "问题 1") {
+		t.Fatalf("expected first mcp question heading, got %#v", ops[0].CardElements[2])
+	}
+	if got := plainTextContent(ops[0].CardElements[3]); !containsAll(got, "标题：模式", "说明：", "选择执行模式（必填）", "可选项：", "- auto") {
+		t.Fatalf("expected first mcp question body to stay plain_text, got %#v", ops[0].CardElements[3])
+	}
+	optionRow := cardElementButtons(t, ops[0].CardElements[4])
 	if len(optionRow) != 2 {
-		t.Fatalf("expected direct response buttons for first field, got %#v", ops[0].CardElements[3])
+		t.Fatalf("expected direct response buttons for first field, got %#v", ops[0].CardElements[4])
 	}
 	optionValue := cardButtonPayload(t, optionRow[0])
 	requestAnswers, _ := optionValue["request_answers"].(map[string]any)
@@ -108,9 +114,9 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	if optionValue["kind"] != "request_respond" || len(modeAnswers) != 1 || modeAnswers[0] != "auto" {
 		t.Fatalf("unexpected direct response payload: %#v", optionValue)
 	}
-	form, _ := ops[0].CardElements[5]["elements"].([]map[string]any)
+	form, _ := ops[0].CardElements[7]["elements"].([]map[string]any)
 	if len(form) != 2 {
-		t.Fatalf("expected one mcp form input and one submit button, got %#v", ops[0].CardElements[5])
+		t.Fatalf("expected one mcp form input and one submit button, got %#v", ops[0].CardElements[7])
 	}
 	if label := cardButtonLabel(t, form[1]); label != "提交并继续" {
 		t.Fatalf("unexpected mcp form submit label: %#v", form[1])
@@ -119,11 +125,11 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	if submitValue["request_option_id"] != "submit" || submitValue["request_revision"] != 5 {
 		t.Fatalf("unexpected mcp form submit payload: %#v", submitValue)
 	}
-	terminalRow := cardElementButtons(t, ops[0].CardElements[6])
+	terminalRow := cardElementButtons(t, ops[0].CardElements[8])
 	if len(terminalRow) != 2 {
-		t.Fatalf("expected decline/cancel row, got %#v", ops[0].CardElements[6])
+		t.Fatalf("expected decline/cancel row, got %#v", ops[0].CardElements[8])
 	}
 	if got := cardButtonLabel(t, terminalRow[0]); got != "拒绝" {
-		t.Fatalf("unexpected terminal action row: %#v", ops[0].CardElements[6])
+		t.Fatalf("unexpected terminal action row: %#v", ops[0].CardElements[8])
 	}
 }

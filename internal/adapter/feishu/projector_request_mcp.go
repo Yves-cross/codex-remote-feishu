@@ -39,7 +39,7 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 	if len(prompt.Questions) == 0 {
 		return mcpElicitationChoiceElements(prompt, daemonLifecycleID)
 	}
-	elements := make([]map[string]any, 0, len(prompt.Questions)*3+4)
+	elements := make([]map[string]any, 0, len(prompt.Questions)*4+4)
 	if progress := mcpElicitationProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -47,8 +47,8 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 		})
 	}
 	for index, question := range prompt.Questions {
-		if element := requestPromptQuestionElement(index, question); len(element) != 0 {
-			elements = append(elements, element)
+		if section, ok := requestPromptQuestionSection(index, question); ok {
+			elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
 		}
 		if question.DirectResponse && len(question.Options) != 0 {
 			actions := make([]map[string]any, 0, len(question.Options))

@@ -61,9 +61,13 @@ func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainText
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	question := plainTextContent(ops[0].CardElements[1])
+	if got := markdownContent(ops[0].CardElements[1]); !strings.Contains(got, "问题 1") || strings.Contains(got, "# 标题") {
+		t.Fatalf("expected question heading markdown to stay fixed-copy only, got %#v", ops[0].CardElements[1])
+	}
+	question := plainTextContent(ops[0].CardElements[2])
 	if !containsAll(question,
-		"问题 1：# 标题",
+		"标题：# 标题",
+		"说明：",
 		"请原样保留：",
 		"- 列表项",
 		"[链接](local.md)",
@@ -73,13 +77,13 @@ func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainText
 	) {
 		t.Fatalf("expected question block to preserve raw dynamic text inside plain_text, got %q", question)
 	}
-	if markdownContent(ops[0].CardElements[1]) != "" {
-		t.Fatalf("expected question block to stop using markdown element, got %#v", ops[0].CardElements[1])
+	if markdownContent(ops[0].CardElements[2]) != "" {
+		t.Fatalf("expected question body to stay plain_text, got %#v", ops[0].CardElements[2])
 	}
 	rendered := renderedV2BodyElements(t, ops[0])
 	foundQuestion := false
 	for _, element := range rendered {
-		if strings.Contains(plainTextContent(element), "问题 1：# 标题") {
+		if strings.Contains(plainTextContent(element), "标题：# 标题") {
 			foundQuestion = true
 			break
 		}

@@ -74,7 +74,7 @@ func requestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID s
 }
 
 func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
-	elements := make([]map[string]any, 0, len(prompt.Questions)*3+2)
+	elements := make([]map[string]any, 0, len(prompt.Questions)*4+2)
 	if progress := requestPromptProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -93,8 +93,8 @@ func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLife
 		}
 	}
 	for index, question := range prompt.Questions {
-		if element := requestPromptQuestionElement(index, question); len(element) != 0 {
-			elements = append(elements, element)
+		if section, ok := requestPromptQuestionSection(index, question); ok {
+			elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
 		}
 		if question.DirectResponse && len(question.Options) != 0 {
 			actions := make([]map[string]any, 0, len(question.Options))
@@ -198,13 +198,11 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 	return false
 }
 
-func requestPromptQuestionElement(index int, question control.RequestPromptQuestion) map[string]any {
-	lines := make([]string, 0, 8)
+func requestPromptQuestionSection(index int, question control.RequestPromptQuestion) (control.FeishuCardTextSection, bool) {
+	lines := make([]string, 0, 10)
 	title := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question))
 	if title != "" {
-		lines = append(lines, fmt.Sprintf("问题 %d：%s", index+1, title))
-	} else {
-		lines = append(lines, fmt.Sprintf("问题 %d", index+1))
+		lines = append(lines, "标题："+title)
 	}
 	if question.Answered {
 		lines = append(lines, "状态：已回答")
@@ -212,6 +210,8 @@ func requestPromptQuestionElement(index int, question control.RequestPromptQuest
 		lines = append(lines, "状态：待回答")
 	}
 	if question.Header != "" && strings.TrimSpace(question.Question) != "" && strings.TrimSpace(question.Question) != strings.TrimSpace(question.Header) {
+		lines = append(lines, "")
+		lines = append(lines, "说明：")
 		lines = append(lines, strings.TrimSpace(question.Question))
 	}
 	if value := strings.TrimSpace(question.DefaultValue); value != "" {
@@ -236,7 +236,14 @@ func requestPromptQuestionElement(index int, question control.RequestPromptQuest
 		lines = append(lines, "")
 		lines = append(lines, "该答案按私密输入处理，不会在飞书卡片正文中回显。")
 	}
-	return cardPlainTextBlockElement(strings.Join(lines, "\n"))
+	section := control.FeishuCardTextSection{
+		Label: fmt.Sprintf("问题 %d", index+1),
+		Lines: lines,
+	}.Normalized()
+	if section.Label == "" && len(section.Lines) == 0 {
+		return control.FeishuCardTextSection{}, false
+	}
+	return section, true
 }
 
 func requestPromptProgressMarkdown(prompt control.FeishuDirectRequestPrompt) string {
