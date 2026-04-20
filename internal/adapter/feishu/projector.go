@@ -234,7 +234,6 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if title == "" {
 			title = "需要确认"
 		}
-		body := requestPromptBody(*event.FeishuDirectRequestPrompt)
 		elements := requestPromptElements(*event.FeishuDirectRequestPrompt, event.DaemonLifecycleID)
 		return []Operation{{
 			Kind:             OperationSendCard,
@@ -242,11 +241,11 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
-			CardBody:         body,
+			CardBody:         "",
 			CardThemeKey:     cardThemeApproval,
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument(title, body, cardThemeApproval, elements),
+			card:             rawCardDocument(title, "", cardThemeApproval, elements),
 		}}
 	case control.UIEventTimelineText:
 		if event.TimelineText == nil {

@@ -1314,9 +1314,11 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 			RequestID:   "req-1",
 			RequestType: "approval",
 			Title:       "需要确认",
-			Body:        "本地 Codex 想执行：\n\n```text\ngit push\n```",
 			ThreadID:    "thread-1",
 			ThreadTitle: "droid · 修复登录流程",
+			Sections: []control.FeishuCardTextSection{{
+				Lines: []string{"本地 Codex 想执行：", "```text", "git push", "```"},
+			}},
 			Options: []control.RequestPromptOption{
 				{OptionID: "accept", Label: "允许执行", Style: "primary"},
 				{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
@@ -1337,15 +1339,21 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	if ops[0].CardThemeKey != cardThemeApproval {
 		t.Fatalf("unexpected request prompt theme: %#v", ops[0])
 	}
-	if !containsAll(ops[0].CardBody, "当前会话：droid · 修复登录流程", "git push") {
-		t.Fatalf("unexpected card body: %#v", ops[0])
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected request prompt card body to stay empty, got %#v", ops[0])
 	}
-	if len(ops[0].CardElements) != 2 {
-		t.Fatalf("expected action row and hint, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) != 4 {
+		t.Fatalf("expected sections + action row + hint, got %#v", ops[0].CardElements)
 	}
-	actionRow := cardElementButtons(t, ops[0].CardElements[0])
+	if got := plainTextContent(ops[0].CardElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
+		t.Fatalf("unexpected thread section: %#v", ops[0].CardElements[0])
+	}
+	if got := plainTextContent(ops[0].CardElements[1]); !containsAll(got, "本地 Codex 想执行：", "git push", "```text") {
+		t.Fatalf("unexpected request section: %#v", ops[0].CardElements[1])
+	}
+	actionRow := cardElementButtons(t, ops[0].CardElements[2])
 	if len(actionRow) != 4 {
-		t.Fatalf("expected 4 request option buttons, got %#v", ops[0].CardElements[0])
+		t.Fatalf("expected 4 request option buttons, got %#v", ops[0].CardElements[2])
 	}
 	acceptValue := cardButtonPayload(t, actionRow[0])
 	sessionValue := cardButtonPayload(t, actionRow[1])
@@ -1368,9 +1376,15 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 	}
 	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
-	renderedButtons := renderedColumnButtons(t, renderedElements[1])
+	if got := plainTextContent(renderedElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
+		t.Fatalf("unexpected rendered thread section: %#v", renderedElements[0])
+	}
+	if got := plainTextContent(renderedElements[1]); !containsAll(got, "本地 Codex 想执行：", "git push", "```text") {
+		t.Fatalf("unexpected rendered request section: %#v", renderedElements[1])
+	}
+	renderedButtons := renderedColumnButtons(t, renderedElements[2])
 	if len(renderedButtons) != 4 {
-		t.Fatalf("expected rendered V2 request prompt to keep 4 buttons, got %#v", renderedElements[1])
+		t.Fatalf("expected rendered V2 request prompt to keep 4 buttons, got %#v", renderedElements[2])
 	}
 	renderedAcceptValue := renderedButtonCallbackValue(t, renderedButtons[0])
 	renderedSessionValue := renderedButtonCallbackValue(t, renderedButtons[1])
@@ -1416,8 +1430,10 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 			RequestType:     "request_user_input",
 			RequestRevision: 3,
 			Title:           "需要补充输入",
-			Body:            "本地 Codex 正在等待你补充参数或说明。",
 			ThreadTitle:     "droid · 修复登录流程",
+			Sections: []control.FeishuCardTextSection{{
+				Lines: []string{"本地 Codex 正在等待你补充参数或说明。"},
+			}},
 			Questions: []control.RequestPromptQuestion{
 				{
 					ID:             "model",
@@ -1443,15 +1459,24 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if len(ops[0].CardElements) < 6 {
-		t.Fatalf("expected progress + question elements and form, got %#v", ops[0].CardElements)
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected request_user_input card body to stay empty, got %#v", ops[0])
 	}
-	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
-		t.Fatalf("expected progress markdown at top, got %#v", ops[0].CardElements[0])
+	if len(ops[0].CardElements) < 8 {
+		t.Fatalf("expected sections + progress + question elements and form, got %#v", ops[0].CardElements)
 	}
-	actionRow := cardElementButtons(t, ops[0].CardElements[2])
+	if got := plainTextContent(ops[0].CardElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
+		t.Fatalf("expected thread section at top, got %#v", ops[0].CardElements[0])
+	}
+	if got := plainTextContent(ops[0].CardElements[1]); !containsAll(got, "本地 Codex 正在等待你补充参数或说明。") {
+		t.Fatalf("expected request section after thread section, got %#v", ops[0].CardElements[1])
+	}
+	if got := markdownContent(ops[0].CardElements[2]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
+		t.Fatalf("expected progress markdown after sections, got %#v", ops[0].CardElements[2])
+	}
+	actionRow := cardElementButtons(t, ops[0].CardElements[4])
 	if len(actionRow) != 2 {
-		t.Fatalf("expected direct response buttons for first question, got %#v", ops[0].CardElements[2])
+		t.Fatalf("expected direct response buttons for first question, got %#v", ops[0].CardElements[4])
 	}
 	value := cardButtonPayload(t, actionRow[0])
 	requestAnswers, _ := value["request_answers"].(map[string]any)
@@ -1462,9 +1487,9 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if value["request_revision"] != 3 {
 		t.Fatalf("expected request option to carry request revision, got %#v", value)
 	}
-	form, _ := ops[0].CardElements[4]["elements"].([]map[string]any)
+	form, _ := ops[0].CardElements[6]["elements"].([]map[string]any)
 	if len(form) != 2 {
-		t.Fatalf("expected one input and one submit button, got %#v", ops[0].CardElements[4])
+		t.Fatalf("expected one input and one submit button, got %#v", ops[0].CardElements[6])
 	}
 	submitValue := cardButtonPayload(t, form[1])
 	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" || submitValue["request_option_id"] != "submit" {
@@ -1478,12 +1503,18 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	}
 	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
 	renderedElements := renderedV2BodyElements(t, ops[0])
-	if got := markdownContent(renderedElements[1]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
-		t.Fatalf("expected rendered progress markdown, got %#v", renderedElements[1])
+	if got := plainTextContent(renderedElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
+		t.Fatalf("expected rendered thread section at top, got %#v", renderedElements[0])
 	}
-	renderedButtons := renderedColumnButtons(t, renderedElements[3])
+	if got := plainTextContent(renderedElements[1]); !containsAll(got, "本地 Codex 正在等待你补充参数或说明。") {
+		t.Fatalf("expected rendered request section after thread section, got %#v", renderedElements[1])
+	}
+	if got := markdownContent(renderedElements[2]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
+		t.Fatalf("expected rendered progress markdown, got %#v", renderedElements[2])
+	}
+	renderedButtons := renderedColumnButtons(t, renderedElements[4])
 	if len(renderedButtons) != 2 {
-		t.Fatalf("expected rendered direct-response button row, got %#v", renderedElements[3])
+		t.Fatalf("expected rendered direct-response button row, got %#v", renderedElements[4])
 	}
 	renderedValue := renderedButtonCallbackValue(t, renderedButtons[0])
 	renderedAnswers, _ := renderedValue["request_answers"].(map[string]any)
@@ -1494,7 +1525,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if renderedValue["request_revision"] != 3 {
 		t.Fatalf("expected rendered direct-response payload to carry request revision, got %#v", renderedValue)
 	}
-	renderedForm := renderedElements[5]
+	renderedForm := renderedElements[6]
 	if renderedForm["tag"] != "form" {
 		t.Fatalf("expected rendered V2 request form, got %#v", renderedForm)
 	}

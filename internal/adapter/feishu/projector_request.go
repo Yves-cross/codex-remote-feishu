@@ -13,46 +13,35 @@ const (
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
 )
 
-func requestPromptBody(prompt control.FeishuDirectRequestPrompt) string {
-	lines := []string{}
-	if prompt.ThreadTitle != "" {
-		lines = append(lines, "当前会话："+prompt.ThreadTitle)
+func requestPromptSections(prompt control.FeishuDirectRequestPrompt) []control.FeishuCardTextSection {
+	sections := make([]control.FeishuCardTextSection, 0, len(prompt.Sections)+1)
+	if threadTitle := strings.TrimSpace(prompt.ThreadTitle); threadTitle != "" {
+		sections = append(sections, control.FeishuCardTextSection{
+			Lines: []string{"当前会话：" + threadTitle},
+		})
 	}
-	body := strings.TrimSpace(prompt.Body)
-	if body == "" {
-		switch normalizeRequestPromptType(prompt.RequestType) {
-		case "request_user_input":
-			body = "本地 Codex 正在等待你补充参数或说明。"
-		case "permissions_request_approval":
-			body = "本地 Codex 正在等待授予附加权限。"
-		case "mcp_server_elicitation":
-			body = "本地 Codex 正在等待 MCP server 返回更多信息。"
-		default:
-			body = "本地 Codex 正在等待你的确认。"
+	for _, section := range prompt.Sections {
+		if normalized := section.Normalized(); normalized.Label != "" || len(normalized.Lines) != 0 {
+			sections = append(sections, normalized)
 		}
 	}
-	if body != "" {
-		if len(lines) > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, body)
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return sections
 }
 
 func requestPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+	elements := appendCardTextSections(nil, requestPromptSections(prompt))
 	switch normalizeRequestPromptType(prompt.RequestType) {
 	case "request_user_input":
 		if len(prompt.Questions) != 0 {
-			return requestUserInputPromptElements(prompt, daemonLifecycleID)
+			return append(elements, requestUserInputPromptElements(prompt, daemonLifecycleID)...)
 		}
 	case "permissions_request_approval":
-		return permissionsRequestPromptElements(prompt, daemonLifecycleID)
+		return append(elements, permissionsRequestPromptElements(prompt, daemonLifecycleID)...)
 	case "mcp_server_elicitation":
-		return mcpElicitationPromptElements(prompt, daemonLifecycleID)
+		return append(elements, mcpElicitationPromptElements(prompt, daemonLifecycleID)...)
 	}
 	if normalizeRequestPromptType(prompt.RequestType) == "request_user_input" && len(prompt.Questions) != 0 {
-		return requestUserInputPromptElements(prompt, daemonLifecycleID)
+		return append(elements, requestUserInputPromptElements(prompt, daemonLifecycleID)...)
 	}
 	options := prompt.Options
 	if len(options) == 0 {
@@ -74,7 +63,6 @@ func requestPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifec
 	if requestPromptContainsOption(options, "captureFeedback") {
 		hint = "如果想拒绝并补充处理意见，请点击“告诉 Codex 怎么改”后再发送下一条文字。"
 	}
-	elements := make([]map[string]any, 0, 2)
 	if group := cardButtonGroupElement(actions); len(group) != 0 {
 		elements = append(elements, group)
 	}

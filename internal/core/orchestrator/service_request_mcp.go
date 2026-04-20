@@ -14,20 +14,20 @@ import (
 
 const mcpElicitationJSONFieldID = "__mcp_elicitation_json"
 
-func buildPermissionsRequestBody(prompt *agentproto.RequestPrompt, metadata map[string]any) string {
+func buildPermissionsRequestSections(prompt *agentproto.RequestPrompt, metadata map[string]any) []state.RequestPromptTextSectionRecord {
 	body := strings.TrimSpace(firstNonEmpty(
 		promptBody(prompt),
 		metadataString(metadata, "body"),
 		metadataString(metadata, "reason"),
 		"本地 Codex 正在等待授予附加权限。",
 	))
-	lines := []string{body}
+	sections := appendRequestPromptSection(nil, "", body)
 	if reason := strings.TrimSpace(firstNonEmpty(metadataString(metadata, "reason"), promptPermissionsReason(prompt))); reason != "" && !strings.Contains(body, reason) {
-		lines = append(lines, "", "原因："+reason)
+		sections = appendRequestPromptSection(sections, "", "原因："+reason)
 	}
 	permissions := promptPermissionsList(prompt, metadata)
 	if len(permissions) != 0 {
-		lines = append(lines, "", "申请权限：")
+		lines := make([]string, 0, len(permissions))
 		for _, permission := range permissions {
 			name := firstNonEmpty(
 				lookupStringFromAny(permission["title"]),
@@ -39,12 +39,13 @@ func buildPermissionsRequestBody(prompt *agentproto.RequestPrompt, metadata map[
 				name += " (`" + code + "`)"
 			}
 			if name == "" {
-				name = "`(unknown)`"
+				name = "(unknown)"
 			}
 			lines = append(lines, "- "+name)
 		}
+		sections = appendRequestPromptSection(sections, "申请权限", lines...)
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	return sections
 }
 
 func buildPermissionsRequestOptions() []state.RequestPromptOptionRecord {
@@ -78,29 +79,31 @@ func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action 
 	}
 }
 
-func buildMCPElicitationBody(prompt *agentproto.RequestPrompt, metadata map[string]any) string {
+func buildMCPElicitationSections(prompt *agentproto.RequestPrompt, metadata map[string]any) []state.RequestPromptTextSectionRecord {
 	mode := mcpElicitationMode(prompt, metadata)
+	sections := []state.RequestPromptTextSectionRecord(nil)
 	lines := []string{}
 	if body := strings.TrimSpace(firstNonEmpty(promptBody(prompt), metadataString(metadata, "body"))); body != "" {
 		lines = append(lines, body)
 	}
 	if serverName := strings.TrimSpace(firstNonEmpty(promptMCPElicitationServerName(prompt), metadataString(metadata, "serverName"))); serverName != "" {
-		lines = append(lines, "", "MCP 服务：`"+serverName+"`")
+		lines = append(lines, "MCP 服务："+serverName)
 	}
 	switch mode {
 	case "url":
 		url := strings.TrimSpace(firstNonEmpty(promptMCPElicitationURL(prompt), metadataString(metadata, "url")))
 		if url != "" {
-			lines = append(lines, "", "授权页面："+url)
+			lines = append(lines, "授权页面："+url)
 			lines = append(lines, "完成外部授权后，再点击“继续”。")
 		}
 	case "form":
-		lines = append(lines, "", "请填写需要返回给 MCP server 的内容，然后提交继续。")
+		lines = append(lines, "请填写需要返回给 MCP server 的内容，然后提交继续。")
 	}
 	if len(lines) == 0 {
-		return "本地 Codex 正在等待 MCP server 返回更多信息。"
+		lines = append(lines, "本地 Codex 正在等待 MCP server 返回更多信息。")
 	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
+	sections = appendRequestPromptSection(sections, "", lines...)
+	return sections
 }
 
 func buildMCPElicitationQuestions(prompt *agentproto.RequestPrompt, metadata map[string]any) []state.RequestPromptQuestionRecord {

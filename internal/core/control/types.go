@@ -374,9 +374,9 @@ type FeishuDirectRequestPrompt struct {
 	RequestType                        string
 	RequestRevision                    int
 	Title                              string
-	Body                               string
 	ThreadID                           string
 	ThreadTitle                        string
+	Sections                           []FeishuCardTextSection
 	Options                            []RequestPromptOption
 	Questions                          []RequestPromptQuestion
 	SubmitWithUnansweredConfirmPending bool

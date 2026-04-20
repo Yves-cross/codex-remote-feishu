@@ -1,6 +1,7 @@
 package state
 
 import (
+	"strings"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
@@ -367,6 +368,26 @@ type RequestPromptQuestionRecord struct {
 	DirectResponse bool
 }
 
+type RequestPromptTextSectionRecord struct {
+	Label string
+	Lines []string
+}
+
+func (s RequestPromptTextSectionRecord) Normalized() RequestPromptTextSectionRecord {
+	lines := make([]string, 0, len(s.Lines))
+	for _, line := range s.Lines {
+		for _, part := range strings.Split(line, "\n") {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				lines = append(lines, trimmed)
+			}
+		}
+	}
+	return RequestPromptTextSectionRecord{
+		Label: strings.TrimSpace(s.Label),
+		Lines: lines,
+	}
+}
+
 type RequestPromptRecord struct {
 	RequestID                string
 	RequestType              string
@@ -377,7 +398,7 @@ type RequestPromptRecord struct {
 	SourceMessageID          string
 	ItemID                   string
 	Title                    string
-	Body                     string
+	Sections                 []RequestPromptTextSectionRecord
 	Options                  []RequestPromptOptionRecord
 	Questions                []RequestPromptQuestionRecord
 	LocalKind                string

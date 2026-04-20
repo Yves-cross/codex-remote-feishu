@@ -570,12 +570,18 @@ func TestApprovalRequestPromptUsesAttachedSurfaceForLocalTurn(t *testing.T) {
 	if prompt.RequestID != "req-1" || prompt.ThreadTitle != "droid · 修复登录流程" {
 		t.Fatalf("unexpected request prompt: %#v", prompt)
 	}
+	if len(prompt.Sections) != 1 || !containsPromptSectionLine(prompt.Sections[0], "本地 Codex 想执行 `git push`。") {
+		t.Fatalf("expected approval body to be carried as sections, got %#v", prompt.Sections)
+	}
 	if len(prompt.Options) != 3 || prompt.Options[0].OptionID != "accept" || prompt.Options[1].OptionID != "decline" || prompt.Options[2].OptionID != "captureFeedback" {
 		t.Fatalf("unexpected request options: %#v", prompt.Options)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-1"]
 	if record == nil || record.RequestType != "approval" {
 		t.Fatalf("expected pending request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+	if len(record.Sections) != 1 || !containsStatePromptSectionLine(record.Sections[0], "本地 Codex 想执行 `git push`。") {
+		t.Fatalf("expected approval sections in state, got %#v", record)
 	}
 	if len(record.Options) != 3 {
 		t.Fatalf("expected request options in state, got %#v", record)
@@ -642,9 +648,15 @@ func TestUnsupportedMCPRequestStoresPendingStateWithoutRenderingApprovalCard(t *
 	if events[0].FeishuDirectRequestPrompt.RequestType != "permissions_request_approval" {
 		t.Fatalf("unexpected request prompt payload: %#v", events[0].FeishuDirectRequestPrompt)
 	}
+	if len(events[0].FeishuDirectRequestPrompt.Sections) == 0 {
+		t.Fatalf("expected permissions prompt to expose structured sections, got %#v", events[0].FeishuDirectRequestPrompt)
+	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-mcp-1"]
 	if record == nil || record.RequestType != "permissions_request_approval" {
 		t.Fatalf("expected pending permissions request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+	if len(record.Sections) == 0 {
+		t.Fatalf("expected permissions prompt sections in state, got %#v", record)
 	}
 	if record.Prompt == nil || record.Prompt.Type != agentproto.RequestTypePermissionsRequestApproval {
 		t.Fatalf("expected typed request prompt to be retained in state, got %#v", record)
@@ -818,12 +830,18 @@ func TestRequestUserInputPromptUsesQuestionsAndStoresState(t *testing.T) {
 	if prompt.RequestType != "request_user_input" || len(prompt.Questions) != 2 {
 		t.Fatalf("unexpected request prompt: %#v", prompt)
 	}
+	if len(prompt.Sections) != 1 || !containsPromptSectionLine(prompt.Sections[0], "本地 Codex 正在等待你补充参数或说明。") {
+		t.Fatalf("expected request_user_input prompt to expose structured sections, got %#v", prompt.Sections)
+	}
 	if !prompt.Questions[0].DirectResponse || !prompt.Questions[1].Secret {
 		t.Fatalf("unexpected request prompt questions: %#v", prompt.Questions)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if record == nil || record.ItemID != "item-1" || len(record.Questions) != 2 {
 		t.Fatalf("expected pending request state for request_user_input, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
+	}
+	if len(record.Sections) != 1 || !containsStatePromptSectionLine(record.Sections[0], "本地 Codex 正在等待你补充参数或说明。") {
+		t.Fatalf("expected request_user_input sections in state, got %#v", record)
 	}
 }
 

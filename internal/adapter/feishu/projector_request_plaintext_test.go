@@ -1,10 +1,46 @@
 package feishu
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
+
+func TestProjectRequestPromptKeepsDynamicSectionsOutOfMarkdown(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventFeishuDirectRequestPrompt,
+		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
+			RequestID:   "req-unsafe",
+			RequestType: "approval",
+			ThreadTitle: "# 修复 `登录`",
+			Sections: []control.FeishuCardTextSection{{
+				Lines: []string{"请原样保留：", "- 列表项", "[链接](local.md)", "```go", "fmt.Println(1)", "```"},
+			}},
+			Options: []control.RequestPromptOption{
+				{OptionID: "accept", Label: "允许执行", Style: "primary"},
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].CardBody != "" {
+		t.Fatalf("expected request prompt body to stay empty, got %#v", ops[0])
+	}
+	thread := plainTextContent(ops[0].CardElements[0])
+	if !containsAll(thread, "当前会话：# 修复 `登录`") {
+		t.Fatalf("expected thread title to stay in plain_text, got %q", thread)
+	}
+	body := plainTextContent(ops[0].CardElements[1])
+	if !containsAll(body, "请原样保留：", "- 列表项", "[链接](local.md)", "```go", "fmt.Println(1)") {
+		t.Fatalf("expected request body to stay in plain_text, got %q", body)
+	}
+	if markdownContent(ops[0].CardElements[0]) != "" || markdownContent(ops[0].CardElements[1]) != "" {
+		t.Fatalf("expected request sections to avoid markdown elements, got %#v", ops[0].CardElements[:2])
+	}
+}
 
 func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainTextQuestionBlock(t *testing.T) {
 	projector := NewProjector()
@@ -47,7 +83,14 @@ func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainText
 		t.Fatalf("expected question block to stop using markdown element, got %#v", ops[0].CardElements[1])
 	}
 	rendered := renderedV2BodyElements(t, ops[0])
-	if plainTextContent(rendered[2]) == "" {
-		t.Fatalf("expected rendered V2 card to keep plain_text question block, got %#v", rendered[2])
+	foundQuestion := false
+	for _, element := range rendered {
+		if strings.Contains(plainTextContent(element), "问题 1：# 标题") {
+			foundQuestion = true
+			break
+		}
+	}
+	if !foundQuestion {
+		t.Fatalf("expected rendered V2 card to keep plain_text question block, got %#v", rendered)
 	}
 }

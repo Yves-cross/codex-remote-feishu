@@ -103,25 +103,21 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 	}
 	threadTitle := displayThreadTitle(inst, thread, event.ThreadID)
 	title := firstNonEmpty(metadataString(event.Metadata, "title"), "需要处理请求")
-	body := strings.TrimSpace(metadataString(event.Metadata, "body"))
 	options := []state.RequestPromptOptionRecord(nil)
 	questions := []state.RequestPromptQuestionRecord(nil)
+	sections := []state.RequestPromptTextSectionRecord(nil)
 	switch requestType {
 	case "approval":
 		if title == "需要处理请求" {
 			title = "需要确认"
 		}
-		if body == "" {
-			body = "本地 Codex 正在等待你的确认。"
-		}
+		sections = buildApprovalRequestSections(metadataString(event.Metadata, "body"))
 		options = buildApprovalRequestOptions(event.Metadata)
 	case "request_user_input":
 		if title == "需要处理请求" {
 			title = "需要补充输入"
 		}
-		if body == "" {
-			body = "本地 Codex 正在等待你补充参数或说明。"
-		}
+		sections = buildRequestUserInputSections(metadataString(event.Metadata, "body"))
 		questions = metadataRequestQuestions(event.Metadata)
 		if len(questions) == 0 {
 			return notice(surface, "request_unsupported", "收到缺少问题定义的 request_user_input 请求，当前无法在飞书端处理。")
@@ -130,19 +126,17 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		if title == "需要处理请求" {
 			title = "需要授予权限"
 		}
-		body = buildPermissionsRequestBody(event.RequestPrompt, event.Metadata)
+		sections = buildPermissionsRequestSections(event.RequestPrompt, event.Metadata)
 		options = buildPermissionsRequestOptions()
 	case "mcp_server_elicitation":
 		if title == "需要处理请求" {
 			title = "需要处理 MCP 请求"
 		}
-		body = buildMCPElicitationBody(event.RequestPrompt, event.Metadata)
+		sections = buildMCPElicitationSections(event.RequestPrompt, event.Metadata)
 		questions = buildMCPElicitationQuestions(event.RequestPrompt, event.Metadata)
 		options = buildMCPElicitationOptions(event.RequestPrompt, event.Metadata, questions)
 	default:
-		if body == "" {
-			body = "本地 Codex 正在等待处理新的交互请求。"
-		}
+		sections = buildGenericRequestSections(metadataString(event.Metadata, "body"))
 	}
 	record := &state.RequestPromptRecord{
 		RequestID:   event.RequestID,
@@ -157,7 +151,7 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		}(),
 		ItemID:       strings.TrimSpace(metadataString(event.Metadata, "itemId")),
 		Title:        title,
-		Body:         body,
+		Sections:     sections,
 		Options:      options,
 		Questions:    questions,
 		CardRevision: 1,
@@ -489,9 +483,9 @@ func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record
 		RequestType:                        record.RequestType,
 		RequestRevision:                    record.CardRevision,
 		Title:                              record.Title,
-		Body:                               record.Body,
 		ThreadID:                           record.ThreadID,
 		ThreadTitle:                        threadTitle,
+		Sections:                           requestPromptSectionsToControl(record.Sections),
 		Options:                            requestPromptOptionsToControl(record.Options),
 		Questions:                          requestPromptQuestionsToControl(record.Questions, record.DraftAnswers),
 		SubmitWithUnansweredConfirmPending: record.SubmitWithUnansweredConfirmPending,
