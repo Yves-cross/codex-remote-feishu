@@ -18,8 +18,8 @@ func TestCronRepairTakesOverBindingWhenOwnerUnavailable(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-2", "app-2")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -48,7 +48,7 @@ func TestCronRepairTakesOverBindingWhenOwnerUnavailable(t *testing.T) {
 		LastReloadAt:      time.Now().UTC().Add(-time.Minute),
 		LastReloadSummary: "旧 owner 下的 stale jobs",
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		if gatewayID != "gateway-2" {
 			return nil, fmt.Errorf("unexpected gateway %q", gatewayID)
 		}
@@ -66,16 +66,16 @@ func TestCronRepairTakesOverBindingWhenOwnerUnavailable(t *testing.T) {
 	if !strings.Contains(summary, "接管 Cron 配置") {
 		t.Fatalf("summary = %q, want takeover wording", summary)
 	}
-	if app.cronState.OwnerGatewayID != "gateway-2" || app.cronState.OwnerAppID != "app-2" {
-		t.Fatalf("owner state = %#v, want gateway-2/app-2", app.cronState)
+	if app.cronRuntime.state.OwnerGatewayID != "gateway-2" || app.cronRuntime.state.OwnerAppID != "app-2" {
+		t.Fatalf("owner state = %#v, want gateway-2/app-2", app.cronRuntime.state)
 	}
-	if app.cronState.Bitable == nil || app.cronState.Bitable.AppToken == "" || app.cronState.Bitable.AppToken == "app-old" {
-		t.Fatalf("binding after takeover = %#v, want fresh binding", app.cronState.Bitable)
+	if app.cronRuntime.state.Bitable == nil || app.cronRuntime.state.Bitable.AppToken == "" || app.cronRuntime.state.Bitable.AppToken == "app-old" {
+		t.Fatalf("binding after takeover = %#v, want fresh binding", app.cronRuntime.state.Bitable)
 	}
-	if len(app.cronState.Jobs) != 0 {
-		t.Fatalf("jobs after takeover = %#v, want cleared jobs", app.cronState.Jobs)
+	if len(app.cronRuntime.state.Jobs) != 0 {
+		t.Fatalf("jobs after takeover = %#v, want cleared jobs", app.cronRuntime.state.Jobs)
 	}
-	if !app.cronState.LastReloadAt.IsZero() || app.cronState.LastReloadSummary != "" {
-		t.Fatalf("reload state after takeover = (%v, %q), want cleared", app.cronState.LastReloadAt, app.cronState.LastReloadSummary)
+	if !app.cronRuntime.state.LastReloadAt.IsZero() || app.cronRuntime.state.LastReloadSummary != "" {
+		t.Fatalf("reload state after takeover = (%v, %q), want cleared", app.cronRuntime.state.LastReloadAt, app.cronRuntime.state.LastReloadSummary)
 	}
 }

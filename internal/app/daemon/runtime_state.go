@@ -4,7 +4,11 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
 )
 
 type headlessRestoreRecoveryState struct {
@@ -39,6 +43,10 @@ type toolRuntimeState struct {
 	bearerToken string
 }
 
+type managedHeadlessRuntimeState struct {
+	processes map[string]*managedHeadlessProcess
+}
+
 type surfaceResumeRuntimeState struct {
 	store                  *surfaceResumeStore
 	recovery               map[string]*surfaceResumeRecoveryState
@@ -70,6 +78,39 @@ type upgradeRuntimeState struct {
 	startFlowID     string
 }
 
+type cronRuntimeState struct {
+	stateIOMu             sync.Mutex
+	loaded                bool
+	syncInFlight          bool
+	state                 *cronStateFile
+	runs                  map[string]*cronRunState
+	jobActiveRuns         map[string]map[string]struct{}
+	exitTargets           map[string]*cronExitTarget
+	bitableFactory        func(string) (feishu.BitableAPI, error)
+	gatewayIdentityLookup func(string) (cronGatewayIdentity, bool, error)
+	nextScheduleScan      time.Time
+	repoManager           *cronrepo.Manager
+}
+
+type feishuRuntimeState struct {
+	mu                        sync.RWMutex
+	permissionMu              sync.RWMutex
+	runtimeApply              map[string]feishuRuntimeApplyPendingState
+	timeSensitive             map[string]feishuTimeSensitiveState
+	permissionGaps            map[string]map[string]*feishuPermissionGapRecord
+	permissionRefreshEvery    time.Duration
+	permissionNextRefresh     time.Time
+	permissionRefreshInFlight bool
+	onboarding                map[string]*feishuOnboardingSession
+	setup                     feishuSetupClient
+}
+
+func newManagedHeadlessRuntimeState() managedHeadlessRuntimeState {
+	return managedHeadlessRuntimeState{
+		processes: map[string]*managedHeadlessProcess{},
+	}
+}
+
 func newSurfaceResumeRuntimeState() surfaceResumeRuntimeState {
 	return surfaceResumeRuntimeState{
 		recovery:              map[string]*surfaceResumeRecoveryState{},
@@ -87,5 +128,23 @@ func newUpgradeRuntimeState() upgradeRuntimeState {
 		startupDelay:    1 * time.Minute,
 		promptScanEvery: 5 * time.Second,
 		resultScanEvery: 5 * time.Second,
+	}
+}
+
+func newCronRuntimeState() cronRuntimeState {
+	return cronRuntimeState{
+		runs:          map[string]*cronRunState{},
+		jobActiveRuns: map[string]map[string]struct{}{},
+		exitTargets:   map[string]*cronExitTarget{},
+	}
+}
+
+func newFeishuRuntimeState() feishuRuntimeState {
+	return feishuRuntimeState{
+		runtimeApply:           map[string]feishuRuntimeApplyPendingState{},
+		timeSensitive:          map[string]feishuTimeSensitiveState{},
+		permissionGaps:         map[string]map[string]*feishuPermissionGapRecord{},
+		permissionRefreshEvery: defaultFeishuPermissionRefreshEvery,
+		onboarding:             map[string]*feishuOnboardingSession{},
 	}
 }

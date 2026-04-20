@@ -87,7 +87,7 @@ func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
 				summary.Status = managedHeadlessStatusBusy
 			}
 		}
-		if managed := a.managedHeadless[inst.InstanceID]; managed != nil {
+		if managed := a.managedHeadlessRuntime.processes[inst.InstanceID]; managed != nil {
 			overlayManagedSummary(&summary, managed)
 		}
 		summaries = append(summaries, summary)
@@ -135,7 +135,7 @@ func (a *App) createManagedHeadlessInstance(workspaceRoot, displayName string) (
 
 	requestedAt := time.Now().UTC()
 	a.mu.Lock()
-	a.managedHeadless[instanceID] = &managedHeadlessProcess{
+	a.managedHeadlessRuntime.processes[instanceID] = &managedHeadlessProcess{
 		InstanceID:    instanceID,
 		PID:           pid,
 		RequestedAt:   requestedAt,
@@ -278,12 +278,12 @@ func (a *App) adminManagedInstanceSummaryLocked(instanceID string) (adminInstanc
 				summary.Status = managedHeadlessStatusBusy
 			}
 		}
-		if managed := a.managedHeadless[instanceID]; managed != nil {
+		if managed := a.managedHeadlessRuntime.processes[instanceID]; managed != nil {
 			overlayManagedSummary(&summary, managed)
 		}
 		return summary, true
 	}
-	if managed := a.managedHeadless[instanceID]; managed != nil {
+	if managed := a.managedHeadlessRuntime.processes[instanceID]; managed != nil {
 		summary := adminInstanceSummary{
 			InstanceID:    instanceID,
 			DisplayName:   managed.DisplayName,
@@ -300,7 +300,7 @@ func (a *App) adminManagedInstanceSummaryLocked(instanceID string) (adminInstanc
 }
 
 func (a *App) managedInstancePIDLocked(instanceID string) int {
-	if managed := a.managedHeadless[instanceID]; managed != nil && managed.PID > 0 {
+	if managed := a.managedHeadlessRuntime.processes[instanceID]; managed != nil && managed.PID > 0 {
 		return managed.PID
 	}
 	if inst := a.service.Instance(instanceID); inst != nil && inst.Managed && strings.EqualFold(strings.TrimSpace(inst.Source), "headless") {
@@ -310,7 +310,7 @@ func (a *App) managedInstancePIDLocked(instanceID string) int {
 }
 
 func (a *App) noteManagedHeadlessDisconnectedLocked(instanceID string) {
-	if managed := a.managedHeadless[instanceID]; managed != nil {
+	if managed := a.managedHeadlessRuntime.processes[instanceID]; managed != nil {
 		managed.Status = managedHeadlessStatusOffline
 		managed.RefreshInFlight = false
 		managed.RefreshCommandID = ""

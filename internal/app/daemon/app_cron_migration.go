@@ -71,7 +71,7 @@ func (a *App) migrateCronOwnerNow(command control.DaemonCommand) (string, error)
 	}
 
 	a.mu.Lock()
-	activeRuns := len(a.cronRuns)
+	activeRuns := len(a.cronRuntime.runs)
 	a.mu.Unlock()
 	if activeRuns > 0 {
 		return "", fmt.Errorf("当前还有 %d 个运行中的 Cron 任务，暂时不能迁移 owner", activeRuns)
@@ -145,7 +145,7 @@ func (a *App) migrateCronOwnerNow(command control.DaemonCommand) (string, error)
 	stateValue.LastWorkspaceSyncAt = now
 	stateValue.LastReloadAt = now
 	stateValue.LastReloadSummary = "owner migrated: " + summary
-	a.cronNextScheduleScan = time.Time{}
+	a.cronRuntime.nextScheduleScan = time.Time{}
 	if err := a.writeCronStateLocked(); err != nil {
 		return "", err
 	}

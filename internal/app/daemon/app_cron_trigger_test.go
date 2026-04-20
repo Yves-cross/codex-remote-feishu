@@ -16,8 +16,8 @@ func TestTriggerCronJobLaunchesImmediatelyWithoutChangingNextRun(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID:      "gateway-1",
 		OwnerGatewayID: "gateway-1",
 		OwnerAppID:     "app-1",
@@ -62,11 +62,11 @@ func TestTriggerCronJobLaunchesImmediatelyWithoutChangingNextRun(t *testing.T) {
 	if event == nil || event.Notice == nil || !strings.Contains(event.Notice.Text, "不会改动原有下次调度时间") {
 		t.Fatalf("event = %#v, want success notice", event)
 	}
-	if got := app.cronState.Jobs[0].NextRunAt; !got.Equal(nextRunAt) {
+	if got := app.cronRuntime.state.Jobs[0].NextRunAt; !got.Equal(nextRunAt) {
 		t.Fatalf("next run = %s, want unchanged %s", got, nextRunAt)
 	}
-	if len(app.cronRuns) != 1 {
-		t.Fatalf("cronRuns = %#v, want one active run", app.cronRuns)
+	if len(app.cronRuntime.runs) != 1 {
+		t.Fatalf("cronRuns = %#v, want one active run", app.cronRuntime.runs)
 	}
 }
 
@@ -75,8 +75,8 @@ func TestTriggerCronJobRespectsConcurrencyLimit(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID:      "gateway-1",
 		OwnerGatewayID: "gateway-1",
 		OwnerAppID:     "app-1",
@@ -99,12 +99,12 @@ func TestTriggerCronJobRespectsConcurrencyLimit(t *testing.T) {
 			NextRunAt:       time.Now().Add(15 * time.Minute),
 		}},
 	}
-	app.cronRuns["inst-running"] = &cronRunState{
+	app.cronRuntime.runs["inst-running"] = &cronRunState{
 		InstanceID:  "inst-running",
 		JobRecordID: "rec-task-1",
 		JobName:     "Nightly",
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
+	app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
 	app.startHeadless = func(relayruntime.HeadlessLaunchOptions) (int, error) {
 		t.Fatalf("triggerCronJob must not launch when concurrency is exhausted")
 		return 0, nil

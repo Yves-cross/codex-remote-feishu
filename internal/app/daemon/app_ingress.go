@@ -617,7 +617,7 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	a.mu.Lock()
 	if err != nil {
 		log.Printf("relay send command failed: instance=%s kind=%s err=%v", hello.Instance.InstanceID, command.Kind, err)
-		if managed := a.managedHeadless[hello.Instance.InstanceID]; managed != nil {
+		if managed := a.managedHeadlessRuntime.processes[hello.Instance.InstanceID]; managed != nil {
 			managed.LastError = "服务无法向本地 wrapper 发送初始化 threads.refresh。"
 		}
 		a.handleUIEventsLocked(ctx, a.service.HandleProblem(hello.Instance.InstanceID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
@@ -631,7 +631,7 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 		})))
 	} else {
 		refreshSent = true
-		if a.managedHeadless[hello.Instance.InstanceID] != nil {
+		if a.managedHeadlessRuntime.processes[hello.Instance.InstanceID] != nil {
 			a.markManagedThreadsRefreshRequestedLocked(hello.Instance.InstanceID, command.CommandID, now)
 		}
 	}

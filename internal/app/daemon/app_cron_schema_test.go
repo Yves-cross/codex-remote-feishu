@@ -19,8 +19,8 @@ func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -28,7 +28,7 @@ func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
 		Bitable:          &cronBitableState{},
 		Jobs:             []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
 		t.Fatalf("repairCronBitableNow: %v", err)
@@ -36,7 +36,7 @@ func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
 
 	api.mu.Lock()
 	defer api.mu.Unlock()
-	fields := api.fieldsByTable[app.cronState.Bitable.Tables.Tasks]
+	fields := api.fieldsByTable[app.cronRuntime.state.Bitable.Tables.Tasks]
 	gotNames := make([]string, 0, len(fields))
 	enableType := 0
 	recentRunFormatter := ""
@@ -113,8 +113,8 @@ func TestEnsureCronBitableRepairsExistingDateFieldFormatter(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -130,7 +130,7 @@ func TestEnsureCronBitableRepairsExistingDateFieldFormatter(t *testing.T) {
 		},
 		Jobs: []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
 		t.Fatalf("repairCronBitableNow: %v", err)
@@ -192,8 +192,8 @@ func TestEnsureCronBitableRepairsExistingFieldTypeMismatch(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -209,7 +209,7 @@ func TestEnsureCronBitableRepairsExistingFieldTypeMismatch(t *testing.T) {
 		},
 		Jobs: []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
 		t.Fatalf("repairCronBitableNow: %v", err)

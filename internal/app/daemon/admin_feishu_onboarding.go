@@ -369,12 +369,12 @@ func (c *liveFeishuSetupClient) registrationCall(ctx context.Context, action str
 }
 
 func (a *App) snapshotFeishuOnboardingSession(sessionID string) (feishuOnboardingSessionView, bool) {
-	a.adminFeishuMu.RLock()
-	defer a.adminFeishuMu.RUnlock()
-	if a.feishuOnboarding == nil {
+	a.feishuRuntime.mu.RLock()
+	defer a.feishuRuntime.mu.RUnlock()
+	if a.feishuRuntime.onboarding == nil {
 		return feishuOnboardingSessionView{}, false
 	}
-	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	session, ok := a.feishuRuntime.onboarding[strings.TrimSpace(sessionID)]
 	if !ok || session == nil {
 		return feishuOnboardingSessionView{}, false
 	}
@@ -383,28 +383,28 @@ func (a *App) snapshotFeishuOnboardingSession(sessionID string) (feishuOnboardin
 
 func (a *App) cleanupFeishuOnboardingSessions(now time.Time) {
 	now = now.UTC()
-	a.adminFeishuMu.Lock()
-	defer a.adminFeishuMu.Unlock()
-	if len(a.feishuOnboarding) == 0 {
+	a.feishuRuntime.mu.Lock()
+	defer a.feishuRuntime.mu.Unlock()
+	if len(a.feishuRuntime.onboarding) == 0 {
 		return
 	}
-	for sessionID, session := range a.feishuOnboarding {
+	for sessionID, session := range a.feishuRuntime.onboarding {
 		if session == nil {
-			delete(a.feishuOnboarding, sessionID)
+			delete(a.feishuRuntime.onboarding, sessionID)
 			continue
 		}
 		if session.Status == feishuOnboardingStatusCompleted {
 			continue
 		}
 		if !session.ExpiresAt.IsZero() && now.After(session.ExpiresAt.Add(15*time.Minute)) {
-			delete(a.feishuOnboarding, sessionID)
+			delete(a.feishuRuntime.onboarding, sessionID)
 		}
 	}
 }
 
 func (a *App) createFeishuOnboardingSession(ctx context.Context) (feishuOnboardingSessionView, error) {
 	a.cleanupFeishuOnboardingSessions(time.Now().UTC())
-	result, err := a.feishuSetup.StartRegistration(ctx)
+	result, err := a.feishuRuntime.setup.StartRegistration(ctx)
 	if err != nil {
 		return feishuOnboardingSessionView{}, err
 	}
@@ -426,21 +426,21 @@ func (a *App) createFeishuOnboardingSession(ctx context.Context) (feishuOnboardi
 		PollInterval:    result.Interval,
 		NextPollAt:      time.Now().UTC().Add(result.Interval),
 	}
-	a.adminFeishuMu.Lock()
-	if a.feishuOnboarding == nil {
-		a.feishuOnboarding = map[string]*feishuOnboardingSession{}
+	a.feishuRuntime.mu.Lock()
+	if a.feishuRuntime.onboarding == nil {
+		a.feishuRuntime.onboarding = map[string]*feishuOnboardingSession{}
 	}
-	a.feishuOnboarding[session.ID] = session
-	a.adminFeishuMu.Unlock()
+	a.feishuRuntime.onboarding[session.ID] = session
+	a.feishuRuntime.mu.Unlock()
 	return feishuOnboardingSessionToView(session), nil
 }
 
 func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID string) (feishuOnboardingSessionView, bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
-	a.adminFeishuMu.Lock()
-	session, ok := a.feishuOnboarding[sessionID]
+	a.feishuRuntime.mu.Lock()
+	session, ok := a.feishuRuntime.onboarding[sessionID]
 	if !ok || session == nil {
-		a.adminFeishuMu.Unlock()
+		a.feishuRuntime.mu.Unlock()
 		return feishuOnboardingSessionView{}, false, nil
 	}
 
@@ -453,7 +453,7 @@ func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID stri
 	shouldPoll := session.Status == feishuOnboardingStatusPending && (session.NextPollAt.IsZero() || !now.Before(session.NextPollAt))
 	deviceCode := session.DeviceCode
 	pollInterval := session.PollInterval
-	a.adminFeishuMu.Unlock()
+	a.feishuRuntime.mu.Unlock()
 
 	if !shouldPoll {
 		view, ok := a.snapshotFeishuOnboardingSession(sessionID)
@@ -462,17 +462,17 @@ func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID stri
 
 	pollCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	pollResult, err := a.feishuSetup.PollRegistration(pollCtx, deviceCode)
+	pollResult, err := a.feishuRuntime.setup.PollRegistration(pollCtx, deviceCode)
 	if err != nil {
-		a.adminFeishuMu.Lock()
-		session, ok = a.feishuOnboarding[sessionID]
+		a.feishuRuntime.mu.Lock()
+		session, ok = a.feishuRuntime.onboarding[sessionID]
 		if ok && session != nil {
 			session.Status = feishuOnboardingStatusFailed
 			session.ErrorCode = "poll_failed"
 			session.ErrorMessage = err.Error()
 			session.LastPolledAt = time.Now().UTC()
 		}
-		a.adminFeishuMu.Unlock()
+		a.feishuRuntime.mu.Unlock()
 		view, ok := a.snapshotFeishuOnboardingSession(sessionID)
 		return view, ok, nil
 	}
@@ -482,10 +482,10 @@ func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID stri
 		displayName = a.suggestFeishuAppName(ctx, "", pollResult.AppID, pollResult.AppSecret, pollResult.AppID)
 	}
 
-	a.adminFeishuMu.Lock()
-	session, ok = a.feishuOnboarding[sessionID]
+	a.feishuRuntime.mu.Lock()
+	session, ok = a.feishuRuntime.onboarding[sessionID]
 	if !ok || session == nil {
-		a.adminFeishuMu.Unlock()
+		a.feishuRuntime.mu.Unlock()
 		return feishuOnboardingSessionView{}, false, nil
 	}
 	now = time.Now().UTC()
@@ -522,7 +522,7 @@ func (a *App) refreshFeishuOnboardingSession(ctx context.Context, sessionID stri
 		session.Status = feishuOnboardingStatusPending
 	}
 	view := feishuOnboardingSessionToView(session)
-	a.adminFeishuMu.Unlock()
+	a.feishuRuntime.mu.Unlock()
 	return view, true, nil
 }
 
@@ -538,12 +538,12 @@ func (a *App) suggestFeishuAppName(ctx context.Context, requestedName, appID, ap
 }
 
 func (a *App) resolveFeishuAppIdentity(ctx context.Context, appID, appSecret string) (feishuAppIdentity, error) {
-	if a.feishuSetup == nil {
+	if a.feishuRuntime.setup == nil {
 		return feishuAppIdentity{}, errors.New("feishu setup client unavailable")
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return a.feishuSetup.DescribeApp(timeoutCtx, appID, appSecret)
+	return a.feishuRuntime.setup.DescribeApp(timeoutCtx, appID, appSecret)
 }
 
 func feishuOnboardingSessionToView(session *feishuOnboardingSession) feishuOnboardingSessionView {
@@ -656,10 +656,10 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 		return
 	}
 
-	a.adminFeishuMu.RLock()
-	session, ok := a.feishuOnboarding[sessionID]
+	a.feishuRuntime.mu.RLock()
+	session, ok := a.feishuRuntime.onboarding[sessionID]
 	if !ok || session == nil {
-		a.adminFeishuMu.RUnlock()
+		a.feishuRuntime.mu.RUnlock()
 		writeAPIError(w, http.StatusNotFound, apiError{
 			Code:    "feishu_onboarding_not_found",
 			Message: "feishu onboarding session not found",
@@ -675,12 +675,12 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 			Session:  feishuOnboardingSessionToView(session),
 			Guide:    buildFeishuOnboardingGuide(),
 		}
-		a.adminFeishuMu.RUnlock()
+		a.feishuRuntime.mu.RUnlock()
 		writeJSON(w, http.StatusOK, response)
 		return
 	}
 	sessionState := *session
-	a.adminFeishuMu.RUnlock()
+	a.feishuRuntime.mu.RUnlock()
 
 	switch sessionView.Status {
 	case feishuOnboardingStatusPending:
@@ -896,9 +896,9 @@ func (a *App) createFeishuOnboardedApp(name, appID, appSecret string) (adminFeis
 }
 
 func (a *App) markOnboardingSessionPersistedGateway(sessionID, gatewayID string) {
-	a.adminFeishuMu.Lock()
-	defer a.adminFeishuMu.Unlock()
-	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	a.feishuRuntime.mu.Lock()
+	defer a.feishuRuntime.mu.Unlock()
+	session, ok := a.feishuRuntime.onboarding[strings.TrimSpace(sessionID)]
 	if !ok || session == nil {
 		return
 	}
@@ -906,9 +906,9 @@ func (a *App) markOnboardingSessionPersistedGateway(sessionID, gatewayID string)
 }
 
 func (a *App) markOnboardingSessionCompleted(sessionID, gatewayID string, app adminFeishuAppSummary, mutation *feishuAppMutationView, result feishu.VerifyResult) feishuOnboardingSessionView {
-	a.adminFeishuMu.Lock()
-	defer a.adminFeishuMu.Unlock()
-	session, ok := a.feishuOnboarding[strings.TrimSpace(sessionID)]
+	a.feishuRuntime.mu.Lock()
+	defer a.feishuRuntime.mu.Unlock()
+	session, ok := a.feishuRuntime.onboarding[strings.TrimSpace(sessionID)]
 	if !ok || session == nil {
 		return feishuOnboardingSessionView{}
 	}

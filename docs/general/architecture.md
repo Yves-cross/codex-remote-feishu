@@ -228,11 +228,20 @@ Feishu 平台适配层，负责：
 - Feishu gateway
 - 状态 API
 
-`daemon` 当前更明确地作为组合根存在，而不是继续把所有运行态都堆进单个 `*App` 根对象。已经完成第一轮显式 runtime state 收口的区域包括：
+`daemon` 当前更明确地作为组合根存在，而不是继续把所有运行态都堆进单个 `*App` 根对象。已经完成显式 runtime state 收口的区域包括：
 
 - `toolRuntime`
+- `managedHeadlessRuntime`
+- `cronRuntime`
+- `feishuRuntime`
 - `surfaceResumeRuntime`
 - `upgradeRuntime`
+
+其中：
+
+- `managedHeadlessRuntime` 负责 daemon 侧 managed headless 进程状态
+- `cronRuntime` 负责 cron state、active runs、exit targets、scheduler scan 与 bitable/repo runtime 依赖
+- `feishuRuntime` 负责 runtime-apply、permission gap refresh、onboarding 与 time-sensitive runtime
 
 这些 runtime 仍留在 `internal/app/daemon` 同包内，但状态拥有者、receiver 和顶层调度边界已经分开；`App` 主要保留 lifecycle、依赖注入、跨 runtime 编排，以及少量必须集中托管的共享资源。
 

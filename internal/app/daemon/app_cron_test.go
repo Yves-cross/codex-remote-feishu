@@ -63,7 +63,7 @@ func setCronGatewayLookup(app *App, values ...string) {
 		}
 		identities[gatewayID] = appID
 	}
-	app.cronGatewayIdentityLookup = func(gatewayID string) (cronGatewayIdentity, bool, error) {
+	app.cronRuntime.gatewayIdentityLookup = func(gatewayID string) (cronGatewayIdentity, bool, error) {
 		appID, ok := identities[strings.TrimSpace(gatewayID)]
 		if !ok {
 			return cronGatewayIdentity{}, false, nil
@@ -300,8 +300,8 @@ func TestCronSchedulerLaunchesFreshHiddenRun(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID: "gateway-1",
 		Bitable: &cronBitableState{
 			AppToken: "app-1",
@@ -352,10 +352,10 @@ func TestCronSchedulerLaunchesFreshHiddenRun(t *testing.T) {
 	if containsEnvEntry(capturedEnv, "CODEX_REMOTE_INSTANCE_MANAGED=1") {
 		t.Fatalf("cron run must not mark managed headless env, got %#v", capturedEnv)
 	}
-	if len(app.cronRuns) != 1 {
-		t.Fatalf("cronRuns = %#v, want one active run", app.cronRuns)
+	if len(app.cronRuntime.runs) != 1 {
+		t.Fatalf("cronRuns = %#v, want one active run", app.cronRuntime.runs)
 	}
-	active := app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")]
+	active := app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")]
 	if len(active) != 1 {
 		t.Fatalf("active cron runs = %#v, want one instance", active)
 	}
@@ -364,8 +364,8 @@ func TestCronSchedulerLaunchesFreshHiddenRun(t *testing.T) {
 			t.Fatalf("active cron instance id = %q, want prefix %q", instanceID, cronInstancePrefix)
 		}
 	}
-	if app.cronState.Jobs[0].NextRunAt.IsZero() || !app.cronState.Jobs[0].NextRunAt.After(time.Now()) {
-		t.Fatalf("next run was not advanced: %#v", app.cronState.Jobs[0].NextRunAt)
+	if app.cronRuntime.state.Jobs[0].NextRunAt.IsZero() || !app.cronRuntime.state.Jobs[0].NextRunAt.After(time.Now()) {
+		t.Fatalf("next run was not advanced: %#v", app.cronRuntime.state.Jobs[0].NextRunAt)
 	}
 }
 
@@ -375,8 +375,8 @@ func TestCronHelloAndCompletionStayHiddenAndWriteBackFinalMessage(t *testing.T) 
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID: "gateway-1",
 		Bitable: &cronBitableState{
 			AppToken: "app-1",
@@ -386,10 +386,10 @@ func TestCronHelloAndCompletionStayHiddenAndWriteBackFinalMessage(t *testing.T) 
 			},
 		},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	instanceID := cronInstanceIDForRun("rec-task-1", time.Now())
-	app.cronRuns[instanceID] = &cronRunState{
+	app.cronRuntime.runs[instanceID] = &cronRunState{
 		RunID:          instanceID,
 		InstanceID:     instanceID,
 		JobRecordID:    "rec-task-1",
@@ -400,7 +400,7 @@ func TestCronHelloAndCompletionStayHiddenAndWriteBackFinalMessage(t *testing.T) 
 		TriggeredAt:    time.Now().UTC(),
 		PID:            4321,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
+	app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
 
 	var commands []agentproto.Command
 	app.sendAgentCommand = func(target string, command agentproto.Command) error {
@@ -438,10 +438,10 @@ func TestCronHelloAndCompletionStayHiddenAndWriteBackFinalMessage(t *testing.T) 
 	if len(commands) != 2 || commands[1].Kind != agentproto.CommandProcessExit {
 		t.Fatalf("expected prompt.send then process.exit, got %#v", commands)
 	}
-	if _, ok := app.cronRuns[instanceID]; ok {
+	if _, ok := app.cronRuntime.runs[instanceID]; ok {
 		t.Fatalf("completed cron run should be removed from active map")
 	}
-	if _, ok := app.cronExitTargets[instanceID]; !ok {
+	if _, ok := app.cronRuntime.exitTargets[instanceID]; !ok {
 		t.Fatalf("completed cron run should queue exit target")
 	}
 
@@ -468,8 +468,8 @@ func TestCronSchedulerSkipsWhenPreviousRunIsStillActive(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID: "gateway-1",
 		Bitable: &cronBitableState{
 			AppToken: "app-1",
@@ -489,8 +489,8 @@ func TestCronSchedulerSkipsWhenPreviousRunIsStillActive(t *testing.T) {
 			NextRunAt:       time.Now().Add(-time.Minute),
 		}},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
-	app.cronRuns["inst-running"] = &cronRunState{
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.runs["inst-running"] = &cronRunState{
 		InstanceID:     "inst-running",
 		JobRecordID:    "rec-task-1",
 		JobName:        "Nightly",
@@ -498,7 +498,7 @@ func TestCronSchedulerSkipsWhenPreviousRunIsStillActive(t *testing.T) {
 		TriggeredAt:    time.Now().Add(-2 * time.Minute),
 		TimeoutMinutes: 15,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
+	app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
 	app.startHeadless = func(relayruntime.HeadlessLaunchOptions) (int, error) {
 		t.Fatalf("scheduler must not launch another hidden run while previous run is active")
 		return 0, nil
@@ -525,8 +525,8 @@ func TestCronSchedulerTimesOutRunAndRequestsExit(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID: "gateway-1",
 		Bitable: &cronBitableState{
 			AppToken: "app-1",
@@ -536,9 +536,9 @@ func TestCronSchedulerTimesOutRunAndRequestsExit(t *testing.T) {
 			},
 		},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 	instanceID := cronInstanceIDForRun("rec-task-1", time.Now().Add(-time.Hour))
-	app.cronRuns[instanceID] = &cronRunState{
+	app.cronRuntime.runs[instanceID] = &cronRunState{
 		InstanceID:     instanceID,
 		JobRecordID:    "rec-task-1",
 		JobName:        "Nightly",
@@ -548,7 +548,7 @@ func TestCronSchedulerTimesOutRunAndRequestsExit(t *testing.T) {
 		TimeoutMinutes: 30,
 		PID:            9876,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
+	app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{instanceID: {}}
 	var commands []agentproto.Command
 	app.sendAgentCommand = func(target string, command agentproto.Command) error {
 		if target != instanceID {
@@ -571,7 +571,7 @@ func TestCronSchedulerTimesOutRunAndRequestsExit(t *testing.T) {
 	if got := api.createRecords[0].Fields["状态"]; got != "超时" {
 		t.Fatalf("history status = %#v, want 超时", got)
 	}
-	if _, ok := app.cronRuns[instanceID]; ok {
+	if _, ok := app.cronRuntime.runs[instanceID]; ok {
 		t.Fatalf("timed-out cron run should be removed from active map")
 	}
 }
@@ -580,9 +580,9 @@ func TestCronShowReturnsCatalogWithoutEnteringMutatingGate(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1", "gateway-2", "app-2")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronSyncInFlight = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.syncInFlight = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -604,11 +604,11 @@ func TestCronShowReturnsCatalogWithoutEnteringMutatingGate(t *testing.T) {
 	if len(events) != 1 || events[0].Kind != control.UIEventFeishuCommandView {
 		t.Fatalf("events = %#v, want one direct command catalog", events)
 	}
-	if !app.cronSyncInFlight {
+	if !app.cronRuntime.syncInFlight {
 		t.Fatalf("view-only /cron should not clear or claim the mutating sync gate")
 	}
-	if app.cronState.OwnerGatewayID != "gateway-1" || app.cronState.GatewayID != "gateway-1" {
-		t.Fatalf("view-only /cron must not rewrite owner state: %#v", app.cronState)
+	if app.cronRuntime.state.OwnerGatewayID != "gateway-1" || app.cronRuntime.state.GatewayID != "gateway-1" {
+		t.Fatalf("view-only /cron must not rewrite owner state: %#v", app.cronRuntime.state)
 	}
 	catalog := catalogFromUIEvent(t, events[0])
 	if summary := catalogSummaryText(catalog); strings.Contains(summary, "当前状态：正常") {
@@ -645,8 +645,8 @@ func TestCronReloadUsesResolvedOwnerGateway(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1", "gateway-2", "app-2")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -662,7 +662,7 @@ func TestCronReloadUsesResolvedOwnerGateway(t *testing.T) {
 			},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		factoryGateways = append(factoryGateways, gatewayID)
 		return api, nil
 	}
@@ -673,11 +673,11 @@ func TestCronReloadUsesResolvedOwnerGateway(t *testing.T) {
 	if fmt.Sprintf("%q", factoryGateways) != fmt.Sprintf("%q", []string{"gateway-1"}) {
 		t.Fatalf("factory gateways = %v, want owner gateway only", factoryGateways)
 	}
-	if len(app.cronState.Jobs) != 1 || app.cronState.Jobs[0].RecordID != "rec-task-1" {
-		t.Fatalf("jobs = %#v, want one loaded task", app.cronState.Jobs)
+	if len(app.cronRuntime.state.Jobs) != 1 || app.cronRuntime.state.Jobs[0].RecordID != "rec-task-1" {
+		t.Fatalf("jobs = %#v, want one loaded task", app.cronRuntime.state.Jobs)
 	}
-	if app.cronState.OwnerGatewayID != "gateway-1" {
-		t.Fatalf("reload must not rewrite owner: %#v", app.cronState)
+	if app.cronRuntime.state.OwnerGatewayID != "gateway-1" {
+		t.Fatalf("reload must not rewrite owner: %#v", app.cronRuntime.state)
 	}
 }
 
@@ -704,8 +704,8 @@ func TestCronReloadParsesGitRepoSourceInput(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -721,7 +721,7 @@ func TestCronReloadParsesGitRepoSourceInput(t *testing.T) {
 			},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		if gatewayID != "gateway-1" {
 			return nil, fmt.Errorf("unexpected gateway %q", gatewayID)
 		}
@@ -731,10 +731,10 @@ func TestCronReloadParsesGitRepoSourceInput(t *testing.T) {
 	if _, err := app.reloadCronJobsNow(control.DaemonCommand{GatewayID: "gateway-1", SurfaceSessionID: "surface-1"}); err != nil {
 		t.Fatalf("reloadCronJobsNow: %v", err)
 	}
-	if len(app.cronState.Jobs) != 1 {
-		t.Fatalf("jobs = %#v, want one git job", app.cronState.Jobs)
+	if len(app.cronRuntime.state.Jobs) != 1 {
+		t.Fatalf("jobs = %#v, want one git job", app.cronRuntime.state.Jobs)
 	}
-	job := app.cronState.Jobs[0]
+	job := app.cronRuntime.state.Jobs[0]
 	if job.SourceType != cronJobSourceGitRepo {
 		t.Fatalf("source type = %q, want %q", job.SourceType, cronJobSourceGitRepo)
 	}
@@ -758,8 +758,8 @@ func TestCronSchedulerMaterializesGitRepoSourceAndWritesSourceLabel(t *testing.T
 			StateDir: t.TempDir(),
 		},
 	})
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID:      "gateway-1",
 		OwnerGatewayID: "gateway-1",
 		Bitable: &cronBitableState{
@@ -783,7 +783,7 @@ func TestCronSchedulerMaterializesGitRepoSourceAndWritesSourceLabel(t *testing.T
 			NextRunAt:          time.Now().Add(-time.Minute),
 		}},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	var capturedWorkDir string
 	var capturedEnv []string
@@ -802,7 +802,7 @@ func TestCronSchedulerMaterializesGitRepoSourceAndWritesSourceLabel(t *testing.T
 	app.maybeScheduleCronJobsLocked(time.Now())
 	var instanceID string
 	var runCopy cronRunState
-	for id, run := range app.cronRuns {
+	for id, run := range app.cronRuntime.runs {
 		instanceID = id
 		runCopy = *run
 	}
@@ -918,8 +918,8 @@ func TestCronReloadResultTracksLoadedDisabledStoppedAndErrors(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -941,7 +941,7 @@ func TestCronReloadResultTracksLoadedDisabledStoppedAndErrors(t *testing.T) {
 			{RecordID: "rec-error", Name: "Broken", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 15, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(15 * time.Minute)},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		if gatewayID != "gateway-1" {
 			return nil, fmt.Errorf("unexpected gateway %q", gatewayID)
 		}
@@ -982,10 +982,10 @@ func TestCronReloadResultTracksLoadedDisabledStoppedAndErrors(t *testing.T) {
 	if result.Stopped[2].RecordID != "rec-error" || result.Stopped[2].Reason != "配置错误，未继续生效" {
 		t.Fatalf("expected error stopped reason, got %#v", result.Stopped[2])
 	}
-	if len(app.cronState.Jobs) != 2 || app.cronState.Jobs[0].RecordID != "rec-keep" || app.cronState.Jobs[1].RecordID != "rec-add" {
-		t.Fatalf("persisted jobs = %#v, want only loaded jobs", app.cronState.Jobs)
+	if len(app.cronRuntime.state.Jobs) != 2 || app.cronRuntime.state.Jobs[0].RecordID != "rec-keep" || app.cronRuntime.state.Jobs[1].RecordID != "rec-add" {
+		t.Fatalf("persisted jobs = %#v, want only loaded jobs", app.cronRuntime.state.Jobs)
 	}
-	if summary := app.cronState.LastReloadSummary; !strings.Contains(summary, "已加载 2 条任务") || !strings.Contains(summary, "停用 1 条") || !strings.Contains(summary, "停止 3 条") || !strings.Contains(summary, "发现 1 条配置错误") {
+	if summary := app.cronRuntime.state.LastReloadSummary; !strings.Contains(summary, "已加载 2 条任务") || !strings.Contains(summary, "停用 1 条") || !strings.Contains(summary, "停止 3 条") || !strings.Contains(summary, "发现 1 条配置错误") {
 		t.Fatalf("unexpected compact summary: %q", summary)
 	}
 }
@@ -1040,8 +1040,8 @@ func TestCronReloadNoticeShowsStructuredSections(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -1063,7 +1063,7 @@ func TestCronReloadNoticeShowsStructuredSections(t *testing.T) {
 			{RecordID: "rec-error", Name: "Broken", ScheduleType: cronScheduleTypeInterval, IntervalMinutes: 15, WorkspaceKey: "/tmp/project", NextRunAt: time.Now().Add(15 * time.Minute)},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		if gatewayID != "gateway-1" {
 			return nil, fmt.Errorf("unexpected gateway %q", gatewayID)
 		}
@@ -1094,8 +1094,8 @@ func TestCronReloadNoticeShowsStructuredSections(t *testing.T) {
 			t.Fatalf("expected reload notice to contain %q, got %q", fragment, text)
 		}
 	}
-	if strings.Contains(app.cronState.LastReloadSummary, "`Keep`") || strings.Contains(app.cronState.LastReloadSummary, "已加载：") {
-		t.Fatalf("status summary should stay compact, got %q", app.cronState.LastReloadSummary)
+	if strings.Contains(app.cronRuntime.state.LastReloadSummary, "`Keep`") || strings.Contains(app.cronRuntime.state.LastReloadSummary, "已加载：") {
+		t.Fatalf("status summary should stay compact, got %q", app.cronRuntime.state.LastReloadSummary)
 	}
 }
 
@@ -1105,8 +1105,8 @@ func TestCronCompletionUsesFrozenWritebackTargetAfterOwnerChange(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1", "gateway-2", "app-2")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID:      "gateway-1",
 		OwnerGatewayID: "gateway-1",
 		OwnerAppID:     "app-1",
@@ -1118,7 +1118,7 @@ func TestCronCompletionUsesFrozenWritebackTargetAfterOwnerChange(t *testing.T) {
 			},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		switch gatewayID {
 		case "gateway-1":
 			return api1, nil
@@ -1129,7 +1129,7 @@ func TestCronCompletionUsesFrozenWritebackTargetAfterOwnerChange(t *testing.T) {
 		}
 	}
 	instanceID := "inst-cron-frozen-target"
-	app.cronRuns[instanceID] = &cronRunState{
+	app.cronRuntime.runs[instanceID] = &cronRunState{
 		RunID:      instanceID,
 		InstanceID: instanceID,
 		GatewayID:  "gateway-1",
@@ -1152,10 +1152,10 @@ func TestCronCompletionUsesFrozenWritebackTargetAfterOwnerChange(t *testing.T) {
 		FinalMessage:   "done",
 		TimeoutMinutes: 15,
 	}
-	app.cronState.OwnerGatewayID = "gateway-2"
-	app.cronState.OwnerAppID = "app-2"
-	app.cronState.GatewayID = "gateway-2"
-	app.cronState.Bitable = &cronBitableState{
+	app.cronRuntime.state.OwnerGatewayID = "gateway-2"
+	app.cronRuntime.state.OwnerAppID = "app-2"
+	app.cronRuntime.state.GatewayID = "gateway-2"
+	app.cronRuntime.state.Bitable = &cronBitableState{
 		AppToken: "app-2",
 		Tables: cronTableIDs{
 			Tasks: "tbl-tasks-2",
@@ -1215,8 +1215,8 @@ func TestCronMigrateOwnerCopiesBindingToCurrentSurfaceBot(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1", "gateway-2", "app-2")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -1234,7 +1234,7 @@ func TestCronMigrateOwnerCopiesBindingToCurrentSurfaceBot(t *testing.T) {
 			},
 		},
 	}
-	app.cronBitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(gatewayID string) (feishu.BitableAPI, error) {
 		switch gatewayID {
 		case "gateway-1":
 			return oldAPI, nil
@@ -1248,13 +1248,13 @@ func TestCronMigrateOwnerCopiesBindingToCurrentSurfaceBot(t *testing.T) {
 	if _, err := app.migrateCronOwnerNow(control.DaemonCommand{GatewayID: "gateway-2", SurfaceSessionID: "surface-2"}); err != nil {
 		t.Fatalf("migrateCronOwnerNow: %v", err)
 	}
-	if app.cronState.OwnerGatewayID != "gateway-2" || app.cronState.OwnerAppID != "app-2" {
-		t.Fatalf("owner state = %#v, want migrated owner gateway-2/app-2", app.cronState)
+	if app.cronRuntime.state.OwnerGatewayID != "gateway-2" || app.cronRuntime.state.OwnerAppID != "app-2" {
+		t.Fatalf("owner state = %#v, want migrated owner gateway-2/app-2", app.cronRuntime.state)
 	}
-	if len(app.cronState.Jobs) != 1 || app.cronState.Jobs[0].WorkspaceKey != "/tmp/project" {
-		t.Fatalf("jobs after migration = %#v", app.cronState.Jobs)
+	if len(app.cronRuntime.state.Jobs) != 1 || app.cronRuntime.state.Jobs[0].WorkspaceKey != "/tmp/project" {
+		t.Fatalf("jobs after migration = %#v", app.cronRuntime.state.Jobs)
 	}
-	newBinding := app.cronState.Bitable
+	newBinding := app.cronRuntime.state.Bitable
 	if newBinding == nil {
 		t.Fatalf("expected migrated bitable binding")
 	}
@@ -1730,8 +1730,8 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -1739,23 +1739,23 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 		Bitable:          &cronBitableState{},
 		Jobs:             []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	_, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("repairCronBitableNow first error = %v, want context deadline exceeded", err)
 	}
-	if app.cronState == nil || app.cronState.Bitable == nil {
-		t.Fatalf("cron state = %#v, want persisted bitable binding", app.cronState)
+	if app.cronRuntime.state == nil || app.cronRuntime.state.Bitable == nil {
+		t.Fatalf("cron state = %#v, want persisted bitable binding", app.cronRuntime.state)
 	}
-	if app.cronState.Bitable.AppToken != "app-cron" {
-		t.Fatalf("app token = %q, want app-cron", app.cronState.Bitable.AppToken)
+	if app.cronRuntime.state.Bitable.AppToken != "app-cron" {
+		t.Fatalf("app token = %q, want app-cron", app.cronRuntime.state.Bitable.AppToken)
 	}
-	if app.cronState.Bitable.DefaultTable != "tbl-default" {
-		t.Fatalf("default table = %q, want tbl-default", app.cronState.Bitable.DefaultTable)
+	if app.cronRuntime.state.Bitable.DefaultTable != "tbl-default" {
+		t.Fatalf("default table = %q, want tbl-default", app.cronRuntime.state.Bitable.DefaultTable)
 	}
-	if app.cronState.Bitable.Tables.Tasks == "" || app.cronState.Bitable.Tables.Workspaces == "" || app.cronState.Bitable.Tables.Runs == "" || app.cronState.Bitable.Tables.Meta == "" {
-		t.Fatalf("table binding not persisted after timeout: %#v", app.cronState.Bitable.Tables)
+	if app.cronRuntime.state.Bitable.Tables.Tasks == "" || app.cronRuntime.state.Bitable.Tables.Workspaces == "" || app.cronRuntime.state.Bitable.Tables.Runs == "" || app.cronRuntime.state.Bitable.Tables.Meta == "" {
+		t.Fatalf("table binding not persisted after timeout: %#v", app.cronRuntime.state.Bitable.Tables)
 	}
 	if api.createAppCalls != 1 {
 		t.Fatalf("createAppCalls after first attempt = %d, want 1", api.createAppCalls)
@@ -1781,8 +1781,8 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	if api.createTableCalls != 4 {
 		t.Fatalf("createTableCalls after retry = %d, want still 4", api.createTableCalls)
 	}
-	if app.cronState.Bitable.LastVerified.IsZero() {
-		t.Fatalf("expected successful retry to verify binding, got %#v", app.cronState.Bitable)
+	if app.cronRuntime.state.Bitable.LastVerified.IsZero() {
+		t.Fatalf("expected successful retry to verify binding, got %#v", app.cronRuntime.state.Bitable)
 	}
 }
 
@@ -1793,8 +1793,8 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithFreshTasksTable(t *testi
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -1804,7 +1804,7 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithFreshTasksTable(t *testi
 		},
 		Jobs: []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	_, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"})
 	if err != nil {
@@ -1816,7 +1816,7 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithFreshTasksTable(t *testi
 	if api.createTableCalls != 4 {
 		t.Fatalf("createTableCalls = %d, want 4 when tasks table is created fresh", api.createTableCalls)
 	}
-	if got := app.cronState.Bitable.Tables.Tasks; got == "tbl-default" {
+	if got := app.cronRuntime.state.Bitable.Tables.Tasks; got == "tbl-default" {
 		t.Fatalf("tasks table = %q, want a fresh table instead of the auto-created default table", got)
 	}
 }
@@ -1833,8 +1833,8 @@ func TestEnsureCronBitableDoesNotLeakDefaultTemplateColumnsIntoTasksTable(t *tes
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -1842,19 +1842,19 @@ func TestEnsureCronBitableDoesNotLeakDefaultTemplateColumnsIntoTasksTable(t *tes
 		Bitable:          &cronBitableState{},
 		Jobs:             []cronJobState{},
 	}
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
 	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
 		t.Fatalf("repairCronBitableNow: %v", err)
 	}
 
-	if got := app.cronState.Bitable.Tables.Tasks; got == "tbl-default" {
+	if got := app.cronRuntime.state.Bitable.Tables.Tasks; got == "tbl-default" {
 		t.Fatalf("tasks table = %q, want a fresh clean table", got)
 	}
 
 	api.mu.Lock()
 	defer api.mu.Unlock()
-	fields := api.fieldsByTable[app.cronState.Bitable.Tables.Tasks]
+	fields := api.fieldsByTable[app.cronRuntime.state.Bitable.Tables.Tasks]
 	for _, field := range fields {
 		if field == nil {
 			continue
@@ -1871,7 +1871,7 @@ func TestHandleActionCronCommandDoesNotHoldAppLockDuringNoticeDelivery(t *testin
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	gateway.app = app
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) {
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) {
 		return nil, errors.New("cron bitable unavailable in test")
 	}
 

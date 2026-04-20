@@ -70,21 +70,21 @@ func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []con
 func (a *App) handleCronMutatingDaemonCommandLocked(command control.DaemonCommand, parsed parsedCronCommand) []control.UIEvent {
 	switch parsed.Mode {
 	case cronCommandRepair:
-		if a.cronSyncInFlight {
+		if a.cronRuntime.syncInFlight {
 			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
-		a.cronSyncInFlight = true
+		a.cronRuntime.syncInFlight = true
 		go a.runCronRepairCommand(command)
 		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_repair_started", "正在修复 Cron 配置表；如果检测到绑定失效，将自动由当前 bot 接管 Cron 配置，请稍候。")}
 	case cronCommandReload:
-		if a.cronSyncInFlight {
+		if a.cronRuntime.syncInFlight {
 			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
-		a.cronSyncInFlight = true
+		a.cronRuntime.syncInFlight = true
 		go a.runCronReloadCommand(command)
 		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_reload_started", "正在重新加载 Cron 任务配置，并校验表格内容。")}
 	case cronCommandRun:
-		if a.cronSyncInFlight {
+		if a.cronRuntime.syncInFlight {
 			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
 		go a.runCronTriggerCommand(command, parsed.JobRecordID)
@@ -112,7 +112,7 @@ func (a *App) runCronTriggerCommand(command control.DaemonCommand, jobRecordID s
 func (a *App) finishCronBackgroundCommand(surfaceID string, event *control.UIEvent, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.cronSyncInFlight = false
+	a.cronRuntime.syncInFlight = false
 	a.finishCronAsyncCommandLocked(surfaceID, event, err)
 }
 
@@ -205,7 +205,7 @@ func (a *App) defaultCronBitableFactory(gatewayID string) (feishu.BitableAPI, er
 }
 
 func (a *App) cronBitableAPI(gatewayID string) (feishu.BitableAPI, error) {
-	factory := a.cronBitableFactory
+	factory := a.cronRuntime.bitableFactory
 	if factory == nil {
 		factory = a.defaultCronBitableFactory
 	}
@@ -277,17 +277,17 @@ func (a *App) syncCronWorkspacesBeforeCatalog(command control.DaemonCommand, sna
 	}
 
 	a.mu.Lock()
-	if a.cronSyncInFlight {
+	if a.cronRuntime.syncInFlight {
 		a.mu.Unlock()
 		return snapshot, ownerView, "当前已有 Cron 配置同步在进行中，已暂时隐藏配置入口，请稍后重试。", false
 	}
-	a.cronSyncInFlight = true
+	a.cronRuntime.syncInFlight = true
 	workspaces := a.cronWorkspaceRowsLocked()
 	a.mu.Unlock()
 
 	defer func() {
 		a.mu.Lock()
-		a.cronSyncInFlight = false
+		a.cronRuntime.syncInFlight = false
 		a.mu.Unlock()
 	}()
 

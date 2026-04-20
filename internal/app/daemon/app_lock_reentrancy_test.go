@@ -101,7 +101,7 @@ func TestHandleCronHelloReleasesAppLockDuringPromptSend(t *testing.T) {
 	app.sendAgentCommand = sender.send
 
 	instanceID := cronInstancePrefix + "job-1"
-	app.cronRuns[instanceID] = &cronRunState{
+	app.cronRuntime.runs[instanceID] = &cronRunState{
 		InstanceID:   instanceID,
 		WorkspaceKey: "/tmp/workspace",
 		Prompt:       "say hello",
@@ -137,7 +137,7 @@ func TestHandleCronHelloReleasesAppLockDuringPromptSend(t *testing.T) {
 	if len(commands) != 1 || commands[0].Kind != agentproto.CommandPromptSend {
 		t.Fatalf("unexpected cron relay commands: %#v", commands)
 	}
-	if run := app.cronRuns[instanceID]; run == nil || run.CommandID == "" {
+	if run := app.cronRuntime.runs[instanceID]; run == nil || run.CommandID == "" {
 		t.Fatalf("expected cron run command id to be recorded, got %#v", run)
 	}
 }

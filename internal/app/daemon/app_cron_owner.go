@@ -77,7 +77,7 @@ func (a *App) defaultCronGatewayIdentityLookup(gatewayID string) (cronGatewayIde
 }
 
 func (a *App) cronGatewayIdentity(gatewayID string) (cronGatewayIdentity, bool, error) {
-	lookup := a.cronGatewayIdentityLookup
+	lookup := a.cronRuntime.gatewayIdentityLookup
 	if lookup == nil {
 		lookup = a.defaultCronGatewayIdentityLookup
 	}

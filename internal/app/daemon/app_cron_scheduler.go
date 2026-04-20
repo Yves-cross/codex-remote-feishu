@@ -7,13 +7,13 @@ import (
 )
 
 func (a *App) maybeScheduleCronJobsLocked(now time.Time) {
-	if a.cronSyncInFlight {
+	if a.cronRuntime.syncInFlight {
 		return
 	}
-	if !a.cronNextScheduleScan.IsZero() && now.Before(a.cronNextScheduleScan) {
+	if !a.cronRuntime.nextScheduleScan.IsZero() && now.Before(a.cronRuntime.nextScheduleScan) {
 		return
 	}
-	a.cronNextScheduleScan = nextCronScheduleScan(now)
+	a.cronRuntime.nextScheduleScan = nextCronScheduleScan(now)
 	a.maybeTimeoutCronRunsLocked(now)
 
 	stateValue, err := a.loadCronStateLocked(false)
@@ -61,9 +61,9 @@ func (a *App) maybeScheduleCronJobsLocked(now time.Time) {
 }
 
 func (a *App) maybeTimeoutCronRunsLocked(now time.Time) {
-	for instanceID, run := range a.cronRuns {
+	for instanceID, run := range a.cronRuntime.runs {
 		if run == nil {
-			delete(a.cronRuns, instanceID)
+			delete(a.cronRuntime.runs, instanceID)
 			continue
 		}
 		timeoutAt := run.TriggeredAt
@@ -87,16 +87,16 @@ func (a *App) recordCronImmediateResultLocked(job cronJobState, triggeredAt time
 
 func (a *App) reapCronExitTargetsLocked(now time.Time) {
 	targets := make([]cronExitTarget, 0)
-	for instanceID, target := range a.cronExitTargets {
+	for instanceID, target := range a.cronRuntime.exitTargets {
 		if target == nil {
-			delete(a.cronExitTargets, instanceID)
+			delete(a.cronRuntime.exitTargets, instanceID)
 			continue
 		}
 		if target.StopInFlight || target.Deadline.IsZero() || now.Before(target.Deadline) {
 			continue
 		}
 		if target.PID <= 0 {
-			delete(a.cronExitTargets, instanceID)
+			delete(a.cronRuntime.exitTargets, instanceID)
 			continue
 		}
 		target.StopInFlight = true
@@ -124,12 +124,12 @@ func (a *App) reapCronExitTargetsLocked(now time.Time) {
 	for _, result := range results {
 		if result.Err != nil {
 			log.Printf("cron forced stop failed: instance=%s pid=%d err=%v", result.Target.InstanceID, result.Target.PID, result.Err)
-			if target := a.cronExitTargets[result.Target.InstanceID]; target != nil {
+			if target := a.cronRuntime.exitTargets[result.Target.InstanceID]; target != nil {
 				target.StopInFlight = false
 			}
 			continue
 		}
 		log.Printf("cron forced stop: instance=%s pid=%d", result.Target.InstanceID, result.Target.PID)
-		delete(a.cronExitTargets, result.Target.InstanceID)
+		delete(a.cronRuntime.exitTargets, result.Target.InstanceID)
 	}
 }

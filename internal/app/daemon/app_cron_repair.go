@@ -30,7 +30,7 @@ func cronOwnerNeedsRepairTakeover(status cronOwnerStatus) bool {
 
 func (a *App) repairCronBitableTakeoverNow(command control.DaemonCommand, current cronOwnerResolution) (string, error) {
 	a.mu.Lock()
-	activeRuns := len(a.cronRuns)
+	activeRuns := len(a.cronRuntime.runs)
 	a.mu.Unlock()
 	if activeRuns > 0 {
 		return "", fmt.Errorf("当前还有 %d 个运行中的 Cron 任务，暂时不能接管 Cron 配置", activeRuns)
@@ -107,7 +107,7 @@ func (a *App) repairCronBitableWithBinding(command control.DaemonCommand, resolu
 		stateValue.Jobs = []cronJobState{}
 		stateValue.LastReloadAt = time.Time{}
 		stateValue.LastReloadSummary = ""
-		a.cronNextScheduleScan = time.Time{}
+		a.cronRuntime.nextScheduleScan = time.Time{}
 	}
 	if err := a.writeCronStateLocked(); err != nil {
 		return "", err

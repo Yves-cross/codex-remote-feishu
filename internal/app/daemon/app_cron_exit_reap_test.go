@@ -11,7 +11,7 @@ import (
 func TestCronForcedStopRunsOutsideAppLockAndTracksInFlightState(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	now := time.Now().UTC()
-	app.cronExitTargets["inst-cron-1"] = &cronExitTarget{
+	app.cronRuntime.exitTargets["inst-cron-1"] = &cronExitTarget{
 		InstanceID: "inst-cron-1",
 		PID:        4321,
 		Deadline:   now.Add(-time.Second),
@@ -38,7 +38,7 @@ func TestCronForcedStopRunsOutsideAppLockAndTracksInFlightState(t *testing.T) {
 
 	waitForTestSignal(t, stopStarted, "cron forced stop start")
 	unlock := lockAppForTest(t, app)
-	target := app.cronExitTargets["inst-cron-1"]
+	target := app.cronRuntime.exitTargets["inst-cron-1"]
 	if target == nil {
 		t.Fatalf("expected cron exit target to remain while forced stop is in flight")
 	}
@@ -53,7 +53,7 @@ func TestCronForcedStopRunsOutsideAppLockAndTracksInFlightState(t *testing.T) {
 	close(releaseStop)
 	waitForTestSignal(t, reapDone, "cron forced stop completion")
 
-	if _, ok := app.cronExitTargets["inst-cron-1"]; ok {
+	if _, ok := app.cronRuntime.exitTargets["inst-cron-1"]; ok {
 		t.Fatalf("expected cron exit target removed after stop settles")
 	}
 }
@@ -61,7 +61,7 @@ func TestCronForcedStopRunsOutsideAppLockAndTracksInFlightState(t *testing.T) {
 func TestCronForcedStopFailureClearsInFlightAndRetries(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	now := time.Now().UTC()
-	app.cronExitTargets["inst-cron-1"] = &cronExitTarget{
+	app.cronRuntime.exitTargets["inst-cron-1"] = &cronExitTarget{
 		InstanceID: "inst-cron-1",
 		PID:        4321,
 		Deadline:   now.Add(-time.Second),
@@ -81,7 +81,7 @@ func TestCronForcedStopFailureClearsInFlightAndRetries(t *testing.T) {
 
 	app.mu.Lock()
 	app.reapCronExitTargetsLocked(now)
-	target := app.cronExitTargets["inst-cron-1"]
+	target := app.cronRuntime.exitTargets["inst-cron-1"]
 	if attempts != 1 {
 		t.Fatalf("attempts after first reap = %d, want 1", attempts)
 	}
@@ -97,7 +97,7 @@ func TestCronForcedStopFailureClearsInFlightAndRetries(t *testing.T) {
 	if attempts != 2 {
 		t.Fatalf("attempts after retry = %d, want 2", attempts)
 	}
-	if _, ok := app.cronExitTargets["inst-cron-1"]; ok {
+	if _, ok := app.cronRuntime.exitTargets["inst-cron-1"]; ok {
 		t.Fatalf("expected cron exit target removed after retry succeeds")
 	}
 }

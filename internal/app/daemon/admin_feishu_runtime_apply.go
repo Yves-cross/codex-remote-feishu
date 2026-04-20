@@ -19,22 +19,22 @@ type feishuRuntimeApplyPendingState struct {
 }
 
 func (a *App) snapshotFeishuRuntimeApplyPending() map[string]feishuRuntimeApplyPendingState {
-	a.adminFeishuMu.RLock()
-	defer a.adminFeishuMu.RUnlock()
-	if len(a.feishuRuntimeApply) == 0 {
+	a.feishuRuntime.mu.RLock()
+	defer a.feishuRuntime.mu.RUnlock()
+	if len(a.feishuRuntime.runtimeApply) == 0 {
 		return map[string]feishuRuntimeApplyPendingState{}
 	}
-	values := make(map[string]feishuRuntimeApplyPendingState, len(a.feishuRuntimeApply))
-	for gatewayID, pending := range a.feishuRuntimeApply {
+	values := make(map[string]feishuRuntimeApplyPendingState, len(a.feishuRuntime.runtimeApply))
+	for gatewayID, pending := range a.feishuRuntime.runtimeApply {
 		values[gatewayID] = pending
 	}
 	return values
 }
 
 func (a *App) feishuRuntimeApplyPendingState(gatewayID string) (feishuRuntimeApplyPendingState, bool) {
-	a.adminFeishuMu.RLock()
-	defer a.adminFeishuMu.RUnlock()
-	pending, ok := a.feishuRuntimeApply[canonicalGatewayID(gatewayID)]
+	a.feishuRuntime.mu.RLock()
+	defer a.feishuRuntime.mu.RUnlock()
+	pending, ok := a.feishuRuntime.runtimeApply[canonicalGatewayID(gatewayID)]
 	return pending, ok
 }
 
@@ -47,17 +47,17 @@ func (a *App) markFeishuRuntimeApplyPending(summary adminFeishuAppSummary, actio
 		Error:     strings.TrimSpace(err.Error()),
 		UpdatedAt: now,
 	}
-	a.adminFeishuMu.Lock()
-	a.feishuRuntimeApply[canonicalGatewayID(summary.ID)] = pending
-	a.adminFeishuMu.Unlock()
+	a.feishuRuntime.mu.Lock()
+	a.feishuRuntime.runtimeApply[canonicalGatewayID(summary.ID)] = pending
+	a.feishuRuntime.mu.Unlock()
 	return pending
 }
 
 func (a *App) clearFeishuRuntimeApplyPending(gatewayID string) {
 	gatewayID = canonicalGatewayID(gatewayID)
-	a.adminFeishuMu.Lock()
-	delete(a.feishuRuntimeApply, gatewayID)
-	a.adminFeishuMu.Unlock()
+	a.feishuRuntime.mu.Lock()
+	delete(a.feishuRuntime.runtimeApply, gatewayID)
+	a.feishuRuntime.mu.Unlock()
 }
 
 func applyFeishuRuntimePending(summary adminFeishuAppSummary, pending feishuRuntimeApplyPendingState) adminFeishuAppSummary {

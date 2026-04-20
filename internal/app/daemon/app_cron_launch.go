@@ -42,10 +42,10 @@ func (a *App) newCronLaunchRequestLocked(job cronJobState, now time.Time) cronLa
 }
 
 func (a *App) cronRepoManagerLocked() *cronrepo.Manager {
-	if a.cronRepoManager == nil {
-		a.cronRepoManager = cronrepo.NewManager(a.headlessRuntime.Paths.StateDir)
+	if a.cronRuntime.repoManager == nil {
+		a.cronRuntime.repoManager = cronrepo.NewManager(a.headlessRuntime.Paths.StateDir)
 	}
-	return a.cronRepoManager
+	return a.cronRuntime.repoManager
 }
 
 func (a *App) launchCronRequestsLocked(requests []cronLaunchRequest) {
@@ -64,17 +64,17 @@ func (a *App) launchCronRequestLocked(request cronLaunchRequest) error {
 		return err
 	}
 	run := prepared.Run
-	a.cronRuns[run.InstanceID] = &run
+	a.cronRuntime.runs[run.InstanceID] = &run
 	a.addCronActiveRunLocked(run.JobRecordID, run.JobName, run.InstanceID)
-	delete(a.cronExitTargets, run.InstanceID)
+	delete(a.cronRuntime.exitTargets, run.InstanceID)
 
 	a.mu.Unlock()
 	pid, launchErr := a.startHeadless(controlToHeadlessLaunch(request.Runtime, prepared.Env, run.RunDirectory, run.InstanceID))
 	a.mu.Lock()
 
-	existing := a.cronRuns[run.InstanceID]
+	existing := a.cronRuntime.runs[run.InstanceID]
 	if launchErr != nil {
-		delete(a.cronRuns, run.InstanceID)
+		delete(a.cronRuntime.runs, run.InstanceID)
 		a.removeCronActiveRunLocked(run.JobRecordID, run.JobName, run.InstanceID)
 		a.mu.Unlock()
 		a.cleanupCronRunResources(run)
@@ -204,7 +204,7 @@ func (a *App) cleanupCronRunResources(run cronRunState) {
 	if run.SourceType != cronJobSourceGitRepo || run.RunRoot == "" || run.GitSourceKey == "" {
 		return
 	}
-	manager := a.cronRepoManager
+	manager := a.cronRuntime.repoManager
 	if manager == nil {
 		manager = cronrepo.NewManager(a.headlessRuntime.Paths.StateDir)
 	}

@@ -15,8 +15,8 @@ func TestCronSchedulerAllowsSecondRunWithinConcurrencyLimit(t *testing.T) {
 	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.state = &cronStateFile{
 		GatewayID: "gateway-1",
 		Bitable: &cronBitableState{
 			AppToken: "app-1",
@@ -44,7 +44,7 @@ func TestCronSchedulerAllowsSecondRunWithinConcurrencyLimit(t *testing.T) {
 			StateDir: app.headlessRuntime.Paths.StateDir,
 		},
 	})
-	app.cronRuns["inst-running"] = &cronRunState{
+	app.cronRuntime.runs["inst-running"] = &cronRunState{
 		InstanceID:     "inst-running",
 		JobRecordID:    "rec-task-1",
 		JobName:        "Nightly",
@@ -52,7 +52,7 @@ func TestCronSchedulerAllowsSecondRunWithinConcurrencyLimit(t *testing.T) {
 		TriggeredAt:    time.Now().Add(-2 * time.Minute),
 		TimeoutMinutes: 15,
 	}
-	app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
+	app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")] = map[string]struct{}{"inst-running": {}}
 
 	var launches int
 	app.startHeadless = func(opts relayruntime.HeadlessLaunchOptions) (int, error) {
@@ -67,10 +67,10 @@ func TestCronSchedulerAllowsSecondRunWithinConcurrencyLimit(t *testing.T) {
 	if launches != 1 {
 		t.Fatalf("launches = %d, want 1", launches)
 	}
-	if len(app.cronRuns) != 2 {
-		t.Fatalf("cronRuns = %#v, want two active runs", app.cronRuns)
+	if len(app.cronRuntime.runs) != 2 {
+		t.Fatalf("cronRuns = %#v, want two active runs", app.cronRuntime.runs)
 	}
-	active := app.cronJobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")]
+	active := app.cronRuntime.jobActiveRuns[cronJobActiveKey("rec-task-1", "Nightly")]
 	if len(active) != 2 {
 		t.Fatalf("active cron runs = %#v, want two instances", active)
 	}

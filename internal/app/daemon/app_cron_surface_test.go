@@ -16,9 +16,9 @@ func TestCronMenuCatalogUsesSteadyStateActions(t *testing.T) {
 	api := &fakeCronBitableAPI{}
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -79,9 +79,9 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 	api := &fakeCronBitableAPI{}
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",
@@ -226,9 +226,9 @@ func TestCronCatalogHidesConfigEntryWhenWorkspaceSyncFails(t *testing.T) {
 	api := &fakeCronBitableAPI{listRecordsErr: errors.New("bitable down")}
 	setCronGatewayLookup(app, "gateway-1", "app-1")
 	app.headlessRuntime.Paths.StateDir = t.TempDir()
-	app.cronLoaded = true
-	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
-	app.cronState = &cronStateFile{
+	app.cronRuntime.loaded = true
+	app.cronRuntime.bitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
+	app.cronRuntime.state = &cronStateFile{
 		SchemaVersion:    cronStateSchemaVersion,
 		InstanceScopeKey: "stable",
 		InstanceLabel:    "stable",

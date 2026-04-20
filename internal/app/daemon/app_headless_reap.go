@@ -43,9 +43,9 @@ func (a *App) reapIdleHeadless(now time.Time) {
 
 func (a *App) collectIdleHeadlessStopTargetsLocked(now time.Time) []managedHeadlessIdleStopTarget {
 	targets := make([]managedHeadlessIdleStopTarget, 0)
-	for instanceID, managed := range a.managedHeadless {
+	for instanceID, managed := range a.managedHeadlessRuntime.processes {
 		if managed == nil {
-			delete(a.managedHeadless, instanceID)
+			delete(a.managedHeadlessRuntime.processes, instanceID)
 			continue
 		}
 		if managed.Status != managedHeadlessStatusIdle || managed.IdleSince.IsZero() {
@@ -86,12 +86,12 @@ func (a *App) finishIdleHeadlessStopLocked(now time.Time, result managedHeadless
 		result.Target.PID,
 		result.Target.IdleSince.Format(time.RFC3339),
 	)
-	delete(a.managedHeadless, result.Target.InstanceID)
+	delete(a.managedHeadlessRuntime.processes, result.Target.InstanceID)
 	a.service.RemoveInstance(result.Target.InstanceID)
 }
 
 func (a *App) restoreIdleHeadlessStopFailureLocked(now time.Time, result managedHeadlessIdleStopResult) {
-	managed := a.managedHeadless[result.Target.InstanceID]
+	managed := a.managedHeadlessRuntime.processes[result.Target.InstanceID]
 	if managed == nil {
 		return
 	}
@@ -100,7 +100,7 @@ func (a *App) restoreIdleHeadlessStopFailureLocked(now time.Time, result managed
 		managed.Status = managedHeadlessStatusOffline
 	}
 	a.syncManagedHeadlessLocked(now)
-	managed = a.managedHeadless[result.Target.InstanceID]
+	managed = a.managedHeadlessRuntime.processes[result.Target.InstanceID]
 	if managed != nil && managed.Status == managedHeadlessStatusIdle && !result.Target.IdleSince.IsZero() {
 		managed.IdleSince = result.Target.IdleSince
 	}

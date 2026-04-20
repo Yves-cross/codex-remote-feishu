@@ -24,7 +24,7 @@ func (a *App) handleCronHelloLocked(_ context.Context, hello agentproto.Hello) b
 		return false
 	}
 	now := time.Now().UTC()
-	run := a.cronRuns[instanceID]
+	run := a.cronRuntime.runs[instanceID]
 	if run == nil {
 		log.Printf("cron hidden instance connected without active run: instance=%s pid=%d", instanceID, hello.Instance.PID)
 		a.requestCronInstanceExitLocked(instanceID, hello.Instance.PID, now)
@@ -54,7 +54,7 @@ func (a *App) handleCronHelloLocked(_ context.Context, hello agentproto.Hello) b
 	a.mu.Unlock()
 	err := a.sendAgentCommand(instanceID, command)
 	a.mu.Lock()
-	run = a.cronRuns[instanceID]
+	run = a.cronRuntime.runs[instanceID]
 	if run == nil {
 		return true
 	}
@@ -76,7 +76,7 @@ func (a *App) handleCronEventsLocked(_ context.Context, instanceID string, event
 	if !isCronInstanceID(instanceID) {
 		return false
 	}
-	run := a.cronRuns[instanceID]
+	run := a.cronRuntime.runs[instanceID]
 	if run == nil {
 		return true
 	}
@@ -159,7 +159,7 @@ func (a *App) handleCronCommandAckLocked(_ context.Context, instanceID string, a
 	if ack.Accepted {
 		return true
 	}
-	run := a.cronRuns[instanceID]
+	run := a.cronRuntime.runs[instanceID]
 	if run == nil {
 		return true
 	}
@@ -178,8 +178,8 @@ func (a *App) handleCronDisconnectLocked(_ context.Context, instanceID string) b
 	if !isCronInstanceID(instanceID) {
 		return false
 	}
-	delete(a.cronExitTargets, instanceID)
-	run := a.cronRuns[instanceID]
+	delete(a.cronRuntime.exitTargets, instanceID)
+	run := a.cronRuntime.runs[instanceID]
 	if run == nil {
 		return true
 	}
@@ -235,10 +235,10 @@ func (a *App) addCronActiveRunLocked(jobRecordID, jobName, instanceID string) {
 	if activeKey == "" || instanceID == "" {
 		return
 	}
-	runs := a.cronJobActiveRuns[activeKey]
+	runs := a.cronRuntime.jobActiveRuns[activeKey]
 	if runs == nil {
 		runs = map[string]struct{}{}
-		a.cronJobActiveRuns[activeKey] = runs
+		a.cronRuntime.jobActiveRuns[activeKey] = runs
 	}
 	runs[instanceID] = struct{}{}
 }
@@ -249,14 +249,14 @@ func (a *App) removeCronActiveRunLocked(jobRecordID, jobName, instanceID string)
 	if activeKey == "" || instanceID == "" {
 		return
 	}
-	runs := a.cronJobActiveRuns[activeKey]
+	runs := a.cronRuntime.jobActiveRuns[activeKey]
 	if len(runs) == 0 {
-		delete(a.cronJobActiveRuns, activeKey)
+		delete(a.cronRuntime.jobActiveRuns, activeKey)
 		return
 	}
 	delete(runs, instanceID)
 	if len(runs) == 0 {
-		delete(a.cronJobActiveRuns, activeKey)
+		delete(a.cronRuntime.jobActiveRuns, activeKey)
 	}
 }
 
@@ -265,27 +265,27 @@ func (a *App) cronActiveRunCountLocked(jobRecordID, jobName string) int {
 	if activeKey == "" {
 		return 0
 	}
-	runs := a.cronJobActiveRuns[activeKey]
+	runs := a.cronRuntime.jobActiveRuns[activeKey]
 	if len(runs) == 0 {
-		delete(a.cronJobActiveRuns, activeKey)
+		delete(a.cronRuntime.jobActiveRuns, activeKey)
 		return 0
 	}
 	activeCount := 0
 	for instanceID := range runs {
-		if a.cronRuns[instanceID] == nil {
+		if a.cronRuntime.runs[instanceID] == nil {
 			delete(runs, instanceID)
 			continue
 		}
 		activeCount++
 	}
 	if len(runs) == 0 {
-		delete(a.cronJobActiveRuns, activeKey)
+		delete(a.cronRuntime.jobActiveRuns, activeKey)
 	}
 	return activeCount
 }
 
 func (a *App) completeCronRunLocked(instanceID, status, errorMessage string, now time.Time, requestExit bool) {
-	run := a.cronRuns[instanceID]
+	run := a.cronRuntime.runs[instanceID]
 	if run == nil {
 		return
 	}
@@ -314,7 +314,7 @@ func (a *App) completeCronRunLocked(instanceID, status, errorMessage string, now
 	if run.Buffers != nil {
 		completedRun.Buffers = nil
 	}
-	delete(a.cronRuns, instanceID)
+	delete(a.cronRuntime.runs, instanceID)
 	if requestExit {
 		a.requestCronInstanceExitLocked(instanceID, run.PID, now)
 	}
@@ -328,16 +328,16 @@ func (a *App) completeCronRunLocked(instanceID, status, errorMessage string, now
 }
 
 func (a *App) snapshotCronWritebackLocked() cronWritebackTarget {
-	if !cronStateHasBinding(a.cronState) || a.cronState == nil || a.cronState.Bitable == nil {
+	if !cronStateHasBinding(a.cronRuntime.state) || a.cronRuntime.state == nil || a.cronRuntime.state.Bitable == nil {
 		return cronWritebackTarget{}
 	}
-	gatewayID := strings.TrimSpace(a.cronState.OwnerGatewayID)
+	gatewayID := strings.TrimSpace(a.cronRuntime.state.OwnerGatewayID)
 	if gatewayID == "" {
-		gatewayID = strings.TrimSpace(a.cronState.GatewayID)
+		gatewayID = strings.TrimSpace(a.cronRuntime.state.GatewayID)
 	}
 	target := cronWritebackTarget{
 		GatewayID: gatewayID,
-		Bitable:   *a.cronState.Bitable,
+		Bitable:   *a.cronRuntime.state.Bitable,
 	}
 	return target
 }
@@ -369,10 +369,10 @@ func (a *App) requestCronInstanceExitLocked(instanceID string, pid int, now time
 		deadline = now
 	}
 	if pid > 0 {
-		target := a.cronExitTargets[instanceID]
+		target := a.cronRuntime.exitTargets[instanceID]
 		if target == nil {
 			target = &cronExitTarget{InstanceID: instanceID}
-			a.cronExitTargets[instanceID] = target
+			a.cronRuntime.exitTargets[instanceID] = target
 		}
 		target.PID = pid
 		target.Deadline = deadline

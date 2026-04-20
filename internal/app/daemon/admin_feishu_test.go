@@ -156,7 +156,7 @@ func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 		verifyResult: feishu.VerifyResult{Connected: true, Duration: time.Second},
 	}
 	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-	app.feishuSetup = &fakeFeishuSetupClient{
+	app.feishuRuntime.setup = &fakeFeishuSetupClient{
 		startResult: feishuRegistrationStartResult{
 			DeviceCode:      "device-1",
 			VerificationURL: "https://example.test/qr",
@@ -234,7 +234,7 @@ func TestAdminFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 		verifyResult: feishu.VerifyResult{Connected: true, Duration: time.Second},
 	}
 	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-	app.feishuSetup = &fakeFeishuSetupClient{
+	app.feishuRuntime.setup = &fakeFeishuSetupClient{
 		startResult: feishuRegistrationStartResult{
 			DeviceCode:      "device-admin-1",
 			VerificationURL: "https://example.test/admin-qr",
@@ -294,7 +294,7 @@ func TestSetupFeishuOnboardingRetryDoesNotDuplicateAppAfterVerifyFailure(t *test
 		verifyErr:    errors.New("bot ability missing"),
 	}
 	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-	app.feishuSetup = &fakeFeishuSetupClient{
+	app.feishuRuntime.setup = &fakeFeishuSetupClient{
 		startResult: feishuRegistrationStartResult{
 			DeviceCode:      "device-2",
 			VerificationURL: "https://example.test/qr-2",
@@ -438,7 +438,7 @@ func TestFeishuCreateAutoFillsDisplayNameWhenNameOmitted(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	gateway := &fakeAdminGatewayController{}
 	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-	app.feishuSetup = &fakeFeishuSetupClient{
+	app.feishuRuntime.setup = &fakeFeishuSetupClient{
 		describeResult: feishuAppIdentity{DisplayName: "Auto Named Bot"},
 	}
 

@@ -39,12 +39,12 @@ func (a *App) observeFeishuPermissionError(gatewayID string, err error) bool {
 	}
 	now := time.Now().UTC()
 	key := feishuPermissionGapKey(gap.Scope, gap.ScopeType)
-	a.feishuPermissionMu.Lock()
-	defer a.feishuPermissionMu.Unlock()
-	if a.feishuPermissionGaps[gatewayID] == nil {
-		a.feishuPermissionGaps[gatewayID] = map[string]*feishuPermissionGapRecord{}
+	a.feishuRuntime.permissionMu.Lock()
+	defer a.feishuRuntime.permissionMu.Unlock()
+	if a.feishuRuntime.permissionGaps[gatewayID] == nil {
+		a.feishuRuntime.permissionGaps[gatewayID] = map[string]*feishuPermissionGapRecord{}
 	}
-	record := a.feishuPermissionGaps[gatewayID][key]
+	record := a.feishuRuntime.permissionGaps[gatewayID][key]
 	if record == nil {
 		record = &feishuPermissionGapRecord{
 			Scope:       strings.TrimSpace(gap.Scope),
@@ -52,7 +52,7 @@ func (a *App) observeFeishuPermissionError(gatewayID string, err error) bool {
 			ApplyURL:    strings.TrimSpace(gap.ApplyURL),
 			FirstSeenAt: now,
 		}
-		a.feishuPermissionGaps[gatewayID][key] = record
+		a.feishuRuntime.permissionGaps[gatewayID][key] = record
 	}
 	record.LastSeenAt = now
 	record.HitCount++
@@ -75,9 +75,9 @@ func (a *App) snapshotFeishuPermissionGaps(gatewayID string) []control.Permissio
 	if gatewayID == "" {
 		return nil
 	}
-	a.feishuPermissionMu.RLock()
-	defer a.feishuPermissionMu.RUnlock()
-	records := a.feishuPermissionGaps[gatewayID]
+	a.feishuRuntime.permissionMu.RLock()
+	defer a.feishuRuntime.permissionMu.RUnlock()
+	records := a.feishuRuntime.permissionGaps[gatewayID]
 	if len(records) == 0 {
 		return nil
 	}
@@ -120,45 +120,45 @@ func (a *App) clearFeishuPermissionGaps(gatewayID string) {
 	if gatewayID == "" {
 		return
 	}
-	a.feishuPermissionMu.Lock()
-	delete(a.feishuPermissionGaps, gatewayID)
-	a.feishuPermissionMu.Unlock()
+	a.feishuRuntime.permissionMu.Lock()
+	delete(a.feishuRuntime.permissionGaps, gatewayID)
+	a.feishuRuntime.permissionMu.Unlock()
 }
 
 func (a *App) maybeStartFeishuPermissionRefreshLocked(now time.Time) {
-	if a.feishuPermissionRefreshInFlight {
+	if a.feishuRuntime.permissionRefreshInFlight {
 		return
 	}
-	if a.feishuPermissionRefreshEvery <= 0 {
-		a.feishuPermissionRefreshEvery = defaultFeishuPermissionRefreshEvery
+	if a.feishuRuntime.permissionRefreshEvery <= 0 {
+		a.feishuRuntime.permissionRefreshEvery = defaultFeishuPermissionRefreshEvery
 	}
-	a.feishuPermissionMu.RLock()
-	hasGaps := len(a.feishuPermissionGaps) != 0
-	a.feishuPermissionMu.RUnlock()
+	a.feishuRuntime.permissionMu.RLock()
+	hasGaps := len(a.feishuRuntime.permissionGaps) != 0
+	a.feishuRuntime.permissionMu.RUnlock()
 	if !hasGaps {
 		return
 	}
-	if !a.feishuPermissionNextRefresh.IsZero() && now.Before(a.feishuPermissionNextRefresh) {
+	if !a.feishuRuntime.permissionNextRefresh.IsZero() && now.Before(a.feishuRuntime.permissionNextRefresh) {
 		return
 	}
-	a.feishuPermissionRefreshInFlight = true
-	a.feishuPermissionNextRefresh = now.Add(a.feishuPermissionRefreshEvery)
+	a.feishuRuntime.permissionRefreshInFlight = true
+	a.feishuRuntime.permissionNextRefresh = now.Add(a.feishuRuntime.permissionRefreshEvery)
 	go a.refreshFeishuPermissionGaps()
 }
 
 func (a *App) refreshFeishuPermissionGaps() {
 	defer func() {
 		a.mu.Lock()
-		a.feishuPermissionRefreshInFlight = false
+		a.feishuRuntime.permissionRefreshInFlight = false
 		a.mu.Unlock()
 	}()
 
-	a.feishuPermissionMu.RLock()
-	gatewayIDs := make([]string, 0, len(a.feishuPermissionGaps))
-	for gatewayID := range a.feishuPermissionGaps {
+	a.feishuRuntime.permissionMu.RLock()
+	gatewayIDs := make([]string, 0, len(a.feishuRuntime.permissionGaps))
+	for gatewayID := range a.feishuRuntime.permissionGaps {
 		gatewayIDs = append(gatewayIDs, gatewayID)
 	}
-	a.feishuPermissionMu.RUnlock()
+	a.feishuRuntime.permissionMu.RUnlock()
 
 	for _, gatewayID := range gatewayIDs {
 		verifyCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -197,9 +197,9 @@ func (a *App) applyFeishuPermissionVerificationResult(gatewayID string, scopes [
 			granted[feishuPermissionGapKey(item.ScopeName, "")] = true
 		}
 	}
-	a.feishuPermissionMu.Lock()
-	defer a.feishuPermissionMu.Unlock()
-	records := a.feishuPermissionGaps[gatewayID]
+	a.feishuRuntime.permissionMu.Lock()
+	defer a.feishuRuntime.permissionMu.Unlock()
+	records := a.feishuRuntime.permissionGaps[gatewayID]
 	if len(records) == 0 {
 		return
 	}
@@ -219,7 +219,7 @@ func (a *App) applyFeishuPermissionVerificationResult(gatewayID string, scopes [
 		}
 	}
 	if len(records) == 0 {
-		delete(a.feishuPermissionGaps, gatewayID)
+		delete(a.feishuRuntime.permissionGaps, gatewayID)
 	}
 	if err != nil {
 		log.Printf("feishu permission verification failed: gateway=%s err=%v", gatewayID, err)

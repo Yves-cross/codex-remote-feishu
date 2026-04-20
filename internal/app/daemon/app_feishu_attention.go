@@ -27,7 +27,7 @@ func (s feishuTimeSensitiveState) operation(surfaceID string, enabled bool) feis
 }
 
 func (a *App) syncFeishuTimeSensitiveLocked(ctx context.Context) {
-	seen := make(map[string]bool, len(a.feishuTimeSensitive))
+	seen := make(map[string]bool, len(a.feishuRuntime.timeSensitive))
 	for _, surface := range a.service.Surfaces() {
 		target, enabled, ok := feishuTimeSensitiveTarget(surface)
 		if !ok {
@@ -35,7 +35,7 @@ func (a *App) syncFeishuTimeSensitiveLocked(ctx context.Context) {
 		}
 		surfaceID := strings.TrimSpace(surface.SurfaceSessionID)
 		seen[surfaceID] = true
-		cached, wasEnabled := a.feishuTimeSensitive[surfaceID]
+		cached, wasEnabled := a.feishuRuntime.timeSensitive[surfaceID]
 		switch {
 		case enabled && wasEnabled:
 			continue
@@ -44,17 +44,17 @@ func (a *App) syncFeishuTimeSensitiveLocked(ctx context.Context) {
 				log.Printf("feishu time sensitive enable failed: surface=%s gateway=%s user=%s err=%v", surfaceID, target.GatewayID, target.ReceiveID, err)
 				continue
 			}
-			a.feishuTimeSensitive[surfaceID] = target
+			a.feishuRuntime.timeSensitive[surfaceID] = target
 		case wasEnabled:
 			if err := a.applyFeishuTimeSensitiveLocked(ctx, cached.operation(surfaceID, false)); err != nil {
 				log.Printf("feishu time sensitive disable failed: surface=%s gateway=%s user=%s err=%v", surfaceID, cached.GatewayID, cached.ReceiveID, err)
 				continue
 			}
-			delete(a.feishuTimeSensitive, surfaceID)
+			delete(a.feishuRuntime.timeSensitive, surfaceID)
 		}
 	}
 
-	for surfaceID, cached := range a.feishuTimeSensitive {
+	for surfaceID, cached := range a.feishuRuntime.timeSensitive {
 		if seen[surfaceID] {
 			continue
 		}
@@ -62,7 +62,7 @@ func (a *App) syncFeishuTimeSensitiveLocked(ctx context.Context) {
 			log.Printf("feishu time sensitive cleanup failed: surface=%s gateway=%s user=%s err=%v", surfaceID, cached.GatewayID, cached.ReceiveID, err)
 			continue
 		}
-		delete(a.feishuTimeSensitive, surfaceID)
+		delete(a.feishuRuntime.timeSensitive, surfaceID)
 	}
 }
 

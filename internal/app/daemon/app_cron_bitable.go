@@ -118,7 +118,7 @@ func (a *App) reloadCronJobsResultNow(command control.DaemonCommand) (cronReload
 	}
 	stateValue.LastReloadAt = now
 	stateValue.LastReloadSummary = result.CompactSummary()
-	a.cronNextScheduleScan = time.Time{}
+	a.cronRuntime.nextScheduleScan = time.Time{}
 	if err := a.writeCronStateLocked(); err != nil {
 		return cronReloadResult{}, err
 	}

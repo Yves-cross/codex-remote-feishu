@@ -117,55 +117,36 @@ type App struct {
 	shutdownStarted   bool
 	shuttingDown      bool
 
-	commandSeq         uint64
-	mu                 sync.Mutex
-	shutdownMu         sync.Mutex
-	adminConfigMu      sync.Mutex
-	adminFeishuMu      sync.RWMutex
-	listenMu           sync.Mutex
-	ingressRunMu       sync.Mutex
-	relayConnMu        sync.Mutex
-	feishuPermissionMu sync.RWMutex
-	upgradeStateIOMu   sync.Mutex
-	cronStateIOMu      sync.Mutex
+	commandSeq       uint64
+	mu               sync.Mutex
+	shutdownMu       sync.Mutex
+	adminConfigMu    sync.Mutex
+	listenMu         sync.Mutex
+	ingressRunMu     sync.Mutex
+	relayConnMu      sync.Mutex
+	upgradeStateIOMu sync.Mutex
 
-	pendingGlobalRuntimeNotices     map[string][]control.UIEvent
-	recentGlobalRuntimeNotices      map[string]map[string]time.Time
-	headlessRuntime                 HeadlessRuntimeConfig
-	vscodeDetect                    func() (vscodeDetectResponse, error)
-	detectPlatformDefaults          func() (install.PlatformDefaults, error)
-	vscodeCompatibility             vscodeCompatibilityCacheState
-	managedHeadless                 map[string]*managedHeadlessProcess
-	pendingThreadHistoryReads       map[string]pendingThreadHistoryRead
-	gitWorkspaceImports             map[string]*gitWorkspaceImportRuntime
-	startHeadless                   func(relayruntime.HeadlessLaunchOptions) (int, error)
-	stopProcess                     func(int, time.Duration) error
-	sendAgentCommand                func(string, agentproto.Command) error
-	ingress                         *ingressPump
-	ingressCancel                   context.CancelFunc
-	ingressStarted                  bool
-	ingressWG                       sync.WaitGroup
-	gatewayRunCancel                context.CancelFunc
-	gatewayRunDone                  chan struct{}
-	relayConnections                map[string]*relayConnectionState
-	feishuRuntimeApply              map[string]feishuRuntimeApplyPendingState
-	feishuTimeSensitive             map[string]feishuTimeSensitiveState
-	feishuPermissionGaps            map[string]map[string]*feishuPermissionGapRecord
-	feishuPermissionRefreshEvery    time.Duration
-	feishuPermissionNextRefresh     time.Time
-	feishuPermissionRefreshInFlight bool
-	feishuOnboarding                map[string]*feishuOnboardingSession
-	feishuSetup                     feishuSetupClient
-	cronLoaded                      bool
-	cronSyncInFlight                bool
-	cronState                       *cronStateFile
-	cronRuns                        map[string]*cronRunState
-	cronJobActiveRuns               map[string]map[string]struct{}
-	cronExitTargets                 map[string]*cronExitTarget
-	cronBitableFactory              func(string) (feishu.BitableAPI, error)
-	cronGatewayIdentityLookup       func(string) (cronGatewayIdentity, bool, error)
-	cronNextScheduleScan            time.Time
-	cronRepoManager                 *cronrepo.Manager
+	pendingGlobalRuntimeNotices map[string][]control.UIEvent
+	recentGlobalRuntimeNotices  map[string]map[string]time.Time
+	headlessRuntime             HeadlessRuntimeConfig
+	vscodeDetect                func() (vscodeDetectResponse, error)
+	detectPlatformDefaults      func() (install.PlatformDefaults, error)
+	vscodeCompatibility         vscodeCompatibilityCacheState
+	managedHeadlessRuntime      managedHeadlessRuntimeState
+	pendingThreadHistoryReads   map[string]pendingThreadHistoryRead
+	gitWorkspaceImports         map[string]*gitWorkspaceImportRuntime
+	startHeadless               func(relayruntime.HeadlessLaunchOptions) (int, error)
+	stopProcess                 func(int, time.Duration) error
+	sendAgentCommand            func(string, agentproto.Command) error
+	ingress                     *ingressPump
+	ingressCancel               context.CancelFunc
+	ingressStarted              bool
+	ingressWG                   sync.WaitGroup
+	gatewayRunCancel            context.CancelFunc
+	gatewayRunDone              chan struct{}
+	relayConnections            map[string]*relayConnectionState
+	feishuRuntime               feishuRuntimeState
+	cronRuntime                 cronRuntimeState
 
 	adminAuth                  *adminauth.Manager
 	admin                      adminRuntimeState
@@ -206,49 +187,43 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		panic(err)
 	}
 	app := &App{
-		service:                      orchestrator.NewService(time.Now, orchestrator.Config{TurnHandoffWait: 800 * time.Millisecond, GitAvailable: gitExecutableAvailable()}, renderer.NewPlanner()),
-		projector:                    feishu.NewProjector(),
-		gateway:                      gateway,
-		serverIdentity:               serverIdentity,
-		daemonStartedAt:              daemonStartedAt,
-		daemonLifecycleID:            daemonLifecycleID(serverIdentity, daemonStartedAt),
-		pendingGlobalRuntimeNotices:  map[string][]control.UIEvent{},
-		recentGlobalRuntimeNotices:   map[string]map[string]time.Time{},
-		surfaceResumeRuntime:         newSurfaceResumeRuntimeState(),
-		upgradeRuntime:               newUpgradeRuntimeState(),
-		managedHeadless:              map[string]*managedHeadlessProcess{},
-		pendingThreadHistoryReads:    map[string]pendingThreadHistoryRead{},
-		gitWorkspaceImports:          map[string]*gitWorkspaceImportRuntime{},
-		startHeadless:                relayruntime.StartDetachedWrapper,
-		stopProcess:                  relayruntime.TerminateProcess,
-		ingress:                      newIngressPump(),
-		relayConnections:             map[string]*relayConnectionState{},
-		feishuRuntimeApply:           map[string]feishuRuntimeApplyPendingState{},
-		feishuTimeSensitive:          map[string]feishuTimeSensitiveState{},
-		feishuPermissionGaps:         map[string]map[string]*feishuPermissionGapRecord{},
-		feishuPermissionRefreshEvery: defaultFeishuPermissionRefreshEvery,
-		feishuOnboarding:             map[string]*feishuOnboardingSession{},
-		feishuSetup:                  newLiveFeishuSetupClient(),
-		cronRuns:                     map[string]*cronRunState{},
-		cronJobActiveRuns:            map[string]map[string]struct{}{},
-		cronExitTargets:              map[string]*cronExitTarget{},
-		adminAuth:                    authManager,
-		webPreviewGrants:             map[string]*previewGrantRecord{},
-		shutdownGracePeriod:          5 * time.Second,
-		shutdownNoticeTimeout:        2 * time.Second,
-		gatewayStopTimeout:           3 * time.Second,
-		shutdownDrainTimeout:         3 * time.Second,
-		shutdownDrainPoll:            50 * time.Millisecond,
-		shutdownForceKillGrace:       0,
-		gatewayApplyTimeout:          30 * time.Second,
-		finalPreviewTimeout:          90 * time.Second,
-		commandAnchorRecallDelay:     8 * time.Second,
+		service:                     orchestrator.NewService(time.Now, orchestrator.Config{TurnHandoffWait: 800 * time.Millisecond, GitAvailable: gitExecutableAvailable()}, renderer.NewPlanner()),
+		projector:                   feishu.NewProjector(),
+		gateway:                     gateway,
+		serverIdentity:              serverIdentity,
+		daemonStartedAt:             daemonStartedAt,
+		daemonLifecycleID:           daemonLifecycleID(serverIdentity, daemonStartedAt),
+		pendingGlobalRuntimeNotices: map[string][]control.UIEvent{},
+		recentGlobalRuntimeNotices:  map[string]map[string]time.Time{},
+		managedHeadlessRuntime:      newManagedHeadlessRuntimeState(),
+		surfaceResumeRuntime:        newSurfaceResumeRuntimeState(),
+		upgradeRuntime:              newUpgradeRuntimeState(),
+		cronRuntime:                 newCronRuntimeState(),
+		feishuRuntime:               newFeishuRuntimeState(),
+		pendingThreadHistoryReads:   map[string]pendingThreadHistoryRead{},
+		gitWorkspaceImports:         map[string]*gitWorkspaceImportRuntime{},
+		startHeadless:               relayruntime.StartDetachedWrapper,
+		stopProcess:                 relayruntime.TerminateProcess,
+		ingress:                     newIngressPump(),
+		relayConnections:            map[string]*relayConnectionState{},
+		adminAuth:                   authManager,
+		webPreviewGrants:            map[string]*previewGrantRecord{},
+		shutdownGracePeriod:         5 * time.Second,
+		shutdownNoticeTimeout:       2 * time.Second,
+		gatewayStopTimeout:          3 * time.Second,
+		shutdownDrainTimeout:        3 * time.Second,
+		shutdownDrainPoll:           50 * time.Millisecond,
+		shutdownForceKillGrace:      0,
+		gatewayApplyTimeout:         30 * time.Second,
+		finalPreviewTimeout:         90 * time.Second,
+		commandAnchorRecallDelay:    8 * time.Second,
 	}
 	app.projector.SetSnapshotBinary(formatStatusSnapshotBinary(serverIdentity))
 	app.upgradeRuntime.lookup = app.defaultReleaseLookup
 	app.upgradeRuntime.devManifest = app.defaultDevManifestLookup
-	app.cronBitableFactory = app.defaultCronBitableFactory
-	app.cronGatewayIdentityLookup = app.defaultCronGatewayIdentityLookup
+	app.cronRuntime.bitableFactory = app.defaultCronBitableFactory
+	app.cronRuntime.gatewayIdentityLookup = app.defaultCronGatewayIdentityLookup
+	app.feishuRuntime.setup = newLiveFeishuSetupClient()
 	app.relay = relayws.NewServer(relayws.ServerCallbacks{
 		OnHello:      app.enqueueHello,
 		OnEvents:     app.enqueueEvents,
@@ -314,7 +289,7 @@ func (a *App) SetHeadlessRuntime(cfg HeadlessRuntimeConfig) {
 	cfg.BaseEnv = append([]string{}, cfg.BaseEnv...)
 	cfg.LaunchArgs = append([]string{}, cfg.LaunchArgs...)
 	a.headlessRuntime = cfg
-	a.cronRepoManager = cronrepo.NewManager(cfg.Paths.StateDir)
+	a.cronRuntime.repoManager = cronrepo.NewManager(cfg.Paths.StateDir)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.configureSurfaceResumeStateLocked(cfg.Paths.StateDir)
