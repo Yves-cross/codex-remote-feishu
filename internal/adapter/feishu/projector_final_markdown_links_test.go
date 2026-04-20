@@ -55,6 +55,9 @@ func TestProjectFinalAssistantBlockNeutralizesUnsupportedLocalMarkdownLinks(t *t
 	if ops[0].CardBody != want {
 		t.Fatalf("unexpected final markdown body: %#v", ops[0])
 	}
+	if ops[0].FinalSourceBody() != "先看 [Guide](./docs/guide.md:12)，再看 [RFC](https://example.com/rfc)。" {
+		t.Fatalf("expected final source body to retain pre-render markdown, got %#v", ops[0])
+	}
 	elements := renderedMarkdownElementContents(t, ops[0])
 	if len(elements) == 0 || elements[0] != want {
 		t.Fatalf("unexpected rendered markdown elements: %#v", elements)

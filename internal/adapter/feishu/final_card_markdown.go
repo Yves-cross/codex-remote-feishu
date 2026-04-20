@@ -13,7 +13,7 @@ func finalReplyCardDocument(title, body, themeKey string, extraElements []map[st
 	return newCardDocument(title, themeKey, components...)
 }
 
-func normalizeFinalCardMarkdown(text string) string {
+func renderFinalCardMarkdown(text string) string {
 	segments := splitFinalCardFenceSegments(text)
 	if len(segments) == 0 {
 		return ""
@@ -24,7 +24,7 @@ func normalizeFinalCardMarkdown(text string) string {
 			out.WriteString(segment.text)
 			continue
 		}
-		out.WriteString(normalizeFinalCardMarkdownInline(segment.text))
+		out.WriteString(renderFinalCardMarkdownInline(segment.text))
 	}
 	return out.String()
 }
@@ -101,7 +101,7 @@ func finalCardFenceMarker(line string) (byte, int, bool) {
 	return 0, 0, false
 }
 
-func normalizeFinalCardMarkdownInline(text string) string {
+func renderFinalCardMarkdownInline(text string) string {
 	if text == "" {
 		return ""
 	}

@@ -312,6 +312,12 @@ func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testi
 	if ops[0].finalSourceBody == "" {
 		t.Fatalf("expected primary final card to retain raw source body for follow-up patching, got %#v", ops[0])
 	}
+	if !strings.Contains(ops[0].finalSourceBody, "[设计文档](./docs/design.md)") {
+		t.Fatalf("expected primary final source body to retain raw markdown links, got %#v", ops[0].finalSourceBody)
+	}
+	if !strings.Contains(ops[0].CardBody, "设计文档 (`./docs/design.md`)") {
+		t.Fatalf("expected primary rendered final body to use serializer output, got %#v", ops[0].CardBody)
+	}
 	if len(ops[0].CardElements) == 0 {
 		t.Fatalf("expected primary final card to keep footer elements, got %#v", ops[0])
 	}

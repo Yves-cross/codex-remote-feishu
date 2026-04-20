@@ -5,12 +5,20 @@ import (
 	"unicode/utf8"
 )
 
-func splitFinalReplyBodies(rawBody, primaryTitle string, primaryElements []map[string]any) []string {
-	if finalReplyChunkFits(primaryTitle, rawBody, primaryElements) {
-		return []string{rawBody}
+type finalReplyChunk struct {
+	title        string
+	sourceBody   string
+	renderedBody string
+	elements     []map[string]any
+}
+
+func splitFinalReplyBodies(rawBody, primaryTitle string, primaryElements []map[string]any) []finalReplyChunk {
+	primary := newFinalReplyChunk(primaryTitle, rawBody, primaryElements)
+	if finalReplyChunkFits(primary) {
+		return []finalReplyChunk{primary}
 	}
 	remaining := []string{rawBody}
-	chunks := make([]string, 0, 4)
+	chunks := make([]finalReplyChunk, 0, 4)
 	first := true
 	for len(remaining) > 0 {
 		title := primaryTitle
@@ -19,18 +27,27 @@ func splitFinalReplyBodies(rawBody, primaryTitle string, primaryElements []map[s
 			title = "✅ 最后答复（续）"
 			elements = nil
 		}
-		chunk, rest := consumeFinalReplyChunk(remaining, title, elements)
-		if chunk == "" {
+		sourceBody, rest := consumeFinalReplyChunk(remaining, title, elements)
+		if sourceBody == "" {
 			break
 		}
-		chunks = append(chunks, chunk)
+		chunks = append(chunks, newFinalReplyChunk(title, sourceBody, elements))
 		remaining = rest
 		first = false
 	}
 	if len(chunks) == 0 {
-		return []string{rawBody}
+		return []finalReplyChunk{primary}
 	}
 	return chunks
+}
+
+func newFinalReplyChunk(title, rawBody string, elements []map[string]any) finalReplyChunk {
+	return finalReplyChunk{
+		title:        strings.TrimSpace(title),
+		sourceBody:   rawBody,
+		renderedBody: renderFinalCardMarkdown(rawBody),
+		elements:     elements,
+	}
 }
 
 func consumeFinalReplyChunk(units []string, title string, elements []map[string]any) (string, []string) {
@@ -58,7 +75,7 @@ func packFinalReplyUnits(units []string, title string, elements []map[string]any
 	var body strings.Builder
 	for i, unit := range units {
 		candidate := body.String() + unit
-		if finalReplyChunkFits(title, candidate, elements) {
+		if finalReplyChunkFits(newFinalReplyChunk(title, candidate, elements)) {
 			body.WriteString(unit)
 			continue
 		}
@@ -70,16 +87,15 @@ func packFinalReplyUnits(units []string, title string, elements []map[string]any
 	return body.String(), nil, true
 }
 
-func finalReplyChunkFits(title, rawBody string, elements []map[string]any) bool {
-	body := normalizeFinalCardMarkdown(rawBody)
+func finalReplyChunkFits(chunk finalReplyChunk) bool {
 	op := Operation{
 		Kind:         OperationSendCard,
-		CardTitle:    title,
-		CardBody:     body,
+		CardTitle:    chunk.title,
+		CardBody:     chunk.renderedBody,
 		CardThemeKey: cardThemeFinal,
-		CardElements: elements,
+		CardElements: chunk.elements,
 		cardEnvelope: cardEnvelopeV2,
-		card:         finalReplyCardDocument(title, body, cardThemeFinal, elements),
+		card:         finalReplyCardDocument(chunk.title, chunk.renderedBody, cardThemeFinal, chunk.elements),
 	}
 	payload := renderOperationCard(op, op.ordinaryCardEnvelope())
 	size, err := jsonSize(payload)

@@ -512,32 +512,25 @@ func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID
 	}
 	chunks := splitFinalReplyBodies(rawBody, title, primaryElements)
 	if len(chunks) == 0 {
-		chunks = []string{rawBody}
+		chunks = []finalReplyChunk{newFinalReplyChunk(title, rawBody, primaryElements)}
 	}
 	ops := make([]Operation, 0, len(chunks))
 	for i, chunk := range chunks {
-		chunkTitle := title
-		elements := primaryElements
-		if i > 0 {
-			chunkTitle = "✅ 最后答复（续）"
-			elements = nil
-		}
-		body := normalizeFinalCardMarkdown(chunk)
 		op := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        gatewayID,
 			SurfaceSessionID: surfaceSessionID,
 			ChatID:           chatID,
 			ReplyToMessageID: sourceMessageID,
-			CardTitle:        chunkTitle,
-			CardBody:         body,
+			CardTitle:        chunk.title,
+			CardBody:         chunk.renderedBody,
 			CardThemeKey:     cardThemeFinal,
-			CardElements:     elements,
+			CardElements:     chunk.elements,
 			cardEnvelope:     cardEnvelopeV2,
-			card:             finalReplyCardDocument(chunkTitle, body, cardThemeFinal, elements),
+			card:             finalReplyCardDocument(chunk.title, chunk.renderedBody, cardThemeFinal, chunk.elements),
 		}
 		if i == 0 {
-			op.finalSourceBody = chunk
+			op.finalSourceBody = chunk.sourceBody
 		}
 		ops = append(ops, op)
 	}
