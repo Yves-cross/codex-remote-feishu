@@ -1,8 +1,8 @@
 # Feishu Card Content Context Guidelines
 
 > Type: `general`
-> Updated: `2026-04-19`
-> Summary: 固化 Feishu 卡片文本内容语境边界，要求新实现默认走 structured/plain_text 路径，禁止重新引入上游预拼 markdown 和长期 legacy 双路径。
+> Updated: `2026-04-21`
+> Summary: 补充“需求描述 -> 分层落点 -> Markdown 处理”的决策规范，明确这类代码应把格式职责放在 adapter 最后一跳渲染。
 
 ## 1. 文档定位
 
@@ -145,7 +145,172 @@ final reply 当前有专门的 markdown normalize 与 preview rewrite 链路。
 
 如果一开始就从“怎么拼 markdown 更省事”出发，通常就是错的起点。
 
-## 6. 当前仓库的推荐 carrier
+## 6. 分层落点原则
+
+以后有人提出“这里最终想显示成什么格式”时，默认按下面的分层来放：
+
+### 6.1 上游层只表达语义，不表达 Feishu 格式
+
+`orchestrator / control / daemon` 层负责回答：
+
+- 这段内容是什么
+- 哪些部分是动态值
+- 它和别的内容在语义上如何分组
+
+这层可以表达的东西包括：
+
+- 这是命令、路径、状态、提示、错误、diff、说明
+- 这是 section label，还是 section body
+- 这是一个值，还是一组条目
+
+这层不负责：
+
+- 拼 Feishu markdown
+- 决定是否加 `<text_tag>` / `<font>`
+- 决定一段内容最终落到 `markdown` 还是 `plain_text`
+
+### 6.2 adapter / projector 拥有最终格式决定权
+
+`internal/adapter/feishu/**` 里的 projector / renderer 是默认且优先的格式落点。
+
+凡是下面这类问题，默认都应在 projector 里解决：
+
+- 命令要不要显示成中性 tag
+- 路径要不要显示成 code-like 文本
+- 数字状态要不要上色
+- 某一类行要不要单独成一个 markdown element
+- 同一 section 里的不同部分该用 `plain_text` 还是 markdown
+
+也就是说：
+
+- 上游说“它是什么”
+- projector 说“它怎么显示”
+
+### 6.3 什么时候需要在上游补新字段
+
+如果一个新需求只是“现有语义换个显示方式”，通常只改 projector。
+
+只有当需求里出现了 projector 目前根本看不见的新语义时，才在上游补字段，例如：
+
+- 现在只有一段普通说明，但需求要把其中的“命令 / 路径 / 普通说明”区分显示
+- 现在只有一个字符串，但需求要把它拆成 label/value
+- 现在只有 summary 文本，但需求要单独高亮文件变化统计或 diff
+
+此时应补的是结构化语义字段，而不是“再补一个 markdown string”。
+
+### 6.4 一个简化判断法
+
+写这类代码时，先问 3 个问题：
+
+1. 这段内容里有没有动态值？
+2. 这些动态值是否需要和别的内容区别显示？
+3. 这个区别显示是业务语义，还是 Feishu 展示细节？
+
+默认答案对应动作：
+
+- 只有固定系统 copy：
+  - 可保留 adapter-owned markdown
+- 混有动态值，但不需要特殊样式：
+  - 用 `plain_text` / `FeishuCardTextSection`
+- 混有动态值，且其中某些部分需要特殊样式：
+  - 上游补结构，projector 在最后一跳做格式化
+
+## 7. Markdown 处理规范
+
+### 7.1 不允许“也许是 markdown，也许不是”的模糊合同
+
+一条文本进入某一层时，必须能明确回答它属于哪一种：
+
+- `plain_text`
+- adapter-owned markdown
+- final reply markdown
+- 结构化内容，尚未决定最终渲染
+
+如果实现里需要“先猜它是不是 markdown，再决定怎么处理”，这通常说明边界设计错了。
+
+### 7.2 system card 默认不做 markdown 嵌套解释
+
+对 system card 而言，默认策略是：
+
+- 不把上游字符串再递归当 markdown 解释
+- 不做“markdown 里再塞 markdown”的通用处理
+- 不做“把一段混合字符串智能拆成 markdown + plain_text”的通用魔法
+
+正确方向应是：
+
+- 要么它一开始就是明确的 `plain_text`
+- 要么它一开始就是 adapter 明确拥有的 markdown 模板
+- 要么它先保持结构，最后再投影
+
+### 7.3 final reply 是唯一允许显式接收 markdown 输入的通用特例
+
+`final answer / final card` 仍然可以有专门 markdown 输入合同。
+
+除此之外，system card 默认不要新增“接受 markdown 字符串输入”的通用入口。
+
+### 7.4 Markdown 混杂时的默认处理
+
+如果当前输入里混有：
+
+- 一部分像 markdown
+- 一部分只是普通动态文本
+
+默认不要尝试自动保留其中的 markdown 语义。
+
+默认处理顺序应是：
+
+1. 先把这段内容视为“不适合直接进 markdown”
+2. 把需要保留的语义拆成结构
+3. 由 projector 重新生成最终 markdown / `plain_text`
+
+换句话说，默认是“降级为结构后重投影”，不是“继续在字符串里猜和修”。
+
+## 8. 面向需求描述的实现规则
+
+为了让需求方只描述“最后看起来要怎样”也能稳定落地，后续默认按下面的翻译规则执行：
+
+### 8.1 用户说“这一小段要特殊显示”
+
+实现默认做法：
+
+- 不在业务层直接拼 markdown
+- 先判断这段内容的语义类型
+- 若现有结构不够，就补最小语义字段
+- 再在 projector 里定义这一类语义的显示方式
+
+### 8.2 用户说“命令 / 路径 / 数字 / diff 要有不同格式”
+
+实现默认做法：
+
+- 这属于“同一块内容里的局部格式语义”
+- 应由 projector 在最后一跳处理
+- 上游只负责把这些内容作为不同语义项传下来
+
+### 8.3 用户说“整张卡就是一段带格式说明”
+
+实现默认做法：
+
+- 如果是固定系统 copy，可让 adapter 拥有 markdown 模板
+- 如果混有动态值，则不走整段 raw markdown；应改成 section / field / row 结构
+
+### 8.4 用户没有明确说格式，只说想展示信息
+
+实现默认做法：
+
+- 优先走最保守的 structured/plain_text 路径
+- 只有在确实需要强调、标签、代码感显示时，才增加 adapter-owned markdown
+
+### 8.5 如果实现者拿不准该放哪一层
+
+默认选层顺序如下：
+
+1. 先尝试只改 projector
+2. 如果 projector 缺少必要语义，再补 control/view 字段
+3. 仍然不要回到上游拼 markdown
+
+这个顺序是当前仓库的默认执行原则。
+
+## 9. 当前仓库的推荐 carrier
 
 当前仓库已经有一些可复用的安全 carrier：
 
@@ -156,7 +321,7 @@ final reply 当前有专门的 markdown normalize 与 preview rewrite 链路。
 
 新增文本 contract 时，优先沿用这些已有 carrier，而不是重新发明一套裸字符串边界。
 
-## 7. 与文档和流程的关系
+## 10. 与文档和流程的关系
 
 如果后续实现改变了这份基线，应在同一变更里同步：
 
@@ -165,4 +330,3 @@ final reply 当前有专门的 markdown normalize 与 preview rewrite 链路。
 - 必要时的 canonical product/state-machine 文档
 
 不要把新的内容语境规则只留在 issue comment 或聊天里。
-
