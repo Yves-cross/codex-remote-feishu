@@ -36,7 +36,7 @@ func TestParseCardActionTriggerEventBuildsUpgradeOwnerFlowAction(t *testing.T) {
 	if action.Kind != control.ActionUpgradeOwnerFlow {
 		t.Fatalf("unexpected action kind: %#v", action)
 	}
-	if action.PickerID != "flow-1" || action.OptionID != "confirm" {
+	if action.OwnerFlow == nil || action.OwnerFlow.FlowID != "flow-1" || action.OwnerFlow.OptionID != "confirm" {
 		t.Fatalf("unexpected upgrade owner payload: %#v", action)
 	}
 	if action.SurfaceSessionID != "feishu:app-1:user:user-1" || action.ChatID != "oc_1" || action.ActorUserID != "user-1" {

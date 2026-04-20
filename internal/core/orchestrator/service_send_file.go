@@ -71,7 +71,7 @@ func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID,
 		},
 	}
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuDirectCommandCatalog,
+		Kind:                     control.UIEventFeishuCommandView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,

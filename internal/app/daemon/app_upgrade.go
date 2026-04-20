@@ -416,7 +416,7 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 	page := control.FeishuCommandPageViewFromCatalog(control.FeishuCommandUpgrade, *buildUpgradePromptCatalog(stateValue), nil, nil)
 	view := control.FeishuCommandView{Page: &page}
 	return []control.UIEvent{{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		Kind:              control.UIEventFeishuCommandView,
 		GatewayID:         surface.GatewayID,
 		SurfaceSessionID:  surface.SurfaceSessionID,
 		FeishuCommandView: &view,

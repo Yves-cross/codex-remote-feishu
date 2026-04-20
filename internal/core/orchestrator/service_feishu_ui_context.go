@@ -257,7 +257,7 @@ func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.Surf
 		Prompt:     &promptView,
 	}
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuDirectSelectionPrompt,
+		Kind:                     control.UIEventFeishuSelectionView,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: inline,
 		FeishuSelectionView:      &view,
@@ -267,7 +267,7 @@ func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.Surf
 
 func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuSelectionView) control.UIEvent {
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuDirectSelectionPrompt,
+		Kind:                     control.UIEventFeishuSelectionView,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,
 		FeishuSelectionView:      &view,
@@ -278,7 +278,7 @@ func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view c
 func (s *Service) feishuDirectRequestPromptEvent(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectRequestPrompt) control.UIEvent {
 	view := control.FeishuRequestView(prompt)
 	return control.UIEvent{
-		Kind:                 control.UIEventFeishuDirectRequestPrompt,
+		Kind:                 control.UIEventFeishuRequestView,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		FeishuRequestView:    &view,
 		FeishuRequestContext: s.buildFeishuRequestContextFromView(surface, view),

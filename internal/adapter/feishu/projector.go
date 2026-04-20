@@ -146,7 +146,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemePlan, elements),
 		}}
-	case control.UIEventFeishuDirectSelectionPrompt:
+	case control.UIEventFeishuSelectionView:
 		if event.FeishuSelectionView == nil {
 			return nil
 		}
@@ -182,7 +182,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemeInfo, elements),
 		}}
-	case control.UIEventFeishuDirectCommandCatalog:
+	case control.UIEventFeishuCommandView:
 		if event.FeishuCommandView == nil {
 			return nil
 		}
@@ -216,7 +216,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		operation.cardEnvelope = cardEnvelopeV2
 		operation.card = rawCardDocument(title, body, theme, elements)
 		return []Operation{operation}
-	case control.UIEventFeishuDirectRequestPrompt:
+	case control.UIEventFeishuRequestView:
 		if event.FeishuRequestView == nil {
 			return nil
 		}

@@ -57,7 +57,20 @@ func buildPermissionsRequestOptions() []state.RequestPromptOptionRecord {
 }
 
 func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
-	optionID := control.NormalizeRequestOptionID(firstNonEmpty(action.RequestOptionID, requestOptionIDFromApproved(action.Approved)))
+	requestAction := action.Request
+	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
+		requestAction = &control.ActionRequestResponse{
+			RequestID:       action.RequestID,
+			RequestType:     action.RequestType,
+			RequestOptionID: action.RequestOptionID,
+			Answers:         action.RequestAnswers,
+			RequestRevision: action.RequestRevision,
+		}
+	}
+	if requestAction == nil {
+		return nil, false, nil
+	}
+	optionID := control.NormalizeRequestOptionID(requestAction.RequestOptionID)
 	switch optionID {
 	case "accept":
 		return map[string]any{
@@ -151,7 +164,24 @@ func buildMCPElicitationOptions(prompt *agentproto.RequestPrompt, metadata map[s
 }
 
 func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
-	optionID := control.NormalizeRequestOptionID(strings.TrimSpace(action.RequestOptionID))
+	requestAction := action.Request
+	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
+		requestAction = &control.ActionRequestResponse{
+			RequestID:       action.RequestID,
+			RequestType:     action.RequestType,
+			RequestOptionID: action.RequestOptionID,
+			Answers:         action.RequestAnswers,
+			RequestRevision: action.RequestRevision,
+		}
+	}
+	if requestAction == nil {
+		return nil, false, notice(surface, "request_invalid", "这个 MCP 请求动作缺少有效的请求上下文。")
+	}
+	requestAnswers := requestAction.Answers
+	if len(requestAnswers) == 0 {
+		requestAnswers = action.RequestAnswers
+	}
+	optionID := control.NormalizeRequestOptionID(strings.TrimSpace(requestAction.RequestOptionID))
 	switch optionID {
 	case "decline", "cancel":
 		return buildMCPElicitationPayload(optionID, nil, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
@@ -163,12 +193,12 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 		return buildMCPElicitationPayload("accept", nil, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
 	}
 	submitIntent := optionID == "accept" || optionID == requestUserInputNormalizedOptionID(requestUserInputSubmitOptionID)
-	content, complete, missingLabels, errText := buildMCPElicitationContent(request, action.RequestAnswers)
+	content, complete, missingLabels, errText := buildMCPElicitationContent(request, requestAnswers)
 	if errText != "" {
 		return nil, false, notice(surface, "request_invalid", errText)
 	}
 	if !submitIntent {
-		if len(action.RequestAnswers) == 0 {
+		if len(requestAnswers) == 0 {
 			return nil, false, notice(surface, "request_invalid", "请先填写或选择返回内容，再提交给 MCP server。")
 		}
 		bumpRequestCardRevision(request)

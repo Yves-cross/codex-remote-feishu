@@ -18,7 +18,17 @@ const (
 )
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
-	if surface == nil || action.RequestID == "" {
+	requestAction := action.Request
+	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
+		requestAction = &control.ActionRequestResponse{
+			RequestID:       action.RequestID,
+			RequestType:     action.RequestType,
+			RequestOptionID: action.RequestOptionID,
+			Answers:         action.RequestAnswers,
+			RequestRevision: action.RequestRevision,
+		}
+	}
+	if surface == nil || requestAction == nil || strings.TrimSpace(requestAction.RequestID) == "" {
 		return nil
 	}
 	if blocked := s.unboundInputBlocked(surface); blocked != nil {
@@ -27,20 +37,20 @@ func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action con
 	if surface.PendingRequests == nil {
 		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 	}
-	request := surface.PendingRequests[action.RequestID]
+	request := surface.PendingRequests[requestAction.RequestID]
 	if request == nil {
 		return notice(surface, "request_expired", "这个确认请求已经结束或过期了。")
 	}
 	if request.PendingDispatchCommandID != "" {
 		return notice(surface, "request_pending_dispatch", "这条请求已经提交，正在等待本地 Codex 处理。")
 	}
-	if action.RequestRevision != 0 && action.RequestRevision != request.CardRevision {
+	if requestAction.RequestRevision != 0 && requestAction.RequestRevision != request.CardRevision {
 		return notice(surface, "request_card_expired", "这张请求卡片已经过期，请使用最新卡片继续操作。")
 	}
 	if strings.TrimSpace(request.LocalKind) != "" {
 		return s.respondLocalRequest(surface, request, action)
 	}
-	requestType := normalizeRequestType(firstNonEmpty(action.RequestType, request.RequestType))
+	requestType := normalizeRequestType(firstNonEmpty(requestAction.RequestType, request.RequestType))
 	if requestType == "" {
 		requestType = "approval"
 	}
@@ -244,9 +254,26 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 }
 
 func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []control.UIEvent) {
+	requestAction := action.Request
+	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
+		requestAction = &control.ActionRequestResponse{
+			RequestID:       action.RequestID,
+			RequestType:     action.RequestType,
+			RequestOptionID: action.RequestOptionID,
+			Answers:         action.RequestAnswers,
+			RequestRevision: action.RequestRevision,
+		}
+	}
+	if requestAction == nil {
+		return nil, false, notice(surface, "request_invalid", "这个请求动作缺少有效的请求上下文。")
+	}
+	requestAnswers := requestAction.Answers
+	if len(requestAnswers) == 0 {
+		requestAnswers = action.RequestAnswers
+	}
 	switch requestType {
 	case "approval":
-		optionID := control.NormalizeRequestOptionID(firstNonEmpty(action.RequestOptionID, requestOptionIDFromApproved(action.Approved)))
+		optionID := control.NormalizeRequestOptionID(requestAction.RequestOptionID)
 		if optionID == "" {
 			return nil, false, notice(surface, "request_invalid", "这个确认按钮缺少有效的处理选项。")
 		}
@@ -276,7 +303,7 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			"decision": decision,
 		}, false, nil
 	case "request_user_input":
-		if requestUserInputCancelSubmitWithUnanswered(action.RequestOptionID) {
+		if requestUserInputCancelSubmitWithUnanswered(requestAction.RequestOptionID) {
 			if !request.SubmitWithUnansweredConfirmPending {
 				return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
 			}
@@ -284,12 +311,12 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			bumpRequestCardRevision(request)
 			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
 		}
-		if requestUserInputConfirmSubmitWithUnanswered(action.RequestOptionID) && !request.SubmitWithUnansweredConfirmPending {
+		if requestUserInputConfirmSubmitWithUnanswered(requestAction.RequestOptionID) && !request.SubmitWithUnansweredConfirmPending {
 			return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
 		}
-		submitIntent := requestUserInputSubmitIntent(action.RequestOptionID)
-		allowSubmitWithUnanswered := requestUserInputAllowSubmitWithUnanswered(action.RequestOptionID)
-		response, complete, missingLabels, errText := buildRequestUserInputResponse(request, action.RequestAnswers, allowSubmitWithUnanswered)
+		submitIntent := requestUserInputSubmitIntent(requestAction.RequestOptionID)
+		allowSubmitWithUnanswered := requestUserInputAllowSubmitWithUnanswered(requestAction.RequestOptionID)
+		response, complete, missingLabels, errText := buildRequestUserInputResponse(request, requestAnswers, allowSubmitWithUnanswered)
 		if errText != "" {
 			return nil, false, notice(surface, "request_invalid", errText)
 		}
@@ -299,7 +326,7 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 				bumpRequestCardRevision(request)
 				return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
 			}
-			if len(action.RequestAnswers) == 0 {
+			if len(requestAnswers) == 0 {
 				if len(missingLabels) != 0 {
 					return nil, false, notice(surface, "request_invalid", fmt.Sprintf("问题“%s”还没有填写答案。", missingLabels[0]))
 				}

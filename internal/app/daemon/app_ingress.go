@@ -434,7 +434,7 @@ func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu
 	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
 	view := control.FeishuCommandView{Page: &page}
 	event := control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		Kind:              control.UIEventFeishuCommandView,
 		GatewayID:         action.GatewayID,
 		SurfaceSessionID:  action.SurfaceSessionID,
 		DaemonLifecycleID: a.daemonLifecycleID,

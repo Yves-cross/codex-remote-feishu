@@ -396,7 +396,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionShowCommandHelp:
 		events = []control.UIEvent{s.feishuDirectCommandCatalogEvent(surface, "help", "", s.buildCommandHelpCatalog(surface))}
 	case control.ActionShowHistory:
-		events = s.openThreadHistory(surface, action.MessageID, action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "")
+		events = s.openThreadHistory(surface, action.MessageID, action.IsCardAction())
 	case control.ActionDebugCommand:
 		events = []control.UIEvent{{
 			Kind:             control.UIEventDaemonCommand,
@@ -436,7 +436,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				GatewayID:        surface.GatewayID,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "",
+				FromCardAction:   action.IsCardAction(),
 				Text:             action.Text,
 			},
 		}}
@@ -451,11 +451,18 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				GatewayID:        surface.GatewayID,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "",
+				FromCardAction:   action.IsCardAction(),
 				Text:             action.Text,
 			},
 		}}
 	case control.ActionUpgradeOwnerFlow:
+		ownerFlow := action.OwnerFlow
+		if ownerFlow == nil && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
+			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
+		}
+		if ownerFlow == nil {
+			return notice(surface, "owner_flow_invalid", "当前升级确认动作缺少有效的 owner-flow 上下文。")
+		}
 		events = []control.UIEvent{{
 			Kind:             control.UIEventDaemonCommand,
 			GatewayID:        surface.GatewayID,
@@ -466,9 +473,9 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				GatewayID:        surface.GatewayID,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "",
-				PickerID:         action.PickerID,
-				OptionID:         action.OptionID,
+				FromCardAction:   action.IsCardAction(),
+				PickerID:         ownerFlow.FlowID,
+				OptionID:         ownerFlow.OptionID,
 			},
 		}}
 	case control.ActionModelCommand:
@@ -494,6 +501,13 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionFollowLocal:
 		events = s.followLocal(surface)
 	case control.ActionVSCodeMigrate:
+		ownerFlow := action.OwnerFlow
+		if ownerFlow == nil && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
+			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
+		}
+		if ownerFlow == nil {
+			return notice(surface, "owner_flow_invalid", "当前 VS Code 迁移动作缺少有效的 owner-flow 上下文。")
+		}
 		events = []control.UIEvent{{
 			Kind:             control.UIEventDaemonCommand,
 			GatewayID:        surface.GatewayID,
@@ -504,9 +518,9 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 				GatewayID:        surface.GatewayID,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != "",
-				PickerID:         action.PickerID,
-				OptionID:         action.OptionID,
+				FromCardAction:   action.IsCardAction(),
+				PickerID:         ownerFlow.FlowID,
+				OptionID:         ownerFlow.OptionID,
 			},
 		}}
 	case control.ActionTextMessage:

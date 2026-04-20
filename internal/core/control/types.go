@@ -94,23 +94,26 @@ type ActionInboundMeta struct {
 }
 
 type Action struct {
-	Kind                ActionKind
-	GatewayID           string
-	SurfaceSessionID    string
-	ChatID              string
-	ActorUserID         string
-	MessageID           string
-	Text                string
-	Inputs              []agentproto.Input
-	SteerInputs         []agentproto.Input
-	PromptID            string
+	Kind             ActionKind
+	GatewayID        string
+	SurfaceSessionID string
+	ChatID           string
+	ActorUserID      string
+	MessageID        string
+	Text             string
+	Inputs           []agentproto.Input
+	SteerInputs      []agentproto.Input
+	RequestAnswers   map[string][]string
+	// Retained compatibility fields for legacy/test callers. New live paths
+	// should prefer Request and OwnerFlow families instead of extending the
+	// root Action contract.
 	OptionID            string
 	RequestID           string
 	RequestType         string
 	RequestOptionID     string
-	RequestAnswers      map[string][]string
 	RequestRevision     int
-	Approved            bool
+	Request             *ActionRequestResponse
+	OwnerFlow           *ActionOwnerCardFlow
 	CommandID           string
 	InstanceID          string
 	WorkspaceKey        string
@@ -601,23 +604,29 @@ type ExecCommandProgress struct {
 type UIEventKind string
 
 const (
-	UIEventSnapshot                    UIEventKind = "snapshot.updated"
-	UIEventFeishuDirectSelectionPrompt UIEventKind = "selection.prompt"
-	UIEventFeishuDirectCommandCatalog  UIEventKind = "command.catalog"
-	UIEventFeishuDirectRequestPrompt   UIEventKind = "request.prompt"
-	UIEventFeishuPathPicker            UIEventKind = "path.picker"
-	UIEventFeishuTargetPicker          UIEventKind = "target.picker"
-	UIEventFeishuThreadHistory         UIEventKind = "thread.history"
-	UIEventPendingInput                UIEventKind = "pending.input.state"
-	UIEventNotice                      UIEventKind = "notice"
-	UIEventPlanUpdated                 UIEventKind = "plan.updated"
-	UIEventThreadSelectionChange       UIEventKind = "thread.selection.changed"
-	UIEventBlockCommitted              UIEventKind = "block.committed"
-	UIEventTimelineText                UIEventKind = "timeline.text"
-	UIEventImageOutput                 UIEventKind = "image.output"
-	UIEventExecCommandProgress         UIEventKind = "exec_command.progress"
-	UIEventAgentCommand                UIEventKind = "agent.command"
-	UIEventDaemonCommand               UIEventKind = "daemon.command"
+	UIEventSnapshot              UIEventKind = "snapshot.updated"
+	UIEventFeishuSelectionView   UIEventKind = "selection.prompt"
+	UIEventFeishuCommandView     UIEventKind = "command.catalog"
+	UIEventFeishuRequestView     UIEventKind = "request.prompt"
+	UIEventFeishuPathPicker      UIEventKind = "path.picker"
+	UIEventFeishuTargetPicker    UIEventKind = "target.picker"
+	UIEventFeishuThreadHistory   UIEventKind = "thread.history"
+	UIEventPendingInput          UIEventKind = "pending.input.state"
+	UIEventNotice                UIEventKind = "notice"
+	UIEventPlanUpdated           UIEventKind = "plan.updated"
+	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
+	UIEventBlockCommitted        UIEventKind = "block.committed"
+	UIEventTimelineText          UIEventKind = "timeline.text"
+	UIEventImageOutput           UIEventKind = "image.output"
+	UIEventExecCommandProgress   UIEventKind = "exec_command.progress"
+	UIEventAgentCommand          UIEventKind = "agent.command"
+	UIEventDaemonCommand         UIEventKind = "daemon.command"
+)
+
+const (
+	UIEventFeishuDirectSelectionPrompt = UIEventFeishuSelectionView
+	UIEventFeishuDirectCommandCatalog  = UIEventFeishuCommandView
+	UIEventFeishuDirectRequestPrompt   = UIEventFeishuRequestView
 )
 
 type DaemonCommandKind string

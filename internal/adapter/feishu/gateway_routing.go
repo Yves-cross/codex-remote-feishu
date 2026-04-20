@@ -232,8 +232,14 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			RequestOptionID:  optionID,
 			RequestAnswers:   requestAnswers,
 			RequestRevision:  intMapValue(value, cardActionPayloadKeyRequestRevision),
-			Approved:         boolMapValue(value, cardActionPayloadKeyApproved),
-			Inbound:          meta,
+			Request: &control.ActionRequestResponse{
+				RequestID:       requestID,
+				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
+				RequestOptionID: optionID,
+				Answers:         requestAnswers,
+				RequestRevision: intMapValue(value, cardActionPayloadKeyRequestRevision),
+			},
+			Inbound: meta,
 		}, true
 	case cardActionKindRunCommand:
 		commandText := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyCommandText))
@@ -266,7 +272,11 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			MessageID:        messageID,
 			PickerID:         flowID,
 			OptionID:         optionID,
-			Inbound:          meta,
+			OwnerFlow: &control.ActionOwnerCardFlow{
+				FlowID:   flowID,
+				OptionID: optionID,
+			},
+			Inbound: meta,
 		}, true
 	case cardActionKindVSCodeMigrateOwnerFlow:
 		flowID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
@@ -283,7 +293,11 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			MessageID:        messageID,
 			PickerID:         flowID,
 			OptionID:         optionID,
-			Inbound:          meta,
+			OwnerFlow: &control.ActionOwnerCardFlow{
+				FlowID:   flowID,
+				OptionID: optionID,
+			},
+			Inbound: meta,
 		}, true
 	case cardActionKindSubmitCommandForm:
 		commandText := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyCommandLegacy))
@@ -340,7 +354,14 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			RequestOptionID:  requestOptionID,
 			RequestAnswers:   requestAnswers,
 			RequestRevision:  intMapValue(value, cardActionPayloadKeyRequestRevision),
-			Inbound:          meta,
+			Request: &control.ActionRequestResponse{
+				RequestID:       requestID,
+				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
+				RequestOptionID: requestOptionID,
+				Answers:         requestAnswers,
+				RequestRevision: intMapValue(value, cardActionPayloadKeyRequestRevision),
+			},
+			Inbound: meta,
 		}, true
 	case cardActionKindPathPickerEnter, cardActionKindPathPickerSelect:
 		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))

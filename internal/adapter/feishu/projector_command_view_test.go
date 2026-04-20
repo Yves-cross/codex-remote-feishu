@@ -10,7 +10,7 @@ import (
 func TestProjectCommandViewRendersModelCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
+		Kind: control.UIEventFeishuCommandView,
 		FeishuCommandView: &control.FeishuCommandView{
 			Config: &control.FeishuCommandConfigView{
 				CommandID:          control.FeishuCommandModel,
@@ -91,7 +91,7 @@ func TestProjectCommandViewKeepsMarkdownLikeModelNamesOutOfMarkdownSummary(t *te
 	projector := NewProjector()
 	override := "gpt-5.4-mini `x` [demo](https://example.com)"
 	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
+		Kind: control.UIEventFeishuCommandView,
 		FeishuCommandView: &control.FeishuCommandView{
 			Config: &control.FeishuCommandConfigView{
 				CommandID:      control.FeishuCommandModel,

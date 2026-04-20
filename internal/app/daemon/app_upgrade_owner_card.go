@@ -191,7 +191,7 @@ func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, t
 		},
 	}
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		Kind:              control.UIEventFeishuCommandView,
 		SurfaceSessionID:  strings.TrimSpace(surfaceID),
 		FeishuCommandView: &view,
 	}

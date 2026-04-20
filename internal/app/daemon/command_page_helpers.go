@@ -8,7 +8,7 @@ import (
 
 func commandPageEvent(surfaceID string, view control.FeishuCommandPageView) control.UIEvent {
 	return control.UIEvent{
-		Kind:             control.UIEventFeishuDirectCommandCatalog,
+		Kind:             control.UIEventFeishuCommandView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuCommandView: &control.FeishuCommandView{
 			Page: &view,

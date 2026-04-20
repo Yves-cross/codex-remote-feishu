@@ -14,7 +14,7 @@ func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) control.UI
 	promptView := control.FeishuSelectionPromptView(prompt)
 	view.Prompt = &promptView
 	return control.UIEvent{
-		Kind:                control.UIEventFeishuDirectSelectionPrompt,
+		Kind:                control.UIEventFeishuSelectionView,
 		FeishuSelectionView: &view,
 	}
 }
@@ -23,7 +23,7 @@ func commandCatalogEvent(catalog control.FeishuDirectCommandCatalog) control.UIE
 	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
 	view := control.FeishuCommandView{Page: &page}
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		Kind:              control.UIEventFeishuCommandView,
 		FeishuCommandView: &view,
 	}
 }
@@ -31,7 +31,7 @@ func commandCatalogEvent(catalog control.FeishuDirectCommandCatalog) control.UIE
 func requestPromptEvent(prompt control.FeishuDirectRequestPrompt) control.UIEvent {
 	view := control.FeishuRequestView(prompt)
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuDirectRequestPrompt,
+		Kind:              control.UIEventFeishuRequestView,
 		FeishuRequestView: &view,
 	}
 }

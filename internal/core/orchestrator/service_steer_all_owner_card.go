@@ -28,7 +28,7 @@ func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, lines ...
 		},
 	}
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		Kind:              control.UIEventFeishuCommandView,
 		SurfaceSessionID:  strings.TrimSpace(surfaceID),
 		FeishuCommandView: &view,
 	}

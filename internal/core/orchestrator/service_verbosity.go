@@ -72,7 +72,7 @@ func classifySurfaceVisibleEvent(event control.UIEvent) surfaceVisibilityClass {
 		return surfaceVisibilityProgressText
 	case control.UIEventTimelineText:
 		return surfaceVisibilityAlwaysVisible
-	case control.UIEventFeishuDirectRequestPrompt:
+	case control.UIEventFeishuRequestView:
 		return surfaceVisibilityAlwaysVisible
 	case control.UIEventImageOutput:
 		return surfaceVisibilityAlwaysVisible
@@ -82,8 +82,8 @@ func classifySurfaceVisibleEvent(event control.UIEvent) surfaceVisibilityClass {
 		}
 		return surfaceVisibilityUINavigation
 	case control.UIEventSnapshot,
-		control.UIEventFeishuDirectSelectionPrompt,
-		control.UIEventFeishuDirectCommandCatalog,
+		control.UIEventFeishuSelectionView,
+		control.UIEventFeishuCommandView,
 		control.UIEventFeishuPathPicker,
 		control.UIEventFeishuTargetPicker,
 		control.UIEventPendingInput,

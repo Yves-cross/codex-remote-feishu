@@ -25,7 +25,7 @@ func TestHelpActionBuildsCommandCatalogEvent(t *testing.T) {
 		t.Fatalf("expected command catalog event, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if events[0].Kind != control.UIEventFeishuDirectCommandCatalog {
+	if events[0].Kind != control.UIEventFeishuCommandView {
 		t.Fatalf("unexpected event kind: %#v", events[0])
 	}
 	if catalog.Interactive {

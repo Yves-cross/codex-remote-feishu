@@ -1619,10 +1619,10 @@ func TestParseCardActionTriggerEventBuildsRequestRespondAction(t *testing.T) {
 	if action.Kind != control.ActionRespondRequest {
 		t.Fatalf("unexpected action kind: %#v", action)
 	}
-	if action.RequestID != "req-1" || action.RequestType != "approval" || action.RequestOptionID != "acceptForSession" {
+	if action.Request == nil || action.Request.RequestID != "req-1" || action.Request.RequestType != "approval" || action.Request.RequestOptionID != "acceptForSession" {
 		t.Fatalf("unexpected request respond payload: %#v", action)
 	}
-	if action.RequestRevision != 2 {
+	if action.Request.RequestRevision != 2 {
 		t.Fatalf("expected request revision to be parsed, got %#v", action)
 	}
 }
@@ -1653,7 +1653,7 @@ func TestParseCardActionTriggerEventFallsBackToApprovedBool(t *testing.T) {
 	if !ok {
 		t.Fatal("expected legacy card callback to be parsed")
 	}
-	if action.RequestOptionID != "decline" || action.Approved {
+	if action.Request == nil || action.Request.RequestOptionID != "decline" {
 		t.Fatalf("unexpected legacy request respond payload: %#v", action)
 	}
 }
@@ -1687,13 +1687,13 @@ func TestParseCardActionTriggerEventBuildsRequestRespondAnswers(t *testing.T) {
 	if !ok {
 		t.Fatal("expected request_user_input button callback to be parsed")
 	}
-	if action.Kind != control.ActionRespondRequest || action.RequestID != "req-ui-1" {
+	if action.Kind != control.ActionRespondRequest || action.Request == nil || action.Request.RequestID != "req-ui-1" {
 		t.Fatalf("unexpected action: %#v", action)
 	}
 	if got := action.RequestAnswers["model"]; len(got) != 1 || got[0] != "gpt-5.4" {
 		t.Fatalf("unexpected request answers payload: %#v", action.RequestAnswers)
 	}
-	if action.RequestRevision != 7 {
+	if action.Request.RequestRevision != 7 {
 		t.Fatalf("expected string request revision to be parsed, got %#v", action)
 	}
 }
@@ -1729,16 +1729,16 @@ func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) 
 	if !ok {
 		t.Fatal("expected request_user_input form callback to be parsed")
 	}
-	if action.Kind != control.ActionRespondRequest || action.RequestID != "req-ui-2" {
+	if action.Kind != control.ActionRespondRequest || action.Request == nil || action.Request.RequestID != "req-ui-2" {
 		t.Fatalf("unexpected action: %#v", action)
 	}
-	if action.RequestOptionID != "submit_with_unanswered" {
+	if action.Request.RequestOptionID != "submit_with_unanswered" {
 		t.Fatalf("unexpected request option id: %#v", action)
 	}
 	if got := action.RequestAnswers["notes"]; len(got) != 1 || got[0] != "请用中文回复" {
 		t.Fatalf("unexpected form request answers: %#v", action.RequestAnswers)
 	}
-	if action.RequestRevision != 5 {
+	if action.Request.RequestRevision != 5 {
 		t.Fatalf("expected form request revision to be parsed, got %#v", action)
 	}
 }

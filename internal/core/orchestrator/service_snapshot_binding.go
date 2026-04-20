@@ -92,7 +92,7 @@ func (s *Service) feishuDirectCommandCatalogEvent(surface *state.SurfaceConsoleR
 	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
 	commandView := control.FeishuCommandView{Page: &page}
 	return control.UIEvent{
-		Kind:                 control.UIEventFeishuDirectCommandCatalog,
+		Kind:                 control.UIEventFeishuCommandView,
 		GatewayID:            surface.GatewayID,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		FeishuCommandView:    &commandView,
@@ -103,7 +103,7 @@ func (s *Service) feishuDirectCommandCatalogEvent(surface *state.SurfaceConsoleR
 func (s *Service) commandViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuCommandView) control.UIEvent {
 	catalog := s.commandCatalogFromView(surface, view)
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuDirectCommandCatalog,
+		Kind:                     control.UIEventFeishuCommandView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,

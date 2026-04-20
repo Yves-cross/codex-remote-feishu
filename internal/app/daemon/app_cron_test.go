@@ -601,7 +601,7 @@ func TestCronShowReturnsCatalogWithoutEnteringMutatingGate(t *testing.T) {
 		GatewayID:        "gateway-2",
 		SurfaceSessionID: "surface-2",
 	})
-	if len(events) != 1 || events[0].Kind != control.UIEventFeishuDirectCommandCatalog {
+	if len(events) != 1 || events[0].Kind != control.UIEventFeishuCommandView {
 		t.Fatalf("events = %#v, want one direct command catalog", events)
 	}
 	if !app.cronSyncInFlight {
