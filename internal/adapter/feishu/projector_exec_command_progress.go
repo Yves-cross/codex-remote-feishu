@@ -392,7 +392,7 @@ func renderExecProgressSearchSummary(summary, secondary string, limit int) strin
 	}
 	suffix := ""
 	if secondary != "" {
-		suffix = "（目录：" + markdownCodeSpan(secondary) + "）"
+		suffix = "（在 " + markdownCodeSpan(secondary) + " 内）"
 	}
 	if !shouldCodeSpanExecProgressSearchSummary(summary) {
 		return truncateExecProgressSummary(summary+suffix, limit)
