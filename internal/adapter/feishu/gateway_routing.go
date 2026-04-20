@@ -444,6 +444,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		cardActionKindTargetPickerSelectWorkspace,
 		cardActionKindTargetPickerSelectSession,
 		cardActionKindTargetPickerOpenPathPicker,
+		cardActionKindTargetPickerBack,
 		cardActionKindTargetPickerCancel,
 		cardActionKindTargetPickerConfirm:
 		return g.parseTargetPickerCardAction(value, event, meta, surfaceSessionID, chatID, operatorID, messageID)

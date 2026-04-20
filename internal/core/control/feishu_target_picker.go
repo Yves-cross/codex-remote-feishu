@@ -32,6 +32,16 @@ const (
 	FeishuTargetPickerSourceGitURL         FeishuTargetPickerSourceKind = "git_url"
 )
 
+type FeishuTargetPickerPage string
+
+const (
+	FeishuTargetPickerPageMode           FeishuTargetPickerPage = "mode"
+	FeishuTargetPickerPageTarget         FeishuTargetPickerPage = "target"
+	FeishuTargetPickerPageSource         FeishuTargetPickerPage = "source"
+	FeishuTargetPickerPageLocalDirectory FeishuTargetPickerPage = "local_directory"
+	FeishuTargetPickerPageGit            FeishuTargetPickerPage = "git"
+)
+
 type FeishuTargetPickerStage string
 
 const (
@@ -65,6 +75,7 @@ type FeishuTargetPickerView struct {
 	Title                  string
 	Source                 TargetPickerRequestSource
 	Stage                  FeishuTargetPickerStage
+	Page                   FeishuTargetPickerPage
 	StageLabel             string
 	Question               string
 	StatusTitle            string
@@ -73,6 +84,8 @@ type FeishuTargetPickerView struct {
 	StatusFooter           string
 	CanCancelProcessing    bool
 	ProcessingCancelLabel  string
+	CanGoBack              bool
+	BackLabel              string
 	SelectedMode           FeishuTargetPickerMode
 	SelectedSource         FeishuTargetPickerSourceKind
 	ShowModeSwitch         bool
@@ -109,9 +122,12 @@ type FeishuTargetPickerView struct {
 }
 
 type FeishuTargetPickerModeOption struct {
-	Value    FeishuTargetPickerMode
-	Label    string
-	Selected bool
+	Value             FeishuTargetPickerMode
+	Label             string
+	MetaText          string
+	Selected          bool
+	Available         bool
+	UnavailableReason string
 }
 
 type FeishuTargetPickerWorkspaceOption struct {

@@ -393,10 +393,13 @@ func TestTargetPickerListPrefersRealWorkspaceWhileExposeAddModeSwitch(t *testing
 	if _, ok := targetPickerModeOption(view, control.FeishuTargetPickerModeAddWorkspace); !ok || !view.ShowModeSwitch {
 		t.Fatalf("expected target picker to expose add-workspace mode switch, got %#v", view)
 	}
+	if view.Page != control.FeishuTargetPickerPageMode || view.ConfirmLabel != "下一步" || !view.CanConfirm {
+		t.Fatalf("expected /list picker to start at mode page with next enabled, got %#v", view)
+	}
 	if view.SelectedWorkspaceKey != "/data/dl/web" {
 		t.Fatalf("expected initial selection to stay on real workspace, got %#v", view)
 	}
-	if view.SelectedSessionValue != "" || view.CanConfirm {
+	if view.SelectedSessionValue != "" {
 		t.Fatalf("expected detached target picker to keep session empty until explicit selection, got %#v", view)
 	}
 }
@@ -417,8 +420,8 @@ func TestTargetPickerListFallsBackToAddWorkspaceModeWhenNoWorkspaceExists(t *tes
 	if view.SelectedMode != control.FeishuTargetPickerModeAddWorkspace || view.SelectedSource != control.FeishuTargetPickerSourceLocalDirectory {
 		t.Fatalf("expected picker to fall back to add-workspace/local-directory flow, got %#v", view)
 	}
-	if !view.ShowSourceSelect || view.CanConfirm || view.ConfirmLabel != "接入并继续" {
-		t.Fatalf("expected add-workspace flow to wait for directory selection, got %#v", view)
+	if view.Page != control.FeishuTargetPickerPageMode || view.ConfirmLabel != "下一步" || !view.CanConfirm {
+		t.Fatalf("expected empty-runtime /list picker to stop at mode page first, got %#v", view)
 	}
 }
 
@@ -526,15 +529,7 @@ func TestTargetPickerOpenAddWorkspaceLocalDirectoryPathPickerWithoutRouteMutatio
 	}))
 	svc.root.Surfaces["surface-1"].ClaimedWorkspaceKey = workspaceRoot
 
-	events := svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	})
-	updated := singleTargetPickerEvent(t, events)
+	updated := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	if updated.SelectedMode != control.FeishuTargetPickerModeAddWorkspace || updated.SelectedSource != control.FeishuTargetPickerSourceLocalDirectory {
 		t.Fatalf("expected picker to switch into add-workspace/local-directory branch, got %#v", updated)
 	}
@@ -595,14 +590,7 @@ func TestTargetPickerAddWorkspacePathPickerCancelRestoresTargetCard(t *testing.T
 		ActorUserID:      "user-1",
 	}))
 	svc.root.Surfaces["surface-1"].ClaimedWorkspaceKey = workspaceRoot
-	updated := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
+	updated := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerOpenPathPicker,
 		SurfaceSessionID:  "surface-1",
@@ -696,7 +684,7 @@ func TestTargetPickerCancelClearsActivePickerAndKeepsSurfaceRoute(t *testing.T) 
 	}
 }
 
-func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsLocalDirectoryAndWaitsForMainConfirm(t *testing.T) {
+func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsKnownWorkspaceAndBlocksMainConfirm(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 45, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	workspaceRoot := t.TempDir()
@@ -724,14 +712,7 @@ func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsLocalDirectoryAndWait
 		ActorUserID:      "user-1",
 	}))
 	svc.root.Surfaces["surface-1"].ClaimedWorkspaceKey = workspaceRoot
-	updated := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
+	updated := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerOpenPathPicker,
 		SurfaceSessionID:  "surface-1",
@@ -759,11 +740,11 @@ func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsLocalDirectoryAndWait
 		t.Fatalf("expected path confirm to restore target card by updating the owner card, got %#v", confirmEvents)
 	}
 	got := confirmEvents[0].FeishuTargetPickerView
-	if !testutil.SamePath(got.LocalDirectoryPath, workspaceRoot) || !got.CanConfirm {
-		t.Fatalf("expected path confirm to backfill local directory and enable main confirm, got %#v", got)
+	if !testutil.SamePath(got.LocalDirectoryPath, workspaceRoot) || got.CanConfirm {
+		t.Fatalf("expected known workspace path to backfill but stay blocked, got %#v", got)
 	}
-	if len(got.SourceMessages) == 0 || !strings.Contains(got.SourceMessages[0].Text, "复用") {
-		t.Fatalf("expected local-directory backfill to explain workspace reuse, got %#v", got.SourceMessages)
+	if len(got.SourceMessages) == 0 || !strings.Contains(got.SourceMessages[0].Text, "已有工作区") {
+		t.Fatalf("expected known workspace path to explain blocking reason, got %#v", got.SourceMessages)
 	}
 }
 
@@ -802,14 +783,7 @@ func TestTargetPickerAddWorkspaceLocalDirectoryPathPickerHidesBusyWorkspaceDirec
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
+	addMode := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerOpenPathPicker,
 		SurfaceSessionID:  "surface-1",
@@ -833,26 +807,10 @@ func TestTargetPickerAddWorkspaceLocalDirectoryPathPickerHidesBusyWorkspaceDirec
 	}
 }
 
-func TestTargetPickerConfirmAddWorkspaceLocalDirectoryEntersNewThreadReady(t *testing.T) {
+func TestTargetPickerConfirmAddWorkspaceLocalDirectoryStartsHeadlessForUnknownWorkspace(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 48, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	workspaceRoot := t.TempDir()
-	svc.UpsertInstance(&state.InstanceRecord{
-		InstanceID:    "inst-web",
-		DisplayName:   "web",
-		WorkspaceRoot: workspaceRoot,
-		WorkspaceKey:  workspaceRoot,
-		ShortName:     "web",
-		Online:        true,
-		Threads:       map[string]*state.ThreadRecord{},
-	})
-	svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionAttachWorkspace,
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		WorkspaceKey:     workspaceRoot,
-	})
 
 	view := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionListInstances,
@@ -860,15 +818,7 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryEntersNewThreadReady(t *te
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	svc.root.Surfaces["surface-1"].ClaimedWorkspaceKey = workspaceRoot
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
+	addMode := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	surface := svc.root.Surfaces["surface-1"]
 	record := svc.activeTargetPicker(surface)
 	record.LocalDirectoryPath = workspaceRoot
@@ -880,21 +830,49 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryEntersNewThreadReady(t *te
 		ActorUserID:      "user-1",
 		PickerID:         addMode.PickerID,
 	})
+	if surface.PendingHeadless == nil || !surface.PendingHeadless.PrepareNewThread || !testutil.SamePath(surface.PendingHeadless.ThreadCWD, workspaceRoot) {
+		t.Fatalf("expected unknown local directory to start headless workspace preparation, got %#v", surface.PendingHeadless)
+	}
+	if len(confirmEvents) == 0 || confirmEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected processing card before headless completion, got %#v", confirmEvents)
+	}
+	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageProcessing || got.StatusTitle != "正在接入工作区" {
+		t.Fatalf("expected processing target picker card for unknown local directory, got %#v", got)
+	}
+	var sawStart bool
+	for _, event := range confirmEvents {
+		if event.DaemonCommand != nil && event.DaemonCommand.Kind == control.DaemonCommandStartHeadless {
+			sawStart = true
+		}
+	}
+	if !sawStart {
+		t.Fatalf("expected local-directory confirm to dispatch headless start, got %#v", confirmEvents)
+	}
+
+	pending := surface.PendingHeadless
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    pending.InstanceID,
+		DisplayName:   "headless",
+		WorkspaceRoot: workspaceRoot,
+		WorkspaceKey:  workspaceRoot,
+		Source:        "headless",
+		Managed:       true,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	connectEvents := svc.ApplyInstanceConnected(pending.InstanceID)
 	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, workspaceRoot) {
-		t.Fatalf("expected main confirm to enter new-thread-ready on selected directory, got %#v", surface)
+		t.Fatalf("expected connected local-directory workspace to enter new-thread-ready, got %#v", surface)
 	}
-	if svc.activeTargetPicker(surface) != nil || svc.activePathPicker(surface) != nil {
-		t.Fatalf("expected local-directory success path to clear active picker state, got %#v", surface)
+	if len(connectEvents) != 1 || connectEvents[0].FeishuTargetPickerView == nil {
+		t.Fatalf("expected same-card success after local-directory headless connect, got %#v", connectEvents)
 	}
-	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil {
-		t.Fatalf("expected same-card success after local-directory confirm, got %#v", confirmEvents)
-	}
-	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
-		t.Fatalf("expected succeeded target picker card after local-directory confirm, got %#v", got)
+	if got := connectEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
+		t.Fatalf("expected succeeded target picker card after local-directory headless connect, got %#v", got)
 	}
 }
 
-func TestTargetPickerConfirmAddWorkspaceLocalDirectoryTreatsSymlinkedCurrentWorkspaceAsSameWorkspace(t *testing.T) {
+func TestTargetPickerConfirmAddWorkspaceLocalDirectoryBlocksSymlinkedKnownWorkspace(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink setup is not reliable on windows CI")
 	}
@@ -934,14 +912,7 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryTreatsSymlinkedCurrentWork
 		ActorUserID:      "user-1",
 	}))
 	svc.root.Surfaces["surface-1"].ClaimedWorkspaceKey = linkWorkspace
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
+	addMode := openAddWorkspaceLocalDirectoryPage(t, svc, view)
 	surface := svc.root.Surfaces["surface-1"]
 	record := svc.activeTargetPicker(surface)
 	record.LocalDirectoryPath = linkWorkspace
@@ -953,17 +924,17 @@ func TestTargetPickerConfirmAddWorkspaceLocalDirectoryTreatsSymlinkedCurrentWork
 		ActorUserID:      "user-1",
 		PickerID:         addMode.PickerID,
 	})
-	if surface.RouteMode != state.RouteModeNewThreadReady || !testutil.SamePath(surface.PreparedThreadCWD, realWorkspace) {
-		t.Fatalf("expected symlinked current workspace to stay on prepared new-thread route, got %#v", surface)
-	}
-	if surface.PendingHeadless != nil {
-		t.Fatalf("did not expect symlinked current workspace to start headless launch, got %#v", surface.PendingHeadless)
+	if surface.RouteMode != state.RouteModeUnbound || surface.PendingHeadless != nil {
+		t.Fatalf("expected symlinked known workspace to stay blocked without route mutation, got %#v", surface)
 	}
 	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil {
-		t.Fatalf("expected same-card success after symlinked workspace confirm, got %#v", confirmEvents)
+		t.Fatalf("expected same-card blocked state after symlinked workspace confirm, got %#v", confirmEvents)
 	}
-	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageSucceeded || got.StatusTitle != "已进入新会话待命" {
-		t.Fatalf("expected succeeded target picker card after symlinked workspace confirm, got %#v", got)
+	if got := confirmEvents[0].FeishuTargetPickerView; got.Stage != control.FeishuTargetPickerStageEditing || got.CanConfirm {
+		t.Fatalf("expected symlinked known workspace to remain editing and blocked, got %#v", got)
+	}
+	if got := confirmEvents[0].FeishuTargetPickerView; len(got.Messages) == 0 || !strings.Contains(got.Messages[0].Text, "已有工作区") {
+		t.Fatalf("expected blocked symlinked workspace to explain reason, got %#v", got)
 	}
 }
 
@@ -993,22 +964,7 @@ func TestTargetPickerAddWorkspaceGitSourceShowsDisabledHintWhenGitMissing(t *tes
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
-	gitSource := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectSource,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          addMode.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
-	}))
+	gitSource := openAddWorkspaceGitSourcePage(t, svc, view)
 
 	if gitSource.SelectedMode != control.FeishuTargetPickerModeAddWorkspace || gitSource.SelectedSource != control.FeishuTargetPickerSourceGitURL {
 		t.Fatalf("expected add-workspace/git source selection, got %#v", gitSource)
@@ -1051,22 +1007,7 @@ func TestTargetPickerGitImportKeepsConfirmEnabledAndValidatesOnSubmit(t *testing
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
-	gitSource := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectSource,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          addMode.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
-	}))
+	gitSource := openAddWorkspaceGitPage(t, svc, view)
 	if gitSource.CanConfirm {
 		t.Fatalf("expected git import confirm to stay disabled until required fields are complete, got %#v", gitSource)
 	}
@@ -1121,22 +1062,7 @@ func TestTargetPickerGitImportFlowBackfillsMainCardAndDispatchesDaemonCommand(t 
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
-	gitSource := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectSource,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          addMode.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
-	}))
+	gitSource := openAddWorkspaceGitPage(t, svc, view)
 	if gitSource.CanConfirm {
 		t.Fatalf("expected git source confirm to stay disabled before parent directory / repo are complete, got %#v", gitSource)
 	}
@@ -1214,22 +1140,7 @@ func TestTargetPickerGitImportProcessingBlocksOrdinaryInputButAllowsStatus(t *te
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	addMode := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectMode,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          view.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
-	}))
-	gitSource := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:              control.ActionTargetPickerSelectSource,
-		SurfaceSessionID:  "surface-1",
-		ChatID:            "chat-1",
-		ActorUserID:       "user-1",
-		PickerID:          addMode.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
-	}))
+	gitSource := openAddWorkspaceGitPage(t, svc, view)
 	pathView := singlePathPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerOpenPathPicker,
 		SurfaceSessionID:  "surface-1",
@@ -1325,6 +1236,56 @@ func TestTargetPickerCancelGitImportProcessingSealsCardAndDispatchesCancel(t *te
 	if svc.activeTargetPicker(surface) != nil || svc.activeOwnerCardFlow(surface) != nil {
 		t.Fatalf("expected cancel to clear target picker runtime, got %#v", svc.SurfaceUIRuntime("surface-1"))
 	}
+}
+
+func advanceTargetPickerStep(t *testing.T, svc *Service, view *control.FeishuTargetPickerView, answers map[string][]string) *control.FeishuTargetPickerView {
+	t.Helper()
+	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionTargetPickerConfirm,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		PickerID:         view.PickerID,
+		RequestAnswers:   answers,
+	}))
+}
+
+func openAddWorkspaceSourcePage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
+	t.Helper()
+	selected := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectMode,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          view.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
+	}))
+	return advanceTargetPickerStep(t, svc, selected, nil)
+}
+
+func openAddWorkspaceLocalDirectoryPage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
+	t.Helper()
+	sourcePage := openAddWorkspaceSourcePage(t, svc, view)
+	return advanceTargetPickerStep(t, svc, sourcePage, nil)
+}
+
+func openAddWorkspaceGitSourcePage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
+	t.Helper()
+	sourcePage := openAddWorkspaceSourcePage(t, svc, view)
+	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectSource,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          sourcePage.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
+	}))
+}
+
+func openAddWorkspaceGitPage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
+	t.Helper()
+	sourcePage := openAddWorkspaceGitSourcePage(t, svc, view)
+	return advanceTargetPickerStep(t, svc, sourcePage, nil)
 }
 
 func slicesContain(values []string, want string) bool {

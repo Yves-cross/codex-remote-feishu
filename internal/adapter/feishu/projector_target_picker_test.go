@@ -293,10 +293,11 @@ func TestTargetPickerEditingCardUsesStepHeaderInsteadOfSummary(t *testing.T) {
 	}
 }
 
-func TestTargetPickerElementsRenderModeSwitchAndSourceSelect(t *testing.T) {
+func TestTargetPickerElementsRenderSourceChoicesAsSingleStepPage(t *testing.T) {
 	elements := targetPickerElements(control.FeishuTargetPickerView{
 		PickerID:          "picker-1",
 		Title:             "选择工作区与会话",
+		Page:              control.FeishuTargetPickerPageSource,
 		SelectedMode:      control.FeishuTargetPickerModeAddWorkspace,
 		SelectedSource:    control.FeishuTargetPickerSourceGitURL,
 		ShowModeSwitch:    true,
@@ -317,17 +318,13 @@ func TestTargetPickerElementsRenderModeSwitchAndSourceSelect(t *testing.T) {
 	}, "life-3")
 
 	var sawSourceSelect bool
-	var sawModeButton bool
 	for _, action := range cardActionsFromElements(elements) {
-		switch cardValueMap(action)[cardActionPayloadKeyKind] {
-		case cardActionKindTargetPickerSelectMode:
-			sawModeButton = true
-		case cardActionKindTargetPickerSelectSource:
+		if cardValueMap(action)[cardActionPayloadKeyKind] == cardActionKindTargetPickerSelectSource {
 			sawSourceSelect = true
 		}
 	}
-	if !sawModeButton || !sawSourceSelect {
-		t.Fatalf("expected mode button callbacks and source select callback, got %#v", elements)
+	if !sawSourceSelect {
+		t.Fatalf("expected source page to render source selection callbacks, got %#v", elements)
 	}
 }
 
@@ -335,6 +332,7 @@ func TestTargetPickerElementsRenderLocalDirectoryOpenPathAction(t *testing.T) {
 	elements := targetPickerElements(control.FeishuTargetPickerView{
 		PickerID:         "picker-1",
 		Title:            "选择工作区与会话",
+		Page:             control.FeishuTargetPickerPageLocalDirectory,
 		SelectedMode:     control.FeishuTargetPickerModeAddWorkspace,
 		SelectedSource:   control.FeishuTargetPickerSourceLocalDirectory,
 		ShowModeSwitch:   true,
@@ -370,6 +368,7 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 	elements := targetPickerElements(control.FeishuTargetPickerView{
 		PickerID:         "picker-1",
 		Title:            "选择工作区与会话",
+		Page:             control.FeishuTargetPickerPageGit,
 		SelectedMode:     control.FeishuTargetPickerModeAddWorkspace,
 		SelectedSource:   control.FeishuTargetPickerSourceGitURL,
 		ShowModeSwitch:   true,
@@ -410,10 +409,13 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 	if formElements[1]["name"] != control.FeishuTargetPickerGitRepoURLFieldName || formElements[2]["name"] != control.FeishuTargetPickerGitDirectoryNameFieldName {
 		t.Fatalf("unexpected git form input names: %#v", formElements)
 	}
-	if len(formElements) != 4 {
-		t.Fatalf("expected git form to keep two inputs plus two direct form buttons, got %#v", formElements)
+	if len(formElements) != 5 {
+		t.Fatalf("expected git form to keep two inputs plus cancel/confirm buttons inside the same form, got %#v", formElements)
 	}
-	if formElements[3]["tag"] != "button" || formElements[3]["name"] != "target_picker_confirm" {
+	if formElements[3]["tag"] != "button" || formElements[3]["name"] != "target_picker_cancel" {
+		t.Fatalf("expected git form to keep cancel button inside form, got %#v", formElements)
+	}
+	if formElements[4]["tag"] != "button" || formElements[4]["name"] != "target_picker_confirm" {
 		t.Fatalf("expected git form actions to stay flat inside form, got %#v", formElements)
 	}
 	var sawParentDirNearForm bool
@@ -445,17 +447,14 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 		}
 	}
 	var sawCancel bool
-	for _, action := range cardActionsFromElements(elements) {
+	for _, action := range cardActionsFromElements(formElements) {
 		if cardValueMap(action)[cardActionPayloadKeyKind] == cardActionKindTargetPickerCancel {
 			sawCancel = true
 			break
 		}
 	}
 	if !sawOpenPath || !sawCancel || !sawConfirm {
-		t.Fatalf("expected git form to render open-path/confirm in form and cancel outside form, got %#v", elements)
-	}
-	if !containsRenderedTag(elements, "hr") {
-		t.Fatalf("expected git target picker card to separate footer cancel action with divider, got %#v", elements)
+		t.Fatalf("expected git form to render open-path/cancel/confirm inside the same form, got %#v", elements)
 	}
 }
 
@@ -468,6 +467,7 @@ func TestProjectTargetPickerGitFormRendersFlatV2FormForInlineReplacement(t *test
 		FeishuTargetPickerView: &control.FeishuTargetPickerView{
 			PickerID:         "picker-1",
 			Title:            "选择工作区与会话",
+			Page:             control.FeishuTargetPickerPageGit,
 			SelectedMode:     control.FeishuTargetPickerModeAddWorkspace,
 			SelectedSource:   control.FeishuTargetPickerSourceGitURL,
 			ShowModeSwitch:   true,
@@ -503,16 +503,16 @@ func TestProjectTargetPickerGitFormRendersFlatV2FormForInlineReplacement(t *test
 		t.Fatalf("expected rendered git form, got %#v", rendered)
 	}
 	formElements, _ := form["elements"].([]map[string]any)
-	if len(formElements) != 4 {
+	if len(formElements) != 5 {
 		t.Fatalf("expected rendered git form to keep flat form structure, got %#v", form)
 	}
 	if formElements[0]["tag"] != "button" || formElements[0]["name"] != "target_picker_open_path" {
 		t.Fatalf("expected rendered git form to keep open-path button first, got %#v", formElements)
 	}
-	if formElements[3]["tag"] != "button" || formElements[3]["name"] != "target_picker_confirm" {
+	if formElements[4]["tag"] != "button" || formElements[4]["name"] != "target_picker_confirm" {
 		t.Fatalf("expected rendered git form to keep confirm button last, got %#v", formElements)
 	}
-	for _, index := range []int{0, 3} {
+	for _, index := range []int{0, 3, 4} {
 		if formElements[index]["form_action_type"] != "submit" {
 			t.Fatalf("expected rendered git form action %d to stay submit button, got %#v", index, formElements[index])
 		}

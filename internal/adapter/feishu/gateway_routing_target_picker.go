@@ -113,6 +113,22 @@ func (g *LiveGateway) parseTargetPickerCardAction(
 			RequestAnswers:    targetPickerDraftAnswersFromFormValue(event.Event.Action.FormValue),
 			Inbound:           meta,
 		}, true
+	case cardActionKindTargetPickerBack:
+		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
+		if pickerID == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionTargetPickerBack,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			PickerID:         pickerID,
+			RequestAnswers:   targetPickerDraftAnswersFromFormValue(event.Event.Action.FormValue),
+			Inbound:          meta,
+		}, true
 	case cardActionKindTargetPickerCancel:
 		pickerID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
 		if pickerID == "" {

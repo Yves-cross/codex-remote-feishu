@@ -116,6 +116,7 @@ type FeishuUITargetPickerContext struct {
 	PickerID             string
 	Source               TargetPickerRequestSource
 	Title                string
+	Page                 FeishuTargetPickerPage
 	SelectedMode         FeishuTargetPickerMode
 	SelectedSource       FeishuTargetPickerSourceKind
 	SelectedWorkspaceKey string

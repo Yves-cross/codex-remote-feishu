@@ -124,7 +124,8 @@
   - unified target picker 现在跨边界携带的是 `control.FeishuTargetPickerView`
   - projector 直接以它为 owner 生成 `target_picker_*` callback payload
   - dropdown 刷新与 confirm 已不再经由 `FeishuDirectSelectionPrompt` 兜底
-  - view 里新增的 `StageLabel` / `Question` 当前已经成为 editing / processing / terminal 的稳定页头合同；target picker projector 默认先渲染这组页头，再投影当前页面主体，不再以内联 summary block 作为首屏入口
+  - view 里的 `Page` / `StageLabel` / `Question` 当前已经成为 editing / processing / terminal 的稳定页头与分页合同；`Page` 负责把 editing 态切成 `mode` / `target` / `source` / `local_directory` / `git`，target picker projector 默认先渲染这组页头，再投影当前页面主体，不再以内联 summary block 作为首屏入口
+  - `/list` 当前固定从 `Page=mode` 进入；`/use` / `/useall` / workspace-scoped 入口则会预填后直接晚进入 `Page=target`，但阶段头仍保持整条向导里的概念路径，例如 `模式/目标`
 - `control.FeishuDirectSelectionPrompt` 仍然存在，但已经不再是 workspace/thread selection 的唯一主载体：
   - vscode instance/thread selection 与其余 legacy selection path 现在跨边界携带的是 `control.FeishuSelectionView`
   - projector 在 adapter 层把它投影成当前卡片 renderer 仍可消费的 `FeishuDirectSelectionPrompt`
@@ -172,14 +173,14 @@
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `view_mode`、`page` | normal mode 下重新打开 target picker；vscode / legacy selection path 下仍用于在当前 same-context thread 列表里切页 |
 | `show_all_workspaces` / `show_recent_workspaces` | `page` | normal mode 下重新打开 `/list` target picker；旧分页字段继续保留 transport 兼容 |
 | `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `page` | normal mode 下重新打开 `/useall` target picker；旧分页字段继续保留 transport 兼容 |
-| `show_workspace_threads` | `workspace_key`、`page`、`return_page` | normal mode 下以指定 workspace 重新打开 target picker；legacy selection path 下仍可表示进入某个 workspace 的会话详情 |
+| `show_workspace_threads` | `workspace_key`、`page`、`return_page` | normal mode 下以指定 workspace 重新打开 target picker，并直接晚进入 `目标` 页；legacy selection path 下仍可表示进入某个 workspace 的会话详情 |
 | `target_picker_select_mode` | `picker_id`、`target_value` | unified target picker 的模式按钮回调；gateway 直接从 payload 里的 `target_value` 取当前模式 |
 | `target_picker_select_source` | `picker_id`、`target_value` | unified target picker 的来源按钮回调；当前 projector 直接在 payload 里写 `local_directory` / `git_url`，gateway 仍兼容从 `form_value[field_name]` / `option` / `options` 回退取值 |
 | `target_picker_select_workspace` | `picker_id`、`field_name` | unified target picker 的工作区下拉回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取工作区键 |
 | `target_picker_select_session` | `picker_id`、`field_name` | unified target picker 的会话下拉回调；gateway 从 `form_value[field_name]` / `option` / `options` 中提取 thread 或 `new_thread` |
 | `target_picker_open_path_picker` | `picker_id`、`target_value`、`request_answers` | unified target picker 的子步骤导航；当前 `target_value` 表示 `local_directory` 或 `git_parent_dir`，`request_answers` 用来把 Git 主卡里的 `repo_url` / `directory_name` 草稿一起带回服务端 |
 | `target_picker_cancel` | `picker_id`、`request_answers` | unified target picker 的退出按钮；gateway 只需命中当前 active picker，并把 Git 内联表单草稿按同样方式带回；服务端随后会把当前卡封成对应 terminal 态：普通编辑态为 `已取消`，Git processing 态为 `已取消导入`，随后清掉 active picker / owner-card flow |
-| `target_picker_confirm` | `picker_id`、`target_picker_workspace`、`target_picker_session`、`request_answers` | unified target picker 的确认按钮；`已有工作区` 模式下把当前表单值送到产品层执行 attach / switch / `新建会话`；`新建工作区 / 已有目录` 与 `新建工作区 / 从 Git URL` 都会在同一张 owner card 上进入 processing / terminal，其中前者要求目录已通过前置校验，后者要求 repo / 落地父目录预览有效；Git 长链路会先 patch 成 `正在导入 Git 工作区`，随后在 clone 成功后继续 patch 到“接入工作区 / 准备会话”，并允许同卡 `取消导入` |
+| `target_picker_confirm` | `picker_id`、`target_picker_workspace`、`target_picker_session`、`request_answers` | unified target picker 的确认按钮；`已有工作区` 模式下把当前表单值送到产品层执行 attach / switch / `新建会话`；`新建工作区 / 已有目录` 与 `新建工作区 / 从 Git URL` 都会在同一张 owner card 上进入 processing / terminal，其中前者要求目录已通过前置校验且不能命中已知 workspace，后者要求 repo / 落地父目录预览有效；Git 长链路会先 patch 成 `正在导入 Git 工作区`，随后在 clone 成功后继续 patch 到“接入工作区 / 准备会话”，并允许同卡 `取消导入` |
 | `history_page` | `picker_id`、`page` | `/history` 列表页翻页；命中当前 history owner-card flow 时同步替换当前卡为 loading，然后异步重查当前 thread history |
 | `history_detail` | `picker_id`、`turn_id` 或 `field_name + selected option` | `/history` 进入某一轮详情，或在详情页前后切换；命中当前 history owner-card flow 时同样先切 loading；gateway 继续兼容 `form_value[field_name]` / `option` / `options` 取值 |
 | `upgrade_owner_flow` | `picker_id`、`option_id` | `/upgrade latest` daemon owner-card 的显式动作；当前 `option_id` 只用 `confirm` / `cancel`，都要求命中当前 active flow id，旧卡或他人卡片不会继续改写升级状态 |
@@ -369,15 +370,18 @@ MCP request 卡片当前新增的可视语义：
   - VS Code / legacy selection path 里的上一页 / 下一页 / 返回分组
   都属于 pure navigation，继续原地替换当前卡，而不是 append 新卡。
 - unified target picker 当前额外有一条明确的 UI 语义：
-  - picker 首次打开时默认进入 `已有工作区` 模式；如果当前没有任何真实 workspace 候选，才会自动切到 `新建工作区`
+  - `/list` 首次打开固定落在 `模式` 页；`/use` / `/useall` / `show_workspace_threads` 会预填 `模式=进入已有工作区` 并直接晚进入 `目标` 页，但仍保留 `上一步 -> 模式`
+  - 即使当前没有任何真实 workspace 候选，或 `新建工作区` 只剩一个可用来源，也不会自动跳过 `模式` / `来源`；卡片仍停在当前步骤，只把不可用项置灰并给出原因
   - editing / processing / terminal 页面当前统一先显示 step tag，再显示单一主问题；不再把旧的“当前工作区 / 当前会话 / 路径摘要”作为编辑页首屏
-  - `已有工作区` 模式下，不再为了“帮用户猜一个候选”去回退到其他 recoverable thread
+  - `目标` 页继续把 `工作区 + 会话` 保留在同一页；工作区 label 足够时只显示 label，只有 basename 冲突时才额外补路径 meta 做消歧
+  - `已有工作区` 路径下，不再为了“帮用户猜一个候选”去回退到其他 recoverable thread
   - 只有当前 surface 已经处在同 workspace 的 `R5 NewThreadReady` 时，才默认选中 `新建会话`
   - 或者 surface 当前已经绑定到同 workspace 的某个 thread，且该 thread 仍在候选里，才默认选中该 thread
   - 如果只是当前 workspace 已选中，但 surface 处于 detached / unbound，session 会保持空值，等待用户显式选择
   - 但工作区一旦变化，session 下拉不会再 silently fallback 到新的真实 workspace 默认会话
   - 若切到真实 workspace，session 会被主动清空，confirm 按钮随之禁用，直到用户重新选定会话
-  - 若切到 `新建工作区`，卡片会改成来源按钮布局，并用 `切换来源` 次级标签承接来源选择：`已有目录` 主卡展示目录字段 + `选择目录` 按钮 + `接入并继续` 主按钮；`从 Git URL` 主卡展示落地父目录字段、仓库地址/目录名表单、`选择目录` 按钮与 `克隆并继续` 主按钮
+  - 若切到 `新建工作区`，卡片会先进入 `来源` 页；随后 `已有目录` 主卡展示目录字段 + `选择目录` 按钮 + `接入并继续` 主按钮，`从 Git URL` 主卡展示落地父目录字段、仓库地址/目录名表单、`选择目录` 按钮与 `克隆并继续` 主按钮
+  - `新建工作区 -> 已有目录` 命中已知 workspace 时，当前页会直接显示阻塞消息并禁用 `接入并继续`，而不是把它偷偷改写成“复用后进入空的新会话”
   - `target_picker_open_path_picker` 当前会把主卡 inline replace 成 path picker 子步骤；子步骤复用 owner-card 标题，并展示 step tag、单题问题、允许范围与当前位置；path picker confirm/cancel 后不会再走同步 inline restore，而是异步 ack 后把最新 target picker 主卡 patch 回同一张 owner card
   - 独立 path picker 卡现在也会在首次发送后把自身 `message_id` 记回 runtime；因此后续非 inline 的异步结果不再只能回退成外发 notice，而是可以显式 patch 当前这张 picker 卡
   - `/sendfile` 文件模式 picker 当前基于这条规则形成“菜单卡/独立 picker -> 前台启动 -> 后台发送”的单卡 handoff：打开 picker 时若来自 stamped 菜单卡，会先把当前菜单卡直接替换成文件选择器；若前置条件不满足（例如 VS Code 模式或尚未接管工作区），则当前菜单卡会直接封成不可交互的错误终态，而不是回退成额外 notice

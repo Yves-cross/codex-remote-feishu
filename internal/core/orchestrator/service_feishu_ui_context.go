@@ -212,6 +212,7 @@ func (s *Service) buildFeishuTargetPickerContextFromView(surface *state.SurfaceC
 		PickerID:             strings.TrimSpace(view.PickerID),
 		Source:               view.Source,
 		Title:                strings.TrimSpace(view.Title),
+		Page:                 view.Page,
 		SelectedMode:         view.SelectedMode,
 		SelectedSource:       view.SelectedSource,
 		SelectedWorkspaceKey: strings.TrimSpace(view.SelectedWorkspaceKey),

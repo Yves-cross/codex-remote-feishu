@@ -1521,10 +1521,10 @@ func TestNormalModeListWithoutOnlineWorkspacesShowsCreateWorkspacePicker(t *test
 		t.Fatalf("expected no existing workspace options when runtime is empty, got %#v", view.WorkspaceOptions)
 	}
 	if view.SelectedMode != control.FeishuTargetPickerModeAddWorkspace || view.SelectedSource != control.FeishuTargetPickerSourceLocalDirectory {
-		t.Fatalf("expected empty runtime to fall back to add-workspace/local-directory flow, got %#v", view)
+		t.Fatalf("expected empty runtime to preselect add-workspace/local-directory flow, got %#v", view)
 	}
-	if !view.ShowSourceSelect || view.CanConfirm || view.ConfirmLabel != "接入并继续" {
-		t.Fatalf("expected picker to wait for local-directory selection, got %#v", view)
+	if view.Page != control.FeishuTargetPickerPageMode || !view.ShowModeSwitch || !view.CanConfirm || view.ConfirmLabel != "下一步" {
+		t.Fatalf("expected empty runtime to stay on mode page instead of auto-jumping, got %#v", view)
 	}
 }
 
