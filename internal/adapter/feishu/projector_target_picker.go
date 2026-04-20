@@ -227,6 +227,9 @@ func targetPickerEditingFooterButtons(view control.FeishuTargetPickerView, daemo
 	if view.CanGoBack {
 		buttons = append(buttons, cardCallbackButtonElement(strings.TrimSpace(firstNonEmpty(view.BackLabel, "上一步")), "default", stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerBack, view.PickerID), daemonLifecycleID), false, ""))
 	}
+	if view.Page == control.FeishuTargetPickerPageMode || view.Page == control.FeishuTargetPickerPageSource {
+		return buttons
+	}
 	buttons = append(buttons, cardCallbackButtonElement(strings.TrimSpace(firstNonEmpty(view.ConfirmLabel, "确认")), "primary", stampActionValue(actionPayloadTargetPicker(cardActionKindTargetPickerConfirm, view.PickerID), daemonLifecycleID), !view.CanConfirm, "fill"))
 	return buttons
 }

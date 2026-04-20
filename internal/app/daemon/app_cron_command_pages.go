@@ -10,16 +10,13 @@ func buildCronRootPageView(stateValue *cronStateFile, ownerView cronOwnerView, e
 	primaryCommand := cronPrimaryMenuCommand(stateValue, ownerView)
 	canEdit := cronCanEdit(stateValue) && configReady
 	canReload := cronCanReload(stateValue, ownerView)
-	summaryLines := []string{
-		"选择 Cron 的下一步操作。",
-		"根页不再默认展开状态；查看运行状态、任务列表或配置入口，请进入对应子页。",
-	}
-	if strings.TrimSpace(extraSummary) != "" {
-		summaryLines = append(summaryLines, strings.TrimSpace(extraSummary))
+	var summarySections []control.FeishuCardTextSection
+	if line := strings.TrimSpace(extraSummary); line != "" {
+		summarySections = commandCatalogSummarySections(line)
 	}
 	return control.FeishuCommandPageView{
 		CommandID:       control.FeishuCommandCron,
-		SummarySections: commandCatalogSummarySections(summaryLines...),
+		SummarySections: summarySections,
 		StatusKind:      strings.TrimSpace(statusKind),
 		StatusText:      strings.TrimSpace(statusText),
 		Interactive:     true,
@@ -44,7 +41,6 @@ func buildCronRootPageView(stateValue *cronStateFile, ownerView cronOwnerView, e
 					},
 				}},
 			},
-			cronManualCommandSectionWithDefault(formDefault),
 		},
 	}
 }
@@ -74,14 +70,4 @@ func buildCronEditPageView(stateValue *cronStateFile, ownerView cronOwnerView, e
 		control.FeishuCommandBreadcrumbsForCommand(control.FeishuCommandCron, "打开配置"),
 		control.FeishuCommandBackToRootButtons(control.FeishuCommandCron),
 	)
-}
-
-func cronManualCommandSectionWithDefault(defaultValue string) control.CommandCatalogSection {
-	section := cronManualCommandSection()
-	if len(section.Entries) == 0 {
-		return section
-	}
-	form := control.FeishuCommandFormWithDefault(control.FeishuCommandCron, defaultValue)
-	section.Entries[0].Form = form
-	return section
 }

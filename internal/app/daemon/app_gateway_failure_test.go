@@ -52,7 +52,6 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 	sawExistingWorkspace := false
 	sawDisabledExistingWorkspace := false
 	sawAddWorkspace := false
-	sawNextStep := false
 	for _, button := range operationCardButtons(gateway.operations[1]) {
 		textNode, _ := button["text"].(map[string]any)
 		label, _ := textNode["content"].(string)
@@ -62,11 +61,9 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 			sawDisabledExistingWorkspace = button["disabled"] == true
 		case "新建工作区":
 			sawAddWorkspace = true
-		case "下一步":
-			sawNextStep = true
 		}
 	}
-	if !sawExistingWorkspace || !sawDisabledExistingWorkspace || !sawAddWorkspace || !sawNextStep {
+	if !sawExistingWorkspace || !sawDisabledExistingWorkspace || !sawAddWorkspace {
 		t.Fatalf("expected recovered target picker to expose mode selection actions, got %#v", gateway.operations[1])
 	}
 }

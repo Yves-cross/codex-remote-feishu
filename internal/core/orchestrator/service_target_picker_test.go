@@ -425,6 +425,47 @@ func TestTargetPickerListFallsBackToAddWorkspaceModeWhenNoWorkspaceExists(t *tes
 	}
 }
 
+func TestTargetPickerSelectExistingWorkspaceModeAdvancesToTargetPage(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 31, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-web",
+		DisplayName:   "web",
+		WorkspaceRoot: "/data/dl/web",
+		WorkspaceKey:  "/data/dl/web",
+		ShortName:     "web",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-web": {ThreadID: "thread-web", Name: "整理样式", CWD: "/data/dl/web", Loaded: true},
+		},
+	})
+
+	view := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectMode,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          view.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerModeExistingWorkspace),
+	})
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected inline refresh after selecting existing-workspace mode, got %#v", events)
+	}
+	got := targetPickerFromEvent(t, events[0])
+	if got.Page != control.FeishuTargetPickerPageTarget || got.Stage != control.FeishuTargetPickerStageEditing {
+		t.Fatalf("expected selecting existing-workspace mode to jump to target page, got %#v", got)
+	}
+	if len(got.WorkspaceOptions) == 0 || len(got.SessionOptions) == 0 {
+		t.Fatalf("expected target page selectors after selecting existing-workspace mode, got %#v", got)
+	}
+}
+
 func TestTargetPickerShowThreadsOnAttachedWorkspaceKeepsSessionEmptyWhenRouteUnbound(t *testing.T) {
 	now := time.Date(2026, 4, 14, 15, 32, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -614,8 +655,8 @@ func TestTargetPickerAddWorkspacePathPickerCancelRestoresTargetCard(t *testing.T
 	if surface.RouteMode != state.RouteModeUnbound || surface.PendingHeadless != nil {
 		t.Fatalf("expected cancel to keep current target unchanged, got %#v", surface)
 	}
-	if len(cancelEvents) != 1 || cancelEvents[0].FeishuTargetPickerView == nil || cancelEvents[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected cancel to restore target picker by updating the owner card, got %#v", cancelEvents)
+	if len(cancelEvents) != 1 || cancelEvents[0].FeishuTargetPickerView == nil || !cancelEvents[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected cancel to restore target picker inline, got %#v", cancelEvents)
 	}
 	if got := cancelEvents[0].FeishuTargetPickerView; got.LocalDirectoryPath != "" || got.CanConfirm {
 		t.Fatalf("expected cancel to preserve empty local-directory selection, got %#v", got)
@@ -736,8 +777,8 @@ func TestTargetPickerAddWorkspacePathPickerConfirmBackfillsKnownWorkspaceAndBloc
 	if svc.activePathPicker(surface) != nil || svc.activeTargetPicker(surface) == nil {
 		t.Fatalf("expected path confirm to close only the path picker, got %#v", surface)
 	}
-	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil || confirmEvents[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected path confirm to restore target card by updating the owner card, got %#v", confirmEvents)
+	if len(confirmEvents) != 1 || confirmEvents[0].FeishuTargetPickerView == nil || !confirmEvents[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected path confirm to restore target card inline, got %#v", confirmEvents)
 	}
 	got := confirmEvents[0].FeishuTargetPickerView
 	if !testutil.SamePath(got.LocalDirectoryPath, workspaceRoot) || got.CanConfirm {
@@ -964,19 +1005,16 @@ func TestTargetPickerAddWorkspaceGitSourceShowsDisabledHintWhenGitMissing(t *tes
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-	gitSource := openAddWorkspaceGitSourcePage(t, svc, view)
-
-	if gitSource.SelectedMode != control.FeishuTargetPickerModeAddWorkspace || gitSource.SelectedSource != control.FeishuTargetPickerSourceGitURL {
-		t.Fatalf("expected add-workspace/git source selection, got %#v", gitSource)
+	sourcePage := openAddWorkspaceSourcePage(t, svc, view)
+	if sourcePage.Page != control.FeishuTargetPickerPageSource || sourcePage.SelectedMode != control.FeishuTargetPickerModeAddWorkspace {
+		t.Fatalf("expected add-workspace source page, got %#v", sourcePage)
 	}
-	if gitSource.CanConfirm {
-		t.Fatalf("expected git source to stay disabled without git executable, got %#v", gitSource)
+	option, ok := targetPickerSourceOption(sourcePage, control.FeishuTargetPickerSourceGitURL)
+	if !ok || option.Available {
+		t.Fatalf("expected git source to stay disabled without git executable, got %#v", sourcePage.SourceOptions)
 	}
-	if gitSource.SourceUnavailableHint == "" || !strings.Contains(gitSource.SourceUnavailableHint, "git") {
-		t.Fatalf("expected explicit missing-git hint, got %#v", gitSource)
-	}
-	if len(gitSource.SourceMessages) == 0 || !strings.Contains(gitSource.SourceMessages[0].Text, "git") {
-		t.Fatalf("expected missing-git message on main card, got %#v", gitSource.SourceMessages)
+	if !strings.Contains(option.UnavailableReason, "git") {
+		t.Fatalf("expected disabled git option to explain missing git, got %#v", option)
 	}
 }
 
@@ -1238,21 +1276,9 @@ func TestTargetPickerCancelGitImportProcessingSealsCardAndDispatchesCancel(t *te
 	}
 }
 
-func advanceTargetPickerStep(t *testing.T, svc *Service, view *control.FeishuTargetPickerView, answers map[string][]string) *control.FeishuTargetPickerView {
-	t.Helper()
-	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionTargetPickerConfirm,
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		PickerID:         view.PickerID,
-		RequestAnswers:   answers,
-	}))
-}
-
 func openAddWorkspaceSourcePage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
 	t.Helper()
-	selected := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
 		Kind:              control.ActionTargetPickerSelectMode,
 		SurfaceSessionID:  "surface-1",
 		ChatID:            "chat-1",
@@ -1260,16 +1286,9 @@ func openAddWorkspaceSourcePage(t *testing.T, svc *Service, view *control.Feishu
 		PickerID:          view.PickerID,
 		TargetPickerValue: string(control.FeishuTargetPickerModeAddWorkspace),
 	}))
-	return advanceTargetPickerStep(t, svc, selected, nil)
 }
 
 func openAddWorkspaceLocalDirectoryPage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
-	t.Helper()
-	sourcePage := openAddWorkspaceSourcePage(t, svc, view)
-	return advanceTargetPickerStep(t, svc, sourcePage, nil)
-}
-
-func openAddWorkspaceGitSourcePage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
 	t.Helper()
 	sourcePage := openAddWorkspaceSourcePage(t, svc, view)
 	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
@@ -1278,14 +1297,26 @@ func openAddWorkspaceGitSourcePage(t *testing.T, svc *Service, view *control.Fei
 		ChatID:            "chat-1",
 		ActorUserID:       "user-1",
 		PickerID:          sourcePage.PickerID,
-		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
+		TargetPickerValue: string(control.FeishuTargetPickerSourceLocalDirectory),
 	}))
+}
+
+func openAddWorkspaceGitSourcePage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
+	t.Helper()
+	return openAddWorkspaceSourcePage(t, svc, view)
 }
 
 func openAddWorkspaceGitPage(t *testing.T, svc *Service, view *control.FeishuTargetPickerView) *control.FeishuTargetPickerView {
 	t.Helper()
 	sourcePage := openAddWorkspaceGitSourcePage(t, svc, view)
-	return advanceTargetPickerStep(t, svc, sourcePage, nil)
+	return singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectSource,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          sourcePage.PickerID,
+		TargetPickerValue: string(control.FeishuTargetPickerSourceGitURL),
+	}))
 }
 
 func slicesContain(values []string, want string) bool {

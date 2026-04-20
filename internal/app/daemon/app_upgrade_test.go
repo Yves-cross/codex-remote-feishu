@@ -426,7 +426,7 @@ func TestPrepareUpgradeHelperShimWritesEmbeddedShimAndSidecar(t *testing.T) {
 	}
 }
 
-func TestBuildDebugRootPageIsInteractiveAndIncludesForm(t *testing.T) {
+func TestBuildDebugRootPageOnlyExposesAdminEntry(t *testing.T) {
 	catalog := control.BuildFeishuCommandPageCatalog(buildDebugRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackBeta,
 		CurrentVersion: "v1.0.0",
@@ -435,28 +435,22 @@ func TestBuildDebugRootPageIsInteractiveAndIncludesForm(t *testing.T) {
 		t.Fatalf("expected interactive debug catalog, got %#v", catalog)
 	}
 	assertCatalogUsesPlainTextContracts(t, &catalog)
-	if len(catalog.Sections) != 2 {
-		t.Fatalf("expected quick actions + form sections, got %#v", catalog.Sections)
+	if len(catalog.Sections) != 1 {
+		t.Fatalf("expected a single debug menu section, got %#v", catalog.Sections)
 	}
-	form := catalog.Sections[1].Entries[0].Form
-	if form == nil || form.CommandText != "/debug" {
-		t.Fatalf("expected debug form entry, got %#v", catalog.Sections[1].Entries[0])
+	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 1 {
+		t.Fatalf("expected debug menu to expose exactly one button, got %#v", catalog.Sections[0].Entries[0].Buttons)
 	}
 	if got := catalog.Sections[0].Entries[0].Buttons[0].CommandText; got != "/debug admin" {
 		t.Fatalf("expected debug catalog to expose admin link button, got %#v", catalog.Sections[0].Entries[0].Buttons)
 	}
-	for _, button := range catalog.Sections[0].Entries[0].Buttons {
-		if button.CommandText == "/debug track" || strings.HasPrefix(button.CommandText, "/debug track ") {
-			t.Fatalf("debug catalog should not promote /debug track anymore: %#v", catalog.Sections[0].Entries[0].Buttons)
-		}
-	}
 	summary := catalogSummaryText(&catalog)
-	if strings.Contains(summary, "当前版本：") || strings.Contains(summary, "当前 track：") {
-		t.Fatalf("expected debug root page to avoid default status dump, got %#v", summary)
+	if summary != "" {
+		t.Fatalf("expected debug root page to stay free of summary copy, got %#v", summary)
 	}
 }
 
-func TestBuildUpgradeRootPageIsInteractiveAndIncludesForm(t *testing.T) {
+func TestBuildUpgradeRootPageOnlyExposesUpgradeMenus(t *testing.T) {
 	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
@@ -465,22 +459,38 @@ func TestBuildUpgradeRootPageIsInteractiveAndIncludesForm(t *testing.T) {
 		t.Fatalf("expected interactive upgrade catalog, got %#v", catalog)
 	}
 	assertCatalogUsesPlainTextContracts(t, &catalog)
-	if len(catalog.Sections) != 3 {
-		t.Fatalf("expected quick actions + track + form sections, got %#v", catalog.Sections)
+	if len(catalog.Sections) != 1 {
+		t.Fatalf("expected a single upgrade menu section, got %#v", catalog.Sections)
 	}
 	if got := catalog.Sections[0].Entries[0].Buttons[0].CommandText; got != "/upgrade track" {
 		t.Fatalf("expected upgrade catalog to expose track button, got %#v", catalog.Sections[0].Entries[0].Buttons)
 	}
-	if catalog.Sections[1].Entries[0].Buttons[2].Disabled != true {
-		t.Fatalf("expected current production track button to be disabled, got %#v", catalog.Sections[1].Entries[0].Buttons)
-	}
-	form := catalog.Sections[2].Entries[0].Form
-	if form == nil || form.CommandText != "/upgrade" {
-		t.Fatalf("expected upgrade form entry, got %#v", catalog.Sections[2].Entries[0])
+	for _, button := range catalog.Sections[0].Entries[0].Buttons {
+		if strings.HasPrefix(button.CommandText, "/upgrade track ") {
+			t.Fatalf("expected root upgrade menu to keep track switching inside the track submenu, got %#v", catalog.Sections[0].Entries[0].Buttons)
+		}
 	}
 	summary := catalogSummaryText(&catalog)
-	if strings.Contains(summary, "当前版本：") || strings.Contains(summary, "当前 track：") || strings.Contains(summary, "本地升级产物：") {
-		t.Fatalf("expected upgrade root page to avoid default status dump, got %#v", summary)
+	if summary != "" {
+		t.Fatalf("expected upgrade root page to stay free of summary copy, got %#v", summary)
+	}
+}
+
+func TestBuildUpgradeTrackPageOnlyExposesTrackSwitching(t *testing.T) {
+	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeTrackPageView(install.InstallState{
+		CurrentTrack: install.ReleaseTrackProduction,
+	}, false))
+	assertCatalogUsesPlainTextContracts(t, &catalog)
+	if len(catalog.Sections) != 1 {
+		t.Fatalf("expected only the track switch section, got %#v", catalog.Sections)
+	}
+	if got := len(catalog.Sections[0].Entries[0].Buttons); got == 0 {
+		t.Fatalf("expected track menu buttons, got %#v", catalog.Sections)
+	}
+	for _, button := range catalog.Sections[0].Entries[0].Buttons {
+		if button.CommandText == "/upgrade latest" {
+			t.Fatalf("expected track menu to stop exposing upgrade latest, got %#v", catalog.Sections[0].Entries[0].Buttons)
+		}
 	}
 }
 

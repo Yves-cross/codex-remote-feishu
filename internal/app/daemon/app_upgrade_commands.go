@@ -105,14 +105,6 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 		summaryLines = append(summaryLines, "待处理升级：无")
 	}
 	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
-	quickButtons := []control.CommandCatalogButton{
-		runCommandButton("管理页外链", "/debug admin", "", false),
-		runCommandButton("升级状态", "/upgrade", "", false),
-		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
-	}
-	if install.CurrentBuildAllowsLocalUpgrade() {
-		quickButtons = append(quickButtons, runCommandButton("本地升级", "/upgrade local", "", false))
-	}
 	return &control.FeishuDirectCommandCatalog{
 		Title:           "Debug",
 		SummarySections: commandCatalogSummarySections(summaryLines...),
@@ -120,17 +112,11 @@ func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{
 			{
-				Title: "快捷操作",
+				Title: "调试",
 				Entries: []control.CommandCatalogEntry{{
-					Buttons: quickButtons,
-				}},
-			},
-			{
-				Title: "手动输入",
-				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/debug"},
-					Description: "输入 /debug 后面的参数，例如 admin。",
-					Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandDebug, ""),
+					Buttons: []control.CommandCatalogButton{
+						runCommandButton("管理页外链", "/debug admin", "primary", false),
+					},
 				}},
 			},
 		},
@@ -156,7 +142,6 @@ func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bo
 		summaryLines = append(summaryLines, "待处理升级：无")
 	}
 	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
-	currentTrack := strings.TrimSpace(string(stateValue.CurrentTrack))
 	quickButtons := []control.CommandCatalogButton{
 		runCommandButton("查看 track", "/upgrade track", "", false),
 		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
@@ -171,23 +156,9 @@ func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bo
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{
 			{
-				Title: "快捷操作",
+				Title: "升级",
 				Entries: []control.CommandCatalogEntry{{
 					Buttons: quickButtons,
-				}},
-			},
-			{
-				Title: "切换 track",
-				Entries: []control.CommandCatalogEntry{{
-					Buttons: buildTrackCommandButtons(currentTrack),
-				}},
-			},
-			{
-				Title: "手动输入",
-				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/upgrade"},
-					Description: "输入 /upgrade 后面的参数，例如 track beta、latest、dev 或 local。",
-					Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandUpgrade, ""),
 				}},
 			},
 		},

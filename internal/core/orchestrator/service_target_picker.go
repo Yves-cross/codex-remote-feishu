@@ -80,6 +80,7 @@ func (s *Service) handleTargetPickerSelectMode(surface *state.SurfaceConsoleReco
 	if mode == control.FeishuTargetPickerModeExistingWorkspace {
 		record.SelectedSessionValue = targetPickerAutoSession
 	}
+	record.Page = targetPickerAdvancePage(control.FeishuTargetPickerPageMode, mode, record.SelectedSource)
 	view, err := s.buildTargetPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
@@ -99,6 +100,7 @@ func (s *Service) handleTargetPickerSelectSource(surface *state.SurfaceConsoleRe
 		return notice(surface, "target_picker_selection_missing", "当前选择的工作区来源无效，请重新选择。")
 	}
 	record.SelectedSource = sourceKind
+	record.Page = targetPickerAdvancePage(control.FeishuTargetPickerPageSource, record.SelectedMode, sourceKind)
 	view, err := s.buildTargetPickerView(surface, record)
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())

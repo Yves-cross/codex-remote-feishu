@@ -318,13 +318,20 @@ func TestTargetPickerElementsRenderSourceChoicesAsSingleStepPage(t *testing.T) {
 	}, "life-3")
 
 	var sawSourceSelect bool
+	var sawConfirm bool
 	for _, action := range cardActionsFromElements(elements) {
-		if cardValueMap(action)[cardActionPayloadKeyKind] == cardActionKindTargetPickerSelectSource {
+		switch cardValueMap(action)[cardActionPayloadKeyKind] {
+		case cardActionKindTargetPickerSelectSource:
 			sawSourceSelect = true
+		case cardActionKindTargetPickerConfirm:
+			sawConfirm = true
 		}
 	}
 	if !sawSourceSelect {
 		t.Fatalf("expected source page to render source selection callbacks, got %#v", elements)
+	}
+	if sawConfirm {
+		t.Fatalf("expected source page to advance by clicking a choice instead of rendering a footer confirm, got %#v", elements)
 	}
 }
 

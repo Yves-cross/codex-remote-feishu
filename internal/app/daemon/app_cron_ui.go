@@ -94,31 +94,16 @@ func cronUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
 }
 
 func buildCronMenuCatalog(stateValue *cronStateFile, ownerView cronOwnerView, extraSummary string, configReady bool) *control.FeishuDirectCommandCatalog {
-	summaryLines := []string{"选择 Cron 的下一步操作。"}
-	if strings.TrimSpace(ownerView.StatusLabel) != "" {
-		summaryLines = append(summaryLines, "当前状态："+strings.TrimSpace(ownerView.StatusLabel))
-	}
-	if stateValue != nil {
-		summaryLines = append(summaryLines, fmt.Sprintf("实例：%s", firstNonEmpty(strings.TrimSpace(stateValue.InstanceLabel), "unknown")))
-		if line := cronLoadedJobCountLine(stateValue, ownerView); line != "" {
-			summaryLines = append(summaryLines, line)
-		}
-		if cronStateHasBinding(stateValue) && !configReady {
-			summaryLines = append(summaryLines, "配置入口：工作区清单未同步，暂不可用。")
-		}
-	}
-	if strings.TrimSpace(ownerView.NextAction) != "" {
-		summaryLines = append(summaryLines, "下一步："+strings.TrimSpace(ownerView.NextAction))
-	}
-	if strings.TrimSpace(extraSummary) != "" {
-		summaryLines = append(summaryLines, strings.TrimSpace(extraSummary))
+	var summarySections []control.FeishuCardTextSection
+	if line := strings.TrimSpace(extraSummary); line != "" {
+		summarySections = commandCatalogSummarySections(line)
 	}
 	primaryCommand := cronPrimaryMenuCommand(stateValue, ownerView)
 	canEdit := cronCanEdit(stateValue) && configReady
 	canReload := cronCanReload(stateValue, ownerView)
 	return &control.FeishuDirectCommandCatalog{
 		Title:           "Cron",
-		SummarySections: commandCatalogSummarySections(summaryLines...),
+		SummarySections: summarySections,
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{
@@ -141,7 +126,6 @@ func buildCronMenuCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 					},
 				}},
 			},
-			cronManualCommandSection(),
 		},
 	}
 }
@@ -274,24 +258,6 @@ func buildCronEditCatalog(stateValue *cronStateFile, ownerView cronOwnerView, ex
 		Interactive:     len(sections) != 0,
 		DisplayStyle:    control.CommandCatalogDisplayDefault,
 		Sections:        sections,
-	}
-}
-
-func cronManualCommandSection() control.CommandCatalogSection {
-	return control.CommandCatalogSection{
-		Title: "手动输入",
-		Entries: []control.CommandCatalogEntry{{
-			Commands: []string{
-				"/cron",
-				"/cron status",
-				"/cron list",
-				"/cron edit",
-				"/cron reload",
-				"/cron repair",
-			},
-			Description: "发送 /cron 打开菜单；/cron status 查看状态；/cron list 查看当前有效任务并可按钮立即触发；/cron edit 打开配置表；编辑后执行 /cron reload 生效；如需初始化、修 schema 或接管 Cron 配置，执行 /cron repair。",
-			Form:        control.FeishuCommandFormWithDefault(control.FeishuCommandCron, ""),
-		}},
 	}
 }
 

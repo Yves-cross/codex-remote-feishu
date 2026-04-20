@@ -212,7 +212,7 @@ func (s *Service) restoreTargetPickerAfterPathReturn(surface *state.SurfaceConso
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
+	return []control.UIEvent{s.targetPickerViewEvent(surface, view, true)}
 }
 
 func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) targetPickerLocalDirectoryState {

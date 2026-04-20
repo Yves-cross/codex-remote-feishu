@@ -800,11 +800,11 @@ R5 NewThreadReady
 6. target picker 当前承担了 normal mode 的主选择面：
    1. `/list`、detached `/use`、detached `/useall` 打开的是同一张卡，只是标题与默认 workspace 不同。
    2. attached `/use` 默认当前 workspace，attached `/useall` 仍允许跨 workspace；但二者都通过同一个 target picker 显式切换，不再依赖旧的 grouped recent/all 视图。
-   3. 卡片顶部固定有 `已有工作区` / `添加工作区` 模式切换；`已有工作区` 只列真实 workspace，`添加工作区` 则切到 `本地目录` / `Git URL` 来源选择。
+   3. 卡片顶部固定有 `已有工作区` / `添加工作区` 模式切换；`已有工作区` 只列真实 workspace，`添加工作区` 则切到 `本地目录` / `Git URL` 来源选择；`模式` 与 `来源` 都是单题页，点击按钮就直接推进，不再保留额外“下一步”按钮。
    4. `已有工作区` 模式下，会话下拉固定是“该 workspace 下可接管/可恢复 thread + `新建会话`”。
    5. `添加工作区 / 本地目录` 主卡会显示 `选择目录` 按钮与 `接入并继续` 主按钮；`添加工作区 / Git URL` 主卡会显示 `选择目录` 按钮与 `克隆并继续` 主按钮。
    6. normal mode 下的 `show_threads` / `show_all_threads` / `show_scoped_threads` / `show_workspace_threads` / `show_all_workspaces` / `show_recent_workspaces` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` 当前都只负责在 same-context 中重新打开或刷新这张卡。
-   7. `target_picker_select_mode` / `target_picker_select_source` / `target_picker_select_workspace` / `target_picker_select_session` / `target_picker_open_path_picker` 是 pure navigation，会 inline replace；`target_picker_confirm` 虽然仍是异步产品动作，但三条主路径现在都会把结果收回同一张 owner card，而不再额外 append 主结果卡。
+   7. `target_picker_select_mode` / `target_picker_select_source` / `target_picker_select_workspace` / `target_picker_select_session` / `target_picker_open_path_picker` 是 pure navigation，会 inline replace；其中 `select_mode` / `select_source` 现在会在同一张卡上直接推进到下一页。`target_picker_confirm` 虽然仍是异步产品动作，但三条主路径现在都会把结果收回同一张 owner card，而不再额外 append 主结果卡。
    8. 若 confirm 时原选择已经失效，当前会刷新一张最新 picker 并返回 `target_picker_selection_changed`，不会 silent fallback 到别的 thread / workspace。
 7. target picker confirm 的产品落点当前分三类：
    1. 既有 thread：复用现有 resolver 顺序 `当前 attached instance 内可见 thread -> free existing visible instance -> reusable managed headless -> create managed headless`。
@@ -1212,11 +1212,11 @@ retained-offline overlay 额外规则：
 | `show_recent_thread_workspaces` | `ActionShowRecentThreadWorkspaces` | normal mode 下重新打开 `/useall` target picker（兼容旧 grouped 总览返回动作） |
 | `history_page` | `ActionHistoryPage` | `/history` 列表页翻页；会先同步把当前卡切到 loading，再异步重查当前 thread history |
 | `history_detail` | `ActionHistoryDetail` | `/history` 进入某一轮详情，或在详情页前后切换；同样会先同步 loading，再异步回填结果 |
-| `target_picker_select_mode` | `ActionTargetPickerSelectMode` | unified target picker 的模式切换回调；只刷新当前卡，不直接改 route |
-| `target_picker_select_source` | `ActionTargetPickerSelectSource` | unified target picker 的来源按钮回调；只刷新当前卡，不直接改 route |
+| `target_picker_select_mode` | `ActionTargetPickerSelectMode` | unified target picker 的模式切换回调；只刷新当前卡，不直接改 route；当前会在同卡内直接推进到 `目标` 或 `来源` 下一页 |
+| `target_picker_select_source` | `ActionTargetPickerSelectSource` | unified target picker 的来源按钮回调；只刷新当前卡，不直接改 route；当前会在同卡内直接推进到 `目录` 或 `Git` 下一页 |
 | `target_picker_select_workspace` | `ActionTargetPickerSelectWorkspace` | unified target picker 的工作区下拉回调；只刷新当前卡，不直接改 route |
 | `target_picker_select_session` | `ActionTargetPickerSelectSession` | unified target picker 的会话下拉回调；只刷新当前卡，不直接改 route |
-| `target_picker_open_path_picker` | `ActionTargetPickerOpenPathPicker` | unified target picker 的子步骤导航回调；会打开本地目录或 Git 落地父目录 path picker，并把 Git 主卡草稿一起保存在 active target picker runtime 里 |
+| `target_picker_open_path_picker` | `ActionTargetPickerOpenPathPicker` | unified target picker 的子步骤导航回调；会打开本地目录或 Git 落地父目录 path picker，并把 Git 主卡草稿一起保存在 active target picker runtime 里；path picker confirm/cancel 返回时会直接 inline 换回原 target picker owner card |
 | `target_picker_cancel` | `ActionTargetPickerCancel` | unified target picker 的退出按钮；编辑态会把当前卡 inline replace 成 `已取消`，Git processing 态会 replace 成 `已取消导入` 并 best-effort 停止 clone / prepare；surface route 只保留取消后的安全状态 |
 | `target_picker_confirm` | `ActionTargetPickerConfirm` | unified target picker 的确认按钮；`已有工作区` 模式下真正执行 attach / switch / `新建会话`，`添加工作区` 模式下则消费主卡里已保存的目录/Git 草稿来执行接入或导入 |
 | `request_respond` | `ActionRespondRequest` | 承载 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation` 的按钮回传。通用 approval 会沿用归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，局部保存后会刷新当前 request 卡并递增 `request_revision`；`permissions_request_approval` 会按按钮回写 `{permissions, scope}`；`mcp_server_elicitation` 会按按钮回写 `{action, content, _meta}`，其中 form 模式的 direct-response 按钮也先写入局部草稿，再由显式提交触发 accept |

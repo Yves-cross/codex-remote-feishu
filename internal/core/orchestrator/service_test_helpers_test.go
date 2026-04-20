@@ -107,6 +107,18 @@ func targetPickerModeOption(view *control.FeishuTargetPickerView, value control.
 	return control.FeishuTargetPickerModeOption{}, false
 }
 
+func targetPickerSourceOption(view *control.FeishuTargetPickerView, value control.FeishuTargetPickerSourceKind) (control.FeishuTargetPickerSourceOption, bool) {
+	if view == nil {
+		return control.FeishuTargetPickerSourceOption{}, false
+	}
+	for _, option := range view.SourceOptions {
+		if option.Value == value {
+			return option, true
+		}
+	}
+	return control.FeishuTargetPickerSourceOption{}, false
+}
+
 func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectRequestPrompt {
 	t.Helper()
 	if event.FeishuDirectRequestPrompt == nil {

@@ -32,12 +32,9 @@ func TestBuildUpgradeStatusCatalogHidesShippingOnlyOptions(t *testing.T) {
 	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 3 {
 		t.Fatalf("shipping quick buttons = %d, want 3", got)
 	}
-	if got := len(catalog.Sections[1].Entries[0].Buttons); got != 2 {
-		t.Fatalf("shipping track buttons = %d, want 2", got)
-	}
-	for _, button := range catalog.Sections[1].Entries[0].Buttons {
-		if strings.Contains(button.CommandText, "alpha") {
-			t.Fatalf("shipping catalog should hide alpha track button: %#v", catalog.Sections[1].Entries[0].Buttons)
+	for _, button := range catalog.Sections[0].Entries[0].Buttons {
+		if strings.HasPrefix(button.CommandText, "/upgrade track ") {
+			t.Fatalf("shipping root catalog should keep track switching inside the track submenu, got %#v", catalog.Sections[0].Entries[0].Buttons)
 		}
 	}
 	if strings.Contains(summary, "本地升级产物：") || strings.Contains(summary, "/upgrade local") {
