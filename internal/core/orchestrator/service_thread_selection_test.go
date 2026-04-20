@@ -802,7 +802,7 @@ func TestPendingRemoteDispatchKeepsLaterMessageQueuedUntilTurnStarts(t *testing.
 	if !dispatched {
 		t.Fatalf("expected first surface to dispatch immediately, got %#v", first)
 	}
-	if binding := svc.pendingRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-1" {
+	if binding := svc.turns.pendingRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-1" {
 		t.Fatalf("expected pending remote binding for surface-1, got %#v", binding)
 	}
 
@@ -860,7 +860,7 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 		TurnID:    "turn-1",
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
-	if binding := svc.activeRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-1" || binding.TurnID != "turn-1" || binding.ThreadID != "thread-2" {
+	if binding := svc.turns.activeRemote["inst-1"]; binding == nil || binding.SurfaceSessionID != "surface-1" || binding.TurnID != "turn-1" || binding.ThreadID != "thread-2" {
 		t.Fatalf("expected active remote binding to follow the queued route, got %#v", binding)
 	}
 	if len(started) == 0 || started[0].PendingInput == nil || started[0].SurfaceSessionID != "surface-1" {
@@ -886,8 +886,8 @@ func TestRemoteTurnLifecycleUsesExplicitSurfaceBinding(t *testing.T) {
 		Status:    "completed",
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
-	if svc.activeRemote["inst-1"] != nil {
-		t.Fatalf("expected active remote binding to clear after completion, got %#v", svc.activeRemote["inst-1"])
+	if svc.turns.activeRemote["inst-1"] != nil {
+		t.Fatalf("expected active remote binding to clear after completion, got %#v", svc.turns.activeRemote["inst-1"])
 	}
 	var sawFinal, sawTypingOff bool
 	for _, event := range finished {
@@ -1384,7 +1384,7 @@ func TestHandleCommandDispatchFailureClearsPendingRemoteState(t *testing.T) {
 
 	svc.BindPendingRemoteCommand("surface-1", "cmd-1")
 	events := svc.HandleCommandDispatchFailure("surface-1", "cmd-1", errors.New("relay unavailable"))
-	if svc.pendingRemote["inst-1"] != nil {
+	if svc.turns.pendingRemote["inst-1"] != nil {
 		t.Fatalf("expected pending remote binding to clear after dispatch failure")
 	}
 	surface := svc.root.Surfaces["surface-1"]
@@ -1447,7 +1447,7 @@ func TestHandleCommandRejectedClearsPendingRemoteState(t *testing.T) {
 			CommandID: "cmd-1",
 		},
 	})
-	if svc.pendingRemote["inst-1"] != nil {
+	if svc.turns.pendingRemote["inst-1"] != nil {
 		t.Fatalf("expected pending remote binding to clear after rejected command")
 	}
 	surface := svc.root.Surfaces["surface-1"]
@@ -1677,7 +1677,7 @@ func TestApplyInstanceDisconnectedFailsActiveRemoteItem(t *testing.T) {
 	})
 
 	events := svc.ApplyInstanceDisconnected("inst-1")
-	if svc.activeRemote["inst-1"] != nil || svc.pendingRemote["inst-1"] != nil {
+	if svc.turns.activeRemote["inst-1"] != nil || svc.turns.pendingRemote["inst-1"] != nil {
 		t.Fatalf("expected remote ownership to clear on disconnect")
 	}
 	surface := svc.root.Surfaces["surface-1"]
@@ -1757,7 +1757,7 @@ func TestApplyInstanceTransportDegradedKeepsAttachmentAndQueuedWork(t *testing.T
 	})
 
 	events := svc.ApplyInstanceTransportDegraded("inst-1", true)
-	if svc.activeRemote["inst-1"] == nil {
+	if svc.turns.activeRemote["inst-1"] == nil {
 		t.Fatalf("expected active remote ownership to stay during transport degrade")
 	}
 	if svc.root.Instances["inst-1"].Online || svc.root.Instances["inst-1"].ActiveTurnID != "" {

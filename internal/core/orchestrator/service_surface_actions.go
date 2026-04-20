@@ -426,7 +426,7 @@ func (s *Service) dispatchSteerCandidates(
 		return nil
 	}
 	primaryQueueItemID := queueItemIDs[0]
-	s.pendingSteers[primaryQueueItemID] = &pendingSteerBinding{
+	s.turns.pendingSteers[primaryQueueItemID] = &pendingSteerBinding{
 		InstanceID:         inst.InstanceID,
 		SurfaceSessionID:   surface.SurfaceSessionID,
 		QueueItemID:        primaryQueueItemID,

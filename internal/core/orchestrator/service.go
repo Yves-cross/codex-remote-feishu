@@ -35,13 +35,11 @@ type Service struct {
 	abandoningUntil      map[string]time.Time
 	itemBuffers          map[string]*itemBuffer
 	threadRefreshes      map[string]bool
-	pendingRemote        map[string]*remoteTurnBinding
-	activeRemote         map[string]*remoteTurnBinding
-	pendingSteers        map[string]*pendingSteerBinding
 	instanceClaims       map[string]*instanceClaimRecord
 	workspaceClaims      map[string]*workspaceClaimRecord
 	threadClaims         map[string]*threadClaimRecord
 	surfaceUIRuntime     map[string]*surfaceUIRuntimeRecord
+	turns                *serviceTurnRuntime
 	pickers              *servicePickerRuntime
 	catalog              *serviceCatalogRuntime
 	progress             *serviceProgressRuntime
@@ -208,14 +206,12 @@ func NewService(now func() time.Time, cfg Config, planner *renderer.Planner) *Se
 		abandoningUntil:  map[string]time.Time{},
 		itemBuffers:      map[string]*itemBuffer{},
 		threadRefreshes:  map[string]bool{},
-		pendingRemote:    map[string]*remoteTurnBinding{},
-		activeRemote:     map[string]*remoteTurnBinding{},
-		pendingSteers:    map[string]*pendingSteerBinding{},
 		instanceClaims:   map[string]*instanceClaimRecord{},
 		workspaceClaims:  map[string]*workspaceClaimRecord{},
 		threadClaims:     map[string]*threadClaimRecord{},
 		surfaceUIRuntime: map[string]*surfaceUIRuntimeRecord{},
 	}
+	svc.turns = newServiceTurnRuntime(svc)
 	svc.pickers = newServicePickerRuntime(svc)
 	svc.catalog = newServiceCatalogRuntime(svc)
 	svc.progress = newServiceProgressRuntime(svc)

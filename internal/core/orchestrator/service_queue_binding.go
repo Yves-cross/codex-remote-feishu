@@ -28,18 +28,18 @@ func queuedItemMatchesTurn(item *state.QueueItemRecord, threadID string) bool {
 }
 
 func (s *Service) pendingRemoteBinding(instanceID, threadID string) *remoteTurnBinding {
-	binding := s.pendingRemote[instanceID]
+	binding := s.turns.pendingRemote[instanceID]
 	if binding == nil {
 		return nil
 	}
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
-		delete(s.pendingRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
 		return nil
 	}
 	item := surface.QueueItems[binding.QueueItemID]
 	if item == nil || (item.Status != state.QueueItemDispatching && item.Status != state.QueueItemRunning) {
-		delete(s.pendingRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
 		return nil
 	}
 	if !queuedItemMatchesTurn(item, threadID) {
@@ -53,30 +53,30 @@ func (s *Service) promotePendingRemote(instanceID string, initiator agentproto.I
 	if binding == nil {
 		return s.activeRemoteBinding(instanceID, turnID)
 	}
-	delete(s.pendingRemote, instanceID)
+	delete(s.turns.pendingRemote, instanceID)
 	if threadID != "" {
 		binding.ThreadID = threadID
 	}
 	binding.TurnID = turnID
 	binding.Status = string(state.QueueItemRunning)
-	s.activeRemote[instanceID] = binding
+	s.turns.activeRemote[instanceID] = binding
 	return binding
 }
 
 func (s *Service) pendingRemoteBindingForInitiator(instanceID string, initiator agentproto.Initiator, threadID string) *remoteTurnBinding {
 	if initiator.Kind == agentproto.InitiatorRemoteSurface && strings.TrimSpace(initiator.SurfaceSessionID) != "" {
-		binding := s.pendingRemote[instanceID]
+		binding := s.turns.pendingRemote[instanceID]
 		if binding == nil {
 			return nil
 		}
 		surface := s.root.Surfaces[binding.SurfaceSessionID]
 		if surface == nil {
-			delete(s.pendingRemote, instanceID)
+			delete(s.turns.pendingRemote, instanceID)
 			return nil
 		}
 		item := surface.QueueItems[binding.QueueItemID]
 		if item == nil || (item.Status != state.QueueItemDispatching && item.Status != state.QueueItemRunning) {
-			delete(s.pendingRemote, instanceID)
+			delete(s.turns.pendingRemote, instanceID)
 			return nil
 		}
 		if binding.SurfaceSessionID == initiator.SurfaceSessionID {
@@ -87,7 +87,7 @@ func (s *Service) pendingRemoteBindingForInitiator(instanceID string, initiator 
 }
 
 func (s *Service) activeRemoteBinding(instanceID, turnID string) *remoteTurnBinding {
-	binding := s.activeRemote[instanceID]
+	binding := s.turns.activeRemote[instanceID]
 	if binding == nil {
 		return nil
 	}
@@ -131,10 +131,10 @@ func shouldClearTrackedInstanceActiveTurn(inst *state.InstanceRecord, threadID, 
 
 func (s *Service) clearRemoteTurn(instanceID, turnID string) {
 	if binding := s.activeRemoteBinding(instanceID, turnID); binding != nil {
-		delete(s.activeRemote, instanceID)
+		delete(s.turns.activeRemote, instanceID)
 	}
-	if binding := s.pendingRemote[instanceID]; binding != nil && (turnID == "" || binding.TurnID == turnID) {
-		delete(s.pendingRemote, instanceID)
+	if binding := s.turns.pendingRemote[instanceID]; binding != nil && (turnID == "" || binding.TurnID == turnID) {
+		delete(s.turns.pendingRemote, instanceID)
 	}
 }
 
@@ -142,11 +142,11 @@ func (s *Service) clearRemoteOwnership(surface *state.SurfaceConsoleRecord) {
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return
 	}
-	if binding := s.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
-		delete(s.pendingRemote, surface.AttachedInstanceID)
+	if binding := s.turns.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		delete(s.turns.pendingRemote, surface.AttachedInstanceID)
 	}
-	if binding := s.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
-		delete(s.activeRemote, surface.AttachedInstanceID)
+	if binding := s.turns.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+		delete(s.turns.activeRemote, surface.AttachedInstanceID)
 	}
 }
 
@@ -154,10 +154,10 @@ func (s *Service) remoteBindingForSurface(surface *state.SurfaceConsoleRecord) *
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return nil
 	}
-	if binding := s.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+	if binding := s.turns.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
 		return binding
 	}
-	if binding := s.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+	if binding := s.turns.pendingRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
 		return binding
 	}
 	return nil
@@ -168,7 +168,7 @@ func (s *Service) interruptibleSurfaceTurn(surface *state.SurfaceConsoleRecord) 
 		return "", "", false
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
-	if binding := s.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
+	if binding := s.turns.activeRemote[surface.AttachedInstanceID]; binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID {
 		turnID = strings.TrimSpace(binding.TurnID)
 		if turnID != "" {
 			activeThreadID := ""
@@ -192,7 +192,7 @@ func (s *Service) surfaceHasPendingSteer(surface *state.SurfaceConsoleRecord) bo
 	if surface == nil {
 		return false
 	}
-	for _, binding := range s.pendingSteers {
+	for _, binding := range s.turns.pendingSteers {
 		if binding == nil || binding.SurfaceSessionID != surface.SurfaceSessionID {
 			continue
 		}

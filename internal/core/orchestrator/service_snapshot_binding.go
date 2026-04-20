@@ -150,14 +150,14 @@ func (s *Service) problemTargets(instanceID string, problem agentproto.ErrorInfo
 		return []*state.SurfaceConsoleRecord{surface}
 	}
 	if problem.CommandID != "" {
-		for _, binding := range s.pendingRemote {
+		for _, binding := range s.turns.pendingRemote {
 			if binding != nil && binding.CommandID == problem.CommandID {
 				if surface := s.root.Surfaces[binding.SurfaceSessionID]; surface != nil {
 					return []*state.SurfaceConsoleRecord{surface}
 				}
 			}
 		}
-		for _, binding := range s.activeRemote {
+		for _, binding := range s.turns.activeRemote {
 			if binding != nil && binding.CommandID == problem.CommandID {
 				if surface := s.root.Surfaces[binding.SurfaceSessionID]; surface != nil {
 					return []*state.SurfaceConsoleRecord{surface}

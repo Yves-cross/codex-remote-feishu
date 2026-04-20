@@ -55,8 +55,8 @@ type RemoteTurnStatus struct {
 }
 
 func (s *Service) PendingRemoteTurns() []RemoteTurnStatus {
-	values := make([]RemoteTurnStatus, 0, len(s.pendingRemote))
-	for _, binding := range s.pendingRemote {
+	values := make([]RemoteTurnStatus, 0, len(s.turns.pendingRemote))
+	for _, binding := range s.turns.pendingRemote {
 		if binding == nil {
 			continue
 		}
@@ -81,8 +81,8 @@ func (s *Service) PendingRemoteTurns() []RemoteTurnStatus {
 }
 
 func (s *Service) ActiveRemoteTurns() []RemoteTurnStatus {
-	values := make([]RemoteTurnStatus, 0, len(s.activeRemote))
-	for _, binding := range s.activeRemote {
+	values := make([]RemoteTurnStatus, 0, len(s.turns.activeRemote))
+	for _, binding := range s.turns.activeRemote {
 		if binding == nil {
 			continue
 		}

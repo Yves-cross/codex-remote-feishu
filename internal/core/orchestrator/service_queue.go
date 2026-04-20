@@ -183,7 +183,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 		return nil
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
-	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.pendingRemote[inst.InstanceID] != nil {
+	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.turns.pendingRemote[inst.InstanceID] != nil {
 		return nil
 	}
 	if s.progress.instanceHasCompact(inst.InstanceID) {
@@ -198,7 +198,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 	}
 	item.Status = state.QueueItemDispatching
 	surface.ActiveQueueItemID = item.ID
-	s.pendingRemote[inst.InstanceID] = &remoteTurnBinding{
+	s.turns.pendingRemote[inst.InstanceID] = &remoteTurnBinding{
 		InstanceID:            inst.InstanceID,
 		SurfaceSessionID:      surface.SurfaceSessionID,
 		QueueItemID:           item.ID,

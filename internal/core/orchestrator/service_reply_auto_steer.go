@@ -68,7 +68,7 @@ func (s *Service) maybeAutoSteerReply(surface *state.SurfaceConsoleRecord, actio
 	if activeThreadID != "" {
 		s.recordThreadUserMessage(inst, activeThreadID, action.Text)
 	}
-	s.pendingSteers[item.ID] = &pendingSteerBinding{
+	s.turns.pendingSteers[item.ID] = &pendingSteerBinding{
 		InstanceID:       inst.InstanceID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		QueueItemID:      item.ID,
@@ -122,7 +122,7 @@ func (s *Service) activeReplySteerTarget(surface *state.SurfaceConsoleRecord, re
 	if inst == nil || !inst.Online {
 		return nil, "", "", false
 	}
-	binding := s.activeRemote[surface.AttachedInstanceID]
+	binding := s.turns.activeRemote[surface.AttachedInstanceID]
 	if binding == nil || binding.SurfaceSessionID != surface.SurfaceSessionID {
 		return nil, "", "", false
 	}

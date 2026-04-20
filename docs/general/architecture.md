@@ -144,6 +144,8 @@ testkit/
 
 当前 `Service` 仍是唯一产品状态中心，但内部已经开始按 owner 收口成显式 runtime cluster，而不是继续把所有字段平铺在根 struct 上。当前稳定的第一批 cluster 包括：
 
+- `turns`
+  - 负责 queue / remote-turn runtime 热状态，包括 `pendingRemote`、`activeRemote`、`pendingSteers`、`compactTurns` 及其生命周期 helper
 - `pickers`
   - 负责 target picker / path picker / thread history 及其 consumer/runtime token
 - `catalog`

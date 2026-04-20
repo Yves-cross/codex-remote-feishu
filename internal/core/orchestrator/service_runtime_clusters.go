@@ -177,6 +177,50 @@ func (r *serviceCatalogRuntime) recentPersistedWorkspaces(limit int) map[string]
 	return workspaceRecencyFromThreads(r.recentPersistedThreads(persistedRecentThreadLimit))
 }
 
+type serviceTurnRuntime struct {
+	service       *Service
+	pendingRemote map[string]*remoteTurnBinding
+	activeRemote  map[string]*remoteTurnBinding
+	pendingSteers map[string]*pendingSteerBinding
+	compactTurns  map[string]*compactTurnBinding
+}
+
+func newServiceTurnRuntime(service *Service) *serviceTurnRuntime {
+	return &serviceTurnRuntime{
+		service:       service,
+		pendingRemote: map[string]*remoteTurnBinding{},
+		activeRemote:  map[string]*remoteTurnBinding{},
+		pendingSteers: map[string]*pendingSteerBinding{},
+		compactTurns:  map[string]*compactTurnBinding{},
+	}
+}
+
+func (r *serviceTurnRuntime) instanceHasCompact(instanceID string) bool {
+	if r == nil || strings.TrimSpace(instanceID) == "" {
+		return false
+	}
+	return r.compactTurns[instanceID] != nil
+}
+
+func (r *serviceTurnRuntime) surfaceHasPendingCompact(surface *state.SurfaceConsoleRecord) bool {
+	if r == nil || surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" {
+		return false
+	}
+	binding := r.compactTurns[surface.AttachedInstanceID]
+	return binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID
+}
+
+func (r *serviceTurnRuntime) isCompactTurn(instanceID, threadID, turnID string) bool {
+	if r == nil || strings.TrimSpace(instanceID) == "" || strings.TrimSpace(turnID) == "" {
+		return false
+	}
+	binding := r.compactTurns[instanceID]
+	if binding == nil || binding.TurnID != turnID {
+		return false
+	}
+	return binding.ThreadID == "" || threadID == "" || binding.ThreadID == threadID
+}
+
 type serviceProgressRuntime struct {
 	service             *Service
 	turnPlanSnapshots   map[string]*turnPlanSnapshotRecord
@@ -184,7 +228,6 @@ type serviceProgressRuntime struct {
 	pendingTurnText     map[string]*completedTextItem
 	turnFileChanges     map[string]*turnFileChangeSummary
 	turnDiffSnapshots   map[string]*control.TurnDiffSnapshot
-	compactTurns        map[string]*compactTurnBinding
 }
 
 func newServiceProgressRuntime(service *Service) *serviceProgressRuntime {
@@ -195,32 +238,26 @@ func newServiceProgressRuntime(service *Service) *serviceProgressRuntime {
 		pendingTurnText:     map[string]*completedTextItem{},
 		turnFileChanges:     map[string]*turnFileChangeSummary{},
 		turnDiffSnapshots:   map[string]*control.TurnDiffSnapshot{},
-		compactTurns:        map[string]*compactTurnBinding{},
 	}
 }
 
 func (r *serviceProgressRuntime) instanceHasCompact(instanceID string) bool {
-	if r == nil || strings.TrimSpace(instanceID) == "" {
+	if r == nil || r.service == nil {
 		return false
 	}
-	return r.compactTurns[instanceID] != nil
+	return r.service.turns.instanceHasCompact(instanceID)
 }
 
 func (r *serviceProgressRuntime) surfaceHasPendingCompact(surface *state.SurfaceConsoleRecord) bool {
-	if r == nil || surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" {
+	if r == nil || r.service == nil {
 		return false
 	}
-	binding := r.compactTurns[surface.AttachedInstanceID]
-	return binding != nil && binding.SurfaceSessionID == surface.SurfaceSessionID
+	return r.service.turns.surfaceHasPendingCompact(surface)
 }
 
 func (r *serviceProgressRuntime) isCompactTurn(instanceID, threadID, turnID string) bool {
-	if r == nil || strings.TrimSpace(instanceID) == "" || strings.TrimSpace(turnID) == "" {
+	if r == nil || r.service == nil {
 		return false
 	}
-	binding := r.compactTurns[instanceID]
-	if binding == nil || binding.TurnID != turnID {
-		return false
-	}
-	return binding.ThreadID == "" || threadID == "" || binding.ThreadID == threadID
+	return r.service.turns.isCompactTurn(instanceID, threadID, turnID)
 }

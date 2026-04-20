@@ -114,7 +114,7 @@ func TestUnknownSideTurnLifecycleDoesNotDisturbTrackedRemoteTurn(t *testing.T) {
 	if svc.root.Instances["inst-1"].ActiveTurnID != "turn-main" || svc.root.Instances["inst-1"].ActiveThreadID != "thread-main" {
 		t.Fatalf("expected side turn completion not to clear tracked remote turn, got thread=%q turn=%q", svc.root.Instances["inst-1"].ActiveThreadID, svc.root.Instances["inst-1"].ActiveTurnID)
 	}
-	if binding := svc.activeRemote["inst-1"]; binding == nil || binding.TurnID != "turn-main" || binding.ThreadID != "thread-main" {
+	if binding := svc.turns.activeRemote["inst-1"]; binding == nil || binding.TurnID != "turn-main" || binding.ThreadID != "thread-main" {
 		t.Fatalf("expected active remote binding to remain on main turn, got %#v", binding)
 	}
 }

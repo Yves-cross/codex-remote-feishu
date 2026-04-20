@@ -253,7 +253,7 @@ func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsole
 		return nil
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
-	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.pendingRemote[inst.InstanceID] != nil {
+	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.turns.pendingRemote[inst.InstanceID] != nil {
 		return nil
 	}
 	threadID, cwd, routeMode, createThread := freezeRoute(inst, surface)

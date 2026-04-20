@@ -109,12 +109,12 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 		return
 	}
 	if surface.AttachedInstanceID != "" {
-		compact := s.progress.compactTurns[surface.AttachedInstanceID]
+		compact := s.turns.compactTurns[surface.AttachedInstanceID]
 		if compact != nil && compact.SurfaceSessionID == surfaceID && compact.CommandID == "" {
 			compact.CommandID = commandID
 			return
 		}
-		binding := s.pendingRemote[surface.AttachedInstanceID]
+		binding := s.turns.pendingRemote[surface.AttachedInstanceID]
 		if binding != nil && binding.SurfaceSessionID == surfaceID {
 			if surface.ActiveQueueItemID != "" && binding.QueueItemID != surface.ActiveQueueItemID {
 				return
@@ -123,7 +123,7 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 			return
 		}
 	}
-	for _, binding := range s.pendingSteers {
+	for _, binding := range s.turns.pendingSteers {
 		if binding == nil || binding.SurfaceSessionID != surfaceID || binding.CommandID != "" {
 			continue
 		}
@@ -207,10 +207,10 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 	}
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
-		delete(s.pendingSteers, key)
+		delete(s.turns.pendingSteers, key)
 		return nil
 	}
-	delete(s.pendingSteers, key)
+	delete(s.turns.pendingSteers, key)
 	events := []control.UIEvent{}
 	if strings.TrimSpace(binding.OwnerCardMessageID) != "" {
 		events = append(events, steerAllCompletedOwnerCardEvent(surface.SurfaceSessionID, binding.OwnerCardMessageID, len(pendingSteerQueueItemIDs(binding))))
@@ -247,7 +247,7 @@ func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.Comman
 		notice.Text = appendSteerRestoreHint(notice.Text)
 		return s.restorePendingSteer(key, &notice)
 	}
-	binding := s.pendingRemote[instanceID]
+	binding := s.turns.pendingRemote[instanceID]
 	if binding == nil || binding.CommandID != ack.CommandID {
 		if surface := s.findAttachedSurface(instanceID); surface != nil {
 			return s.restorePendingRequestDispatch(surface, ack.CommandID, "command_rejected")
@@ -256,12 +256,12 @@ func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.Comman
 	}
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
-		delete(s.pendingRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
 		return nil
 	}
 	item := surface.QueueItems[binding.QueueItemID]
 	if item == nil || item.Status != state.QueueItemDispatching {
-		delete(s.pendingRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
 		return nil
 	}
 	notice := NoticeForProblem(commandAckProblem(surface.SurfaceSessionID, ack))
@@ -295,7 +295,7 @@ func (s *Service) pendingSteerForCommand(instanceID, commandID string) (string, 
 	if strings.TrimSpace(commandID) == "" {
 		return "", nil
 	}
-	for key, binding := range s.pendingSteers {
+	for key, binding := range s.turns.pendingSteers {
 		if binding == nil || binding.CommandID != commandID {
 			continue
 		}
@@ -308,11 +308,11 @@ func (s *Service) pendingSteerForCommand(instanceID, commandID string) (string, 
 }
 
 func (s *Service) restorePendingSteer(key string, notice *control.Notice) []control.UIEvent {
-	binding := s.pendingSteers[key]
+	binding := s.turns.pendingSteers[key]
 	if binding == nil {
 		return nil
 	}
-	delete(s.pendingSteers, key)
+	delete(s.turns.pendingSteers, key)
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
 		return nil
@@ -377,8 +377,8 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 
 func (s *Service) restorePendingSteersForInstance(instanceID string) []control.UIEvent {
 	var events []control.UIEvent
-	keys := make([]string, 0, len(s.pendingSteers))
-	for key, binding := range s.pendingSteers {
+	keys := make([]string, 0, len(s.turns.pendingSteers))
+	for key, binding := range s.turns.pendingSteers {
 		if binding == nil || binding.InstanceID != instanceID {
 			continue
 		}
@@ -565,8 +565,8 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	if len(surfaces) == 0 {
 		delete(s.instanceClaims, instanceID)
-		delete(s.pendingRemote, instanceID)
-		delete(s.activeRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
+		delete(s.turns.activeRemote, instanceID)
 		return events
 	}
 
@@ -600,8 +600,8 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 		})
 	}
 	delete(s.instanceClaims, instanceID)
-	delete(s.pendingRemote, instanceID)
-	delete(s.activeRemote, instanceID)
+	delete(s.turns.pendingRemote, instanceID)
+	delete(s.turns.activeRemote, instanceID)
 	return events
 }
 
@@ -619,8 +619,8 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 	events := s.failCompactTurn(instanceID, "当前实例连接已中断，上下文整理已中断。", nil, false)
 	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	if len(surfaces) == 0 {
-		delete(s.pendingRemote, instanceID)
-		delete(s.activeRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
+		delete(s.turns.activeRemote, instanceID)
 		return events
 	}
 
@@ -685,8 +685,8 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 		}
 	}
 	if !preserveRemoteOwnership {
-		delete(s.pendingRemote, instanceID)
-		delete(s.activeRemote, instanceID)
+		delete(s.turns.pendingRemote, instanceID)
+		delete(s.turns.activeRemote, instanceID)
 	}
 	return events
 }
@@ -729,8 +729,8 @@ func (s *Service) RemoveInstance(instanceID string) {
 	}
 	delete(s.root.Instances, instanceID)
 	delete(s.instanceClaims, instanceID)
-	delete(s.pendingRemote, instanceID)
-	delete(s.activeRemote, instanceID)
+	delete(s.turns.pendingRemote, instanceID)
+	delete(s.turns.activeRemote, instanceID)
 	delete(s.threadRefreshes, instanceID)
 	deleteMatchingItemBuffers(s.itemBuffers, instanceID, "", "")
 	deleteMatchingMCPToolCallProgress(s.progress.mcpToolCallProgress, instanceID, "", "")

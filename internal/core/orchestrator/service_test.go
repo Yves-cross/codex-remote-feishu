@@ -197,8 +197,8 @@ func TestThreadTokenUsageUpdatePopulatesThreadStateAndFinalTurnSummary(t *testin
 	if thread.TokenUsage.Total.TotalTokens != 500 || thread.TokenUsage.Last.CachedInputTokens != 75 {
 		t.Fatalf("unexpected thread token usage: %#v", thread.TokenUsage)
 	}
-	if binding := svc.activeRemote["inst-1"]; binding == nil || !binding.HasLastUsage || binding.LastUsage.TotalTokens != 190 || !binding.HasStartTotalUsage || binding.StartTotalUsage.TotalTokens != 300 {
-		t.Fatalf("expected active remote binding to capture turn usage baseline and last usage, got %#v", svc.activeRemote["inst-1"])
+	if binding := svc.turns.activeRemote["inst-1"]; binding == nil || !binding.HasLastUsage || binding.LastUsage.TotalTokens != 190 || !binding.HasStartTotalUsage || binding.StartTotalUsage.TotalTokens != 300 {
+		t.Fatalf("expected active remote binding to capture turn usage baseline and last usage, got %#v", svc.turns.activeRemote["inst-1"])
 	}
 
 	now = now.Add(3400 * time.Millisecond)

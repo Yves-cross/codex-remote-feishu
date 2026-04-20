@@ -53,8 +53,8 @@ func prepareRemotePlanTurnForTest(t *testing.T) *Service {
 		TurnID:    "turn-1",
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
 	})
-	if svc.activeRemote["inst-1"] == nil {
-		t.Fatalf("expected active remote binding after remote turn start, got %#v", svc.activeRemote)
+	if svc.turns.activeRemote["inst-1"] == nil {
+		t.Fatalf("expected active remote binding after remote turn start, got %#v", svc.turns.activeRemote)
 	}
 	return svc
 }

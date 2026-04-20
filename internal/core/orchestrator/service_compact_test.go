@@ -44,7 +44,7 @@ func TestCompactCommandDispatchesThreadCompactStart(t *testing.T) {
 	if command.Target.ThreadID != "thread-1" {
 		t.Fatalf("unexpected compact target: %#v", command.Target)
 	}
-	binding := svc.progress.compactTurns["inst-1"]
+	binding := svc.turns.compactTurns["inst-1"]
 	if binding == nil || binding.SurfaceSessionID != "surface-1" || binding.ThreadID != "thread-1" || binding.Status != compactTurnStatusDispatching {
 		t.Fatalf("unexpected compact binding: %#v", binding)
 	}
@@ -154,8 +154,8 @@ func TestCompactPendingQueuesLaterMessageUntilTurnCompletes(t *testing.T) {
 	if !dispatched {
 		t.Fatalf("expected queued input to dispatch after compact completion, got %#v", completed)
 	}
-	if svc.progress.compactTurns["inst-1"] != nil {
-		t.Fatalf("expected compact binding to be cleared, got %#v", svc.progress.compactTurns["inst-1"])
+	if svc.turns.compactTurns["inst-1"] != nil {
+		t.Fatalf("expected compact binding to be cleared, got %#v", svc.turns.compactTurns["inst-1"])
 	}
 }
 
@@ -297,8 +297,8 @@ func TestCompactStartFailureRestoresQueuedDispatch(t *testing.T) {
 	if !gotFailedCard || !dispatched {
 		t.Fatalf("expected compact failure owner card plus queued dispatch, got %#v", events)
 	}
-	if svc.progress.compactTurns["inst-1"] != nil {
-		t.Fatalf("expected compact binding to clear after failure, got %#v", svc.progress.compactTurns["inst-1"])
+	if svc.turns.compactTurns["inst-1"] != nil {
+		t.Fatalf("expected compact binding to clear after failure, got %#v", svc.turns.compactTurns["inst-1"])
 	}
 }
 
@@ -308,8 +308,8 @@ func TestCompactDisconnectClearsBindingAndAllowsRetryAfterReconnect(t *testing.T
 	startCompactDispatching(t, svc)
 
 	svc.ApplyInstanceDisconnected("inst-1")
-	if svc.progress.compactTurns["inst-1"] != nil {
-		t.Fatalf("expected disconnect to clear compact binding, got %#v", svc.progress.compactTurns["inst-1"])
+	if svc.turns.compactTurns["inst-1"] != nil {
+		t.Fatalf("expected disconnect to clear compact binding, got %#v", svc.turns.compactTurns["inst-1"])
 	}
 
 	svc.ApplyInstanceConnected("inst-1")
@@ -341,8 +341,8 @@ func TestCompactTransportDegradedClearsBindingAndAllowsRetryAfterReconnect(t *te
 	startCompactDispatching(t, svc)
 
 	svc.ApplyInstanceTransportDegraded("inst-1", false)
-	if svc.progress.compactTurns["inst-1"] != nil {
-		t.Fatalf("expected transport degraded to clear compact binding, got %#v", svc.progress.compactTurns["inst-1"])
+	if svc.turns.compactTurns["inst-1"] != nil {
+		t.Fatalf("expected transport degraded to clear compact binding, got %#v", svc.turns.compactTurns["inst-1"])
 	}
 
 	svc.ApplyInstanceConnected("inst-1")
@@ -361,8 +361,8 @@ func TestCompactRemoveInstanceClearsBinding(t *testing.T) {
 	startCompactDispatching(t, svc)
 
 	svc.RemoveInstance("inst-1")
-	if svc.progress.compactTurns["inst-1"] != nil {
-		t.Fatalf("expected remove instance to clear compact binding, got %#v", svc.progress.compactTurns["inst-1"])
+	if svc.turns.compactTurns["inst-1"] != nil {
+		t.Fatalf("expected remove instance to clear compact binding, got %#v", svc.turns.compactTurns["inst-1"])
 	}
 }
 

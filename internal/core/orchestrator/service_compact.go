@@ -23,13 +23,13 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, acti
 	if threadID == "" || !s.surfaceOwnsThread(surface, threadID) || !threadVisible(inst.Threads[threadID]) {
 		return notice(surface, "compact_requires_thread", "当前还没有可整理的会话。请先 /use 选择一个会话。")
 	}
-	if binding := s.progress.compactTurns[inst.InstanceID]; binding != nil {
+	if binding := s.turns.compactTurns[inst.InstanceID]; binding != nil {
 		if binding.SurfaceSessionID == surface.SurfaceSessionID || binding.ThreadID == threadID {
 			return notice(surface, "compact_in_progress", "当前正在整理上下文，请稍候。")
 		}
 		return notice(surface, "compact_busy", "当前实例正在处理其他工作，暂时不能整理上下文。")
 	}
-	if binding := s.pendingRemote[inst.InstanceID]; binding != nil {
+	if binding := s.turns.pendingRemote[inst.InstanceID]; binding != nil {
 		return notice(surface, "compact_busy", "当前实例正在处理其他工作，暂时不能整理上下文。")
 	}
 	if inst.ActiveTurnID != "" {
@@ -65,7 +65,7 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, acti
 		ThreadID:         threadID,
 		Status:           compactTurnStatusDispatching,
 	}
-	s.progress.compactTurns[inst.InstanceID] = binding
+	s.turns.compactTurns[inst.InstanceID] = binding
 	events := s.emitCompactOwnerDispatching(surface, binding)
 	events = append(events, control.UIEvent{
 		Kind:             control.UIEventAgentCommand,
@@ -90,7 +90,7 @@ func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) 
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
-	binding := s.progress.compactTurns[instanceID]
+	binding := s.turns.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) != "" {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event)
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(event.TurnID) == "" {
 		return nil
 	}
-	binding := s.progress.compactTurns[instanceID]
+	binding := s.turns.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) == "" || binding.TurnID != strings.TrimSpace(event.TurnID) {
 		return nil
 	}
@@ -122,7 +122,7 @@ func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event)
 		return nil
 	}
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
-	delete(s.progress.compactTurns, instanceID)
+	delete(s.turns.compactTurns, instanceID)
 	if surface == nil {
 		return nil
 	}
@@ -149,11 +149,11 @@ func (s *Service) failCompactTurn(instanceID string, fallback string, problem *a
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
-	binding := s.progress.compactTurns[instanceID]
+	binding := s.turns.compactTurns[instanceID]
 	if binding == nil {
 		return nil
 	}
-	delete(s.progress.compactTurns, instanceID)
+	delete(s.turns.compactTurns, instanceID)
 	surface := s.root.Surfaces[binding.SurfaceSessionID]
 	if surface == nil {
 		return nil
@@ -178,7 +178,7 @@ func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode
 	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
-	binding := s.progress.compactTurns[surface.AttachedInstanceID]
+	binding := s.turns.compactTurns[surface.AttachedInstanceID]
 	if binding == nil || binding.SurfaceSessionID != surfaceID || binding.CommandID != commandID {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (s *Service) restorePendingCompactCommand(instanceID, commandID string, pro
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
-	binding := s.progress.compactTurns[instanceID]
+	binding := s.turns.compactTurns[instanceID]
 	if binding == nil || binding.CommandID != commandID {
 		return nil
 	}
@@ -220,7 +220,7 @@ func (s *Service) handleCompactProblem(instanceID string, problem agentproto.Err
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(problem.Operation) != "thread.compact.start" {
 		return nil
 	}
-	binding := s.progress.compactTurns[instanceID]
+	binding := s.turns.compactTurns[instanceID]
 	if binding == nil || strings.TrimSpace(binding.TurnID) != "" {
 		return nil
 	}
