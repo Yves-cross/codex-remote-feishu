@@ -62,8 +62,8 @@ func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 	if entry.ProductMode != "vscode" || entry.Verbosity != "verbose" || entry.ResumeInstanceID != "inst-1" || entry.ResumeThreadID != "thread-1" {
 		t.Fatalf("unexpected resume target fields: %#v", entry)
 	}
-	if entry.ResumeThreadTitle != "修复登录流程" || entry.ResumeThreadCWD != "/data/dl/droid" || !entry.ResumeHeadless {
-		t.Fatalf("unexpected normalized headless metadata: %#v", entry)
+	if entry.ResumeThreadTitle != "修复登录流程" || entry.ResumeThreadCWD != "/data/dl/droid" || entry.ResumeHeadless {
+		t.Fatalf("unexpected normalized resume metadata: %#v", entry)
 	}
 	if entry.ResumeWorkspaceKey != "/data/dl/droid" || entry.ResumeRouteMode != "follow_local" {
 		t.Fatalf("unexpected normalized workspace or route: %#v", entry)

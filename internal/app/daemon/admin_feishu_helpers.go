@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
@@ -114,11 +113,7 @@ func trimmedString(value *string) string {
 }
 
 func canonicalGatewayID(gatewayID string) string {
-	gatewayID = strings.TrimSpace(gatewayID)
-	if gatewayID == "" {
-		return feishu.LegacyDefaultGatewayID
-	}
-	return gatewayID
+	return strings.TrimSpace(gatewayID)
 }
 
 func daemonBoolPtr(value bool) *bool {

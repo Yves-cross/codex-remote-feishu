@@ -26,7 +26,7 @@ func TestUpgradeLatestManualCheckPromptsIdleSurface(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -61,8 +61,8 @@ func TestUpgradeLatestManualCheckPromptsIdleSurface(t *testing.T) {
 	if stateValue.PendingUpgrade.Phase != install.PendingUpgradePhasePrompted {
 		t.Fatalf("pending phase = %q, want %q", stateValue.PendingUpgrade.Phase, install.PendingUpgradePhasePrompted)
 	}
-	if stateValue.PendingUpgrade.SurfaceSessionID != "feishu:chat:1" {
-		t.Fatalf("pending surface = %q, want feishu:chat:1", stateValue.PendingUpgrade.SurfaceSessionID)
+	if stateValue.PendingUpgrade.SurfaceSessionID != "feishu:main:chat:1" {
+		t.Fatalf("pending surface = %q, want feishu:main:chat:1", stateValue.PendingUpgrade.SurfaceSessionID)
 	}
 }
 
@@ -85,7 +85,7 @@ func TestUpgradeTrackSwitchPersistsAndClearsCandidate(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade track beta",
@@ -108,7 +108,7 @@ func TestDebugTrackAliasRejected(t *testing.T) {
 	app, statePath := newUpgradeTestApp(t, gateway)
 
 	events := app.handleDebugDaemonCommand(control.DaemonCommand{
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		Text:             "/debug track beta",
 	})
 	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Page == nil {
@@ -139,13 +139,13 @@ func TestTickDoesNotAutoCheckOrPromptUpgrade(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionStatus,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionStatus,
-		SurfaceSessionID: "feishu:chat:2",
+		SurfaceSessionID: "feishu:main:chat:2",
 		ChatID:           "chat-2",
 		ActorUserID:      "user-2",
 	})
@@ -175,13 +175,13 @@ func TestUpgradeLatestManualCheckPromptsDuringAutoRestorePendingHeadless(t *test
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionStatus,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
 
 	app.mu.Lock()
-	surface := app.surfaceByIDLocked("feishu:chat:1")
+	surface := app.surfaceByIDLocked("feishu:main:chat:1")
 	if surface == nil {
 		app.mu.Unlock()
 		t.Fatal("expected surface to exist")
@@ -200,7 +200,7 @@ func TestUpgradeLatestManualCheckPromptsDuringAutoRestorePendingHeadless(t *test
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -209,7 +209,7 @@ func TestUpgradeLatestManualCheckPromptsDuringAutoRestorePendingHeadless(t *test
 
 	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
 		for _, op := range ops {
-			if op.SurfaceSessionID == "feishu:chat:1" && op.CardTitle == "发现可升级版本" {
+			if op.SurfaceSessionID == "feishu:main:chat:1" && op.CardTitle == "发现可升级版本" {
 				return true
 			}
 		}
@@ -254,7 +254,7 @@ func TestUpgradeLatestClearsStalePendingCandidateMatchingLiveVersion(t *testing.
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade latest",
@@ -301,7 +301,7 @@ func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
 		TargetTrack:      install.ReleaseTrackProduction,
 		TargetVersion:    "v1.1.0",
 		GatewayID:        "main",
-		SurfaceSessionID: "feishu:chat:9",
+		SurfaceSessionID: "feishu:main:chat:9",
 		ChatID:           "chat-9",
 		ActorUserID:      "user-9",
 	}
@@ -313,7 +313,7 @@ func TestFlushUpgradeResultEmitsNoticeAndClearsPendingState(t *testing.T) {
 
 	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
 		for _, op := range ops {
-			if op.CardTitle == "Upgrade" && op.SurfaceSessionID == "feishu:chat:9" {
+			if op.CardTitle == "Upgrade" && op.SurfaceSessionID == "feishu:main:chat:9" {
 				return true
 			}
 		}
@@ -344,23 +344,23 @@ func TestFinishUpgradeStartFailureClearsPendingUpgrade(t *testing.T) {
 		TargetVersion:    "v1.1.0",
 		TargetSlot:       "v1.1.0",
 		GatewayID:        "main",
-		SurfaceSessionID: "feishu:chat:3",
+		SurfaceSessionID: "feishu:main:chat:3",
 		ChatID:           "chat-3",
 		ActorUserID:      "user-3",
 	}
 	if err := install.WriteState(statePath, stateValue); err != nil {
 		t.Fatalf("WriteState: %v", err)
 	}
-	app.service.MaterializeSurface("feishu:chat:3", "main", "chat-3", "user-3")
+	app.service.MaterializeSurface("feishu:main:chat:3", "main", "chat-3", "user-3")
 
 	app.finishUpgradeStartFailure(upgradeStartRequest{
 		GatewayID:        "main",
-		SurfaceSessionID: "feishu:chat:3",
+		SurfaceSessionID: "feishu:main:chat:3",
 	}, context.DeadlineExceeded)
 
 	waitForUpgradeOperation(t, gateway, func(ops []feishuOperationView) bool {
 		for _, op := range ops {
-			if op.CardTitle == "Upgrade" && op.SurfaceSessionID == "feishu:chat:3" {
+			if op.CardTitle == "Upgrade" && op.SurfaceSessionID == "feishu:main:chat:3" {
 				return true
 			}
 		}
@@ -550,7 +550,7 @@ func TestDebugAdminCommandIssuesExternalAccessLink(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionDebugCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/debug admin",
@@ -607,7 +607,7 @@ func TestDebugAdminCommandEmitsPreparingNoticeBeforeLinkReady(t *testing.T) {
 	go func() {
 		app.HandleAction(context.Background(), control.Action{
 			Kind:             control.ActionDebugCommand,
-			SurfaceSessionID: "feishu:chat:1",
+			SurfaceSessionID: "feishu:main:chat:1",
 			ChatID:           "chat-1",
 			ActorUserID:      "user-1",
 			Text:             "/debug admin",

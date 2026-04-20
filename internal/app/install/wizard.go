@@ -69,9 +69,15 @@ func RunInteractiveWizard(in io.Reader, out io.Writer, defaults PlatformDefaults
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Feishu 配置说明：")
 	fmt.Fprintln(out, "- 打开飞书开放平台，进入你的自建应用。")
+	fmt.Fprintln(out, "- 先为这套机器人配置一个明确的 gateway id，例如 main。")
 	fmt.Fprintln(out, "- 在“凭证与基础信息”页面复制 App ID / App Secret。")
 	fmt.Fprintln(out, "- 在“事件与回调”里订阅消息、reaction、菜单事件。")
 	fmt.Fprintln(out, "- 工程内的 deploy/feishu 目录提供默认权限清单模板。")
+	feishuGatewayID, err := promptString(reader, out, "Feishu Gateway ID", opts.FeishuGatewayID)
+	if err != nil {
+		return Options{}, err
+	}
+	opts.FeishuGatewayID = feishuGatewayID
 	feishuAppID, err := promptString(reader, out, "Feishu App ID", opts.FeishuAppID)
 	if err != nil {
 		return Options{}, err

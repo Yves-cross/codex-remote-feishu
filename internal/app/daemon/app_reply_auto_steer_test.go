@@ -37,21 +37,21 @@ func TestDaemonAutoSteerReplyAddsQueueReactionThenThumbsUp(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-active",
@@ -67,7 +67,7 @@ func TestDaemonAutoSteerReplyAddsQueueReactionThenThumbsUp(t *testing.T) {
 	beforeReply := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-reply",

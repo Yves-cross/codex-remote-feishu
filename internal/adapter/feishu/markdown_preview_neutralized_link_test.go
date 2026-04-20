@@ -20,7 +20,7 @@ func TestDriveMarkdownPreviewerRehydratesNeutralizedPathLabelLink(t *testing.T) 
 	previewer.SetWebPreviewPublisher(&fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -51,7 +51,7 @@ func TestDriveMarkdownPreviewerRehydratesNeutralizedSimpleLabelLink(t *testing.T
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,

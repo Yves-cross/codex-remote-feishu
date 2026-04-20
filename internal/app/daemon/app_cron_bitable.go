@@ -32,22 +32,6 @@ type cronWorkspaceRow struct {
 	Status string
 }
 
-// ensureCronBitable is kept as a narrow compatibility wrapper for tests while
-// the command path moves to explicit `/cron repair`.
-func (a *App) ensureCronBitable(command control.DaemonCommand) (*cronStateFile, string, error) {
-	summary, err := a.repairCronBitableNow(command)
-	if err != nil {
-		return nil, "", err
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	stateValue, err := a.loadCronStateLocked(true)
-	if err != nil {
-		return nil, "", err
-	}
-	return cloneCronState(stateValue), summary, nil
-}
-
 func (a *App) repairCronBitableNow(command control.DaemonCommand) (string, error) {
 	resolution, err := a.resolveCronOwner(command, cronOwnerResolveOptions{AllowCreate: true, CreateStateIfEmpty: true})
 	if err != nil {

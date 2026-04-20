@@ -16,7 +16,7 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
@@ -26,7 +26,7 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})

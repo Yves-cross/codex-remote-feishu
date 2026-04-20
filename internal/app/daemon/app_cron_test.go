@@ -1741,9 +1741,9 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	_, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"})
+	_, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"})
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("ensureCronBitable first error = %v, want context deadline exceeded", err)
+		t.Fatalf("repairCronBitableNow first error = %v, want context deadline exceeded", err)
 	}
 	if app.cronState == nil || app.cronState.Bitable == nil {
 		t.Fatalf("cron state = %#v, want persisted bitable binding", app.cronState)
@@ -1768,9 +1768,9 @@ func TestEnsureCronBitablePersistsProgressAndReusesRemoteObjectsAfterTimeout(t *
 	api.failCreateField = false
 	api.mu.Unlock()
 
-	_, _, err = app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"})
+	_, err = app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"})
 	if err != nil {
-		t.Fatalf("ensureCronBitable second attempt: %v", err)
+		t.Fatalf("repairCronBitableNow second attempt: %v", err)
 	}
 	if api.createAppCalls != 1 {
 		t.Fatalf("createAppCalls after retry = %d, want still 1", api.createAppCalls)
@@ -1806,9 +1806,9 @@ func TestEnsureCronBitableRecoversLegacyPartialStateWithFreshTasksTable(t *testi
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	_, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"})
+	_, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"})
 	if err != nil {
-		t.Fatalf("ensureCronBitable with legacy partial state: %v", err)
+		t.Fatalf("repairCronBitableNow with legacy partial state: %v", err)
 	}
 	if api.createAppCalls != 0 {
 		t.Fatalf("createAppCalls = %d, want 0 for persisted app token", api.createAppCalls)
@@ -1844,8 +1844,8 @@ func TestEnsureCronBitableDoesNotLeakDefaultTemplateColumnsIntoTasksTable(t *tes
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
-		t.Fatalf("ensureCronBitable: %v", err)
+	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("repairCronBitableNow: %v", err)
 	}
 
 	if got := app.cronState.Bitable.Tables.Tasks; got == "tbl-default" {

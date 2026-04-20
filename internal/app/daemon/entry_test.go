@@ -74,7 +74,7 @@ func TestRuntimeGatewayAppsUsesConfigApps(t *testing.T) {
 func TestRuntimeGatewayAppsAppliesRuntimeOverrideCredentials(t *testing.T) {
 	appConfig := config.DefaultAppConfig()
 	services := config.ServicesConfig{
-		FeishuGatewayID: "legacy-default",
+		FeishuGatewayID: "main",
 		FeishuAppID:     "cli_env",
 		FeishuAppSecret: "secret_env",
 	}
@@ -84,7 +84,7 @@ func TestRuntimeGatewayAppsAppliesRuntimeOverrideCredentials(t *testing.T) {
 	if len(apps) != 1 {
 		t.Fatalf("expected one runtime app, got %#v", apps)
 	}
-	if apps[0].GatewayID != "legacy-default" || apps[0].AppID != "cli_env" || apps[0].AppSecret != "secret_env" || !apps[0].Enabled {
+	if apps[0].GatewayID != "main" || apps[0].AppID != "cli_env" || apps[0].AppSecret != "secret_env" || !apps[0].Enabled {
 		t.Fatalf("unexpected runtime override app: %#v", apps[0])
 	}
 }

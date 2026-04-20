@@ -22,7 +22,6 @@ type ProbeStatus string
 const (
 	ProbeCompatible   ProbeStatus = "compatible"
 	ProbeIncompatible ProbeStatus = "incompatible"
-	ProbeLegacy       ProbeStatus = "legacy"
 	ProbeUnreachable  ProbeStatus = "unreachable"
 	ProbeUnknown      ProbeStatus = "unknown"
 )
@@ -50,8 +49,6 @@ func (e ProbeMismatchError) Error() string {
 		return e.Err.Error()
 	}
 	switch e.Status {
-	case ProbeLegacy:
-		return "relay identity is legacy; refusing to replace existing daemon from probe"
 	case ProbeIncompatible:
 		return "relay identity is incompatible; refusing to replace existing daemon from probe"
 	default:
@@ -132,7 +129,7 @@ func (m *Manager) EnsureReady(ctx context.Context) error {
 		return nil
 	case ProbeUnreachable:
 		return m.startAndWait(ctx)
-	case ProbeIncompatible, ProbeLegacy:
+	case ProbeIncompatible:
 		if m.config.MismatchAction == ProbeMismatchRefuseReplace {
 			return ProbeMismatchError{Status: current.Status, Err: current.Err}
 		}
@@ -182,7 +179,7 @@ func (m *Manager) classifyWelcome(welcome agentproto.Welcome) ProbeResult {
 		return ProbeResult{Status: ProbeUnknown, Welcome: welcome, Err: fmt.Errorf("unexpected relay protocol %q", welcome.Protocol)}
 	}
 	if welcome.Server == nil {
-		return ProbeResult{Status: ProbeLegacy, Welcome: welcome}
+		return ProbeResult{Status: ProbeIncompatible, Welcome: welcome, Err: errors.New("relay welcome missing server identity")}
 	}
 	server := welcome.Server.BinaryIdentity
 	if server.Product != "" && server.Product != ProductName {
@@ -192,7 +189,7 @@ func (m *Manager) classifyWelcome(welcome agentproto.Welcome) ProbeResult {
 		return ProbeResult{Status: ProbeCompatible, Welcome: welcome}
 	}
 	if server.Product == "" && server.Version == "" && server.Branch == "" && server.BuildFingerprint == "" {
-		return ProbeResult{Status: ProbeLegacy, Welcome: welcome}
+		return ProbeResult{Status: ProbeIncompatible, Welcome: welcome, Err: errors.New("relay welcome missing binary identity")}
 	}
 	return ProbeResult{Status: ProbeIncompatible, Welcome: welcome, Err: fmt.Errorf("relay version mismatch: local=%s remote=%s", identitySummary(m.config.Identity), identitySummary(server))}
 }

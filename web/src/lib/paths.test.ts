@@ -13,7 +13,7 @@ describe("paths helpers", () => {
     window.history.replaceState({}, "", "/g/demo/admin");
 
     expect(relativeLocalPath("/admin/")).toBe("./admin/");
-    expect(relativeLocalPath("/g/demo/setup?app=legacy-default")).toBe("./setup?app=legacy-default");
+    expect(relativeLocalPath("/g/demo/setup?app=main")).toBe("./setup?app=main");
     expect(relativeLocalPath(`${window.location.origin}/g/demo/api/admin/bootstrap-state`)).toBe("./api/admin/bootstrap-state");
   });
 

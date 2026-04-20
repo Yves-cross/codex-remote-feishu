@@ -318,7 +318,6 @@ func (a *App) SetHeadlessRuntime(cfg HeadlessRuntimeConfig) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.configureSurfaceResumeStateLocked(cfg.Paths.StateDir)
-	a.migrateLegacyHeadlessRestoreHintsLocked(cfg.Paths.StateDir)
 	a.syncSurfaceResumeStateLocked(nil)
 }
 

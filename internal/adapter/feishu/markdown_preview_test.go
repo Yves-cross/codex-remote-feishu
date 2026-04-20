@@ -186,7 +186,7 @@ func TestDriveMarkdownPreviewerPersistsCacheAndReusesUpload(t *testing.T) {
 	statePath := filepath.Join(root, "state", "preview.json")
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -267,7 +267,7 @@ func TestDriveMarkdownPreviewerRewritesSingleFileHTMLLinksToWebPreview(t *testin
 	previewer.SetWebPreviewPublisher(web)
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -286,7 +286,7 @@ func TestDriveMarkdownPreviewerRewritesSingleFileHTMLLinksToWebPreview(t *testin
 	if len(api.uploadFileCalls) != 0 {
 		t.Fatalf("expected html preview to avoid drive upload, got %#v", api.uploadFileCalls)
 	}
-	scopeKey := previewScopeKey("", "feishu:user:ou_user", "", "ou_user")
+	scopeKey := previewScopeKey("", "feishu:app-1:user:ou_user", "", "ou_user")
 	scopePublicID := previewScopePublicID(scopeKey)
 	if len(web.issuedFor) != 1 || web.issuedFor[0].ScopePublicID != scopePublicID {
 		t.Fatalf("unexpected web preview grant requests: %#v want scope=%q", web.issuedFor, scopePublicID)
@@ -333,7 +333,7 @@ func TestDriveMarkdownPreviewerUploadsNewVersionWhenMarkdownChanges(t *testing.T
 	})
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -378,7 +378,7 @@ func TestDriveMarkdownPreviewerRecoversStandaloneInlineCodeMarkdownLinks(t *test
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -413,7 +413,7 @@ func TestDriveMarkdownPreviewerSkipsCommandLikeInlineCodeReferences(t *testing.T
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -445,7 +445,7 @@ func TestDriveMarkdownPreviewerSkipsFencedCodeMarkdownLinks(t *testing.T) {
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -477,7 +477,7 @@ func TestDriveMarkdownPreviewerRewritesStandaloneBareFileReferences(t *testing.T
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -529,7 +529,7 @@ func TestDriveMarkdownPreviewerCreatesGroupAndActorPermissions(t *testing.T) {
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:chat:oc_chat",
+		SurfaceSessionID: "feishu:app-1:chat:oc_chat",
 		ChatID:           "oc_chat",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
@@ -695,7 +695,7 @@ func TestDriveMarkdownPreviewerRecreatesMissingScopeFolder(t *testing.T) {
 	initialState := &previewState{
 		Root: &previewFolderRecord{Token: "fld-root", URL: "https://preview/fld-root"},
 		Scopes: map[string]*previewScopeRecord{
-			"feishu:user:ou_user": {
+			"feishu:app-1:user:ou_user": {
 				Folder: &previewFolderRecord{
 					Token: "fld-stale",
 					URL:   "https://preview/fld-stale",
@@ -725,7 +725,7 @@ func TestDriveMarkdownPreviewerRecreatesMissingScopeFolder(t *testing.T) {
 		ProcessCWD: root,
 	})
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1171,7 +1171,7 @@ func TestDriveMarkdownPreviewerSkipsMarkdownOutsideAllowedRoots(t *testing.T) {
 		ProcessCWD: root,
 	})
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1202,7 +1202,7 @@ func TestDriveMarkdownPreviewerLeavesUnhandledFileLinksUntouched(t *testing.T) {
 		ProcessCWD: root,
 	})
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1249,7 +1249,7 @@ func TestDriveMarkdownPreviewerRewritesTextFileToWebPreviewLink(t *testing.T) {
 	previewer.SetWebPreviewPublisher(web)
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1302,7 +1302,7 @@ func TestDriveMarkdownPreviewerRewritesCodeFileLocationToWebPreviewLink(t *testi
 	previewer.SetWebPreviewPublisher(web)
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1382,7 +1382,7 @@ func TestDriveMarkdownPreviewerFallsBackToWebPreviewWhenDriveUploadFails(t *test
 	previewer.SetWebPreviewPublisher(web)
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1413,7 +1413,7 @@ func TestDriveMarkdownPreviewerWebPreviewTracksPreviousVersion(t *testing.T) {
 	previewer.SetWebPreviewPublisher(&fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"})
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1464,7 +1464,7 @@ func TestDriveMarkdownPreviewerServesWebPreviewSnapshot(t *testing.T) {
 	previewer.SetWebPreviewPublisher(&fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"})
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -1532,7 +1532,7 @@ func TestDriveMarkdownPreviewerSupportsRegisteredHandlerPublisherChain(t *testin
 	})
 
 	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		Block: render.Block{
 			Kind:  render.BlockAssistantMarkdown,

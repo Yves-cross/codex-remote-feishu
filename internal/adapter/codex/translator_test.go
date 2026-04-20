@@ -481,7 +481,7 @@ func TestTranslatorDebugLogsRemoteResumeFollowup(t *testing.T) {
 	if _, err := tr.TranslateCommand(agentproto.Command{
 		CommandID: "cmd-1",
 		Kind:      agentproto.CommandPromptSend,
-		Origin:    agentproto.Origin{Surface: "feishu:chat:1"},
+		Origin:    agentproto.Origin{Surface: "feishu:app-1:chat:1"},
 		Target:    agentproto.Target{ThreadID: "thread-2", CWD: "/tmp/two"},
 		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
 	}); err != nil {

@@ -49,7 +49,7 @@ func TestUpgradeTrackRejectsDisallowedShippingTrack(t *testing.T) {
 	app, statePath := newUpgradeTestApp(t, gateway)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade track alpha",
@@ -66,7 +66,7 @@ func TestUpgradeLocalRejectedInShippingFlavor(t *testing.T) {
 	app, _ := newUpgradeTestApp(t, gateway)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade local",

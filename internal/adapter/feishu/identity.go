@@ -3,10 +3,9 @@ package feishu
 import "strings"
 
 const (
-	PlatformFeishu         = "feishu"
-	ScopeKindUser          = "user"
-	ScopeKindChat          = "chat"
-	LegacyDefaultGatewayID = "legacy-default"
+	PlatformFeishu = "feishu"
+	ScopeKindUser  = "user"
+	ScopeKindChat  = "chat"
 )
 
 type SurfaceRef struct {
@@ -18,38 +17,22 @@ type SurfaceRef struct {
 
 func ParseSurfaceRef(surfaceID string) (SurfaceRef, bool) {
 	parts := strings.Split(strings.TrimSpace(surfaceID), ":")
-	switch len(parts) {
-	case 4:
-		if parts[0] != PlatformFeishu {
-			return SurfaceRef{}, false
-		}
-		ref := SurfaceRef{
-			Platform:  parts[0],
-			GatewayID: normalizeGatewayID(parts[1]),
-			ScopeKind: strings.TrimSpace(parts[2]),
-			ScopeID:   strings.TrimSpace(parts[3]),
-		}
-		if !ref.valid() {
-			return SurfaceRef{}, false
-		}
-		return ref, true
-	case 3:
-		if parts[0] != PlatformFeishu {
-			return SurfaceRef{}, false
-		}
-		ref := SurfaceRef{
-			Platform:  parts[0],
-			GatewayID: LegacyDefaultGatewayID,
-			ScopeKind: strings.TrimSpace(parts[1]),
-			ScopeID:   strings.TrimSpace(parts[2]),
-		}
-		if !ref.valid() {
-			return SurfaceRef{}, false
-		}
-		return ref, true
-	default:
+	if len(parts) != 4 {
 		return SurfaceRef{}, false
 	}
+	if parts[0] != PlatformFeishu {
+		return SurfaceRef{}, false
+	}
+	ref := SurfaceRef{
+		Platform:  parts[0],
+		GatewayID: normalizeGatewayID(parts[1]),
+		ScopeKind: strings.TrimSpace(parts[2]),
+		ScopeID:   strings.TrimSpace(parts[3]),
+	}
+	if !ref.valid() {
+		return SurfaceRef{}, false
+	}
+	return ref, true
 }
 
 func (r SurfaceRef) SurfaceID() string {
@@ -68,6 +51,9 @@ func (r SurfaceRef) valid() bool {
 	if strings.TrimSpace(r.Platform) != PlatformFeishu {
 		return false
 	}
+	if strings.TrimSpace(r.GatewayID) == "" {
+		return false
+	}
 	if strings.TrimSpace(r.ScopeID) == "" {
 		return false
 	}
@@ -80,9 +66,5 @@ func (r SurfaceRef) valid() bool {
 }
 
 func normalizeGatewayID(gatewayID string) string {
-	gatewayID = strings.TrimSpace(gatewayID)
-	if gatewayID == "" {
-		return LegacyDefaultGatewayID
-	}
-	return gatewayID
+	return strings.TrimSpace(gatewayID)
 }

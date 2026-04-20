@@ -418,7 +418,7 @@ func TestSurfaceForCardActionPrefersRecordedMessageSurface(t *testing.T) {
 	}
 }
 
-func TestParseSurfaceRefSupportsLegacyAndGatewayAwareFormats(t *testing.T) {
+func TestParseSurfaceRefRequiresGatewayAwareFormat(t *testing.T) {
 	newRef, ok := ParseSurfaceRef("feishu:app-1:chat:oc_1")
 	if !ok {
 		t.Fatal("expected gateway-aware surface id to parse")
@@ -427,12 +427,8 @@ func TestParseSurfaceRefSupportsLegacyAndGatewayAwareFormats(t *testing.T) {
 		t.Fatalf("unexpected new surface ref: %#v", newRef)
 	}
 
-	legacyRef, ok := ParseSurfaceRef("feishu:user:user-1")
-	if !ok {
-		t.Fatal("expected legacy surface id to parse")
-	}
-	if legacyRef.GatewayID != LegacyDefaultGatewayID || legacyRef.ScopeKind != ScopeKindUser || legacyRef.ScopeID != "user-1" {
-		t.Fatalf("unexpected legacy surface ref: %#v", legacyRef)
+	if _, ok := ParseSurfaceRef("feishu:user:user-1"); ok {
+		t.Fatal("did not expect legacy surface id to parse")
 	}
 }
 

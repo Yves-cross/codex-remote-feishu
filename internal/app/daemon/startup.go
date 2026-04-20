@@ -67,6 +67,9 @@ func requiresSetup(appConfig config.AppConfig, services config.ServicesConfig) b
 func configuredRuntimeAppCount(appConfig config.AppConfig, services config.ServicesConfig) int {
 	count := 0
 	for _, app := range effectiveFeishuApps(appConfig, services) {
+		if strings.TrimSpace(app.ID) == "" {
+			continue
+		}
 		if strings.TrimSpace(app.AppID) == "" || strings.TrimSpace(app.AppSecret) == "" {
 			continue
 		}
@@ -76,20 +79,23 @@ func configuredRuntimeAppCount(appConfig config.AppConfig, services config.Servi
 }
 
 func effectiveFeishuApps(appConfig config.AppConfig, services config.ServicesConfig) []config.FeishuAppConfig {
-	apps := append([]config.FeishuAppConfig(nil), appConfig.Feishu.Apps...)
+	apps := make([]config.FeishuAppConfig, 0, len(appConfig.Feishu.Apps))
+	for _, app := range appConfig.Feishu.Apps {
+		if strings.TrimSpace(app.ID) == "" {
+			continue
+		}
+		apps = append(apps, app)
+	}
 	if strings.TrimSpace(services.FeishuAppID) == "" && strings.TrimSpace(services.FeishuAppSecret) == "" {
 		return apps
 	}
 
 	gatewayID := strings.TrimSpace(services.FeishuGatewayID)
 	if gatewayID == "" {
-		gatewayID = "legacy-default"
+		return apps
 	}
 	for i := range apps {
 		currentID := strings.TrimSpace(apps[i].ID)
-		if currentID == "" {
-			currentID = "legacy-default"
-		}
 		if currentID != gatewayID {
 			continue
 		}

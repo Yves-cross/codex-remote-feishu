@@ -273,14 +273,17 @@ func TestManagerEnsureReadyRefusesToReplaceIncompatibleDaemonWhenConfigured(t *t
 	}
 }
 
-func TestManagerEnsureReadyRefusesToReplaceLegacyDaemonWhenConfigured(t *testing.T) {
+func TestManagerEnsureReadyRefusesToReplaceRelayMissingServerIdentityWhenConfigured(t *testing.T) {
 	manager := NewManager(ManagerConfig{
 		Identity:       testBinaryIdentity(),
 		Paths:          testPaths(t),
 		MismatchAction: ProbeMismatchRefuseReplace,
 	})
 	manager.probeFunc = func(context.Context) ProbeResult {
-		return ProbeResult{Status: ProbeLegacy}
+		return ProbeResult{
+			Status: ProbeIncompatible,
+			Err:    errors.New("relay welcome missing server identity"),
+		}
 	}
 	manager.startFunc = func(context.Context) (int, error) {
 		t.Fatal("unexpected start")
@@ -300,8 +303,8 @@ func TestManagerEnsureReadyRefusesToReplaceLegacyDaemonWhenConfigured(t *testing
 	if !errors.As(err, &mismatchErr) {
 		t.Fatalf("expected ProbeMismatchError, got %v", err)
 	}
-	if mismatchErr.Status != ProbeLegacy {
-		t.Fatalf("mismatch status = %s, want legacy", mismatchErr.Status)
+	if mismatchErr.Status != ProbeIncompatible {
+		t.Fatalf("mismatch status = %s, want incompatible", mismatchErr.Status)
 	}
 }
 

@@ -31,6 +31,7 @@ type Options struct {
 	Integrations       []WrapperIntegrationMode
 	VSCodeSettingsPath string
 	BundleEntrypoint   string
+	FeishuGatewayID    string
 	FeishuAppID        string
 	FeishuAppSecret    string
 	UseSystemProxy     bool
@@ -127,7 +128,10 @@ func (s *Service) Bootstrap(opts Options) (InstallState, error) {
 	cfg.Wrapper.NameMode = firstNonEmpty(cfg.Wrapper.NameMode, "workspace_basename")
 	cfg.Wrapper.IntegrationMode = integrationsConfigValueOr(integrations, emptyIntegrationMode)
 	cfg.Feishu.UseSystemProxy = opts.UseSystemProxy
-	cfg.Feishu.Apps = mergePrimaryFeishuApp(cfg.Feishu.Apps, opts.FeishuAppID, opts.FeishuAppSecret)
+	cfg.Feishu.Apps, err = mergePrimaryFeishuApp(cfg.Feishu.Apps, opts.FeishuGatewayID, opts.FeishuAppID, opts.FeishuAppSecret)
+	if err != nil {
+		return InstallState{}, err
+	}
 
 	if err := config.WriteAppConfig(configPath, cfg); err != nil {
 		return InstallState{}, err
@@ -283,34 +287,55 @@ func resolveBinaryPath(opts Options) (string, error) {
 	return "", fmt.Errorf("binary path is required")
 }
 
-func mergePrimaryFeishuApp(apps []config.FeishuAppConfig, incomingAppID, incomingSecret string) []config.FeishuAppConfig {
+func mergePrimaryFeishuApp(apps []config.FeishuAppConfig, incomingGatewayID, incomingAppID, incomingSecret string) ([]config.FeishuAppConfig, error) {
 	if len(apps) == 0 && strings.TrimSpace(incomingAppID) == "" && strings.TrimSpace(incomingSecret) == "" {
-		return nil
+		return nil, nil
 	}
 
 	merged := append([]config.FeishuAppConfig(nil), apps...)
-	index := 0
-	for i, app := range merged {
-		if app.Enabled == nil || *app.Enabled {
-			index = i
-			break
+	if strings.TrimSpace(incomingAppID) == "" && strings.TrimSpace(incomingSecret) == "" {
+		return merged, nil
+	}
+
+	gatewayID := strings.TrimSpace(incomingGatewayID)
+	index := -1
+	if gatewayID != "" {
+		for i, app := range merged {
+			if strings.TrimSpace(app.ID) == gatewayID {
+				index = i
+				break
+			}
+		}
+	} else {
+		for i, app := range merged {
+			if strings.TrimSpace(app.ID) == "" {
+				continue
+			}
+			if app.Enabled == nil || *app.Enabled {
+				index = i
+				gatewayID = strings.TrimSpace(app.ID)
+				break
+			}
 		}
 	}
-	if len(merged) == 0 {
+
+	if gatewayID == "" {
+		return nil, fmt.Errorf("feishu gateway id is required when bootstrapping credentials without an existing explicit app")
+	}
+
+	if index < 0 {
 		merged = append(merged, config.FeishuAppConfig{
-			ID:      "legacy-default",
-			Name:    "Legacy Default",
+			ID:      gatewayID,
+			Name:    gatewayID,
 			Enabled: boolPtr(true),
 		})
-		index = 0
+		index = len(merged) - 1
 	}
 
 	app := merged[index]
-	if strings.TrimSpace(app.ID) == "" {
-		app.ID = "legacy-default"
-	}
+	app.ID = gatewayID
 	if strings.TrimSpace(app.Name) == "" {
-		app.Name = "Legacy Default"
+		app.Name = gatewayID
 	}
 	if app.Enabled == nil {
 		app.Enabled = boolPtr(true)
@@ -318,7 +343,7 @@ func mergePrimaryFeishuApp(apps []config.FeishuAppConfig, incomingAppID, incomin
 	app.AppID = choosePreservedValue(incomingAppID, app.AppID)
 	app.AppSecret = choosePreservedValue(incomingSecret, app.AppSecret)
 	merged[index] = app
-	return merged
+	return merged, nil
 }
 
 func boolPtr(value bool) *bool {

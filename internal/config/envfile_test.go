@@ -109,6 +109,26 @@ func TestLoadServicesConfigUsesUnifiedConfigEnvOverride(t *testing.T) {
 	}
 }
 
+func TestLoadServicesConfigUsesExplicitFeishuGatewayIDEnvOverride(t *testing.T) {
+	unsetUnifiedConfigOverride(t)
+	xdgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdgHome)
+	t.Setenv("FEISHU_GATEWAY_ID", "ops")
+	t.Setenv("FEISHU_APP_ID", "cli_env")
+	t.Setenv("FEISHU_APP_SECRET", "secret_env")
+
+	cfg, err := LoadServicesConfig()
+	if err != nil {
+		t.Fatalf("LoadServicesConfig: %v", err)
+	}
+	if cfg.FeishuGatewayID != "ops" {
+		t.Fatalf("FeishuGatewayID = %q, want ops", cfg.FeishuGatewayID)
+	}
+	if cfg.FeishuAppID != "cli_env" || cfg.FeishuAppSecret != "secret_env" {
+		t.Fatalf("feishu = %q/%q", cfg.FeishuAppID, cfg.FeishuAppSecret)
+	}
+}
+
 func TestLoadServicesConfigAllowsHostEnvOverrides(t *testing.T) {
 	unsetUnifiedConfigOverride(t)
 	xdgHome := t.TempDir()

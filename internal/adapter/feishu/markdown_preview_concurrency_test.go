@@ -35,7 +35,7 @@ func TestDriveMarkdownPreviewerConcurrentSameFileRewriteDedupesUpload(t *testing
 	})
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,
@@ -119,7 +119,7 @@ func TestDriveMarkdownPreviewerServeWebPreviewDoesNotBlockOnDriveRewrite(t *test
 	_, previewID := publishWebPreviewArtifactForTest(t, previewer, sourcePath, []byte("hello preview\n"), time.Date(2026, 4, 15, 17, 0, 0, 0, time.UTC))
 
 	req := MarkdownPreviewRequest{
-		SurfaceSessionID: "feishu:user:ou_user",
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
 		ActorUserID:      "ou_user",
 		WorkspaceRoot:    root,
 		ThreadCWD:        root,

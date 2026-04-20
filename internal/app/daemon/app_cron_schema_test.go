@@ -30,8 +30,8 @@ func TestEnsureCronBitableTaskSchemaMatchesProductOrder(t *testing.T) {
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
-		t.Fatalf("ensureCronBitable: %v", err)
+	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("repairCronBitableNow: %v", err)
 	}
 
 	api.mu.Lock()
@@ -132,8 +132,8 @@ func TestEnsureCronBitableRepairsExistingDateFieldFormatter(t *testing.T) {
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
-		t.Fatalf("ensureCronBitable: %v", err)
+	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("repairCronBitableNow: %v", err)
 	}
 
 	api.mu.Lock()
@@ -211,8 +211,8 @@ func TestEnsureCronBitableRepairsExistingFieldTypeMismatch(t *testing.T) {
 	}
 	app.cronBitableFactory = func(string) (feishu.BitableAPI, error) { return api, nil }
 
-	if _, _, err := app.ensureCronBitable(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
-		t.Fatalf("ensureCronBitable: %v", err)
+	if _, err := app.repairCronBitableNow(control.DaemonCommand{GatewayID: "gateway-1"}); err != nil {
+		t.Fatalf("repairCronBitableNow: %v", err)
 	}
 
 	api.mu.Lock()

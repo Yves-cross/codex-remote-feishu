@@ -78,21 +78,21 @@ func TestConversationTraceRecordsSteerMessage(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-active",
@@ -106,7 +106,7 @@ func TestConversationTraceRecordsSteerMessage(t *testing.T) {
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-queued",
@@ -114,7 +114,7 @@ func TestConversationTraceRecordsSteerMessage(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionReactionCreated,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		TargetMessageID:  "msg-queued",
@@ -149,7 +149,7 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
@@ -157,7 +157,7 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 
 	if err := app.deliverUIEventWithContext(context.Background(), control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:     render.BlockAssistantMarkdown,
@@ -171,7 +171,7 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 	}
 	if err := app.deliverUIEventWithContext(context.Background(), control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:     render.BlockAssistantMarkdown,
@@ -223,21 +223,21 @@ func TestConversationTraceRecordsTurnLifecycleTimeline(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",

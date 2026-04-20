@@ -79,7 +79,8 @@ func RunMain(ctx context.Context, version, branch string) error {
 
 	env := envMap(os.Environ())
 	startup := buildStartupAccessPlan(loadedConfig.Config, cfg, env)
-	envOverrideActive := strings.TrimSpace(os.Getenv("FEISHU_APP_ID")) != "" || strings.TrimSpace(os.Getenv("FEISHU_APP_SECRET")) != ""
+	envOverrideActive := (strings.TrimSpace(os.Getenv("FEISHU_APP_ID")) != "" || strings.TrimSpace(os.Getenv("FEISHU_APP_SECRET")) != "") &&
+		strings.TrimSpace(cfg.FeishuGatewayID) != ""
 
 	app := New(
 		net.JoinHostPort(cfg.RelayHost, cfg.RelayPort),
@@ -193,20 +194,20 @@ func repairInstallStateOnStartup(paths relayruntime.Paths, identity agentproto.S
 func runtimeGatewayApps(appConfig config.AppConfig, services config.ServicesConfig, paths relayruntime.Paths) []feishu.GatewayAppConfig {
 	runtimeApps := make([]config.FeishuAppConfig, 0, len(appConfig.Feishu.Apps))
 	for _, app := range appConfig.Feishu.Apps {
+		if strings.TrimSpace(app.ID) == "" {
+			continue
+		}
 		runtimeApps = append(runtimeApps, app)
 	}
 
 	if strings.TrimSpace(services.FeishuAppID) != "" || strings.TrimSpace(services.FeishuAppSecret) != "" {
 		gatewayID := strings.TrimSpace(services.FeishuGatewayID)
 		if gatewayID == "" {
-			gatewayID = "legacy-default"
+			goto build
 		}
 		found := false
 		for i := range runtimeApps {
 			currentID := strings.TrimSpace(runtimeApps[i].ID)
-			if currentID == "" {
-				currentID = "legacy-default"
-			}
 			if currentID != gatewayID {
 				continue
 			}
@@ -230,11 +231,12 @@ func runtimeGatewayApps(appConfig config.AppConfig, services config.ServicesConf
 		}
 	}
 
+build:
 	values := make([]feishu.GatewayAppConfig, 0, len(runtimeApps))
 	for _, app := range runtimeApps {
 		gatewayID := strings.TrimSpace(app.ID)
 		if gatewayID == "" {
-			gatewayID = "legacy-default"
+			continue
 		}
 		enabled := app.Enabled == nil || *app.Enabled
 		values = append(values, feishu.GatewayAppConfig{
@@ -257,7 +259,7 @@ func sanitizeGatewayPath(gatewayID string) string {
 	value := strings.NewReplacer(":", "-", "/", "-", "\\", "-", " ", "-").Replace(strings.TrimSpace(gatewayID))
 	value = strings.Trim(value, "-")
 	if value == "" {
-		return "legacy-default"
+		return "missing-gateway"
 	}
 	return value
 }

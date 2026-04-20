@@ -37,6 +37,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 		CodexRealBinary:    "/usr/local/bin/codex",
 		Integrations:       []WrapperIntegrationMode{IntegrationEditorSettings},
 		VSCodeSettingsPath: settingsPath,
+		FeishuGatewayID:    "main",
 		FeishuAppID:        "cli_xxx",
 		FeishuAppSecret:    "secret",
 		UseSystemProxy:     false,
@@ -57,7 +58,7 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 		t.Fatalf("unexpected codex real binary: %s", cfg.Wrapper.CodexRealBinary)
 	}
 	app := config.SelectRuntimeFeishuApp(cfg.Feishu.Apps)
-	if app.AppID != "cli_xxx" || app.AppSecret != "secret" {
+	if app.ID != "main" || app.AppID != "cli_xxx" || app.AppSecret != "secret" {
 		t.Fatalf("unexpected feishu app: %#v", app)
 	}
 
@@ -105,6 +106,25 @@ func TestBootstrapWritesConfigsAndState(t *testing.T) {
 	}
 	if state.ServiceManager != ServiceManagerDetached {
 		t.Fatalf("service manager = %q, want detached", state.ServiceManager)
+	}
+}
+
+func TestBootstrapRejectsFeishuCredentialsWithoutGatewayID(t *testing.T) {
+	baseDir := t.TempDir()
+	binaryPath := seedBinary(t, filepath.Join(baseDir, "source-bin", "codex-remote"), "unified-bin")
+
+	service := NewService()
+	_, err := service.Bootstrap(Options{
+		BaseDir:         baseDir,
+		BinaryPath:      binaryPath,
+		CurrentVersion:  "dev",
+		RelayServerURL:  "ws://127.0.0.1:9500/ws/agent",
+		CodexRealBinary: "/usr/local/bin/codex",
+		FeishuAppID:     "cli_xxx",
+		FeishuAppSecret: "secret",
+	})
+	if err == nil || !strings.Contains(err.Error(), "feishu gateway id is required") {
+		t.Fatalf("Bootstrap error = %v, want missing gateway id", err)
 	}
 }
 

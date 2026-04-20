@@ -872,17 +872,17 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 		FocusSource: "local_ui",
 	}})
 
-	app.HandleAction(context.Background(), control.Action{Kind: control.ActionListInstances, SurfaceSessionID: "feishu:chat:1", ChatID: "chat-1", ActorUserID: "user-1"})
+	app.HandleAction(context.Background(), control.Action{Kind: control.ActionListInstances, SurfaceSessionID: "feishu:app-1:chat:1", ChatID: "chat-1", ActorUserID: "user-1"})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -893,7 +893,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 		Kind:      agentproto.EventTurnStarted,
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
 		Kind:     agentproto.EventItemCompleted,
@@ -907,7 +907,7 @@ func TestDaemonProjectsListAttachAndAssistantOutput(t *testing.T) {
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
 		Status:    "completed",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 
 	var hasListCard bool
@@ -960,19 +960,19 @@ func TestDaemonNewThreadProjectsReadyState(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionNewThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
 
-	snapshot := app.service.SurfaceSnapshot("feishu:chat:1")
+	snapshot := app.service.SurfaceSnapshot("feishu:app-1:chat:1")
 	if snapshot == nil || snapshot.Attachment.RouteMode != string(state.RouteModeNewThreadReady) || !snapshot.NextPrompt.CreateThread || snapshot.NextPrompt.CWD != "/data/dl/droid" {
 		t.Fatalf("expected new-thread-ready snapshot, got %#v", snapshot)
 	}
@@ -1017,7 +1017,7 @@ func TestDaemonDecouplesGatewayApplyFromCanceledParentContext(t *testing.T) {
 	cancel()
 	app.HandleAction(cancelledCtx, control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
@@ -1157,14 +1157,14 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "ou_user",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "ou_user",
 		MessageID:        "msg-1",
@@ -1174,7 +1174,7 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 		Kind:      agentproto.EventTurnStarted,
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
 		Kind:     agentproto.EventItemCompleted,
@@ -1188,7 +1188,7 @@ func TestDaemonRewritesFinalAssistantLinksViaMarkdownPreviewer(t *testing.T) {
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
 		Status:    "completed",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 
 	if len(previewer.requests) != 1 {
@@ -1239,14 +1239,14 @@ func TestDaemonContinuesFinalReplyAfterPreviewTimeout(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "ou_user",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "ou_user",
 		MessageID:        "msg-1",
@@ -1256,7 +1256,7 @@ func TestDaemonContinuesFinalReplyAfterPreviewTimeout(t *testing.T) {
 		Kind:      agentproto.EventTurnStarted,
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 	app.onEvents(context.Background(), "inst-1", []agentproto.Event{{
 		Kind:     agentproto.EventItemCompleted,
@@ -1270,7 +1270,7 @@ func TestDaemonContinuesFinalReplyAfterPreviewTimeout(t *testing.T) {
 		ThreadID:  "thread-1",
 		TurnID:    "turn-1",
 		Status:    "completed",
-		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:chat:1"},
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "feishu:app-1:chat:1"},
 	}})
 
 	requests, previewCtxErr := previewer.snapshot()
@@ -1311,7 +1311,7 @@ func TestDaemonFallsBackToActorRouteForColdStartMenuActions(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:user:ou_1",
+		SurfaceSessionID: "feishu:app-1:user:ou_1",
 		ActorUserID:      "ou_1",
 	})
 
@@ -1341,10 +1341,10 @@ func TestDaemonNotifiesAttachedSurfaceWhenInstanceDisconnects(t *testing.T) {
 		},
 	})
 
-	app.HandleAction(context.Background(), control.Action{Kind: control.ActionListInstances, SurfaceSessionID: "feishu:chat:1", ChatID: "chat-1", ActorUserID: "user-1"})
+	app.HandleAction(context.Background(), control.Action{Kind: control.ActionListInstances, SurfaceSessionID: "feishu:app-1:chat:1", ChatID: "chat-1", ActorUserID: "user-1"})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
@@ -1384,14 +1384,14 @@ func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T)
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
@@ -1405,7 +1405,7 @@ func TestDaemonTickResumesQueuedRemoteInputAfterLocalTurnCompletes(t *testing.T)
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-queued",
@@ -1508,14 +1508,14 @@ func TestDaemonProjectsQueuedAndDiscardedReactionsForRecalledMessage(t *testing.
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
@@ -1531,7 +1531,7 @@ func TestDaemonProjectsQueuedAndDiscardedReactionsForRecalledMessage(t *testing.
 	beforeQueue := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-queued",
@@ -1545,7 +1545,7 @@ func TestDaemonProjectsQueuedAndDiscardedReactionsForRecalledMessage(t *testing.
 	beforeRecall := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionMessageRecalled,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		TargetMessageID:  "msg-queued",
@@ -1580,14 +1580,14 @@ func TestDaemonStatusExportsSurfacesAndRemoteTurnState(t *testing.T) {
 	})
 	app.service.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.service.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -1616,10 +1616,10 @@ func TestDaemonStatusExportsSurfacesAndRemoteTurnState(t *testing.T) {
 	if len(payload.Instances) != 1 || payload.Instances[0].InstanceID != "inst-1" {
 		t.Fatalf("expected one instance in status payload, got %#v", payload.Instances)
 	}
-	if len(payload.Surfaces) != 1 || payload.Surfaces[0].SurfaceSessionID != "feishu:chat:1" || payload.Surfaces[0].AttachedInstanceID != "inst-1" {
+	if len(payload.Surfaces) != 1 || payload.Surfaces[0].SurfaceSessionID != "feishu:app-1:chat:1" || payload.Surfaces[0].AttachedInstanceID != "inst-1" {
 		t.Fatalf("expected attached surface in status payload, got %#v", payload.Surfaces)
 	}
-	if len(payload.PendingRemoteTurns) != 1 || payload.PendingRemoteTurns[0].SurfaceSessionID != "feishu:chat:1" || payload.PendingRemoteTurns[0].SourceMessageID != "msg-1" || payload.PendingRemoteTurns[0].Status != "dispatching" {
+	if len(payload.PendingRemoteTurns) != 1 || payload.PendingRemoteTurns[0].SurfaceSessionID != "feishu:app-1:chat:1" || payload.PendingRemoteTurns[0].SourceMessageID != "msg-1" || payload.PendingRemoteTurns[0].Status != "dispatching" {
 		t.Fatalf("expected pending remote turn in status payload, got %#v", payload.PendingRemoteTurns)
 	}
 	if len(payload.ActiveRemoteTurns) != 0 {
@@ -1654,21 +1654,21 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-active",
@@ -1682,7 +1682,7 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionImageMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-img",
@@ -1691,7 +1691,7 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 	})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-queued",
@@ -1701,7 +1701,7 @@ func TestDaemonAcceptedSteerRemovesQueueReactionAndAddsThumbsUp(t *testing.T) {
 	beforeAck := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionReactionCreated,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		TargetMessageID:  "msg-queued",
@@ -1802,7 +1802,7 @@ func TestDaemonRejectsOldStopMenuBeforeHandling(t *testing.T) {
 	before := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionStop,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Inbound: &control.ActionInboundMeta{
@@ -1845,7 +1845,7 @@ func seedAttachedSurfaceForInboundTests(app *App) {
 	}})
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
@@ -1856,7 +1856,7 @@ func seedSelectedThreadSurfaceForInboundTests(app *App) {
 	seedAttachedSurfaceForInboundTests(app)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUseThread,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		ThreadID:         "thread-1",

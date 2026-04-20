@@ -98,13 +98,8 @@ func LoadServicesConfig() (ServicesConfig, error) {
 		RelayAPIHost: chooseNonEmpty(os.Getenv("RELAY_API_HOST"), loaded.Config.Admin.ListenHost, defaultAdminListenHost),
 		RelayAPIPort: strconv.Itoa(chooseInt(os.Getenv("RELAY_API_PORT"), loaded.Config.Admin.ListenPort)),
 		FeishuGatewayID: chooseNonEmpty(
+			os.Getenv("FEISHU_GATEWAY_ID"),
 			selectedApp.ID,
-			defaultGatewayIDForCredentials(
-				os.Getenv("FEISHU_APP_ID"),
-				os.Getenv("FEISHU_APP_SECRET"),
-				selectedApp.AppID,
-				selectedApp.AppSecret,
-			),
 		),
 		FeishuAppID: chooseNonEmpty(
 			os.Getenv("FEISHU_APP_ID"),
@@ -201,13 +196,4 @@ func boolString(value bool) string {
 		return "true"
 	}
 	return "false"
-}
-
-func defaultGatewayIDForCredentials(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return "legacy-default"
-		}
-	}
-	return ""
 }

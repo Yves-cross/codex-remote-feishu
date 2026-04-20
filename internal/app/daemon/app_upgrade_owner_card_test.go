@@ -20,7 +20,7 @@ func TestUpgradeLatestUsesSameOwnerCardAcrossCheckingAndConfirm(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -102,7 +102,7 @@ func TestUpgradeOwnerCancelConfirmClearsPendingAndSealsSameCard(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -138,7 +138,7 @@ func TestUpgradeOwnerCancelConfirmClearsPendingAndSealsSameCard(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeOwnerFlow,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        confirmOp.MessageID,

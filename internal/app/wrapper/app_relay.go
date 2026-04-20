@@ -45,7 +45,7 @@ func runRelayClient(ctx context.Context, relayURL string, client *relayws.Client
 
 func relayWelcomeSummary(welcome agentproto.Welcome) string {
 	if welcome.Server == nil {
-		return "legacy relay without server identity"
+		return "relay without server identity"
 	}
 	switch {
 	case welcome.Server.BuildFingerprint != "":

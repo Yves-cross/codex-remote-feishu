@@ -98,7 +98,7 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 	if err := server.SendCommand("inst-wrapper", agentproto.Command{
 		CommandID: "cmd-prompt",
 		Kind:      agentproto.CommandPromptSend,
-		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Origin:    agentproto.Origin{Surface: "feishu:app-1:chat:test"},
 		Target:    agentproto.Target{ThreadID: "thread-1", CWD: testutil.WorkspacePath("data", "dl", "droid")},
 		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "列一下文件"}}},
 	}); err != nil {
@@ -295,7 +295,7 @@ func TestWrapperRejectsSteerWhenCodexRejectsExpectedTurn(t *testing.T) {
 	if err := server.SendCommand("inst-wrapper", agentproto.Command{
 		CommandID: "cmd-prompt",
 		Kind:      agentproto.CommandPromptSend,
-		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Origin:    agentproto.Origin{Surface: "feishu:app-1:chat:test"},
 		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/data/dl/droid"},
 		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "列一下文件"}}},
 	}); err != nil {
@@ -314,7 +314,7 @@ func TestWrapperRejectsSteerWhenCodexRejectsExpectedTurn(t *testing.T) {
 	if err := server.SendCommand("inst-wrapper", agentproto.Command{
 		CommandID: "cmd-steer",
 		Kind:      agentproto.CommandTurnSteer,
-		Origin:    agentproto.Origin{Surface: "feishu:chat:test"},
+		Origin:    agentproto.Origin{Surface: "feishu:app-1:chat:test"},
 		Target:    agentproto.Target{ThreadID: "thread-1", TurnID: "turn-wrong"},
 		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "补充一下"}}},
 	}); err != nil {

@@ -230,9 +230,10 @@ func TestManagerClassifyWelcomeStatuses(t *testing.T) {
 			wantErr:    "unexpected relay protocol",
 		},
 		{
-			name:       "legacy missing server",
+			name:       "missing server identity",
 			welcome:    agentproto.Welcome{Protocol: agentproto.WireProtocol},
-			wantStatus: ProbeLegacy,
+			wantStatus: ProbeIncompatible,
+			wantErr:    "missing server identity",
 		},
 		{
 			name: "unexpected product",
@@ -246,12 +247,13 @@ func TestManagerClassifyWelcomeStatuses(t *testing.T) {
 			wantErr:    "unexpected relay product",
 		},
 		{
-			name: "legacy empty identity",
+			name: "missing binary identity",
 			welcome: agentproto.Welcome{
 				Protocol: agentproto.WireProtocol,
 				Server:   &agentproto.ServerIdentity{},
 			},
-			wantStatus: ProbeLegacy,
+			wantStatus: ProbeIncompatible,
+			wantErr:    "missing binary identity",
 		},
 		{
 			name: "incompatible",

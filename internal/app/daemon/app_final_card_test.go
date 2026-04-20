@@ -156,11 +156,11 @@ func TestDeliverUIEventRecordsFinalCardAnchorFromPrimaryFinalReply(t *testing.T)
 			},
 		},
 	})
-	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
 
 	event := control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:       render.BlockAssistantMarkdown,
@@ -176,7 +176,7 @@ func TestDeliverUIEventRecordsFinalCardAnchorFromPrimaryFinalReply(t *testing.T)
 		t.Fatalf("deliver final block: %v", err)
 	}
 
-	got := app.service.LookupFinalCardForBlock("feishu:chat:1", *event.Block, app.daemonLifecycleID)
+	got := app.service.LookupFinalCardForBlock("feishu:app-1:chat:1", *event.Block, app.daemonLifecycleID)
 	if got == nil {
 		t.Fatal("expected retained final card anchor")
 	}
@@ -216,11 +216,11 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesSameCardAfterPreviewTimeout(
 			},
 		},
 	})
-	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
 
 	event := control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:       render.BlockAssistantMarkdown,
@@ -276,11 +276,11 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsWhenNoImprovement(t *testing.T
 			},
 		},
 	})
-	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
 
 	event := control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:       render.BlockAssistantMarkdown,
@@ -332,11 +332,11 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsAfterDetach(t *testing.T) {
 			},
 		},
 	})
-	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
 
 	event := control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:       render.BlockAssistantMarkdown,
@@ -358,7 +358,7 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsAfterDetach(t *testing.T) {
 	}
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionDetach,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 	})
 	close(previewer.secondGate)
 	select {
@@ -400,13 +400,13 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 			},
 		},
 	})
-	materializeAttachedSurfaceForFinalCardTest(app, "feishu:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
 
 	longBody := "请查看 [设计文档](./docs/very/very/very/long/path/design.md)\n\n" +
 		strings.Repeat("这里是较长的补充说明，会强制 final reply 进入应用层 split。\n第二行继续保留一些上下文。\n\n", 1500)
 	event := control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
 			Kind:       render.BlockAssistantMarkdown,
@@ -435,7 +435,7 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 	rewrittenOps := app.projector.Project("chat-1", control.UIEvent{
 		Kind:             control.UIEventBlockCommitted,
 		GatewayID:        "app-1",
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block:            &rewrittenBlock,
 	})

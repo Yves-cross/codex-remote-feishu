@@ -3,8 +3,6 @@ package daemon
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,98 +12,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
-
-func TestHeadlessRestoreHintStoreRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	stateDir := t.TempDir()
-	path := headlessRestoreHintsStatePath(stateDir)
-	store, err := loadHeadlessRestoreHintStore(path)
-	if err != nil {
-		t.Fatalf("load empty store: %v", err)
-	}
-
-	updatedAt := time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC)
-	if err := store.Put(HeadlessRestoreHint{
-		SurfaceSessionID: "feishu:app-1:chat:chat-1",
-		GatewayID:        "app-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		ThreadID:         "thread-1",
-		ThreadTitle:      "修复登录流程",
-		ThreadCWD:        "/data/dl/droid",
-		UpdatedAt:        updatedAt,
-	}); err != nil {
-		t.Fatalf("put hint: %v", err)
-	}
-
-	reloaded, err := loadHeadlessRestoreHintStore(path)
-	if err != nil {
-		t.Fatalf("reload store: %v", err)
-	}
-	hint, ok := reloaded.Get("feishu:app-1:chat:chat-1")
-	if !ok {
-		t.Fatal("expected restore hint after reload")
-	}
-	if hint.GatewayID != "app-1" || hint.ChatID != "chat-1" || hint.ActorUserID != "user-1" {
-		t.Fatalf("unexpected restored routing fields: %#v", hint)
-	}
-	if hint.ThreadID != "thread-1" || hint.ThreadTitle != "修复登录流程" || hint.ThreadCWD != "/data/dl/droid" {
-		t.Fatalf("unexpected restored thread fields: %#v", hint)
-	}
-	if !hint.UpdatedAt.Equal(updatedAt) {
-		t.Fatalf("unexpected updatedAt: %s", hint.UpdatedAt)
-	}
-}
-
-func TestHeadlessRestoreHintStoreDeletePersists(t *testing.T) {
-	t.Parallel()
-
-	stateDir := t.TempDir()
-	path := headlessRestoreHintsStatePath(stateDir)
-	store, err := loadHeadlessRestoreHintStore(path)
-	if err != nil {
-		t.Fatalf("load empty store: %v", err)
-	}
-	if err := store.Put(HeadlessRestoreHint{
-		SurfaceSessionID: "surface-1",
-		ThreadID:         "thread-1",
-		UpdatedAt:        time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("put hint: %v", err)
-	}
-	if err := store.Delete("surface-1"); err != nil {
-		t.Fatalf("delete hint: %v", err)
-	}
-
-	reloaded, err := loadHeadlessRestoreHintStore(path)
-	if err != nil {
-		t.Fatalf("reload store: %v", err)
-	}
-	if _, ok := reloaded.Get("surface-1"); ok {
-		t.Fatalf("expected restore hint to be deleted, got %#v", reloaded.Entries())
-	}
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read store file: %v", err)
-	}
-	if len(raw) == 0 {
-		t.Fatal("expected non-empty store file")
-	}
-}
-
-func TestHeadlessRestoreHintsStatePath(t *testing.T) {
-	t.Parallel()
-
-	stateDir := filepath.Join("/tmp", "codex-remote-state")
-	if got := headlessRestoreHintsStatePath(stateDir); got != filepath.Join(stateDir, headlessRestoreHintsStateFile) {
-		t.Fatalf("unexpected state path: %s", got)
-	}
-	if got := headlessRestoreHintsStatePath(""); got != "" {
-		t.Fatalf("expected empty state path, got %q", got)
-	}
-}
 
 func TestDaemonPersistsHeadlessRestoreHintAcrossRestart(t *testing.T) {
 	t.Parallel()
@@ -172,39 +78,6 @@ func TestDaemonDerivesHeadlessRestoreHintFromSurfaceResumeState(t *testing.T) {
 	}
 	if len(app.surfaceResumeRuntime.headlessRestore) != 1 {
 		t.Fatalf("expected in-memory headless restore state derived from surface resume state, got %#v", app.surfaceResumeRuntime.headlessRestore)
-	}
-	if _, err := os.Stat(headlessRestoreHintsStatePath(stateDir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected compatible startup to remove migrated legacy hint file, stat err=%v", err)
-	}
-}
-
-func TestDaemonMigratesLegacyHeadlessRestoreHintIntoSurfaceResumeState(t *testing.T) {
-	t.Parallel()
-
-	stateDir := t.TempDir()
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
-		SurfaceSessionID: "surface-1",
-		GatewayID:        "app-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		ThreadID:         "thread-1",
-		ThreadTitle:      "修复登录流程",
-		ThreadCWD:        "/data/dl/droid",
-	})
-
-	app := newRestoreHintTestApp(stateDir)
-	entry := app.SurfaceResumeState("surface-1")
-	if entry == nil {
-		t.Fatal("expected legacy restore hint to migrate into surface resume state")
-	}
-	if entry.ProductMode != "normal" || entry.ResumeThreadID != "thread-1" || entry.ResumeThreadTitle != "修复登录流程" {
-		t.Fatalf("unexpected migrated surface resume entry: %#v", entry)
-	}
-	if entry.ResumeThreadCWD != "/data/dl/droid" || entry.ResumeWorkspaceKey != "/data/dl/droid" || !entry.ResumeHeadless {
-		t.Fatalf("expected migrated headless metadata in surface resume entry, got %#v", entry)
-	}
-	if _, err := os.Stat(headlessRestoreHintsStatePath(stateDir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected migrated legacy hint file to be removed, stat err=%v", err)
 	}
 }
 
@@ -682,11 +555,52 @@ func seedHeadlessInstance(app *App, instanceID, threadID string) {
 
 func putRestoreHintForTest(t *testing.T, stateDir string, hint HeadlessRestoreHint) {
 	t.Helper()
-	store, err := loadHeadlessRestoreHintStore(headlessRestoreHintsStatePath(stateDir))
-	if err != nil {
-		t.Fatalf("load restore hint store: %v", err)
+	hint, ok := normalizeHeadlessRestoreHint(hint)
+	if !ok {
+		t.Fatalf("normalize restore hint: %#v", hint)
 	}
-	if err := store.Put(hint); err != nil {
-		t.Fatalf("put restore hint: %v", err)
+	store, err := loadSurfaceResumeStore(surfaceResumeStatePath(stateDir))
+	if err != nil {
+		t.Fatalf("load surface resume store: %v", err)
+	}
+
+	entry, exists := store.Get(hint.SurfaceSessionID)
+	if !exists {
+		entry = SurfaceResumeEntry{
+			SurfaceSessionID: hint.SurfaceSessionID,
+			GatewayID:        hint.GatewayID,
+			ChatID:           hint.ChatID,
+			ActorUserID:      hint.ActorUserID,
+			ProductMode:      string(state.ProductModeNormal),
+			UpdatedAt:        hint.UpdatedAt,
+		}
+	}
+	entry.GatewayID = firstNonEmpty(entry.GatewayID, hint.GatewayID)
+	entry.ChatID = firstNonEmpty(entry.ChatID, hint.ChatID)
+	entry.ActorUserID = firstNonEmpty(entry.ActorUserID, hint.ActorUserID)
+	if entry.ProductMode == "" {
+		entry.ProductMode = string(state.ProductModeNormal)
+	}
+	if entry.ResumeThreadID == "" {
+		entry.ResumeThreadID = hint.ThreadID
+	}
+	if entry.ResumeThreadTitle == "" {
+		entry.ResumeThreadTitle = firstNonEmpty(hint.ThreadTitle, hint.ThreadID)
+	}
+	if entry.ResumeThreadCWD == "" {
+		entry.ResumeThreadCWD = state.NormalizeWorkspaceKey(hint.ThreadCWD)
+	}
+	if entry.ResumeWorkspaceKey == "" {
+		entry.ResumeWorkspaceKey = state.ResolveWorkspaceKey(entry.ResumeThreadCWD, hint.ThreadCWD)
+	}
+	if entry.ResumeRouteMode == "" {
+		entry.ResumeRouteMode = string(state.RouteModePinned)
+	}
+	entry.ResumeHeadless = true
+	if entry.UpdatedAt.IsZero() {
+		entry.UpdatedAt = hint.UpdatedAt
+	}
+	if err := store.Put(entry); err != nil {
+		t.Fatalf("put surface resume entry from restore hint: %v", err)
 	}
 }

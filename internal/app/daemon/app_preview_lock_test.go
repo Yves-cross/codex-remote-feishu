@@ -93,7 +93,7 @@ func TestHandleUIEventsReleasesAppLockDuringFinalPreviewRewrite(t *testing.T) {
 	previewer := &reentrantAppLockPreviewer{app: app}
 	app.SetFinalBlockPreviewer(previewer)
 
-	app.service.MaterializeSurface("feishu:chat:1", "app-1", "chat-1", "ou_user")
+	app.service.MaterializeSurface("feishu:app-1:chat:1", "app-1", "chat-1", "ou_user")
 	app.service.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-1",
 		DisplayName:   "droid",
@@ -116,7 +116,7 @@ func TestHandleUIEventsReleasesAppLockDuringFinalPreviewRewrite(t *testing.T) {
 		defer app.mu.Unlock()
 		app.handleUIEventsLocked(context.Background(), []control.UIEvent{{
 			Kind:             control.UIEventBlockCommitted,
-			SurfaceSessionID: "feishu:chat:1",
+			SurfaceSessionID: "feishu:app-1:chat:1",
 			SourceMessageID:  "msg-1",
 			Block: &render.Block{
 				Kind:       render.BlockAssistantMarkdown,
@@ -149,7 +149,7 @@ func TestHandleUIEventsReleasesAppLockDuringGatewayApply(t *testing.T) {
 	gateway := &reentrantAppLockGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 	gateway.app = app
-	app.service.MaterializeSurface("feishu:chat:1", "app-1", "chat-1", "ou_user")
+	app.service.MaterializeSurface("feishu:app-1:chat:1", "app-1", "chat-1", "ou_user")
 
 	done := make(chan struct{})
 	go func() {
@@ -157,7 +157,7 @@ func TestHandleUIEventsReleasesAppLockDuringGatewayApply(t *testing.T) {
 		defer app.mu.Unlock()
 		app.handleUIEventsLocked(context.Background(), []control.UIEvent{{
 			Kind:             control.UIEventNotice,
-			SurfaceSessionID: "feishu:chat:1",
+			SurfaceSessionID: "feishu:app-1:chat:1",
 			Notice: &control.Notice{
 				Code:  "gateway_notice",
 				Title: "Gateway",

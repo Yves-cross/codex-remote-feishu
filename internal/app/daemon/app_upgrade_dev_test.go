@@ -55,7 +55,7 @@ func TestUpgradeDevManualCheckPromptsIdleSurface(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-1",
@@ -110,7 +110,7 @@ func TestUpgradeLatestDoesNotContinueDevCandidate(t *testing.T) {
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade latest",
@@ -153,7 +153,7 @@ func TestUpgradeDevClearsStalePendingCandidateMatchingLiveVersion(t *testing.T) 
 
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionUpgradeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:main:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/upgrade dev",

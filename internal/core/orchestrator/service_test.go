@@ -253,7 +253,7 @@ func TestAttachPinsObservedFocusedThread(t *testing.T) {
 
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
@@ -262,7 +262,7 @@ func TestAttachPinsObservedFocusedThread(t *testing.T) {
 	if len(events) < 2 {
 		t.Fatalf("expected snapshot and notice, got %d events", len(events))
 	}
-	surface := svc.root.Surfaces["feishu:chat:1"]
+	surface := svc.root.Surfaces["feishu:app-1:chat:1"]
 	if surface.SelectedThreadID != "thread-1" {
 		t.Fatalf("expected selected thread to be pinned, got %q", surface.SelectedThreadID)
 	}
@@ -289,13 +289,13 @@ func TestAttachFallsBackToActiveThreadWhenFocusedThreadUnknown(t *testing.T) {
 
 	svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionAttachInstance,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
 
-	surface := svc.root.Surfaces["feishu:chat:1"]
+	surface := svc.root.Surfaces["feishu:app-1:chat:1"]
 	if surface.SelectedThreadID != "thread-2" {
 		t.Fatalf("expected selected thread to fall back to active thread, got %q", surface.SelectedThreadID)
 	}
@@ -1544,7 +1544,7 @@ func TestNormalModeListWithoutOnlineWorkspacesShowsCreateWorkspacePicker(t *test
 
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
@@ -1572,7 +1572,7 @@ func TestVSCodeModeListWithoutOnlineInstancesReturnsNotice(t *testing.T) {
 	svc := newServiceForTest(&now)
 	svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionModeCommand,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/mode vscode",
@@ -1580,7 +1580,7 @@ func TestVSCodeModeListWithoutOnlineInstancesReturnsNotice(t *testing.T) {
 
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
@@ -1947,7 +1947,7 @@ func TestNormalModeListIncludesHeadlessWorkspace(t *testing.T) {
 
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionListInstances,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})

@@ -27,7 +27,7 @@ func TestDaemonRejectsOldTextMessageBeforeQueueing(t *testing.T) {
 	before := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionTextMessage,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "msg-old",
@@ -40,7 +40,7 @@ func TestDaemonRejectsOldTextMessageBeforeQueueing(t *testing.T) {
 	if len(sent) != 0 {
 		t.Fatalf("expected old text message not to dispatch commands, got %#v", sent)
 	}
-	snapshot := app.service.SurfaceSnapshot("feishu:chat:1")
+	snapshot := app.service.SurfaceSnapshot("feishu:app-1:chat:1")
 	if snapshot == nil || snapshot.Dispatch.QueuedCount != 0 || snapshot.Dispatch.ActiveItemStatus != "" {
 		t.Fatalf("expected old text message not to queue input, got %#v", snapshot)
 	}
@@ -64,7 +64,7 @@ func TestDaemonRejectsOldTextDetachCommandAndKeepsAttachment(t *testing.T) {
 	before := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionDetach,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Text:             "/detach",
@@ -73,7 +73,7 @@ func TestDaemonRejectsOldTextDetachCommandAndKeepsAttachment(t *testing.T) {
 		},
 	})
 
-	snapshot := app.service.SurfaceSnapshot("feishu:chat:1")
+	snapshot := app.service.SurfaceSnapshot("feishu:app-1:chat:1")
 	if snapshot == nil || snapshot.Attachment.InstanceID != "inst-1" {
 		t.Fatalf("expected old detach command not to detach surface, got %#v", snapshot)
 	}
@@ -94,7 +94,7 @@ func TestDaemonRejectsOldCardDetachAndShowsExpiredNotice(t *testing.T) {
 	before := len(gateway.operations)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionDetach,
-		SurfaceSessionID: "feishu:chat:1",
+		SurfaceSessionID: "feishu:app-1:chat:1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		Inbound: &control.ActionInboundMeta{
@@ -102,7 +102,7 @@ func TestDaemonRejectsOldCardDetachAndShowsExpiredNotice(t *testing.T) {
 		},
 	})
 
-	snapshot := app.service.SurfaceSnapshot("feishu:chat:1")
+	snapshot := app.service.SurfaceSnapshot("feishu:app-1:chat:1")
 	if snapshot == nil || snapshot.Attachment.InstanceID != "inst-1" {
 		t.Fatalf("expected old card callback not to detach surface, got %#v", snapshot)
 	}
