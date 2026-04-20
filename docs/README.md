@@ -116,6 +116,7 @@
 - [feishu-api-timeout-discipline.md](./general/feishu-api-timeout-discipline.md)
 - [feishu-business-card-interaction-principles.md](./general/feishu-business-card-interaction-principles.md)
 - [feishu-card-api-constraints.md](./general/feishu-card-api-constraints.md)
+- [feishu-card-interaction-model.md](./general/feishu-card-interaction-model.md)
 - [feishu-card-content-context-guidelines.md](./general/feishu-card-content-context-guidelines.md)
 - [feishu-product-design.md](./general/feishu-product-design.md)
 - [feishu-im-message-research.md](./general/feishu-im-message-research.md)
