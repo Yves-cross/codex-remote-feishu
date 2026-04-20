@@ -129,3 +129,54 @@ func TestThreadHistoryDetailElementsKeepDynamicContentOutOfMarkdown(t *testing.T
 		t.Fatalf("expected dynamic history entries to stop using markdown blocks, got %#v", elements)
 	}
 }
+
+func TestThreadHistoryDetailElementsKeepFooterButtonsVisibleWithLargeContent(t *testing.T) {
+	longLine := strings.Repeat("输出片段 ", 80)
+	elements := threadHistoryDetailElements(control.FeishuThreadHistoryView{
+		PickerID: "history-large",
+		Detail: &control.FeishuThreadHistoryTurnDetail{
+			Ordinal:     7,
+			Status:      "completed",
+			TurnID:      "turn-large",
+			UpdatedText: "刚刚",
+			Inputs: []string{
+				"第一条输入\n" + longLine,
+				"第二条输入\n" + longLine,
+				"第三条输入\n" + longLine,
+			},
+			Outputs: []string{
+				"第一条输出\n" + longLine,
+				"第二条输出\n" + longLine,
+				"第三条输出\n" + longLine,
+			},
+			PrevTurnID: "turn-newer",
+			NextTurnID: "turn-older",
+			ReturnPage: 2,
+		},
+	}, "life-1")
+
+	plainBlocks := 0
+	for _, element := range elements {
+		if plainTextContent(element) != "" {
+			plainBlocks++
+		}
+	}
+	if plainBlocks != 2 {
+		t.Fatalf("expected aggregated input/output plain-text blocks, got %d in %#v", plainBlocks, elements)
+	}
+	actions := cardActionsFromElements(elements)
+	var sawNewer, sawOlder, sawBack bool
+	for _, action := range actions {
+		switch cardStringValue(action["text"].(map[string]any)["content"]) {
+		case "较新一轮":
+			sawNewer = true
+		case "较旧一轮":
+			sawOlder = true
+		case "返回列表":
+			sawBack = true
+		}
+	}
+	if !sawNewer || !sawOlder || !sawBack {
+		t.Fatalf("expected footer navigation buttons to remain visible, got %#v / actions=%#v", elements, actions)
+	}
+}
