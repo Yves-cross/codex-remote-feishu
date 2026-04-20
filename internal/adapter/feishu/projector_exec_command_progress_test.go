@@ -41,7 +41,7 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	if op.CardTitle != "工作中" {
 		t.Fatalf("expected generic processing title, got %#v", op)
 	}
-	if !strings.Contains(op.CardBody, "**执行** `npm test`") || !strings.Contains(op.CardBody, "**执行** `go test ./...`") {
+	if !strings.Contains(op.CardBody, "执行：npm test") || !strings.Contains(op.CardBody, "执行：go test ./...") {
 		t.Fatalf("expected activity-prefixed command list body, got %#v", op)
 	}
 	if strings.Contains(op.CardBody, "bash -lc") {
@@ -52,10 +52,13 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
 	if !ok || len(elements) != 2 {
-		t.Fatalf("expected one markdown element per command row, got %#v", payload)
+		t.Fatalf("expected one plain_text element per command row, got %#v", payload)
 	}
-	if elements[0]["content"] != "**执行** `npm test`" || elements[1]["content"] != "**执行** `go test ./...`" {
+	if plainTextContent(elements[0]) != "执行：npm test" || plainTextContent(elements[1]) != "执行：go test ./..." {
 		t.Fatalf("unexpected rendered command rows: %#v", elements)
+	}
+	if containsRenderedTag(elements, "markdown") {
+		t.Fatalf("expected shared progress command rows to avoid markdown elements, got %#v", elements)
 	}
 	if strings.Contains(op.CardBody, "状态") || strings.Contains(op.CardBody, "目录") {
 		t.Fatalf("expected command list body only, got %#v", op)
@@ -110,7 +113,7 @@ func TestProjectExecCommandProgressRendersReasoningSummaryInsideTimeline(t *test
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	entry := strings.Index(body, "**执行**")
+	entry := strings.Index(body, "执行：")
 	reasoning := strings.Index(body, "Thinking.")
 	if entry == -1 || reasoning == -1 || reasoning <= entry {
 		t.Fatalf("expected reasoning summary to render as a timeline line after command entry, got %#v", ops[0])
@@ -152,7 +155,7 @@ func TestProjectExecCommandProgressUsesCanonicalTimelineOnly(t *testing.T) {
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**读取** `foo.txt`") || !strings.Contains(body, "**压缩** 上下文已压缩。") {
+	if !strings.Contains(body, "读取：foo.txt") || !strings.Contains(body, "压缩：上下文已压缩。") {
 		t.Fatalf("expected canonical timeline items to render, got %#v", ops[0])
 	}
 	if strings.Contains(body, "legacy.txt") || strings.Contains(body, "legacy command") {
@@ -189,10 +192,10 @@ func TestProjectExecCommandProgressDoesNotRenderFallbackCommandsAlongsideExplora
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**读取** `foo.txt`") || !strings.Contains(body, "**读取** `bar.txt`") {
+	if !strings.Contains(body, "读取：foo.txt") || !strings.Contains(body, "读取：bar.txt") {
 		t.Fatalf("expected exploration rows to stay visible, got %#v", ops[0])
 	}
-	if strings.Contains(body, "**执行** `cat foo.txt`") || strings.Contains(body, "**执行** `cat bar.txt`") {
+	if strings.Contains(body, "执行：cat foo.txt") || strings.Contains(body, "执行：cat bar.txt") {
 		t.Fatalf("expected fallback command rows to stay hidden when real exploration blocks exist, got %#v", ops[0])
 	}
 }
@@ -229,13 +232,13 @@ func TestProjectExecCommandProgressKeepsRealEntriesOnSameTimelineAsExplorationRo
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	readFoo := strings.Index(body, "**读取** `foo.txt`")
-	compact := strings.Index(body, "**压缩** 上下文已压缩。")
-	readBar := strings.Index(body, "**读取** `bar.txt`")
+	readFoo := strings.Index(body, "读取：foo.txt")
+	compact := strings.Index(body, "压缩：上下文已压缩。")
+	readBar := strings.Index(body, "读取：bar.txt")
 	if readFoo == -1 || compact == -1 || readBar == -1 || !(readFoo < compact && compact < readBar) {
 		t.Fatalf("expected real entries and exploration rows to share one seq timeline, got %#v", ops[0])
 	}
-	if strings.Contains(body, "**执行** `cat foo.txt`") || strings.Contains(body, "**执行** `cat bar.txt`") {
+	if strings.Contains(body, "执行：cat foo.txt") || strings.Contains(body, "执行：cat bar.txt") {
 		t.Fatalf("expected command fallback rows to stay hidden when real timeline items already exist, got %#v", ops[0])
 	}
 }
@@ -289,7 +292,7 @@ func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "**读取** `a.cpp`、`b.cpp`") || !strings.Contains(body, "**执行** `go test ./...`") || !strings.Contains(body, "**搜索** `上海天气`") || !strings.Contains(body, "**打开网页** https://example.com/weather") || !strings.Contains(body, "**MCP** docs.lookup（12 ms）") || !strings.Contains(body, "**压缩** 上下文已压缩。") {
+	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "读取：a.cpp、b.cpp") || !strings.Contains(body, "执行：go test ./...") || !strings.Contains(body, "搜索：上海天气") || !strings.Contains(body, "打开网页：https://example.com/weather") || !strings.Contains(body, "MCP：docs.lookup（12 ms）") || !strings.Contains(body, "压缩：上下文已压缩。") {
 		t.Fatalf("expected shared command and web search rows, got %#v", ops[0])
 	}
 	if strings.Contains(body, `bash -lc`) {
@@ -316,7 +319,7 @@ func TestProjectExecCommandProgressKeepsWebSearchStatusPlainText(t *testing.T) {
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**搜索** 正在搜索网络") || strings.Contains(body, "**搜索** `正在搜索网络`") {
+	if !strings.Contains(body, "搜索：正在搜索网络") || strings.Contains(body, "`正在搜索网络`") {
 		t.Fatalf("expected web search status to stay plain text, got %#v", ops[0])
 	}
 }
@@ -354,7 +357,7 @@ func TestProjectExecCommandProgressRendersFileChangeSummaryInNormal(t *testing.T
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**修改** <text_tag color='neutral'>service.go</text_tag>  <font color='green'>+1</font> <font color='red'>-1</font>") {
+	if !strings.Contains(body, "修改：service.go  +1 -1") {
 		t.Fatalf("expected normal file_change summary row, got %#v", ops[0])
 	}
 	if strings.Contains(body, "```diff") || strings.Contains(body, "@@ -1 +1 @@") {
@@ -394,11 +397,11 @@ func TestProjectExecCommandProgressRendersFileChangeDiffInVerbose(t *testing.T) 
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**修改** <text_tag color='neutral'>guide.md</text_tag> → <text_tag color='neutral'>guide-v2.md</text_tag>  <font color='green'>+1</font> <font color='red'>-1</font>") {
+	if !strings.Contains(body, "修改：guide.md -> guide-v2.md  +1 -1") {
 		t.Fatalf("expected verbose file_change summary row, got %#v", ops[0])
 	}
-	if !strings.Contains(body, "```diff\n@@ -1 +1 @@\n-old title\n+new title\n```") {
-		t.Fatalf("expected verbose file_change to append diff code block, got %#v", ops[0])
+	if !strings.Contains(body, "@@ -1 +1 @@\n-old title\n+new title") {
+		t.Fatalf("expected verbose file_change to append plain diff text, got %#v", ops[0])
 	}
 }
 
@@ -433,15 +436,15 @@ func TestProjectExecCommandProgressInterleavesExplorationRowsAndEntriesByVisible
 	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") {
 		t.Fatalf("expected exploration rows to render without headers, got %#v", ops[0])
 	}
-	readFoo := strings.Index(body, "**读取** `foo.txt`")
-	entry := strings.Index(body, "**执行**")
-	readBar := strings.Index(body, "**读取** `bar.txt`")
+	readFoo := strings.Index(body, "读取：foo.txt")
+	entry := strings.Index(body, "执行：")
+	readBar := strings.Index(body, "读取：bar.txt")
 	if readFoo == -1 || entry == -1 || readBar == -1 || !(readFoo < entry && entry < readBar) {
 		t.Fatalf("expected exploration rows and entries to follow visible seq order, got %#v", ops[0])
 	}
 }
 
-func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *testing.T) {
+func TestProjectExecCommandProgressRendersEachLineAsSeparatePlainTextElement(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{
 		Kind:             control.UIEventExecCommandProgress,
@@ -465,17 +468,71 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparateMarkdownElement(t *t
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
 	if !ok || len(elements) != 2 {
-		t.Fatalf("expected one markdown element per progress line, got %#v", payload)
+		t.Fatalf("expected one plain_text element per progress line, got %#v", payload)
 	}
-	if elements[0]["content"] != "**执行** `rg -n 'x' | sed -n '1,2p'`" {
+	if plainTextContent(elements[0]) != "执行：rg -n 'x' | sed -n '1,2p'" {
 		t.Fatalf("unexpected first progress line: %#v", elements[0])
 	}
-	second, _ := elements[1]["content"].(string)
-	if !strings.HasPrefix(second, "**执行** `rg --files -g '*.css' -g '") || !strings.HasSuffix(second, "...`") {
+	second := plainTextContent(elements[1])
+	if !strings.HasPrefix(second, "执行：rg --files -g '*.css' -g '") || !strings.HasSuffix(second, "...") {
 		t.Fatalf("expected truncated command to stay isolated in its own markdown element, got %#v", elements[1])
 	}
-	if strings.Contains(second, "<text_tag") {
-		t.Fatalf("expected progress lines to avoid raw text_tag markup, got %#v", elements[1])
+	if containsRenderedTag(elements, "markdown") || strings.Contains(second, "<text_tag") {
+		t.Fatalf("expected progress lines to avoid markdown/text_tag markup, got %#v", elements[1])
+	}
+}
+
+func TestProjectExecCommandProgressKeepsDynamicTextOutOfMarkdownElements(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind:             control.UIEventExecCommandProgress,
+		SurfaceSessionID: "surface-1",
+		SourceMessageID:  "om-source-1",
+		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			ItemID:   "mcp-1",
+			Blocks: []control.ExecCommandProgressBlock{{
+				BlockID: "exploration",
+				Kind:    "exploration",
+				Status:  "completed",
+				Rows: []control.ExecCommandProgressBlockRow{
+					{RowID: "read-1", Kind: "read", Items: []string{"docs/[draft].md"}, LastSeq: 1},
+					{RowID: "search-1", Kind: "search", Summary: "`compact` [todo]", Secondary: "internal/[core]", LastSeq: 2},
+				},
+			}},
+			Entries: []control.ExecCommandProgressEntry{
+				{ItemID: "cmd-1", Kind: "command_execution", Label: "执行", Summary: "echo \"[link](demo)\" `code`", LastSeq: 3},
+				{ItemID: "mcp-1", Kind: "mcp_tool_call", Label: "MCP", Summary: "docs.lookup [spec](demo) `fast`", LastSeq: 4},
+			},
+		}),
+	})
+	if len(ops) != 1 {
+		t.Fatalf("expected one operation, got %#v", ops)
+	}
+	body := ops[0].CardBody
+	if !containsAll(body,
+		"读取：[draft].md",
+		"搜索：`compact` [todo]（在 internal/[core] 内）",
+		"执行：echo \"[link](demo)\" `code`",
+		"MCP：docs.lookup [spec](demo) `fast`",
+	) {
+		t.Fatalf("expected shared progress body to preserve raw dynamic text, got %#v", ops[0])
+	}
+	payload := renderOperationCard(ops[0], ops[0].ordinaryCardEnvelope())
+	assertRenderedCardPayloadBasicInvariants(t, payload)
+	rendered := renderedV2BodyElements(t, ops[0])
+	if containsRenderedTag(rendered, "markdown") {
+		t.Fatalf("expected shared progress renderer to avoid markdown elements for dynamic rows, got %#v", rendered)
+	}
+	for _, element := range rendered {
+		text := plainTextContent(element)
+		if text == "" {
+			t.Fatalf("expected only plain_text progress rows, got %#v", element)
+		}
+		if strings.Contains(text, "<text_tag") || strings.Contains(text, "<font") {
+			t.Fatalf("expected dynamic text to stay out of Feishu markdown tags, got %#v", element)
+		}
 	}
 }
 
@@ -528,10 +585,10 @@ func TestProjectExecCommandProgressDropsOldLinesWhenOversized(t *testing.T) {
 	if !strings.Contains(op.CardBody, execProgressOmittedHistoryText) {
 		t.Fatalf("expected oversized shared progress to explain omitted history, got %#v", op)
 	}
-	if strings.Contains(op.CardBody, "`go test ./pkg/1`") || strings.Contains(op.CardBody, "`go test ./pkg/2`") {
+	if strings.Contains(op.CardBody, "执行：go test ./pkg/1\n") || strings.Contains(op.CardBody, "执行：go test ./pkg/2\n") {
 		t.Fatalf("expected oldest progress lines to fall out of active window, got %#v", op)
 	}
-	if !strings.Contains(op.CardBody, "`go test ./pkg/480`") {
+	if !strings.Contains(op.CardBody, "go test ./pkg/480") {
 		t.Fatalf("expected newest progress lines to stay visible, got %#v", op)
 	}
 }
@@ -654,7 +711,7 @@ func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T)
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "**读取** `README.md`、`types.go`") || !strings.Contains(body, "**列目录** internal/core") || !strings.Contains(body, "**搜索** `compact`（在 `internal/` 内）") {
+	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || !strings.Contains(body, "读取：README.md、types.go") || !strings.Contains(body, "列目录：internal/core") || !strings.Contains(body, "搜索：compact（在 internal/ 内）") {
 		t.Fatalf("expected exploration block rendering, got %#v", ops[0])
 	}
 }
@@ -683,7 +740,7 @@ func TestProjectExecCommandProgressRendersExploredHeaderForFailedExploration(t *
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || strings.Contains(body, "Exploration failed") || !strings.Contains(body, "**读取** `null`") {
+	if strings.Contains(body, "探索中") || strings.Contains(body, "已探索") || strings.Contains(body, "Exploration failed") || !strings.Contains(body, "读取：null") {
 		t.Fatalf("expected upstream-style explored rendering for failed block, got %#v", ops[0])
 	}
 }
@@ -718,7 +775,7 @@ func TestProjectExecCommandProgressKeepsMergedReadFilenamesVisible(t *testing.T)
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if strings.Contains(body, "...") || !strings.Contains(body, "`alpha-really-long-file-name.md`") || !strings.Contains(body, "`beta-really-long-file-name.md`") || !strings.Contains(body, "`gamma-really-long-file-name.md`") {
+	if strings.Contains(body, "...") || !strings.Contains(body, "alpha-really-long-file-name.md") || !strings.Contains(body, "beta-really-long-file-name.md") || !strings.Contains(body, "gamma-really-long-file-name.md") {
 		t.Fatalf("expected merged read filenames to stay fully visible, got %#v", ops[0])
 	}
 }
@@ -742,7 +799,7 @@ func TestProjectExecCommandProgressTruncatesLongCommandSummary(t *testing.T) {
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
 	body := ops[0].CardBody
-	if !strings.Contains(body, "**执行**") {
+	if !strings.Contains(body, "执行：") {
 		t.Fatalf("expected activity prefix, got %#v", ops[0])
 	}
 	if !strings.Contains(body, "...") {

@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -58,28 +59,17 @@ func execCommandProgressBody(progress control.ExecCommandProgress) string {
 func execCommandProgressElements(lines []string) []map[string]any {
 	elements := make([]map[string]any, 0, len(lines))
 	for _, line := range lines {
-		content := execCommandProgressMarkdownLine(line)
+		content := execCommandProgressTextLine(line)
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": content,
-		})
+		elements = append(elements, cardPlainTextBlockElement(content))
 	}
 	return elements
 }
 
-func execCommandProgressMarkdownLine(line string) string {
-	line = strings.TrimRight(line, " ")
-	switch {
-	case strings.HasPrefix(line, "  └ "):
-		return "└ " + strings.TrimSpace(strings.TrimPrefix(line, "  └ "))
-	case strings.HasPrefix(line, "    "):
-		return "· " + strings.TrimSpace(strings.TrimPrefix(line, "    "))
-	default:
-		return strings.TrimSpace(line)
-	}
+func execCommandProgressTextLine(line string) string {
+	return strings.TrimSpace(strings.TrimRight(line, " "))
 }
 
 func execCommandProgressLines(progress control.ExecCommandProgress) []string {
@@ -204,11 +194,11 @@ func renderExecProgressTimelineItem(item control.ExecCommandProgressTimelineItem
 func renderExecProgressBlockRow(row control.ExecCommandProgressBlockRow) string {
 	switch strings.ToLower(strings.TrimSpace(row.Kind)) {
 	case "read":
-		return execProgressMarkdownLabel("读取") + " " + strings.Join(execProgressReadNames(row.Items), "、")
+		return execProgressPrefixedText("读取", strings.Join(execProgressReadNames(row.Items), "、"))
 	case "list":
-		return execProgressMarkdownLabel("列目录") + " " + truncateExecProgressSummary(row.Summary, 60)
+		return execProgressPrefixedText("列目录", truncateExecProgressSummary(row.Summary, 60))
 	case "search":
-		return execProgressMarkdownLabel("搜索") + " " + renderExecProgressSearchSummary(row.Summary, row.Secondary, 60)
+		return execProgressPrefixedText("搜索", renderExecProgressSearchSummary(row.Summary, row.Secondary, 60))
 	default:
 		text := row.Summary
 		if text == "" && len(row.Items) != 0 {
@@ -234,7 +224,7 @@ func execProgressReadNames(items []string) []string {
 			continue
 		}
 		seen[name] = true
-		names = append(names, markdownCodeSpan(name))
+		names = append(names, name)
 	}
 	return names
 }
@@ -246,32 +236,27 @@ func renderExecProgressEntry(entry control.ExecCommandProgressEntry, verbose boo
 	}
 	switch strings.TrimSpace(entry.Kind) {
 	case "command_execution":
-		prefix := execProgressMarkdownLabel(label)
-		return prefix + " " + markdownCodeSpan(truncateExecProgressSummary(entry.Summary, 30))
+		return execProgressPrefixedText(label, truncateExecProgressSummary(entry.Summary, 30))
 	case "reasoning_summary":
 		return truncateExecProgressSummary(entry.Summary, 60)
 	case "web_search":
-		prefix := execProgressMarkdownLabel(label)
 		if label == "搜索" {
-			return prefix + " " + renderExecProgressSearchSummary(entry.Summary, "", 40)
+			return execProgressPrefixedText(label, renderExecProgressSearchSummary(entry.Summary, "", 40))
 		}
-		return prefix + " " + truncateExecProgressSummary(entry.Summary, 40)
+		return execProgressPrefixedText(label, truncateExecProgressSummary(entry.Summary, 40))
 	case "file_change":
 		return renderExecProgressFileChangeEntry(entry, verbose, fileLabels)
 	default:
-		prefix := execProgressMarkdownLabel(label)
-		return prefix + " " + truncateExecProgressSummary(entry.Summary, 40)
+		return execProgressPrefixedText(label, truncateExecProgressSummary(entry.Summary, 40))
 	}
 }
 
 func renderExecProgressFileChangeEntry(entry control.ExecCommandProgressEntry, verbose bool, fileLabels map[string]string) string {
 	if entry.FileChange == nil {
-		prefix := execProgressMarkdownLabel(firstNonEmpty(strings.TrimSpace(entry.Label), "修改"))
-		return prefix + " " + truncateExecProgressSummary(entry.Summary, 40)
+		return execProgressPrefixedText(firstNonEmpty(strings.TrimSpace(entry.Label), "修改"), truncateExecProgressSummary(entry.Summary, 40))
 	}
 	file := execProgressFileChangeSummaryEntry(*entry.FileChange)
-	prefix := execProgressMarkdownLabel(firstNonEmpty(strings.TrimSpace(entry.Label), "修改"))
-	line := prefix + " " + formatFileChangePath(file, fileLabels) + "  " + formatFileChangeCountsMarkdown(file.AddedLines, file.RemovedLines)
+	line := execProgressPrefixedText(firstNonEmpty(strings.TrimSpace(entry.Label), "修改"), formatFileChangePathText(file, fileLabels)+"  "+formatFileChangeCountsText(file.AddedLines, file.RemovedLines))
 	if !verbose {
 		return line
 	}
@@ -279,7 +264,7 @@ func renderExecProgressFileChangeEntry(entry control.ExecCommandProgressEntry, v
 	if diff == "" {
 		return line
 	}
-	return line + "\n" + markdownFencedCodeBlock("diff", diff)
+	return line + "\n" + diff
 }
 
 func execProgressFileChangeDisplayLabels(items []control.ExecCommandProgressTimelineItem) map[string]string {
@@ -329,26 +314,17 @@ func truncateExecProgressFileChangeDiff(diff string) string {
 	return out
 }
 
-func markdownFencedCodeBlock(language, text string) string {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
-	fenceRun := maxBacktickRun(text) + 3
-	fence := strings.Repeat("`", fenceRun)
-	language = strings.TrimSpace(language)
-	if language != "" {
-		return fence + language + "\n" + text + "\n" + fence
-	}
-	return fence + "\n" + text + "\n" + fence
-}
-
-func execProgressMarkdownLabel(label string) string {
+func execProgressPrefixedText(label, value string) string {
 	label = strings.TrimSpace(label)
-	if label == "" {
-		return ""
+	value = strings.TrimSpace(value)
+	switch {
+	case label == "":
+		return value
+	case value == "":
+		return label
+	default:
+		return label + "：" + value
 	}
-	return "**" + label + "**"
 }
 
 var shellLCCommandPattern = regexp.MustCompile(`^(?:/usr/bin/|/bin/)?(?:bash|sh|zsh)\s+-lc\s+(.+)$`)
@@ -392,27 +368,33 @@ func renderExecProgressSearchSummary(summary, secondary string, limit int) strin
 	}
 	suffix := ""
 	if secondary != "" {
-		suffix = "（在 " + markdownCodeSpan(secondary) + " 内）"
+		suffix = "（在 " + truncateExecProgressSummary(secondary, 24) + " 内）"
 	}
-	if !shouldCodeSpanExecProgressSearchSummary(summary) {
-		return truncateExecProgressSummary(summary+suffix, limit)
+	if suffix == "" {
+		return truncateExecProgressSummary(summary, limit)
 	}
 	available := limit - len([]rune(suffix))
 	if available <= 3 {
 		available = 3
 	}
-	return markdownCodeSpan(truncateExecProgressSummary(summary, available)) + suffix
+	return truncateExecProgressSummary(summary, available) + suffix
 }
 
-func shouldCodeSpanExecProgressSearchSummary(summary string) bool {
-	summary = strings.TrimSpace(summary)
-	if summary == "" {
-		return false
+func formatFileChangePathText(file control.FileChangeSummaryEntry, labels map[string]string) string {
+	path := strings.TrimSpace(file.Path)
+	movePath := strings.TrimSpace(file.MovePath)
+	switch {
+	case path != "" && movePath != "":
+		return fmt.Sprintf("%s -> %s", fileChangeDisplayLabel(path, labels), fileChangeDisplayLabel(movePath, labels))
+	case path != "":
+		return fileChangeDisplayLabel(path, labels)
+	case movePath != "":
+		return fileChangeDisplayLabel(movePath, labels)
+	default:
+		return "(unknown)"
 	}
-	switch summary {
-	case "正在搜索网络", "搜索完成":
-		return false
-	}
-	lower := strings.ToLower(summary)
-	return !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://")
+}
+
+func formatFileChangeCountsText(added, removed int) string {
+	return fmt.Sprintf("+%d -%d", added, removed)
 }

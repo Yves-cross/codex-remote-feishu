@@ -74,7 +74,7 @@ func execProgressRenderedElements(lines []execProgressRenderedLine) []map[string
 
 func execProgressOmittedHistoryLine() execProgressRenderedLine {
 	return execProgressRenderedLine{
-		Content: formatNeutralTextTag(execProgressOmittedHistoryText),
+		Content: execProgressOmittedHistoryText,
 	}
 }
 

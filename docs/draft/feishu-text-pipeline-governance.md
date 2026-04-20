@@ -173,17 +173,15 @@ final reply 额外多了一层：
 
 代表：
 
-- snapshot
 - notice body
-- plan body
-- request body
+- async inbound failure 固定 copy
 
 特点：
 
 - `CardBody` 最终会再包进 `tag=markdown`
-- 调用点需要自己保证字符串语义正确
+- 仅适合保留完全由系统拥有、且不混入动态值的固定文案
 
-### 模式 4：逐行 markdown element
+### 模式 4：逐行 structured/plain_text element
 
 代表：
 
@@ -191,9 +189,9 @@ final reply 额外多了一层：
 
 特点：
 
-- 比“整段大 body”更安全
-- 单行出问题不会污染整张卡后续所有行
-- 但每一行依然还是 markdown 字符串
+- 仍然属于 `system structured card lane` 的内部 renderer，而不是独立业务 lane
+- 动态值主体走 `plain_text` 行元素
+- `CardBody` 只保留镜像文本角色，不再承担真实渲染 contract
 
 ### 模式 5：final markdown 特殊管线
 
@@ -229,7 +227,7 @@ final reply 额外多了一层：
   - 动态值主体进 `plain_text`
 - `projectExecCommandProgress(...)` 虽然会写 `Operation.CardBody`，但真正发送时使用的是：
   - `rawCardDocument("工作中", "", cardThemeProgress, elements)`
-  - 也就是说它的真实出站路径是“卡片 elements”，不是“整段 body markdown”
+  - 并且当前 `elements` 已是逐行 `plain_text` block，不再是动态 markdown 行
 - `commandCatalogElements(...)`、`targetPickerElements(...)`、`pathPickerElements(...)`、`threadHistoryElements(...)` 等新一些的实现，已经不再依赖整段 raw markdown body，而是直接在同一个 card lane 里组合：
   - section
   - plain_text block
@@ -300,8 +298,8 @@ final reply 额外多了一层：
 文档上已经承认 final reply 是特例，但代码上仍然存在：
 
 - notice body 继续走 raw markdown
-- snapshot 继续走 raw markdown
-- request / picker 的很多局部仍在直接拼 markdown
+- async inbound failure 固定 copy 仍走 raw markdown
+- final 之外仍残留少量 adapter-owned markdown helper 语境
 
 这说明“系统卡片默认 structured/plain_text，final 单独处理”的方向还没有完全落地。
 
@@ -320,8 +318,8 @@ final reply 额外多了一层：
 当前已经有三种成熟度并存：
 
 - 比较好的：`FeishuCardTextSection`
-- 过渡中的：shared progress 行级 markdown
-- 风险高的：final 之外仍然直接拼 raw markdown body 的分支
+- 已收口的：shared progress 行级 plain_text renderer
+- 风险高的：final markdown，以及少量仍保留 raw markdown body 的固定系统 copy 分支
 
 这会让后续实现很难保持一致风格。
 
@@ -381,11 +379,17 @@ orchestrator / control / daemon 负责业务结构，不负责拼 Feishu markdow
 
 优先级较高的收敛对象：
 
-- snapshot
 - notice
-- request prompt
 - thread history
 - selection / target / path picker
+
+已完成第一批：
+
+- snapshot
+- plan update
+- thread-selection change
+- request prompt
+- shared progress
 
 方向：
 
@@ -401,15 +405,15 @@ orchestrator / control / daemon 负责业务结构，不负责拼 Feishu markdow
 
 这些应该都变成 adapter 内部实现细节，而不是业务层 contract。
 
-### 8.2 对 shared progress，维持“行级 element”方向，但补明确 contract
+### 8.2 对 shared progress，固定为 adapter-owned 行级 plain_text renderer
 
-shared progress 不一定要完全禁用 markdown，但它不应被定义成“第三条业务文本路径”。
+shared progress 已经不再需要“动态值逐行 markdown”这条 contract，也不应被定义成“第三条业务文本路径”。
 
 它更适合作为 `system structured card lane` 内部的一种 renderer：
 
-- 哪些 token 是系统拥有的
-- 哪些动态值必须先转 plain text 表示
-- 哪些场景不允许继续把外部字符串直接拼进 markdown 行
+- 每一行都由 adapter 直接决定最终 element carrier
+- 动态值主体默认停留在 `plain_text`
+- 业务层不再拥有“把动态字符串拼进 markdown 行”的入口
 
 ### 8.3 对 final，单独做 serializer 化治理
 
