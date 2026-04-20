@@ -11,18 +11,15 @@ import (
 
 func TestProjectSelectionPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:         control.SelectionPromptAttachInstance,
-			ContextTitle: "当前实例",
-			ContextText:  "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list",
-			Options: []control.SelectionOption{
-				{Index: 1, OptionID: "inst-2", Label: "web", MetaText: "2分前 · 当前焦点可跟随", ButtonLabel: "切换"},
-				{Index: 2, OptionID: "inst-3", Label: "ops", MetaText: "1小时前 · 当前被其他飞书会话接管", Disabled: true},
-			},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:         control.SelectionPromptAttachInstance,
+		ContextTitle: "当前实例",
+		ContextText:  "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list",
+		Options: []control.SelectionOption{
+			{Index: 1, OptionID: "inst-2", Label: "web", MetaText: "2分前 · 当前焦点可跟随", ButtonLabel: "切换"},
+			{Index: 2, OptionID: "inst-3", Label: "ops", MetaText: "1小时前 · 当前被其他飞书会话接管", Disabled: true},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -87,30 +84,27 @@ func TestProjectSelectionPromptAsCard(t *testing.T) {
 
 func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:         control.SelectionPromptAttachWorkspace,
-			ContextTitle: "当前工作区",
-			ContextText:  "droid · 5分前\n同工作区内继续工作可 /use，或直接发送文本（也可 /new）",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "/data/dl/web",
-					Label:       "web",
-					MetaText:    "2分前 · 有 VS Code 活动",
-					ButtonLabel: "切换",
-				},
-				{
-					Index:    2,
-					OptionID: "/data/dl/ops",
-					Label:    "ops",
-					MetaText: "1小时前 · 当前被其他飞书会话接管",
-					Disabled: true,
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:         control.SelectionPromptAttachWorkspace,
+		ContextTitle: "当前工作区",
+		ContextText:  "droid · 5分前\n同工作区内继续工作可 /use，或直接发送文本（也可 /new）",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "/data/dl/web",
+				Label:       "web",
+				MetaText:    "2分前 · 有 VS Code 活动",
+				ButtonLabel: "切换",
+			},
+			{
+				Index:    2,
+				OptionID: "/data/dl/ops",
+				Label:    "ops",
+				MetaText: "1小时前 · 当前被其他飞书会话接管",
+				Disabled: true,
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -160,23 +154,20 @@ func TestProjectWorkspaceSelectionPromptAsCard(t *testing.T) {
 
 func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:  control.SelectionPromptUseThread,
-			Title: "最近会话",
-			Options: []control.SelectionOption{
-				{
-					Index:               1,
-					OptionID:            "thread-1",
-					Label:               "修复登录流程",
-					ButtonLabel:         "修复登录流程",
-					Subtitle:            "/data/dl/droid\n可接管",
-					AllowCrossWorkspace: true,
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:  control.SelectionPromptUseThread,
+		Title: "最近会话",
+		Options: []control.SelectionOption{
+			{
+				Index:               1,
+				OptionID:            "thread-1",
+				Label:               "修复登录流程",
+				ButtonLabel:         "修复登录流程",
+				Subtitle:            "/data/dl/droid\n可接管",
+				AllowCrossWorkspace: true,
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -210,23 +201,20 @@ func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 
 func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:  control.SelectionPromptAttachWorkspace,
-			Title: "工作区列表",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "/data/dl/picdetect",
-					Label:       "picdetect",
-					ButtonLabel: "恢复",
-					MetaText:    "3分前 · 后台可恢复",
-					ActionKind:  "show_workspace_threads",
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:  control.SelectionPromptAttachWorkspace,
+		Title: "工作区列表",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "/data/dl/picdetect",
+				Label:       "picdetect",
+				ButtonLabel: "恢复",
+				MetaText:    "3分前 · 后台可恢复",
+				ActionKind:  "show_workspace_threads",
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -250,29 +238,26 @@ func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *t
 
 func TestProjectWorkspaceSelectionPromptRendersExpandAction(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:  control.SelectionPromptAttachWorkspace,
-			Title: "工作区列表",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "/data/dl/web",
-					Label:       "web",
-					ButtonLabel: "切换",
-					MetaText:    "2分前 · 有 VS Code 活动",
-				},
-				{
-					Index:       2,
-					Label:       "全部工作区",
-					ButtonLabel: "全部工作区",
-					MetaText:    "还有 3 个工作区未显示",
-					ActionKind:  "show_all_workspaces",
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:  control.SelectionPromptAttachWorkspace,
+		Title: "工作区列表",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "/data/dl/web",
+				Label:       "web",
+				ButtonLabel: "切换",
+				MetaText:    "2分前 · 有 VS Code 活动",
+			},
+			{
+				Index:       2,
+				Label:       "全部工作区",
+				ButtonLabel: "全部工作区",
+				MetaText:    "还有 3 个工作区未显示",
+				ActionKind:  "show_all_workspaces",
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -302,16 +287,14 @@ func TestProjectWorkspaceSelectionPromptRendersExpandAction(t *testing.T) {
 
 func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuDirectSelectionPrompt,
-		DaemonLifecycleID: "life-1",
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind: control.SelectionPromptUseThread,
-			Options: []control.SelectionOption{
-				{Index: 1, OptionID: "thread-1", Label: "修复登录流程", ButtonLabel: "修复登录流程"},
-			},
+	event := selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind: control.SelectionPromptUseThread,
+		Options: []control.SelectionOption{
+			{Index: 1, OptionID: "thread-1", Label: "修复登录流程", ButtonLabel: "修复登录流程"},
 		},
 	})
+	event.DaemonLifecycleID = "life-1"
+	ops := projector.Project("chat-1", event)
 	actionRow := cardElementButtons(t, ops[0].CardElements[1])
 	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
@@ -321,60 +304,57 @@ func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectUseAllSelectionPromptGroupsByWorkspace(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout:       "workspace_grouped_useall",
-			Kind:         control.SelectionPromptUseThread,
-			Title:        "全部会话",
-			ContextTitle: "当前工作区",
-			ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
-			ContextKey:   "/data/dl/droid",
-			Options: []control.SelectionOption{
-				{
-					Index:       3,
-					OptionID:    "thread-2",
-					Label:       "别的会话",
-					ButtonLabel: "别的会话",
-					GroupKey:    "/data/dl/web",
-					GroupLabel:  "web",
-					AgeText:     "2分前",
-					MetaText:    "2分14秒前",
-				},
-				{
-					Index:       1,
-					OptionID:    "thread-1",
-					Label:       "当前会话",
-					ButtonLabel: "当前会话",
-					GroupKey:    "/data/dl/droid",
-					GroupLabel:  "droid",
-					MetaText:    "已接管",
-					IsCurrent:   true,
-				},
-				{
-					Index:       4,
-					OptionID:    "thread-3",
-					Label:       "另一个会话",
-					ButtonLabel: "另一个会话",
-					GroupKey:    "/data/dl/web",
-					GroupLabel:  "web",
-					AgeText:     "2分前",
-					MetaText:    "38分前 · VS Code 占用中",
-				},
-				{
-					Index:       5,
-					OptionID:    "thread-4",
-					Label:       "不可接管会话",
-					ButtonLabel: "不可接管会话",
-					GroupKey:    "/data/dl/ops",
-					GroupLabel:  "ops",
-					AgeText:     "1小时前",
-					MetaText:    "当前被其他飞书会话接管，暂不可接管",
-					Disabled:    true,
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout:       "workspace_grouped_useall",
+		Kind:         control.SelectionPromptUseThread,
+		Title:        "全部会话",
+		ContextTitle: "当前工作区",
+		ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
+		ContextKey:   "/data/dl/droid",
+		Options: []control.SelectionOption{
+			{
+				Index:       3,
+				OptionID:    "thread-2",
+				Label:       "别的会话",
+				ButtonLabel: "别的会话",
+				GroupKey:    "/data/dl/web",
+				GroupLabel:  "web",
+				AgeText:     "2分前",
+				MetaText:    "2分14秒前",
+			},
+			{
+				Index:       1,
+				OptionID:    "thread-1",
+				Label:       "当前会话",
+				ButtonLabel: "当前会话",
+				GroupKey:    "/data/dl/droid",
+				GroupLabel:  "droid",
+				MetaText:    "已接管",
+				IsCurrent:   true,
+			},
+			{
+				Index:       4,
+				OptionID:    "thread-3",
+				Label:       "另一个会话",
+				ButtonLabel: "另一个会话",
+				GroupKey:    "/data/dl/web",
+				GroupLabel:  "web",
+				AgeText:     "2分前",
+				MetaText:    "38分前 · VS Code 占用中",
+			},
+			{
+				Index:       5,
+				OptionID:    "thread-4",
+				Label:       "不可接管会话",
+				ButtonLabel: "不可接管会话",
+				GroupKey:    "/data/dl/ops",
+				GroupLabel:  "ops",
+				AgeText:     "1小时前",
+				MetaText:    "当前被其他飞书会话接管，暂不可接管",
+				Disabled:    true,
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -551,18 +531,15 @@ func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t
 			MetaText:    fmt.Sprintf("%d分前", i),
 		})
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout:       "workspace_grouped_useall",
-			Kind:         control.SelectionPromptUseThread,
-			Title:        "全部会话",
-			ContextTitle: "当前工作区",
-			ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
-			ContextKey:   "/data/dl/droid",
-			Options:      options,
-		},
-	})
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout:       "workspace_grouped_useall",
+		Kind:         control.SelectionPromptUseThread,
+		Title:        "全部会话",
+		ContextTitle: "当前工作区",
+		ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
+		ContextKey:   "/data/dl/droid",
+		Options:      options,
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -582,33 +559,30 @@ func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t
 
 func TestProjectUseAllSelectionPromptRendersWorkspaceGroupExpandAction(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout: "workspace_grouped_useall",
-			Kind:   control.SelectionPromptUseThread,
-			Title:  "全部会话",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "thread-1",
-					Label:       "web-1",
-					ButtonLabel: "web-1",
-					GroupKey:    "/data/dl/web",
-					GroupLabel:  "web",
-					AgeText:     "2分前",
-					MetaText:    "2分前",
-				},
-				{
-					Index:       2,
-					Label:       "全部工作区",
-					ButtonLabel: "全部工作区",
-					MetaText:    "还有 3 个工作区未显示",
-					ActionKind:  "show_all_thread_workspaces",
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout: "workspace_grouped_useall",
+		Kind:   control.SelectionPromptUseThread,
+		Title:  "全部会话",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "thread-1",
+				Label:       "web-1",
+				ButtonLabel: "web-1",
+				GroupKey:    "/data/dl/web",
+				GroupLabel:  "web",
+				AgeText:     "2分前",
+				MetaText:    "2分前",
+			},
+			{
+				Index:       2,
+				Label:       "全部工作区",
+				ButtonLabel: "全部工作区",
+				MetaText:    "还有 3 个工作区未显示",
+				ActionKind:  "show_all_thread_workspaces",
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -635,33 +609,30 @@ func TestProjectUseAllSelectionPromptRendersWorkspaceGroupExpandAction(t *testin
 
 func TestProjectUseAllSelectionPromptRendersWorkspaceGroupReturnAction(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout: "workspace_grouped_useall",
-			Kind:   control.SelectionPromptUseThread,
-			Title:  "全部会话",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "thread-1",
-					Label:       "web-1",
-					ButtonLabel: "web-1",
-					GroupKey:    "/data/dl/web",
-					GroupLabel:  "web",
-					AgeText:     "2分前",
-					MetaText:    "2分前",
-				},
-				{
-					Index:       2,
-					Label:       "最近工作区",
-					ButtonLabel: "最近工作区",
-					MetaText:    "回到最近 5 个工作区",
-					ActionKind:  "show_recent_thread_workspaces",
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout: "workspace_grouped_useall",
+		Kind:   control.SelectionPromptUseThread,
+		Title:  "全部会话",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "thread-1",
+				Label:       "web-1",
+				ButtonLabel: "web-1",
+				GroupKey:    "/data/dl/web",
+				GroupLabel:  "web",
+				AgeText:     "2分前",
+				MetaText:    "2分前",
+			},
+			{
+				Index:       2,
+				Label:       "最近工作区",
+				ButtonLabel: "最近工作区",
+				MetaText:    "回到最近 5 个工作区",
+				ActionKind:  "show_recent_thread_workspaces",
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -734,18 +705,15 @@ func TestProjectUseAllExpandedSelectionPromptUsesWorkspaceIndexAndFitsInlineCall
 			ActionKind:  "show_recent_thread_workspaces",
 		},
 	)
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout:       "workspace_grouped_useall",
-			Kind:         control.SelectionPromptUseThread,
-			Title:        "全部会话",
-			ContextTitle: "当前工作区",
-			ContextText:  "current · 1分前\n同工作区内切换请直接用 /use",
-			ContextKey:   "/data/dl/current",
-			Options:      options,
-		},
-	})
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout:       "workspace_grouped_useall",
+		Kind:         control.SelectionPromptUseThread,
+		Title:        "全部会话",
+		ContextTitle: "当前工作区",
+		ContextText:  "current · 1分前\n同工作区内切换请直接用 /use",
+		ContextKey:   "/data/dl/current",
+		Options:      options,
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -793,39 +761,36 @@ func TestProjectUseAllExpandedSelectionPromptUsesWorkspaceIndexAndFitsInlineCall
 
 func TestProjectVSCodeRecentSelectionPromptShowsInstanceSummaryAndMore(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout:       "vscode_instance_threads",
-			Kind:         control.SelectionPromptUseThread,
-			Title:        "最近会话",
-			ContextTitle: "当前实例",
-			ContextText:  "droid · 当前跟随中",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "thread-current",
-					Label:       "修复登录流程",
-					ButtonLabel: "修复登录流程",
-					MetaText:    "当前跟随中 · 20秒前",
-					IsCurrent:   true,
-				},
-				{
-					Index:       2,
-					OptionID:    "thread-focus",
-					Label:       "整理日志",
-					ButtonLabel: "整理日志",
-					MetaText:    "VS Code 当前焦点 · 1分前",
-				},
-				{
-					Index:       3,
-					ButtonLabel: "当前实例全部会话",
-					MetaText:    "展开当前实例内的全部会话",
-					ActionKind:  "show_scoped_threads",
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout:       "vscode_instance_threads",
+		Kind:         control.SelectionPromptUseThread,
+		Title:        "最近会话",
+		ContextTitle: "当前实例",
+		ContextText:  "droid · 当前跟随中",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "thread-current",
+				Label:       "修复登录流程",
+				ButtonLabel: "修复登录流程",
+				MetaText:    "当前跟随中 · 20秒前",
+				IsCurrent:   true,
+			},
+			{
+				Index:       2,
+				OptionID:    "thread-focus",
+				Label:       "整理日志",
+				ButtonLabel: "整理日志",
+				MetaText:    "VS Code 当前焦点 · 1分前",
+			},
+			{
+				Index:       3,
+				ButtonLabel: "当前实例全部会话",
+				MetaText:    "展开当前实例内的全部会话",
+				ActionKind:  "show_scoped_threads",
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -858,41 +823,38 @@ func TestProjectVSCodeRecentSelectionPromptShowsInstanceSummaryAndMore(t *testin
 
 func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Layout:       "vscode_instance_threads",
-			Kind:         control.SelectionPromptUseThread,
-			Title:        "当前实例全部会话",
-			ContextTitle: "当前实例",
-			ContextText:  "droid · 当前跟随中",
-			Options: []control.SelectionOption{
-				{
-					Index:       1,
-					OptionID:    "thread-current",
-					Label:       "修复登录流程",
-					ButtonLabel: "修复登录流程",
-					MetaText:    "当前跟随中 · 20秒前",
-					IsCurrent:   true,
-				},
-				{
-					Index:       2,
-					OptionID:    "thread-focus",
-					Label:       "整理日志",
-					ButtonLabel: "整理日志",
-					MetaText:    "VS Code 当前焦点 · 1分前",
-				},
-				{
-					Index:       3,
-					OptionID:    "thread-old",
-					Label:       "历史会话",
-					ButtonLabel: "历史会话",
-					MetaText:    "已被其他飞书会话接管",
-					Disabled:    true,
-				},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Layout:       "vscode_instance_threads",
+		Kind:         control.SelectionPromptUseThread,
+		Title:        "当前实例全部会话",
+		ContextTitle: "当前实例",
+		ContextText:  "droid · 当前跟随中",
+		Options: []control.SelectionOption{
+			{
+				Index:       1,
+				OptionID:    "thread-current",
+				Label:       "修复登录流程",
+				ButtonLabel: "修复登录流程",
+				MetaText:    "当前跟随中 · 20秒前",
+				IsCurrent:   true,
+			},
+			{
+				Index:       2,
+				OptionID:    "thread-focus",
+				Label:       "整理日志",
+				ButtonLabel: "整理日志",
+				MetaText:    "VS Code 当前焦点 · 1分前",
+			},
+			{
+				Index:       3,
+				OptionID:    "thread-old",
+				Label:       "历史会话",
+				ButtonLabel: "历史会话",
+				MetaText:    "已被其他飞书会话接管",
+				Disabled:    true,
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -923,21 +885,18 @@ func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 
 func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:   "Slash 命令帮助",
-			Summary: "当前支持的 slash command 如下。",
-			Sections: []control.CommandCatalogSection{{
-				Title: "帮助",
-				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/help", "menu"},
-					Description: "查看帮助或再次打开命令菜单。",
-					Examples:    []string{"/menu"},
-				}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:   "Slash 命令帮助",
+		Summary: "当前支持的 slash command 如下。",
+		Sections: []control.CommandCatalogSection{{
+			Title: "帮助",
+			Entries: []control.CommandCatalogEntry{{
+				Commands:    []string{"/help", "menu"},
+				Description: "查看帮助或再次打开命令菜单。",
+				Examples:    []string{"/menu"},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -964,21 +923,18 @@ func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 
 func TestProjectCommandHelpCatalogPreservesAmpersandsInPlainText(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:   "命令帮助",
-			Summary: "常用联调命令。",
-			Sections: []control.CommandCatalogSection{{
-				Title: "联调",
-				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"go test ./internal/app/daemon ./internal/core/orchestrator"},
-					Description: "先跑 daemon/orchestrator。",
-					Examples:    []string{"cd web && npm test -- --run src/lib/api.test.ts"},
-				}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:   "命令帮助",
+		Summary: "常用联调命令。",
+		Sections: []control.CommandCatalogSection{{
+			Title: "联调",
+			Entries: []control.CommandCatalogEntry{{
+				Commands:    []string{"go test ./internal/app/daemon ./internal/core/orchestrator"},
+				Description: "先跑 daemon/orchestrator。",
+				Examples:    []string{"cd web && npm test -- --run src/lib/api.test.ts"},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1003,10 +959,7 @@ func TestProjectCommandHelpCatalogPreservesAmpersandsInPlainText(t *testing.T) {
 func TestProjectBuiltinCommandHelpCatalogPreservesPlaceholdersAndHidesKillInstance(t *testing.T) {
 	projector := NewProjector()
 	catalog := control.FeishuCommandHelpCatalog()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &catalog,
-	})
+	ops := projector.Project("chat-1", commandCatalogEvent(catalog))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1043,24 +996,21 @@ func TestProjectBuiltinCommandHelpCatalogPreservesPlaceholdersAndHidesKillInstan
 
 func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:       "命令菜单",
-			Summary:     "固定动作可直接点击。",
-			Interactive: true,
-			Sections: []control.CommandCatalogSection{{
-				Title: "实例与会话",
-				Entries: []control.CommandCatalogEntry{{
-					Commands:    []string{"/list"},
-					Description: "列出当前在线实例。",
-					Buttons: []control.CommandCatalogButton{
-						{Label: "查看实例", CommandText: "/list"},
-					},
-				}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:       "命令菜单",
+		Summary:     "固定动作可直接点击。",
+		Interactive: true,
+		Sections: []control.CommandCatalogSection{{
+			Title: "实例与会话",
+			Entries: []control.CommandCatalogEntry{{
+				Commands:    []string{"/list"},
+				Description: "列出当前在线实例。",
+				Buttons: []control.CommandCatalogButton{
+					{Label: "查看实例", CommandText: "/list"},
+				},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1097,26 +1047,23 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 
 func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "推理强度",
-			Summary:      "当前：`high`；飞书覆盖：`high`。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-			Sections: []control.CommandCatalogSection{{
-				Title: "立即应用",
-				Entries: []control.CommandCatalogEntry{{
-					Title:       "点击即应用",
-					Description: "这段说明在紧凑布局里不应该出现。",
-					Buttons: []control.CommandCatalogButton{
-						{Label: "low", CommandText: "/reasoning low"},
-						{Label: "high（当前）", CommandText: "/reasoning high", Disabled: true, Style: "primary"},
-					},
-				}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:        "推理强度",
+		Summary:      "当前：`high`；飞书覆盖：`high`。",
+		Interactive:  true,
+		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+		Sections: []control.CommandCatalogSection{{
+			Title: "立即应用",
+			Entries: []control.CommandCatalogEntry{{
+				Title:       "点击即应用",
+				Description: "这段说明在紧凑布局里不应该出现。",
+				Buttons: []control.CommandCatalogButton{
+					{Label: "low", CommandText: "/reasoning low"},
+					{Label: "high（当前）", CommandText: "/reasoning high", Disabled: true, Style: "primary"},
+				},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1219,26 +1166,24 @@ func firstCommandTexts(entries []control.CommandCatalogEntry) []string {
 
 func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
-		DaemonLifecycleID: "life-1",
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Interactive: true,
-			Sections: []control.CommandCatalogSection{{
-				Entries: []control.CommandCatalogEntry{{
-					Form: &control.CommandCatalogForm{
-						CommandID:   control.FeishuCommandReasoning,
-						CommandText: "/reasoning",
-						SubmitLabel: "应用",
-						Field: control.CommandCatalogFormField{
-							Name: "command_args",
-							Kind: control.CommandCatalogFormFieldText,
-						},
+	event := commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Interactive: true,
+		Sections: []control.CommandCatalogSection{{
+			Entries: []control.CommandCatalogEntry{{
+				Form: &control.CommandCatalogForm{
+					CommandID:   control.FeishuCommandReasoning,
+					CommandText: "/reasoning",
+					SubmitLabel: "应用",
+					Field: control.CommandCatalogFormField{
+						Name: "command_args",
+						Kind: control.CommandCatalogFormFieldText,
 					},
-				}},
+				},
 			}},
-		},
+		}},
 	})
+	event.DaemonLifecycleID = "life-1"
+	ops := projector.Project("chat-1", event)
 	formContainer := ops[0].CardElements[0]
 	formElements, _ := formContainer["elements"].([]map[string]any)
 	value := cardButtonPayload(t, formElements[1])
@@ -1249,18 +1194,16 @@ func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuDirectCommandCatalog,
-		DaemonLifecycleID: "life-1",
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Interactive: true,
-			Sections: []control.CommandCatalogSection{{
-				Entries: []control.CommandCatalogEntry{{
-					Buttons: []control.CommandCatalogButton{{Label: "查看实例", CommandText: "/list"}},
-				}},
+	event := commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Interactive: true,
+		Sections: []control.CommandCatalogSection{{
+			Entries: []control.CommandCatalogEntry{{
+				Buttons: []control.CommandCatalogButton{{Label: "查看实例", CommandText: "/list"}},
 			}},
-		},
+		}},
 	})
+	event.DaemonLifecycleID = "life-1"
+	ops := projector.Project("chat-1", event)
 	actionRow := cardElementButtons(t, ops[0].CardElements[0])
 	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
@@ -1273,19 +1216,16 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "发送设置",
-			Summary:      "请选择操作。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayDefault,
-			RelatedButtons: []control.CommandCatalogButton{{
-				Label:       "返回菜单",
-				CommandText: "/menu",
-			}},
-		},
-	})
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:        "发送设置",
+		Summary:      "请选择操作。",
+		Interactive:  true,
+		DisplayStyle: control.CommandCatalogDisplayDefault,
+		RelatedButtons: []control.CommandCatalogButton{{
+			Label:       "返回菜单",
+			CommandText: "/menu",
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1307,26 +1247,24 @@ func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testin
 
 func TestProjectRequestPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventFeishuDirectRequestPrompt,
-		SourceMessageID: "om-source-1",
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-1",
-			RequestType: "approval",
-			Title:       "需要确认",
-			ThreadID:    "thread-1",
-			ThreadTitle: "droid · 修复登录流程",
-			Sections: []control.FeishuCardTextSection{{
-				Lines: []string{"本地 Codex 想执行：", "```text", "git push", "```"},
-			}},
-			Options: []control.RequestPromptOption{
-				{OptionID: "accept", Label: "允许执行", Style: "primary"},
-				{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
-				{OptionID: "decline", Label: "拒绝", Style: "default"},
-				{OptionID: "captureFeedback", Label: "告诉 Codex 怎么改", Style: "default"},
-			},
+	event := requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-1",
+		RequestType: "approval",
+		Title:       "需要确认",
+		ThreadID:    "thread-1",
+		ThreadTitle: "droid · 修复登录流程",
+		Sections: []control.FeishuCardTextSection{{
+			Lines: []string{"本地 Codex 想执行：", "```text", "git push", "```"},
+		}},
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许执行", Style: "primary"},
+			{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+			{OptionID: "captureFeedback", Label: "告诉 Codex 怎么改", Style: "default"},
 		},
 	})
+	event.SourceMessageID = "om-source-1"
+	ops := projector.Project("chat-1", event)
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1400,17 +1338,15 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 
 func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuDirectRequestPrompt,
-		DaemonLifecycleID: "life-1",
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-1",
-			RequestType: "approval",
-			Options: []control.RequestPromptOption{
-				{OptionID: "accept", Label: "允许执行", Style: "primary"},
-			},
+	event := requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-1",
+		RequestType: "approval",
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许执行", Style: "primary"},
 		},
 	})
+	event.DaemonLifecycleID = "life-1"
+	ops := projector.Project("chat-1", event)
 	actionRow := cardElementButtons(t, ops[0].CardElements[0])
 	value := cardButtonPayload(t, actionRow[0])
 	if value["daemon_lifecycle_id"] != "life-1" {
@@ -1423,39 +1359,36 @@ func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:       "req-ui-1",
-			RequestType:     "request_user_input",
-			RequestRevision: 3,
-			Title:           "需要补充输入",
-			ThreadTitle:     "droid · 修复登录流程",
-			Sections: []control.FeishuCardTextSection{{
-				Lines: []string{"本地 Codex 正在等待你补充参数或说明。"},
-			}},
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:             "model",
-					Header:         "模型",
-					Question:       "请选择模型",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "gpt-5.4", Description: "推荐"},
-						{Label: "gpt-5.3"},
-					},
-				},
-				{
-					ID:          "notes",
-					Header:      "备注",
-					Question:    "补充说明",
-					AllowOther:  true,
-					Secret:      true,
-					Placeholder: "请填写补充说明",
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:       "req-ui-1",
+		RequestType:     "request_user_input",
+		RequestRevision: 3,
+		Title:           "需要补充输入",
+		ThreadTitle:     "droid · 修复登录流程",
+		Sections: []control.FeishuCardTextSection{{
+			Lines: []string{"本地 Codex 正在等待你补充参数或说明。"},
+		}},
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "model",
+				Header:         "模型",
+				Question:       "请选择模型",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "gpt-5.4", Description: "推荐"},
+					{Label: "gpt-5.3"},
 				},
 			},
+			{
+				ID:          "notes",
+				Header:      "备注",
+				Question:    "补充说明",
+				AllowOther:  true,
+				Secret:      true,
+				Placeholder: "请填写补充说明",
+			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1547,35 +1480,32 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 
 func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-ui-submit",
-			RequestType: "request_user_input",
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:             "model",
-					Header:         "模型",
-					Question:       "请选择模型",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "gpt-5.4"},
-						{Label: "gpt-5.3"},
-					},
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-ui-submit",
+		RequestType: "request_user_input",
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "model",
+				Header:         "模型",
+				Question:       "请选择模型",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "gpt-5.4"},
+					{Label: "gpt-5.3"},
 				},
-				{
-					ID:             "effort",
-					Header:         "推理强度",
-					Question:       "请选择推理强度",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "high"},
-						{Label: "medium"},
-					},
+			},
+			{
+				ID:             "effort",
+				Header:         "推理强度",
+				Question:       "请选择推理强度",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "high"},
+					{Label: "medium"},
 				},
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1594,38 +1524,35 @@ func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 
 func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:                          "req-ui-3",
-			RequestType:                        "request_user_input",
-			RequestRevision:                    4,
-			SubmitWithUnansweredConfirmPending: true,
-			SubmitWithUnansweredMissingLabels:  []string{"推理强度"},
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:             "model",
-					Header:         "模型",
-					Question:       "请选择模型",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "gpt-5.4"},
-						{Label: "gpt-5.3"},
-					},
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:                          "req-ui-3",
+		RequestType:                        "request_user_input",
+		RequestRevision:                    4,
+		SubmitWithUnansweredConfirmPending: true,
+		SubmitWithUnansweredMissingLabels:  []string{"推理强度"},
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "model",
+				Header:         "模型",
+				Question:       "请选择模型",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "gpt-5.4"},
+					{Label: "gpt-5.3"},
 				},
-				{
-					ID:             "effort",
-					Header:         "推理强度",
-					Question:       "请选择推理强度",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "high"},
-						{Label: "medium"},
-					},
+			},
+			{
+				ID:             "effort",
+				Header:         "推理强度",
+				Question:       "请选择推理强度",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "high"},
+					{Label: "medium"},
 				},
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1660,34 +1587,31 @@ func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) 
 
 func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-ui-4",
-			RequestType: "request_user_input",
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:             "model",
-					Header:         "模型",
-					Question:       "请选择模型",
-					Answered:       true,
-					DefaultValue:   "gpt-5.4",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "gpt-5.4"},
-						{Label: "gpt-5.3"},
-					},
-				},
-				{
-					ID:             "notes",
-					Header:         "备注",
-					Question:       "补充说明",
-					Answered:       false,
-					DirectResponse: false,
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-ui-4",
+		RequestType: "request_user_input",
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "model",
+				Header:         "模型",
+				Question:       "请选择模型",
+				Answered:       true,
+				DefaultValue:   "gpt-5.4",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "gpt-5.4"},
+					{Label: "gpt-5.3"},
 				},
 			},
+			{
+				ID:             "notes",
+				Header:         "备注",
+				Question:       "补充说明",
+				Answered:       false,
+				DirectResponse: false,
+			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -1715,16 +1639,13 @@ func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *te
 
 func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind: control.SelectionPromptKickThread,
-			Options: []control.SelectionOption{
-				{Index: 1, OptionID: "cancel", Label: "保留当前状态，不执行强踢。", ButtonLabel: "取消"},
-				{Index: 2, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
-			},
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind: control.SelectionPromptKickThread,
+		Options: []control.SelectionOption{
+			{Index: 1, OptionID: "cancel", Label: "保留当前状态，不执行强踢。", ButtonLabel: "取消"},
+			{Index: 2, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}

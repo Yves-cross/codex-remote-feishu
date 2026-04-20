@@ -17,6 +17,7 @@ const (
 // Feishu adapter for workspace/thread selection cards.
 type FeishuSelectionView struct {
 	PromptKind SelectionPromptKind
+	Prompt     *FeishuSelectionPromptView
 	Workspace  *FeishuWorkspaceSelectionView
 	Thread     *FeishuThreadSelectionView
 }

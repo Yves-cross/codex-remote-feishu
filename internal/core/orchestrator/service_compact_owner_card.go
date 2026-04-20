@@ -19,10 +19,8 @@ func compactOwnerFlowTrackingKey(flow *activeOwnerCardFlowRecord) string {
 }
 
 func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, title, theme string, sections []control.FeishuCardTextSection) control.UIEvent {
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID: strings.TrimSpace(surfaceID),
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
+	view := control.FeishuCommandView{
+		Page: &control.FeishuCommandPageView{
 			Title:           strings.TrimSpace(title),
 			MessageID:       strings.TrimSpace(flow.MessageID),
 			TrackingKey:     compactOwnerFlowTrackingKey(flow),
@@ -30,6 +28,11 @@ func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, ti
 			Patchable:       true,
 			SummarySections: cloneFeishuCardSections(sections),
 		},
+	}
+	return control.UIEvent{
+		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		SurfaceSessionID:  strings.TrimSpace(surfaceID),
+		FeishuCommandView: &view,
 	}
 }
 

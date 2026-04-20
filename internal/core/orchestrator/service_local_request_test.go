@@ -563,10 +563,10 @@ func TestApprovalRequestPromptUsesAttachedSurfaceForLocalTurn(t *testing.T) {
 			"declineLabel": "拒绝",
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one request prompt event, got %#v", events)
 	}
-	prompt := events[0].FeishuDirectRequestPrompt
+	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.RequestID != "req-1" || prompt.ThreadTitle != "droid · 修复登录流程" {
 		t.Fatalf("unexpected request prompt: %#v", prompt)
 	}
@@ -589,7 +589,7 @@ func TestApprovalRequestPromptUsesAttachedSurfaceForLocalTurn(t *testing.T) {
 	if events[0].FeishuRequestContext == nil {
 		t.Fatalf("expected feishu request context, got %#v", events[0])
 	}
-	if events[0].FeishuRequestContext.DTOOwner != control.FeishuUIDTOwnerDirectDTO {
+	if events[0].FeishuRequestContext.DTOOwner != control.FeishuUIDTOwnerRequest {
 		t.Fatalf("unexpected dto owner: %#v", events[0].FeishuRequestContext)
 	}
 	if events[0].FeishuRequestContext.RequestID != "req-1" || events[0].FeishuRequestContext.RequestType != "approval" {
@@ -642,14 +642,15 @@ func TestUnsupportedMCPRequestStoresPendingStateWithoutRenderingApprovalCard(t *
 		},
 	})
 
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected renderable permissions request prompt, got %#v", events)
 	}
-	if events[0].FeishuDirectRequestPrompt.RequestType != "permissions_request_approval" {
-		t.Fatalf("unexpected request prompt payload: %#v", events[0].FeishuDirectRequestPrompt)
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.RequestType != "permissions_request_approval" {
+		t.Fatalf("unexpected request prompt payload: %#v", prompt)
 	}
-	if len(events[0].FeishuDirectRequestPrompt.Sections) == 0 {
-		t.Fatalf("expected permissions prompt to expose structured sections, got %#v", events[0].FeishuDirectRequestPrompt)
+	if len(prompt.Sections) == 0 {
+		t.Fatalf("expected permissions prompt to expose structured sections, got %#v", prompt)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-mcp-1"]
 	if record == nil || record.RequestType != "permissions_request_approval" {
@@ -823,10 +824,10 @@ func TestRequestUserInputPromptUsesQuestionsAndStoresState(t *testing.T) {
 			},
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one request prompt event, got %#v", events)
 	}
-	prompt := events[0].FeishuDirectRequestPrompt
+	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.RequestType != "request_user_input" || len(prompt.Questions) != 2 {
 		t.Fatalf("unexpected request prompt: %#v", prompt)
 	}
@@ -997,14 +998,15 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[0].FeishuDirectRequestPrompt == nil || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
+	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
 		t.Fatalf("expected partial answer save to refresh prompt and notice, got %#v", events)
 	}
-	if events[0].FeishuDirectRequestPrompt.RequestRevision != 2 {
-		t.Fatalf("expected partial answer save to bump prompt revision, got %#v", events[0].FeishuDirectRequestPrompt)
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.RequestRevision != 2 {
+		t.Fatalf("expected partial answer save to bump prompt revision, got %#v", prompt)
 	}
-	if !events[0].FeishuDirectRequestPrompt.Questions[0].Answered || events[0].FeishuDirectRequestPrompt.Questions[0].DefaultValue != "gpt-5.4" {
-		t.Fatalf("expected refreshed prompt to show saved answer, got %#v", events[0].FeishuDirectRequestPrompt.Questions[0])
+	if !prompt.Questions[0].Answered || prompt.Questions[0].DefaultValue != "gpt-5.4" {
+		t.Fatalf("expected refreshed prompt to show saved answer, got %#v", prompt.Questions[0])
 	}
 	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if pending == nil || pending.DraftAnswers["model"] != "gpt-5.4" {
@@ -1085,7 +1087,7 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[0].FeishuDirectRequestPrompt == nil || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
+	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
 		t.Fatalf("expected option-only partial submit to refresh prompt and notice, got %#v", events)
 	}
 
@@ -1153,7 +1155,7 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[0].FeishuDirectRequestPrompt == nil || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
+	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
 		t.Fatalf("expected first step to save partial answer, got %#v", events)
 	}
 
@@ -1163,7 +1165,11 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 		RequestID:        "req-ui-1",
 		RequestOptionID:  "submit",
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil || !events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
+	if len(events) != 1 {
+		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
+	}
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.SubmitWithUnansweredConfirmPending {
 		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
 	}
 
@@ -1241,15 +1247,16 @@ func TestRespondRequestUserInputDispatchFailureRestoresPendingRequest(t *testing
 		t.Fatalf("expected submit to dispatch a command, got %#v", events)
 	}
 	restore := svc.HandleCommandDispatchFailure("surface-1", events[0].Command.CommandID, errors.New("relay unavailable"))
-	if len(restore) != 2 || restore[0].FeishuDirectRequestPrompt == nil || restore[1].Notice == nil {
+	if len(restore) != 2 || restore[1].Notice == nil {
 		t.Fatalf("expected prompt refresh and notice after dispatch failure, got %#v", restore)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if record == nil || record.PendingDispatchCommandID != "" || record.CardRevision != 2 {
 		t.Fatalf("expected request to be restored with bumped revision, got %#v", record)
 	}
-	if restore[0].FeishuDirectRequestPrompt.RequestRevision != 2 {
-		t.Fatalf("expected refreshed prompt revision, got %#v", restore[0].FeishuDirectRequestPrompt)
+	prompt := requestPromptFromEvent(t, restore[0])
+	if prompt.RequestRevision != 2 {
+		t.Fatalf("expected refreshed prompt revision, got %#v", prompt)
 	}
 	if restore[1].Notice.Code != "dispatch_failed" {
 		t.Fatalf("expected dispatch_failed notice, got %#v", restore[1].Notice)
@@ -1378,7 +1385,7 @@ func TestRespondRequestUserInputCommandRejectedRestoresPendingRequest(t *testing
 		Accepted:  false,
 		Error:     "translator failed",
 	})
-	if len(restore) != 2 || restore[0].FeishuDirectRequestPrompt == nil || restore[1].Notice == nil {
+	if len(restore) != 2 || restore[1].Notice == nil {
 		t.Fatalf("expected prompt refresh and notice after command reject, got %#v", restore)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
@@ -1446,11 +1453,12 @@ func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *
 		RequestID:        "req-ui-1",
 		RequestOptionID:  "cancel_submit_with_unanswered",
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected cancel_submit_with_unanswered to refresh request prompt, got %#v", events)
 	}
-	if events[0].FeishuDirectRequestPrompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected cancel_submit_with_unanswered to clear confirm state, got %#v", events[0].FeishuDirectRequestPrompt)
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.SubmitWithUnansweredConfirmPending {
+		t.Fatalf("expected cancel_submit_with_unanswered to clear confirm state, got %#v", prompt)
 	}
 	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if pending == nil || pending.SubmitWithUnansweredConfirmPending {

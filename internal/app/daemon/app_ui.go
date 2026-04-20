@@ -303,24 +303,6 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			break
 		}
 	}
-	if event.FeishuDirectCommandCatalog != nil && strings.TrimSpace(event.FeishuDirectCommandCatalog.TrackingKey) != "" {
-		for _, operation := range operations {
-			if operation.Kind != feishu.OperationSendCard {
-				continue
-			}
-			if strings.TrimSpace(operation.MessageID) == "" {
-				continue
-			}
-			a.service.RecordOwnerCardFlowMessage(
-				event.SurfaceSessionID,
-				event.FeishuDirectCommandCatalog.TrackingKey,
-				operation.MessageID,
-			)
-			a.recordUpgradeOwnerCardMessageLocked(event.FeishuDirectCommandCatalog.TrackingKey, operation.MessageID)
-			a.recordVSCodeMigrationFlowMessageLocked(event.FeishuDirectCommandCatalog.TrackingKey, operation.MessageID)
-			break
-		}
-	}
 	if event.FeishuCommandView != nil && event.FeishuCommandView.Page != nil && strings.TrimSpace(event.FeishuCommandView.Page.TrackingKey) != "" {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
@@ -331,6 +313,10 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			}
 			a.service.RecordOwnerCardFlowMessage(
 				event.SurfaceSessionID,
+				event.FeishuCommandView.Page.TrackingKey,
+				operation.MessageID,
+			)
+			a.recordUpgradeOwnerCardMessageLocked(
 				event.FeishuCommandView.Page.TrackingKey,
 				operation.MessageID,
 			)

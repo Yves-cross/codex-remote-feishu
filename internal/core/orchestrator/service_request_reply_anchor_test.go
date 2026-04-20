@@ -24,7 +24,7 @@ func TestRemoteRequestPromptCarriesTurnReplyAnchor(t *testing.T) {
 			"title":       "需要确认",
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one request prompt event, got %#v", events)
 	}
 	if events[0].SourceMessageID != "msg-1" {

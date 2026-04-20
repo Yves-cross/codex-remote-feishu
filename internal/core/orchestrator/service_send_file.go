@@ -62,17 +62,20 @@ func sendFileReplacementSummarySections(lines ...string) []control.FeishuCardTex
 
 func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID, title, theme string, lines ...string) control.UIEvent {
 	_ = messageID
-	return control.UIEvent{
-		Kind:                     control.UIEventFeishuDirectCommandCatalog,
-		GatewayID:                surface.GatewayID,
-		SurfaceSessionID:         surface.SurfaceSessionID,
-		InlineReplaceCurrentCard: true,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
+	view := control.FeishuCommandView{
+		Page: &control.FeishuCommandPageView{
 			Title:           strings.TrimSpace(title),
 			ThemeKey:        strings.TrimSpace(theme),
 			Interactive:     false,
 			SummarySections: sendFileReplacementSummarySections(lines...),
 		},
+	}
+	return control.UIEvent{
+		Kind:                     control.UIEventFeishuDirectCommandCatalog,
+		GatewayID:                surface.GatewayID,
+		SurfaceSessionID:         surface.SurfaceSessionID,
+		InlineReplaceCurrentCard: true,
+		FeishuCommandView:        &view,
 	}
 }
 

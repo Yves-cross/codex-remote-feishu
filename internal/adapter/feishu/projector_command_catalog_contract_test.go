@@ -10,13 +10,10 @@ import (
 func TestProjectCommandCatalogSummaryUsesPlainTextSections(t *testing.T) {
 	projector := NewProjector()
 	summary := "状态：`ok`\n下一步：[打开 Cron](https://example.com/cron)"
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:   "Cron",
-			Summary: summary,
-		},
-	})
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:   "Cron",
+		Summary: summary,
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -40,21 +37,18 @@ func TestProjectCommandCatalogEntryUsesPlainTextSections(t *testing.T) {
 	desc := "说明 [link](https://example.com)"
 	example := "/do example"
 	want := title + "\n命令：" + command + "\n" + desc + "\n例如：" + example
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title: "测试目录",
-			Sections: []control.CommandCatalogSection{{
-				Title: "测试分组",
-				Entries: []control.CommandCatalogEntry{{
-					Title:       title,
-					Commands:    []string{command},
-					Description: desc,
-					Examples:    []string{example},
-				}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title: "测试目录",
+		Sections: []control.CommandCatalogSection{{
+			Title: "测试分组",
+			Entries: []control.CommandCatalogEntry{{
+				Title:       title,
+				Commands:    []string{command},
+				Description: desc,
+				Examples:    []string{example},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}

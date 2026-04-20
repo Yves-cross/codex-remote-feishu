@@ -173,20 +173,27 @@ func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) co
 }
 
 func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, summary, theme string, buttons []control.CommandCatalogButton) control.UIEvent {
-	catalog := &control.FeishuDirectCommandCatalog{
-		Title:          strings.TrimSpace(title),
-		Summary:        strings.TrimSpace(summary),
-		MessageID:      strings.TrimSpace(flowMessageID(flow)),
-		TrackingKey:    strings.TrimSpace(flowTrackingKey(flow)),
-		ThemeKey:       strings.TrimSpace(theme),
-		Patchable:      true,
-		Interactive:    len(buttons) > 0,
-		RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
+	view := control.FeishuCommandView{
+		Page: &control.FeishuCommandPageView{
+			Title:          strings.TrimSpace(title),
+			MessageID:      strings.TrimSpace(flowMessageID(flow)),
+			TrackingKey:    strings.TrimSpace(flowTrackingKey(flow)),
+			ThemeKey:       strings.TrimSpace(theme),
+			Patchable:      true,
+			Interactive:    len(buttons) > 0,
+			RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
+			SummarySections: func() []control.FeishuCardTextSection {
+				if strings.TrimSpace(summary) == "" {
+					return nil
+				}
+				return []control.FeishuCardTextSection{{Lines: []string{strings.TrimSpace(summary)}}}
+			}(),
+		},
 	}
 	return control.UIEvent{
-		Kind:                       control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID:           strings.TrimSpace(surfaceID),
-		FeishuDirectCommandCatalog: catalog,
+		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		SurfaceSessionID:  strings.TrimSpace(surfaceID),
+		FeishuCommandView: &view,
 	}
 }
 

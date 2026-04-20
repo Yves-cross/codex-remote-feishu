@@ -147,19 +147,14 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			card:             rawCardDocument(title, "", cardThemePlan, elements),
 		}}
 	case control.UIEventFeishuDirectSelectionPrompt:
-		var prompt *control.FeishuDirectSelectionPrompt
-		switch {
-		case event.FeishuSelectionView != nil:
-			projected, ok := FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext)
-			if !ok {
-				return nil
-			}
-			prompt = &projected
-		case event.FeishuDirectSelectionPrompt != nil:
-			prompt = event.FeishuDirectSelectionPrompt
-		default:
+		if event.FeishuSelectionView == nil {
 			return nil
 		}
+		projected, ok := FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext)
+		if !ok {
+			return nil
+		}
+		prompt := &projected
 		title := strings.TrimSpace(prompt.Title)
 		if title == "" {
 			title = "请选择"
@@ -188,19 +183,14 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			card:             rawCardDocument(title, "", cardThemeInfo, elements),
 		}}
 	case control.UIEventFeishuDirectCommandCatalog:
-		var catalog *control.FeishuDirectCommandCatalog
-		switch {
-		case event.FeishuCommandView != nil:
-			projected, ok := FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
-			if !ok {
-				return nil
-			}
-			catalog = &projected
-		case event.FeishuDirectCommandCatalog != nil:
-			catalog = event.FeishuDirectCommandCatalog
-		default:
+		if event.FeishuCommandView == nil {
 			return nil
 		}
+		projected, ok := FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
+		if !ok {
+			return nil
+		}
+		catalog := &projected
 		title := strings.TrimSpace(catalog.Title)
 		if title == "" {
 			title = "命令菜单"
@@ -227,14 +217,14 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		operation.card = rawCardDocument(title, body, theme, elements)
 		return []Operation{operation}
 	case control.UIEventFeishuDirectRequestPrompt:
-		if event.FeishuDirectRequestPrompt == nil {
+		if event.FeishuRequestView == nil {
 			return nil
 		}
-		title := strings.TrimSpace(event.FeishuDirectRequestPrompt.Title)
+		title := strings.TrimSpace(event.FeishuRequestView.Title)
 		if title == "" {
 			title = "需要确认"
 		}
-		elements := requestPromptElements(*event.FeishuDirectRequestPrompt, event.DaemonLifecycleID)
+		elements := requestPromptElements(*event.FeishuRequestView, event.DaemonLifecycleID)
 		return []Operation{{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,

@@ -13,7 +13,7 @@ const (
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
 )
 
-func requestPromptSections(prompt control.FeishuDirectRequestPrompt) []control.FeishuCardTextSection {
+func requestPromptSections(prompt control.FeishuRequestView) []control.FeishuCardTextSection {
 	sections := make([]control.FeishuCardTextSection, 0, len(prompt.Sections)+1)
 	if threadTitle := strings.TrimSpace(prompt.ThreadTitle); threadTitle != "" {
 		sections = append(sections, control.FeishuCardTextSection{
@@ -28,7 +28,7 @@ func requestPromptSections(prompt control.FeishuDirectRequestPrompt) []control.F
 	return sections
 }
 
-func requestPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func requestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	elements := appendCardTextSections(nil, requestPromptSections(prompt))
 	switch normalizeRequestPromptType(prompt.RequestType) {
 	case "request_user_input":
@@ -73,7 +73,7 @@ func requestPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifec
 	return elements
 }
 
-func requestUserInputPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	elements := make([]map[string]any, 0, len(prompt.Questions)*3+2)
 	if progress := requestPromptProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
@@ -131,7 +131,7 @@ func requestUserInputPromptElements(prompt control.FeishuDirectRequestPrompt, da
 	return elements
 }
 
-func requestUserInputExtraActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func requestUserInputExtraActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	if prompt.SubmitWithUnansweredConfirmPending || len(prompt.Options) == 0 {
 		return nil
 	}
@@ -146,7 +146,7 @@ func requestUserInputExtraActionRow(prompt control.FeishuDirectRequestPrompt, da
 	return cardButtonGroupElement(actions)
 }
 
-func requestPromptButton(prompt control.FeishuDirectRequestPrompt, option control.RequestPromptOption, daemonLifecycleID string) map[string]any {
+func requestPromptButton(prompt control.FeishuRequestView, option control.RequestPromptOption, daemonLifecycleID string) map[string]any {
 	label := strings.TrimSpace(option.Label)
 	if label == "" {
 		return nil
@@ -164,7 +164,7 @@ func requestPromptButton(prompt control.FeishuDirectRequestPrompt, option contro
 	}, daemonLifecycleID), false, "")
 }
 
-func requestUserInputOptionButton(prompt control.FeishuDirectRequestPrompt, question control.RequestPromptQuestion, option control.RequestPromptQuestionOption, daemonLifecycleID string) map[string]any {
+func requestUserInputOptionButton(prompt control.FeishuRequestView, question control.RequestPromptQuestion, option control.RequestPromptQuestionOption, daemonLifecycleID string) map[string]any {
 	label := strings.TrimSpace(option.Label)
 	if label == "" {
 		return nil

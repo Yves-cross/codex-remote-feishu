@@ -21,17 +21,18 @@ func TestHelpActionBuildsCommandCatalogEvent(t *testing.T) {
 		GatewayID:        "app-1",
 	})
 
-	if len(events) != 1 || events[0].FeishuDirectCommandCatalog == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected command catalog event, got %#v", events)
 	}
+	catalog := commandCatalogFromEvent(t, events[0])
 	if events[0].Kind != control.UIEventFeishuDirectCommandCatalog {
 		t.Fatalf("unexpected event kind: %#v", events[0])
 	}
-	if events[0].FeishuDirectCommandCatalog.Interactive {
-		t.Fatalf("help catalog should be non-interactive: %#v", events[0].FeishuDirectCommandCatalog)
+	if catalog.Interactive {
+		t.Fatalf("help catalog should be non-interactive: %#v", catalog)
 	}
-	if events[0].FeishuDirectCommandCatalog.Title != "Slash 命令帮助" {
-		t.Fatalf("unexpected help catalog title: %#v", events[0].FeishuDirectCommandCatalog)
+	if catalog.Title != "Slash 命令帮助" {
+		t.Fatalf("unexpected help catalog title: %#v", catalog)
 	}
 }
 
@@ -46,7 +47,7 @@ func TestHelpActionNormalModeCollapsesSwitchTargetCommands(t *testing.T) {
 		ActorUserID:      "user-1",
 		GatewayID:        "app-1",
 	})
-	catalog := events[0].FeishuDirectCommandCatalog
+	catalog := commandCatalogFromEvent(t, events[0])
 	if catalog == nil {
 		t.Fatalf("expected help catalog event, got %#v", events)
 	}
@@ -79,7 +80,7 @@ func TestHelpActionVSCodeModeKeepsSeparateSwitchTargetCommands(t *testing.T) {
 		ActorUserID:      "user-1",
 		GatewayID:        "app-1",
 	})
-	catalog := events[0].FeishuDirectCommandCatalog
+	catalog := commandCatalogFromEvent(t, events[0])
 	if catalog == nil {
 		t.Fatalf("expected help catalog event, got %#v", events)
 	}

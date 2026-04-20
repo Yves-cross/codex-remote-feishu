@@ -18,16 +18,19 @@ func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, lines ...
 	if len(bodyLines) != 0 {
 		sections = append(sections, control.FeishuCardTextSection{Lines: bodyLines})
 	}
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuDirectCommandCatalog,
-		SurfaceSessionID: strings.TrimSpace(surfaceID),
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
+	view := control.FeishuCommandView{
+		Page: &control.FeishuCommandPageView{
 			MessageID:       strings.TrimSpace(messageID),
 			Title:           strings.TrimSpace(title),
 			ThemeKey:        strings.TrimSpace(theme),
 			Interactive:     false,
 			SummarySections: sections,
 		},
+	}
+	return control.UIEvent{
+		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		SurfaceSessionID:  strings.TrimSpace(surfaceID),
+		FeishuCommandView: &view,
 	}
 }
 

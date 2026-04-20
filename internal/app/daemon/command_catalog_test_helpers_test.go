@@ -28,9 +28,6 @@ func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
 
 func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectCommandCatalog {
 	t.Helper()
-	if event.FeishuDirectCommandCatalog != nil {
-		return event.FeishuDirectCommandCatalog
-	}
 	if event.FeishuCommandView != nil {
 		catalog, ok := feishu.FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
 		if !ok {

@@ -34,10 +34,10 @@ func TestPermissionsRequestPromptBecomesRenderableCard(t *testing.T) {
 		},
 	})
 
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected renderable permissions request card, got %#v", events)
 	}
-	prompt := events[0].FeishuDirectRequestPrompt
+	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.RequestType != "permissions_request_approval" || len(prompt.Options) != 3 {
 		t.Fatalf("unexpected permissions prompt: %#v", prompt)
 	}

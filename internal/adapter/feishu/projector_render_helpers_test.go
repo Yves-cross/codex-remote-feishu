@@ -3,7 +3,38 @@ package feishu
 import (
 	"strings"
 	"testing"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
+
+func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) control.UIEvent {
+	view := control.FeishuSelectionView{
+		PromptKind: prompt.Kind,
+	}
+	promptView := control.FeishuSelectionPromptView(prompt)
+	view.Prompt = &promptView
+	return control.UIEvent{
+		Kind:                control.UIEventFeishuDirectSelectionPrompt,
+		FeishuSelectionView: &view,
+	}
+}
+
+func commandCatalogEvent(catalog control.FeishuDirectCommandCatalog) control.UIEvent {
+	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
+	view := control.FeishuCommandView{Page: &page}
+	return control.UIEvent{
+		Kind:              control.UIEventFeishuDirectCommandCatalog,
+		FeishuCommandView: &view,
+	}
+}
+
+func requestPromptEvent(prompt control.FeishuDirectRequestPrompt) control.UIEvent {
+	view := control.FeishuRequestView(prompt)
+	return control.UIEvent{
+		Kind:              control.UIEventFeishuDirectRequestPrompt,
+		FeishuRequestView: &view,
+	}
+}
 
 func containsAll(body string, parts ...string) bool {
 	for _, part := range parts {

@@ -9,23 +9,20 @@ import (
 
 func TestProjectPermissionsRequestPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-perm-1",
-			RequestType: "permissions_request_approval",
-			Title:       "需要授予权限",
-			Sections: []control.FeishuCardTextSection{
-				{Lines: []string{"本地 Codex 正在等待授予附加权限。"}},
-				{Label: "申请权限", Lines: []string{"- Read docs (`docs.read`)"}},
-			},
-			Options: []control.RequestPromptOption{
-				{OptionID: "accept", Label: "允许本次", Style: "primary"},
-				{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
-				{OptionID: "decline", Label: "拒绝", Style: "default"},
-			},
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-perm-1",
+		RequestType: "permissions_request_approval",
+		Title:       "需要授予权限",
+		Sections: []control.FeishuCardTextSection{
+			{Lines: []string{"本地 Codex 正在等待授予附加权限。"}},
+			{Label: "申请权限", Lines: []string{"- Read docs (`docs.read`)"}},
 		},
-	})
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许本次", Style: "primary"},
+			{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+		},
+	}))
 
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -56,41 +53,38 @@ func TestProjectPermissionsRequestPromptAsCard(t *testing.T) {
 
 func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:       "req-mcp-form-1",
-			RequestType:     "mcp_server_elicitation",
-			RequestRevision: 5,
-			Title:           "需要处理 MCP 请求",
-			Sections: []control.FeishuCardTextSection{{
-				Lines: []string{"请补充返回内容", "MCP 服务：docs", "授权页面：https://example.com/approve?next=`token`"},
-			}},
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:             "mode",
-					Header:         "模式",
-					Question:       "选择执行模式（必填）",
-					DirectResponse: true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "auto"},
-						{Label: "manual"},
-					},
-				},
-				{
-					ID:          "token",
-					Header:      "Token",
-					Question:    "填写 OAuth token（必填）",
-					AllowOther:  true,
-					Placeholder: "请填写 token",
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:       "req-mcp-form-1",
+		RequestType:     "mcp_server_elicitation",
+		RequestRevision: 5,
+		Title:           "需要处理 MCP 请求",
+		Sections: []control.FeishuCardTextSection{{
+			Lines: []string{"请补充返回内容", "MCP 服务：docs", "授权页面：https://example.com/approve?next=`token`"},
+		}},
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "mode",
+				Header:         "模式",
+				Question:       "选择执行模式（必填）",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "auto"},
+					{Label: "manual"},
 				},
 			},
-			Options: []control.RequestPromptOption{
-				{OptionID: "decline", Label: "拒绝", Style: "default"},
-				{OptionID: "cancel", Label: "取消", Style: "default"},
+			{
+				ID:          "token",
+				Header:      "Token",
+				Question:    "填写 OAuth token（必填）",
+				AllowOther:  true,
+				Placeholder: "请填写 token",
 			},
 		},
-	})
+		Options: []control.RequestPromptOption{
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+			{OptionID: "cancel", Label: "取消", Style: "default"},
+		},
+	}))
 
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)

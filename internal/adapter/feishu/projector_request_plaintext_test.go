@@ -9,20 +9,17 @@ import (
 
 func TestProjectRequestPromptKeepsDynamicSectionsOutOfMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-unsafe",
-			RequestType: "approval",
-			ThreadTitle: "# 修复 `登录`",
-			Sections: []control.FeishuCardTextSection{{
-				Lines: []string{"请原样保留：", "- 列表项", "[链接](local.md)", "```go", "fmt.Println(1)", "```"},
-			}},
-			Options: []control.RequestPromptOption{
-				{OptionID: "accept", Label: "允许执行", Style: "primary"},
-			},
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-unsafe",
+		RequestType: "approval",
+		ThreadTitle: "# 修复 `登录`",
+		Sections: []control.FeishuCardTextSection{{
+			Lines: []string{"请原样保留：", "- 列表项", "[链接](local.md)", "```go", "fmt.Println(1)", "```"},
+		}},
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许执行", Style: "primary"},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -44,26 +41,23 @@ func TestProjectRequestPromptKeepsDynamicSectionsOutOfMarkdown(t *testing.T) {
 
 func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainTextQuestionBlock(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectRequestPrompt,
-		FeishuDirectRequestPrompt: &control.FeishuDirectRequestPrompt{
-			RequestID:   "req-ui-unsafe",
-			RequestType: "request_user_input",
-			Questions: []control.RequestPromptQuestion{
-				{
-					ID:           "notes",
-					Header:       "# 标题",
-					Question:     "请原样保留：\n- 列表项\n[链接](local.md)\n```go\nfmt.Println(1)\n```",
-					Answered:     true,
-					DefaultValue: "`rm -rf /`",
-					AllowOther:   true,
-					Options: []control.RequestPromptQuestionOption{
-						{Label: "- 选项A", Description: "[描述](demo.md)"},
-					},
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:   "req-ui-unsafe",
+		RequestType: "request_user_input",
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:           "notes",
+				Header:       "# 标题",
+				Question:     "请原样保留：\n- 列表项\n[链接](local.md)\n```go\nfmt.Println(1)\n```",
+				Answered:     true,
+				DefaultValue: "`rm -rf /`",
+				AllowOther:   true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "- 选项A", Description: "[描述](demo.md)"},
 				},
 			},
 		},
-	})
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}

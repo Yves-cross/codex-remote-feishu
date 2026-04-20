@@ -9,6 +9,7 @@ const (
 	FeishuUIDTOwnerDirectDTO     FeishuUIDTOwner = "feishu_direct_dto"
 	FeishuUIDTOwnerSelection     FeishuUIDTOwner = "feishu_selection_view"
 	FeishuUIDTOwnerCommand       FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerRequest       FeishuUIDTOwner = "feishu_request_view"
 	FeishuUIDTOwnerPathPicker    FeishuUIDTOwner = "feishu_path_picker_view"
 	FeishuUIDTOwnerTargetPicker  FeishuUIDTOwner = "feishu_target_picker_view"
 	FeishuUIDTOwnerThreadHistory FeishuUIDTOwner = "feishu_thread_history_view"

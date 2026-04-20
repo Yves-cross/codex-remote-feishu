@@ -7,7 +7,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func permissionsRequestPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -35,7 +35,7 @@ func permissionsRequestPromptElements(prompt control.FeishuDirectRequestPrompt, 
 	return elements
 }
 
-func mcpElicitationPromptElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	if len(prompt.Questions) == 0 {
 		return mcpElicitationChoiceElements(prompt, daemonLifecycleID)
 	}
@@ -81,7 +81,7 @@ func mcpElicitationPromptElements(prompt control.FeishuDirectRequestPrompt, daem
 	return elements
 }
 
-func mcpElicitationChoiceElements(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func mcpElicitationChoiceElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -109,7 +109,7 @@ func mcpElicitationChoiceElements(prompt control.FeishuDirectRequestPrompt, daem
 	return elements
 }
 
-func mcpElicitationTerminalActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func mcpElicitationTerminalActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	return cardButtonGroupElement([]map[string]any{
 		cardCallbackButtonElement("拒绝", "default", stampActionValue(map[string]any{
 			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
@@ -128,7 +128,7 @@ func mcpElicitationTerminalActionRow(prompt control.FeishuDirectRequestPrompt, d
 	})
 }
 
-func mcpElicitationProgressMarkdown(prompt control.FeishuDirectRequestPrompt) string {
+func mcpElicitationProgressMarkdown(prompt control.FeishuRequestView) string {
 	if len(prompt.Questions) == 0 {
 		return ""
 	}
@@ -141,7 +141,7 @@ func mcpElicitationProgressMarkdown(prompt control.FeishuDirectRequestPrompt) st
 	return fmt.Sprintf("**填写进度** %d/%d", answered, len(prompt.Questions))
 }
 
-func mcpElicitationQuestionHint(prompt control.FeishuDirectRequestPrompt) string {
+func mcpElicitationQuestionHint(prompt control.FeishuRequestView) string {
 	hasDirect := false
 	for _, question := range prompt.Questions {
 		if question.DirectResponse && len(question.Options) != 0 {

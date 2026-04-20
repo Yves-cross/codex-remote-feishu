@@ -8,20 +8,17 @@ import (
 
 func TestProjectSelectionPromptKeepsMarkdownMetacharactersInsidePlainTextDetailBlock(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectSelectionPrompt,
-		FeishuDirectSelectionPrompt: &control.FeishuDirectSelectionPrompt{
-			Kind:  control.SelectionPromptUseThread,
-			Title: "最近会话",
-			Options: []control.SelectionOption{{
-				Index:       1,
-				OptionID:    "thread-1",
-				Label:       "修复 `登录`",
-				ButtonLabel: "修复 `登录`",
-				Subtitle:    "/data/dl/#demo\n- 列表项\n[本地链接](docs/demo.md)",
-			}},
-		},
-	})
+	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+		Kind:  control.SelectionPromptUseThread,
+		Title: "最近会话",
+		Options: []control.SelectionOption{{
+			Index:       1,
+			OptionID:    "thread-1",
+			Label:       "修复 `登录`",
+			ButtonLabel: "修复 `登录`",
+			Subtitle:    "/data/dl/#demo\n- 列表项\n[本地链接](docs/demo.md)",
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}

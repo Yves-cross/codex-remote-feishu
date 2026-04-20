@@ -10,6 +10,8 @@ import (
 // shape currently consumed by the Feishu card renderer.
 func FeishuDirectSelectionPromptFromView(view control.FeishuSelectionView, ctx *control.FeishuUISelectionContext) (control.FeishuDirectSelectionPrompt, bool) {
 	switch {
+	case view.Prompt != nil:
+		return control.FeishuDirectSelectionPrompt(*view.Prompt), true
 	case view.Workspace != nil && view.PromptKind == control.SelectionPromptAttachWorkspace:
 		return workspaceSelectionPromptFromView(*view.Workspace, ctx), true
 	case view.Thread != nil && view.PromptKind == control.SelectionPromptUseThread:

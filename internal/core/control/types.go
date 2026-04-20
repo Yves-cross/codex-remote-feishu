@@ -156,8 +156,8 @@ type SelectionOption struct {
 	AllowCrossWorkspace bool
 }
 
-// FeishuDirectSelectionPrompt is a retained direct card DTO for the remaining
-// non-controller Feishu prompt paths.
+// FeishuDirectSelectionPrompt is a retained adapter-facing card DTO used by the
+// final Feishu renderer after selection views are projected.
 type FeishuDirectSelectionPrompt struct {
 	PromptID     string
 	Kind         SelectionPromptKind
@@ -364,8 +364,8 @@ type RequestPromptQuestion struct {
 	DirectResponse bool
 }
 
-// FeishuDirectRequestPrompt is a retained direct card DTO for request cards
-// that still cross the boundary without a separate Feishu view model.
+// FeishuDirectRequestPrompt is a retained adapter-facing card DTO used by the
+// request-card renderer after request views are normalized.
 type FeishuDirectRequestPrompt struct {
 	RequestID                          string
 	RequestType                        string
@@ -658,39 +658,37 @@ type DaemonCommand struct {
 }
 
 type UIEvent struct {
-	Kind                        UIEventKind
-	GatewayID                   string
-	SurfaceSessionID            string
-	DaemonLifecycleID           string
-	SourceMessageID             string
-	SourceMessagePreview        string
-	InlineReplaceCurrentCard    bool
-	Snapshot                    *Snapshot
-	FeishuDirectSelectionPrompt *FeishuDirectSelectionPrompt
-	FeishuSelectionView         *FeishuSelectionView
-	FeishuSelectionContext      *FeishuUISelectionContext
-	FeishuDirectCommandCatalog  *FeishuDirectCommandCatalog
-	FeishuCommandView           *FeishuCommandView
-	FeishuCommandContext        *FeishuUICommandContext
-	FeishuDirectRequestPrompt   *FeishuDirectRequestPrompt
-	FeishuRequestContext        *FeishuUIRequestContext
-	FeishuPathPickerView        *FeishuPathPickerView
-	FeishuPathPickerContext     *FeishuUIPathPickerContext
-	FeishuTargetPickerView      *FeishuTargetPickerView
-	FeishuTargetPickerContext   *FeishuUITargetPickerContext
-	FeishuThreadHistoryView     *FeishuThreadHistoryView
-	FeishuThreadHistoryContext  *FeishuUIThreadHistoryContext
-	PendingInput                *PendingInputState
-	Notice                      *Notice
-	PlanUpdate                  *PlanUpdate
-	ThreadSelection             *ThreadSelectionChanged
-	Block                       *render.Block
-	TimelineText                *TimelineText
-	ImageOutput                 *ImageOutput
-	ExecCommandProgress         *ExecCommandProgress
-	FileChangeSummary           *FileChangeSummary
-	TurnDiffSnapshot            *TurnDiffSnapshot
-	FinalTurnSummary            *FinalTurnSummary
-	Command                     *agentproto.Command
-	DaemonCommand               *DaemonCommand
+	Kind                       UIEventKind
+	GatewayID                  string
+	SurfaceSessionID           string
+	DaemonLifecycleID          string
+	SourceMessageID            string
+	SourceMessagePreview       string
+	InlineReplaceCurrentCard   bool
+	Snapshot                   *Snapshot
+	FeishuSelectionView        *FeishuSelectionView
+	FeishuSelectionContext     *FeishuUISelectionContext
+	FeishuCommandView          *FeishuCommandView
+	FeishuCommandContext       *FeishuUICommandContext
+	FeishuRequestView          *FeishuRequestView
+	FeishuRequestContext       *FeishuUIRequestContext
+	FeishuPathPickerView       *FeishuPathPickerView
+	FeishuPathPickerContext    *FeishuUIPathPickerContext
+	FeishuTargetPickerView     *FeishuTargetPickerView
+	FeishuTargetPickerContext  *FeishuUITargetPickerContext
+	FeishuThreadHistoryView    *FeishuThreadHistoryView
+	FeishuThreadHistoryContext *FeishuUIThreadHistoryContext
+	PendingInput               *PendingInputState
+	Notice                     *Notice
+	PlanUpdate                 *PlanUpdate
+	ThreadSelection            *ThreadSelectionChanged
+	Block                      *render.Block
+	TimelineText               *TimelineText
+	ImageOutput                *ImageOutput
+	ExecCommandProgress        *ExecCommandProgress
+	FileChangeSummary          *FileChangeSummary
+	TurnDiffSnapshot           *TurnDiffSnapshot
+	FinalTurnSummary           *FinalTurnSummary
+	Command                    *agentproto.Command
+	DaemonCommand              *DaemonCommand
 }

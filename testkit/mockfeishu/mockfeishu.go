@@ -1,6 +1,7 @@
 package mockfeishu
 
 import (
+	feishuadapter "github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
@@ -49,8 +50,10 @@ func (r *Recorder) Apply(events []control.UIEvent) {
 				r.ThumbsDownFor = append(r.ThumbsDownFor, event.PendingInput.SourceMessageID)
 			}
 		case control.UIEventFeishuDirectSelectionPrompt:
-			if event.FeishuDirectSelectionPrompt != nil {
-				r.SelectionPrompts = append(r.SelectionPrompts, *event.FeishuDirectSelectionPrompt)
+			if event.FeishuSelectionView != nil {
+				if prompt, ok := feishuadapter.FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext); ok {
+					r.SelectionPrompts = append(r.SelectionPrompts, prompt)
+				}
 			}
 		}
 	}

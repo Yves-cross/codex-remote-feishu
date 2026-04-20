@@ -33,9 +33,6 @@ func firstCommands(entries []control.CommandCatalogEntry) []string {
 }
 
 func eventSelectionPrompt(event control.UIEvent) (*control.FeishuDirectSelectionPrompt, bool) {
-	if event.FeishuDirectSelectionPrompt != nil {
-		return event.FeishuDirectSelectionPrompt, true
-	}
 	if event.FeishuSelectionView != nil {
 		prompt, ok := feishuadapter.FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext)
 		if !ok {
@@ -121,10 +118,11 @@ func targetPickerSourceOption(view *control.FeishuTargetPickerView, value contro
 
 func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectRequestPrompt {
 	t.Helper()
-	if event.FeishuDirectRequestPrompt == nil {
+	if event.FeishuRequestView == nil {
 		t.Fatalf("expected request prompt event, got %#v", event)
 	}
-	return event.FeishuDirectRequestPrompt
+	prompt := control.FeishuDirectRequestPrompt(*event.FeishuRequestView)
+	return &prompt
 }
 
 func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.FeishuDirectRequestPrompt {
@@ -136,9 +134,6 @@ func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.F
 }
 
 func eventCommandCatalog(event control.UIEvent) (*control.FeishuDirectCommandCatalog, bool) {
-	if event.FeishuDirectCommandCatalog != nil {
-		return event.FeishuDirectCommandCatalog, true
-	}
 	if event.FeishuCommandView != nil {
 		catalog, ok := feishuadapter.FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
 		if !ok {

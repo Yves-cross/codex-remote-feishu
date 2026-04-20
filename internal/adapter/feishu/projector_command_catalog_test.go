@@ -8,36 +8,33 @@ import (
 
 func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:        "模型",
-			Summary:      "直接在卡片里输入模型名。",
-			Interactive:  true,
-			DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-			Breadcrumbs:  []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
-			Sections: []control.CommandCatalogSection{{
-				Title: "手动输入",
-				Entries: []control.CommandCatalogEntry{{
-					Form: &control.CommandCatalogForm{
-						CommandID:   control.FeishuCommandModel,
-						CommandText: "/model",
-						SubmitLabel: "应用",
-						Field: control.CommandCatalogFormField{
-							Name:        "command_args",
-							Kind:        control.CommandCatalogFormFieldText,
-							Label:       "输入模型名，或输入“模型名 推理强度”。",
-							Placeholder: "gpt-5.4 high",
-						},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:        "模型",
+		Summary:      "直接在卡片里输入模型名。",
+		Interactive:  true,
+		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+		Breadcrumbs:  []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
+		Sections: []control.CommandCatalogSection{{
+			Title: "手动输入",
+			Entries: []control.CommandCatalogEntry{{
+				Form: &control.CommandCatalogForm{
+					CommandID:   control.FeishuCommandModel,
+					CommandText: "/model",
+					SubmitLabel: "应用",
+					Field: control.CommandCatalogFormField{
+						Name:        "command_args",
+						Kind:        control.CommandCatalogFormFieldText,
+						Label:       "输入模型名，或输入“模型名 推理强度”。",
+						Placeholder: "gpt-5.4 high",
 					},
-				}},
+				},
 			}},
-			RelatedButtons: []control.CommandCatalogButton{{
-				Label:       "返回发送设置",
-				CommandText: "/menu send_settings",
-			}},
-		},
-	})
+		}},
+		RelatedButtons: []control.CommandCatalogButton{{
+			Label:       "返回发送设置",
+			CommandText: "/menu send_settings",
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -107,34 +104,31 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 
 func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventFeishuDirectCommandCatalog,
-		FeishuDirectCommandCatalog: &control.FeishuDirectCommandCatalog{
-			Title:       "模型",
-			Interactive: true,
-			Sections: []control.CommandCatalogSection{{
-				Title: "常见模型",
-				Entries: []control.CommandCatalogEntry{{
-					Form: &control.CommandCatalogForm{
-						CommandID:   control.FeishuCommandModel,
-						CommandText: "/model",
-						SubmitLabel: "应用",
-						Field: control.CommandCatalogFormField{
-							Name:         "command_args",
-							Kind:         control.CommandCatalogFormFieldSelectStatic,
-							Label:        "从下拉里选择常见模型。",
-							Placeholder:  "选择模型",
-							DefaultValue: "gpt-5.4-mini",
-							Options: []control.CommandCatalogFormFieldOption{
-								{Label: "gpt-5.4", Value: "gpt-5.4"},
-								{Label: "gpt-5.4-mini", Value: "gpt-5.4-mini"},
-							},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+		Title:       "模型",
+		Interactive: true,
+		Sections: []control.CommandCatalogSection{{
+			Title: "常见模型",
+			Entries: []control.CommandCatalogEntry{{
+				Form: &control.CommandCatalogForm{
+					CommandID:   control.FeishuCommandModel,
+					CommandText: "/model",
+					SubmitLabel: "应用",
+					Field: control.CommandCatalogFormField{
+						Name:         "command_args",
+						Kind:         control.CommandCatalogFormFieldSelectStatic,
+						Label:        "从下拉里选择常见模型。",
+						Placeholder:  "选择模型",
+						DefaultValue: "gpt-5.4-mini",
+						Options: []control.CommandCatalogFormFieldOption{
+							{Label: "gpt-5.4", Value: "gpt-5.4"},
+							{Label: "gpt-5.4-mini", Value: "gpt-5.4-mini"},
 						},
 					},
-				}},
+				},
 			}},
-		},
-	})
+		}},
+	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}

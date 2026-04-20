@@ -44,10 +44,10 @@ func TestApprovalCommandRequestPromptAddsCancelOption(t *testing.T) {
 			"body":        "本地 Codex 想执行 `npm install`。",
 		},
 	})
-	if len(events) != 1 || events[0].FeishuDirectRequestPrompt == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one request prompt event, got %#v", events)
 	}
-	prompt := events[0].FeishuDirectRequestPrompt
+	prompt := requestPromptFromEvent(t, events[0])
 	if len(prompt.Options) != 5 {
 		t.Fatalf("expected command approval prompt to expose cancel + feedback, got %#v", prompt.Options)
 	}

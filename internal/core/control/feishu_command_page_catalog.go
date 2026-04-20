@@ -36,6 +36,36 @@ func BuildFeishuCommandPageCatalog(view FeishuCommandPageView) FeishuDirectComma
 	}
 }
 
+func FeishuCommandPageViewFromCatalog(commandID string, catalog FeishuDirectCommandCatalog, breadcrumbs []CommandCatalogBreadcrumb, relatedButtons []CommandCatalogButton) FeishuCommandPageView {
+	view := FeishuCommandPageView{
+		CommandID:       strings.TrimSpace(commandID),
+		Title:           strings.TrimSpace(catalog.Title),
+		MessageID:       strings.TrimSpace(catalog.MessageID),
+		TrackingKey:     strings.TrimSpace(catalog.TrackingKey),
+		ThemeKey:        strings.TrimSpace(catalog.ThemeKey),
+		Patchable:       catalog.Patchable,
+		Breadcrumbs:     append([]CommandCatalogBreadcrumb(nil), breadcrumbs...),
+		SummarySections: append([]FeishuCardTextSection(nil), catalog.SummarySections...),
+		Interactive:     catalog.Interactive,
+		DisplayStyle:    catalog.DisplayStyle,
+		Sections:        append([]CommandCatalogSection(nil), catalog.Sections...),
+		RelatedButtons:  append([]CommandCatalogButton(nil), relatedButtons...),
+	}
+	if view.DisplayStyle == "" {
+		view.DisplayStyle = CommandCatalogDisplayDefault
+	}
+	if len(view.SummarySections) == 0 {
+		lines := splitFeishuCommandPageSummaryLines(catalog.Summary)
+		if len(lines) != 0 {
+			view.SummarySections = []FeishuCardTextSection{{Lines: lines}}
+		}
+	}
+	if view.CommandID == "" {
+		view.CommandID = strings.TrimSpace(commandID)
+	}
+	return view
+}
+
 func BuildFeishuCommandPageSummarySections(view FeishuCommandPageView) []FeishuCardTextSection {
 	sections := make([]FeishuCardTextSection, 0, len(view.SummarySections)+1)
 	if feedback, ok := commandPageFeedbackSection(view); ok {
@@ -99,4 +129,16 @@ func FeishuCommandBackToRootButtons(commandID string) []CommandCatalogButton {
 		Kind:        CommandCatalogButtonRunCommand,
 		CommandText: command,
 	}}
+}
+
+func splitFeishuCommandPageSummaryLines(text string) []string {
+	lines := make([]string, 0, 4)
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
