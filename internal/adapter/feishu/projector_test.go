@@ -1247,7 +1247,7 @@ func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testin
 
 func TestProjectRequestPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	event := requestPromptEvent(control.FeishuDirectRequestPrompt{
+	event := requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-1",
 		RequestType: "approval",
 		Title:       "需要确认",
@@ -1338,7 +1338,7 @@ func TestProjectRequestPromptAsCard(t *testing.T) {
 
 func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := requestPromptEvent(control.FeishuDirectRequestPrompt{
+	event := requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-1",
 		RequestType: "approval",
 		Options: []control.RequestPromptOption{
@@ -1359,7 +1359,7 @@ func TestProjectRequestPromptStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:       "req-ui-1",
 		RequestType:     "request_user_input",
 		RequestRevision: 3,
@@ -1495,7 +1495,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 
 func TestProjectRequestUserInputPromptRendersCurrentFormQuestionAsSingleStepForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:            "req-ui-form-1",
 		RequestType:          "request_user_input",
 		RequestRevision:      6,
@@ -1554,7 +1554,7 @@ func TestProjectRequestUserInputPromptRendersCurrentFormQuestionAsSingleStepForm
 
 func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-ui-submit",
 		RequestType: "request_user_input",
 		Questions: []control.RequestPromptQuestion{
@@ -1598,7 +1598,7 @@ func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 
 func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:                          "req-ui-3",
 		RequestType:                        "request_user_input",
 		RequestRevision:                    4,
@@ -1661,7 +1661,7 @@ func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) 
 
 func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-ui-4",
 		RequestType: "request_user_input",
 		Questions: []control.RequestPromptQuestion{

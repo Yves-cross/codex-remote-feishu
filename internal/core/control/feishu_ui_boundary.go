@@ -85,7 +85,7 @@ type FeishuUICommandContext struct {
 }
 
 // FeishuUIRequestContext describes the stable query/policy inputs that back a
-// request prompt while the request card still remains Feishu-facing.
+// UI-owned request view across the Feishu UI boundary.
 type FeishuUIRequestContext struct {
 	DTOOwner    FeishuUIDTOwner
 	Surface     FeishuUISurfaceContext

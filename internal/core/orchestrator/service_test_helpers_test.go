@@ -124,16 +124,15 @@ func targetPickerSourceOption(view *control.FeishuTargetPickerView, value contro
 	return control.FeishuTargetPickerSourceOption{}, false
 }
 
-func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectRequestPrompt {
+func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuRequestView {
 	t.Helper()
 	if event.FeishuRequestView == nil {
 		t.Fatalf("expected request prompt event, got %#v", event)
 	}
-	prompt := control.FeishuDirectRequestPrompt(*event.FeishuRequestView)
-	return &prompt
+	return event.FeishuRequestView
 }
 
-func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.FeishuDirectRequestPrompt {
+func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.FeishuRequestView {
 	t.Helper()
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one event, got %#v", events)

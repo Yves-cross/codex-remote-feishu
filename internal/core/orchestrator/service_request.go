@@ -604,7 +604,7 @@ func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record
 		}
 		threadTitle = displayThreadTitle(inst, thread, record.ThreadID)
 	}
-	event := s.feishuDirectRequestPromptEvent(surface, control.FeishuDirectRequestPrompt{
+	event := s.requestViewEvent(surface, control.FeishuRequestView{
 		RequestID:                          record.RequestID,
 		RequestType:                        record.RequestType,
 		RequestRevision:                    record.CardRevision,

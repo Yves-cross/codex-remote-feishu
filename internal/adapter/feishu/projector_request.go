@@ -120,7 +120,7 @@ func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLife
 	return elements
 }
 
-func appendCurrentRequestQuestionElements(elements []map[string]any, prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+func appendCurrentRequestQuestionElements(elements []map[string]any, prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	question, index, ok := requestPromptCurrentQuestion(prompt)
 	if !ok {
 		return elements
@@ -259,7 +259,7 @@ func requestPromptQuestionSection(index, total int, question control.RequestProm
 	return section, true
 }
 
-func requestPromptProgressMarkdown(prompt control.FeishuDirectRequestPrompt) string {
+func requestPromptProgressMarkdown(prompt control.FeishuRequestView) string {
 	if len(prompt.Questions) == 0 {
 		return ""
 	}
@@ -279,7 +279,7 @@ func requestPromptQuestionLabel(index, total int) string {
 	return fmt.Sprintf("问题 %d/%d", index+1, total)
 }
 
-func normalizedRequestPromptCurrentQuestionIndex(prompt control.FeishuDirectRequestPrompt) int {
+func normalizedRequestPromptCurrentQuestionIndex(prompt control.FeishuRequestView) int {
 	if len(prompt.Questions) == 0 {
 		return 0
 	}
@@ -292,7 +292,7 @@ func normalizedRequestPromptCurrentQuestionIndex(prompt control.FeishuDirectRequ
 	return prompt.CurrentQuestionIndex
 }
 
-func requestPromptCurrentQuestion(prompt control.FeishuDirectRequestPrompt) (control.RequestPromptQuestion, int, bool) {
+func requestPromptCurrentQuestion(prompt control.FeishuRequestView) (control.RequestPromptQuestion, int, bool) {
 	if len(prompt.Questions) == 0 {
 		return control.RequestPromptQuestion{}, 0, false
 	}
@@ -300,7 +300,7 @@ func requestPromptCurrentQuestion(prompt control.FeishuDirectRequestPrompt) (con
 	return prompt.Questions[index], index, true
 }
 
-func requestPromptNeedsForm(prompt control.FeishuDirectRequestPrompt) bool {
+func requestPromptNeedsForm(prompt control.FeishuRequestView) bool {
 	question, _, ok := requestPromptCurrentQuestion(prompt)
 	if !ok {
 		return false
@@ -312,7 +312,7 @@ func requestPromptQuestionNeedsFormInput(question control.RequestPromptQuestion)
 	return len(question.Options) == 0 || question.AllowOther || !question.DirectResponse
 }
 
-func requestPromptFormElement(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func requestPromptFormElement(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	question, _, ok := requestPromptCurrentQuestion(prompt)
 	if !ok || !requestPromptQuestionNeedsFormInput(question) {
 		return nil
@@ -356,7 +356,7 @@ func requestPromptFormElement(prompt control.FeishuDirectRequestPrompt, daemonLi
 	}
 }
 
-func requestPromptSubmitActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func requestPromptSubmitActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	if len(prompt.Questions) == 0 || prompt.SubmitWithUnansweredConfirmPending {
 		return nil
 	}
@@ -371,7 +371,7 @@ func requestPromptSubmitActionRow(prompt control.FeishuDirectRequestPrompt, daem
 	})
 }
 
-func requestPromptNavigationActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func requestPromptNavigationActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	if len(prompt.Questions) <= 1 || prompt.SubmitWithUnansweredConfirmPending {
 		return nil
 	}
@@ -394,21 +394,21 @@ func requestPromptNavigationActionRow(prompt control.FeishuDirectRequestPrompt, 
 	})
 }
 
-func requestPromptSubmitLabel(prompt control.FeishuDirectRequestPrompt) string {
+func requestPromptSubmitLabel(prompt control.FeishuRequestView) string {
 	if normalizeRequestPromptType(prompt.RequestType) == "mcp_server_elicitation" {
 		return "提交并继续"
 	}
 	return "提交答案"
 }
 
-func requestPromptStepSaveLabel(prompt control.FeishuDirectRequestPrompt) string {
+func requestPromptStepSaveLabel(prompt control.FeishuRequestView) string {
 	if normalizeRequestPromptType(prompt.RequestType) == "mcp_server_elicitation" {
 		return "保存本题"
 	}
 	return "保存本题"
 }
 
-func requestPromptSubmitConfirmActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+func requestPromptSubmitConfirmActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	return cardButtonGroupElement([]map[string]any{
 		cardCallbackButtonElement("继续补答", "default", stampActionValue(map[string]any{
 			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
@@ -427,7 +427,7 @@ func requestPromptSubmitConfirmActionRow(prompt control.FeishuDirectRequestPromp
 	})
 }
 
-func requestPromptSubmitConfirmMarkdown(prompt control.FeishuDirectRequestPrompt) string {
+func requestPromptSubmitConfirmMarkdown(prompt control.FeishuRequestView) string {
 	missing := len(prompt.SubmitWithUnansweredMissingLabels)
 	switch {
 	case missing <= 0:
@@ -439,7 +439,7 @@ func requestPromptSubmitConfirmMarkdown(prompt control.FeishuDirectRequestPrompt
 	}
 }
 
-func requestPromptQuestionHint(prompt control.FeishuDirectRequestPrompt) string {
+func requestPromptQuestionHint(prompt control.FeishuRequestView) string {
 	if prompt.SubmitWithUnansweredConfirmPending {
 		return "你可以继续补答，也可以确认提交已有答案（未回答的问题将按留空提交）。"
 	}

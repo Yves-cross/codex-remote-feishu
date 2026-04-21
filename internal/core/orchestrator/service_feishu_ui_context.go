@@ -272,8 +272,7 @@ func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view c
 	}
 }
 
-func (s *Service) feishuDirectRequestPromptEvent(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectRequestPrompt) control.UIEvent {
-	view := control.FeishuRequestView(prompt)
+func (s *Service) requestViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuRequestView) control.UIEvent {
 	return control.UIEvent{
 		Kind:                 control.UIEventFeishuRequestView,
 		SurfaceSessionID:     surface.SurfaceSessionID,

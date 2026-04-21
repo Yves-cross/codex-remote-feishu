@@ -28,11 +28,10 @@ func commandCatalogEvent(catalog control.FeishuDirectCommandCatalog) control.UIE
 	}
 }
 
-func requestPromptEvent(prompt control.FeishuDirectRequestPrompt) control.UIEvent {
-	view := control.FeishuRequestView(prompt)
+func requestPromptEvent(prompt control.FeishuRequestView) control.UIEvent {
 	return control.UIEvent{
 		Kind:              control.UIEventFeishuRequestView,
-		FeishuRequestView: &view,
+		FeishuRequestView: &prompt,
 	}
 }
 

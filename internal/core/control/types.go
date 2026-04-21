@@ -369,23 +369,6 @@ type RequestPromptQuestion struct {
 	DirectResponse bool
 }
 
-// FeishuDirectRequestPrompt is a retained adapter-facing card DTO used by the
-// request-card renderer after request views are normalized.
-type FeishuDirectRequestPrompt struct {
-	RequestID                          string
-	RequestType                        string
-	RequestRevision                    int
-	Title                              string
-	ThreadID                           string
-	ThreadTitle                        string
-	Sections                           []FeishuCardTextSection
-	Options                            []RequestPromptOption
-	Questions                          []RequestPromptQuestion
-	CurrentQuestionIndex               int
-	SubmitWithUnansweredConfirmPending bool
-	SubmitWithUnansweredMissingLabels  []string
-}
-
 type CommandCatalogButtonKind string
 
 const (
@@ -630,7 +613,6 @@ const (
 
 const (
 	UIEventFeishuDirectSelectionPrompt = UIEventFeishuSelectionView
-	UIEventFeishuDirectRequestPrompt   = UIEventFeishuRequestView
 )
 
 type DaemonCommandKind string

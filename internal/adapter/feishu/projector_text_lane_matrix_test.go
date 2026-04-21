@@ -31,7 +31,7 @@ func TestTextLaneMatrix_RequestPromptUsesStructuredCardLane(t *testing.T) {
 	projector := NewProjector()
 	threadTitle := "# 修复 `登录`"
 	question := "请原样保留：\n- 列表项\n[链接](local.md)\n```go\nfmt.Println(1)\n```"
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-matrix",
 		RequestType: "request_user_input",
 		ThreadTitle: threadTitle,

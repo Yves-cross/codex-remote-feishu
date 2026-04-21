@@ -9,7 +9,7 @@ import (
 
 func TestProjectPermissionsRequestPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-perm-1",
 		RequestType: "permissions_request_approval",
 		Title:       "需要授予权限",
@@ -53,7 +53,7 @@ func TestProjectPermissionsRequestPromptAsCard(t *testing.T) {
 
 func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:       "req-mcp-form-1",
 		RequestType:     "mcp_server_elicitation",
 		RequestRevision: 5,
@@ -133,7 +133,7 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 
 func TestProjectMCPElicitationFormPromptRendersCurrentFormFieldAsSingleStepForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:            "req-mcp-form-2",
 		RequestType:          "mcp_server_elicitation",
 		RequestRevision:      6,
