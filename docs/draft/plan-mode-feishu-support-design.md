@@ -17,7 +17,7 @@
 
 ## 2. 设计结论
 
-本轮草案先收敛为 7 条结论：
+本轮草案先收敛为 9 条结论：
 
 1. `Plan mode` 在我们产品里应被建成 **surface 级的一等协作状态**，而不是继续依赖“本地线程模板恰好带过来”。
 2. 这个状态和现有 `/mode normal|vscode` 正交。
@@ -32,13 +32,18 @@
    - 已入队的消息
    - 当前 turn 的 steer / reply auto-steer
 5. 现有 `request_user_input` / `mcp_server_elicitation` 的“同卡分步答题”能力可以直接复用，不需要另做 Plan-mode 专用问答卡。
-6. `turn/plan/updated` 在 v1 继续保持 append-only 计划更新卡；`item/plan/delta` 在 v1 继续当普通文本，不急着硬做 CTA。
-7. “按这个计划开工”的一键 CTA 放到 v2 以后，前提是我们已经能稳定识别 proposed plan，而不是拿 `turn/plan/updated` 误判。
+6. `turn/plan/updated` 继续保持 append-only 的过程型计划更新卡；`item/plan/delta` / `plan item` 明确视为“最终提案计划正文”，产品语义上和 checklist 过程卡分开。
+7. `proposed plan` 不在 turn 中途单独落卡；先缓存本轮最新一版，等 `final message` 落完且 turn 真正结束后，再追加一张完整的提案计划卡。
+8. 提案计划卡使用和现有分段计划一致的紫色视觉，并提供三个动作：
+   - `直接执行`
+   - `清空上下文并执行`
+   - `取消`
+9. 这张卡不是 upstream request，不进入 request gate，也不冻结后续输入；但一旦后续继续交互或上下文变化，就应 seal 失效。
 
 一句话压缩：
 
-- v1 先把 **Plan mode 变成可选、可见、可恢复、可冻结的 surface 默认协作方式**
-- v2 再补 **plan proposal 专属 CTA 和更完整的 Plan-mode 产品闭环**
+- 阶段 1~3 先把 **Plan mode 变成可选、可见、可恢复、可冻结的 surface 默认协作方式**
+- 阶段 4 再把 **proposed plan 卡与执行确认闭环** 按本文定稿补齐
 
 ## 3. 当前基座与约束
 
@@ -261,19 +266,34 @@ v1 不改成单卡 live plan board。
 2. 它和 request 卡、final card 是不同节奏的 UI
 3. 强行改成单卡混合态，反而会把 Feishu 交互、卡片体积和更新频率一起绑死
 
-### 5.3.4 如果 turn 结束时只是产出一份计划正文
+### 5.3.4 如果 turn 结束时产出一份 proposed plan
 
-v1 继续按普通 final reply 处理。
+推荐处理为：
 
-当前不额外追加：
+1. turn 运行过程中先只缓存本轮最新一版 `proposed plan`
+2. 不在中途把它单独落成一张新卡
+3. 等 `final message` 已经落完且 turn 真正 `completed`
+4. 若这轮里确实出现过 `proposed plan`，再 append 一张完整的提案计划卡
+5. 若同一轮里先后出现多版计划，只显示最后一版
 
-- `是否按此计划开工`
-- `执行这个计划`
-- `继续规划`
+这样做的原因：
 
-这不是产品缺失，而是故意后置。
+1. 中途落卡容易被后续 `final message` 顶掉，用户不容易稳定看到
+2. 同一轮里可能先出一版计划，后面又被 steer 修订；中途落卡容易把旧计划也暴露出来
+3. turn 结束后再落卡，才能和“这轮最终答复”形成稳定的前后关系
 
-原因是 v1 还没有稳定识别 proposed plan item，不应该拿 `turn/plan/updated` 或普通文本启发式误判。
+提案计划卡应和现有 `turn/plan/updated` 计划更新卡明确分工：
+
+1. `turn/plan/updated`
+   - 过程型 checklist 快照
+2. `proposed plan` 卡
+   - 最终提案正文
+
+视觉建议：
+
+1. 标题保持 `Proposed Plan`
+2. 正文按 markdown 正常渲染
+3. 卡片底色与当前分段计划/计划相关卡保持一致，统一使用紫色基调
 
 ## 5.4 关键交互边界
 
@@ -322,43 +342,87 @@ reply processing 触发的是当前 turn 的 auto-steer。
 - surface 重启前是 `plan`
 - 重启后 materialize 回来仍然是 `plan`
 
-## 6. v2 以后的产品增强
+## 6. Proposed Plan 卡与执行确认
 
-### 6.1 `Implement this plan?` CTA
+### 6.1 卡片动作
 
-这部分建议明确放到 v2 以后。
+提案计划卡固定提供三个动作：
 
-推荐交互形态：
+1. `直接执行`
+2. `清空上下文并执行`
+3. `取消`
 
-1. 当前 plan turn 结束
-2. 若识别到稳定的 proposed plan item
-3. 在 final plan 答复之后追加一张**独立的小型 CTA 卡**
-4. 按钮：
-   - `按此计划开工`
-   - `继续规划`
+不建议把 `取消` 命名成 `继续规划`。
 
-为什么推荐做成独立 CTA 卡，而不是把按钮塞进 final answer card：
+原因：
 
-1. final answer 适合保持可回看的静态结果
-2. CTA 卡需要 sealed / patch / old-card freshness 语义
-3. 分开以后，执行路径和结果路径更清楚
+1. `继续规划` 更像在向模型发送一条新输入
+2. 这里实际做的只是关闭这张执行提示
+3. 真正想继续补充规划时，用户直接再输入即可
 
-### 6.2 CTA 的推荐行为
+### 6.2 动作语义
 
-如果用户点 `按此计划开工`：
+如果用户点击 `直接执行`：
 
-1. 先把当前 surface `CollaborationMode` 切回 `default`
-2. 再发送固定 follow-up：`Implement the plan.`
-3. CTA 卡 sealed 成结果态
-4. `/status` 里的“后续协作”同步显示为 `默认执行`
+1. 视为显式离开 `plan`
+2. 当前 surface 的 `CollaborationMode` 切回 `default`
+3. 发送固定 follow-up：`Implement the plan.`
+4. 这张提案计划卡 seal 成结果态
+5. `/status` 里的“后续协作”同步显示为 `默认执行`
 
-如果用户点 `继续规划`：
+如果用户点击 `清空上下文并执行`：
 
-1. 不改 mode
-2. CTA 卡 sealed 成说明态
-3. 继续保持 `plan`
+1. 同样视为显式离开 `plan`
+2. 当前 surface 的 `CollaborationMode` 切回 `default`
+3. 开一个 fresh context
+4. 发送 handoff prompt：
+   - 前缀说明“上一位 agent 已给出下面这份计划，请在新上下文中按它开工，并自行重新读文件和验证”
+   - 再拼接完整计划正文
+5. 这张提案计划卡 seal 成结果态
 
-这个行为是**显式切模态**，不是自动切换。
+如果用户点击 `取消`：
+
+1. 不回 upstream request
+2. 不取消 thread
+3. 不切换 collaboration mode
+4. 只把这张执行提示卡 seal 掉
+
+### 6.3 这张卡不抓前台输入
+
+推荐这张卡不进入 request gate。
+
+也就是：
+
+1. 用户看到这张卡后，仍然可以直接继续输入新的消息
+2. 不需要先点 `取消` 才能开始下一轮交互
+3. 这张卡的存在不应冻结 `/new`、`/use`、普通文本输入或后续 steer
+
+原因：
+
+1. upstream 协议里 `proposed plan` 是 `plan item`，不是 `request_user_input`
+2. 这张卡是客户端本地 handoff CTA，不是模型正在等待用户回答的 pending request
+3. 飞书是异步消息面，硬性抓前台输入会比 TUI 更突兀
+
+### 6.4 seal / 失效规则
+
+虽然不抓前台输入，但这张卡也不能长期保持“永远可点”。
+
+推荐任何一条命中时都立即 seal：
+
+1. 用户点击了 `直接执行`
+2. 用户点击了 `清空上下文并执行`
+3. 用户点击了 `取消`
+4. 用户在同一 thread 上又继续发了新的输入
+5. 同一 thread 上又出现了新的 `proposed plan`
+6. 用户切线程、`/new`、`/use`、`/detach` 或发生等价的上下文切换
+7. daemon lifecycle 变化导致旧卡不再安全可写
+
+seal 后建议：
+
+1. 保留计划正文，便于回看
+2. 移除按钮
+3. notice 区说明失效原因，例如：
+   - `这份计划提示已失效，因为后续已经继续交互。`
 
 ## 7. 技术设计
 
@@ -568,10 +632,16 @@ materialize surface resume 时一并恢复。
 
 ### 阶段 4：plan proposal CTA
 
-1. 识别 proposed plan item
-2. 设计独立 CTA 卡
-3. `按此计划开工 = 切回 default + 发送固定 follow-up`
-4. 完整打通 `Implement this plan?` 闭环
+1. 识别 proposed plan item，并缓存“本轮最后一版”
+2. turn 完成后追加紫色 `Proposed Plan` 卡，而不是中途流式落卡
+3. 三个动作固定为：
+   - `直接执行`
+   - `清空上下文并执行`
+   - `取消`
+4. `直接执行 = 切回 default + 发送固定 follow-up`
+5. `清空上下文并执行 = fresh context + handoff prompt + 切回 default`
+6. `取消 = seal 卡片，不回 request，不改 mode`
+7. 这张卡不抓前台输入，但要按文档规则 seal 失效
 
 ## 9. 验证建议
 
@@ -591,9 +661,9 @@ materialize surface resume 时一并恢复。
 
 这份草案里需要产品拍板的内容，建议先按下面 3 项确认：
 
-1. 命令面是否采用 `/collab`，并在 v1 不做 `/plan` alias。
+1. 命令面是否采用 `/collab`，并在阶段 1 不做 `/plan` alias。
    - 推荐：是
-2. v1 是否只做“可选、可见、可恢复的 Plan mode”，先不做“按此计划开工”按钮。
+2. `proposed plan` 是否采用“turn 完成后再 append 一张独立紫色提案计划卡 + 三按钮 + 非阻塞输入”的承接方式。
    - 推荐：是
 3. thread observed mode 是否只作为 `/status` 提示，不自动改写 surface 默认值。
    - 推荐：是
