@@ -1109,12 +1109,12 @@
     {
       "number": 128,
       "title": "[Feature] 为当前接入 surface 提供 Feishu IM 文件发送 tool",
-      "updatedAt": "2026-04-11T09:42:09Z",
+      "updatedAt": "2026-04-19T07:24:20Z",
       "closedAt": "2026-04-11T07:11:12Z",
       "decision": "skip",
-      "reason": "current architecture doc already covers the surface-aware feishu_send_im_file tool path",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/128",
-      "recordedAt": "2026-04-12T09:42:30Z"
+      "recordedAt": "2026-04-21T19:06:44Z"
     },
     {
       "number": 130,
@@ -1305,6 +1305,26 @@
       "reason": "maintainability-only daemon package refactor with no new durable user-facing behavior to sync into docs",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/149",
       "recordedAt": "2026-04-12T09:42:32Z"
+    },
+    {
+      "number": 150,
+      "title": "[Refactor] 拆分 internal/core/orchestrator 大包并按状态域收束 Service 职责",
+      "updatedAt": "2026-04-20T18:43:40Z",
+      "closedAt": "2026-04-20T18:43:37Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/150",
+      "recordedAt": "2026-04-21T19:07:54Z"
+    },
+    {
+      "number": 151,
+      "title": "[Refactor] 拆分 internal/adapter/feishu 大包并明确 gateway/projector/preview 边界",
+      "updatedAt": "2026-04-20T18:22:37Z",
+      "closedAt": "2026-04-20T18:22:33Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/151",
+      "recordedAt": "2026-04-21T19:07:53Z"
     },
     {
       "number": 153,
@@ -1812,6 +1832,16 @@
       "recordedAt": "2026-04-17T19:06:43Z"
     },
     {
+      "number": 209,
+      "title": "[Research] 调研 Codex 通用文件输入支持边界（Feishu -\u003e relay -\u003e translator -\u003e Codex）",
+      "updatedAt": "2026-04-20T04:50:09Z",
+      "closedAt": "2026-04-20T04:50:09Z",
+      "decision": "skip",
+      "reason": "research-only issue with no stable durable conclusion to sync beyond the current docs",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/209",
+      "recordedAt": "2026-04-21T19:08:09Z"
+    },
+    {
       "number": 211,
       "title": "[Feature] 将 merge_forward 展开为保留层级的结构化格式，并把相关图片一并纳入输入",
       "updatedAt": "2026-04-17T06:26:34Z",
@@ -1840,6 +1870,16 @@
       "reason": "Issue metadata changed after the previous sync, but current docs already cover the durable conclusion; refresh tracked state only.",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/213",
       "recordedAt": "2026-04-17T19:07:12Z"
+    },
+    {
+      "number": 214,
+      "title": "[Work] 调研一下codex代码中 plan mode 的实现情况，看我们要不要支持",
+      "updatedAt": "2026-04-21T08:24:01Z",
+      "closedAt": "2026-04-21T08:23:34Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/214",
+      "recordedAt": "2026-04-21T19:07:24Z"
     },
     {
       "number": 217,
@@ -2052,6 +2092,16 @@
       "recordedAt": "2026-04-17T19:09:54Z"
     },
     {
+      "number": 241,
+      "title": "菜单/配置卡片点击后仅局部变灰，缺少整卡锁定策略",
+      "updatedAt": "2026-04-18T04:36:50Z",
+      "closedAt": "2026-04-18T04:36:49Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/241",
+      "recordedAt": "2026-04-21T19:06:50Z"
+    },
+    {
       "number": 242,
       "title": "design(web-preview): redesign file preview into minimal shell + pluggable renderers",
       "updatedAt": "2026-04-17T06:26:00Z",
@@ -2235,6 +2285,16 @@
       "recordedAt": "2026-04-17T19:11:10Z"
     },
     {
+      "number": 257,
+      "title": "审计飞书菜单卡片自动撤回逻辑并评估迁移到原卡更新",
+      "updatedAt": "2026-04-18T04:36:37Z",
+      "closedAt": "2026-04-18T04:36:37Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/257",
+      "recordedAt": "2026-04-21T19:06:49Z"
+    },
+    {
       "number": 258,
       "title": "[Work] 统一“工作中”共享进度卡时间线，修复 exploration/entry 顺序失真",
       "updatedAt": "2026-04-17T12:35:40Z",
@@ -2274,6 +2334,816 @@
       ],
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/260",
       "recordedAt": "2026-04-17T19:12:02Z"
+    },
+    {
+      "number": 262,
+      "title": "[Work] 统一 picker 业务流为单 owner-card 交互模型",
+      "updatedAt": "2026-04-19T01:16:47Z",
+      "closedAt": "2026-04-19T01:16:47Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/262",
+      "recordedAt": "2026-04-21T19:07:01Z"
+    },
+    {
+      "number": 263,
+      "title": "[Work] 抽出 owner-card runtime v1，并迁移 /history 作为首个验证链路",
+      "updatedAt": "2026-04-18T04:57:26Z",
+      "closedAt": "2026-04-18T04:57:26Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/263",
+      "recordedAt": "2026-04-21T19:06:51Z"
+    },
+    {
+      "number": 264,
+      "title": "[Work] 迁移 picker 短路径到 owner-card runtime，并打通同卡完成",
+      "updatedAt": "2026-04-18T06:08:38Z",
+      "closedAt": "2026-04-18T06:08:38Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/264",
+      "recordedAt": "2026-04-21T19:06:52Z"
+    },
+    {
+      "number": 265,
+      "title": "统一飞书调用入口，建立限速、排队与 backoff 基础设施",
+      "updatedAt": "2026-04-18T07:14:41Z",
+      "closedAt": "2026-04-18T07:14:41Z",
+      "decision": "skip",
+      "reason": "current broker design and Feishu API baseline docs already capture the durable call-broker design and guardrails, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/265",
+      "recordedAt": "2026-04-21T19:07:50Z"
+    },
+    {
+      "number": 266,
+      "title": "[Work] 细化 picker Git 长路径的 owner-card 执行模型",
+      "updatedAt": "2026-04-18T07:31:15Z",
+      "closedAt": "2026-04-18T07:31:15Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/266",
+      "recordedAt": "2026-04-21T19:06:53Z"
+    },
+    {
+      "number": 267,
+      "title": "[Work] 治理 owner-card 业务流中的旁路提示消息与主卡焦点",
+      "updatedAt": "2026-04-19T04:47:38Z",
+      "closedAt": "2026-04-19T04:47:39Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/267",
+      "recordedAt": "2026-04-21T19:07:04Z"
+    },
+    {
+      "number": 269,
+      "title": "Tracker: unify Feishu card string escaping and content-context handling",
+      "updatedAt": "2026-04-19T04:53:33Z",
+      "closedAt": "2026-04-19T04:49:36Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/269",
+      "recordedAt": "2026-04-21T19:07:43Z"
+    },
+    {
+      "number": 270,
+      "title": "[Work] 收敛 /sendfile 为前台启动、后台发送的业务流",
+      "updatedAt": "2026-04-18T09:13:29Z",
+      "closedAt": "2026-04-18T09:13:29Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/270",
+      "recordedAt": "2026-04-21T19:06:54Z"
+    },
+    {
+      "number": 271,
+      "title": "[Research] 设计仅对 wrapper 启动的 Codex 注入 Feishu surface-bound tools",
+      "updatedAt": "2026-04-19T03:48:34Z",
+      "closedAt": "2026-04-19T03:48:34Z",
+      "decision": "skip",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/271",
+      "recordedAt": "2026-04-21T19:06:46Z"
+    },
+    {
+      "number": 272,
+      "title": "P0: contain raw dynamic text before it enters Feishu markdown cards",
+      "updatedAt": "2026-04-18T08:29:17Z",
+      "closedAt": "2026-04-18T08:29:17Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/272",
+      "recordedAt": "2026-04-21T19:07:30Z"
+    },
+    {
+      "number": 273,
+      "title": "[Work] 将 9502 本地 tool listener 升级为 MCP-native 协议面",
+      "updatedAt": "2026-04-19T01:38:54Z",
+      "closedAt": "2026-04-19T01:38:54Z",
+      "decision": "skip",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/273",
+      "recordedAt": "2026-04-21T19:06:45Z"
+    },
+    {
+      "number": 274,
+      "title": "P1: shape mixed markdown assembly paths in selection/catalog/snapshot cards",
+      "updatedAt": "2026-04-18T09:23:09Z",
+      "closedAt": "2026-04-18T09:23:09Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/274",
+      "recordedAt": "2026-04-21T19:07:31Z"
+    },
+    {
+      "number": 276,
+      "title": "P1a: contain dynamic thread/workspace text in selection cards",
+      "updatedAt": "2026-04-18T09:45:46Z",
+      "closedAt": "2026-04-18T09:45:43Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/276",
+      "recordedAt": "2026-04-21T19:07:33Z"
+    },
+    {
+      "number": 277,
+      "title": "P1b: contain dynamic thread text in snapshot status cards",
+      "updatedAt": "2026-04-18T09:56:45Z",
+      "closedAt": "2026-04-18T09:56:43Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/277",
+      "recordedAt": "2026-04-21T19:07:33Z"
+    },
+    {
+      "number": 278,
+      "title": "[Work] 推进非 picker 业务流迁移到 owner-card 交互架构",
+      "updatedAt": "2026-04-19T00:44:27Z",
+      "closedAt": "2026-04-19T00:44:27Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/278",
+      "recordedAt": "2026-04-21T19:07:00Z"
+    },
+    {
+      "number": 279,
+      "title": "[Work] 收敛 /menu 进入业务流时的 ownership handoff 与 submission-anchor",
+      "updatedAt": "2026-04-18T10:30:38Z",
+      "closedAt": "2026-04-18T10:30:38Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/279",
+      "recordedAt": "2026-04-21T19:06:55Z"
+    },
+    {
+      "number": 280,
+      "title": "[Work] 评估并迁移 /upgrade 到长任务 owner-card 模型",
+      "updatedAt": "2026-04-18T16:25:23Z",
+      "closedAt": "2026-04-18T16:25:23Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/280",
+      "recordedAt": "2026-04-21T19:06:57Z"
+    },
+    {
+      "number": 281,
+      "title": "[Work] 收敛参数卡短流为同卡选择、同卡封卡模型",
+      "updatedAt": "2026-04-18T11:48:40Z",
+      "closedAt": "2026-04-18T11:48:40Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/281",
+      "recordedAt": "2026-04-21T19:06:56Z"
+    },
+    {
+      "number": 282,
+      "title": "P2a: define minimal system-markdown boundary for remaining Feishu system cards",
+      "updatedAt": "2026-04-18T10:59:31Z",
+      "closedAt": "2026-04-18T10:59:30Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/282",
+      "recordedAt": "2026-04-21T19:07:34Z"
+    },
+    {
+      "number": 283,
+      "title": "P2b: stop precomposed markdown in Feishu picker/status cards",
+      "updatedAt": "2026-04-18T11:23:30Z",
+      "closedAt": "2026-04-18T11:23:27Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/283",
+      "recordedAt": "2026-04-21T19:07:35Z"
+    },
+    {
+      "number": 284,
+      "title": "P2c: split Feishu notice markdown contract by dynamic content",
+      "updatedAt": "2026-04-18T11:59:11Z",
+      "closedAt": "2026-04-18T11:59:08Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/284",
+      "recordedAt": "2026-04-21T19:07:36Z"
+    },
+    {
+      "number": 285,
+      "title": "P2d: close command-card markdown boundary for dynamic config summaries",
+      "updatedAt": "2026-04-18T14:39:02Z",
+      "closedAt": "2026-04-18T14:38:59Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/285",
+      "recordedAt": "2026-04-21T19:07:37Z"
+    },
+    {
+      "number": 286,
+      "title": "P2e: make command-catalog markdown contracts explicit",
+      "updatedAt": "2026-04-18T15:35:16Z",
+      "closedAt": "2026-04-18T15:35:12Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/286",
+      "recordedAt": "2026-04-21T19:07:38Z"
+    },
+    {
+      "number": 287,
+      "title": "[Work] 重做 unified target picker 的分步业务卡布局与前置校验",
+      "updatedAt": "2026-04-19T00:04:23Z",
+      "closedAt": "2026-04-19T00:04:23Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/287",
+      "recordedAt": "2026-04-21T19:06:58Z"
+    },
+    {
+      "number": 288,
+      "title": "[Work] 收敛主动 /compact 为前台 owner-card，并保持被动 compact 为共享进度",
+      "updatedAt": "2026-04-19T00:35:16Z",
+      "closedAt": "2026-04-19T00:35:16Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/288",
+      "recordedAt": "2026-04-21T19:06:59Z"
+    },
+    {
+      "number": 289,
+      "title": "P2f: scope remaining legacy direct command-catalog markdown removal",
+      "updatedAt": "2026-04-19T04:01:49Z",
+      "closedAt": "2026-04-19T00:57:47Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/289",
+      "recordedAt": "2026-04-21T19:07:39Z"
+    },
+    {
+      "number": 290,
+      "title": "P2g: remove legacy markdown from static and UI-owned command catalogs",
+      "updatedAt": "2026-04-19T01:53:45Z",
+      "closedAt": "2026-04-19T01:53:45Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/290",
+      "recordedAt": "2026-04-21T19:07:40Z"
+    },
+    {
+      "number": 291,
+      "title": "P2h: remove legacy markdown from daemon-owned direct command catalogs",
+      "updatedAt": "2026-04-19T03:04:56Z",
+      "closedAt": "2026-04-19T03:04:56Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/291",
+      "recordedAt": "2026-04-21T19:07:41Z"
+    },
+    {
+      "number": 292,
+      "title": "P2i: delete legacy command-catalog markdown contracts and renderer branches",
+      "updatedAt": "2026-04-19T04:17:02Z",
+      "closedAt": "2026-04-19T04:08:51Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/292",
+      "recordedAt": "2026-04-21T19:07:42Z"
+    },
+    {
+      "number": 293,
+      "title": "[Work] phase B：把 turn-owned 载体统一挂到 turn 回复链",
+      "updatedAt": "2026-04-19T02:32:04Z",
+      "closedAt": "2026-04-19T02:32:04Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/293",
+      "recordedAt": "2026-04-21T19:07:02Z"
+    },
+    {
+      "number": 294,
+      "title": "[Work] wrapper 启动链路接入 process-scoped Feishu MCP publication（保留现有 MCP，禁用 VS Code path）",
+      "updatedAt": "2026-04-19T03:09:35Z",
+      "closedAt": "2026-04-19T03:09:35Z",
+      "decision": "skip",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/294",
+      "recordedAt": "2026-04-21T19:06:47Z"
+    },
+    {
+      "number": 295,
+      "title": "[Work] phase C：收束 global runtime 独立提示车道",
+      "updatedAt": "2026-04-19T04:45:59Z",
+      "closedAt": "2026-04-19T04:45:56Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/295",
+      "recordedAt": "2026-04-21T19:07:03Z"
+    },
+    {
+      "number": 296,
+      "title": "[Feature] 支持飞书暂存非图像文件并在下一条文本中以工作区文件引用交给 Codex",
+      "updatedAt": "2026-04-19T23:30:06Z",
+      "closedAt": "2026-04-19T23:30:06Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/296",
+      "recordedAt": "2026-04-21T19:07:14Z"
+    },
+    {
+      "number": 297,
+      "title": "[Feature] 为当前接入 surface 提供显式产物投递 tools（图片/文件），由模型决定是否发送",
+      "updatedAt": "2026-04-19T23:25:07Z",
+      "closedAt": "2026-04-19T23:25:07Z",
+      "decision": "skip",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/297",
+      "recordedAt": "2026-04-21T19:06:48Z"
+    },
+    {
+      "number": 298,
+      "title": "[Tracker] 收敛 normal mode 的 Feishu surface-bound tools：publication、显式投递与使用语义",
+      "updatedAt": "2026-04-20T12:50:49Z",
+      "closedAt": "2026-04-19T23:59:11Z",
+      "decision": "skip",
+      "reason": "current architecture/protocol docs already capture the live current-surface tool publication and explicit delivery contract, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/298",
+      "recordedAt": "2026-04-21T19:06:49Z"
+    },
+    {
+      "number": 299,
+      "title": "[UX] 统一共享进度与 compact 展示文案、样式和 read 追加行为",
+      "updatedAt": "2026-04-19T08:02:04Z",
+      "closedAt": "2026-04-19T08:02:04Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/299",
+      "recordedAt": "2026-04-21T19:07:05Z"
+    },
+    {
+      "number": 300,
+      "title": "Unify Feishu turn reply policy to final-only",
+      "updatedAt": "2026-04-19T08:06:19Z",
+      "closedAt": "2026-04-19T08:06:16Z",
+      "decision": "skip",
+      "reason": "this issue's interim conclusion was superseded by later follow-up work; current canonical docs reflect the live behavior instead",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/300",
+      "recordedAt": "2026-04-21T19:08:07Z"
+    },
+    {
+      "number": 301,
+      "title": "[Parent] 统一 /menu 原卡 owner-card 语义，收束命令跳出与旧菜单残留",
+      "updatedAt": "2026-04-19T10:14:34Z",
+      "closedAt": "2026-04-19T10:14:31Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/301",
+      "recordedAt": "2026-04-21T19:07:09Z"
+    },
+    {
+      "number": 302,
+      "title": "Feishu turn reply thread：文本轨迹与 steer 用户补充消息",
+      "updatedAt": "2026-04-19T10:48:56Z",
+      "closedAt": "2026-04-19T10:48:53Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/302",
+      "recordedAt": "2026-04-21T19:07:10Z"
+    },
+    {
+      "number": 303,
+      "title": "[Work] /menu current_work 长流程回归原卡：compact / steerall / sendfile",
+      "updatedAt": "2026-04-19T09:28:01Z",
+      "closedAt": "2026-04-19T09:28:01Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/303",
+      "recordedAt": "2026-04-21T19:07:06Z"
+    },
+    {
+      "number": 304,
+      "title": "[Work] /menu 轻量与终态命令回归原卡：help / status / stop / new / follow / detach",
+      "updatedAt": "2026-04-19T09:56:54Z",
+      "closedAt": "2026-04-19T09:56:54Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/304",
+      "recordedAt": "2026-04-21T19:07:07Z"
+    },
+    {
+      "number": 305,
+      "title": "[Work] /menu 状态机基线收尾：replace drift、回归测试、文档同步",
+      "updatedAt": "2026-04-19T10:12:14Z",
+      "closedAt": "2026-04-19T10:12:11Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/305",
+      "recordedAt": "2026-04-21T19:07:08Z"
+    },
+    {
+      "number": 306,
+      "title": "收口飞书进行态卡片文案与 File Picker 当前目录显示",
+      "updatedAt": "2026-04-19T12:07:54Z",
+      "closedAt": "2026-04-19T12:07:51Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/306",
+      "recordedAt": "2026-04-21T19:07:11Z"
+    },
+    {
+      "number": 308,
+      "title": "VS Code 菜单链路未收口：/list /use /useall 与迁移/恢复提示仍会逃逸出原卡",
+      "updatedAt": "2026-04-19T14:59:51Z",
+      "closedAt": "2026-04-19T14:59:51Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/308",
+      "recordedAt": "2026-04-21T19:07:12Z"
+    },
+    {
+      "number": 309,
+      "title": "[Feature] 在共享“工作中”卡中渲染 file_change 过程项",
+      "updatedAt": "2026-04-19T15:20:37Z",
+      "closedAt": "2026-04-19T15:20:37Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/309",
+      "recordedAt": "2026-04-21T19:07:13Z"
+    },
+    {
+      "number": 310,
+      "title": "Unify external command launches and suppress Windows console windows",
+      "updatedAt": "2026-04-20T00:32:01Z",
+      "closedAt": "2026-04-20T00:32:01Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/310",
+      "recordedAt": "2026-04-21T19:07:57Z"
+    },
+    {
+      "number": 311,
+      "title": "Refactor Feishu target picker into wizard-style owner-card pages",
+      "updatedAt": "2026-04-20T04:19:05Z",
+      "closedAt": "2026-04-20T04:19:05Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/311",
+      "recordedAt": "2026-04-21T19:07:15Z"
+    },
+    {
+      "number": 312,
+      "title": "Unify menu and bare command cards for incomplete parameter entry",
+      "updatedAt": "2026-04-20T05:24:42Z",
+      "closedAt": "2026-04-20T05:24:38Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/312",
+      "recordedAt": "2026-04-21T19:07:16Z"
+    },
+    {
+      "number": 313,
+      "title": "治理 Feishu 文本生产与格式化链路，统一 markdown/plain_text 边界",
+      "updatedAt": "2026-04-20T07:56:51Z",
+      "closedAt": "2026-04-20T07:56:51Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/313",
+      "recordedAt": "2026-04-21T19:07:49Z"
+    },
+    {
+      "number": 314,
+      "title": "收敛 `/vscode-migrate` 的 hidden slash transport 特例，统一 VS Code 迁移卡执行协议",
+      "updatedAt": "2026-04-20T07:13:06Z",
+      "closedAt": "2026-04-20T07:13:03Z",
+      "decision": "skip",
+      "reason": "this roll-up issue was fully closed by #315, and current canonical docs already reflect the final behavior",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/314",
+      "recordedAt": "2026-04-21T19:08:08Z"
+    },
+    {
+      "number": 315,
+      "title": "收敛 `/vscode-migrate` 的 hidden slash transport 特例，统一 VS Code 迁移卡执行协议",
+      "updatedAt": "2026-04-20T07:04:12Z",
+      "closedAt": "2026-04-20T07:04:12Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/315",
+      "recordedAt": "2026-04-21T19:07:17Z"
+    },
+    {
+      "number": 316,
+      "title": "P1a: 收口 snapshot/plan/thread-selection 的 system raw markdown body",
+      "updatedAt": "2026-04-20T06:25:38Z",
+      "closedAt": "2026-04-20T06:25:38Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/316",
+      "recordedAt": "2026-04-21T19:07:44Z"
+    },
+    {
+      "number": 317,
+      "title": "P1b: 重构 request prompt 正文合同，移除动态 raw markdown body",
+      "updatedAt": "2026-04-20T06:47:31Z",
+      "closedAt": "2026-04-20T06:47:31Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/317",
+      "recordedAt": "2026-04-21T19:07:45Z"
+    },
+    {
+      "number": 318,
+      "title": "P1c: 收口 shared progress 的动态值文本 contract",
+      "updatedAt": "2026-04-20T07:15:05Z",
+      "closedAt": "2026-04-20T07:15:05Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/318",
+      "recordedAt": "2026-04-21T19:07:46Z"
+    },
+    {
+      "number": 319,
+      "title": "调整共享“工作中”卡的 verbosity 策略边界",
+      "updatedAt": "2026-04-20T07:17:03Z",
+      "closedAt": "2026-04-20T07:17:00Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/319",
+      "recordedAt": "2026-04-21T19:07:18Z"
+    },
+    {
+      "number": 320,
+      "title": "P1d: final markdown 单一 serializer 化",
+      "updatedAt": "2026-04-20T07:37:14Z",
+      "closedAt": "2026-04-20T07:37:14Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/320",
+      "recordedAt": "2026-04-21T19:07:47Z"
+    },
+    {
+      "number": 321,
+      "title": "审计多路径实现、遗留兼容与未清理旧路径，收敛统一清理策略",
+      "updatedAt": "2026-04-21T11:40:05Z",
+      "closedAt": "2026-04-21T07:03:51Z",
+      "decision": "skip",
+      "reason": "tracker-only roll-up with no additional durable conclusion beyond child issues and current canonical docs",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/321",
+      "recordedAt": "2026-04-21T19:08:05Z"
+    },
+    {
+      "number": 322,
+      "title": "P1e: payload / carrier 回归矩阵",
+      "updatedAt": "2026-04-20T07:55:18Z",
+      "closedAt": "2026-04-20T07:55:15Z",
+      "decision": "skip",
+      "reason": "current Feishu text-governance docs already capture this markdown/plain_text lane boundary, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/322",
+      "recordedAt": "2026-04-21T19:07:48Z"
+    },
+    {
+      "number": 323,
+      "title": "清理弱来源旧兼容路径：legacy-default / legacy headless hint / ProbeLegacy / ensureCronBitable",
+      "updatedAt": "2026-04-20T16:46:15Z",
+      "closedAt": "2026-04-20T16:46:15Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/323",
+      "recordedAt": "2026-04-21T19:07:59Z"
+    },
+    {
+      "number": 324,
+      "title": "清理第二批历史 alias / 旧卡 transport：prompt_select / resume_headless_thread / start_command_capture / debug track / create_workspace",
+      "updatedAt": "2026-04-20T16:38:35Z",
+      "closedAt": "2026-04-20T16:38:35Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/324",
+      "recordedAt": "2026-04-21T19:07:58Z"
+    },
+    {
+      "number": 325,
+      "title": "[Tracker] 架构收口重构：统一交互载体、收窄控制契约并拆分核心运行时",
+      "updatedAt": "2026-04-20T19:12:49Z",
+      "closedAt": "2026-04-20T19:12:49Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/325",
+      "recordedAt": "2026-04-21T19:07:56Z"
+    },
+    {
+      "number": 326,
+      "title": "[Refactor] 继续收束 daemon.App：抽离剩余重 runtime owner",
+      "updatedAt": "2026-04-20T19:10:31Z",
+      "closedAt": "2026-04-20T19:10:28Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/326",
+      "recordedAt": "2026-04-21T19:07:55Z"
+    },
+    {
+      "number": 327,
+      "title": "[Refactor] 统一 Feishu 交互载体并消除 View / Direct DTO 双轨",
+      "updatedAt": "2026-04-20T17:33:30Z",
+      "closedAt": "2026-04-20T17:33:30Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/327",
+      "recordedAt": "2026-04-21T19:07:51Z"
+    },
+    {
+      "number": 328,
+      "title": "[Refactor] 收窄 control.Action / UIEvent 契约，拆分超宽控制面",
+      "updatedAt": "2026-04-20T17:56:12Z",
+      "closedAt": "2026-04-20T17:56:08Z",
+      "decision": "skip",
+      "reason": "current architecture doc already captures the durable boundary change from this refactor, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/328",
+      "recordedAt": "2026-04-21T19:07:52Z"
+    },
+    {
+      "number": 329,
+      "title": "[Work] 统一 Feishu 交互到卡片交互模型，收口前台卡 / notice / 封卡语义",
+      "updatedAt": "2026-04-21T03:07:44Z",
+      "closedAt": "2026-04-21T03:07:44Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/329",
+      "recordedAt": "2026-04-21T19:07:23Z"
+    },
+    {
+      "number": 330,
+      "title": "[Work] 统一 command / owner flow 页面到前台卡 contract",
+      "updatedAt": "2026-04-21T02:06:30Z",
+      "closedAt": "2026-04-21T02:06:27Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/330",
+      "recordedAt": "2026-04-21T19:07:20Z"
+    },
+    {
+      "number": 331,
+      "title": "[Work] 统一 picker / history / send-file 到前台卡 contract",
+      "updatedAt": "2026-04-21T02:42:44Z",
+      "closedAt": "2026-04-21T02:42:41Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/331",
+      "recordedAt": "2026-04-21T19:07:21Z"
+    },
+    {
+      "number": 332,
+      "title": "[Work] 收口独立例外车道并同步 Feishu 交互文档",
+      "updatedAt": "2026-04-21T03:06:51Z",
+      "closedAt": "2026-04-21T03:06:51Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/332",
+      "recordedAt": "2026-04-21T19:07:22Z"
+    },
+    {
+      "number": 333,
+      "title": "[Work] 前台卡公共基座：统一 notice 区与 sealing contract",
+      "updatedAt": "2026-04-21T01:45:50Z",
+      "closedAt": "2026-04-21T01:45:50Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/333",
+      "recordedAt": "2026-04-21T19:07:19Z"
+    },
+    {
+      "number": 334,
+      "title": "[Work] 收口低风险命令卡残留并清理旧 /newinstance / /killinstance 兼容壳",
+      "updatedAt": "2026-04-21T09:27:00Z",
+      "closedAt": "2026-04-21T09:26:27Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/334",
+      "recordedAt": "2026-04-21T19:07:25Z"
+    },
+    {
+      "number": 335,
+      "title": "[Work] 硬迁移 Cron owner/binding，移除 legacy owner 兼容车道",
+      "updatedAt": "2026-04-21T10:32:51Z",
+      "closedAt": "2026-04-21T10:32:48Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/335",
+      "recordedAt": "2026-04-21T19:07:28Z"
+    },
+    {
+      "number": 336,
+      "title": "[Work] editor_settings 改为静默自动迁移到 managed_shim",
+      "updatedAt": "2026-04-21T11:37:59Z",
+      "closedAt": "2026-04-21T11:37:56Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/336",
+      "recordedAt": "2026-04-21T19:07:30Z"
+    },
+    {
+      "number": 337,
+      "title": "[Work] 将 request / approval / user-input 卡迁到正式主承载",
+      "updatedAt": "2026-04-21T10:14:34Z",
+      "closedAt": "2026-04-21T10:14:31Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/337",
+      "recordedAt": "2026-04-21T19:07:27Z"
+    },
+    {
+      "number": 338,
+      "title": "[Work] 重做 selection 主路径：VS Code /list 按钮、/use / /useall 下拉",
+      "updatedAt": "2026-04-21T10:01:06Z",
+      "closedAt": "2026-04-21T10:01:03Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/338",
+      "recordedAt": "2026-04-21T19:07:26Z"
+    },
+    {
+      "number": 339,
+      "title": "[Tracker] #321 下游执行总调度：旧基座退场、Cron 硬迁移与 VS Code 迁移收口",
+      "updatedAt": "2026-04-21T12:38:53Z",
+      "closedAt": "2026-04-21T11:42:21Z",
+      "decision": "skip",
+      "reason": "tracker-only roll-up with no additional durable conclusion beyond child issues and current canonical docs",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/339",
+      "recordedAt": "2026-04-21T19:08:06Z"
+    },
+    {
+      "number": 340,
+      "title": "[Work] 收口剩余 command carrier 并删除 FeishuDirectCommandCatalog 旧基座",
+      "updatedAt": "2026-04-21T11:12:42Z",
+      "closedAt": "2026-04-21T11:12:42Z",
+      "decision": "skip",
+      "reason": "current Feishu card and remote-surface state-machine docs already capture this implemented interaction behavior, so another issue-specific sync note would be redundant",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/340",
+      "recordedAt": "2026-04-21T19:07:29Z"
+    },
+    {
+      "number": 341,
+      "title": "收敛重构后的 legacy 双轨：迁移应迁移、删除应删除（母 issue）",
+      "updatedAt": "2026-04-21T13:32:54Z",
+      "closedAt": "2026-04-21T13:32:48Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/341",
+      "recordedAt": "2026-04-21T19:08:04Z"
+    },
+    {
+      "number": 342,
+      "title": "[子任务 A] Selection 单轨收敛：移除 structured-\u003elegacy fallback",
+      "updatedAt": "2026-04-21T13:03:19Z",
+      "closedAt": "2026-04-21T13:03:16Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/342",
+      "recordedAt": "2026-04-21T19:08:00Z"
+    },
+    {
+      "number": 343,
+      "title": "[子任务 B] Action 合同单轨收敛：移除 root 兼容字段 live 依赖",
+      "updatedAt": "2026-04-21T13:13:09Z",
+      "closedAt": "2026-04-21T13:13:06Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/343",
+      "recordedAt": "2026-04-21T19:08:01Z"
+    },
+    {
+      "number": 344,
+      "title": "[子任务 C] Callback payload 单轨收敛：下线 legacy key 兼容分支",
+      "updatedAt": "2026-04-21T13:19:19Z",
+      "closedAt": "2026-04-21T13:19:16Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/344",
+      "recordedAt": "2026-04-21T19:08:02Z"
+    },
+    {
+      "number": 345,
+      "title": "[子任务 D] 删除低价值 legacy 残留（事件/别名/兼容壳）",
+      "updatedAt": "2026-04-21T13:30:55Z",
+      "closedAt": "2026-04-21T13:30:51Z",
+      "decision": "skip",
+      "reason": "maintainability-only cleanup with no additional durable product behavior beyond what current canonical docs already cover",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/345",
+      "recordedAt": "2026-04-21T19:08:03Z"
     }
   ]
 }
