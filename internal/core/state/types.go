@@ -59,6 +59,22 @@ func NormalizeSurfaceVerbosity(value SurfaceVerbosity) SurfaceVerbosity {
 	}
 }
 
+type PlanModeSetting string
+
+const (
+	PlanModeSettingOff PlanModeSetting = "off"
+	PlanModeSettingOn  PlanModeSetting = "on"
+)
+
+func NormalizePlanModeSetting(value PlanModeSetting) PlanModeSetting {
+	switch strings.ToLower(strings.TrimSpace(string(value))) {
+	case "on", "plan":
+		return PlanModeSettingOn
+	default:
+		return PlanModeSettingOff
+	}
+}
+
 type QueueItemStatus string
 
 const (
@@ -145,6 +161,7 @@ type ThreadRecord struct {
 	RuntimeStatus           *agentproto.ThreadRuntimeStatus
 	ExplicitModel           string
 	ExplicitReasoningEffort string
+	ObservedPlanMode        PlanModeSetting
 	LastModelReroute        *agentproto.TurnModelReroute
 	Loaded                  bool
 	Archived                bool
@@ -183,6 +200,7 @@ type SurfaceConsoleRecord struct {
 	ActorUserID          string
 	ProductMode          ProductMode
 	Verbosity            SurfaceVerbosity
+	PlanMode             PlanModeSetting
 	ClaimedWorkspaceKey  string
 	AttachedInstanceID   string
 	SelectedThreadID     string
@@ -439,6 +457,7 @@ type QueueItemRecord struct {
 	FrozenThreadID        string
 	FrozenCWD             string
 	FrozenOverride        ModelConfigRecord
+	FrozenPlanMode        PlanModeSetting
 	RouteModeAtEnqueue    RouteMode
 	Status                QueueItemStatus
 }

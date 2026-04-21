@@ -12,6 +12,7 @@ func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) [
 		return nil
 	}
 	instanceID := surface.AttachedInstanceID
+	events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已断开，当前提案计划已失效。")
 	s.clearRemoteOwnership(surface)
 	s.releaseSurfaceWorkspaceClaim(surface)
 	s.releaseSurfaceThreadClaim(surface)
@@ -30,15 +31,16 @@ func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) [
 	delete(s.abandoningUntil, surface.SurfaceSessionID)
 	clearSurfaceRequests(surface)
 	s.clearSurfacePathPicker(surface)
+	s.clearPlanProposalRuntime(surface)
 	clearSurfaceFinalCards(surface)
 	surface.LastSelection = nil
 	if strings.TrimSpace(instanceID) == "" {
-		return nil
+		return events
 	}
 	if inst := s.root.Instances[instanceID]; inst == nil || !inst.Online {
-		return nil
+		return events
 	}
-	return s.reevaluateFollowSurfaces(instanceID)
+	return append(events, s.reevaluateFollowSurfaces(instanceID)...)
 }
 
 func (s *Service) finishSurfaceAfterWork(surface *state.SurfaceConsoleRecord) []control.UIEvent {
@@ -74,6 +76,7 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 		}
 	}
 	events := []control.UIEvent{}
+	events = append(events, s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已切换到 follow 模式，之前的提案计划已失效。")...)
 	if surface.RouteMode == state.RouteModeNewThreadReady {
 		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
 			return blocked
@@ -160,7 +163,8 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 		}
 		prevThreadID := surface.SelectedThreadID
 		prevRouteMode := surface.RouteMode
-		events := s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)
+		events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已变化，之前的提案计划已失效。")
+		events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)...)
 		s.releaseSurfaceThreadClaim(surface)
 		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）", "")...)
 	}
@@ -170,7 +174,8 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 		}
 		prevThreadID := surface.SelectedThreadID
 		prevRouteMode := surface.RouteMode
-		events := s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)
+		events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已变化，之前的提案计划已失效。")
+		events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)...)
 		s.releaseSurfaceThreadClaim(surface)
 		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）", "")...)
 	}

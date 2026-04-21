@@ -39,8 +39,10 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		ActionAutoContinueCommand,
 		ActionReasoningCommand,
 		ActionAccessCommand,
+		ActionPlanCommand,
 		ActionModelCommand,
 		ActionVerboseCommand,
+		ActionPlanProposalDecision,
 		ActionRespondRequest:
 		if isSingleTokenSlashCommand(action.Text) {
 			break
@@ -58,6 +60,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowAutoContinueCatalog,
 		FeishuUIIntentShowReasoningCatalog,
 		FeishuUIIntentShowAccessCatalog,
+		FeishuUIIntentShowPlanCatalog,
 		FeishuUIIntentShowModelCatalog,
 		FeishuUIIntentShowVerboseCatalog,
 		FeishuUIIntentShowList,

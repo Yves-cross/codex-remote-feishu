@@ -16,6 +16,7 @@ type servicePickerRuntime struct {
 	nextTargetPickerID     int
 	nextThreadHistoryID    int
 	nextCompactFlowID      int
+	nextPlanProposalID     int
 	pathPickerConsumers    map[string]PathPickerConsumer
 	pathPickerEntryFilters map[string]PathPickerEntryFilter
 }
@@ -100,6 +101,11 @@ func (r *servicePickerRuntime) nextThreadHistoryToken() string {
 func (r *servicePickerRuntime) nextCompactFlowToken() string {
 	r.nextCompactFlowID++
 	return fmt.Sprintf("compact-%d", r.nextCompactFlowID)
+}
+
+func (r *servicePickerRuntime) nextPlanProposalToken() string {
+	r.nextPlanProposalID++
+	return fmt.Sprintf("plan-proposal-%d", r.nextPlanProposalID)
 }
 
 func (r *servicePickerRuntime) recordSurfaceThreadHistory(surfaceID string, history agentproto.ThreadHistoryRecord) {
@@ -226,6 +232,7 @@ type serviceProgressRuntime struct {
 	turnPlanSnapshots   map[string]*turnPlanSnapshotRecord
 	mcpToolCallProgress map[string]*mcpToolCallProgressRecord
 	pendingTurnText     map[string]*completedTextItem
+	pendingPlanProposal map[string]*completedTextItem
 	turnFileChanges     map[string]*turnFileChangeSummary
 	turnDiffSnapshots   map[string]*control.TurnDiffSnapshot
 }
@@ -236,6 +243,7 @@ func newServiceProgressRuntime(service *Service) *serviceProgressRuntime {
 		turnPlanSnapshots:   map[string]*turnPlanSnapshotRecord{},
 		mcpToolCallProgress: map[string]*mcpToolCallProgressRecord{},
 		pendingTurnText:     map[string]*completedTextItem{},
+		pendingPlanProposal: map[string]*completedTextItem{},
 		turnFileChanges:     map[string]*turnFileChangeSummary{},
 		turnDiffSnapshots:   map[string]*control.TurnDiffSnapshot{},
 	}

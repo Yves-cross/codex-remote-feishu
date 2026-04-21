@@ -22,6 +22,7 @@ const (
 	FeishuCommandModel             = "model"
 	FeishuCommandReasoning         = "reasoning"
 	FeishuCommandAccess            = "access"
+	FeishuCommandPlan              = "plan"
 	FeishuCommandVerbose           = "verbose"
 	FeishuCommandHelp              = "help"
 	FeishuCommandMenu              = "menu"
@@ -110,7 +111,7 @@ var feishuCommandGroups = []FeishuCommandGroup{
 	{
 		ID:          FeishuCommandGroupSendSettings,
 		Title:       "发送设置",
-		Description: "调整后续飞书消息的推理强度、模型和执行权限。",
+		Description: "调整后续飞书消息的推理强度、模型、执行权限和 Plan mode。",
 	},
 	{
 		ID:          FeishuCommandGroupSwitchTarget,
@@ -366,6 +367,42 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{prefix: "access-", kind: ActionAccessCommand, build: buildMenuAccessText},
 			{prefix: "approval_", kind: ActionAccessCommand, build: buildMenuAccessText},
 			{prefix: "approval-", kind: ActionAccessCommand, build: buildMenuAccessText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandPlan,
+			GroupID:          FeishuCommandGroupSendSettings,
+			Title:            "Plan mode",
+			CanonicalSlash:   "/plan",
+			CanonicalMenuKey: "plan",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "on",
+			ArgumentFormNote: "输入 on / off。",
+			ArgumentSubmit:   "应用",
+			Description:      "控制后续新 turn 是否按 upstream Plan mode 启动；bare `/plan` 会返回可选参数卡片。",
+			Examples:         []string{"/plan on", "/plan off"},
+			Options: []FeishuCommandOption{
+				commandOption("/plan", "plan", "on", "开启", "后续新 turn 按 Plan mode 启动。"),
+				commandOption("/plan", "plan", "off", "关闭", "后续新 turn 按默认执行模式启动。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+			RecommendedMenu: &FeishuRecommendedMenu{
+				Key:         "plan",
+				Name:        "Plan mode",
+				Description: "打开 Plan mode 参数卡，切换后续新 turn 是否启用 Plan mode。",
+			},
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/plan", kind: ActionPlanCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "plan", action: Action{Kind: ActionPlanCommand, Text: "/plan"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "plan_", kind: ActionPlanCommand, build: buildMenuPlanText},
+			{prefix: "plan-", kind: ActionPlanCommand, build: buildMenuPlanText},
 		},
 	},
 	{

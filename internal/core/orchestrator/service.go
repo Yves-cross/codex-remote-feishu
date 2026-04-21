@@ -228,6 +228,7 @@ func (s *Service) normalizeSurfaceProductMode(surface *state.SurfaceConsoleRecor
 	}
 	surface.ProductMode = state.NormalizeProductMode(surface.ProductMode)
 	surface.Verbosity = state.NormalizeSurfaceVerbosity(surface.Verbosity)
+	surface.PlanMode = state.NormalizePlanModeSetting(surface.PlanMode)
 	s.normalizeLegacyNormalFollowRoute(surface)
 	s.normalizeLegacyVSCodePreparedNewThread(surface)
 	return surface.ProductMode
@@ -480,6 +481,10 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.handleReasoningCommand(surface, action)
 	case control.ActionAccessCommand:
 		events = s.handleAccessCommand(surface, action)
+	case control.ActionPlanCommand:
+		events = s.handlePlanCommand(surface, action)
+	case control.ActionPlanProposalDecision:
+		events = s.handlePlanProposalDecision(surface, action)
 	case control.ActionVerboseCommand:
 		events = s.handleVerboseCommand(surface, action)
 	case control.ActionAutoContinueCommand:
@@ -563,7 +568,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		s.touchThread(thread)
 		return s.filterEventsForSurfaceVisibility(append(preface, s.threadFocusEvents(instanceID, event.ThreadID)...))
 	case agentproto.EventConfigObserved:
-		s.observeConfig(inst, event.ThreadID, event.CWD, event.ConfigScope, event.Model, event.ReasoningEffort, event.AccessMode)
+		s.observeConfig(inst, event.ThreadID, event.CWD, event.ConfigScope, event.Model, event.ReasoningEffort, event.AccessMode, event.PlanMode)
 		return s.filterEventsForSurfaceVisibility(preface)
 	case agentproto.EventThreadDiscovered:
 		s.maybePromoteWorkspaceRoot(inst, event.CWD)
@@ -588,6 +593,9 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		}
 		if event.ReasoningEffort != "" {
 			thread.ExplicitReasoningEffort = event.ReasoningEffort
+		}
+		if event.PlanMode != "" {
+			thread.ObservedPlanMode = state.NormalizePlanModeSetting(state.PlanModeSetting(event.PlanMode))
 		}
 		if event.RuntimeStatus != nil {
 			applyThreadRuntimeStatus(thread, event.RuntimeStatus)
@@ -649,6 +657,9 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			if thread.ReasoningEffort != "" {
 				current.ExplicitReasoningEffort = thread.ReasoningEffort
 			}
+			if thread.PlanMode != "" {
+				current.ObservedPlanMode = state.NormalizePlanModeSetting(state.PlanModeSetting(thread.PlanMode))
+			}
 			current.Loaded = thread.Loaded
 			current.Archived = thread.Archived
 			if thread.State != "" {
@@ -687,6 +698,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		return s.filterEventsForSurfaceVisibility(append(preface, s.applyTurnPlanUpdate(instanceID, event)...))
 	case agentproto.EventTurnStarted:
 		event.Initiator = s.normalizeTurnInitiator(instanceID, event)
+		preface = append(preface, s.maybeSealPlanProposalForTurnStart(instanceID, event.ThreadID, event.TurnID)...)
 		trackActiveTurn := s.shouldTrackInstanceActiveTurn(instanceID, event)
 		if trackActiveTurn {
 			inst.ActiveTurnID = event.TurnID
@@ -765,6 +777,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 		compactEvents := s.completeCompactTurn(instanceID, event)
 		if event.Initiator.Kind == agentproto.InitiatorLocalUI {
 			events = append(events, s.enterHandoff(instanceID)...)
+			events = append(events, s.maybePresentCompletedPlanProposal(instanceID, event.ThreadID, event.TurnID)...)
 			events = append(events, compactEvents...)
 			if surface != nil {
 				events = append(events, s.finishSurfaceAfterWork(surface)...)
@@ -772,6 +785,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []c
 			return s.filterEventsForSurfaceVisibility(events)
 		}
 		events = append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem, finalText, summary)...)
+		events = append(events, s.maybePresentCompletedPlanProposal(instanceID, event.ThreadID, event.TurnID)...)
 		events = append(events, compactEvents...)
 		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventItemStarted:

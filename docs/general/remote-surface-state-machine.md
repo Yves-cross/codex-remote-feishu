@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-21`
-> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating，以及显式 `/compact` 现在会在前台建立 compact owner-card flow（dispatching -> running -> completed/failed 同卡 patch；这条前台 compact 卡对 `quiet` / `normal` / `verbose` 都可见，而被动 compact completion 则继续并入共享过程卡：quiet 静默，normal/verbose 可见）、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/model` `/verbose` 的统一参数卡表单、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（editing 态改成显式 `Page` 向导流：`/list` / `/use` / `/useall` / workspace-scoped 入口现在都先落 `模式` 页，并预填 `模式=进入已有工作区`；点模式按钮后再进入 `目标` 或 `来源` 页；`目标` 页保留工作区 + 会话同页，`来源 -> 目录/Git` 各页各答一个主问题；本地目录命中已知 workspace 时直接阻塞；`Git URL` 页继续在同页收集父目录、仓库地址与目录名，父目录行右侧提供 `选择目录`，底部动作统一收口成带分隔线的横排按钮，并在 confirm 后进入同卡 processing / terminal 收口；processing 期间普通输入会被 `target_picker` gate 显式阻断，仅保留 `/status` 与同卡取消；两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 `克隆并继续` 禁用）；`vscode mode` 下菜单进入的 `/list`、`/use`、`/useall` 现在也会把实例/线程结果、attach / use 终态继续收口在原菜单卡；stamped `/mode vscode` 若立刻命中兼容修复、open prompt 或恢复提示，以及 stamped/typed `/vscode-migrate` 打开的 root page 与 `vscode_migrate_owner_flow` 结果，也优先沿当前卡时间线承接；同时补进 `/upgrade latest` 的 daemon owner-card gate：文本触发先 append patchable checking card，再同卡进入 confirm / running / cancelling / restarting(sealed)；running 期间普通输入与其它 competing action 会在 daemon `handleAction(...)` 顶层被显式阻断，只保留 `/status`、`/upgrade`、`/debug`、reaction/recall 与同卡 confirm/cancel；helper 重启完成后只补一条结果 notice，不再恢复旧卡 patch；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义、request/path-picker/target-picker/thread-history 的 service-owned runtime 持有边界，以及 `surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` 偏好的承载；startup 不再导入旧 `headless-restore-hints.json`，且非 `normal` mode 的持久化 entry 会强制清掉 `ResumeHeadless`；`global runtime` 提示当前也已收口为独立顶层车道，统一覆盖真正脱离当前 owner-card 上下文的 resume failure/open prompt、transport degraded、daemon shutdown 与 gateway apply failure。
+> Summary: 同步当前 workspace-aware normal mode 与 vscode mode，并补齐新的飞书命令面：canonical slash/menu key、阶段感知 `/menu` 首页、manual `/compact` 的当前 thread 入口与 compact pending/running gating，以及显式 `/compact` 现在会在前台建立 compact owner-card flow（dispatching -> running -> completed/failed 同卡 patch；这条前台 compact 卡对 `quiet` / `normal` / `verbose` 都可见，而被动 compact completion 则继续并入共享过程卡：quiet 静默，normal/verbose 可见）、`/steerall` 的批量并入当前 running turn 入口、reply 当前 processing 的自动 steering、bare `/mode` `/autowhip` `/reasoning` `/access` `/plan` `/model` `/verbose` 的统一参数卡表单、surface 级 `PlanMode` 的持久化 / 入队冻结 / turn-start 落参，以及 `item/plan/delta` 在 turn 完成后追加的“提案计划”手动 handoff 卡（不进入 request gate，后续输入或路由切换会 seal，点击 `直接执行` / `清空上下文并执行` 会先把当前 surface 的 `PlanMode` 切回 `off` 再继续派发）、可复用 Feishu 路径选择器的 active picker gate / consumer handoff，以及 normal `/list` / `/use` / `/useall` 收敛后的 unified target picker（editing 态改成显式 `Page` 向导流：`/list` / `/use` / `/useall` / workspace-scoped 入口现在都先落 `模式` 页，并预填 `模式=进入已有工作区`；点模式按钮后再进入 `目标` 或 `来源` 页；`目标` 页保留工作区 + 会话同页，`来源 -> 目录/Git` 各页各答一个主问题；本地目录命中已知 workspace 时直接阻塞；`Git URL` 页继续在同页收集父目录、仓库地址与目录名，父目录行右侧提供 `选择目录`，底部动作统一收口成带分隔线的横排按钮，并在 confirm 后进入同卡 processing / terminal 收口；processing 期间普通输入会被 `target_picker` gate 显式阻断，仅保留 `/status` 与同卡取消；两条添加路径成功后都统一进入 `R5 NewThreadReady`，缺少 `git` 时保留来源可见但 `克隆并继续` 禁用）；`vscode mode` 下菜单进入的 `/list`、`/use`、`/useall` 现在也会把实例/线程结果、attach / use 终态继续收口在原菜单卡；stamped `/mode vscode` 若立刻命中兼容修复、open prompt 或恢复提示，以及 stamped/typed `/vscode-migrate` 打开的 root page 与 `vscode_migrate_owner_flow` 结果，也优先沿当前卡时间线承接；同时补进 `/upgrade latest` 的 daemon owner-card gate：文本触发先 append patchable checking card，再同卡进入 confirm / running / cancelling / restarting(sealed)；running 期间普通输入与其它 competing action 会在 daemon `handleAction(...)` 顶层被显式阻断，只保留 `/status`、`/upgrade`、`/debug`、reaction/recall 与同卡 confirm/cancel；helper 重启完成后只补一条结果 notice，不再恢复旧卡 patch；同时补记 upstream authoritative `thread runtime status`（`notLoaded` / `idle` / `systemError` / `active(activeFlags)`）已进入 orchestrator thread 视图与 busy/kick 文案投影，但仍与 surface queue/request gate 分层，`notLoaded` 不会把仍可恢复的 thread 从 `/use` 候选里硬挡掉；并同步 instance 级 `ActiveTurnID/ActiveThreadID` 现在只跟踪可中断的主 turn、不会再被未绑定的 unknown/helper side-turn 覆盖或清空，`/stop` 也优先按当前 surface 的 `activeRemote` 绑定发 interrupt；同时补记 transport degraded / hard disconnect / remove instance 对 compact 与 steer overlay 的恢复清理语义、request/path-picker/target-picker/thread-history 的 service-owned runtime 持有边界，以及 `surface resume state` 作为唯一持久化恢复源对 headless 恢复元数据与 surface-level `verbosity` / `PlanMode` 偏好的承载；startup 不再导入旧 `headless-restore-hints.json`，且非 `normal` mode 的持久化 entry 会强制清掉 `ResumeHeadless`；`global runtime` 提示当前也已收口为独立顶层车道，统一覆盖真正脱离当前 owner-card 上下文的 resume failure/open prompt、transport degraded、daemon shutdown 与 gateway apply failure。
 
 ## 1. 文档定位
 
@@ -105,7 +105,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 2. `ProductMode` 当前已经进入 daemon 级 `surface resume state`：
    1. 进程内已有 surface 会保留它。
    2. daemon 重启后，startup 会先从 `surface resume state` materialize latent surface，并恢复之前的 `ProductMode`。
-   3. `surface resume state` 当前不仅记录 `ProductMode` / `Verbosity` / instance / thread / workspace / route，还会记录 headless 恢复所需的 thread title / thread cwd / headless 标记；它已经是唯一持久化恢复源。
+   3. `surface resume state` 当前不仅记录 `ProductMode` / `Verbosity` / `PlanMode` / instance / thread / workspace / route，还会记录 headless 恢复所需的 thread title / thread cwd / headless 标记；它已经是唯一持久化恢复源。
    4. `normal` mode surface 随后会按 persisted resume target 继续尝试恢复：
       1. 优先 exact visible thread 恢复。
    2. 只有 `ResumeHeadless=false` 的目标，visible thread 当前不可见时才允许降级回原 workspace 的 attached-unbound 语义。
@@ -133,7 +133,14 @@ surface 不是单一枚举，而是五层正交状态叠加。
    1. `/verbose quiet|normal|verbose` 直接改当前 surface。
    2. `/detach` 不会清掉它。
    3. daemon 重启后，latent surface 会从 `surface resume state` 恢复之前的 `Verbosity`。
-8. `normal mode` 当前已经完成这一轮产品收窄：
+8. `PlanMode` 当前也是 surface 级偏好：
+   1. `/plan on|off` 直接改当前 surface，只影响后续新 turn。
+   2. 当前 running turn、已入队消息、当前 turn 的 `/steer` 与 reply auto-steer 都不受新设置追溯改写。
+   3. queue item 会在入队时冻结 `PlanMode`，dispatch `turn/start` 时再把它落到 `PromptOverrides.PlanMode -> collaborationMode.mode=plan/default`。
+   4. `/detach`、`/new`、`/use`、`/mode normal|vscode` 不会顺手清掉它；daemon 重启后，latent surface 会从 `surface resume state` 恢复之前的 `PlanMode`。
+   5. 若某轮 turn 结束时缓存了 `item/plan/delta` 最终正文，surface 会在 final 落完后追加一张“提案计划”手动 handoff 卡；这张卡不是 request gate，不阻塞后续输入，但命中新的输入、route 变化、turn 变化或用户显式点击动作后都会 seal。
+   6. 点击提案计划卡的 `直接执行` / `清空上下文并执行`，会先把当前 surface 的 `PlanMode` 切回 `off`，再继续派发 follow-up turn；`取消` 只 seal 卡片，不改 route。
+9. `normal mode` 当前已经完成这一轮产品收窄：
    1. `/list` / `/use` / `/useall` / `show_workspace_threads` 都收敛到同一张 target picker owner card，但 editing 态现在按显式 `Page` 向导流驱动，不再把模式 / 目标 / 来源 / 目录 / Git 混在同一页。
    2. `/list` / `/use` / `/useall` / workspace-scoped 入口都会预填 `模式=进入已有工作区` 并先停在 `模式` 页；只有用户显式点击模式按钮后，才继续进入 `目标` 页或 `来源` 页。
    3. 当前没有已有 workspace，或 `新建工作区` 只剩一个可用来源时，都不会自动跳过 `模式` / `来源`；卡片仍停在当前步骤，只把不可用项置灰并给出原因。
@@ -159,7 +166,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
    8. `show_threads` / `show_all_threads` / `show_scoped_threads` / `show_workspace_threads` / `show_all_workspaces` / `show_recent_workspaces` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` 在 normal mode 下当前都只负责“重新打开或刷新 target picker”，不再维持旧的分页 selection-card 主路径。
    9. `/new` 已变成 workspace-owned prepared state。
    10. `/follow` 在 normal mode 下只返回迁移提示，不再进入 follow route。
-9. `vscode mode` 当前已经完成这一轮收窄：
+10. `vscode mode` 当前已经完成这一轮收窄：
    1. `/list` attach/switch instance 后默认进入 follow-first，而不是落回 pinned/unbound。
    2. 默认跟随目标只看 `ObservedFocusedThreadID`，不再回落 `ActiveThreadID`。
    3. detached `vscode /use` / `/useall` 会直接拒绝，并要求先 `/list`。
@@ -183,7 +190,7 @@ surface 不是单一枚举，而是五层正交状态叠加。
 
 1. `R0 Detached` 现在允许存在一种 daemon materialize 出来的 latent surface：
    1. surface 有 `gateway/chat/user` 路由信息。
-   2. surface 的 `ProductMode` 与 `Verbosity` 已从持久化 `surface resume state` 恢复。
+   2. surface 的 `ProductMode`、`Verbosity` 与 `PlanMode` 已从持久化 `surface resume state` 恢复。
    3. surface 可能还带有持久化的 resume target 元数据（instance / thread / workspace / route 语义）；它们不会在 materialize 当下直接投影成 live attach，但 daemon 随后会异步评估恢复。
    4. 对 `normal` mode 来说，这个 latent detached 可能是短暂中间态：
       1. exact visible thread 恢复成功后会进入 `R2 AttachedPinned`。
@@ -1029,7 +1036,7 @@ daemon startup 的 vscode resume 额外规则：
    3. `threads.snapshot`
    4. `thread.discovered`
    5. `thread.focused`
-2. daemon startup 时会先根据 `surface resume state` materialize latent detached surface，并恢复 `ProductMode` 与 `Verbosity`；`surface resume state` 当前也携带 headless 恢复所需的 thread 元数据，而且它已经是唯一持久化恢复源。startup 不再导入独立的 `headless-restore-hints.json`。
+2. daemon startup 时会先根据 `surface resume state` materialize latent detached surface，并恢复 `ProductMode`、`Verbosity` 与 `PlanMode`；`surface resume state` 当前也携带 headless 恢复所需的 thread 元数据，而且它已经是唯一持久化恢复源。startup 不再导入独立的 `headless-restore-hints.json`。
 3. 后台恢复前置条件：
    1. surface 当前是 `normal` mode
    2. surface 当前没有显式 attach
@@ -1233,6 +1240,14 @@ retained-offline overlay 额外规则：
 3. `/mode vscode`
 
 三者都映射到 `ActionModeCommand`，由服务端在当前 surface 上解释并决定是否执行切换。
+
+同时，文本命令里新增：
+
+1. `/plan`
+2. `/plan on`
+3. `/plan off`
+
+三者都映射到 `ActionPlanCommand`，由服务端在当前 surface 上解释并决定新的 surface-level `PlanMode`；真正的提案 handoff 卡按钮则单独走 `ActionPlanProposalDecision`。
 
 补充说明：
 

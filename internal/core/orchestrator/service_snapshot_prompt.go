@@ -26,8 +26,13 @@ func (s *Service) resolveNextPromptSummary(inst *state.InstanceRecord, surface *
 		override = surface.PromptOverride
 	}
 	threadTitle := ""
+	observedThreadPlanMode := ""
 	if threadID != "" {
-		threadTitle = displayThreadTitle(inst, inst.Threads[threadID], threadID)
+		thread := inst.Threads[threadID]
+		threadTitle = displayThreadTitle(inst, thread, threadID)
+		if thread != nil && strings.TrimSpace(string(thread.ObservedPlanMode)) != "" {
+			observedThreadPlanMode = string(state.NormalizePlanModeSetting(thread.ObservedPlanMode))
+		}
 	}
 	resolution := s.resolvePromptConfig(inst, surface, threadID, cwd, override)
 	return control.PromptRouteSummary{
@@ -43,6 +48,8 @@ func (s *Service) resolveNextPromptSummary(inst *state.InstanceRecord, surface *
 		OverrideModel:                  resolution.Override.Model,
 		OverrideReasoningEffort:        resolution.Override.ReasoningEffort,
 		OverrideAccessMode:             resolution.Override.AccessMode,
+		EffectivePlanMode:              string(state.NormalizePlanModeSetting(surface.PlanMode)),
+		ObservedThreadPlanMode:         observedThreadPlanMode,
 		EffectiveModel:                 resolution.EffectiveModel.Value,
 		EffectiveReasoningEffort:       resolution.EffectiveReasoningEffort.Value,
 		EffectiveAccessMode:            resolution.EffectiveAccessMode,

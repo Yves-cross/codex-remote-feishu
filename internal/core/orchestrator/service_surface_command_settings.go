@@ -40,6 +40,17 @@ func parseSurfaceVerbosity(value string) (state.SurfaceVerbosity, bool) {
 	}
 }
 
+func parsePlanMode(value string) (state.PlanModeSetting, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "on":
+		return state.PlanModeSettingOn, true
+	case "off":
+		return state.PlanModeSettingOff, true
+	default:
+		return "", false
+	}
+}
+
 func commandCardOwnsInlineResult(action control.Action) bool {
 	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
 }
@@ -66,6 +77,8 @@ func (s *Service) buildCommandConfigViewForAction(surface *state.SurfaceConsoleR
 		return s.buildReasoningCommandViewState(surface, cardState)
 	case control.ActionAccessCommand:
 		return s.buildAccessCommandViewState(surface, cardState)
+	case control.ActionPlanCommand:
+		return s.buildPlanCommandViewState(surface, cardState)
 	case control.ActionModelCommand:
 		return s.buildModelCommandViewState(surface, cardState)
 	case control.ActionVerboseCommand:
@@ -246,6 +259,53 @@ func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, acti
 		})
 	}
 	return notice(surface, "surface_verbose_updated", fmt.Sprintf("已将当前飞书会话的前端详细程度切换为 %s。", target))
+}
+
+func (s *Service) handlePlanCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildPlanCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			StatusKind:       "error",
+			StatusText:       "用法：`/plan` 查看当前设置；`/plan on`；`/plan off`。",
+			FormDefaultValue: actionCommandArgumentText(action),
+		})
+	}
+	target, ok := parsePlanMode(parts[1])
+	if !ok {
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			StatusKind:       "error",
+			StatusText:       "用法：`/plan` 查看当前设置；`/plan on`；`/plan off`。",
+			FormDefaultValue: actionCommandArgumentText(action),
+		})
+	}
+	current := state.NormalizePlanModeSetting(surface.PlanMode)
+	if target == current {
+		text := fmt.Sprintf("当前 Plan mode 已经是 %s。", target)
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+				Sealed:     true,
+				StatusKind: "info",
+				StatusText: text,
+			})
+		}
+		return notice(surface, "surface_plan_mode_current", text)
+	}
+	surface.PlanMode = target
+	text := fmt.Sprintf("已将当前飞书会话的 Plan mode 切换为 %s。", target)
+	if surface.ActiveQueueItemID != "" || len(surface.QueuedQueueItemIDs) != 0 {
+		text += " 当前已在执行或排队的消息不受影响。"
+	}
+	if commandCardOwnsInlineResult(action) {
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
+			Sealed:     true,
+			StatusKind: "success",
+			StatusText: text,
+		})
+	}
+	return notice(surface, "surface_plan_mode_updated", text)
 }
 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

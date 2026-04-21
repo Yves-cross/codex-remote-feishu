@@ -22,6 +22,8 @@ func BuildFeishuCommandConfigCatalog(view FeishuCommandConfigView) FeishuDirectC
 		return reasoningCatalogFromCommandConfigView(view)
 	case FeishuCommandAccess:
 		return accessCatalogFromCommandConfigView(view)
+	case FeishuCommandPlan:
+		return planCatalogFromCommandConfigView(view)
 	case FeishuCommandModel:
 		return modelCatalogFromCommandConfigView(view)
 	case FeishuCommandVerbose:
@@ -93,6 +95,21 @@ func accessCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDire
 		Title: "立即应用",
 		Entries: []CommandCatalogEntry{{
 			Buttons: choiceButtonsFromOptions(def.Options, strings.TrimSpace(view.OverrideValue), ""),
+		}},
+	}})
+}
+
+func planCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
+	def, _ := FeishuCommandDefinitionByID(FeishuCommandPlan)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
+	if view.Sealed {
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
+	}
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
+		Title: "立即切换",
+		Entries: []CommandCatalogEntry{{
+			Buttons: fixedChoiceButtonsFromOptions(def.Options, strings.TrimSpace(view.CurrentValue), "on"),
 		}},
 	}})
 }

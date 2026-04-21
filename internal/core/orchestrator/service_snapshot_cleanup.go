@@ -9,7 +9,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope, model, effort, access string) {
+func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope, model, effort, access, planMode string) {
 	if inst == nil {
 		return
 	}
@@ -45,7 +45,7 @@ func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope
 			}
 		})
 	default:
-		if threadID == "" && access == "" {
+		if threadID == "" && access == "" && strings.TrimSpace(planMode) == "" {
 			return
 		}
 		if threadID != "" {
@@ -58,6 +58,9 @@ func (s *Service) observeConfig(inst *state.InstanceRecord, threadID, cwd, scope
 			}
 			if effort != "" {
 				thread.ExplicitReasoningEffort = effort
+			}
+			if strings.TrimSpace(planMode) != "" {
+				thread.ObservedPlanMode = state.NormalizePlanModeSetting(state.PlanModeSetting(planMode))
 			}
 		}
 		if access != "" && isVSCodeInstance(inst) {

@@ -92,6 +92,34 @@ func (s *Service) buildAccessCommandViewState(surface *state.SurfaceConsoleRecor
 	return view
 }
 
+func (s *Service) buildPlanCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCommandView {
+	return s.buildPlanCommandViewState(surface, control.FeishuCommandConfigView{})
+}
+
+func (s *Service) buildPlanCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCommandConfigView) control.FeishuCommandView {
+	current := state.PlanModeSettingOff
+	if surface != nil {
+		current = state.NormalizePlanModeSetting(surface.PlanMode)
+	}
+	view := control.FeishuCommandView{
+		Config: s.applyCommandConfigCardState(&control.FeishuCommandConfigView{
+			CommandID:    control.FeishuCommandPlan,
+			CurrentValue: string(current),
+		}, cardState),
+	}
+	attachedInstanceID := ""
+	if surface != nil {
+		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
+	}
+	inst := s.root.Instances[attachedInstanceID]
+	if inst == nil || surface == nil {
+		return view
+	}
+	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	view.Config.EffectiveValue = strings.TrimSpace(summary.ObservedThreadPlanMode)
+	return view
+}
+
 func (s *Service) buildModelCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCommandView {
 	return s.buildModelCommandViewState(surface, control.FeishuCommandConfigView{})
 }

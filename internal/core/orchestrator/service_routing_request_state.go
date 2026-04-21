@@ -124,6 +124,7 @@ func (s *Service) clearTurnArtifacts(instanceID, threadID, turnID string) {
 		return
 	}
 	delete(s.progress.pendingTurnText, turnRenderKey(instanceID, threadID, turnID))
+	delete(s.progress.pendingPlanProposal, turnRenderKey(instanceID, threadID, turnID))
 	s.clearRequestsForTurn(instanceID, threadID, turnID)
 }
 

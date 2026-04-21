@@ -53,6 +53,7 @@ const (
 	cardActionKindRunCommand                  = "run_command"
 	cardActionKindUpgradeOwnerFlow            = "upgrade_owner_flow"
 	cardActionKindVSCodeMigrateOwnerFlow      = "vscode_migrate_owner_flow"
+	cardActionKindPlanProposal                = "plan_proposal"
 	cardActionKindSubmitCommandForm           = "submit_command_form"
 	cardActionKindSubmitRequestForm           = "submit_request_form"
 	cardActionKindPathPickerEnter             = "path_picker_enter"

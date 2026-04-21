@@ -96,6 +96,10 @@ func parseThreadRecord(result any) agentproto.ThreadSnapshotRecord {
 			lookupString(object, "config", "reasoning_effort"),
 			lookupStringFromAny(object["effort"]),
 		),
+		PlanMode: choose(
+			normalizeObservedPlanMode(lookupString(object, "latestCollaborationMode", "mode")),
+			normalizeObservedPlanMode(lookupString(object, "collaborationMode", "mode")),
+		),
 		Loaded:   loaded,
 		Archived: lookupBoolFromAny(object["archived"]),
 		State:    stateValue,

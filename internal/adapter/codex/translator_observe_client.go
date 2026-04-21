@@ -73,6 +73,17 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 		}
 		t.debugf("observe client turn/start: thread=%s cwd=%s newThread=%t", threadID, cwd, threadID == "")
 		events := configObservedEvents(threadID, cwd, params, threadID == "")
+		if threadID != "" && !configObservedEventsContainThreadPlan(events, threadID) {
+			events = append(events, agentproto.Event{
+				Kind:         agentproto.EventConfigObserved,
+				ThreadID:     threadID,
+				CWD:          cwd,
+				PlanMode:     "off",
+				ConfigScope:  "thread",
+				TrafficClass: agentproto.TrafficClassPrimary,
+				Initiator:    agentproto.Initiator{Kind: agentproto.InitiatorLocalUI},
+			})
+		}
 		events = append(events, agentproto.Event{
 			Kind:         agentproto.EventLocalInteractionObserved,
 			ThreadID:     threadID,
@@ -109,4 +120,22 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 	default:
 		return Result{}, nil
 	}
+}
+
+func configObservedEventsContainThreadPlan(events []agentproto.Event, threadID string) bool {
+	for _, event := range events {
+		if event.Kind != agentproto.EventConfigObserved {
+			continue
+		}
+		if event.ConfigScope != "thread" {
+			continue
+		}
+		if event.ThreadID != threadID {
+			continue
+		}
+		if event.PlanMode != "" {
+			return true
+		}
+	}
+	return false
 }

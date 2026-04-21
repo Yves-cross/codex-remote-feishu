@@ -21,3 +21,13 @@ func buildMenuVerboseText(suffix string) (string, bool) {
 		return "", false
 	}
 }
+
+func buildMenuPlanText(suffix string) (string, bool) {
+	value := strings.ToLower(strings.TrimSpace(suffix))
+	switch value {
+	case "on", "off":
+		return "/plan " + value, true
+	default:
+		return "", false
+	}
+}

@@ -1,10 +1,14 @@
 package codex
 
-import "github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+import (
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+)
 
 func configObservedEvents(threadID, cwd string, params map[string]any, treatAsDefault bool) []agentproto.Event {
-	model, effort, access := extractObservedConfig(params)
-	if model == "" && effort == "" && access == "" {
+	model, effort, access, planMode := extractObservedConfig(params)
+	if model == "" && effort == "" && access == "" && planMode == "" {
 		return nil
 	}
 	scope := "thread"
@@ -18,11 +22,12 @@ func configObservedEvents(threadID, cwd string, params map[string]any, treatAsDe
 		Model:           model,
 		ReasoningEffort: effort,
 		AccessMode:      access,
+		PlanMode:        planMode,
 		ConfigScope:     scope,
 	}}
 }
 
-func extractObservedConfig(params map[string]any) (model, effort, access string) {
+func extractObservedConfig(params map[string]any) (model, effort, access, planMode string) {
 	model = choose(
 		lookupString(params, "collaborationMode", "settings", "model"),
 		lookupStringFromAny(params["model"]),
@@ -41,7 +46,8 @@ func extractObservedConfig(params map[string]any) (model, effort, access string)
 		lookupString(params, "config", "approval_policy"),
 		lookupString(params, "config", "sandbox"),
 	)
-	return model, effort, access
+	planMode = normalizeObservedPlanMode(lookupString(params, "collaborationMode", "mode"))
+	return model, effort, access, planMode
 }
 
 func chooseObservedAccessMode(values ...string) string {
@@ -76,9 +82,18 @@ func applyPromptOverridesToTurnStart(template map[string]any, overrides agentpro
 	}
 	collaborationMode := lookupMapFromAny(template["collaborationMode"])
 	settings := lookupMapFromAny(collaborationMode["settings"])
+	if planMode := normalizeOverridePlanMode(overrides.PlanMode); planMode != "" {
+		if len(collaborationMode) == 0 {
+			collaborationMode = map[string]any{}
+		}
+		collaborationMode["mode"] = planMode
+	}
 	if overrides.Model != "" || lookupStringFromAny(settings["model"]) != "" {
 		if len(collaborationMode) == 0 {
-			collaborationMode = map[string]any{"mode": "custom"}
+			collaborationMode = map[string]any{}
+		}
+		if lookupStringFromAny(collaborationMode["mode"]) == "" {
+			collaborationMode["mode"] = "custom"
 		}
 		if overrides.Model != "" {
 			settings["model"] = overrides.Model
@@ -88,9 +103,38 @@ func applyPromptOverridesToTurnStart(template map[string]any, overrides agentpro
 		}
 		collaborationMode["settings"] = settings
 		template["collaborationMode"] = collaborationMode
+	} else if len(collaborationMode) != 0 {
+		if len(settings) != 0 {
+			collaborationMode["settings"] = settings
+		} else {
+			delete(collaborationMode, "settings")
+		}
+		template["collaborationMode"] = collaborationMode
 	}
 	template["approvalPolicy"] = agentproto.ApprovalPolicyForAccessMode(overrides.AccessMode)
 	template["sandboxPolicy"] = agentproto.TurnSandboxPolicyForAccessMode(overrides.AccessMode)
+}
+
+func normalizeObservedPlanMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "plan":
+		return "on"
+	case "default", "custom":
+		return "off"
+	default:
+		return ""
+	}
+}
+
+func normalizeOverridePlanMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "on", "plan":
+		return "plan"
+	case "off", "default":
+		return "default"
+	default:
+		return ""
+	}
 }
 
 func normalizeThreadStartParams(params map[string]any) map[string]any {

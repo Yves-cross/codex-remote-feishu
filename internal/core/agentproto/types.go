@@ -83,6 +83,7 @@ type Event struct {
 	Model           string                 `json:"model,omitempty"`
 	ReasoningEffort string                 `json:"reasoningEffort,omitempty"`
 	AccessMode      string                 `json:"accessMode,omitempty"`
+	PlanMode        string                 `json:"planMode,omitempty"`
 	ConfigScope     string                 `json:"configScope,omitempty"`
 	Loaded          bool                   `json:"loaded,omitempty"`
 	Archived        bool                   `json:"archived,omitempty"`
@@ -109,6 +110,7 @@ type ThreadSnapshotRecord struct {
 	CWD             string               `json:"cwd,omitempty"`
 	Model           string               `json:"model,omitempty"`
 	ReasoningEffort string               `json:"reasoningEffort,omitempty"`
+	PlanMode        string               `json:"planMode,omitempty"`
 	Loaded          bool                 `json:"loaded"`
 	Archived        bool                 `json:"archived"`
 	State           string               `json:"state,omitempty"`
@@ -205,6 +207,7 @@ type PromptOverrides struct {
 	Model           string `json:"model,omitempty"`
 	ReasoningEffort string `json:"reasoningEffort,omitempty"`
 	AccessMode      string `json:"accessMode,omitempty"`
+	PlanMode        string `json:"planMode,omitempty"`
 }
 
 type Request struct {

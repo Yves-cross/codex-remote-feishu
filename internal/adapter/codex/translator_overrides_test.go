@@ -140,6 +140,68 @@ func TestTranslatePromptSendConfirmAccessModeOverridesPolicies(t *testing.T) {
 	}
 }
 
+func TestTranslatePromptSendPlanModeOnMapsToUpstreamPlanMode(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"turn/start","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe current thread turn start: %v", err)
+	}
+
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{ChatID: "surface-1"},
+		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+		Overrides: agentproto.PromptOverrides{PlanMode: "on"},
+	})
+	if err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one turn/start command, got %d", len(commands))
+	}
+
+	var turnStart map[string]any
+	if err := json.Unmarshal(commands[0], &turnStart); err != nil {
+		t.Fatalf("unmarshal turn/start: %v", err)
+	}
+	params, _ := turnStart["params"].(map[string]any)
+	collaborationMode, _ := params["collaborationMode"].(map[string]any)
+	if collaborationMode["mode"] != "plan" {
+		t.Fatalf("expected plan mode override in turn/start, got %#v", params["collaborationMode"])
+	}
+}
+
+func TestTranslatePromptSendPlanModeOffMapsToUpstreamDefaultMode(t *testing.T) {
+	tr := NewTranslator("inst-1")
+	if _, err := tr.ObserveClient([]byte(`{"method":"turn/start","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
+		t.Fatalf("observe current thread turn start: %v", err)
+	}
+
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind:      agentproto.CommandPromptSend,
+		Origin:    agentproto.Origin{ChatID: "surface-1"},
+		Target:    agentproto.Target{ThreadID: "thread-1", CWD: "/tmp/project"},
+		Prompt:    agentproto.Prompt{Inputs: []agentproto.Input{{Type: agentproto.InputText, Text: "hello"}}},
+		Overrides: agentproto.PromptOverrides{PlanMode: "off"},
+	})
+	if err != nil {
+		t.Fatalf("translate command: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one turn/start command, got %d", len(commands))
+	}
+
+	var turnStart map[string]any
+	if err := json.Unmarshal(commands[0], &turnStart); err != nil {
+		t.Fatalf("unmarshal turn/start: %v", err)
+	}
+	params, _ := turnStart["params"].(map[string]any)
+	collaborationMode, _ := params["collaborationMode"].(map[string]any)
+	if collaborationMode["mode"] != "default" {
+		t.Fatalf("expected default mode override in turn/start, got %#v", params["collaborationMode"])
+	}
+}
+
 func TestObserveClientTurnStartReportsObservedAccessMode(t *testing.T) {
 	tr := NewTranslator("inst-1")
 

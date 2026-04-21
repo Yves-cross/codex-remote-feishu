@@ -15,11 +15,14 @@ func TestObserveClientTurnStartProducesLocalInteraction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("observe client: %v", err)
 	}
-	if len(result.Events) != 1 {
-		t.Fatalf("expected one event, got %d", len(result.Events))
+	if len(result.Events) != 2 {
+		t.Fatalf("expected config event plus local interaction, got %#v", result.Events)
 	}
-	if result.Events[0].Kind != agentproto.EventLocalInteractionObserved || result.Events[0].Action != "turn_start" {
+	if result.Events[0].Kind != agentproto.EventConfigObserved || result.Events[0].PlanMode != "off" || result.Events[0].ConfigScope != "thread" {
 		t.Fatalf("unexpected event: %#v", result.Events[0])
+	}
+	if result.Events[1].Kind != agentproto.EventLocalInteractionObserved || result.Events[1].Action != "turn_start" {
+		t.Fatalf("unexpected event: %#v", result.Events[1])
 	}
 }
 
@@ -30,13 +33,16 @@ func TestObserveClientTurnStartEmitsObservedThreadConfig(t *testing.T) {
 		t.Fatalf("observe client: %v", err)
 	}
 	if len(result.Events) != 2 {
-		t.Fatalf("expected config event plus local interaction, got %#v", result.Events)
+		t.Fatalf("expected merged config observation plus local interaction, got %#v", result.Events)
 	}
 	if result.Events[0].Kind != agentproto.EventConfigObserved {
 		t.Fatalf("expected first event to be config observation, got %#v", result.Events[0])
 	}
-	if result.Events[0].ConfigScope != "thread" || result.Events[0].Model != "gpt-5.4" || result.Events[0].ReasoningEffort != "high" {
+	if result.Events[0].ConfigScope != "thread" || result.Events[0].Model != "gpt-5.4" || result.Events[0].ReasoningEffort != "high" || result.Events[0].PlanMode != "off" {
 		t.Fatalf("unexpected observed config event: %#v", result.Events[0])
+	}
+	if result.Events[1].Kind != agentproto.EventLocalInteractionObserved || result.Events[1].Action != "turn_start" {
+		t.Fatalf("expected final local interaction event, got %#v", result.Events[1])
 	}
 }
 

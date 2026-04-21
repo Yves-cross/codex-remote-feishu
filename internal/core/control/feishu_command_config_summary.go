@@ -62,6 +62,15 @@ func commandConfigBaseSummarySections(view FeishuCommandConfigView) []FeishuCard
 			"当前", commandDisplayValue(view.EffectiveValue, "未设置"),
 			"飞书覆盖", commandDisplayValue(view.OverrideValue, "无"),
 		)
+	case FeishuCommandPlan:
+		sections := []FeishuCardTextSection{
+			singleValueCardSection("当前", planModeDisplayValue(view.CurrentValue)),
+			singleValueCardSection("作用范围", "只影响后续新 turn"),
+		}
+		if observed := strings.TrimSpace(view.EffectiveValue); observed != "" {
+			sections = append(sections, singleValueCardSection("会话最近本地模式", planModeDisplayValue(observed)))
+		}
+		return sections
 	case FeishuCommandModel:
 		sections := dualValueCardSections(
 			"当前模型", commandDisplayValue(view.EffectiveValue, "未设置"),
@@ -122,6 +131,13 @@ func commandDisplayValue(value, fallback string) string {
 }
 
 func autoContinueDisplayValue(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "on") {
+		return "开启"
+	}
+	return "关闭"
+}
+
+func planModeDisplayValue(value string) string {
 	if strings.EqualFold(strings.TrimSpace(value), "on") {
 		return "开启"
 	}

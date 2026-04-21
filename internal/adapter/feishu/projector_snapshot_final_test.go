@@ -876,9 +876,10 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
 		"当前模式：vscode",
+		"Plan mode：关闭",
 		"当前目录：/data/dl/droid",
 		"接管对象类型：VS Code 实例",
-		"下条飞书消息：模型 gpt-5.4，推理 medium，权限 confirm",
+		"下条飞书消息：Plan 关闭，模型 gpt-5.4，推理 medium，权限 confirm",
 	) {
 		t.Fatalf("unexpected snapshot rendering: %q", rendered)
 	}
@@ -959,11 +960,12 @@ func TestProjectSnapshotShowsAttachedWorkspaceWithoutThread(t *testing.T) {
 	}
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
+		"Plan mode：关闭",
 		"当前目录：/data/dl/droid",
 		"接管对象类型：工作区",
 		"已接管：droid",
 		"当前输入目标：未绑定会话",
-		"下条飞书消息：模型 gpt-5.4，推理 medium，权限 confirm",
+		"下条飞书消息：Plan 关闭，模型 gpt-5.4，推理 medium，权限 confirm",
 	) {
 		t.Fatalf("unexpected snapshot rendering with attached workspace: %q", rendered)
 	}
@@ -1194,8 +1196,9 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 	}
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
+		"Plan mode：关闭",
 		"当前目录：/data/dl/droid",
-		"下条飞书消息：模型 gpt-5.4，推理 xhigh，权限 full",
+		"下条飞书消息：Plan 关闭，模型 gpt-5.4，推理 xhigh，权限 full",
 	) {
 		t.Fatalf("unexpected snapshot rendering: %q", rendered)
 	}
@@ -1218,7 +1221,7 @@ func TestProjectSnapshotDisplaysUnknownEffectivePromptValues(t *testing.T) {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
 	rendered := renderedV2CardText(t, ops[0])
-	if !strings.Contains(rendered, "下条飞书消息：模型 未知，推理 未知，权限 未知") {
+	if !containsAll(rendered, "Plan mode：关闭", "下条飞书消息：Plan 关闭，模型 未知，推理 未知，权限 未知") {
 		t.Fatalf("expected unknown effective prompt values, got %q", rendered)
 	}
 }

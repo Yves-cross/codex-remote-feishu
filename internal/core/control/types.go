@@ -29,6 +29,8 @@ const (
 	ActionModelCommand                ActionKind = "surface.command.model"
 	ActionReasoningCommand            ActionKind = "surface.command.reasoning"
 	ActionAccessCommand               ActionKind = "surface.command.access"
+	ActionPlanCommand                 ActionKind = "surface.command.plan"
+	ActionPlanProposalDecision        ActionKind = "surface.command.plan_proposal_decision"
 	ActionVerboseCommand              ActionKind = "surface.command.verbose"
 	ActionAutoContinueCommand         ActionKind = "surface.command.auto_continue"
 	ActionModeCommand                 ActionKind = "surface.command.mode"
@@ -250,6 +252,8 @@ type PromptRouteSummary struct {
 	OverrideModel                  string
 	OverrideReasoningEffort        string
 	OverrideAccessMode             string
+	EffectivePlanMode              string
+	ObservedThreadPlanMode         string
 	EffectiveModel                 string
 	EffectiveReasoningEffort       string
 	EffectiveAccessMode            string

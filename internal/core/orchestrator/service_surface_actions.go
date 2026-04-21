@@ -40,7 +40,8 @@ func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []contro
 			return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 		}
 		discarded := countPendingDrafts(surface)
-		events := s.discardDrafts(surface)
+		events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已切换到新会话待命状态，之前的提案计划已失效。")
+		events = append(events, s.discardDrafts(surface)...)
 		surface.PreparedAt = s.now()
 		if discarded == 0 {
 			return append(events, notice(surface, "already_new_thread_ready", "当前已经在新建会话待命状态。下一条文本会创建新会话。")...)
@@ -58,7 +59,8 @@ func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []contro
 		return blocked
 	}
 	discarded := countPendingDrafts(surface)
-	events := s.discardDrafts(surface)
+	events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已切换到新会话待命状态，之前的提案计划已失效。")
+	events = append(events, s.discardDrafts(surface)...)
 	prevThreadID := surface.SelectedThreadID
 	prevRouteMode := surface.RouteMode
 	s.releaseSurfaceThreadClaim(surface)
@@ -173,7 +175,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
 	if autoSteer := s.maybeAutoSteerReply(surface, action); autoSteer != nil {
-		return autoSteer
+		return append(s.maybeSealPlanProposalForInput(surface), autoSteer...)
 	}
 	if blocked := s.maybePrepareImplicitNewThreadFromUnboundText(surface, inst, text); blocked != nil {
 		return blocked
@@ -203,7 +205,8 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 		s.restoreStagedInputs(surface, stagedMessageIDs)
 		return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
 	}
-	return s.enqueueQueueItem(surface, action.MessageID, action.Text, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)
+	events := s.maybeSealPlanProposalForInput(surface)
+	return append(events, s.enqueueQueueItem(surface, action.MessageID, action.Text, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)...)
 }
 
 func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -212,7 +215,7 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
 	if autoSteer := s.maybeAutoSteerReply(surface, action); autoSteer != nil {
-		return autoSteer
+		return append(s.maybeSealPlanProposalForInput(surface), autoSteer...)
 	}
 	if blocked := s.maybePrepareImplicitNewThreadFromUnboundImage(surface, inst); blocked != nil {
 		return blocked
@@ -240,7 +243,8 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 		State:            state.ImageStaged,
 	}
 	surface.StagedImages[image.ImageID] = image
-	return []control.UIEvent{{
+	events := s.maybeSealPlanProposalForInput(surface)
+	events = append(events, control.UIEvent{
 		Kind:             control.UIEventPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
@@ -249,7 +253,8 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 			Status:          string(image.State),
 			QueueOn:         true,
 		},
-	}}
+	})
+	return events
 }
 
 func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -286,7 +291,8 @@ func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.
 		State:            state.FileStaged,
 	}
 	surface.StagedFiles[file.FileID] = file
-	return []control.UIEvent{{
+	events := s.maybeSealPlanProposalForInput(surface)
+	events = append(events, control.UIEvent{
 		Kind:             control.UIEventPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
@@ -295,7 +301,8 @@ func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.
 			Status:          string(file.State),
 			QueueOn:         true,
 		},
-	}}
+	})
+	return events
 }
 
 func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {

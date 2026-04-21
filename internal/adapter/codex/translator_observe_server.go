@@ -232,6 +232,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			record.Name = choose(patch.Name, record.Name)
 			record.Preview = choose(patch.Preview, record.Preview)
 			record.CWD = choose(patch.CWD, record.CWD)
+			record.PlanMode = choose(patch.PlanMode, record.PlanMode)
 			record.Loaded = record.Loaded || patch.Loaded
 			record.Archived = record.Archived || patch.Archived
 			record.State = choose(patch.State, record.State)
@@ -366,6 +367,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				ThreadID:      threadID,
 				CWD:           cwd,
 				Name:          name,
+				PlanMode:      threadRecord.PlanMode,
 				Status:        status,
 				Loaded:        loaded,
 				FocusSource:   "remote_created_thread",
@@ -388,6 +390,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			ThreadID:      threadID,
 			CWD:           cwd,
 			Name:          name,
+			PlanMode:      threadRecord.PlanMode,
 			Status:        status,
 			Loaded:        loaded,
 			FocusSource:   "remote_created_thread",
@@ -416,6 +419,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		}}}, nil
 	case "thread/name/updated":
 		threadID := lookupString(message, "params", "threadId")
+		threadRecord := parseThreadRecord(lookupAny(message, "params", "thread"))
 		if t.internalThreadIDs[threadID] {
 			name := lookupString(message, "params", "name")
 			if name == "" {
@@ -425,6 +429,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				Kind:         agentproto.EventThreadDiscovered,
 				ThreadID:     threadID,
 				Name:         name,
+				PlanMode:     threadRecord.PlanMode,
 				TrafficClass: agentproto.TrafficClassInternalHelper,
 				Initiator:    agentproto.Initiator{Kind: agentproto.InitiatorInternalHelper},
 				Metadata:     map[string]any{"internalHelper": true},
@@ -438,6 +443,7 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			Kind:     agentproto.EventThreadDiscovered,
 			ThreadID: threadID,
 			Name:     name,
+			PlanMode: threadRecord.PlanMode,
 		}}}, nil
 	case "thread/tokenUsage/updated":
 		threadID, turnID, usage := extractThreadTokenUsageNotification(message)

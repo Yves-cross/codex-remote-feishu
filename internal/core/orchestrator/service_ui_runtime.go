@@ -21,6 +21,7 @@ const (
 	ownerCardFlowKindThreadHistory ownerCardFlowKind = "thread_history"
 	ownerCardFlowKindTargetPicker  ownerCardFlowKind = "target_picker"
 	ownerCardFlowKindCompact       ownerCardFlowKind = "compact"
+	ownerCardFlowKindPlanProposal  ownerCardFlowKind = "plan_proposal"
 )
 
 type ownerCardFlowPhase string
@@ -80,6 +81,17 @@ type activeThreadHistoryRecord struct {
 	TurnID   string
 }
 
+type activePlanProposalRecord struct {
+	ProposalID string
+	InstanceID string
+	ThreadID   string
+	TurnID     string
+	ThreadCWD  string
+	PlanText   string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+}
+
 type activePathPickerRecord struct {
 	PickerID        string
 	MessageID       string
@@ -112,6 +124,7 @@ type surfaceUIRuntimeRecord struct {
 	ActiveTargetPicker  *activeTargetPickerRecord
 	ActiveThreadHistory *activeThreadHistoryRecord
 	ActivePathPicker    *activePathPickerRecord
+	ActivePlanProposal  *activePlanProposalRecord
 }
 
 type SurfaceUIRuntimeSummary struct {
@@ -122,6 +135,7 @@ type SurfaceUIRuntimeSummary struct {
 	ActiveTargetPickerID     string
 	ActiveThreadHistoryID    string
 	ActivePathPickerID       string
+	ActivePlanProposalID     string
 }
 
 func (s *Service) surfaceUIRuntimeState(surface *state.SurfaceConsoleRecord) *surfaceUIRuntimeRecord {
@@ -251,6 +265,33 @@ func (s *Service) clearSurfacePathPicker(surface *state.SurfaceConsoleRecord) {
 	runtime.ActivePathPicker = nil
 }
 
+func (s *Service) activePlanProposal(surface *state.SurfaceConsoleRecord) *activePlanProposalRecord {
+	runtime := s.surfaceUIRuntimeState(surface)
+	if runtime == nil {
+		return nil
+	}
+	return runtime.ActivePlanProposal
+}
+
+func (s *Service) setActivePlanProposal(surface *state.SurfaceConsoleRecord, record *activePlanProposalRecord) {
+	runtime := s.ensureSurfaceUIRuntime(surface)
+	if runtime == nil {
+		return
+	}
+	runtime.ActivePlanProposal = record
+}
+
+func (s *Service) clearSurfacePlanProposal(surface *state.SurfaceConsoleRecord) {
+	runtime := s.surfaceUIRuntimeState(surface)
+	if runtime == nil {
+		return
+	}
+	runtime.ActivePlanProposal = nil
+	if runtime.ActiveOwnerCardFlow != nil && runtime.ActiveOwnerCardFlow.Kind == ownerCardFlowKindPlanProposal {
+		runtime.ActiveOwnerCardFlow = nil
+	}
+}
+
 func (s *Service) SurfaceUIRuntimeSummary(surfaceID string) SurfaceUIRuntimeSummary {
 	runtime := s.surfaceUIRuntimeByID(surfaceID)
 	if runtime == nil {
@@ -271,6 +312,9 @@ func (s *Service) SurfaceUIRuntimeSummary(surfaceID string) SurfaceUIRuntimeSumm
 	}
 	if runtime.ActivePathPicker != nil {
 		summary.ActivePathPickerID = strings.TrimSpace(runtime.ActivePathPicker.PickerID)
+	}
+	if runtime.ActivePlanProposal != nil {
+		summary.ActivePlanProposalID = strings.TrimSpace(runtime.ActivePlanProposal.ProposalID)
 	}
 	return summary
 }

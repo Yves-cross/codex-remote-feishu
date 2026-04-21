@@ -82,7 +82,7 @@ func (s *Service) MaterializeSurface(surfaceID, gatewayID, chatID, actorUserID s
 	})
 }
 
-func (s *Service) MaterializeSurfaceResume(surfaceID, gatewayID, chatID, actorUserID string, mode state.ProductMode, verbosity state.SurfaceVerbosity) {
+func (s *Service) MaterializeSurfaceResume(surfaceID, gatewayID, chatID, actorUserID string, mode state.ProductMode, verbosity state.SurfaceVerbosity, planMode state.PlanModeSetting) {
 	if strings.TrimSpace(surfaceID) == "" {
 		return
 	}
@@ -98,6 +98,7 @@ func (s *Service) MaterializeSurfaceResume(surfaceID, gatewayID, chatID, actorUs
 	}
 	surface.ProductMode = state.NormalizeProductMode(mode)
 	surface.Verbosity = state.NormalizeSurfaceVerbosity(verbosity)
+	surface.PlanMode = state.NormalizePlanModeSetting(planMode)
 }
 
 func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
@@ -739,5 +740,11 @@ func (s *Service) RemoveInstance(instanceID string) {
 			continue
 		}
 		delete(s.progress.pendingTurnText, key)
+	}
+	for key, item := range s.progress.pendingPlanProposal {
+		if item == nil || item.InstanceID != instanceID {
+			continue
+		}
+		delete(s.progress.pendingPlanProposal, key)
 	}
 }

@@ -71,6 +71,10 @@ func (s *Service) buildAccessCatalog(surface *state.SurfaceConsoleRecord) contro
 	return s.commandCatalogFromView(surface, s.buildAccessCommandView(surface))
 }
 
+func (s *Service) buildPlanCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
+	return s.commandCatalogFromView(surface, s.buildPlanCommandView(surface))
+}
+
 func (s *Service) buildModelCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
 	return s.commandCatalogFromView(surface, s.buildModelCommandView(surface))
 }

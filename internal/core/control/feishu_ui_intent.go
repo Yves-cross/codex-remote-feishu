@@ -11,6 +11,7 @@ const (
 	FeishuUIIntentShowAutoContinueCatalog     FeishuUIIntentKind = "show_auto_continue_catalog"
 	FeishuUIIntentShowReasoningCatalog        FeishuUIIntentKind = "show_reasoning_catalog"
 	FeishuUIIntentShowAccessCatalog           FeishuUIIntentKind = "show_access_catalog"
+	FeishuUIIntentShowPlanCatalog             FeishuUIIntentKind = "show_plan_catalog"
 	FeishuUIIntentShowModelCatalog            FeishuUIIntentKind = "show_model_catalog"
 	FeishuUIIntentShowVerboseCatalog          FeishuUIIntentKind = "show_verbose_catalog"
 	FeishuUIIntentShowList                    FeishuUIIntentKind = "show_list"
@@ -81,6 +82,10 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 	case ActionAccessCommand:
 		if isBareInlineCommand(action.Text, "/access") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowAccessCatalog, RawText: action.Text}, true
+		}
+	case ActionPlanCommand:
+		if isBareInlineCommand(action.Text, "/plan") {
+			return &FeishuUIIntent{Kind: FeishuUIIntentShowPlanCatalog, RawText: action.Text}, true
 		}
 	case ActionModelCommand:
 		if isBareInlineCommand(action.Text, "/model") {

@@ -24,6 +24,8 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		return []control.UIEvent{s.commandViewEvent(surface, s.buildReasoningCommandView(surface))}
 	case control.FeishuUIIntentShowAccessCatalog:
 		return []control.UIEvent{s.commandViewEvent(surface, s.buildAccessCommandView(surface))}
+	case control.FeishuUIIntentShowPlanCatalog:
+		return []control.UIEvent{s.commandViewEvent(surface, s.buildPlanCommandView(surface))}
 	case control.FeishuUIIntentShowModelCatalog:
 		return []control.UIEvent{s.commandViewEvent(surface, s.buildModelCommandView(surface))}
 	case control.FeishuUIIntentShowVerboseCatalog:

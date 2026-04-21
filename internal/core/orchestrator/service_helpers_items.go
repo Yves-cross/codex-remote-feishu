@@ -113,7 +113,7 @@ func tracksTextItem(itemKind string) bool {
 
 func rendersTextItem(itemKind string) bool {
 	switch itemKind {
-	case "agent_message", "plan":
+	case "agent_message":
 		return true
 	default:
 		return false

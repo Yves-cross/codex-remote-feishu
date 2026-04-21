@@ -274,7 +274,7 @@ func TestDaemonVSCodeMigrateCommandOpensOwnerFlowAndAppliesManagedShim(t *testin
 	gateway := &recordingGateway{}
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
 
-	app.service.MaterializeSurfaceResume("surface-1", "app-1", "chat-1", "user-1", state.ProductModeVSCode, state.SurfaceVerbosityNormal)
+	app.service.MaterializeSurfaceResume("surface-1", "app-1", "chat-1", "user-1", state.ProductModeVSCode, state.SurfaceVerbosityNormal, state.PlanModeSettingOff)
 	app.HandleAction(context.Background(), control.Action{
 		Kind:             control.ActionVSCodeMigrateCommand,
 		GatewayID:        "app-1",
@@ -447,7 +447,7 @@ func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
 
 	gateway := newLifecycleGateway()
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
-	app.service.MaterializeSurfaceResume("surface-1", "app-1", "chat-1", "user-1", state.ProductModeVSCode, state.SurfaceVerbosityNormal)
+	app.service.MaterializeSurfaceResume("surface-1", "app-1", "chat-1", "user-1", state.ProductModeVSCode, state.SurfaceVerbosityNormal, state.PlanModeSettingOff)
 
 	prompt := app.HandleGatewayAction(context.Background(), control.Action{
 		Kind:             control.ActionVSCodeMigrateCommand,

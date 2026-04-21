@@ -21,6 +21,12 @@ func projectSnapshotElements(snapshot control.Snapshot, daemonBinary, currentDir
 
 func snapshotSections(snapshot control.Snapshot, daemonBinary, currentDirectory string, worktree *gitWorktreeSummary) []control.FeishuCardTextSection {
 	lines := []string{snapshotLine("当前模式", displaySnapshotMode(snapshot.ProductMode))}
+	if planMode := snapshotPlanModeText(snapshot.NextPrompt, snapshot.Dispatch); planMode != "" {
+		lines = append(lines, snapshotLine("Plan mode", planMode))
+	}
+	if observedPlanMode := snapshotObservedThreadPlanModeText(snapshot.NextPrompt); observedPlanMode != "" {
+		lines = append(lines, snapshotLine("会话最近本地模式", observedPlanMode))
+	}
 	if daemonBinary = strings.TrimSpace(daemonBinary); daemonBinary != "" {
 		lines = append(lines, snapshotLine("当前二进制", daemonBinary))
 	}
@@ -211,10 +217,34 @@ func displaySnapshotAccessMode(value string) string {
 
 func formatSnapshotEffectivePromptPlain(summary control.PromptRouteSummary) string {
 	return strings.Join([]string{
+		"Plan " + displaySnapshotPlanMode(summary.EffectivePlanMode),
 		"模型 " + displaySnapshotValue(summary.EffectiveModel),
 		"推理 " + displaySnapshotValue(summary.EffectiveReasoningEffort),
 		"权限 " + displaySnapshotAccessMode(summary.EffectiveAccessMode),
 	}, "，")
+}
+
+func displaySnapshotPlanMode(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "on") {
+		return "开启"
+	}
+	return "关闭"
+}
+
+func snapshotPlanModeText(summary control.PromptRouteSummary, dispatch control.DispatchSummary) string {
+	mode := displaySnapshotPlanMode(summary.EffectivePlanMode)
+	if strings.EqualFold(strings.TrimSpace(summary.EffectivePlanMode), "on") &&
+		(strings.TrimSpace(dispatch.ActiveItemStatus) != "" || dispatch.QueuedCount > 0) {
+		return mode + "（当前执行中的这一轮不受影响）"
+	}
+	return mode
+}
+
+func snapshotObservedThreadPlanModeText(summary control.PromptRouteSummary) string {
+	if strings.TrimSpace(summary.ObservedThreadPlanMode) == "" {
+		return ""
+	}
+	return displaySnapshotPlanMode(summary.ObservedThreadPlanMode)
 }
 
 func snapshotShouldShowPromptCWD(workspaceKey, cwd string) bool {

@@ -37,6 +37,7 @@ func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMe
 		FrozenThreadID:        threadID,
 		FrozenCWD:             cwd,
 		FrozenOverride:        s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		FrozenPlanMode:        state.NormalizePlanModeSetting(surface.PlanMode),
 		RouteModeAtEnqueue:    routeMode,
 		Status:                state.QueueItemQueued,
 	}
@@ -57,6 +58,7 @@ func (s *Service) enqueueAutoContinueQueueItem(surface *state.SurfaceConsoleReco
 		FrozenThreadID:        threadID,
 		FrozenCWD:             cwd,
 		FrozenOverride:        s.resolveFrozenPromptOverride(inst, surface, threadID, cwd, overrides),
+		FrozenPlanMode:        state.NormalizePlanModeSetting(surface.PlanMode),
 		RouteModeAtEnqueue:    routeMode,
 		Status:                state.QueueItemQueued,
 	}
@@ -232,6 +234,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 			Model:           item.FrozenOverride.Model,
 			ReasoningEffort: item.FrozenOverride.ReasoningEffort,
 			AccessMode:      item.FrozenOverride.AccessMode,
+			PlanMode:        string(state.NormalizePlanModeSetting(item.FrozenPlanMode)),
 		},
 	}
 
@@ -604,6 +607,9 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 	}
 	delete(s.itemBuffers, key)
 	if !rendersTextItem(buf.ItemKind) || strings.TrimSpace(bufferText) == "" {
+		if buf.ItemKind == "plan" && strings.TrimSpace(bufferText) != "" {
+			return s.storePendingPlanProposal(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.ItemKind, bufferText)
+		}
 		return nil
 	}
 	if buf.ItemKind == "agent_message" {
