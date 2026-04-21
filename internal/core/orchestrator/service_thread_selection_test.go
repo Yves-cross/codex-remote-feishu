@@ -255,6 +255,67 @@ func TestPresentAllThreadSelectionShowsAllSessionsByRecency(t *testing.T) {
 	}
 }
 
+func TestPresentVSCodeThreadSelectionBuildsDropdownViewWithRecentLimit(t *testing.T) {
+	now := time.Date(2026, 4, 11, 5, 20, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	inst := &state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-6",
+		Threads:                 map[string]*state.ThreadRecord{},
+	}
+	for i := 1; i <= 6; i++ {
+		threadID := fmt.Sprintf("thread-%d", i)
+		inst.Threads[threadID] = &state.ThreadRecord{
+			ThreadID:         threadID,
+			CWD:              "/data/dl/droid",
+			LastUsedAt:       now.Add(time.Duration(i) * time.Minute),
+			FirstUserMessage: fmt.Sprintf("处理第 %d 个会话的日志聚合问题", i),
+		}
+	}
+	svc.UpsertInstance(inst)
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionShowThreads,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	})
+
+	if len(events) != 1 {
+		t.Fatalf("expected one selection view, got %#v", events)
+	}
+	view := selectionViewFromEvent(t, events[0])
+	if view.Thread == nil || view.Prompt != nil {
+		t.Fatalf("expected structured vscode thread view without legacy prompt payload, got %#v", view)
+	}
+	if view.Thread.Mode != control.FeishuThreadSelectionVSCodeRecent || view.Thread.RecentLimit != 5 {
+		t.Fatalf("expected vscode recent dropdown metadata, got %#v", view.Thread)
+	}
+	if len(view.Thread.Entries) != 5 {
+		t.Fatalf("expected recent dropdown to keep top 5 threads, got %#v", view.Thread.Entries)
+	}
+	if view.Thread.Entries[0].ThreadID != "thread-6" {
+		t.Fatalf("expected recency-sorted first entry, got %#v", view.Thread.Entries[0])
+	}
+	if !strings.HasPrefix(view.Thread.Entries[0].Summary, "droid · 处理第 6 个会话") {
+		t.Fatalf("expected dropdown label to use workspace basename plus first user snippet, got %#v", view.Thread.Entries[0])
+	}
+}
+
 func TestPresentAllThreadSelectionUsesThreeWorkspaceGroupsPerPage(t *testing.T) {
 	now := time.Date(2026, 4, 11, 5, 20, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

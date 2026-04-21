@@ -90,6 +90,15 @@ func (s *Service) buildFeishuSelectionContextFromView(surface *state.SurfaceCons
 	if view.Prompt != nil {
 		return s.buildFeishuSelectionContextFromPromptView(surface, *view.Prompt)
 	}
+	if view.Instance != nil {
+		context.Layout = "vscode_instance_list"
+		context.Title = "在线 VS Code 实例"
+		if view.Instance.Current != nil {
+			context.ContextTitle = "当前实例"
+			context.ContextText = strings.TrimSpace(view.Instance.Current.ContextText)
+		}
+		return context
+	}
 	if view.Workspace != nil {
 		context.Layout = "grouped_attach_workspace"
 		context.Title = "工作区列表"

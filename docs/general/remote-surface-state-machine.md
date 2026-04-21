@@ -816,10 +816,10 @@ R5 NewThreadReady
    1. 只展示当前 attached instance 的可见 thread，不再走 merged global thread view。
    2. force-pick 后会保留 `RouteMode=follow_local`，后续 observed focus 变化仍可覆盖。
    3. attached `vscode /use` / `/useall` 当前都会在顶部插入一个“当前实例”摘要，格式为 `实例标签 + 当前跟随状态`。
-   4. thread 按钮摘要不再重复 workspace 前缀，而是只保留会话标题本身；状态行改由 `MetaText` 投影，例如 `当前跟随中 · 3分前`、`VS Code 当前焦点 · 2分前`、`已被其他飞书会话接管`。
-   5. attached `vscode /use` 的卡片分组仍是“当前会话 / 可接管 / 其他状态 / 更多”，只是“更多”按钮文案会改成 `查看全部 · 当前实例全部会话`。
-   6. attached `vscode /useall` 的标题当前已改成 `当前实例全部会话`，不再使用含糊的 `全部会话`。
-   7. `当前实例全部会话` 卡片会保留“当前会话”区块；其余 thread 按最近活跃时间顺序平铺在“全部会话”区块里，并在按钮外用 `1. VS Code 当前焦点 · 2分前` 这类编号 + 元信息行帮助快速扫读长列表。
+   4. attached `vscode /list` 当前不再走旧 attach-instance prompt，而是直接渲染结构化 instance card：保留按钮式操作，但底层已经不再依赖 `FeishuDirectSelectionPrompt`。
+   5. attached `vscode /use` 当前会直接渲染结构化 thread dropdown，只保留最近 5 个可切换会话；选项文案改成 `workspace basename · 首条用户消息摘要`，不再保留旧分页 / “更多”按钮。
+   6. attached `vscode /useall` 当前会直接渲染结构化 thread dropdown，并列出当前实例全部可切换会话；不可切换项不再逐条展示，只在卡片下方补一条“已省略当前不可切换的会话”提示。
+   7. VS Code thread dropdown 当前直接把 `use_thread(field_name=selection_thread)` callback 发回 gateway；选择动作不再先回投旧 selection prompt 再取按钮 payload。
 9. target picker confirm 进入跨 workspace / cross-instance target 时，当前实现仍会先走 detach 语义清理：
    1. queued / staged draft 会被清掉。
    2. `PromptOverride`、pending request、request capture 会被清掉。

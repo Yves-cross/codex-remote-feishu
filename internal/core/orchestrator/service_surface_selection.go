@@ -15,6 +15,7 @@ func (s *Service) presentInstanceSelection(surface *state.SurfaceConsoleRecord) 
 }
 
 func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConsoleRecord, inline bool) []control.UIEvent {
+	_ = inline
 	instances := make([]*state.InstanceRecord, 0, len(s.root.Instances))
 	for _, inst := range s.root.Instances {
 		if inst.Online && isVSCodeInstance(inst) {
@@ -26,13 +27,12 @@ func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConso
 	}
 	available := make([]instanceSelectionEntry, 0, len(instances))
 	unavailable := make([]instanceSelectionEntry, 0, len(instances))
-	contextTitle := ""
-	contextText := ""
+	var current *control.FeishuInstanceSelectionCurrent
 	for _, inst := range instances {
 		if inst == nil {
 			continue
 		}
-		current := surface != nil && surface.AttachedInstanceID == inst.InstanceID
+		isCurrent := surface != nil && surface.AttachedInstanceID == inst.InstanceID
 		busy := false
 		if owner := s.instanceClaimSurface(inst.InstanceID); owner != nil && (surface == nil || owner.SurfaceSessionID != surface.SurfaceSessionID) {
 			busy = true
@@ -43,64 +43,59 @@ func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConso
 			ageText = humanizeRelativeTime(s.now(), latestUsedAt)
 		}
 		buttonLabel := ""
-		if !current && !busy && surface != nil && strings.TrimSpace(surface.AttachedInstanceID) != "" {
+		if !isCurrent && !busy && surface != nil && strings.TrimSpace(surface.AttachedInstanceID) != "" {
 			buttonLabel = "切换"
 		}
-		option := control.SelectionOption{
-			OptionID:    inst.InstanceID,
+		entry := control.FeishuInstanceSelectionEntry{
+			InstanceID:  inst.InstanceID,
 			Label:       instanceSelectionLabel(inst),
 			ButtonLabel: buttonLabel,
-			AgeText:     ageText,
 			MetaText:    instanceSelectionMetaText(inst, ageText, busy),
-			IsCurrent:   current,
+			HasFocus:    instanceHasObservedFocus(inst),
 			Disabled:    busy,
 		}
-		if current {
-			contextTitle = "当前实例"
-			contextText = s.instanceSelectionContextText(surface, inst)
+		if isCurrent {
+			current = &control.FeishuInstanceSelectionCurrent{
+				InstanceID:  inst.InstanceID,
+				Label:       instanceSelectionLabel(inst),
+				ContextText: s.instanceSelectionContextText(surface, inst),
+			}
 			continue
 		}
-		entry := instanceSelectionEntry{
-			option:       option,
+		sorted := instanceSelectionEntry{
+			entry:        entry,
 			latestUsedAt: latestUsedAt,
 			hasFocus:     instanceHasObservedFocus(inst),
 		}
 		if busy {
-			unavailable = append(unavailable, entry)
+			unavailable = append(unavailable, sorted)
 			continue
 		}
-		available = append(available, entry)
+		available = append(available, sorted)
 	}
 	sortInstanceSelectionEntries(available)
 	sortInstanceSelectionEntries(unavailable)
 
-	options := make([]control.SelectionOption, 0, len(available)+len(unavailable))
-	appendIndexed := func(entries []instanceSelectionEntry) {
-		for _, entry := range entries {
-			entry.option.Index = len(options) + 1
-			options = append(options, entry.option)
+	entries := make([]control.FeishuInstanceSelectionEntry, 0, len(available)+len(unavailable))
+	appendEntries := func(items []instanceSelectionEntry) {
+		for _, item := range items {
+			entries = append(entries, item.entry)
 		}
 	}
-	appendIndexed(available)
-	appendIndexed(unavailable)
+	appendEntries(available)
+	appendEntries(unavailable)
 
-	hint := ""
-	if contextTitle != "" && len(options) == 0 {
-		hint = "当前没有其他可接管实例。"
-	}
-	return []control.UIEvent{s.feishuDirectSelectionPromptEventWithInline(surface, control.FeishuDirectSelectionPrompt{
-		Kind:         control.SelectionPromptAttachInstance,
-		Layout:       "grouped_attach_instance",
-		Title:        "在线 VS Code 实例",
-		Hint:         hint,
-		ContextTitle: contextTitle,
-		ContextText:  contextText,
-		Options:      options,
-	}, inline)}
+	return []control.UIEvent{s.selectionViewEvent(surface, control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptAttachInstance,
+		Instance: &control.FeishuInstanceSelectionView{
+			Current: current,
+			Entries: entries,
+		},
+	})}
 }
 
 type instanceSelectionEntry struct {
-	option       control.SelectionOption
+	entry        control.FeishuInstanceSelectionEntry
 	latestUsedAt time.Time
 	hasFocus     bool
 }
@@ -121,7 +116,7 @@ func sortInstanceSelectionEntries(entries []instanceSelectionEntry) {
 		case !left.latestUsedAt.Equal(right.latestUsedAt):
 			return left.latestUsedAt.After(right.latestUsedAt)
 		}
-		return strings.TrimSpace(left.option.OptionID) < strings.TrimSpace(right.option.OptionID)
+		return strings.TrimSpace(left.entry.InstanceID) < strings.TrimSpace(right.entry.InstanceID)
 	})
 }
 

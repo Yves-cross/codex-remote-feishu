@@ -150,6 +150,20 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.FeishuSelectionView == nil {
 			return nil
 		}
+		if title, elements, ok := selectionViewStructuredProjection(*event.FeishuSelectionView, event.FeishuSelectionContext, event.DaemonLifecycleID); ok {
+			return []Operation{{
+				Kind:             OperationSendCard,
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
+				ChatID:           chatID,
+				CardTitle:        title,
+				CardBody:         "",
+				CardThemeKey:     cardThemeInfo,
+				CardElements:     elements,
+				cardEnvelope:     cardEnvelopeV2,
+				card:             rawCardDocument(title, "", cardThemeInfo, elements),
+			}}
+		}
 		projected, ok := FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext)
 		if !ok {
 			return nil

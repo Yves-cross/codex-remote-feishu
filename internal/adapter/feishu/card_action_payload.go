@@ -34,6 +34,7 @@ const (
 	cardTargetPickerWorkspaceFieldName        = "target_picker_workspace"
 	cardTargetPickerSessionFieldName          = "target_picker_session"
 	cardTargetPickerSourceFieldName           = "target_picker_source"
+	cardSelectionThreadFieldName              = "selection_thread"
 	cardThreadHistoryTurnFieldName            = "thread_history_turn"
 	cardActionPayloadDefaultCommandFieldName  = "command_args"
 	cardActionKindAttachInstance              = "attach_instance"
@@ -142,6 +143,16 @@ func actionPayloadUseThread(threadID string, allowCrossWorkspace bool) map[strin
 		cardActionPayloadKeyThreadID:            strings.TrimSpace(threadID),
 		cardActionPayloadKeyAllowCrossWorkspace: allowCrossWorkspace,
 	}
+}
+
+func actionPayloadUseThreadField(fieldName string, allowCrossWorkspace bool) map[string]any {
+	payload := actionPayloadUseThread("", allowCrossWorkspace)
+	fieldName = strings.TrimSpace(fieldName)
+	if fieldName == "" {
+		fieldName = cardSelectionThreadFieldName
+	}
+	payload[cardActionPayloadKeyFieldName] = fieldName
+	return payload
 }
 
 func actionPayloadKickThreadConfirm(threadID string) map[string]any {

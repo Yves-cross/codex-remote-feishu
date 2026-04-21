@@ -750,6 +750,39 @@ func TestParseCardActionTriggerEventBuildsDirectUseThreadAction(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsUseThreadActionFromSelectStatic(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-3b", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":                  "use_thread",
+					"field_name":            "selection_thread",
+					"allow_cross_workspace": true,
+				},
+				FormValue: map[string]interface{}{
+					"selection_thread": []interface{}{"thread-2"},
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-3b",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected select_static use_thread callback to be parsed")
+	}
+	if action.Kind != control.ActionUseThread || action.ThreadID != "thread-2" || !action.AllowCrossWorkspace {
+		t.Fatalf("unexpected dropdown use_thread action: %#v", action)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsShowWorkspaceThreadsAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-workspace", "feishu:app-1:user:user-1")

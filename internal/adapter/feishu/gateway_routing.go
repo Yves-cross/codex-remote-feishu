@@ -69,6 +69,13 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 	case cardActionKindUseThread:
 		threadID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyThreadID))
 		if threadID == "" {
+			fieldName := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyFieldName))
+			if fieldName == "" {
+				fieldName = cardSelectionThreadFieldName
+			}
+			threadID = pathPickerSelectedEntryName(event, fieldName)
+		}
+		if threadID == "" {
 			return control.Action{}, false
 		}
 		return control.Action{

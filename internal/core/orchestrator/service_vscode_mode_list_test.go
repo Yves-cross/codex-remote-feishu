@@ -150,3 +150,60 @@ func TestVSCodeModeListShowsCurrentInstanceSummaryAndFocusSortedCandidates(t *te
 		t.Fatalf("expected busy instance in unavailable section, got %#v", prompt.Options[2])
 	}
 }
+
+func TestVSCodeModeListBuildsStructuredInstanceSelectionView(t *testing.T) {
+	now := time.Date(2026, 4, 10, 14, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-main")
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-current",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-current",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-current": {ThreadID: "thread-current", Name: "当前实例会话", CWD: "/data/dl/droid", LastUsedAt: now.Add(-5 * time.Minute)},
+		},
+	})
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-focus",
+		DisplayName:             "web",
+		WorkspaceRoot:           "/data/dl/web",
+		WorkspaceKey:            "/data/dl/web",
+		ShortName:               "web",
+		Source:                  "vscode",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-focus",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-focus": {ThreadID: "thread-focus", Name: "当前焦点线程", CWD: "/data/dl/web", LastUsedAt: now.Add(-2 * time.Minute)},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-main", ChatID: "chat-main", ActorUserID: "user-main", InstanceID: "inst-current"})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-main",
+		ChatID:           "chat-main",
+		ActorUserID:      "user-main",
+	})
+
+	if len(events) != 1 {
+		t.Fatalf("expected one selection view, got %#v", events)
+	}
+	view := selectionViewFromEvent(t, events[0])
+	if view.Instance == nil {
+		t.Fatalf("expected structured instance selection view, got %#v", view)
+	}
+	if view.Prompt != nil {
+		t.Fatalf("expected vscode /list to avoid legacy prompt payload, got %#v", view)
+	}
+	if view.Instance.Current == nil || !strings.Contains(view.Instance.Current.ContextText, "droid · 当前跟随中") {
+		t.Fatalf("expected current instance summary in structured view, got %#v", view.Instance.Current)
+	}
+	if len(view.Instance.Entries) != 1 || view.Instance.Entries[0].InstanceID != "inst-focus" {
+		t.Fatalf("expected only non-current candidates in structured view, got %#v", view.Instance.Entries)
+	}
+}

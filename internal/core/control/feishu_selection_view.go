@@ -18,8 +18,30 @@ const (
 type FeishuSelectionView struct {
 	PromptKind SelectionPromptKind
 	Prompt     *FeishuSelectionPromptView
+	Instance   *FeishuInstanceSelectionView
 	Workspace  *FeishuWorkspaceSelectionView
 	Thread     *FeishuThreadSelectionView
+}
+
+type FeishuInstanceSelectionView struct {
+	Current *FeishuInstanceSelectionCurrent
+	Entries []FeishuInstanceSelectionEntry
+}
+
+type FeishuInstanceSelectionCurrent struct {
+	InstanceID  string
+	Label       string
+	ContextText string
+}
+
+type FeishuInstanceSelectionEntry struct {
+	InstanceID   string
+	Label        string
+	MetaText     string
+	ButtonLabel  string
+	HasFocus     bool
+	Disabled     bool
+	LatestUsedAt string
 }
 
 type FeishuWorkspaceSelectionView struct {

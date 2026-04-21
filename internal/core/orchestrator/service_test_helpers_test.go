@@ -60,6 +60,14 @@ func targetPickerFromEvent(t *testing.T, event control.UIEvent) *control.FeishuT
 	return event.FeishuTargetPickerView
 }
 
+func selectionViewFromEvent(t *testing.T, event control.UIEvent) *control.FeishuSelectionView {
+	t.Helper()
+	if event.FeishuSelectionView == nil {
+		t.Fatalf("expected selection view, got %#v", event)
+	}
+	return event.FeishuSelectionView
+}
+
 func singleTargetPickerEvent(t *testing.T, events []control.UIEvent) *control.FeishuTargetPickerView {
 	t.Helper()
 	if len(events) != 1 {

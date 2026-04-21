@@ -12,6 +12,8 @@ func FeishuDirectSelectionPromptFromView(view control.FeishuSelectionView, ctx *
 	switch {
 	case view.Prompt != nil:
 		return control.FeishuDirectSelectionPrompt(*view.Prompt), true
+	case view.Instance != nil && view.PromptKind == control.SelectionPromptAttachInstance:
+		return instanceSelectionPromptFromView(*view.Instance, ctx), true
 	case view.Workspace != nil && view.PromptKind == control.SelectionPromptAttachWorkspace:
 		return workspaceSelectionPromptFromView(*view.Workspace, ctx), true
 	case view.Thread != nil && view.PromptKind == control.SelectionPromptUseThread:
@@ -19,6 +21,32 @@ func FeishuDirectSelectionPromptFromView(view control.FeishuSelectionView, ctx *
 	default:
 		return control.FeishuDirectSelectionPrompt{}, false
 	}
+}
+
+func instanceSelectionPromptFromView(view control.FeishuInstanceSelectionView, ctx *control.FeishuUISelectionContext) control.FeishuDirectSelectionPrompt {
+	options := make([]control.SelectionOption, 0, len(view.Entries))
+	for index, entry := range view.Entries {
+		options = append(options, control.SelectionOption{
+			Index:       index + 1,
+			OptionID:    strings.TrimSpace(entry.InstanceID),
+			Label:       strings.TrimSpace(entry.Label),
+			ButtonLabel: strings.TrimSpace(entry.ButtonLabel),
+			MetaText:    strings.TrimSpace(entry.MetaText),
+			Disabled:    entry.Disabled,
+		})
+	}
+	prompt := control.FeishuDirectSelectionPrompt{
+		Kind:    control.SelectionPromptAttachInstance,
+		Layout:  "grouped_attach_instance",
+		Title:   "在线 VS Code 实例",
+		Options: options,
+	}
+	if ctx != nil {
+		prompt.Title = firstNonEmpty(strings.TrimSpace(ctx.Title), prompt.Title)
+		prompt.ContextTitle = strings.TrimSpace(ctx.ContextTitle)
+		prompt.ContextText = strings.TrimSpace(ctx.ContextText)
+	}
+	return prompt
 }
 
 func workspaceSelectionPromptFromView(view control.FeishuWorkspaceSelectionView, ctx *control.FeishuUISelectionContext) control.FeishuDirectSelectionPrompt {
@@ -185,7 +213,7 @@ func threadScopedPromptFromView(view control.FeishuThreadSelectionView) control.
 func threadVSCodePromptFromView(view control.FeishuThreadSelectionView) control.FeishuDirectSelectionPrompt {
 	options := make([]control.SelectionOption, 0, len(view.Entries))
 	for _, entry := range view.Entries {
-		options = append(options, threadSelectionOption(entry, false))
+		options = append(options, vscodeThreadSelectionOption(entry))
 	}
 	title := "最近会话"
 	if view.Mode == control.FeishuThreadSelectionVSCodeAll || view.Mode == control.FeishuThreadSelectionVSCodeScopedAll {
@@ -208,6 +236,28 @@ func threadVSCodePromptFromView(view control.FeishuThreadSelectionView) control.
 		}
 	}
 	return prompt
+}
+
+func vscodeThreadSelectionOption(entry control.FeishuThreadSelectionEntry) control.SelectionOption {
+	option := threadSelectionOption(entry, false)
+	label := strings.TrimSpace(entry.FirstUserMessage)
+	if label == "" {
+		label = strings.TrimSpace(entry.LastUserMessage)
+	}
+	if label == "" {
+		label = strings.TrimSpace(entry.LastAssistantMessage)
+	}
+	if label == "" {
+		if parts := strings.SplitN(strings.TrimSpace(entry.Summary), " · ", 2); len(parts) == 2 {
+			label = strings.TrimSpace(parts[1])
+		}
+	}
+	if label == "" {
+		label = firstNonEmpty(strings.TrimSpace(entry.Summary), strings.TrimSpace(entry.ThreadID))
+	}
+	option.Label = label
+	option.ButtonLabel = label
+	return option
 }
 
 func threadSelectionOption(entry control.FeishuThreadSelectionEntry, includeWorkspace bool) control.SelectionOption {

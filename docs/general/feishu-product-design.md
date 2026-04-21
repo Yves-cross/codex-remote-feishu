@@ -229,10 +229,19 @@ ACK 语义上，message recalled 现在同样会进入和普通文本共用的 p
 - command menu 首页 / 面包屑 / submenu 导航
 - 参数卡快捷按钮
 - 参数卡表单提交按钮
-- selection prompt 选择
+- selection picker / prompt 选择
 - approval request 确认
 
 其中参数表单当前统一走 `submit_command_form` 回调，把卡片内输入的参数尾巴拼回 canonical slash command，再复用文本命令解析链路。
+
+selection 相关当前分两条主路径：
+
+- normal mode `/list` / `/use` / `/useall`
+  - 统一走 target picker
+- VS Code mode `/list` / `/use` / `/useall`
+  - `/list` 保持按钮式实例选择，但底层已经改成结构化 instance view
+  - `/use` / `/useall` 改成结构化 thread dropdown
+  - dropdown 当前直接回调 `use_thread(field_name=selection_thread)`，不再依赖旧 selection prompt 按钮承载
 
 approval request 卡片当前按动态 option 渲染，常见选项包括：
 

@@ -43,9 +43,10 @@ func (s *Service) presentWorkspaceThreadSelectionPage(surface *state.SurfaceCons
 }
 
 const (
-	threadSelectionPageSize         = 8
-	threadWorkspaceGroupPageSize    = 3
-	threadWorkspaceGroupPreviewSize = 2
+	threadSelectionPageSize          = 8
+	threadWorkspaceGroupPageSize     = 3
+	threadWorkspaceGroupPreviewSize  = 2
+	vscodeRecentThreadSelectionLimit = 5
 )
 
 func (s *Service) buildWorkspaceThreadSelectionModel(surface *state.SurfaceConsoleRecord, workspaceKey string, page, returnPage int) (*control.FeishuThreadSelectionView, []control.UIEvent) {
@@ -126,12 +127,20 @@ func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord,
 		default:
 			model.Mode = control.FeishuThreadSelectionVSCodeRecent
 		}
-		page, totalPages := paginatePage(page, len(views), threadSelectionPageSize)
-		start, end := pageBounds(page, threadSelectionPageSize, len(views))
-		model.Page = page
-		model.PageSize = threadSelectionPageSize
-		model.TotalPages = totalPages
-		for _, view := range views[start:end] {
+		selectedViews := views
+		model.Page = 1
+		model.TotalPages = 1
+		switch model.Mode {
+		case control.FeishuThreadSelectionVSCodeRecent:
+			model.RecentLimit = vscodeRecentThreadSelectionLimit
+			if len(selectedViews) > vscodeRecentThreadSelectionLimit {
+				selectedViews = selectedViews[:vscodeRecentThreadSelectionLimit]
+			}
+		default:
+			model.RecentLimit = vscodeRecentThreadSelectionLimit
+		}
+		model.PageSize = len(selectedViews)
+		for _, view := range selectedViews {
 			model.Entries = append(model.Entries, s.threadSelectionViewEntry(surface, view, false))
 		}
 	default:
@@ -321,9 +330,27 @@ func (s *Service) threadSelectionSummary(surface *state.SurfaceConsoleRecord, vi
 	if surface != nil &&
 		s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode &&
 		strings.TrimSpace(surface.AttachedInstanceID) != "" {
-		return vscodeThreadSelectionButtonLabel(view.Thread, view.ThreadID)
+		return vscodeThreadSelectionDropdownLabel(view)
 	}
 	return threadSelectionButtonLabel(view.Thread, view.ThreadID)
+}
+
+func vscodeThreadSelectionDropdownLabel(view *mergedThreadView) string {
+	if view == nil {
+		return ""
+	}
+	workspaceLabel := workspaceSelectionLabel(mergedThreadWorkspaceClaimKey(view))
+	source := threadFirstUserSnippet(view.Thread, 24)
+	if source == "" {
+		source = threadDisplayBody(view.Thread, 24)
+	}
+	if source == "" {
+		source = "未命名会话"
+	}
+	if workspaceLabel == "" {
+		return source
+	}
+	return workspaceLabel + " · " + source
 }
 
 func vscodeThreadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
