@@ -234,11 +234,6 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ChatID:           chatID,
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
-			RequestID:        requestID,
-			RequestType:      strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
-			RequestOptionID:  optionID,
-			RequestAnswers:   requestAnswers,
-			RequestRevision:  intMapValue(value, cardActionPayloadKeyRequestRevision),
 			Request: &control.ActionRequestResponse{
 				RequestID:       requestID,
 				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
@@ -277,8 +272,6 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ChatID:           chatID,
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
-			PickerID:         flowID,
-			OptionID:         optionID,
 			OwnerFlow: &control.ActionOwnerCardFlow{
 				FlowID:   flowID,
 				OptionID: optionID,
@@ -298,8 +291,6 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ChatID:           chatID,
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
-			PickerID:         flowID,
-			OptionID:         optionID,
 			OwnerFlow: &control.ActionOwnerCardFlow{
 				FlowID:   flowID,
 				OptionID: optionID,
@@ -373,11 +364,6 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			ChatID:           chatID,
 			ActorUserID:      operatorID,
 			MessageID:        messageID,
-			RequestID:        requestID,
-			RequestType:      strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
-			RequestOptionID:  requestOptionID,
-			RequestAnswers:   requestAnswers,
-			RequestRevision:  intMapValue(value, cardActionPayloadKeyRequestRevision),
 			Request: &control.ActionRequestResponse{
 				RequestID:       requestID,
 				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),

@@ -57,16 +57,7 @@ func buildPermissionsRequestOptions() []state.RequestPromptOptionRecord {
 }
 
 func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
-	requestAction := action.Request
-	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
-		requestAction = &control.ActionRequestResponse{
-			RequestID:       action.RequestID,
-			RequestType:     action.RequestType,
-			RequestOptionID: action.RequestOptionID,
-			Answers:         action.RequestAnswers,
-			RequestRevision: action.RequestRevision,
-		}
-	}
+	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, nil
 	}
@@ -164,23 +155,11 @@ func buildMCPElicitationOptions(prompt *agentproto.RequestPrompt, metadata map[s
 }
 
 func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
-	requestAction := action.Request
-	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
-		requestAction = &control.ActionRequestResponse{
-			RequestID:       action.RequestID,
-			RequestType:     action.RequestType,
-			RequestOptionID: action.RequestOptionID,
-			Answers:         action.RequestAnswers,
-			RequestRevision: action.RequestRevision,
-		}
-	}
+	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个 MCP 请求动作缺少有效的请求上下文。")
 	}
 	requestAnswers := requestAction.Answers
-	if len(requestAnswers) == 0 {
-		requestAnswers = action.RequestAnswers
-	}
 	optionID := control.NormalizeRequestOptionID(strings.TrimSpace(requestAction.RequestOptionID))
 	if requestPromptStepPrevious(optionID) {
 		moveRequestPromptCurrentQuestion(request, -1)

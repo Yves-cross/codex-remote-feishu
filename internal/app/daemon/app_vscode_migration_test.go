@@ -267,8 +267,10 @@ func TestDaemonVSCodeMigrateCommandOpensOwnerFlowAndAppliesManagedShim(t *testin
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        prompt.MessageID,
-		PickerID:         flowID,
-		OptionID:         vscodeMigrationOwnerActionRun,
+		OwnerFlow: &control.ActionOwnerCardFlow{
+			FlowID:   flowID,
+			OptionID: vscodeMigrationOwnerActionRun,
+		},
 		Inbound: &control.ActionInboundMeta{
 			CardDaemonLifecycleID: app.daemonLifecycleID,
 		},

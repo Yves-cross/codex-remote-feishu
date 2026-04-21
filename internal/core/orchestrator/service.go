@@ -450,7 +450,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		}}
 	case control.ActionUpgradeOwnerFlow:
 		ownerFlow := action.OwnerFlow
-		if ownerFlow == nil && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
+		if ownerFlow == nil && !action.IsCardAction() && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
 			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
 		}
 		if ownerFlow == nil {
@@ -499,7 +499,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.followLocal(surface)
 	case control.ActionVSCodeMigrate:
 		ownerFlow := action.OwnerFlow
-		if ownerFlow == nil && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
+		if ownerFlow == nil && !action.IsCardAction() && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
 			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
 		}
 		if ownerFlow == nil {

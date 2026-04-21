@@ -1725,8 +1725,8 @@ func TestParseCardActionTriggerEventBuildsRequestRespondAnswers(t *testing.T) {
 	if action.Kind != control.ActionRespondRequest || action.Request == nil || action.Request.RequestID != "req-ui-1" {
 		t.Fatalf("unexpected action: %#v", action)
 	}
-	if got := action.RequestAnswers["model"]; len(got) != 1 || got[0] != "gpt-5.4" {
-		t.Fatalf("unexpected request answers payload: %#v", action.RequestAnswers)
+	if got := action.Request.Answers["model"]; len(got) != 1 || got[0] != "gpt-5.4" {
+		t.Fatalf("unexpected request answers payload: %#v", action.Request.Answers)
 	}
 	if action.Request.RequestRevision != 7 {
 		t.Fatalf("expected string request revision to be parsed, got %#v", action)
@@ -1770,8 +1770,8 @@ func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) 
 	if action.Request.RequestOptionID != "submit_with_unanswered" {
 		t.Fatalf("unexpected request option id: %#v", action)
 	}
-	if got := action.RequestAnswers["notes"]; len(got) != 1 || got[0] != "请用中文回复" {
-		t.Fatalf("unexpected form request answers: %#v", action.RequestAnswers)
+	if got := action.Request.Answers["notes"]; len(got) != 1 || got[0] != "请用中文回复" {
+		t.Fatalf("unexpected form request answers: %#v", action.Request.Answers)
 	}
 	if action.Request.RequestRevision != 5 {
 		t.Fatalf("expected form request revision to be parsed, got %#v", action)

@@ -21,16 +21,7 @@ const (
 )
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
-	requestAction := action.Request
-	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
-		requestAction = &control.ActionRequestResponse{
-			RequestID:       action.RequestID,
-			RequestType:     action.RequestType,
-			RequestOptionID: action.RequestOptionID,
-			Answers:         action.RequestAnswers,
-			RequestRevision: action.RequestRevision,
-		}
-	}
+	requestAction := requestActionFromCompatibilityFields(action)
 	if surface == nil || requestAction == nil || strings.TrimSpace(requestAction.RequestID) == "" {
 		return nil
 	}
@@ -258,23 +249,11 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 }
 
 func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []control.UIEvent) {
-	requestAction := action.Request
-	if requestAction == nil && strings.TrimSpace(action.RequestID) != "" {
-		requestAction = &control.ActionRequestResponse{
-			RequestID:       action.RequestID,
-			RequestType:     action.RequestType,
-			RequestOptionID: action.RequestOptionID,
-			Answers:         action.RequestAnswers,
-			RequestRevision: action.RequestRevision,
-		}
-	}
+	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个请求动作缺少有效的请求上下文。")
 	}
 	requestAnswers := requestAction.Answers
-	if len(requestAnswers) == 0 {
-		requestAnswers = action.RequestAnswers
-	}
 	switch requestType {
 	case "approval":
 		optionID := control.NormalizeRequestOptionID(requestAction.RequestOptionID)
@@ -369,6 +348,24 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 		return s.buildMCPElicitationResponse(surface, request, action)
 	default:
 		return nil, false, notice(surface, "request_unsupported", fmt.Sprintf("飞书端暂不支持处理 %s 类型的请求。", requestType))
+	}
+}
+
+// requestActionFromCompatibilityFields keeps non-card test/local callers working
+// while production card actions are required to use Action.Request.
+func requestActionFromCompatibilityFields(action control.Action) *control.ActionRequestResponse {
+	if action.Request != nil {
+		return action.Request
+	}
+	if action.IsCardAction() || strings.TrimSpace(action.RequestID) == "" {
+		return nil
+	}
+	return &control.ActionRequestResponse{
+		RequestID:       action.RequestID,
+		RequestType:     action.RequestType,
+		RequestOptionID: action.RequestOptionID,
+		Answers:         action.RequestAnswers,
+		RequestRevision: action.RequestRevision,
 	}
 }
 
