@@ -998,12 +998,15 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
-		t.Fatalf("expected partial answer save to refresh prompt and notice, got %#v", events)
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected partial answer save to refresh current card inline, got %#v", events)
 	}
 	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.RequestRevision != 2 {
 		t.Fatalf("expected partial answer save to bump prompt revision, got %#v", prompt)
+	}
+	if prompt.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected partial answer save to advance to next question, got %#v", prompt)
 	}
 	if !prompt.Questions[0].Answered || prompt.Questions[0].DefaultValue != "gpt-5.4" {
 		t.Fatalf("expected refreshed prompt to show saved answer, got %#v", prompt.Questions[0])
@@ -1087,8 +1090,12 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
-		t.Fatalf("expected option-only partial submit to refresh prompt and notice, got %#v", events)
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected option-only partial submit to refresh current card inline, got %#v", events)
+	}
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected option-only partial submit to advance to form question, got %#v", prompt)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
@@ -1155,8 +1162,12 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 2 || events[1].Notice == nil || events[1].Notice.Code != "request_saved" {
-		t.Fatalf("expected first step to save partial answer, got %#v", events)
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected first step to save partial answer inline, got %#v", events)
+	}
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected first step save to advance to unanswered question, got %#v", prompt)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
@@ -1168,7 +1179,7 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 	if len(events) != 1 {
 		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
 	}
-	prompt := requestPromptFromEvent(t, events[0])
+	prompt = requestPromptFromEvent(t, events[0])
 	if !prompt.SubmitWithUnansweredConfirmPending {
 		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
 	}
@@ -1453,16 +1464,22 @@ func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *
 		RequestID:        "req-ui-1",
 		RequestOptionID:  "cancel_submit_with_unanswered",
 	})
-	if len(events) != 1 {
-		t.Fatalf("expected cancel_submit_with_unanswered to refresh request prompt, got %#v", events)
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected cancel_submit_with_unanswered to refresh current card inline, got %#v", events)
 	}
 	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.SubmitWithUnansweredConfirmPending {
 		t.Fatalf("expected cancel_submit_with_unanswered to clear confirm state, got %#v", prompt)
 	}
+	if prompt.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected cancel_submit_with_unanswered to jump back to first unanswered question, got %#v", prompt)
+	}
 	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if pending == nil || pending.SubmitWithUnansweredConfirmPending {
 		t.Fatalf("expected pending request confirm state to clear, got %#v", pending)
+	}
+	if pending.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected pending request to point at first unanswered question, got %#v", pending)
 	}
 }
 

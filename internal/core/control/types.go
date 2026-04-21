@@ -379,6 +379,7 @@ type FeishuDirectRequestPrompt struct {
 	Sections                           []FeishuCardTextSection
 	Options                            []RequestPromptOption
 	Questions                          []RequestPromptQuestion
+	CurrentQuestionIndex               int
 	SubmitWithUnansweredConfirmPending bool
 	SubmitWithUnansweredMissingLabels  []string
 }

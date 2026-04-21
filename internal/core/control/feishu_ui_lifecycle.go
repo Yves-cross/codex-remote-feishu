@@ -40,7 +40,8 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		ActionReasoningCommand,
 		ActionAccessCommand,
 		ActionModelCommand,
-		ActionVerboseCommand:
+		ActionVerboseCommand,
+		ActionRespondRequest:
 		if isSingleTokenSlashCommand(action.Text) {
 			break
 		}

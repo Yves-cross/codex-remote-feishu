@@ -114,14 +114,11 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	if optionValue["kind"] != "request_respond" || len(modeAnswers) != 1 || modeAnswers[0] != "auto" {
 		t.Fatalf("unexpected direct response payload: %#v", optionValue)
 	}
-	form, _ := ops[0].CardElements[7]["elements"].([]map[string]any)
-	if len(form) != 2 {
-		t.Fatalf("expected one mcp form input and one submit button, got %#v", ops[0].CardElements[7])
+	navRow := cardElementButtons(t, ops[0].CardElements[6])
+	if len(navRow) != 2 {
+		t.Fatalf("expected current-step navigation row, got %#v", ops[0].CardElements[6])
 	}
-	if label := cardButtonLabel(t, form[1]); label != "提交并继续" {
-		t.Fatalf("unexpected mcp form submit label: %#v", form[1])
-	}
-	submitValue := cardButtonPayload(t, form[1])
+	submitValue := cardButtonPayload(t, ops[0].CardElements[7])
 	if submitValue["request_option_id"] != "submit" || submitValue["request_revision"] != 5 {
 		t.Fatalf("unexpected mcp form submit payload: %#v", submitValue)
 	}
@@ -131,5 +128,61 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	}
 	if got := cardButtonLabel(t, terminalRow[0]); got != "拒绝" {
 		t.Fatalf("unexpected terminal action row: %#v", ops[0].CardElements[8])
+	}
+}
+
+func TestProjectMCPElicitationFormPromptRendersCurrentFormFieldAsSingleStepForm(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:            "req-mcp-form-2",
+		RequestType:          "mcp_server_elicitation",
+		RequestRevision:      6,
+		CurrentQuestionIndex: 1,
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "mode",
+				Header:         "模式",
+				Question:       "选择执行模式（必填）",
+				Answered:       true,
+				DefaultValue:   "auto",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "auto"},
+					{Label: "manual"},
+				},
+			},
+			{
+				ID:          "token",
+				Header:      "Token",
+				Question:    "填写 OAuth token（必填）",
+				AllowOther:  true,
+				Placeholder: "请填写 token",
+			},
+		},
+		Options: []control.RequestPromptOption{
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+			{OptionID: "cancel", Label: "取消", Style: "default"},
+		},
+	}))
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "填写进度") || !strings.Contains(got, "1/2") || !strings.Contains(got, "当前第 2 题") {
+		t.Fatalf("expected step-aware mcp progress, got %#v", ops[0].CardElements[0])
+	}
+	form := ops[0].CardElements[4]
+	if form["tag"] != "form" {
+		t.Fatalf("expected current-step mcp form, got %#v", form)
+	}
+	formElements, _ := form["elements"].([]map[string]any)
+	if len(formElements) != 2 {
+		t.Fatalf("expected one input and one save button, got %#v", form)
+	}
+	if label := cardButtonLabel(t, formElements[1]); label != "保存本题" {
+		t.Fatalf("unexpected step-save label: %#v", formElements[1])
+	}
+	saveValue := cardButtonPayload(t, formElements[1])
+	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != "step_save" || saveValue["request_revision"] != 6 {
+		t.Fatalf("unexpected step-save payload: %#v", saveValue)
 	}
 }

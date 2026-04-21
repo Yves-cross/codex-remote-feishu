@@ -1395,8 +1395,8 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if ops[0].CardBody != "" {
 		t.Fatalf("expected request_user_input card body to stay empty, got %#v", ops[0])
 	}
-	if len(ops[0].CardElements) < 10 {
-		t.Fatalf("expected sections + progress + question elements and form, got %#v", ops[0].CardElements)
+	if len(ops[0].CardElements) != 9 {
+		t.Fatalf("expected sections + progress + current-step elements, got %#v", ops[0].CardElements)
 	}
 	if got := plainTextContent(ops[0].CardElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
 		t.Fatalf("expected thread section at top, got %#v", ops[0].CardElements[0])
@@ -1407,7 +1407,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if got := markdownContent(ops[0].CardElements[2]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
 		t.Fatalf("expected progress markdown after sections, got %#v", ops[0].CardElements[2])
 	}
-	if got := markdownContent(ops[0].CardElements[3]); !strings.Contains(got, "问题 1") {
+	if got := markdownContent(ops[0].CardElements[3]); !strings.Contains(got, "问题 1/2") {
 		t.Fatalf("expected first question heading after progress, got %#v", ops[0].CardElements[3])
 	}
 	if got := plainTextContent(ops[0].CardElements[4]); !containsAll(got, "标题：模型", "说明：", "请选择模型", "可选项：", "- gpt-5.4：推荐") {
@@ -1426,16 +1426,21 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if value["request_revision"] != 3 {
 		t.Fatalf("expected request option to carry request revision, got %#v", value)
 	}
-	form, _ := ops[0].CardElements[8]["elements"].([]map[string]any)
-	if len(form) != 2 {
-		t.Fatalf("expected one input and one submit button, got %#v", ops[0].CardElements[8])
+	navRow := cardElementButtons(t, ops[0].CardElements[7])
+	if len(navRow) != 2 {
+		t.Fatalf("expected current-step navigation row, got %#v", ops[0].CardElements[7])
 	}
-	submitValue := cardButtonPayload(t, form[1])
-	if submitValue["kind"] != "submit_request_form" || submitValue["request_id"] != "req-ui-1" || submitValue["request_option_id"] != "submit" {
-		t.Fatalf("unexpected request form payload: %#v", submitValue)
+	prevValue := cardButtonPayload(t, navRow[0])
+	nextValue := cardButtonPayload(t, navRow[1])
+	if prevValue["request_option_id"] != "step_previous" || nextValue["request_option_id"] != "step_next" {
+		t.Fatalf("expected prev/next navigation payloads, got %#v / %#v", prevValue, nextValue)
+	}
+	submitValue := cardButtonPayload(t, ops[0].CardElements[8])
+	if submitValue["kind"] != "request_respond" || submitValue["request_id"] != "req-ui-1" || submitValue["request_option_id"] != "submit" {
+		t.Fatalf("unexpected request submit payload: %#v", submitValue)
 	}
 	if submitValue["request_revision"] != 3 {
-		t.Fatalf("expected request form to carry request revision, got %#v", submitValue)
+		t.Fatalf("expected request submit action to carry request revision, got %#v", submitValue)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected request_user_input prompt to use structured V2 send path, got %#v", ops[0])
@@ -1451,7 +1456,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if got := markdownContent(renderedElements[2]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
 		t.Fatalf("expected rendered progress markdown, got %#v", renderedElements[2])
 	}
-	if got := markdownContent(renderedElements[3]); !strings.Contains(got, "问题 1") {
+	if got := markdownContent(renderedElements[3]); !strings.Contains(got, "问题 1/2") {
 		t.Fatalf("expected rendered question heading after progress, got %#v", renderedElements[3])
 	}
 	if got := plainTextContent(renderedElements[4]); !containsAll(got, "标题：模型", "说明：", "请选择模型") {
@@ -1470,23 +1475,80 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if renderedValue["request_revision"] != 3 {
 		t.Fatalf("expected rendered direct-response payload to carry request revision, got %#v", renderedValue)
 	}
-	renderedForm := renderedElements[8]
-	if renderedForm["tag"] != "form" {
-		t.Fatalf("expected rendered V2 request form, got %#v", renderedForm)
+	renderedNav := renderedColumnButtons(t, renderedElements[7])
+	if len(renderedNav) != 2 {
+		t.Fatalf("expected rendered navigation row, got %#v", renderedElements[7])
 	}
-	renderedFormElements, _ := renderedForm["elements"].([]map[string]any)
-	if len(renderedFormElements) != 2 {
-		t.Fatalf("expected rendered request form to keep one input and one submit button, got %#v", renderedForm)
+	renderedPrevValue := renderedButtonCallbackValue(t, renderedNav[0])
+	renderedNextValue := renderedButtonCallbackValue(t, renderedNav[1])
+	if renderedPrevValue["request_option_id"] != "step_previous" || renderedNextValue["request_option_id"] != "step_next" {
+		t.Fatalf("unexpected rendered navigation payloads: %#v / %#v", renderedPrevValue, renderedNextValue)
 	}
-	if renderedFormElements[1]["action_type"] != nil || renderedFormElements[1]["form_action_type"] != "submit" {
-		t.Fatalf("expected rendered request form submit button to use V2 form_action_type, got %#v", renderedFormElements[1])
-	}
-	renderedSubmitValue := renderedButtonCallbackValue(t, renderedFormElements[1])
-	if renderedSubmitValue["kind"] != "submit_request_form" || renderedSubmitValue["request_id"] != "req-ui-1" || renderedSubmitValue["request_option_id"] != "submit" {
-		t.Fatalf("unexpected rendered request form payload: %#v", renderedSubmitValue)
+	renderedSubmitValue := renderedButtonCallbackValue(t, renderedElements[8])
+	if renderedSubmitValue["kind"] != "request_respond" || renderedSubmitValue["request_id"] != "req-ui-1" || renderedSubmitValue["request_option_id"] != "submit" {
+		t.Fatalf("unexpected rendered request submit payload: %#v", renderedSubmitValue)
 	}
 	if renderedSubmitValue["request_revision"] != 3 {
-		t.Fatalf("expected rendered request form payload to carry request revision, got %#v", renderedSubmitValue)
+		t.Fatalf("expected rendered request submit payload to carry request revision, got %#v", renderedSubmitValue)
+	}
+}
+
+func TestProjectRequestUserInputPromptRendersCurrentFormQuestionAsSingleStepForm(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuDirectRequestPrompt{
+		RequestID:            "req-ui-form-1",
+		RequestType:          "request_user_input",
+		RequestRevision:      6,
+		CurrentQuestionIndex: 1,
+		Questions: []control.RequestPromptQuestion{
+			{
+				ID:             "model",
+				Header:         "模型",
+				Question:       "请选择模型",
+				Answered:       true,
+				DefaultValue:   "gpt-5.4",
+				DirectResponse: true,
+				Options: []control.RequestPromptQuestionOption{
+					{Label: "gpt-5.4"},
+					{Label: "gpt-5.3"},
+				},
+			},
+			{
+				ID:          "notes",
+				Header:      "备注",
+				Question:    "补充说明",
+				AllowOther:  true,
+				Secret:      true,
+				Placeholder: "请填写补充说明",
+			},
+		},
+	}))
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "1/2") || !strings.Contains(got, "当前第 2 题") {
+		t.Fatalf("expected progress to expose current step, got %#v", ops[0].CardElements[0])
+	}
+	if got := markdownContent(ops[0].CardElements[1]); !strings.Contains(got, "问题 2/2") {
+		t.Fatalf("expected second question heading, got %#v", ops[0].CardElements[1])
+	}
+	if got := plainTextContent(ops[0].CardElements[2]); !containsAll(got, "标题：备注", "状态：待回答", "该答案按私密输入处理") {
+		t.Fatalf("expected current form question body, got %#v", ops[0].CardElements[2])
+	}
+	form := ops[0].CardElements[4]
+	if form["tag"] != "form" {
+		t.Fatalf("expected current-step form, got %#v", form)
+	}
+	formElements, _ := form["elements"].([]map[string]any)
+	if len(formElements) != 2 {
+		t.Fatalf("expected one input and one save button, got %#v", form)
+	}
+	if label := cardButtonLabel(t, formElements[1]); label != "保存本题" {
+		t.Fatalf("expected step-save label, got %#v", formElements[1])
+	}
+	saveValue := cardButtonPayload(t, formElements[1])
+	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != "step_save" || saveValue["request_revision"] != 6 {
+		t.Fatalf("unexpected step-save payload: %#v", saveValue)
 	}
 }
 
@@ -1524,9 +1586,9 @@ func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 	if len(ops[0].CardElements) < 7 {
 		t.Fatalf("expected submit action row for no-form prompt, got %#v", ops[0].CardElements)
 	}
-	submitRow := cardElementButtons(t, ops[0].CardElements[7])
+	submitRow := cardElementButtons(t, ops[0].CardElements[6])
 	if len(submitRow) != 1 {
-		t.Fatalf("expected one submit action button, got %#v", ops[0].CardElements[7])
+		t.Fatalf("expected one submit action button, got %#v", ops[0].CardElements[6])
 	}
 	value := cardButtonPayload(t, submitRow[0])
 	if value["kind"] != "request_respond" || value["request_option_id"] != "submit" {
@@ -1568,7 +1630,7 @@ func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) 
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if len(ops[0].CardElements) < 8 {
+	if len(ops[0].CardElements) != 3 {
 		t.Fatalf("expected confirm markdown and confirm action row, got %#v", ops[0].CardElements)
 	}
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
@@ -1630,16 +1692,12 @@ func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *te
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "1/2") {
 		t.Fatalf("expected top progress markdown, got %#v", ops[0].CardElements[0])
 	}
-	if got := markdownContent(ops[0].CardElements[1]); !strings.Contains(got, "问题 1") {
+	if got := markdownContent(ops[0].CardElements[1]); !strings.Contains(got, "问题 1/2") {
 		t.Fatalf("expected first question heading after progress, got %#v", ops[0].CardElements[1])
 	}
 	firstQuestion := plainTextContent(ops[0].CardElements[2])
 	if !strings.Contains(firstQuestion, "状态：已回答") || !strings.Contains(firstQuestion, "当前答案：gpt-5.4") {
 		t.Fatalf("expected first question to include answered status and current answer, got %q", firstQuestion)
-	}
-	secondQuestion := plainTextContent(ops[0].CardElements[5])
-	if !strings.Contains(secondQuestion, "状态：待回答") {
-		t.Fatalf("expected second question to include pending status, got %q", secondQuestion)
 	}
 	firstRow := cardElementButtons(t, ops[0].CardElements[3])
 	if len(firstRow) != 2 {

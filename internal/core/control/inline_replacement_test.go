@@ -127,6 +127,11 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "request step navigation",
+			action: Action{Kind: ActionRespondRequest, RequestID: "req-1", RequestOptionID: "step_next"},
+			want:   true,
+		},
+		{
 			name:   "path picker confirm stays append-only",
 			action: Action{Kind: ActionPathPickerConfirm, PickerID: "picker-1"},
 			want:   false,
@@ -187,6 +192,18 @@ func TestAllowsInlineCardReplacementForCommandCardApply(t *testing.T) {
 	}
 	if !AllowsInlineCardReplacement(action) {
 		t.Fatal("expected inline replacement for command-card apply")
+	}
+}
+
+func TestAllowsInlineCardReplacementForRequestStepRefresh(t *testing.T) {
+	action := Action{
+		Kind:            ActionRespondRequest,
+		RequestID:       "req-1",
+		RequestOptionID: "step_next",
+		Inbound:         &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	}
+	if !AllowsInlineCardReplacement(action) {
+		t.Fatal("expected inline replacement for request step refresh")
 	}
 }
 

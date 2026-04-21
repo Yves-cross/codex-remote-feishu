@@ -182,6 +182,16 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 		requestAnswers = action.RequestAnswers
 	}
 	optionID := control.NormalizeRequestOptionID(strings.TrimSpace(requestAction.RequestOptionID))
+	if requestPromptStepPrevious(optionID) {
+		moveRequestPromptCurrentQuestion(request, -1)
+		bumpRequestCardRevision(request)
+		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+	}
+	if requestPromptStepNext(optionID) {
+		moveRequestPromptCurrentQuestion(request, 1)
+		bumpRequestCardRevision(request)
+		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+	}
 	switch optionID {
 	case "decline", "cancel":
 		return buildMCPElicitationPayload(optionID, nil, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
@@ -202,13 +212,8 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 			return nil, false, notice(surface, "request_invalid", "请先填写或选择返回内容，再提交给 MCP server。")
 		}
 		bumpRequestCardRevision(request)
-		if len(missingLabels) == 0 {
-			return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", "已记录当前输入，确认无误后点击“提交并继续”。")
-		}
-		if len(missingLabels) == 1 {
-			return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", fmt.Sprintf("已记录当前输入。还差 1 项：%s。", missingLabels[0]))
-		}
-		return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", fmt.Sprintf("已记录当前输入。还差 %d 项待填写。", len(missingLabels)))
+		advanceRequestPromptAfterPartialSave(request)
+		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 	}
 	if !complete {
 		if len(missingLabels) == 1 {

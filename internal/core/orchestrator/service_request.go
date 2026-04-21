@@ -15,6 +15,9 @@ const (
 	requestUserInputSubmitWithUnansweredOptionID        = "submit_with_unanswered"
 	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
+	requestPromptStepPreviousOptionID                   = "step_previous"
+	requestPromptStepNextOptionID                       = "step_next"
+	requestPromptStepSaveOptionID                       = "step_save"
 )
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -159,13 +162,14 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 			sourceMessageID, _ := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
 			return sourceMessageID
 		}(),
-		ItemID:       strings.TrimSpace(metadataString(event.Metadata, "itemId")),
-		Title:        title,
-		Sections:     sections,
-		Options:      options,
-		Questions:    questions,
-		CardRevision: 1,
-		CreatedAt:    s.now(),
+		ItemID:               strings.TrimSpace(metadataString(event.Metadata, "itemId")),
+		Title:                title,
+		Sections:             sections,
+		Options:              options,
+		Questions:            questions,
+		CurrentQuestionIndex: 0,
+		CardRevision:         1,
+		CreatedAt:            s.now(),
 	}
 	surface.PendingRequests[event.RequestID] = record
 	if !requestPromptRenderable(requestType) {
@@ -303,13 +307,26 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			"decision": decision,
 		}, false, nil
 	case "request_user_input":
+		if requestPromptStepPrevious(requestAction.RequestOptionID) {
+			clearRequestUserInputSubmitConfirmState(request)
+			moveRequestPromptCurrentQuestion(request, -1)
+			bumpRequestCardRevision(request)
+			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+		}
+		if requestPromptStepNext(requestAction.RequestOptionID) {
+			clearRequestUserInputSubmitConfirmState(request)
+			moveRequestPromptCurrentQuestion(request, 1)
+			bumpRequestCardRevision(request)
+			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+		}
 		if requestUserInputCancelSubmitWithUnanswered(requestAction.RequestOptionID) {
 			if !request.SubmitWithUnansweredConfirmPending {
 				return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
 			}
 			clearRequestUserInputSubmitConfirmState(request)
+			setRequestPromptCurrentQuestionIndex(request, firstUnansweredRequestQuestionIndex(request))
 			bumpRequestCardRevision(request)
-			return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
+			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		if requestUserInputConfirmSubmitWithUnanswered(requestAction.RequestOptionID) && !request.SubmitWithUnansweredConfirmPending {
 			return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
@@ -323,8 +340,9 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 		if !complete {
 			if submitIntent {
 				setRequestUserInputSubmitConfirmState(request, missingLabels)
+				setRequestPromptCurrentQuestionIndex(request, firstUnansweredRequestQuestionIndex(request))
 				bumpRequestCardRevision(request)
-				return nil, false, []control.UIEvent{s.requestPromptEvent(surface, request, "")}
+				return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 			}
 			if len(requestAnswers) == 0 {
 				if len(missingLabels) != 0 {
@@ -333,13 +351,8 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 				return nil, false, notice(surface, "request_invalid", "当前没有可提交的答案。")
 			}
 			bumpRequestCardRevision(request)
-			if len(missingLabels) == 0 {
-				return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", "已记录当前答案，请继续补全其他问题后再提交。")
-			}
-			if len(missingLabels) == 1 {
-				return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", fmt.Sprintf("已记录当前答案。还差 1 个问题：%s。", missingLabels[0]))
-			}
-			return nil, false, s.requestPromptRefreshWithNotice(surface, request, "request_saved", fmt.Sprintf("已记录当前答案。还差 %d 个问题待填写。", len(missingLabels)))
+			advanceRequestPromptAfterPartialSave(request)
+			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		clearRequestUserInputSubmitConfirmState(request)
 		return response, true, nil
@@ -443,6 +456,18 @@ func requestUserInputCancelSubmitWithUnanswered(optionID string) bool {
 	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestUserInputCancelSubmitWithUnansweredOptionID)
 }
 
+func requestPromptStepPrevious(optionID string) bool {
+	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepPreviousOptionID)
+}
+
+func requestPromptStepNext(optionID string) bool {
+	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepNextOptionID)
+}
+
+func requestPromptStepSave(optionID string) bool {
+	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepSaveOptionID)
+}
+
 func requestUserInputSubmitIntent(optionID string) bool {
 	normalized := requestUserInputNormalizedOptionID(optionID)
 	switch normalized {
@@ -495,6 +520,80 @@ func (s *Service) nextRequestDispatchCommandID() string {
 	return "reqcmd-" + strconv.Itoa(s.nextRequestCommandID)
 }
 
+func requestPromptQuestionCount(request *state.RequestPromptRecord) int {
+	if request == nil {
+		return 0
+	}
+	return len(request.Questions)
+}
+
+func normalizedRequestPromptCurrentQuestionIndex(request *state.RequestPromptRecord) int {
+	if request == nil || len(request.Questions) == 0 {
+		return 0
+	}
+	if request.CurrentQuestionIndex < 0 {
+		return 0
+	}
+	if request.CurrentQuestionIndex >= len(request.Questions) {
+		return len(request.Questions) - 1
+	}
+	return request.CurrentQuestionIndex
+}
+
+func setRequestPromptCurrentQuestionIndex(request *state.RequestPromptRecord, index int) {
+	if request == nil || len(request.Questions) == 0 {
+		return
+	}
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(request.Questions) {
+		index = len(request.Questions) - 1
+	}
+	request.CurrentQuestionIndex = index
+}
+
+func moveRequestPromptCurrentQuestion(request *state.RequestPromptRecord, delta int) {
+	setRequestPromptCurrentQuestionIndex(request, normalizedRequestPromptCurrentQuestionIndex(request)+delta)
+}
+
+func requestQuestionAnswered(request *state.RequestPromptRecord, question state.RequestPromptQuestionRecord) bool {
+	if request == nil {
+		return false
+	}
+	return strings.TrimSpace(request.DraftAnswers[strings.TrimSpace(question.ID)]) != ""
+}
+
+func firstUnansweredRequestQuestionIndex(request *state.RequestPromptRecord) int {
+	if request == nil {
+		return 0
+	}
+	for index, question := range request.Questions {
+		if !requestQuestionAnswered(request, question) {
+			return index
+		}
+	}
+	return normalizedRequestPromptCurrentQuestionIndex(request)
+}
+
+func advanceRequestPromptAfterPartialSave(request *state.RequestPromptRecord) {
+	if request == nil || len(request.Questions) == 0 {
+		return
+	}
+	current := normalizedRequestPromptCurrentQuestionIndex(request)
+	for index := current + 1; index < len(request.Questions); index++ {
+		if !requestQuestionAnswered(request, request.Questions[index]) {
+			request.CurrentQuestionIndex = index
+			return
+		}
+	}
+	if current+1 < len(request.Questions) {
+		request.CurrentQuestionIndex = current + 1
+		return
+	}
+	request.CurrentQuestionIndex = len(request.Questions) - 1
+}
+
 func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
 	threadTitle := strings.TrimSpace(threadTitleHint)
 	if threadTitle == "" {
@@ -515,10 +614,17 @@ func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record
 		Sections:                           requestPromptSectionsToControl(record.Sections),
 		Options:                            requestPromptOptionsToControl(record.Options),
 		Questions:                          requestPromptQuestionsToControl(record.Questions, record.DraftAnswers),
+		CurrentQuestionIndex:               normalizedRequestPromptCurrentQuestionIndex(record),
 		SubmitWithUnansweredConfirmPending: record.SubmitWithUnansweredConfirmPending,
 		SubmitWithUnansweredMissingLabels:  append([]string(nil), record.SubmitWithUnansweredMissingLabels...),
 	})
 	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
+	return event
+}
+
+func (s *Service) requestPromptInlineEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+	event := s.requestPromptEvent(surface, record, threadTitleHint)
+	event.InlineReplaceCurrentCard = true
 	return event
 }
 

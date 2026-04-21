@@ -151,6 +151,56 @@ func TestRespondMCPElicitationFormBuildsStructuredResponse(t *testing.T) {
 	}
 }
 
+func TestRespondMCPElicitationFormPartialSaveRefreshesCurrentStepInline(t *testing.T) {
+	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	attachMCPRequestTestSurface(svc)
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventRequestStarted,
+		ThreadID:  "thread-1",
+		TurnID:    "turn-1",
+		RequestID: "req-mcp-form-step-1",
+		RequestPrompt: &agentproto.RequestPrompt{
+			Type:  agentproto.RequestTypeMCPServerElicitation,
+			Title: "需要处理 MCP 请求",
+			MCPElicitation: &agentproto.MCPElicitationPrompt{
+				ServerName: "docs",
+				Mode:       "form",
+				Message:    "请补充返回内容",
+				RequestedSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"mode":  map[string]any{"type": "string", "title": "模式", "enum": []any{"auto", "manual"}},
+						"token": map[string]any{"type": "string", "title": "Token"},
+					},
+					"required": []any{"mode", "token"},
+				},
+			},
+		},
+		Metadata: map[string]any{"requestType": "mcp_server_elicitation"},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		RequestID:        "req-mcp-form-step-1",
+		RequestType:      "mcp_server_elicitation",
+		RequestAnswers: map[string][]string{
+			"mode": {"auto"},
+		},
+	})
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected mcp partial save to refresh current card inline, got %#v", events)
+	}
+	prompt := requestPromptFromEvent(t, events[0])
+	if prompt.RequestRevision != 2 || prompt.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected mcp partial save to advance to next question, got %#v", prompt)
+	}
+	if !prompt.Questions[0].Answered || prompt.Questions[0].DefaultValue != "auto" {
+		t.Fatalf("expected saved mcp answer to remain in refreshed prompt, got %#v", prompt.Questions[0])
+	}
+}
+
 func TestRespondMCPElicitationURLAcceptBuildsContinuePayload(t *testing.T) {
 	now := time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

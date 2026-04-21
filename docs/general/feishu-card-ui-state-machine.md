@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-21`
-> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续并入共享过程卡（quiet 静默，normal/verbose 可见）；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（no-op / requested / accepted / failed 都封回当前菜单卡），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；统一 command card 现在已扩展为 `Menu / Config / Page` 三类 read model，bare `/cron`、`/upgrade`、`/debug` 与 `/vscode-migrate` 的根页、显式子页与非法参数反馈都收敛到同一套 command-page 结构，stamped current-card callback 也改走 command-page result replacement，bare continuation 当前已无活跃命中，legacy command catalog 经 `Page` 往返后也会保留原有 summary fallback 与默认 displayStyle 语义；request cards 当前统一改为 `FeishuRequestView` 穿过 `UIEvent` 边界，legacy selection prompt 则收敛到 `FeishuSelectionView.Prompt`；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，且同一 surface 后续异步到达的 VS Code guidance（兼容修复、open prompt、恢复成功/失败、未接管 `/list` 提示）也会继续 patch 回这张 guidance 卡；`/vscode-migrate` root page 与 `vscode_migrate_owner_flow` 结果同样改成同一张 page-owner card 收口，并继续承接后续 VS Code guidance；`/upgrade latest` 的 checking / confirm / running / terminal owner card 现在也统一依赖 page `TrackingKey -> message_id` 回写，把后续 patch 收口到同一张升级卡；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
+> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1、显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续并入共享过程卡（quiet 静默，normal/verbose 可见）；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（no-op / requested / accepted / failed 都封回当前菜单卡），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；统一 command card 现在已扩展为 `Menu / Config / Page` 三类 read model，bare `/cron`、`/upgrade`、`/debug` 与 `/vscode-migrate` 的根页、显式子页与非法参数反馈都收敛到同一套 command-page 结构，stamped current-card callback 也改走 command-page result replacement，bare continuation 当前已无活跃命中，legacy command catalog 经 `Page` 往返后也会保留原有 summary fallback 与默认 displayStyle 语义；request cards 当前统一改为 `FeishuRequestView` 穿过 `UIEvent` 边界，且 `request_user_input` / form 模式 `mcp_server_elicitation` 已收敛到“同一张卡内分步答题/填表”：卡面只显示当前题，`上一题 / 下一题`、`保存本题`、`提交答案 / 提交并继续` 都在同卡内推进，中间步骤只做 inline replace，不再每答一题 append 新 request 卡；legacy selection prompt 则收敛到 `FeishuSelectionView.Prompt`；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，且同一 surface 后续异步到达的 VS Code guidance（兼容修复、open prompt、恢复成功/失败、未接管 `/list` 提示）也会继续 patch 回这张 guidance 卡；`/vscode-migrate` root page 与 `vscode_migrate_owner_flow` 结果同样改成同一张 page-owner card 收口，并继续承接后续 VS Code guidance；`/upgrade latest` 的 checking / confirm / running / terminal owner card 现在也统一依赖 page `TrackingKey -> message_id` 回写，把后续 patch 收口到同一张升级卡；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
 
 ## 1. 文档定位
 
@@ -109,7 +109,7 @@
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/model` / `/verbose` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；其中 `/mode` `/autowhip` `/reasoning` `/access` `/verbose` 只保留固定选项，`/model` 额外保留一张手动输入表单；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；其中 stamped `/mode vscode` 若切换后立刻命中 VS Code 兼容修复、open prompt 或恢复提示，daemon 会优先把首张可投影提示卡同位替回当前卡，并把该 surface 记录成可继续 patch 的 VS Code guidance card；后续异步 runtime 提示只要仍命中这块 card，就继续回写同一张卡；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
 | bare `/cron` / `/upgrade` / `/debug` | `mixed` | 参数不足时当前统一打开 `FeishuCommandView.Page` 根页，不再顺手展示独立状态卡；根页现在只保留实际菜单入口，不再混入“快捷操作 / 手动输入 / 说明文案”，其中 `/debug` 根页当前仅保留 `管理页外链`，`/upgrade track` 子页当前仅保留 track 切换按钮。若来自带 `daemon_lifecycle_id` 的当前 command-page callback，且动作属于“不立即执行”的根页 / 子页 / 非法参数回显路径，daemon 会走 command-page result replacement，把下一张 page 继续同位替回当前卡；真正立即执行的动作（如 `/cron reload`、`/cron repair`、`/cron run <id>`、`/upgrade latest`、`/upgrade dev`、`/upgrade local`、`/debug admin`）仍进入各自原有执行流。文本或表单输入的非法参数当前不会外跳 notice，而是继续留在同一张 command page 上显示错误并保留表单默认值 |
 | stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 `FeishuCommandView.Page` root page；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 command-page result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由 `run_command(/vscode-migrate)` 或 bare continuation |
-| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` 的分题暂存、`mcp_server_elicitation` form 的局部草稿、“提交答案/提交并继续”触发的最终校验，以及 permissions / elicitation 的结构化回写属于产品状态机 |
+| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` / form 模式 `mcp_server_elicitation` 的当前题索引、分步暂存、留空确认、同卡刷新边界，以及 permissions / elicitation 的结构化回写与最终提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
 | `/new` | `product-owned` | 是否进入 `new_thread_ready`、何时消耗第一条消息、request gate 是否阻断都属于 core 状态机 |
@@ -194,9 +194,9 @@
 | `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送 |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff；若 picker 带有 `owner_flow_id` 且命中 target picker owner card，consumer 可直接回填并 patch 原 owner card；独立 `/sendfile` picker 则会在 confirm 后保留自身 lifecycle，启动前失败继续 patch 当前卡，启动成功把当前卡封成 terminal |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice；target picker 子步骤当前会直接恢复原 owner card，而不是额外发一张取消卡 |
-| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。通用 approval 现在会保留归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`mcp_server_elicitation` 在 url 模式下直接承载 continue/decline/cancel，在 form 模式下也可用局部 `request_answers` 暂存字段后再显式提交 |
+| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。通用 approval 现在会保留归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`request_user_input` / form 模式 `mcp_server_elicitation` 还会用这条 payload 承载 `step_previous` / `step_next`、局部答案按钮直填、以及显式最终提交；`mcp_server_elicitation` 在 url 模式下继续直接承载 continue/decline/cancel |
 | `submit_command_form` | `command_text` 或 `command`、`field_name` | 从表单里取参数后重新走文本命令解析 |
-| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation` |
+| `submit_request_form` | `request_id`、`request_type`、`request_option_id`、`request_revision`、`field_name(可选)` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation`，分步卡片里默认携带 `request_option_id=step_save` 表示“保存当前题” |
 
 ### 4.3 当前表单提交规则
 
@@ -214,12 +214,15 @@
   - 优先把 `form_value` 整体转成 `request_answers`
   - `request_user_input` 与 form 模式 `mcp_server_elicitation` 当前都只会为“需要手填”的字段渲染 form input（纯选项题不再渲染自由输入框）
   - `request_user_input` 里的 optional 字段当前不会阻止最终提交
-  - 表单提交按钮统一带 `request_option_id=submit`
+  - 分步 request form 的保存按钮当前统一带 `request_option_id=step_save`
+    - `request_user_input` 与 `mcp_server_elicitation` 的文案当前都统一为“保存本题”
+    - 这一步只保存当前题，不负责最终提交
+  - 真正的最终提交当前统一走独立 `request_respond`
     - `request_user_input` 的文案是“提交答案”
     - `mcp_server_elicitation` 的文案是“提交并继续”
-  - `request_user_input` 若本次提交后仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并刷新 request 卡片
+  - `request_user_input` 若显式最终提交时仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并同卡刷新 request 卡片
   - request 卡的按钮与表单提交都会携带 `request_revision`
-    - 只要当前 request 因为“局部答案已保存”“进入确认态”“取消确认态”“提交失败恢复”而刷新，revision 就会递增
+    - 只要当前 request 因为“上一题/下一题”“局部答案已保存”“进入确认态”“取消确认态”“提交失败恢复”而刷新，revision 就会递增
     - 同 daemon 生命周期里的旧 request 卡，如果 revision 落后于当前 pending request，会收到 `request_card_expired`，不会再改写当前草稿状态
   - 确认态按钮用 `request_respond` 回传：
     - `request_option_id=confirm_submit_with_unanswered`：确认留空提交
@@ -239,12 +242,16 @@
 
 `request_user_input` 卡片当前额外的可视语义：
 
-- 卡片顶部会展示 `回答进度 x/y`
+- 卡片顶部会展示 `回答进度 x/y · 当前第 N 题`
 - 若存在未答题且用户触发提交，会进入“确认留空提交”提示块（含“继续补答”/“确认提交已有答案”）
-- 每道题当前都会先渲染固定题号标题 `问题 N`，再把题目标题/说明/选项/答案聚合到同一个 `plain_text` 正文块，避免动态文本重新回流到 markdown，同时保留题间层级
-- 每道题都会展示 `状态：已回答/待回答`
+- answering 态当前只渲染**当前题**，不再把所有题一口气铺在同一张卡里
+- 当前题会先渲染固定题号标题 `问题 N/M`，再把题目标题/说明/选项/答案聚合到同一个 `plain_text` 正文块，避免动态文本重新回流到 markdown
+- 当前题会展示 `状态：已回答/待回答`
 - 对于非私密题，已暂存答案会显示为 `当前答案：...`
 - 对 direct-options 题，若已有已答值，已选项保持 `primary`，其他选项降为 `default`，用于降低误触成本
+- 底部当前固定保留 `上一题 / 下一题` 导航行与独立最终提交按钮
+- 对需要手填的题，表单区当前只渲染当前题，并通过“保存本题”同卡推进；对 direct-options 题，点击选项会直接把当前题答案写回草稿
+- `step_previous` / `step_next`、局部保存、进入确认态、退出确认态当前都只会 inline replace 同一张 request 卡，不再 append 新 request 卡或额外 `request_saved` notice
 - 顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 当前都复用这一套卡片、草稿暂存与提交/确认状态机
 - 真正发起 request 提交后，pending request 不会立刻从 orchestrator 状态里删除；会先记录 `PendingDispatchCommandID`
   - 成功路径仍由上游 `request_resolved` 事件最终清掉 pending request
@@ -269,10 +276,11 @@ MCP request 卡片当前新增的可视语义：
     - 渲染为 continue/decline/cancel 按钮卡
     - “继续”前允许先去外部页面完成授权或确认
   - `mode=form`
-    - 每道题与 `request_user_input` 一样，使用“固定题号标题 + plain_text 正文”显示字段说明与动态内容
+    - 与 `request_user_input` 一样，当前只显示一题，并使用“固定题号标题 + plain_text 正文”显示字段说明与动态内容
     - 会优先把 top-level flat object schema 投影成字段列表
     - 简单枚举字段可直接用按钮回填局部草稿
-    - 需要手填的字段走 form submit，并使用“提交并继续”按钮
+    - 需要手填的字段走 form submit，并使用“保存本题”按钮
+    - 底部同样保留 `上一题 / 下一题` 与独立“提交并继续”按钮；只有显式最终提交才会真正把结果回写给 MCP server
     - 若 schema 超过当前平铺能力，会回退成单字段 JSON 输入，而不是直接 unsupported
 - 这两类 MCP request 与 `request_user_input` 一样，都会继续携带 `request_revision`，用于阻止同 daemon 生命周期里的旧卡继续改写当前 request 草稿
 
@@ -365,6 +373,12 @@ MCP request 卡片当前新增的可视语义：
   - daemon freshness：`daemon_lifecycle`
   - view/session 策略：`surface_state_rederived`
   - 不要求额外 view token
+- `ActionRespondRequest` 当前也纳入这条 transport 级 inline-replace allow-list，但只有 request handler 显式返回 `InlineReplaceCurrentCard=true` 时才会真的 replace：
+  - `request_user_input` / form 模式 `mcp_server_elicitation` 的 `step_previous` / `step_next`
+  - 局部保存当前题后的下一步刷新
+  - `request_user_input` 显式提交后进入“确认留空提交”状态
+  - `request_user_input` 的 `cancel_submit_with_unanswered` 返回继续补答
+  - 纯 notice 的无效/过期点击，以及真正触发最终 request dispatch 的提交，当前都不会 replace 当前卡
 - 这意味着同 daemon 生命周期里的旧卡/并发点击，如果仍属于 pure navigation，不会因为“旧 view”被拒绝；它们会基于**当前** surface state 重新生成卡片。
 - 本次新增的 target picker 下拉刷新也沿用这条 replace 边界：
   - normal `/list` / `/use` / `/useall` 的模式切换
@@ -408,7 +422,7 @@ MCP request 卡片当前新增的可视语义：
 - `path_picker_confirm` / `path_picker_cancel`；它们虽然也先走 `FeishuUIIntent`，但不进入 `InlineCardReplacementPolicy` allow-list，gateway 会立即 ack 并异步处理；大多数 consumer 结果仍保持 append-only，当前例外只有 target picker owner-flow 子步骤会 patch 回原 owner card，以及独立 `/sendfile` picker 的 cancel / 启动前失败 / 启动成功终态会 patch 回当前 picker 卡
 - attach 这类真正改变产品状态且不属于当前菜单原卡规则的动作
 - 纯文本 slash 的 `/help`、`/status`、`/stop`、`/new`、`/follow`、`/detach`；它们不会把普通文本入口升级成 replace
-- request approve / request submit 的处理结果
+- request 的最终 dispatch 结果，以及 notice-only 的 request invalid / request expired 处理结果
 - 各类 notice、final reply、补充预览、状态类卡片
 
 当前新增补充：

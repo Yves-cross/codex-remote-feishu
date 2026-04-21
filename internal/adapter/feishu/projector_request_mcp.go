@@ -39,45 +39,34 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 	if len(prompt.Questions) == 0 {
 		return mcpElicitationChoiceElements(prompt, daemonLifecycleID)
 	}
-	elements := make([]map[string]any, 0, len(prompt.Questions)*4+4)
+	elements := make([]map[string]any, 0, 9)
 	if progress := mcpElicitationProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": progress,
 		})
 	}
-	for index, question := range prompt.Questions {
-		if section, ok := requestPromptQuestionSection(index, question); ok {
-			elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
-		}
-		if question.DirectResponse && len(question.Options) != 0 {
-			actions := make([]map[string]any, 0, len(question.Options))
-			for _, option := range question.Options {
-				button := requestUserInputOptionButton(prompt, question, option, daemonLifecycleID)
-				if len(button) == 0 {
-					continue
-				}
-				actions = append(actions, button)
-			}
-			if row := cardButtonGroupElement(actions); len(row) != 0 {
-				elements = append(elements, row)
-			}
-		}
+	elements = appendCurrentRequestQuestionElements(elements, prompt, daemonLifecycleID)
+	if hint := mcpElicitationQuestionHint(prompt); hint != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": hint,
+		})
 	}
 	if requestPromptNeedsForm(prompt) {
 		if form := requestPromptFormElement(prompt, daemonLifecycleID); len(form) != 0 {
 			elements = append(elements, form)
 		}
-	} else if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
+	}
+	if row := requestPromptNavigationActionRow(prompt, daemonLifecycleID); len(row) != 0 {
+		elements = append(elements, row)
+	}
+	if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
 		elements = append(elements, row)
 	}
 	if row := mcpElicitationTerminalActionRow(prompt, daemonLifecycleID); len(row) != 0 {
 		elements = append(elements, row)
 	}
-	elements = append(elements, map[string]any{
-		"tag":     "markdown",
-		"content": mcpElicitationQuestionHint(prompt),
-	})
 	return elements
 }
 
@@ -117,14 +106,14 @@ func mcpElicitationTerminalActionRow(prompt control.FeishuRequestView, daemonLif
 			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
 			cardActionPayloadKeyRequestOptionID: "decline",
 			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, ""),
+		}, daemonLifecycleID), false, "fill"),
 		cardCallbackButtonElement("取消", "default", stampActionValue(map[string]any{
 			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
 			cardActionPayloadKeyRequestID:       prompt.RequestID,
 			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
 			cardActionPayloadKeyRequestOptionID: "cancel",
 			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, ""),
+		}, daemonLifecycleID), false, "fill"),
 	})
 }
 
@@ -138,22 +127,19 @@ func mcpElicitationProgressMarkdown(prompt control.FeishuRequestView) string {
 			answered++
 		}
 	}
-	return fmt.Sprintf("**填写进度** %d/%d", answered, len(prompt.Questions))
+	return fmt.Sprintf("**填写进度** %d/%d · 当前第 %d 题", answered, len(prompt.Questions), normalizedRequestPromptCurrentQuestionIndex(prompt)+1)
 }
 
 func mcpElicitationQuestionHint(prompt control.FeishuRequestView) string {
-	hasDirect := false
-	for _, question := range prompt.Questions {
-		if question.DirectResponse && len(question.Options) != 0 {
-			hasDirect = true
-			break
-		}
+	question, _, ok := requestPromptCurrentQuestion(prompt)
+	if !ok {
+		return ""
 	}
-	if hasDirect && requestPromptNeedsForm(prompt) {
-		return "可先点击按钮填写单选字段；如果需要补充文字或 JSON，请在下方表单提交。确认无误后点击“提交并继续”。"
+	if question.DirectResponse && requestPromptQuestionNeedsFormInput(question) {
+		return "当前题可先点选，也可补充文字或 JSON；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
 	}
-	if hasDirect {
-		return "可先点击按钮完成字段选择；确认无误后点击“提交并继续”。"
+	if question.DirectResponse {
+		return "当前题可直接点选字段值；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
 	}
-	return "填写完成后点击“提交并继续”；如果不想继续这次 MCP 请求，可直接拒绝或取消。"
+	return "填写当前题后先保存本题；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
 }

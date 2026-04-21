@@ -11,6 +11,9 @@ const (
 	requestUserInputSubmitOptionID                      = "submit"
 	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
 	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
+	requestPromptStepPreviousOptionID                   = "step_previous"
+	requestPromptStepNextOptionID                       = "step_next"
+	requestPromptStepSaveOptionID                       = "step_save"
 )
 
 func requestPromptSections(prompt control.FeishuRequestView) []control.FeishuCardTextSection {
@@ -74,7 +77,7 @@ func requestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID s
 }
 
 func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
-	elements := make([]map[string]any, 0, len(prompt.Questions)*4+2)
+	elements := make([]map[string]any, 0, 8)
 	if progress := requestPromptProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -91,43 +94,53 @@ func requestUserInputPromptElements(prompt control.FeishuRequestView, daemonLife
 		if row := requestPromptSubmitConfirmActionRow(prompt, daemonLifecycleID); len(row) != 0 {
 			elements = append(elements, row)
 		}
+		return elements
 	}
-	for index, question := range prompt.Questions {
-		if section, ok := requestPromptQuestionSection(index, question); ok {
-			elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
-		}
-		if question.DirectResponse && len(question.Options) != 0 {
-			actions := make([]map[string]any, 0, len(question.Options))
-			for _, option := range question.Options {
-				button := requestUserInputOptionButton(prompt, question, option, daemonLifecycleID)
-				if len(button) == 0 {
-					continue
-				}
-				actions = append(actions, button)
-			}
-			if len(actions) != 0 {
-				if group := cardButtonGroupElement(actions); len(group) != 0 {
-					elements = append(elements, group)
-				}
-			}
-		}
+	elements = appendCurrentRequestQuestionElements(elements, prompt, daemonLifecycleID)
+	if hint := requestPromptQuestionHint(prompt); hint != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": hint,
+		})
 	}
 	if requestPromptNeedsForm(prompt) {
 		if form := requestPromptFormElement(prompt, daemonLifecycleID); len(form) != 0 {
 			elements = append(elements, form)
 		}
-	} else if !prompt.SubmitWithUnansweredConfirmPending {
-		if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
-			elements = append(elements, row)
-		}
+	}
+	if row := requestPromptNavigationActionRow(prompt, daemonLifecycleID); len(row) != 0 {
+		elements = append(elements, row)
+	}
+	if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
+		elements = append(elements, row)
 	}
 	if extra := requestUserInputExtraActionRow(prompt, daemonLifecycleID); len(extra) != 0 {
 		elements = append(elements, extra)
 	}
-	elements = append(elements, map[string]any{
-		"tag":     "markdown",
-		"content": requestPromptQuestionHint(prompt),
-	})
+	return elements
+}
+
+func appendCurrentRequestQuestionElements(elements []map[string]any, prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) []map[string]any {
+	question, index, ok := requestPromptCurrentQuestion(prompt)
+	if !ok {
+		return elements
+	}
+	if section, ok := requestPromptQuestionSection(index, len(prompt.Questions), question); ok {
+		elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
+	}
+	if question.DirectResponse && len(question.Options) != 0 {
+		actions := make([]map[string]any, 0, len(question.Options))
+		for _, option := range question.Options {
+			button := requestUserInputOptionButton(prompt, question, option, daemonLifecycleID)
+			if len(button) == 0 {
+				continue
+			}
+			actions = append(actions, button)
+		}
+		if group := cardButtonGroupElement(actions); len(group) != 0 {
+			elements = append(elements, group)
+		}
+	}
 	return elements
 }
 
@@ -182,7 +195,7 @@ func requestUserInputOptionButton(prompt control.FeishuRequestView, question con
 		cardActionPayloadKeyRequestAnswers: map[string]any{
 			strings.TrimSpace(question.ID): []any{label},
 		},
-	}, daemonLifecycleID), false, "")
+	}, daemonLifecycleID), false, "fill")
 }
 
 func stampActionValue(value map[string]any, daemonLifecycleID string) map[string]any {
@@ -198,7 +211,7 @@ func requestPromptContainsOption(options []control.RequestPromptOption, optionID
 	return false
 }
 
-func requestPromptQuestionSection(index int, question control.RequestPromptQuestion) (control.FeishuCardTextSection, bool) {
+func requestPromptQuestionSection(index, total int, question control.RequestPromptQuestion) (control.FeishuCardTextSection, bool) {
 	lines := make([]string, 0, 10)
 	title := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question))
 	if title != "" {
@@ -237,7 +250,7 @@ func requestPromptQuestionSection(index int, question control.RequestPromptQuest
 		lines = append(lines, "该答案按私密输入处理，不会在飞书卡片正文中回显。")
 	}
 	section := control.FeishuCardTextSection{
-		Label: fmt.Sprintf("问题 %d", index+1),
+		Label: requestPromptQuestionLabel(index, total),
 		Lines: lines,
 	}.Normalized()
 	if section.Label == "" && len(section.Lines) == 0 {
@@ -256,16 +269,43 @@ func requestPromptProgressMarkdown(prompt control.FeishuDirectRequestPrompt) str
 			answered++
 		}
 	}
-	return fmt.Sprintf("**回答进度** %d/%d", answered, len(prompt.Questions))
+	return fmt.Sprintf("**回答进度** %d/%d · 当前第 %d 题", answered, len(prompt.Questions), normalizedRequestPromptCurrentQuestionIndex(prompt)+1)
+}
+
+func requestPromptQuestionLabel(index, total int) string {
+	if total <= 0 {
+		return fmt.Sprintf("问题 %d", index+1)
+	}
+	return fmt.Sprintf("问题 %d/%d", index+1, total)
+}
+
+func normalizedRequestPromptCurrentQuestionIndex(prompt control.FeishuDirectRequestPrompt) int {
+	if len(prompt.Questions) == 0 {
+		return 0
+	}
+	if prompt.CurrentQuestionIndex < 0 {
+		return 0
+	}
+	if prompt.CurrentQuestionIndex >= len(prompt.Questions) {
+		return len(prompt.Questions) - 1
+	}
+	return prompt.CurrentQuestionIndex
+}
+
+func requestPromptCurrentQuestion(prompt control.FeishuDirectRequestPrompt) (control.RequestPromptQuestion, int, bool) {
+	if len(prompt.Questions) == 0 {
+		return control.RequestPromptQuestion{}, 0, false
+	}
+	index := normalizedRequestPromptCurrentQuestionIndex(prompt)
+	return prompt.Questions[index], index, true
 }
 
 func requestPromptNeedsForm(prompt control.FeishuDirectRequestPrompt) bool {
-	for _, question := range prompt.Questions {
-		if requestPromptQuestionNeedsFormInput(question) {
-			return true
-		}
+	question, _, ok := requestPromptCurrentQuestion(prompt)
+	if !ok {
+		return false
 	}
-	return false
+	return requestPromptQuestionNeedsFormInput(question)
 }
 
 func requestPromptQuestionNeedsFormInput(question control.RequestPromptQuestion) bool {
@@ -273,44 +313,40 @@ func requestPromptQuestionNeedsFormInput(question control.RequestPromptQuestion)
 }
 
 func requestPromptFormElement(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
-	elements := make([]map[string]any, 0, len(prompt.Questions)+2)
-	for _, question := range prompt.Questions {
-		if !requestPromptQuestionNeedsFormInput(question) {
-			continue
-		}
-		name := strings.TrimSpace(question.ID)
-		if name == "" {
-			continue
-		}
-		input := map[string]any{
-			"tag":  "input",
-			"name": name,
-		}
-		label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), name)
-		input["label"] = map[string]any{
-			"tag":     "plain_text",
-			"content": label,
-		}
-		input["label_position"] = "left"
-		if placeholder := strings.TrimSpace(question.Placeholder); placeholder != "" {
-			input["placeholder"] = map[string]any{
-				"tag":     "plain_text",
-				"content": placeholder,
-			}
-		}
-		if value := strings.TrimSpace(question.DefaultValue); value != "" {
-			input["default_value"] = value
-		}
-		elements = append(elements, input)
-	}
-	if len(elements) == 0 {
+	question, _, ok := requestPromptCurrentQuestion(prompt)
+	if !ok || !requestPromptQuestionNeedsFormInput(question) {
 		return nil
 	}
-	elements = append(elements, cardFormSubmitButtonElement(requestPromptSubmitLabel(prompt), stampActionValue(map[string]any{
+	name := strings.TrimSpace(question.ID)
+	if name == "" {
+		return nil
+	}
+	elements := make([]map[string]any, 0, 2)
+	input := map[string]any{
+		"tag":  "input",
+		"name": name,
+	}
+	label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), name)
+	input["label"] = map[string]any{
+		"tag":     "plain_text",
+		"content": label,
+	}
+	input["label_position"] = "left"
+	if placeholder := strings.TrimSpace(question.Placeholder); placeholder != "" {
+		input["placeholder"] = map[string]any{
+			"tag":     "plain_text",
+			"content": placeholder,
+		}
+	}
+	if value := strings.TrimSpace(question.DefaultValue); value != "" {
+		input["default_value"] = value
+	}
+	elements = append(elements, input)
+	elements = append(elements, cardFormSubmitButtonElement(requestPromptStepSaveLabel(prompt), stampActionValue(map[string]any{
 		cardActionPayloadKeyKind:            cardActionKindSubmitRequestForm,
 		cardActionPayloadKeyRequestID:       prompt.RequestID,
 		cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
-		cardActionPayloadKeyRequestOptionID: requestUserInputSubmitOptionID,
+		cardActionPayloadKeyRequestOptionID: requestPromptStepSaveOptionID,
 		cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
 	}, daemonLifecycleID)))
 	return map[string]any{
@@ -321,7 +357,7 @@ func requestPromptFormElement(prompt control.FeishuDirectRequestPrompt, daemonLi
 }
 
 func requestPromptSubmitActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
-	if len(prompt.Questions) == 0 {
+	if len(prompt.Questions) == 0 || prompt.SubmitWithUnansweredConfirmPending {
 		return nil
 	}
 	return cardButtonGroupElement([]map[string]any{
@@ -330,7 +366,31 @@ func requestPromptSubmitActionRow(prompt control.FeishuDirectRequestPrompt, daem
 			cardActionPayloadKeyRequestID:       prompt.RequestID,
 			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
 			cardActionPayloadKeyRequestOptionID: requestUserInputSubmitOptionID,
-		}, daemonLifecycleID), false, ""),
+			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
+		}, daemonLifecycleID), false, "fill"),
+	})
+}
+
+func requestPromptNavigationActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
+	if len(prompt.Questions) <= 1 || prompt.SubmitWithUnansweredConfirmPending {
+		return nil
+	}
+	currentIndex := normalizedRequestPromptCurrentQuestionIndex(prompt)
+	return cardButtonGroupElement([]map[string]any{
+		cardCallbackButtonElement("上一题", "default", stampActionValue(map[string]any{
+			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
+			cardActionPayloadKeyRequestID:       prompt.RequestID,
+			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
+			cardActionPayloadKeyRequestOptionID: requestPromptStepPreviousOptionID,
+			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
+		}, daemonLifecycleID), currentIndex == 0, "fill"),
+		cardCallbackButtonElement("下一题", "default", stampActionValue(map[string]any{
+			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
+			cardActionPayloadKeyRequestID:       prompt.RequestID,
+			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
+			cardActionPayloadKeyRequestOptionID: requestPromptStepNextOptionID,
+			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
+		}, daemonLifecycleID), currentIndex >= len(prompt.Questions)-1, "fill"),
 	})
 }
 
@@ -341,6 +401,13 @@ func requestPromptSubmitLabel(prompt control.FeishuDirectRequestPrompt) string {
 	return "提交答案"
 }
 
+func requestPromptStepSaveLabel(prompt control.FeishuDirectRequestPrompt) string {
+	if normalizeRequestPromptType(prompt.RequestType) == "mcp_server_elicitation" {
+		return "保存本题"
+	}
+	return "保存本题"
+}
+
 func requestPromptSubmitConfirmActionRow(prompt control.FeishuDirectRequestPrompt, daemonLifecycleID string) map[string]any {
 	return cardButtonGroupElement([]map[string]any{
 		cardCallbackButtonElement("继续补答", "default", stampActionValue(map[string]any{
@@ -349,14 +416,14 @@ func requestPromptSubmitConfirmActionRow(prompt control.FeishuDirectRequestPromp
 			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
 			cardActionPayloadKeyRequestOptionID: requestUserInputCancelSubmitWithUnansweredOptionID,
 			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, ""),
+		}, daemonLifecycleID), false, "fill"),
 		cardCallbackButtonElement("确认提交已有答案", "primary", stampActionValue(map[string]any{
 			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
 			cardActionPayloadKeyRequestID:       prompt.RequestID,
 			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
 			cardActionPayloadKeyRequestOptionID: requestUserInputConfirmSubmitWithUnansweredOptionID,
 			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, ""),
+		}, daemonLifecycleID), false, "fill"),
 	})
 }
 
@@ -376,20 +443,17 @@ func requestPromptQuestionHint(prompt control.FeishuDirectRequestPrompt) string 
 	if prompt.SubmitWithUnansweredConfirmPending {
 		return "你可以继续补答，也可以确认提交已有答案（未回答的问题将按留空提交）。"
 	}
-	hasDirect := false
-	for _, question := range prompt.Questions {
-		if question.DirectResponse && len(question.Options) != 0 {
-			hasDirect = true
-			break
-		}
+	question, _, ok := requestPromptCurrentQuestion(prompt)
+	if !ok {
+		return ""
 	}
-	if hasDirect && requestPromptNeedsForm(prompt) {
-		return "可直接点击按钮回答单选题；如果需要补充文字或填写其他答案，请在下方表单里提交。若仍有未答题，会先进入确认提交步骤。"
+	if question.DirectResponse && requestPromptQuestionNeedsFormInput(question) {
+		return "当前题可直接点选，也可填写其他答案；可用“上一题 / 下一题”切换，准备结束时点击“提交答案”。"
 	}
-	if hasDirect {
-		return "点击按钮可逐题作答；准备结束时请点击“提交答案”。若仍有未答题，会先进入确认提交步骤。"
+	if question.DirectResponse {
+		return "当前题可直接点选答案；可用“上一题 / 下一题”切换，准备结束时点击“提交答案”。"
 	}
-	return "填写后点击“提交答案”；若仍有未答题，会先进入确认提交步骤。"
+	return "填写当前题后先保存本题；可用“上一题 / 下一题”切换，准备结束时点击“提交答案”。"
 }
 
 func normalizeRequestPromptType(value string) string {

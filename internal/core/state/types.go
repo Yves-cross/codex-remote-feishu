@@ -400,6 +400,7 @@ type RequestPromptRecord struct {
 	Sections                 []RequestPromptTextSectionRecord
 	Options                  []RequestPromptOptionRecord
 	Questions                []RequestPromptQuestionRecord
+	CurrentQuestionIndex     int
 	LocalKind                string
 	LocalMeta                map[string]string
 	DraftAnswers             map[string]string
