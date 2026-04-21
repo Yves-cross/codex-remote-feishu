@@ -59,51 +59,6 @@ func TestVSCodeApplyManagedShimClearsLegacySettingsOverride(t *testing.T) {
 	}
 }
 
-func TestDaemonModeSwitchToVSCodePromptsMigrationForLegacySettings(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, ".vscode-server", "extensions"))
-
-	binaryPath := filepath.Join(home, "bin", "codex-remote")
-	writeExecutableFile(t, binaryPath, "wrapper-binary")
-
-	defaults, err := install.DetectPlatformDefaults()
-	if err != nil {
-		t.Fatalf("DetectPlatformDefaults: %v", err)
-	}
-	writeLegacyVSCodeSettings(t, defaults.VSCodeSettingsPath, binaryPath)
-
-	entrypoint := testVSCodeBundleEntrypoint(home, ".vscode-server", "1")
-	writeExecutableFile(t, entrypoint, "orig")
-
-	gateway := newLifecycleGateway()
-	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
-
-	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionStatus,
-		GatewayID:        "app-1",
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-	})
-	app.HandleAction(context.Background(), control.Action{
-		Kind:             control.ActionModeCommand,
-		GatewayID:        "app-1",
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		Text:             "/mode vscode",
-	})
-
-	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
-	if !strings.Contains(operationCardText(card), "旧版 settings.json 覆盖") {
-		t.Fatalf("expected migration reason in structured card text, got %#v", card)
-	}
-	if !operationHasCallbackButton(card, "迁移并重新接入", vscodeMigrationOwnerPayloadKind, vscodeMigrationOwnerActionRun) {
-		t.Fatalf("expected migration card button, got %#v", card.CardElements)
-	}
-}
-
 func TestDaemonVSCodeMigrateCommandRejectsNormalMode(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -147,7 +102,7 @@ func TestDaemonVSCodeMigrateCommandRejectsNormalMode(t *testing.T) {
 	}
 }
 
-func TestHandleGatewayActionReplacesModeCardWithVSCodeMigrationPrompt(t *testing.T) {
+func TestHandleGatewayActionModeSwitchAvoidsExplicitMigrationPrompt(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, ".vscode-server", "extensions"))
@@ -182,17 +137,29 @@ func TestHandleGatewayActionReplacesModeCardWithVSCodeMigrationPrompt(t *testing
 	})
 
 	if result == nil || result.ReplaceCurrentCard == nil {
-		t.Fatalf("expected stamped mode switch to replace current card, got %#v", result)
+		t.Fatalf("expected stamped mode switch to keep returning a current-card result, got %#v", result)
 	}
-	if result.ReplaceCurrentCard.CardTitle != "VS Code 接入需要迁移" {
-		t.Fatalf("expected migration prompt to stay on current card, got %#v", result.ReplaceCurrentCard)
+	if result.ReplaceCurrentCard.CardTitle == "VS Code 接入需要迁移" {
+		t.Fatalf("expected stamped mode switch to avoid explicit migration prompt, got %#v", result.ReplaceCurrentCard)
 	}
-	if !operationHasCallbackButton(*result.ReplaceCurrentCard, "迁移并重新接入", vscodeMigrationOwnerPayloadKind, vscodeMigrationOwnerActionRun) {
-		t.Fatalf("expected in-place migration button, got %#v", result.ReplaceCurrentCard.CardElements)
+	if operationHasCallbackButton(*result.ReplaceCurrentCard, "迁移并重新接入", vscodeMigrationOwnerPayloadKind, vscodeMigrationOwnerActionRun) {
+		t.Fatalf("expected stamped mode switch to avoid inline migrate button, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
+
+	var detect vscodeDetectResponse
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
+		if rec.Code != http.StatusOK {
+			return false
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
+			return false
+		}
+		return detect.CurrentMode == "managed_shim" && detect.Settings.CLIExecutable == "" && !detect.Settings.MatchesBinary
+	})
 }
 
 func TestDaemonVSCodeCompatibilityBlocksAutoResumeUntilMigrationApplied(t *testing.T) {
@@ -368,7 +335,7 @@ func TestBuildVSCodeMigrationPageViewUsesBodyNoticeAndSealedContract(t *testing.
 	}
 }
 
-func TestHandleGatewayActionReplacesVSCodeMigrationCardWithResult(t *testing.T) {
+func TestHandleGatewayActionStampedModeSwitchAutoMigratesLegacySettings(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, ".vscode-server", "extensions"))
@@ -389,7 +356,7 @@ func TestHandleGatewayActionReplacesVSCodeMigrationCardWithResult(t *testing.T) 
 	app, _, _ := newVSCodeAdminTestAppWithGateway(t, gateway, home, binaryPath, true)
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
 
-	prompt := app.HandleGatewayAction(context.Background(), control.Action{
+	result := app.HandleGatewayAction(context.Background(), control.Action{
 		Kind:             control.ActionModeCommand,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
@@ -401,36 +368,29 @@ func TestHandleGatewayActionReplacesVSCodeMigrationCardWithResult(t *testing.T) 
 			CardDaemonLifecycleID: app.daemonLifecycleID,
 		},
 	})
-	if prompt == nil || prompt.ReplaceCurrentCard == nil {
-		t.Fatalf("expected stamped /mode vscode to replace current card with migration prompt, got %#v", prompt)
-	}
-	flowID := requiredCallbackPickerID(t, *prompt.ReplaceCurrentCard, "迁移并重新接入", vscodeMigrationOwnerPayloadKind)
-
-	result := app.HandleGatewayAction(context.Background(), control.Action{
-		Kind:             control.ActionVSCodeMigrate,
-		GatewayID:        "app-1",
-		SurfaceSessionID: "surface-1",
-		ChatID:           "chat-1",
-		ActorUserID:      "user-1",
-		MessageID:        "om-mode-vscode-1",
-		PickerID:         flowID,
-		OptionID:         vscodeMigrationOwnerActionRun,
-		Inbound: &control.ActionInboundMeta{
-			CardDaemonLifecycleID: app.daemonLifecycleID,
-		},
-	})
-
 	if result == nil || result.ReplaceCurrentCard == nil {
-		t.Fatalf("expected stamped migrate callback to replace current card, got %#v", result)
+		t.Fatalf("expected stamped /mode vscode to keep returning a current-card result, got %#v", result)
 	}
-	if !strings.Contains(operationCardText(*result.ReplaceCurrentCard), "请重新打开 VS Code 开始使用") {
-		t.Fatalf("expected in-place migrate result text, got %#v", result.ReplaceCurrentCard.CardElements)
+	if result.ReplaceCurrentCard.CardTitle == "VS Code 接入需要迁移" {
+		t.Fatalf("expected stamped /mode vscode to avoid migration prompt, got %#v", result.ReplaceCurrentCard)
 	}
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected no appended gateway operations, got %#v", gateway.operations)
 	}
+
+	var detect vscodeDetectResponse
+	waitForDaemonCondition(t, 2*time.Second, func() bool {
+		rec := performAdminRequest(t, app, http.MethodGet, "/api/admin/vscode/detect", "")
+		if rec.Code != http.StatusOK {
+			return false
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&detect); err != nil {
+			return false
+		}
+		return detect.CurrentMode == "managed_shim" && detect.Settings.CLIExecutable == "" && !detect.Settings.MatchesBinary
+	})
 	if _, err := os.Stat(editor.ManagedShimRealBinaryPath(entrypoint)); err != nil {
-		t.Fatalf("expected shim backup after in-place migration: %v", err)
+		t.Fatalf("expected shim backup after stamped automatic migration: %v", err)
 	}
 }
 
@@ -569,12 +529,12 @@ func TestDaemonTickChecksVSCodeCompatibilityOnlyOnceForRestoredVSCodeSurface(t *
 	app.onTick(context.Background(), time.Now().UTC().Add(time.Second))
 
 	waitForDaemonCondition(t, 2*time.Second, func() bool { return detectCalls == 1 })
-	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入需要迁移")
+	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入迁移失败")
 	if card.CardTitle == "" {
-		t.Fatalf("expected migration card for restored vscode surface")
+		t.Fatalf("expected retry card for restored vscode surface")
 	}
-	if !strings.Contains(operationCardText(card), "旧版 settings.json 覆盖") {
-		t.Fatalf("expected restored vscode surface prompt to keep migration reason, got %#v", card)
+	if !strings.Contains(operationCardText(card), "已自动尝试把旧版 settings.json 覆盖迁到 managed shim") {
+		t.Fatalf("expected restored vscode surface prompt to keep auto-migrate failure reason, got %#v", card)
 	}
 }
 

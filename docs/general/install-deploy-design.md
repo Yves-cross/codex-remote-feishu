@@ -1,7 +1,7 @@
 # 安装与部署设计
 
 > Type: `general`
-> Updated: `2026-04-15`
+> Updated: `2026-04-21`
 > Summary: 补充全局 stable/beta/master 实例与 workspace 绑定模型，并同步 build flavor（shipping/dev）能力边界、`/upgrade track` 与 `/upgrade dev` 的语义边界、Windows 在线安装脚本、`managed_shim` tiny shim + sidecar 绑定模型与按当前平台筛选 VS Code 入口的规则。
 
 ## 1. 范围
@@ -340,7 +340,8 @@ Windows 下文件名为 `codex-remote.exe`。
 
 1. WebSetup / Admin UI / daemon 内部迁移卡片都只会执行 `managed_shim`。
 2. 执行 `managed_shim` apply/reinstall 时，会同时清理旧的 `chatgpt.cliExecutable`，避免 host 侧 `settings.json` override 继续污染 Remote SSH。
-3. 若检测到存量 `editor_settings` 状态，或扩展升级导致 managed shim 失效，系统会提示用户迁移/重新接入，而不是继续把 `editor_settings` 当成可选策略。
+3. 若检测到存量 `editor_settings` 状态且存在可接管入口，系统会默认静默自动迁到 `managed_shim`；迁移成功时不再额外弹显式迁移提示卡。
+4. 若缺少可接管入口、自动迁移失败，或扩展升级导致 managed shim 失效，系统才保留必要的失败/修复反馈，而不是继续把 `editor_settings` 当成可选策略。
 
 ### 5.2 `managed_shim`
 
@@ -381,11 +382,13 @@ detect/apply/reinstall 的当前规则也同步收紧：
 当前处理方式：
 
 1. detect 仍会识别这些 legacy 状态。
-2. 一旦用户执行迁移或重新接入，系统会：
+2. 若 detect 时已经存在可接管的扩展入口，daemon 默认会直接静默尝试迁到 `managed_shim`，不再先弹“确认迁移”主提示卡。
+3. 自动迁移或用户显式重试时，系统会：
    - 按当前平台 patch 目标入口，并把当前实例已知历史 repo-managed 入口统一迁到 tiny shim + sidecar 绑定模型
    - 更新 install-state / config / sidecar 绑定信息
    - 清掉旧的 `chatgpt.cliExecutable`
-3. 迁移完成后，不再保留 `editor_settings` 作为产品可选路径。
+4. 若缺少 target、自动迁移失败，或迁移后状态检查仍异常，才保留必要的失败/重试反馈。
+5. 迁移完成后，不再保留 `editor_settings` 作为产品可选路径。
 
 ### 5.4 当前产品约束
 

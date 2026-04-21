@@ -12,7 +12,13 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-const vscodeCompatibilityRetryBackoff = 30 * time.Second
+const (
+	vscodeCompatibilityRetryBackoff = 30 * time.Second
+
+	vscodeCompatibilityIssueLegacyEditorSettings      = "legacy_editor_settings"
+	vscodeCompatibilityIssueLegacyEditorSettingsRetry = "legacy_editor_settings_retry"
+	vscodeCompatibilityIssueManagedShimReinstall      = "managed_shim_reinstall"
+)
 
 type vscodeCompatibilityIssue struct {
 	Key         string
@@ -33,7 +39,7 @@ func classifyVSCodeCompatibilityIssue(detect vscodeDetectResponse) *vscodeCompat
 	legacySettings := strings.EqualFold(strings.TrimSpace(detect.CurrentMode), "editor_settings") || detect.Settings.MatchesBinary
 	if legacySettings {
 		issue := &vscodeCompatibilityIssue{
-			Key:         "legacy_editor_settings",
+			Key:         vscodeCompatibilityIssueLegacyEditorSettings,
 			Title:       "VS Code 接入需要迁移",
 			Summary:     "检测到这台机器仍在使用旧版 settings.json 覆盖。它会把 host 侧 override 带进 Remote SSH，会继续干扰远端 VS Code 会话。新版本已经统一收敛到扩展入口 managed shim。",
 			SuccessText: "已迁移到扩展入口 managed shim。请重新打开 VS Code 开始使用。",
@@ -48,7 +54,7 @@ func classifyVSCodeCompatibilityIssue(detect vscodeDetectResponse) *vscodeCompat
 	}
 	if detect.NeedsShimReinstall {
 		issue := &vscodeCompatibilityIssue{
-			Key:         "managed_shim_reinstall",
+			Key:         vscodeCompatibilityIssueManagedShimReinstall,
 			Title:       "VS Code 接入需要修复",
 			Summary:     "检测到当前 managed shim 已失效，常见原因是 VS Code 扩展升级后入口发生了变化。需要重新接管最新扩展入口后，vscode mode 才能继续稳定使用。",
 			SuccessText: "已重新接管最新 VS Code 扩展入口。请重新打开 VS Code 开始使用。",
@@ -115,8 +121,42 @@ func (a *App) promptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.T
 		}
 		return nil, false
 	}
+	if vscodeIssueAllowsSilentAutoMigration(issue) {
+		return a.handleSilentVSCodeAutoMigrationLocked(targets, surfaceFilter, inlineSourceMessageID)
+	}
+	return a.vscodeCompatibilityPromptEventsLocked(targets, surfaceFilter, inlineSourceMessageID, *issue), true
+}
 
-	events := []control.UIEvent{}
+func vscodeIssueAllowsSilentAutoMigration(issue *vscodeCompatibilityIssue) bool {
+	return issue != nil &&
+		strings.TrimSpace(issue.Key) == vscodeCompatibilityIssueLegacyEditorSettings &&
+		strings.TrimSpace(issue.ButtonLabel) != ""
+}
+
+func vscodeLegacyAutoMigrationRetryIssue(message string) *vscodeCompatibilityIssue {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "已自动尝试迁移到 managed shim，但这次没有成功。请确认 VS Code 已关闭后重试；如仍异常，也可以重新发送 `/vscode-migrate`。"
+	}
+	return &vscodeCompatibilityIssue{
+		Key:         vscodeCompatibilityIssueLegacyEditorSettingsRetry,
+		Title:       "VS Code 接入迁移失败",
+		Summary:     "已自动尝试把旧版 settings.json 覆盖迁到 managed shim，但这次没有成功。",
+		ActionText:  message,
+		ButtonLabel: "重试迁移并重新接入",
+		SuccessText: "已迁移到扩展入口 managed shim。请重新打开 VS Code 开始使用。",
+	}
+}
+
+func (a *App) setCachedVSCodeCompatibilityIssueLocked(issue *vscodeCompatibilityIssue) {
+	a.vscodeCompatibility.Checked = true
+	a.vscodeCompatibility.Issue = issue
+	a.vscodeCompatibility.RefreshInFlight = false
+	a.vscodeCompatibility.NextRetryAt = time.Time{}
+}
+
+func (a *App) vscodeCompatibilityPromptEventsLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string, issue vscodeCompatibilityIssue) []control.UIEvent {
+	events := make([]control.UIEvent, 0, len(targets))
 	for _, target := range targets {
 		inlineReplace := strings.TrimSpace(surfaceFilter) != "" &&
 			strings.TrimSpace(target.SurfaceSessionID) == strings.TrimSpace(surfaceFilter) &&
@@ -137,11 +177,56 @@ func (a *App) promptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.T
 			}
 			a.refreshVSCodeMigrationFlowLocked(flow, issue.Key)
 		}
-		event := vscodeMigrationPromptEvent(target.SurfaceSessionID, flow, inlineReplace, *issue)
+		event := vscodeMigrationPromptEvent(target.SurfaceSessionID, flow, inlineReplace, issue)
 		event.GatewayID = target.GatewayID
 		events = append(events, event)
 	}
-	return events, true
+	return events
+}
+
+func (a *App) handleSilentVSCodeAutoMigrationLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string) ([]control.UIEvent, bool) {
+	a.mu.Unlock()
+	err := a.applyVSCodeIntegration(vscodeApplyRequest{Mode: "managed_shim"})
+	a.mu.Lock()
+	if err != nil {
+		log.Printf("auto-apply vscode managed shim failed: err=%v", err)
+		retryIssue := vscodeLegacyAutoMigrationRetryIssue(
+			fmt.Sprintf(
+				"已自动尝试迁移到 managed shim，但执行失败：%v。请确认 VS Code 已关闭后，再点击下方按钮重试；也可以重新发送 `/vscode-migrate`。",
+				err,
+			),
+		)
+		a.setCachedVSCodeCompatibilityIssueLocked(retryIssue)
+		return a.vscodeCompatibilityPromptEventsLocked(targets, surfaceFilter, inlineSourceMessageID, *retryIssue), true
+	}
+
+	a.invalidateVSCodeCompatibilityCacheLocked()
+
+	a.mu.Unlock()
+	remaining, detectErr := a.currentVSCodeCompatibilityIssue()
+	a.mu.Lock()
+	if detectErr != nil {
+		retryIssue := vscodeLegacyAutoMigrationRetryIssue(
+			fmt.Sprintf(
+				"已自动更新扩展入口，但后续状态检查失败：%v。请重新打开 VS Code；如果问题仍在，可点击下方按钮重试。",
+				detectErr,
+			),
+		)
+		a.setCachedVSCodeCompatibilityIssueLocked(retryIssue)
+		return a.vscodeCompatibilityPromptEventsLocked(targets, surfaceFilter, inlineSourceMessageID, *retryIssue), true
+	}
+	if remaining != nil {
+		if vscodeIssueAllowsSilentAutoMigration(remaining) {
+			retryIssue := vscodeLegacyAutoMigrationRetryIssue(
+				"已自动尝试迁移到 managed shim，但检查后仍发现旧版 settings.json 覆盖。请确认 VS Code 已关闭，然后再重试。",
+			)
+			a.setCachedVSCodeCompatibilityIssueLocked(retryIssue)
+			return a.vscodeCompatibilityPromptEventsLocked(targets, surfaceFilter, inlineSourceMessageID, *retryIssue), true
+		}
+		a.setCachedVSCodeCompatibilityIssueLocked(remaining)
+		return a.vscodeCompatibilityPromptEventsLocked(targets, surfaceFilter, inlineSourceMessageID, *remaining), true
+	}
+	return nil, false
 }
 
 func (a *App) resolveVSCodeCompatibilityIssueSynchronouslyLocked(now time.Time) (*vscodeCompatibilityIssue, bool) {
