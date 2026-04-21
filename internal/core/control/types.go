@@ -572,27 +572,22 @@ type ExecCommandProgress struct {
 type UIEventKind string
 
 const (
-	UIEventSnapshot              UIEventKind = "snapshot.updated"
-	UIEventFeishuSelectionView   UIEventKind = "selection.prompt"
-	UIEventFeishuCommandView     UIEventKind = "command.catalog"
-	UIEventFeishuRequestView     UIEventKind = "request.prompt"
-	UIEventFeishuPathPicker      UIEventKind = "path.picker"
-	UIEventFeishuTargetPicker    UIEventKind = "target.picker"
-	UIEventFeishuThreadHistory   UIEventKind = "thread.history"
-	UIEventPendingInput          UIEventKind = "pending.input.state"
-	UIEventNotice                UIEventKind = "notice"
-	UIEventPlanUpdated           UIEventKind = "plan.updated"
-	UIEventThreadSelectionChange UIEventKind = "thread.selection.changed"
-	UIEventBlockCommitted        UIEventKind = "block.committed"
-	UIEventTimelineText          UIEventKind = "timeline.text"
-	UIEventImageOutput           UIEventKind = "image.output"
-	UIEventExecCommandProgress   UIEventKind = "exec_command.progress"
-	UIEventAgentCommand          UIEventKind = "agent.command"
-	UIEventDaemonCommand         UIEventKind = "daemon.command"
-)
-
-const (
-	UIEventFeishuDirectSelectionPrompt = UIEventFeishuSelectionView
+	UIEventSnapshot            UIEventKind = "snapshot.updated"
+	UIEventFeishuSelectionView UIEventKind = "selection.prompt"
+	UIEventFeishuCommandView   UIEventKind = "command.catalog"
+	UIEventFeishuRequestView   UIEventKind = "request.prompt"
+	UIEventFeishuPathPicker    UIEventKind = "path.picker"
+	UIEventFeishuTargetPicker  UIEventKind = "target.picker"
+	UIEventFeishuThreadHistory UIEventKind = "thread.history"
+	UIEventPendingInput        UIEventKind = "pending.input.state"
+	UIEventNotice              UIEventKind = "notice"
+	UIEventPlanUpdated         UIEventKind = "plan.updated"
+	UIEventBlockCommitted      UIEventKind = "block.committed"
+	UIEventTimelineText        UIEventKind = "timeline.text"
+	UIEventImageOutput         UIEventKind = "image.output"
+	UIEventExecCommandProgress UIEventKind = "exec_command.progress"
+	UIEventAgentCommand        UIEventKind = "agent.command"
+	UIEventDaemonCommand       UIEventKind = "daemon.command"
 )
 
 type DaemonCommandKind string

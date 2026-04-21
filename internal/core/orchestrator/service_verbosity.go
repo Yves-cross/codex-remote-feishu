@@ -86,8 +86,7 @@ func classifySurfaceVisibleEvent(event control.UIEvent) surfaceVisibilityClass {
 		control.UIEventFeishuCommandView,
 		control.UIEventFeishuPathPicker,
 		control.UIEventFeishuTargetPicker,
-		control.UIEventPendingInput,
-		control.UIEventThreadSelectionChange:
+		control.UIEventPendingInput:
 		return surfaceVisibilityUINavigation
 	default:
 		return surfaceVisibilityUINavigation

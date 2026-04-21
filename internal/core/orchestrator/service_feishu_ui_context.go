@@ -68,7 +68,7 @@ func (s *Service) buildFeishuUISurfaceContext(surface *state.SurfaceConsoleRecor
 	return context
 }
 
-func (s *Service) buildFeishuSelectionContextFromPromptView(surface *state.SurfaceConsoleRecord, prompt control.FeishuSelectionPromptView) *control.FeishuUISelectionContext {
+func (s *Service) buildFeishuSelectionContextFromPromptView(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt) *control.FeishuUISelectionContext {
 	return &control.FeishuUISelectionContext{
 		DTOOwner:     control.FeishuUIDTOwnerSelection,
 		Surface:      s.buildFeishuUISurfaceContext(surface),
@@ -252,7 +252,7 @@ func (s *Service) feishuDirectSelectionPromptEvent(surface *state.SurfaceConsole
 }
 
 func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt, inline bool) control.UIEvent {
-	promptView := control.FeishuSelectionPromptView(prompt)
+	promptView := prompt
 	view := control.FeishuSelectionView{
 		PromptKind: prompt.Kind,
 		Prompt:     &promptView,

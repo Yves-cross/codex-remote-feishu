@@ -389,53 +389,9 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			return nil
 		}
 		return p.projectExecCommandProgress(chatID, event)
-	case control.UIEventThreadSelectionChange:
-		if event.ThreadSelection == nil {
-			return nil
-		}
-		elements := projectThreadSelectionChangeCardContent(*event.ThreadSelection)
-		return []Operation{{
-			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID,
-			SurfaceSessionID: event.SurfaceSessionID,
-			ChatID:           chatID,
-			CardTitle:        "系统提示",
-			CardBody:         "",
-			CardElements:     elements,
-			CardThemeKey:     cardThemeInfo,
-			cardEnvelope:     cardEnvelopeV2,
-			card:             rawCardDocument("系统提示", "", cardThemeInfo, elements),
-		}}
 	default:
 		return nil
 	}
-}
-
-func projectThreadSelectionChangeCardContent(selection control.ThreadSelectionChanged) []map[string]any {
-	if strings.TrimSpace(selection.RouteMode) == "new_thread_ready" {
-		block := cardPlainTextBlockElement("已准备新建会话。\n\n当前还没有实际会话 ID；下一条文本会作为首条消息创建新会话。")
-		if len(block) == 0 {
-			return nil
-		}
-		return []map[string]any{block}
-	}
-	lines := []string{fmt.Sprintf("当前输入目标已切换到：%s", selection.Title)}
-	if first := strings.TrimSpace(selection.FirstUserMessage); first != "" {
-		lines = append(lines, "", "会话起点：", first)
-	}
-	if lastUser := strings.TrimSpace(selection.LastUserMessage); lastUser != "" {
-		lines = append(lines, "", "最近用户：", lastUser)
-	}
-	if lastAssistant := strings.TrimSpace(selection.LastAssistantMessage); lastAssistant != "" {
-		lines = append(lines, "", "最近回复：", lastAssistant)
-	} else if preview := strings.TrimSpace(selection.Preview); preview != "" {
-		lines = append(lines, "", "最近回复：", preview)
-	}
-	block := cardPlainTextBlockElement(strings.Join(lines, "\n"))
-	if len(block) == 0 {
-		return nil
-	}
-	return []map[string]any{block}
 }
 
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {

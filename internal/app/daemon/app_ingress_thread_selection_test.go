@@ -23,12 +23,6 @@ func TestFilterThreadSelectionUIEventsDropsNoticeFamilyAnnouncements(t *testing.
 				Code: "some_other_notice",
 			},
 		},
-		{
-			Kind: control.UIEventThreadSelectionChange,
-			ThreadSelection: &control.ThreadSelectionChanged{
-				ThreadID: "thread-legacy",
-			},
-		},
 	}
 
 	filtered := filterThreadSelectionUIEvents(events)

@@ -198,7 +198,7 @@ func targetPickerFilteredFollowupEvents(events []control.UIEvent) []control.UIEv
 	filtered := make([]control.UIEvent, 0, len(events))
 	for _, event := range events {
 		switch event.Kind {
-		case control.UIEventNotice, control.UIEventThreadSelectionChange:
+		case control.UIEventNotice:
 			continue
 		default:
 			filtered = append(filtered, event)

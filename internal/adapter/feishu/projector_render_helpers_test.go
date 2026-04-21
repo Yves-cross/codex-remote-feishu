@@ -11,7 +11,7 @@ func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) control.UI
 	view := control.FeishuSelectionView{
 		PromptKind: prompt.Kind,
 	}
-	promptView := control.FeishuSelectionPromptView(prompt)
+	promptView := prompt
 	view.Prompt = &promptView
 	return control.UIEvent{
 		Kind:                control.UIEventFeishuSelectionView,
