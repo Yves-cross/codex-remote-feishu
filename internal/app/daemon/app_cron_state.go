@@ -139,8 +139,8 @@ func (a *App) cronStatePath() string {
 
 func (a *App) loadCronStateLocked(create bool) (*cronStateFile, error) {
 	if a.cronRuntime.loaded {
-		if a.cronRuntime.state != nil {
-			a.cronRuntime.state = normalizeCronState(*a.cronRuntime.state)
+		if err := a.normalizeLoadedCronStateLocked(); err != nil {
+			return nil, err
 		}
 		if a.cronRuntime.state == nil && create {
 			stateValue, err := a.newCronStateLocked()
@@ -161,8 +161,8 @@ func (a *App) loadCronStateLocked(create bool) (*cronStateFile, error) {
 	a.cronRuntime.stateIOMu.Unlock()
 	a.mu.Lock()
 	if a.cronRuntime.loaded {
-		if a.cronRuntime.state != nil {
-			a.cronRuntime.state = normalizeCronState(*a.cronRuntime.state)
+		if err := a.normalizeLoadedCronStateLocked(); err != nil {
+			return nil, err
 		}
 		if a.cronRuntime.state == nil && create {
 			stateValue, createErr := a.newCronStateLocked()
@@ -198,9 +198,11 @@ func (a *App) loadCronStateLocked(create bool) (*cronStateFile, error) {
 	if err := json.Unmarshal(raw, &stateValue); err != nil {
 		return nil, err
 	}
-	stateValue = *normalizeCronState(stateValue)
 	a.cronRuntime.loaded = true
-	a.cronRuntime.state = &stateValue
+	a.cronRuntime.state = normalizeCronState(stateValue)
+	if err := a.normalizeLoadedCronStateLocked(); err != nil {
+		return nil, err
+	}
 	return a.cronRuntime.state, nil
 }
 
@@ -216,6 +218,22 @@ func normalizeCronState(stateValue cronStateFile) *cronStateFile {
 		stateValue.Jobs[index] = cronNormalizeJobState(stateValue.Jobs[index])
 	}
 	return &stateValue
+}
+
+func (a *App) normalizeLoadedCronStateLocked() error {
+	if a.cronRuntime.state == nil {
+		return nil
+	}
+	a.cronRuntime.state = normalizeCronState(*a.cronRuntime.state)
+	changed, err := a.migrateCronLegacyOwnerStateLocked(a.cronRuntime.state)
+	if err != nil {
+		// Keep raw state loading independent from runtime-config lookup failures.
+		return nil
+	}
+	if !changed {
+		return nil
+	}
+	return a.writeCronStateLocked()
 }
 
 func (a *App) newCronStateLocked() (*cronStateFile, error) {

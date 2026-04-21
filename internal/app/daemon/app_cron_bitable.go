@@ -102,10 +102,6 @@ func (a *App) reloadCronJobsResultNow(command control.DaemonCommand) (cronReload
 	a.mu.Unlock()
 
 	result := cronBuildReloadResult(records, workspacesByRecord, now, previousJobs, cronZone)
-	if resolution.PersistOwner != nil {
-		result.OwnerBoundFilled = true
-	}
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	stateValue, err = a.loadCronStateLocked(true)
@@ -130,11 +126,7 @@ func (a *App) reloadCronJobsNow(command control.DaemonCommand) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	summary := result.CompactSummary()
-	if result.OwnerBoundFilled {
-		summary += "\n已回填正式 owner 绑定。"
-	}
-	return summary, nil
+	return result.CompactSummary(), nil
 }
 
 func (a *App) ensureCronBitableRemote(ctx context.Context, api feishu.BitableAPI, previous cronBitableState, scopeKey, label string, owner *cronOwnerBinding, persist func(cronBitableState) error) (cronBitableState, error) {

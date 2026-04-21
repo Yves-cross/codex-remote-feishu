@@ -331,10 +331,10 @@ func (a *App) snapshotCronWritebackLocked() cronWritebackTarget {
 	if !cronStateHasBinding(a.cronRuntime.state) || a.cronRuntime.state == nil || a.cronRuntime.state.Bitable == nil {
 		return cronWritebackTarget{}
 	}
-	gatewayID := strings.TrimSpace(a.cronRuntime.state.OwnerGatewayID)
-	if gatewayID == "" {
-		gatewayID = strings.TrimSpace(a.cronRuntime.state.GatewayID)
+	if strings.TrimSpace(a.cronRuntime.state.OwnerGatewayID) == "" {
+		_, _ = a.migrateCronLegacyOwnerStateLocked(a.cronRuntime.state)
 	}
+	gatewayID := strings.TrimSpace(a.cronRuntime.state.OwnerGatewayID)
 	target := cronWritebackTarget{
 		GatewayID: gatewayID,
 		Bitable:   *a.cronRuntime.state.Bitable,

@@ -52,13 +52,12 @@ func (e *cronReloadError) Error() string {
 }
 
 type cronReloadResult struct {
-	Jobs             []cronJobState
-	Loaded           []cronReloadTaskItem
-	Disabled         []cronReloadTaskItem
-	Stopped          []cronReloadTaskItem
-	Errors           []cronReloadError
-	OwnerBoundFilled bool
-	TimeZone         string
+	Jobs     []cronJobState
+	Loaded   []cronReloadTaskItem
+	Disabled []cronReloadTaskItem
+	Stopped  []cronReloadTaskItem
+	Errors   []cronReloadError
+	TimeZone string
 }
 
 func (r cronReloadResult) CompactSummary() string {

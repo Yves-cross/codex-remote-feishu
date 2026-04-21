@@ -432,7 +432,7 @@ func cronCanReload(stateValue *cronStateFile, ownerView cronOwnerView) bool {
 		return false
 	}
 	switch ownerView.Status {
-	case cronOwnerStatusHealthy, cronOwnerStatusLegacy:
+	case cronOwnerStatusHealthy:
 		return true
 	default:
 		return false
@@ -441,7 +441,7 @@ func cronCanReload(stateValue *cronStateFile, ownerView cronOwnerView) bool {
 
 func cronOwnerAllowsLoadedJobs(status cronOwnerStatus) bool {
 	switch status {
-	case cronOwnerStatusHealthy, cronOwnerStatusLegacy:
+	case cronOwnerStatusHealthy:
 		return true
 	default:
 		return false

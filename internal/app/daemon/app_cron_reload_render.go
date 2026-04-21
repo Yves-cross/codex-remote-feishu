@@ -7,9 +7,6 @@ import (
 
 func (r cronReloadResult) DetailedText() string {
 	lines := []string{r.CompactSummary()}
-	if r.OwnerBoundFilled {
-		lines = append(lines, "已回填正式 owner 绑定。")
-	}
 	appendTaskSection := func(title string, items []cronReloadTaskItem, plannedLabel string) {
 		if len(items) == 0 {
 			return

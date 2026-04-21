@@ -19,7 +19,6 @@ const (
 	cronOwnerStatusNone        cronOwnerStatus = "none"
 	cronOwnerStatusHealthy     cronOwnerStatus = "healthy"
 	cronOwnerStatusBootstrap   cronOwnerStatus = "bootstrap"
-	cronOwnerStatusLegacy      cronOwnerStatus = "legacy"
 	cronOwnerStatusUnavailable cronOwnerStatus = "unavailable"
 	cronOwnerStatusMismatch    cronOwnerStatus = "mismatch"
 	cronOwnerStatusUnresolved  cronOwnerStatus = "unresolved"
@@ -32,16 +31,15 @@ type cronOwnerBinding struct {
 }
 
 type cronOwnerResolution struct {
-	Status        cronOwnerStatus
-	State         *cronStateFile
-	ScopeKey      string
-	Label         string
-	Binding       cronBitableState
-	Gateway       cronGatewayIdentity
-	PersistOwner  *cronOwnerBinding
-	CurrentOwner  *cronOwnerBinding
-	LegacyGateway string
-	Message       string
+	Status       cronOwnerStatus
+	State        *cronStateFile
+	ScopeKey     string
+	Label        string
+	Binding      cronBitableState
+	Gateway      cronGatewayIdentity
+	PersistOwner *cronOwnerBinding
+	CurrentOwner *cronOwnerBinding
+	Message      string
 }
 
 type cronOwnerView struct {
@@ -82,6 +80,57 @@ func (a *App) cronGatewayIdentity(gatewayID string) (cronGatewayIdentity, bool, 
 		lookup = a.defaultCronGatewayIdentityLookup
 	}
 	return lookup(strings.TrimSpace(gatewayID))
+}
+
+func cronOwnerBindingBackfill(current *cronOwnerBinding, identity cronGatewayIdentity) (*cronOwnerBinding, bool) {
+	if current == nil {
+		return nil, false
+	}
+	next := *current
+	changed := false
+	if strings.TrimSpace(next.AppID) == "" && strings.TrimSpace(identity.AppID) != "" {
+		next.AppID = strings.TrimSpace(identity.AppID)
+		changed = true
+	}
+	if next.BoundAt.IsZero() {
+		next.BoundAt = time.Now().UTC()
+		changed = true
+	}
+	if !changed {
+		return nil, false
+	}
+	return &next, true
+}
+
+func (a *App) migrateCronLegacyOwnerStateLocked(stateValue *cronStateFile) (bool, error) {
+	if stateValue == nil {
+		return false, nil
+	}
+	if currentOwner := cronOwnerBindingFromState(stateValue); currentOwner != nil {
+		identity, ok, err := a.cronGatewayIdentity(currentOwner.GatewayID)
+		if err != nil || !ok {
+			return false, err
+		}
+		if nextOwner, changed := cronOwnerBindingBackfill(currentOwner, identity); changed {
+			applyCronOwnerBinding(stateValue, nextOwner)
+			return true, nil
+		}
+		return false, nil
+	}
+	legacyGateway := strings.TrimSpace(stateValue.GatewayID)
+	if legacyGateway == "" {
+		return false, nil
+	}
+	identity, ok, err := a.cronGatewayIdentity(legacyGateway)
+	if err != nil || !ok {
+		return false, err
+	}
+	applyCronOwnerBinding(stateValue, &cronOwnerBinding{
+		GatewayID: identity.GatewayID,
+		AppID:     identity.AppID,
+		BoundAt:   time.Now().UTC(),
+	})
+	return true, nil
 }
 
 func (a *App) resolveCronOwner(command control.DaemonCommand, opts cronOwnerResolveOptions) (cronOwnerResolution, error) {
@@ -132,29 +181,28 @@ func (a *App) resolveCronOwnerFromState(stateValue *cronStateFile, command contr
 			result.Message = fmt.Sprintf("Cron owner `%s` 的当前 AppID 与已绑定 ownerAppID 不一致。", currentOwner.GatewayID)
 			return result, nil
 		}
-		if currentOwner.AppID == "" && identity.AppID != "" {
-			result.PersistOwner = &cronOwnerBinding{GatewayID: identity.GatewayID, AppID: identity.AppID, BoundAt: currentOwner.BoundAt}
+		if nextOwner, changed := cronOwnerBindingBackfill(currentOwner, identity); changed {
+			result.PersistOwner = nextOwner
 		}
 		result.Status = cronOwnerStatusHealthy
 		result.Message = fmt.Sprintf("Cron owner 为 `%s`。", identity.GatewayID)
 		return result, nil
 	}
 	legacyGateway := strings.TrimSpace(stateValue.GatewayID)
-	result.LegacyGateway = legacyGateway
 	if legacyGateway != "" {
 		identity, ok, err := a.cronGatewayIdentity(legacyGateway)
 		if err != nil {
 			return cronOwnerResolution{}, err
 		}
 		if ok {
-			result.Status = cronOwnerStatusLegacy
+			result.Status = cronOwnerStatusHealthy
 			result.Gateway = identity
 			result.PersistOwner = &cronOwnerBinding{GatewayID: identity.GatewayID, AppID: identity.AppID, BoundAt: time.Now().UTC()}
-			result.Message = fmt.Sprintf("当前仍使用 legacy gateway `%s`，下次成功修复或 reload 后会回填正式 owner。", identity.GatewayID)
+			result.Message = fmt.Sprintf("Cron owner 为 `%s`。", identity.GatewayID)
 			return result, nil
 		}
 		result.Status = cronOwnerStatusUnresolved
-		result.Message = fmt.Sprintf("存在 legacy gateway `%s`，但当前无法安全确认它仍是 Cron owner。", legacyGateway)
+		result.Message = fmt.Sprintf("历史 gateway `%s` 当前无法安全迁到正式 Cron owner。", legacyGateway)
 		return result, nil
 	}
 	if opts.AllowCreate {
@@ -211,9 +259,6 @@ func applyCronOwnerBinding(stateValue *cronStateFile, owner *cronOwnerBinding) {
 	stateValue.OwnerGatewayID = strings.TrimSpace(owner.GatewayID)
 	stateValue.OwnerAppID = strings.TrimSpace(owner.AppID)
 	stateValue.OwnerBoundAt = owner.BoundAt.UTC()
-	if strings.TrimSpace(owner.GatewayID) != "" {
-		stateValue.GatewayID = strings.TrimSpace(owner.GatewayID)
-	}
 }
 
 func (a *App) inspectCronOwnerView(stateValue *cronStateFile) cronOwnerView {
@@ -236,11 +281,6 @@ func (a *App) inspectCronOwnerView(stateValue *cronStateFile) cronOwnerView {
 		view.StatusLabel = "待初始化"
 		view.Detail = "当前实例还没有初始化 Cron 配置表。"
 		view.NextAction = "执行 `/cron repair` 初始化 Cron 配置。"
-		view.NeedsRepair = true
-	case cronOwnerStatusLegacy:
-		view.StatusLabel = "待修复"
-		view.Detail = "当前 Cron 配置仍使用历史兼容绑定。"
-		view.NextAction = "执行 `/cron repair` 完成修复并同步工作区；或执行 `/cron reload` 回填并重新加载任务。"
 		view.NeedsRepair = true
 	case cronOwnerStatusUnavailable:
 		view.StatusLabel = "需要修复"
@@ -272,7 +312,7 @@ func cronOwnerActionError(action string, resolution cronOwnerResolution) error {
 		action = "执行 Cron 操作"
 	}
 	switch resolution.Status {
-	case cronOwnerStatusHealthy, cronOwnerStatusBootstrap, cronOwnerStatusLegacy:
+	case cronOwnerStatusHealthy, cronOwnerStatusBootstrap:
 		return nil
 	case cronOwnerStatusNone:
 		return fmt.Errorf("尚未初始化 Cron 配置表，请先执行 `/cron repair`")
@@ -294,9 +334,6 @@ func (r cronOwnerResolution) writebackTarget() cronWritebackTarget {
 	gatewayID := strings.TrimSpace(r.Gateway.GatewayID)
 	if gatewayID == "" && r.CurrentOwner != nil {
 		gatewayID = strings.TrimSpace(r.CurrentOwner.GatewayID)
-	}
-	if gatewayID == "" {
-		gatewayID = strings.TrimSpace(r.LegacyGateway)
 	}
 	return cronWritebackTarget{
 		GatewayID: gatewayID,
