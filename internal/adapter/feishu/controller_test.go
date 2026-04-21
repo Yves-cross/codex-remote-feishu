@@ -229,6 +229,58 @@ func TestMultiGatewayControllerRoutesSendIMFileByGatewayID(t *testing.T) {
 	}
 }
 
+func TestMultiGatewayControllerRoutesSendIMImageByGatewayID(t *testing.T) {
+	controller := NewMultiGatewayController()
+	runtimes := map[string]*fakeGatewayRuntime{}
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		runtime := newFakeGatewayRuntime(cfg.GatewayID)
+		runtimes[cfg.GatewayID] = runtime
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, gatewayID := range []string{"app-1", "app-2"} {
+		if err := controller.UpsertApp(ctx, GatewayAppConfig{
+			GatewayID: gatewayID,
+			AppID:     "cli_" + gatewayID,
+			AppSecret: "secret_" + gatewayID,
+			Enabled:   true,
+		}); err != nil {
+			t.Fatalf("UpsertApp(%s): %v", gatewayID, err)
+		}
+	}
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-1"))
+	waitFakeGatewayStarted(t, waitForFakeRuntime(t, runtimes, "app-2"))
+
+	result, err := controller.SendIMImage(context.Background(), IMImageSendRequest{
+		GatewayID:        "app-2",
+		SurfaceSessionID: "surface-2",
+		ChatID:           "oc_2",
+		Path:             "/tmp/preview.png",
+	})
+	if err != nil {
+		t.Fatalf("SendIMImage: %v", err)
+	}
+	if len(runtimes["app-1"].sendIMImageCalls) != 0 {
+		t.Fatalf("unexpected app-1 send calls: %#v", runtimes["app-1"].sendIMImageCalls)
+	}
+	if len(runtimes["app-2"].sendIMImageCalls) != 1 {
+		t.Fatalf("unexpected app-2 send calls: %#v", runtimes["app-2"].sendIMImageCalls)
+	}
+	got := runtimes["app-2"].sendIMImageCalls[0]
+	if got.SurfaceSessionID != "surface-2" || got.ChatID != "oc_2" || got.Path != "/tmp/preview.png" {
+		t.Fatalf("unexpected send request: %#v", got)
+	}
+	if result.GatewayID != "app-2" || result.MessageID != "msg-app-2" || result.ImageName != "preview.png" {
+		t.Fatalf("unexpected send result: %#v", result)
+	}
+}
+
 func TestMultiGatewayControllerUpsertRestartsWorker(t *testing.T) {
 	controller := NewMultiGatewayController()
 	var (
@@ -352,12 +404,14 @@ type fakeGatewayRuntime struct {
 	startedCh chan struct{}
 	stoppedCh chan struct{}
 
-	mu              sync.Mutex
-	stateHook       func(GatewayState, error)
-	applyCalls      [][]Operation
-	applyFn         func(context.Context, []Operation) error
-	sendIMFileCalls []IMFileSendRequest
-	sendIMFileFn    func(context.Context, IMFileSendRequest) (IMFileSendResult, error)
+	mu               sync.Mutex
+	stateHook        func(GatewayState, error)
+	applyCalls       [][]Operation
+	applyFn          func(context.Context, []Operation) error
+	sendIMFileCalls  []IMFileSendRequest
+	sendIMFileFn     func(context.Context, IMFileSendRequest) (IMFileSendResult, error)
+	sendIMImageCalls []IMImageSendRequest
+	sendIMImageFn    func(context.Context, IMImageSendRequest) (IMImageSendResult, error)
 }
 
 func newFakeGatewayRuntime(gatewayID string) *fakeGatewayRuntime {
@@ -406,6 +460,23 @@ func (f *fakeGatewayRuntime) SendIMFile(ctx context.Context, req IMFileSendReque
 		SurfaceSessionID: req.SurfaceSessionID,
 		FileName:         filepath.Base(req.Path),
 		FileKey:          "file-key-" + f.gatewayID,
+		MessageID:        "msg-" + f.gatewayID,
+	}, nil
+}
+
+func (f *fakeGatewayRuntime) SendIMImage(ctx context.Context, req IMImageSendRequest) (IMImageSendResult, error) {
+	f.mu.Lock()
+	f.sendIMImageCalls = append(f.sendIMImageCalls, req)
+	fn := f.sendIMImageFn
+	f.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, req)
+	}
+	return IMImageSendResult{
+		GatewayID:        f.gatewayID,
+		SurfaceSessionID: req.SurfaceSessionID,
+		ImageName:        filepath.Base(req.Path),
+		ImageKey:         "image-key-" + f.gatewayID,
 		MessageID:        "msg-" + f.gatewayID,
 	}, nil
 }

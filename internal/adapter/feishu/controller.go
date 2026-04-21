@@ -53,6 +53,7 @@ type GatewayStatus struct {
 type gatewayRuntime interface {
 	Gateway
 	IMFileSender
+	IMImageSender
 	Client() *lark.Client
 	SetStateHook(func(GatewayState, error))
 }

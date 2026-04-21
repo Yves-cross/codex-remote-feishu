@@ -132,6 +132,56 @@ func (c *MultiGatewayController) SendIMFile(ctx context.Context, req IMFileSendR
 	return result, nil
 }
 
+func (c *MultiGatewayController) SendIMImage(ctx context.Context, req IMImageSendRequest) (IMImageSendResult, error) {
+	result := IMImageSendResult{
+		GatewayID:        normalizeGatewayID(req.GatewayID),
+		SurfaceSessionID: strings.TrimSpace(req.SurfaceSessionID),
+	}
+
+	c.mu.RLock()
+	workerCount := len(c.workers)
+	soleGatewayID := ""
+	if workerCount == 1 {
+		for gatewayID := range c.workers {
+			soleGatewayID = gatewayID
+		}
+	}
+	c.mu.RUnlock()
+
+	gatewayID := normalizeGatewayID(req.GatewayID)
+	if gatewayID == "" {
+		if workerCount != 1 {
+			return result, &IMImageSendError{
+				Code: IMImageSendErrorGatewayNotRunning,
+				Err:  fmt.Errorf("send image failed: missing gateway id"),
+			}
+		}
+		gatewayID = soleGatewayID
+	}
+
+	req.GatewayID = gatewayID
+	result.GatewayID = gatewayID
+
+	c.mu.RLock()
+	worker := c.workers[gatewayID]
+	c.mu.RUnlock()
+	if worker == nil || worker.runtime == nil {
+		return result, &IMImageSendError{
+			Code: IMImageSendErrorGatewayNotRunning,
+			Err:  fmt.Errorf("send image failed: gateway %s is not running", gatewayID),
+		}
+	}
+	result, err := worker.runtime.SendIMImage(ctx, req)
+	if err != nil {
+		c.updateWorkerError(gatewayID, err)
+		return result, err
+	}
+	if result.GatewayID == "" {
+		result.GatewayID = gatewayID
+	}
+	return result, nil
+}
+
 func (c *MultiGatewayController) ClearGrantedPermissionBlocks(gatewayID string, scopes []AppScopeStatus) {
 	gatewayID = normalizeGatewayID(gatewayID)
 	if gatewayID == "" {
