@@ -432,6 +432,7 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 	if len(initialOps) < 2 {
 		t.Fatalf("expected initial final reply to split, got %#v", initialOps)
 	}
+	close(previewer.secondGate)
 	for _, op := range initialOps {
 		if op.Kind != feishu.OperationSendCard {
 			t.Fatalf("expected initial split send operations, got %#v", initialOps)
@@ -449,7 +450,6 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 	if len(rewrittenOps) < 2 {
 		t.Fatalf("expected rewritten final body to remain split for primary-only patch path, got %#v", rewrittenOps)
 	}
-	close(previewer.secondGate)
 	select {
 	case <-previewer.secondDone:
 	case <-time.After(2 * time.Second):
