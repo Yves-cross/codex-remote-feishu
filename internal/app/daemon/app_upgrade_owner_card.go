@@ -172,7 +172,8 @@ func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) co
 	}
 }
 
-func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, summary, theme string, buttons []control.CommandCatalogButton) control.UIEvent {
+func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection, buttons []control.CommandCatalogButton, sealed bool) control.UIEvent {
+	interactive := len(buttons) > 0 && !sealed
 	view := control.FeishuCommandView{
 		Page: &control.FeishuCommandPageView{
 			Title:          strings.TrimSpace(title),
@@ -180,14 +181,11 @@ func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, t
 			TrackingKey:    strings.TrimSpace(flowTrackingKey(flow)),
 			ThemeKey:       strings.TrimSpace(theme),
 			Patchable:      true,
-			Interactive:    len(buttons) > 0,
+			BodySections:   append([]control.FeishuCardTextSection(nil), bodySections...),
+			NoticeSections: append([]control.FeishuCardTextSection(nil), noticeSections...),
+			Interactive:    interactive,
+			Sealed:         sealed,
 			RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
-			SummarySections: func() []control.FeishuCardTextSection {
-				if strings.TrimSpace(summary) == "" {
-					return nil
-				}
-				return []control.FeishuCardTextSection{{Lines: []string{strings.TrimSpace(summary)}}}
-			}(),
 		},
 	}
 	return control.UIEvent{
@@ -195,6 +193,27 @@ func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, t
 		SurfaceSessionID:  strings.TrimSpace(surfaceID),
 		FeishuCommandView: &view,
 	}
+}
+
+func upgradeOwnerContextSections(currentVersion, targetVersion, track string) []control.FeishuCardTextSection {
+	sections := make([]control.FeishuCardTextSection, 0, 3)
+	if currentVersion = strings.TrimSpace(currentVersion); currentVersion != "" {
+		sections = append(sections, commandCatalogTextSection("当前版本", currentVersion))
+	}
+	if targetVersion = strings.TrimSpace(targetVersion); targetVersion != "" {
+		sections = append(sections, commandCatalogTextSection("目标版本", targetVersion))
+	}
+	if track = strings.TrimSpace(track); track != "" {
+		sections = append(sections, commandCatalogTextSection("当前 track", track))
+	}
+	if len(sections) == 0 {
+		return nil
+	}
+	return sections
+}
+
+func upgradeOwnerNoticeSections(lines ...string) []control.FeishuCardTextSection {
+	return commandCatalogSummarySections(lines...)
 }
 
 func flowMessageID(flow *upgradeOwnerCardFlowRecord) string {
@@ -212,43 +231,43 @@ func flowTrackingKey(flow *upgradeOwnerCardFlowRecord) string {
 }
 
 func upgradeOwnerCheckingEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) control.UIEvent {
-	summary := fmt.Sprintf(
-		"正在按 %s track 检查最新版本。\n当前版本：%s",
-		firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"),
+	track := firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown")
+	bodySections := upgradeOwnerContextSections(
 		firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown"),
+		"",
+		track,
 	)
-	return upgradeOwnerCardEvent(surfaceID, flow, "正在检查升级", summary, "progress", nil)
+	noticeSections := upgradeOwnerNoticeSections(fmt.Sprintf("正在按 %s track 检查最新版本。", track))
+	return upgradeOwnerCardEvent(surfaceID, flow, "正在检查升级", "progress", bodySections, noticeSections, nil, false)
 }
 
 func upgradeOwnerConfirmEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) control.UIEvent {
 	targetVersion := firstNonEmpty(strings.TrimSpace(flow.TargetVersion), pendingTargetVersion(stateValue.PendingUpgrade), strings.TrimSpace(stateValue.LastKnownLatestVersion), "unknown")
 	currentVersion := firstNonEmpty(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(stateValue.CurrentVersion), "unknown")
-	summary := fmt.Sprintf(
-		"当前版本：%s\n目标版本：%s\n当前 track：%s\n\n确认后会开始下载并准备升级。执行期间普通输入会暂停，直到完成或取消。",
-		currentVersion,
-		targetVersion,
-		firstNonEmpty(strings.TrimSpace(string(flow.Track)), strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"),
-	)
-	return upgradeOwnerCardEvent(surfaceID, flow, "发现可升级版本", summary, "approval", []control.CommandCatalogButton{
+	track := firstNonEmpty(strings.TrimSpace(string(flow.Track)), strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown")
+	bodySections := upgradeOwnerContextSections(currentVersion, targetVersion, track)
+	noticeSections := upgradeOwnerNoticeSections("确认后会开始下载并准备升级。执行期间普通输入会暂停，直到完成或取消。")
+	return upgradeOwnerCardEvent(surfaceID, flow, "发现可升级版本", "approval", bodySections, noticeSections, []control.CommandCatalogButton{
 		upgradeOwnerButton("确认升级", flow.FlowID, upgradeOwnerActionConfirm, "primary", false),
 		upgradeOwnerButton("取消", flow.FlowID, upgradeOwnerActionCancel, "default", false),
-	})
+	}, false)
 }
 
 func upgradeOwnerRunningEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, detail string, canCancel bool) control.UIEvent {
 	targetVersion := firstNonEmpty(strings.TrimSpace(flow.TargetVersion), "unknown")
-	summary := fmt.Sprintf("目标版本：%s\n%s\n\n普通输入已暂停，请等待完成。", targetVersion, strings.TrimSpace(detail))
+	bodySections := upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), targetVersion, strings.TrimSpace(string(flow.Track)))
+	noticeSections := upgradeOwnerNoticeSections(strings.TrimSpace(detail), "普通输入已暂停，请等待完成。")
 	var buttons []control.CommandCatalogButton
 	if canCancel {
 		buttons = []control.CommandCatalogButton{
 			upgradeOwnerButton("取消升级", flow.FlowID, upgradeOwnerActionCancel, "default", false),
 		}
 	}
-	return upgradeOwnerCardEvent(surfaceID, flow, title, summary, "progress", buttons)
+	return upgradeOwnerCardEvent(surfaceID, flow, title, "progress", bodySections, noticeSections, buttons, false)
 }
 
-func upgradeOwnerTerminalEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, summary, theme string, buttons []control.CommandCatalogButton) control.UIEvent {
-	return upgradeOwnerCardEvent(surfaceID, flow, title, summary, theme, buttons)
+func upgradeOwnerTerminalEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection) control.UIEvent {
+	return upgradeOwnerCardEvent(surfaceID, flow, title, theme, bodySections, noticeSections, nil, true)
 }
 
 func pendingTargetVersion(pending *install.PendingUpgrade) string {
@@ -420,9 +439,14 @@ func (a *App) cancelUpgradeOwnerFlowLocked(command control.DaemonCommand) []cont
 			stateValue.PendingUpgrade = nil
 			_ = a.writeUpgradeStateLocked(stateValue)
 		}
-		event := upgradeOwnerTerminalEvent(command.SurfaceSessionID, flow, "升级已取消", "已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。", "info", []control.CommandCatalogButton{
-			runCommandButton("查看状态", "/upgrade", "", false),
-		})
+		event := upgradeOwnerTerminalEvent(
+			command.SurfaceSessionID,
+			flow,
+			"升级已取消",
+			"info",
+			upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(flow.TargetVersion), strings.TrimSpace(string(flow.Track))),
+			upgradeOwnerNoticeSections("已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。"),
+		)
 		a.clearUpgradeOwnerFlowLocked()
 		return []control.UIEvent{event}
 	case upgradeOwnerFlowStageRunning:
@@ -462,10 +486,9 @@ func (a *App) finishUpgradeOwnerFlowLatestLocked(surfaceID, flowID string, state
 		return nil
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageCompleted)
-	summary := fmt.Sprintf("当前已经是 %s track 的最新版本 %s。", firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"), firstNonEmpty(strings.TrimSpace(latestVersion), "unknown"))
-	event := upgradeOwnerTerminalEvent(surfaceID, flow, "已是最新版本", summary, "success", []control.CommandCatalogButton{
-		runCommandButton("查看状态", "/upgrade", "", false),
-	})
+	bodySections := upgradeOwnerContextSections(strings.TrimSpace(stateValue.CurrentVersion), "", firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"))
+	noticeSections := upgradeOwnerNoticeSections(fmt.Sprintf("当前已经是 %s track 的最新版本 %s。", firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"), firstNonEmpty(strings.TrimSpace(latestVersion), "unknown")))
+	event := upgradeOwnerTerminalEvent(surfaceID, flow, "已是最新版本", "success", bodySections, noticeSections)
 	a.clearUpgradeOwnerFlowLocked()
 	return []control.UIEvent{event}
 }
@@ -476,9 +499,14 @@ func (a *App) finishUpgradeOwnerFlowFailureLocked(surfaceID, flowID, text string
 		return nil
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageFailed)
-	event := upgradeOwnerTerminalEvent(surfaceID, flow, "升级失败", strings.TrimSpace(text), "error", []control.CommandCatalogButton{
-		runCommandButton("查看状态", "/upgrade", "", false),
-	})
+	event := upgradeOwnerTerminalEvent(
+		surfaceID,
+		flow,
+		"升级失败",
+		"error",
+		upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(flow.TargetVersion), strings.TrimSpace(string(flow.Track))),
+		upgradeOwnerNoticeSections(strings.TrimSpace(text)),
+	)
 	a.clearUpgradeOwnerFlowLocked()
 	return []control.UIEvent{event}
 }
@@ -489,9 +517,14 @@ func (a *App) finishUpgradeOwnerFlowCancelledLocked(surfaceID, flowID string) []
 		return nil
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageCancelled)
-	event := upgradeOwnerTerminalEvent(surfaceID, flow, "升级已取消", "已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。", "info", []control.CommandCatalogButton{
-		runCommandButton("查看状态", "/upgrade", "", false),
-	})
+	event := upgradeOwnerTerminalEvent(
+		surfaceID,
+		flow,
+		"升级已取消",
+		"info",
+		upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(flow.TargetVersion), strings.TrimSpace(string(flow.Track))),
+		upgradeOwnerNoticeSections("已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。"),
+	)
 	a.clearUpgradeOwnerFlowLocked()
 	return []control.UIEvent{event}
 }
@@ -512,7 +545,14 @@ func (a *App) sealUpgradeOwnerFlowRestartingLocked(surfaceID, flowID string) []c
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageRestarting)
 	return []control.UIEvent{
-		upgradeOwnerTerminalEvent(surfaceID, flow, "正在重启", "升级准备完成，服务正在重启。恢复后会回到默认交互状态。", "progress", nil),
+		upgradeOwnerTerminalEvent(
+			surfaceID,
+			flow,
+			"正在重启",
+			"progress",
+			upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(flow.TargetVersion), strings.TrimSpace(string(flow.Track))),
+			upgradeOwnerNoticeSections("升级准备完成，服务正在重启。恢复后会回到默认交互状态。"),
+		),
 	}
 }
 

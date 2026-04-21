@@ -33,11 +33,12 @@ func BuildFeishuCommandConfigCatalog(view FeishuCommandConfigView) FeishuDirectC
 
 func modeCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandMode)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
-	return commandConfigCatalog(def, summarySections, []CommandCatalogSection{{
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
 		Title: "立即切换",
 		Entries: []CommandCatalogEntry{{
 			Buttons: fixedChoiceButtonsFromOptions(def.Options, strings.TrimSpace(view.CurrentValue), "normal"),
@@ -47,11 +48,12 @@ func modeCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirect
 
 func autoContinueCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandAutoContinue)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
-	return commandConfigCatalog(def, summarySections, []CommandCatalogSection{{
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
 		Title: "立即切换",
 		Entries: []CommandCatalogEntry{{
 			Buttons: fixedChoiceButtonsFromOptions(def.Options, strings.TrimSpace(view.CurrentValue), "on"),
@@ -61,14 +63,15 @@ func autoContinueCatalogFromCommandConfigView(view FeishuCommandConfigView) Feis
 
 func reasoningCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandReasoning)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.RequiresAttachment {
 		return BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
-	return commandConfigCatalog(def, summarySections, []CommandCatalogSection{{
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
 		Title: "立即应用",
 		Entries: []CommandCatalogEntry{{
 			Buttons: choiceButtonsFromOptions(def.Options, strings.TrimSpace(view.OverrideValue), ""),
@@ -78,14 +81,15 @@ func reasoningCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuD
 
 func accessCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandAccess)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.RequiresAttachment {
 		return BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
-	return commandConfigCatalog(def, summarySections, []CommandCatalogSection{{
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
 		Title: "立即应用",
 		Entries: []CommandCatalogEntry{{
 			Buttons: choiceButtonsFromOptions(def.Options, strings.TrimSpace(view.OverrideValue), ""),
@@ -95,12 +99,13 @@ func accessCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDire
 
 func modelCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandModel)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.RequiresAttachment {
 		return BuildFeishuAttachmentRequiredCatalog(def, view)
 	}
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
 	sections := []CommandCatalogSection{{
 		Title: "常见模型",
@@ -118,16 +123,17 @@ func modelCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirec
 		Title:   "手动输入",
 		Entries: []CommandCatalogEntry{manualEntry},
 	})
-	return commandConfigCatalog(def, summarySections, sections)
+	return commandConfigCatalog(def, bodySections, noticeSections, sections)
 }
 
 func verboseCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDirectCommandCatalog {
 	def, _ := FeishuCommandDefinitionByID(FeishuCommandVerbose)
-	summarySections := BuildFeishuCommandConfigSummarySections(def, view)
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	if view.Sealed {
-		return sealedCommandCatalogForDefinition(def, summarySections)
+		return sealedCommandCatalogForDefinition(def, bodySections, noticeSections)
 	}
-	return commandConfigCatalog(def, summarySections, []CommandCatalogSection{{
+	return commandConfigCatalog(def, bodySections, noticeSections, []CommandCatalogSection{{
 		Title: "立即切换",
 		Entries: []CommandCatalogEntry{{
 			Buttons: fixedChoiceButtonsFromOptions(def.Options, strings.TrimSpace(view.CurrentValue), "normal"),
@@ -135,11 +141,12 @@ func verboseCatalogFromCommandConfigView(view FeishuCommandConfigView) FeishuDir
 	}})
 }
 
-func commandConfigCatalog(def FeishuCommandDefinition, summarySections []FeishuCardTextSection, sections []CommandCatalogSection) FeishuDirectCommandCatalog {
+func commandConfigCatalog(def FeishuCommandDefinition, bodySections, noticeSections []FeishuCardTextSection, sections []CommandCatalogSection) FeishuDirectCommandCatalog {
 	return FeishuDirectCommandCatalog{
 		Title:           def.Title,
-		SummarySections: append([]FeishuCardTextSection(nil), summarySections...),
-		BodySections:    append([]FeishuCardTextSection(nil), summarySections...),
+		SummarySections: append([]FeishuCardTextSection(nil), bodySections...),
+		BodySections:    append([]FeishuCardTextSection(nil), bodySections...),
+		NoticeSections:  append([]FeishuCardTextSection(nil), noticeSections...),
 		Interactive:     true,
 		DisplayStyle:    CommandCatalogDisplayCompactButtons,
 		Breadcrumbs:     FeishuCommandBreadcrumbs(def.GroupID, def.Title),
@@ -148,11 +155,12 @@ func commandConfigCatalog(def FeishuCommandDefinition, summarySections []FeishuC
 	}
 }
 
-func sealedCommandCatalogForDefinition(def FeishuCommandDefinition, summarySections []FeishuCardTextSection) FeishuDirectCommandCatalog {
+func sealedCommandCatalogForDefinition(def FeishuCommandDefinition, bodySections, noticeSections []FeishuCardTextSection) FeishuDirectCommandCatalog {
 	return FeishuDirectCommandCatalog{
 		Title:           def.Title,
-		SummarySections: append([]FeishuCardTextSection(nil), summarySections...),
-		BodySections:    append([]FeishuCardTextSection(nil), summarySections...),
+		SummarySections: append([]FeishuCardTextSection(nil), bodySections...),
+		BodySections:    append([]FeishuCardTextSection(nil), bodySections...),
+		NoticeSections:  append([]FeishuCardTextSection(nil), noticeSections...),
 		Interactive:     false,
 		Sealed:          true,
 		DisplayStyle:    CommandCatalogDisplayCompactButtons,

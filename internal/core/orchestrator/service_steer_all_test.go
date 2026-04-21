@@ -45,6 +45,9 @@ func TestSteerAllMenuActionNoEligibleQueueSealsCurrentCard(t *testing.T) {
 	if catalog.MessageID != "om-menu-steer-1" || catalog.Title != "没有可并入的排队输入" || catalog.ThemeKey != "system" {
 		t.Fatalf("unexpected menu noop owner card: %#v", catalog)
 	}
+	if !catalog.Sealed || len(catalog.NoticeSections) != 1 {
+		t.Fatalf("expected menu noop owner card to seal with a notice section, got %#v", catalog)
+	}
 }
 
 func TestSteerAllCommandDispatchesSingleSteerWithAllEligibleQueuedInputs(t *testing.T) {
@@ -142,6 +145,9 @@ func TestSteerAllMenuActionAcceptedPatchesSameCard(t *testing.T) {
 	if requested.MessageID != "om-menu-steer-2" || requested.Title != "正在并入排队输入" || requested.ThemeKey != "progress" {
 		t.Fatalf("unexpected requested owner card: %#v", requested)
 	}
+	if requested.Sealed || len(requested.NoticeSections) != 1 {
+		t.Fatalf("expected requested owner card to stay open with a notice section, got %#v", requested)
+	}
 	binding := svc.turns.pendingSteers["queue-2"]
 	if binding == nil || binding.OwnerCardMessageID != "om-menu-steer-2" {
 		t.Fatalf("expected owner-card message id to persist on pending steer, got %#v", binding)
@@ -155,6 +161,9 @@ func TestSteerAllMenuActionAcceptedPatchesSameCard(t *testing.T) {
 	completed := commandCatalogFromEvent(t, accepted[0])
 	if completed.MessageID != "om-menu-steer-2" || completed.Title != "已并入排队输入" || completed.ThemeKey != "success" {
 		t.Fatalf("unexpected completed owner card: %#v", completed)
+	}
+	if !completed.Sealed || len(completed.NoticeSections) != 1 {
+		t.Fatalf("expected completed owner card to seal with a notice section, got %#v", completed)
 	}
 	if accepted[1].TimelineText == nil || accepted[1].TimelineText.Type != control.TimelineTextSteerUserSupplement || accepted[1].TimelineText.Text != "用户补充：补充信息一\n\n补充信息二" {
 		t.Fatalf("unexpected steer-all menu supplement event: %#v", accepted[1])
@@ -222,6 +231,9 @@ func TestSteerAllMenuActionRejectedPatchesSameCard(t *testing.T) {
 	failed := commandCatalogFromEvent(t, rejected[0])
 	if failed.MessageID != "om-menu-steer-3" || failed.Title != "并入失败" || failed.ThemeKey != "error" {
 		t.Fatalf("unexpected failed owner card: %#v", failed)
+	}
+	if !failed.Sealed || len(failed.NoticeSections) != 1 {
+		t.Fatalf("expected failed owner card to seal with a notice section, got %#v", failed)
 	}
 	if rejected[1].Notice == nil || rejected[1].Notice.Code != "steer_failed" {
 		t.Fatalf("expected steer_failed notice after owner-card failure, got %#v", rejected)

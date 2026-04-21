@@ -45,9 +45,13 @@ func BuildFeishuCommandMenuGroupCatalog(groupID, productMode, menuStage string) 
 }
 
 func BuildFeishuAttachmentRequiredCatalog(def FeishuCommandDefinition, view FeishuCommandConfigView) FeishuDirectCommandCatalog {
+	bodySections := BuildFeishuCommandConfigBodySections(def, view)
+	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
 	return FeishuDirectCommandCatalog{
 		Title:           strings.TrimSpace(def.Title),
-		SummarySections: BuildFeishuCommandConfigSummarySections(def, view),
+		SummarySections: append([]FeishuCardTextSection(nil), bodySections...),
+		BodySections:    append([]FeishuCardTextSection(nil), bodySections...),
+		NoticeSections:  append([]FeishuCardTextSection(nil), noticeSections...),
 		Interactive:     true,
 		DisplayStyle:    CommandCatalogDisplayCompactButtons,
 		Breadcrumbs:     FeishuCommandBreadcrumbs(def.GroupID, def.Title),

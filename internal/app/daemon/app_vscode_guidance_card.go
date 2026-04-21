@@ -201,19 +201,20 @@ func isVSCodeMigrationFlowNotice(notice *control.Notice) bool {
 }
 
 func buildVSCodeMigrationPageView(flow *vscodeMigrationFlowRecord, inlineReplace bool, title string, summary []string, statusText, theme string, buttons []control.CommandCatalogButton) control.FeishuCommandPageView {
+	interactive := len(buttons) > 0
 	view := control.FeishuCommandPageView{
-		CommandID:       control.FeishuCommandVSCodeMigrate,
-		Title:           strings.TrimSpace(title),
-		ThemeKey:        strings.TrimSpace(theme),
-		Patchable:       true,
-		Breadcrumbs:     control.FeishuCommandBreadcrumbsForCommand(control.FeishuCommandVSCodeMigrate),
-		SummarySections: commandCatalogSummarySections(summary...),
-		StatusKind:      statusKindFromThemeKey(theme),
-		StatusText:      strings.TrimSpace(statusText),
-		Interactive:     len(buttons) > 0,
-		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
+		CommandID:      control.FeishuCommandVSCodeMigrate,
+		Title:          strings.TrimSpace(title),
+		ThemeKey:       strings.TrimSpace(theme),
+		Patchable:      true,
+		Breadcrumbs:    control.FeishuCommandBreadcrumbsForCommand(control.FeishuCommandVSCodeMigrate),
+		BodySections:   commandCatalogSummarySections(summary...),
+		NoticeSections: vscodeMigrationNoticeSections(statusText, theme),
+		Interactive:    interactive,
+		Sealed:         !interactive,
+		DisplayStyle:   control.CommandCatalogDisplayCompactButtons,
 	}
-	if len(buttons) > 0 {
+	if interactive {
 		view.Sections = []control.CommandCatalogSection{{
 			Title: "下一步",
 			Entries: []control.CommandCatalogEntry{{
@@ -230,6 +231,18 @@ func buildVSCodeMigrationPageView(flow *vscodeMigrationFlowRecord, inlineReplace
 	}
 	view.TrackingKey = strings.TrimSpace(flow.FlowID)
 	return view
+}
+
+func vscodeMigrationNoticeSections(statusText, theme string) []control.FeishuCardTextSection {
+	statusText = strings.TrimSpace(statusText)
+	if statusText == "" {
+		return nil
+	}
+	label := "说明"
+	if statusKindFromThemeKey(theme) == "error" {
+		label = "错误"
+	}
+	return []control.FeishuCardTextSection{commandCatalogTextSection(label, statusText)}
 }
 
 func statusKindFromThemeKey(theme string) string {
@@ -284,8 +297,8 @@ func vscodeMigrationNoticeEvent(surfaceID string, flow *vscodeMigrationFlowRecor
 		flow,
 		inlineReplace,
 		firstNonEmpty(strings.TrimSpace(notice.Title), "VS Code 迁移"),
-		[]string{strings.TrimSpace(notice.Text)},
-		"",
+		nil,
+		strings.TrimSpace(notice.Text),
 		vscodeMigrationThemeForNotice(notice),
 		vscodeMigrationButtonsForNotice(notice),
 	)

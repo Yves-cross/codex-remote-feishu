@@ -332,6 +332,42 @@ func TestDaemonVSCodeMigrateCommandOpensOwnerFlowAndAppliesManagedShim(t *testin
 	}
 }
 
+func TestBuildVSCodeMigrationPageViewUsesBodyNoticeAndSealedContract(t *testing.T) {
+	flow := &vscodeMigrationFlowRecord{
+		FlowID:    "flow-1",
+		MessageID: "om-vscode-1",
+	}
+
+	interactive := buildVSCodeMigrationPageView(
+		flow,
+		false,
+		"VS Code 接入需要迁移",
+		[]string{"检测到旧版 settings 覆盖。"},
+		"迁移后会重新接入当前 surface。",
+		"approval",
+		[]control.CommandCatalogButton{vscodeMigrationOwnerButton("迁移并重新接入", flow.FlowID)},
+	)
+	if interactive.Sealed || !interactive.Interactive {
+		t.Fatalf("expected interactive migration page, got %#v", interactive)
+	}
+	if len(interactive.BodySections) != 1 || len(interactive.NoticeSections) != 1 {
+		t.Fatalf("expected migration page to split body and notice, got %#v", interactive)
+	}
+
+	sealed := buildVSCodeMigrationPageView(
+		flow,
+		false,
+		"仅 VS Code 模式可用",
+		nil,
+		"请先执行 /mode vscode。",
+		"error",
+		nil,
+	)
+	if !sealed.Sealed || sealed.Interactive || len(sealed.NoticeSections) != 1 {
+		t.Fatalf("expected terminal migration page to seal and keep notice, got %#v", sealed)
+	}
+}
+
 func TestHandleGatewayActionReplacesVSCodeMigrationCardWithResult(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

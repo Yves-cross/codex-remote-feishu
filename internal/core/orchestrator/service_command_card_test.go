@@ -38,6 +38,12 @@ func TestCardOwnedVerboseApplyReturnsSealedCommandCard(t *testing.T) {
 	if catalog.Interactive {
 		t.Fatalf("expected sealed card to be non-interactive, got %#v", catalog)
 	}
+	if !catalog.Sealed {
+		t.Fatalf("expected sealed catalog metadata, got %#v", catalog)
+	}
+	if len(catalog.BodySections) == 0 || len(catalog.NoticeSections) == 0 {
+		t.Fatalf("expected config card to keep body and notice areas separate, got %#v", catalog)
+	}
 	summaryText := commandCatalogSummaryText(catalog)
 	if !strings.Contains(summaryText, "已将当前飞书会话的前端详细程度切换为 quiet。") {
 		t.Fatalf("expected sealed summary to include success text, got %q", summaryText)
@@ -83,6 +89,9 @@ func TestCardOwnedModelInvalidInputStaysOnCard(t *testing.T) {
 	if !catalog.Interactive {
 		t.Fatalf("expected invalid input card to remain interactive, got %#v", catalog)
 	}
+	if len(catalog.BodySections) == 0 || len(catalog.NoticeSections) == 0 {
+		t.Fatalf("expected invalid input to preserve body + notice split, got %#v", catalog)
+	}
 	summaryText := commandCatalogSummaryText(catalog)
 	if !strings.Contains(summaryText, "推理强度建议使用") {
 		t.Fatalf("expected invalid input summary, got %q", summaryText)
@@ -116,6 +125,9 @@ func TestCardOwnedReasoningApplyWithoutAttachmentShowsRecoveryCard(t *testing.T)
 	catalog := commandCatalogFromEvent(t, events[0])
 	if !catalog.Interactive {
 		t.Fatalf("expected recovery card to remain interactive, got %#v", catalog)
+	}
+	if len(catalog.BodySections) == 0 {
+		t.Fatalf("expected recovery card to keep attachment guidance in body area, got %#v", catalog)
 	}
 	summaryText := commandCatalogSummaryText(catalog)
 	if !strings.Contains(summaryText, "您没有接管任何工作区") || !strings.Contains(summaryText, "还没接管目标") {

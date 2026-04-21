@@ -202,3 +202,58 @@ func TestUpgradeOwnerFlowBlocksOrdinaryTextInput(t *testing.T) {
 	}
 	t.Fatalf("timed out waiting for upgrade running gate notice, got %#v", gateway.snapshotOperations())
 }
+
+func TestUpgradeOwnerConfirmEventUsesBodyAndNoticeSections(t *testing.T) {
+	flow := &upgradeOwnerCardFlowRecord{
+		FlowID:         "upgrade-owner-1",
+		CurrentVersion: "v1.0.0",
+		TargetVersion:  "v1.1.0",
+		Track:          install.ReleaseTrackAlpha,
+	}
+
+	event := upgradeOwnerConfirmEvent("surface-1", flow, install.InstallState{
+		CurrentTrack:   install.ReleaseTrackAlpha,
+		CurrentVersion: "v1.0.0",
+	})
+	if event.FeishuCommandView == nil || event.FeishuCommandView.Page == nil {
+		t.Fatalf("expected command page event, got %#v", event)
+	}
+	page := event.FeishuCommandView.Page
+	if page.Sealed || !page.Interactive {
+		t.Fatalf("expected confirm page to stay interactive, got %#v", page)
+	}
+	if len(page.BodySections) < 3 {
+		t.Fatalf("expected confirm page to preserve upgrade context in body sections, got %#v", page.BodySections)
+	}
+	if len(page.NoticeSections) != 1 || !strings.Contains(strings.Join(page.NoticeSections[0].Lines, "\n"), "确认后会开始下载并准备升级") {
+		t.Fatalf("expected confirm page to place action warning in notice area, got %#v", page.NoticeSections)
+	}
+}
+
+func TestUpgradeOwnerTerminalEventSealsPageContract(t *testing.T) {
+	flow := &upgradeOwnerCardFlowRecord{
+		FlowID:         "upgrade-owner-2",
+		CurrentVersion: "v1.0.0",
+		TargetVersion:  "v1.1.0",
+		Track:          install.ReleaseTrackBeta,
+	}
+
+	event := upgradeOwnerTerminalEvent(
+		"surface-1",
+		flow,
+		"升级失败",
+		"error",
+		upgradeOwnerContextSections(flow.CurrentVersion, flow.TargetVersion, string(flow.Track)),
+		upgradeOwnerNoticeSections("下载失败，请稍后重试。"),
+	)
+	if event.FeishuCommandView == nil || event.FeishuCommandView.Page == nil {
+		t.Fatalf("expected command page event, got %#v", event)
+	}
+	page := event.FeishuCommandView.Page
+	if !page.Sealed || page.Interactive || len(page.RelatedButtons) != 0 {
+		t.Fatalf("expected terminal upgrade page to be sealed without footer actions, got %#v", page)
+	}
+	if len(page.BodySections) == 0 || len(page.NoticeSections) != 1 {
+		t.Fatalf("expected terminal upgrade page to keep context plus notice, got %#v", page)
+	}
+}

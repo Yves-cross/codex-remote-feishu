@@ -6,17 +6,26 @@ import "strings"
 // state into adapter-owned summary sections, so dynamic values no longer need
 // to pass through markdown summary strings.
 func BuildFeishuCommandConfigSummarySections(def FeishuCommandDefinition, view FeishuCommandConfigView) []FeishuCardTextSection {
+	return BuildFeishuCommandConfigBodySections(def, view)
+}
+
+func BuildFeishuCommandConfigBodySections(_ FeishuCommandDefinition, view FeishuCommandConfigView) []FeishuCardTextSection {
 	base := commandConfigBaseSummarySections(view)
-	sections := make([]FeishuCardTextSection, 0, len(base)+2)
-	if feedback, ok := commandConfigFeedbackSection(view); ok {
-		sections = append(sections, feedback)
-	}
+	sections := make([]FeishuCardTextSection, 0, len(base))
 	for _, section := range base {
 		normalized := section.Normalized()
 		if normalized.Label == "" && len(normalized.Lines) == 0 {
 			continue
 		}
 		sections = append(sections, normalized)
+	}
+	return sections
+}
+
+func BuildFeishuCommandConfigNoticeSections(def FeishuCommandDefinition, view FeishuCommandConfigView) []FeishuCardTextSection {
+	sections := make([]FeishuCardTextSection, 0, 2)
+	if feedback, ok := commandConfigFeedbackSection(view); ok {
+		sections = append(sections, feedback)
 	}
 	if view.Sealed {
 		if command := strings.TrimSpace(def.CanonicalSlash); command != "" {
@@ -25,6 +34,9 @@ func BuildFeishuCommandConfigSummarySections(def FeishuCommandDefinition, view F
 				Lines: []string{"如需再次调整，请重新发送 " + command + "。"},
 			})
 		}
+	}
+	if len(sections) == 0 {
+		return nil
 	}
 	return sections
 }

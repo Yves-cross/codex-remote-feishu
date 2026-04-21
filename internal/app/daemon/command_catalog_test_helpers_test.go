@@ -12,11 +12,22 @@ func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
 	if catalog == nil {
 		return ""
 	}
-	if len(catalog.SummarySections) == 0 {
+	sections := catalog.BodySections
+	if len(sections) == 0 {
+		sections = catalog.SummarySections
+	}
+	if len(sections) == 0 && len(catalog.NoticeSections) == 0 {
 		return strings.TrimSpace(catalog.Summary)
 	}
 	parts := []string{}
-	for _, section := range catalog.SummarySections {
+	for _, section := range sections {
+		normalized := section.Normalized()
+		if normalized.Label != "" {
+			parts = append(parts, normalized.Label)
+		}
+		parts = append(parts, normalized.Lines...)
+	}
+	for _, section := range catalog.NoticeSections {
 		normalized := section.Normalized()
 		if normalized.Label != "" {
 			parts = append(parts, normalized.Label)
@@ -50,6 +61,20 @@ func assertCatalogUsesPlainTextContracts(t *testing.T, catalog *control.FeishuDi
 		assertCatalogTextAvoidsFeishuMarkdown(t, "summary section label", normalized.Label)
 		for _, line := range normalized.Lines {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "summary section line", line)
+		}
+	}
+	for _, section := range catalog.BodySections {
+		normalized := section.Normalized()
+		assertCatalogTextAvoidsFeishuMarkdown(t, "body section label", normalized.Label)
+		for _, line := range normalized.Lines {
+			assertCatalogTextAvoidsFeishuMarkdown(t, "body section line", line)
+		}
+	}
+	for _, section := range catalog.NoticeSections {
+		normalized := section.Normalized()
+		assertCatalogTextAvoidsFeishuMarkdown(t, "notice section label", normalized.Label)
+		for _, line := range normalized.Lines {
+			assertCatalogTextAvoidsFeishuMarkdown(t, "notice section line", line)
 		}
 	}
 	for _, section := range catalog.Sections {
