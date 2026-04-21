@@ -417,10 +417,10 @@ func TestPrepareUpgradeHelperShimWritesEmbeddedShimAndSidecar(t *testing.T) {
 }
 
 func TestBuildDebugRootPageOnlyExposesAdminEntry(t *testing.T) {
-	catalog := control.BuildFeishuCommandPageCatalog(buildDebugRootPageView(install.InstallState{
+	catalog := buildDebugRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackBeta,
 		CurrentVersion: "v1.0.0",
-	}, false, "", "", ""))
+	}, false, "", "", "")
 	if !catalog.Interactive {
 		t.Fatalf("expected interactive debug catalog, got %#v", catalog)
 	}
@@ -441,10 +441,10 @@ func TestBuildDebugRootPageOnlyExposesAdminEntry(t *testing.T) {
 }
 
 func TestBuildUpgradeRootPageOnlyExposesUpgradeMenus(t *testing.T) {
-	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeRootPageView(install.InstallState{
+	catalog := buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
-	}, "", "", ""))
+	}, "", "", "")
 	if !catalog.Interactive {
 		t.Fatalf("expected interactive upgrade catalog, got %#v", catalog)
 	}
@@ -467,9 +467,9 @@ func TestBuildUpgradeRootPageOnlyExposesUpgradeMenus(t *testing.T) {
 }
 
 func TestBuildUpgradeTrackPageOnlyExposesTrackSwitching(t *testing.T) {
-	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeTrackPageView(install.InstallState{
+	catalog := buildUpgradeTrackPageView(install.InstallState{
 		CurrentTrack: install.ReleaseTrackProduction,
-	}))
+	})
 	assertCatalogUsesPlainTextContracts(t, &catalog)
 	if len(catalog.Sections) != 1 {
 		t.Fatalf("expected only the track switch section, got %#v", catalog.Sections)

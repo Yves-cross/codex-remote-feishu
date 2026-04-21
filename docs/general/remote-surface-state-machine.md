@@ -894,7 +894,7 @@ E3 Running
 7. `turn.steer` 不会占用 `ActiveQueueItemID`，它只复用当前已经存在的 active running turn。
 8. compact 当前不是普通 queue item，也不会占用 `ActiveQueueItemID`；它按 instance 级 `compactTurns` 单独跟踪 pending/running 状态。
 9. 显式 `/compact` 还会在当前 surface 建立一条 compact owner-card flow：
-   1. 首卡由 orchestrator 直接 append 一张 patchable `FeishuDirectCommandCatalog`
+   1. 首卡由 orchestrator 直接 append 一张 patchable `FeishuCommandPageView`
    2. 首次发送时靠 `TrackingKey` 回写 `message_id`
    3. 后续 running / terminal 都继续 patch 同一张卡
    4. 这条显式 owner-card 不受 verbosity 影响

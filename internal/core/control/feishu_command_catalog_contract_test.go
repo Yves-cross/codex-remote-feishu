@@ -8,10 +8,10 @@ import (
 func TestStaticCommandCatalogsUsePlainTextContracts(t *testing.T) {
 	cases := []struct {
 		name    string
-		catalog FeishuDirectCommandCatalog
+		catalog FeishuCommandPageView
 	}{
-		{name: "help", catalog: FeishuCommandHelpCatalog()},
-		{name: "menu", catalog: FeishuCommandMenuCatalog()},
+		{name: "help", catalog: FeishuCommandHelpPageView()},
+		{name: "menu", catalog: FeishuCommandMenuPageView()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -21,7 +21,7 @@ func TestStaticCommandCatalogsUsePlainTextContracts(t *testing.T) {
 }
 
 func TestDisplayCatalogBuilderUsesPlainTextContracts(t *testing.T) {
-	catalog := BuildFeishuCommandCatalogForDisplay(
+	catalog := BuildFeishuCommandDisplayPageView(
 		"Slash 命令帮助",
 		"当前展示 canonical 命令。",
 		false,
@@ -33,11 +33,11 @@ func TestDisplayCatalogBuilderUsesPlainTextContracts(t *testing.T) {
 
 func TestCommandViewCatalogBuildersUsePlainTextContracts(t *testing.T) {
 	t.Run("menu_home", func(t *testing.T) {
-		assertCommandCatalogUsesPlainTextContracts(t, BuildFeishuCommandMenuHomeCatalog())
+		assertCommandCatalogUsesPlainTextContracts(t, BuildFeishuCommandMenuHomePageView())
 	})
 
 	t.Run("menu_group", func(t *testing.T) {
-		assertCommandCatalogUsesPlainTextContracts(t, BuildFeishuCommandMenuGroupCatalog("current_work", "normal", "normal_working"))
+		assertCommandCatalogUsesPlainTextContracts(t, BuildFeishuCommandMenuGroupPageView("current_work", "normal", "normal_working"))
 	})
 
 	t.Run("attachment_required", func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestCommandViewCatalogBuildersUsePlainTextContracts(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected builtin command definition")
 		}
-		catalog := BuildFeishuAttachmentRequiredCatalog(def, FeishuCommandConfigView{
+		catalog := BuildFeishuAttachmentRequiredPageView(def, FeishuCommandConfigView{
 			CommandID:          def.ID,
 			RequiresAttachment: true,
 		})
@@ -56,19 +56,19 @@ func TestCommandViewCatalogBuildersUsePlainTextContracts(t *testing.T) {
 	})
 }
 
-func assertCommandCatalogUsesPlainTextContracts(t *testing.T, catalog FeishuDirectCommandCatalog) {
+func assertCommandCatalogUsesPlainTextContracts(t *testing.T, catalog FeishuCommandPageView) {
 	t.Helper()
-	assertCatalogTextAvoidsFeishuMarkdown(t, "summary", catalog.Summary)
+	normalizedPage := NormalizeFeishuCommandPageView(catalog)
 	for _, section := range catalog.SummarySections {
 		assertCardTextSectionUsesPlainText(t, section)
 	}
-	for _, section := range catalog.BodySections {
+	for _, section := range normalizedPage.BodySections {
 		assertCardTextSectionUsesPlainText(t, section)
 	}
-	for _, section := range catalog.NoticeSections {
+	for _, section := range normalizedPage.NoticeSections {
 		assertCardTextSectionUsesPlainText(t, section)
 	}
-	for _, section := range catalog.Sections {
+	for _, section := range normalizedPage.Sections {
 		for _, entry := range section.Entries {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "entry title", entry.Title)
 			assertCatalogTextAvoidsFeishuMarkdown(t, "entry description", entry.Description)

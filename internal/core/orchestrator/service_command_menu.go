@@ -15,10 +15,6 @@ const (
 	commandMenuStageVSCodeWorking commandMenuStage = commandMenuStage(control.FeishuCommandMenuStageVSCodeWorking)
 )
 
-func (s *Service) buildCommandMenuCatalog(surface *state.SurfaceConsoleRecord, raw string) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildCommandMenuView(surface, raw))
-}
-
 func parseCommandMenuView(raw string) string {
 	fields := strings.Fields(strings.TrimSpace(raw))
 	if len(fields) < 2 {
@@ -37,52 +33,16 @@ func (s *Service) commandMenuStage(surface *state.SurfaceConsoleRecord) commandM
 	return commandMenuStageNormalWorking
 }
 
-func (s *Service) buildCommandMenuHomeCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return control.BuildFeishuCommandMenuHomeCatalog()
-}
-
-func (s *Service) buildCommandHelpCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return control.BuildFeishuCommandCatalogForDisplay(
+func (s *Service) buildCommandHelpView(surface *state.SurfaceConsoleRecord) control.FeishuCommandView {
+	page := control.BuildFeishuCommandDisplayPageView(
 		"Slash 命令帮助",
 		"以下是当前主展示的 canonical slash command。历史 alias 仍可兼容，但不再作为新的主展示入口。",
 		false,
 		string(s.normalizeSurfaceProductMode(surface)),
 		"",
 	)
-}
-
-func (s *Service) buildCommandHelpView(surface *state.SurfaceConsoleRecord) control.FeishuCommandView {
-	catalog := s.buildCommandHelpCatalog(surface)
-	page := control.FeishuCommandPageViewFromCatalog(control.FeishuCommandHelp, catalog, nil, nil)
+	page.CommandID = control.FeishuCommandHelp
 	return control.FeishuCommandView{Page: &page}
-}
-
-func (s *Service) buildCommandMenuGroupCatalog(surface *state.SurfaceConsoleRecord, stage commandMenuStage, groupID string) control.FeishuDirectCommandCatalog {
-	return control.BuildFeishuCommandMenuGroupCatalog(groupID, string(s.normalizeSurfaceProductMode(surface)), string(stage))
-}
-
-func (s *Service) buildModeCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildModeCommandView(surface))
-}
-
-func (s *Service) buildAutoContinueCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildAutoContinueCommandView(surface))
-}
-
-func (s *Service) buildReasoningCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildReasoningCommandView(surface))
-}
-
-func (s *Service) buildAccessCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildAccessCommandView(surface))
-}
-
-func (s *Service) buildPlanCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildPlanCommandView(surface))
-}
-
-func (s *Service) buildModelCatalog(surface *state.SurfaceConsoleRecord) control.FeishuDirectCommandCatalog {
-	return s.commandCatalogFromView(surface, s.buildModelCommandView(surface))
 }
 
 func choiceCommandButton(label, commandText string, disabled bool, style string) control.CommandCatalogButton {

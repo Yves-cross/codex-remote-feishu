@@ -47,16 +47,53 @@ func FeishuCommandDefinitionsForGroup(groupID string) []FeishuCommandDefinition 
 	return defs
 }
 
-func FeishuCommandHelpCatalog() FeishuDirectCommandCatalog {
-	return buildFeishuCommandCatalog(
+func BuildFeishuCommandStaticPageView(title, summary string, interactive bool) FeishuCommandPageView {
+	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
+	for _, group := range feishuCommandGroups {
+		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
+		for _, spec := range feishuCommandSpecs {
+			def := runtimeFeishuCommandDefinition(spec)
+			if interactive && !def.ShowInMenu {
+				continue
+			}
+			if !interactive && !def.ShowInHelp {
+				continue
+			}
+			if interactive {
+				entries = append(entries, buildFeishuCommandCatalogEntry(def, catalogButtonLabel(def)))
+				continue
+			}
+			entries = append(entries, buildFeishuCommandCatalogEntry(def, ""))
+		}
+		if len(entries) == 0 {
+			continue
+		}
+		sections = append(sections, CommandCatalogSection{
+			Title:   group.Title,
+			Entries: entries,
+		})
+	}
+	view := FeishuCommandPageView{
+		Title:       title,
+		Interactive: interactive,
+		Sections:    sections,
+	}
+	if lines := splitFeishuCommandPageSummaryLines(summary); len(lines) != 0 {
+		view.SummarySections = []FeishuCardTextSection{{Lines: lines}}
+	}
+	return NormalizeFeishuCommandPageView(view)
+}
+
+func FeishuCommandHelpPageView() FeishuCommandPageView {
+	return BuildFeishuCommandStaticPageView(
 		"Slash 命令帮助",
 		"以下是当前主展示的 canonical slash command。历史 alias 仍可兼容，但不再作为新的主展示入口。",
 		false,
 	)
 }
 
-func FeishuCommandMenuCatalog() FeishuDirectCommandCatalog {
-	return buildFeishuCommandCatalog(
+func FeishuCommandMenuPageView() FeishuCommandPageView {
+	return BuildFeishuCommandStaticPageView(
 		"命令目录",
 		"这是同源的静态命令目录。真正的 `/menu` 首页会在 service 层按当前阶段动态重排。",
 		true,
@@ -87,43 +124,6 @@ func FeishuRecommendedMenus() []FeishuRecommendedMenu {
 		})
 	}
 	return menus
-}
-
-func buildFeishuCommandCatalog(title, summary string, interactive bool) FeishuDirectCommandCatalog {
-	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
-	for _, group := range feishuCommandGroups {
-		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
-		for _, spec := range feishuCommandSpecs {
-			def := runtimeFeishuCommandDefinition(spec)
-			if def.GroupID != group.ID {
-				continue
-			}
-			if interactive && !def.ShowInMenu {
-				continue
-			}
-			if !interactive && !def.ShowInHelp {
-				continue
-			}
-			if interactive {
-				entries = append(entries, buildFeishuCommandCatalogEntry(def, catalogButtonLabel(def)))
-				continue
-			}
-			entries = append(entries, buildFeishuCommandCatalogEntry(def, ""))
-		}
-		if len(entries) == 0 {
-			continue
-		}
-		sections = append(sections, CommandCatalogSection{
-			Title:   group.Title,
-			Entries: entries,
-		})
-	}
-	return FeishuDirectCommandCatalog{
-		Title:       title,
-		Summary:     summary,
-		Interactive: interactive,
-		Sections:    sections,
-	}
 }
 
 func catalogButtonLabel(def FeishuCommandDefinition) string {

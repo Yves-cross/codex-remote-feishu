@@ -2,8 +2,9 @@ package control
 
 import "strings"
 
-func BuildFeishuCommandMenuHomeCatalog() FeishuDirectCommandCatalog {
-	return FeishuDirectCommandCatalog{
+func BuildFeishuCommandMenuHomePageView() FeishuCommandPageView {
+	return FeishuCommandPageView{
+		CommandID:    FeishuCommandMenu,
 		Title:        "命令菜单",
 		Interactive:  true,
 		DisplayStyle: CommandCatalogDisplayCompactButtons,
@@ -14,10 +15,22 @@ func BuildFeishuCommandMenuHomeCatalog() FeishuDirectCommandCatalog {
 	}
 }
 
-func BuildFeishuCommandMenuGroupCatalog(groupID, productMode, menuStage string) FeishuDirectCommandCatalog {
+func BuildFeishuCommandMenuPageView(view FeishuCommandMenuView, productMode, menuStage string) FeishuCommandPageView {
+	groupID := strings.TrimSpace(view.GroupID)
+	if groupID == "" {
+		return BuildFeishuCommandMenuHomePageView()
+	}
+	stage := strings.TrimSpace(view.Stage)
+	if stage == "" {
+		stage = strings.TrimSpace(menuStage)
+	}
+	return BuildFeishuCommandMenuGroupPageView(groupID, productMode, stage)
+}
+
+func BuildFeishuCommandMenuGroupPageView(groupID, productMode, menuStage string) FeishuCommandPageView {
 	group, ok := FeishuCommandGroupByID(groupID)
 	if !ok {
-		return BuildFeishuCommandMenuHomeCatalog()
+		return BuildFeishuCommandMenuHomePageView()
 	}
 	entries := make([]CommandCatalogEntry, 0, 6)
 	for _, def := range FeishuCommandDefinitionsForGroup(groupID) {
@@ -27,7 +40,8 @@ func BuildFeishuCommandMenuGroupCatalog(groupID, productMode, menuStage string) 
 		}
 		entries = append(entries, buildFeishuCommandMenuEntry(def))
 	}
-	return FeishuDirectCommandCatalog{
+	return FeishuCommandPageView{
+		CommandID:    FeishuCommandMenu,
 		Title:        "命令菜单",
 		Interactive:  true,
 		DisplayStyle: CommandCatalogDisplayCompactButtons,
@@ -44,10 +58,11 @@ func BuildFeishuCommandMenuGroupCatalog(groupID, productMode, menuStage string) 
 	}
 }
 
-func BuildFeishuAttachmentRequiredCatalog(def FeishuCommandDefinition, view FeishuCommandConfigView) FeishuDirectCommandCatalog {
+func BuildFeishuAttachmentRequiredPageView(def FeishuCommandDefinition, view FeishuCommandConfigView) FeishuCommandPageView {
 	bodySections := BuildFeishuCommandConfigBodySections(def, view)
 	noticeSections := BuildFeishuCommandConfigNoticeSections(def, view)
-	return FeishuDirectCommandCatalog{
+	return NormalizeFeishuCommandPageView(FeishuCommandPageView{
+		CommandID:       strings.TrimSpace(def.ID),
 		Title:           strings.TrimSpace(def.Title),
 		SummarySections: append([]FeishuCardTextSection(nil), bodySections...),
 		BodySections:    append([]FeishuCardTextSection(nil), bodySections...),
@@ -60,7 +75,7 @@ func BuildFeishuAttachmentRequiredCatalog(def FeishuCommandDefinition, view Feis
 			Entries: buildFeishuRecoveryEntries(),
 		}},
 		RelatedButtons: FeishuCommandBackButtons(def.GroupID),
-	}
+	})
 }
 
 func FeishuCommandBreadcrumbs(groupID, title string) []CommandCatalogBreadcrumb {

@@ -6,26 +6,27 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func commandCatalogBody(catalog control.FeishuDirectCommandCatalog) string {
+func commandPageBody(view control.FeishuCommandPageView) string {
 	return ""
 }
 
-func commandCatalogElements(catalog control.FeishuDirectCommandCatalog, daemonLifecycleID string) []map[string]any {
-	elements := make([]map[string]any, 0, len(catalog.Sections)*3+len(catalog.SummarySections)*2+len(catalog.NoticeSections)*2+3)
-	if breadcrumb := commandCatalogBreadcrumbMarkdown(catalog.Breadcrumbs); breadcrumb != "" {
+func commandPageElements(view control.FeishuCommandPageView, daemonLifecycleID string) []map[string]any {
+	view = control.NormalizeFeishuCommandPageView(view)
+	elements := make([]map[string]any, 0, len(view.Sections)*3+len(view.SummarySections)*2+len(view.NoticeSections)*2+3)
+	if breadcrumb := commandCatalogBreadcrumbMarkdown(view.Breadcrumbs); breadcrumb != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
 			"content": breadcrumb,
 		})
 	}
-	bodySections := commandCatalogBodySections(catalog)
+	bodySections := commandPageBodySections(view)
 	if len(bodySections) != 0 {
 		elements = appendCardTextSections(elements, bodySections)
 	} else {
-		elements = appendCardTextSections(elements, commandCatalogSummaryFallbackSections(catalog.Summary))
+		elements = appendCardTextSections(elements, cloneNormalizedCardSections(view.SummarySections))
 	}
 	hasBusinessContent := len(bodySections) != 0
-	for _, section := range catalog.Sections {
+	for _, section := range view.Sections {
 		title := strings.TrimSpace(section.Title)
 		if title != "" {
 			elements = append(elements, map[string]any{
@@ -35,7 +36,7 @@ func commandCatalogElements(catalog control.FeishuDirectCommandCatalog, daemonLi
 		}
 		for _, entry := range section.Entries {
 			renderedCompactButtons := false
-			if catalog.DisplayStyle == control.CommandCatalogDisplayCompactButtons && catalog.Interactive && len(entry.Buttons) > 0 {
+			if view.DisplayStyle == control.CommandCatalogDisplayCompactButtons && view.Interactive && len(entry.Buttons) > 0 {
 				elements = append(elements, commandCatalogCompactButtonElements(entry.Buttons, daemonLifecycleID)...)
 				renderedCompactButtons = true
 				if entry.Form == nil {
@@ -43,38 +44,35 @@ func commandCatalogElements(catalog control.FeishuDirectCommandCatalog, daemonLi
 				}
 			}
 			elements = appendCardTextSections(elements, commandCatalogEntryFallbackSections(entry))
-			if catalog.Interactive && len(entry.Buttons) > 0 && !renderedCompactButtons {
+			if view.Interactive && len(entry.Buttons) > 0 && !renderedCompactButtons {
 				if group := cardButtonGroupElement(commandCatalogButtons(entry.Buttons, daemonLifecycleID)); len(group) != 0 {
 					elements = append(elements, group)
 				}
 			}
-			if catalog.Interactive && entry.Form != nil {
+			if view.Interactive && entry.Form != nil {
 				elements = append(elements, commandCatalogFormElement(*entry.Form, daemonLifecycleID))
 			}
 		}
 		hasBusinessContent = true
 	}
-	if noticeSections := commandCatalogNoticeSections(catalog); len(noticeSections) != 0 {
+	if noticeSections := commandPageNoticeSections(view); len(noticeSections) != 0 {
 		if hasBusinessContent {
 			elements = append(elements, cardDividerElement())
 		}
 		elements = appendCardTextSections(elements, noticeSections)
 	}
-	if len(catalog.RelatedButtons) > 0 {
-		elements = appendCardFooterButtonGroup(elements, commandCatalogButtons(catalog.RelatedButtons, daemonLifecycleID))
+	if len(view.RelatedButtons) > 0 {
+		elements = appendCardFooterButtonGroup(elements, commandCatalogButtons(view.RelatedButtons, daemonLifecycleID))
 	}
 	return elements
 }
 
-func commandCatalogBodySections(catalog control.FeishuDirectCommandCatalog) []control.FeishuCardTextSection {
-	if len(catalog.BodySections) != 0 {
-		return catalog.BodySections
-	}
-	return catalog.SummarySections
+func commandPageBodySections(view control.FeishuCommandPageView) []control.FeishuCardTextSection {
+	return control.BuildFeishuCommandPageBodySections(view)
 }
 
-func commandCatalogNoticeSections(catalog control.FeishuDirectCommandCatalog) []control.FeishuCardTextSection {
-	return catalog.NoticeSections
+func commandPageNoticeSections(view control.FeishuCommandPageView) []control.FeishuCardTextSection {
+	return control.BuildFeishuCommandPageNoticeSections(view)
 }
 
 func commandCatalogFormElement(form control.CommandCatalogForm, daemonLifecycleID string) map[string]any {
@@ -190,14 +188,11 @@ func commandCatalogCompactButtonElements(buttons []control.CommandCatalogButton,
 	return elements
 }
 
-func commandCatalogSummaryFallbackSections(summary string) []control.FeishuCardTextSection {
-	lines := splitCommandCatalogPlainTextLines(summary)
-	if len(lines) == 0 {
+func cloneNormalizedCardSections(sections []control.FeishuCardTextSection) []control.FeishuCardTextSection {
+	if len(sections) == 0 {
 		return nil
 	}
-	return []control.FeishuCardTextSection{{
-		Lines: lines,
-	}}
+	return append([]control.FeishuCardTextSection(nil), sections...)
 }
 
 func commandCatalogEntryFallbackSections(entry control.CommandCatalogEntry) []control.FeishuCardTextSection {

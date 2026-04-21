@@ -8,17 +8,12 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
+func catalogSummaryText(catalog *control.FeishuCommandPageView) string {
 	if catalog == nil {
 		return ""
 	}
-	sections := catalog.BodySections
-	if len(sections) == 0 {
-		sections = catalog.SummarySections
-	}
-	if len(sections) == 0 && len(catalog.NoticeSections) == 0 {
-		return strings.TrimSpace(catalog.Summary)
-	}
+	normalized := control.NormalizeFeishuCommandPageView(*catalog)
+	sections := control.BuildFeishuCommandPageBodySections(normalized)
 	parts := []string{}
 	for _, section := range sections {
 		normalized := section.Normalized()
@@ -27,7 +22,7 @@ func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
 		}
 		parts = append(parts, normalized.Lines...)
 	}
-	for _, section := range catalog.NoticeSections {
+	for _, section := range control.BuildFeishuCommandPageNoticeSections(normalized) {
 		normalized := section.Normalized()
 		if normalized.Label != "" {
 			parts = append(parts, normalized.Label)
@@ -37,12 +32,18 @@ func catalogSummaryText(catalog *control.FeishuDirectCommandCatalog) string {
 	return strings.Join(parts, "\n")
 }
 
-func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectCommandCatalog {
+func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuCommandPageView {
 	t.Helper()
 	if event.FeishuCommandView != nil {
-		catalog, ok := feishu.FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
+		productMode := ""
+		menuStage := ""
+		if event.FeishuCommandContext != nil {
+			productMode = event.FeishuCommandContext.Surface.ProductMode
+			menuStage = event.FeishuCommandContext.MenuStage
+		}
+		catalog, ok := control.FeishuCommandPageViewFromView(*event.FeishuCommandView, productMode, menuStage)
 		if !ok {
-			t.Fatalf("expected command view to project into catalog, got %#v", event.FeishuCommandView)
+			t.Fatalf("expected command view to project into command page, got %#v", event.FeishuCommandView)
 		}
 		return &catalog
 	}
@@ -50,34 +51,34 @@ func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuDire
 	return nil
 }
 
-func assertCatalogUsesPlainTextContracts(t *testing.T, catalog *control.FeishuDirectCommandCatalog) {
+func assertCatalogUsesPlainTextContracts(t *testing.T, catalog *control.FeishuCommandPageView) {
 	t.Helper()
 	if catalog == nil {
 		t.Fatal("expected command catalog")
 	}
-	assertCatalogTextAvoidsFeishuMarkdown(t, "summary", catalog.Summary)
-	for _, section := range catalog.SummarySections {
+	normalizedPage := control.NormalizeFeishuCommandPageView(*catalog)
+	for _, section := range normalizedPage.SummarySections {
 		normalized := section.Normalized()
 		assertCatalogTextAvoidsFeishuMarkdown(t, "summary section label", normalized.Label)
 		for _, line := range normalized.Lines {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "summary section line", line)
 		}
 	}
-	for _, section := range catalog.BodySections {
+	for _, section := range normalizedPage.BodySections {
 		normalized := section.Normalized()
 		assertCatalogTextAvoidsFeishuMarkdown(t, "body section label", normalized.Label)
 		for _, line := range normalized.Lines {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "body section line", line)
 		}
 	}
-	for _, section := range catalog.NoticeSections {
+	for _, section := range normalizedPage.NoticeSections {
 		normalized := section.Normalized()
 		assertCatalogTextAvoidsFeishuMarkdown(t, "notice section label", normalized.Label)
 		for _, line := range normalized.Lines {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "notice section line", line)
 		}
 	}
-	for _, section := range catalog.Sections {
+	for _, section := range normalizedPage.Sections {
 		for _, entry := range section.Entries {
 			assertCatalogTextAvoidsFeishuMarkdown(t, "entry title", entry.Title)
 			assertCatalogTextAvoidsFeishuMarkdown(t, "entry description", entry.Description)
@@ -98,11 +99,11 @@ func assertCatalogTextAvoidsFeishuMarkdown(t *testing.T, label, text string) {
 	}
 }
 
-func catalogHasOpenURLButton(catalog *control.FeishuDirectCommandCatalog, label, openURL string) bool {
+func catalogHasOpenURLButton(catalog *control.FeishuCommandPageView, label, openURL string) bool {
 	if catalog == nil {
 		return false
 	}
-	for _, section := range catalog.Sections {
+	for _, section := range control.NormalizeFeishuCommandPageView(*catalog).Sections {
 		for _, entry := range section.Entries {
 			for _, button := range entry.Buttons {
 				if button.Kind == control.CommandCatalogButtonOpenURL &&

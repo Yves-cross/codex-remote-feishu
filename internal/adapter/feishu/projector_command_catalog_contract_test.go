@@ -10,9 +10,9 @@ import (
 func TestProjectCommandCatalogSummaryUsesPlainTextSections(t *testing.T) {
 	projector := NewProjector()
 	summary := "状态：`ok`\n下一步：[打开 Cron](https://example.com/cron)"
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:   "Cron",
-		Summary: summary,
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "Cron",
+		SummarySections: summarySections(summary),
 	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -37,7 +37,7 @@ func TestProjectCommandCatalogEntryUsesPlainTextSections(t *testing.T) {
 	desc := "说明 [link](https://example.com)"
 	example := "/do example"
 	want := title + "\n命令：" + command + "\n" + desc + "\n例如：" + example
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
 		Title: "测试目录",
 		Sections: []control.CommandCatalogSection{{
 			Title: "测试分组",

@@ -42,7 +42,7 @@ func TestUpgradeDefinitionRespectsShippingPolicy(t *testing.T) {
 func TestHelpCatalogReflectsShippingUpgradePolicy(t *testing.T) {
 	withBuildFlavorForControlTest(t, buildinfo.FlavorShipping)
 
-	catalog := FeishuCommandHelpCatalog()
+	catalog := FeishuCommandHelpPageView()
 	for _, section := range catalog.Sections {
 		for _, entry := range section.Entries {
 			if entry.Title != "升级" {
@@ -78,23 +78,23 @@ func TestVSCodeMigrateDisplayRespectsProductMode(t *testing.T) {
 		t.Fatalf("unexpected vscode migrate display projection: %#v", projected)
 	}
 
-	normalHelp := BuildFeishuCommandCatalogForDisplay("Slash 命令帮助", "", false, "normal", "")
+	normalHelp := BuildFeishuCommandDisplayPageView("Slash 命令帮助", "", false, "normal", "")
 	if catalogContainsCommand(normalHelp, "/vscode-migrate") {
 		t.Fatalf("expected normal help catalog to hide /vscode-migrate: %#v", normalHelp)
 	}
 
-	vscodeHelp := BuildFeishuCommandCatalogForDisplay("Slash 命令帮助", "", false, "vscode", "")
+	vscodeHelp := BuildFeishuCommandDisplayPageView("Slash 命令帮助", "", false, "vscode", "")
 	if !catalogContainsCommand(vscodeHelp, "/vscode-migrate") {
 		t.Fatalf("expected vscode help catalog to include /vscode-migrate: %#v", vscodeHelp)
 	}
 
-	normalMenu := BuildFeishuCommandMenuGroupCatalog(FeishuCommandGroupMaintenance, "normal", string(FeishuCommandMenuStageNormalWorking))
+	normalMenu := BuildFeishuCommandMenuGroupPageView(FeishuCommandGroupMaintenance, "normal", string(FeishuCommandMenuStageNormalWorking))
 	if catalogContainsCommand(normalMenu, "/vscode-migrate") {
 		t.Fatalf("expected normal maintenance menu to hide /vscode-migrate: %#v", normalMenu)
 	}
 }
 
-func catalogContainsCommand(catalog FeishuDirectCommandCatalog, command string) bool {
+func catalogContainsCommand(catalog FeishuCommandPageView, command string) bool {
 	for _, section := range catalog.Sections {
 		for _, entry := range section.Entries {
 			for _, current := range entry.Commands {

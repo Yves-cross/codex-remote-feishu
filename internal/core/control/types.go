@@ -441,26 +441,6 @@ type CommandCatalogSection struct {
 	Entries []CommandCatalogEntry
 }
 
-// FeishuDirectCommandCatalog is a retained renderer-facing card DTO for
-// daemon-owned command cards that still terminate in the catalog shape.
-type FeishuDirectCommandCatalog struct {
-	Title           string
-	Summary         string
-	MessageID       string
-	TrackingKey     string
-	ThemeKey        string
-	Patchable       bool
-	SummarySections []FeishuCardTextSection
-	BodySections    []FeishuCardTextSection
-	NoticeSections  []FeishuCardTextSection
-	Interactive     bool
-	Sealed          bool
-	DisplayStyle    CommandCatalogDisplayStyle
-	Breadcrumbs     []CommandCatalogBreadcrumb
-	Sections        []CommandCatalogSection
-	RelatedButtons  []CommandCatalogButton
-}
-
 type FileChangeSummaryEntry struct {
 	Path         string
 	MovePath     string

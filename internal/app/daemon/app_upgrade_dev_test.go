@@ -21,7 +21,7 @@ func TestParseUpgradeCommandTextRecognizesDev(t *testing.T) {
 }
 
 func TestBuildUpgradePromptCatalogUsesDevCommandForDevCandidate(t *testing.T) {
-	catalog := buildUpgradePromptCatalog(install.InstallState{
+	catalog := buildUpgradePromptPageView(install.InstallState{
 		CurrentVersion: "v1.0.0",
 		PendingUpgrade: &install.PendingUpgrade{
 			Source:        install.UpgradeSourceDev,
@@ -29,10 +29,7 @@ func TestBuildUpgradePromptCatalogUsesDevCommandForDevCandidate(t *testing.T) {
 			TargetSlot:    "dev-abc123",
 		},
 	})
-	if catalog == nil {
-		t.Fatal("expected prompt catalog")
-	}
-	assertCatalogUsesPlainTextContracts(t, catalog)
+	assertCatalogUsesPlainTextContracts(t, &catalog)
 	if catalog.Title != "发现开发版更新" {
 		t.Fatalf("title = %q, want 开发版更新", catalog.Title)
 	}
@@ -40,7 +37,7 @@ func TestBuildUpgradePromptCatalogUsesDevCommandForDevCandidate(t *testing.T) {
 	if got := entry.Buttons[0].CommandText; got != "/upgrade dev" {
 		t.Fatalf("confirm command = %q, want /upgrade dev", got)
 	}
-	summary := catalogSummaryText(catalog)
+	summary := catalogSummaryText(&catalog)
 	if !strings.Contains(summary, "再次发送 /upgrade dev") {
 		t.Fatalf("summary = %q, want /upgrade dev guidance", summary)
 	}

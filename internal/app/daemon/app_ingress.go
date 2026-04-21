@@ -420,7 +420,7 @@ func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu
 	if commandText == "" {
 		return nil
 	}
-	catalog := control.FeishuDirectCommandCatalog{
+	page := control.NormalizeFeishuCommandPageView(control.FeishuCommandPageView{
 		Title:           "命令已提交",
 		SummarySections: commandCatalogSummarySections(fmt.Sprintf("已执行 %s，结果会显示在下方。", commandText)),
 		Interactive:     true,
@@ -430,8 +430,7 @@ func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu
 			Kind:        control.CommandCatalogButtonRunCommand,
 			CommandText: "/menu",
 		}},
-	}
-	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
+	})
 	view := control.FeishuCommandView{Page: &page}
 	event := control.UIEvent{
 		Kind:              control.UIEventFeishuCommandView,

@@ -90,14 +90,14 @@ func notice(surface *state.SurfaceConsoleRecord, code, text string) []control.UI
 }
 
 func (s *Service) commandViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuCommandView) control.UIEvent {
-	catalog := s.commandCatalogFromView(surface, view)
+	page := s.commandPageFromView(surface, view)
 	return control.UIEvent{
 		Kind:                     control.UIEventFeishuCommandView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,
 		FeishuCommandView:        &view,
-		FeishuCommandContext:     s.buildFeishuCommandContextFromView(surface, view, catalog),
+		FeishuCommandContext:     s.buildFeishuCommandContextFromView(surface, view, page),
 	}
 }
 

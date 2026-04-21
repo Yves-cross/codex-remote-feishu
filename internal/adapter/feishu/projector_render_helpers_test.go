@@ -19,13 +19,28 @@ func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) control.UI
 	}
 }
 
-func commandCatalogEvent(catalog control.FeishuDirectCommandCatalog) control.UIEvent {
-	page := control.FeishuCommandPageViewFromCatalog("", catalog, catalog.Breadcrumbs, catalog.RelatedButtons)
+func commandCatalogEvent(catalog control.FeishuCommandPageView) control.UIEvent {
+	page := control.NormalizeFeishuCommandPageView(catalog)
 	view := control.FeishuCommandView{Page: &page}
 	return control.UIEvent{
 		Kind:              control.UIEventFeishuCommandView,
 		FeishuCommandView: &view,
 	}
+}
+
+func summarySections(summary string) []control.FeishuCardTextSection {
+	lines := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(summary), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return []control.FeishuCardTextSection{{Lines: lines}}
 }
 
 func requestPromptEvent(prompt control.FeishuRequestView) control.UIEvent {

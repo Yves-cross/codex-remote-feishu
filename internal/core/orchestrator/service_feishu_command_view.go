@@ -180,28 +180,16 @@ func (s *Service) applyCommandConfigCardState(base *control.FeishuCommandConfigV
 	return base
 }
 
-func (s *Service) commandCatalogFromView(surface *state.SurfaceConsoleRecord, view control.FeishuCommandView) control.FeishuDirectCommandCatalog {
-	switch {
-	case view.Menu != nil:
-		return s.commandMenuCatalogFromView(surface, *view.Menu)
-	case view.Config != nil:
-		return s.commandConfigCatalogFromView(*view.Config)
-	case view.Page != nil:
-		return control.BuildFeishuCommandPageCatalog(*view.Page)
-	default:
-		return control.FeishuDirectCommandCatalog{}
+func (s *Service) commandPageFromView(surface *state.SurfaceConsoleRecord, view control.FeishuCommandView) control.FeishuCommandPageView {
+	productMode := ""
+	stage := ""
+	if surface != nil {
+		productMode = string(s.normalizeSurfaceProductMode(surface))
+		stage = string(s.commandMenuStage(surface))
 	}
-}
-
-func (s *Service) commandMenuCatalogFromView(surface *state.SurfaceConsoleRecord, view control.FeishuCommandMenuView) control.FeishuDirectCommandCatalog {
-	stage := commandMenuStage(strings.TrimSpace(view.Stage))
-	groupID := strings.TrimSpace(view.GroupID)
-	if groupID == "" {
-		return s.buildCommandMenuHomeCatalog(surface)
+	page, ok := control.FeishuCommandPageViewFromView(view, productMode, stage)
+	if !ok {
+		return control.FeishuCommandPageView{}
 	}
-	return s.buildCommandMenuGroupCatalog(surface, stage, groupID)
-}
-
-func (s *Service) commandConfigCatalogFromView(view control.FeishuCommandConfigView) control.FeishuDirectCommandCatalog {
-	return control.BuildFeishuCommandConfigCatalog(view)
+	return page
 }

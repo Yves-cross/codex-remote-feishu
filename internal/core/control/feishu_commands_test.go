@@ -174,10 +174,10 @@ func TestParseFeishuTextActionRecognizesHistoryCommand(t *testing.T) {
 func TestFeishuCommandCatalogsHideKillInstanceFromVisibleEntries(t *testing.T) {
 	cases := []struct {
 		name    string
-		catalog FeishuDirectCommandCatalog
+		catalog FeishuCommandPageView
 	}{
-		{name: "help", catalog: FeishuCommandHelpCatalog()},
-		{name: "menu", catalog: FeishuCommandMenuCatalog()},
+		{name: "help", catalog: FeishuCommandHelpPageView()},
+		{name: "menu", catalog: FeishuCommandMenuPageView()},
 	}
 
 	for _, tc := range cases {
@@ -273,7 +273,7 @@ func TestFeishuRecommendedMenusStayInSuggestedOrder(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeAutoContinue(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -291,7 +291,7 @@ func TestFeishuCommandCatalogsIncludeAutoContinue(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeSendFile(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -309,7 +309,7 @@ func TestFeishuCommandCatalogsIncludeSendFile(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeMode(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -327,7 +327,7 @@ func TestFeishuCommandCatalogsIncludeMode(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeCron(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -345,7 +345,7 @@ func TestFeishuCommandCatalogsIncludeCron(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeVerbose(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -363,7 +363,7 @@ func TestFeishuCommandCatalogsIncludeVerbose(t *testing.T) {
 }
 
 func TestFeishuCommandCatalogsIncludeUpgrade(t *testing.T) {
-	for _, catalog := range []FeishuDirectCommandCatalog{FeishuCommandHelpCatalog(), FeishuCommandMenuCatalog()} {
+	for _, catalog := range []FeishuCommandPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
 		found := false
 		for _, section := range catalog.Sections {
 			for _, entry := range section.Entries {
@@ -381,7 +381,7 @@ func TestFeishuCommandCatalogsIncludeUpgrade(t *testing.T) {
 }
 
 func TestFeishuCommandHelpCatalogUsesCanonicalCommandsOnly(t *testing.T) {
-	catalog := FeishuCommandHelpCatalog()
+	catalog := FeishuCommandHelpPageView()
 	var commands []string
 	for _, section := range catalog.Sections {
 		for _, entry := range section.Entries {

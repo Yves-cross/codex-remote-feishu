@@ -200,29 +200,28 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 		if event.FeishuCommandView == nil {
 			return nil
 		}
-		projected, ok := FeishuDirectCommandCatalogFromView(*event.FeishuCommandView, event.FeishuCommandContext)
+		pageView, ok := commandPageViewFromView(*event.FeishuCommandView, event.FeishuCommandContext)
 		if !ok {
 			return nil
 		}
-		catalog := &projected
-		title := strings.TrimSpace(catalog.Title)
+		title := strings.TrimSpace(pageView.Title)
 		if title == "" {
 			title = "命令菜单"
 		}
-		body := commandCatalogBody(*catalog)
-		elements := commandCatalogElements(*catalog, event.DaemonLifecycleID)
-		theme := firstNonEmpty(strings.TrimSpace(catalog.ThemeKey), cardThemeInfo)
+		body := commandPageBody(pageView)
+		elements := commandPageElements(pageView, event.DaemonLifecycleID)
+		theme := firstNonEmpty(strings.TrimSpace(pageView.ThemeKey), cardThemeInfo)
 		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
-			MessageID:        strings.TrimSpace(catalog.MessageID),
+			MessageID:        strings.TrimSpace(pageView.MessageID),
 			CardTitle:        title,
 			CardBody:         body,
 			CardThemeKey:     theme,
 			CardElements:     elements,
-			CardUpdateMulti:  catalog.Patchable,
+			CardUpdateMulti:  pageView.Patchable,
 		}
 		if operation.MessageID != "" {
 			operation.Kind = OperationUpdateCard

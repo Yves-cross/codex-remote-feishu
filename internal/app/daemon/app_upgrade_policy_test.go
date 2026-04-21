@@ -23,10 +23,10 @@ func withBuildFlavorForDaemonTest(t *testing.T, flavor buildinfo.Flavor) {
 func TestBuildUpgradeStatusCatalogHidesShippingOnlyOptions(t *testing.T) {
 	withBuildFlavorForDaemonTest(t, buildinfo.FlavorShipping)
 
-	catalog := control.BuildFeishuCommandPageCatalog(buildUpgradeRootPageView(install.InstallState{
+	catalog := buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
-	}, "", "", ""))
+	}, "", "", "")
 	assertCatalogUsesPlainTextContracts(t, &catalog)
 	summary := catalogSummaryText(&catalog)
 	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 3 {

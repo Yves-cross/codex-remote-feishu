@@ -2,7 +2,7 @@ package control
 
 import "strings"
 
-func BuildFeishuCommandPageCatalog(view FeishuCommandPageView) FeishuDirectCommandCatalog {
+func NormalizeFeishuCommandPageView(view FeishuCommandPageView) FeishuCommandPageView {
 	def, _ := FeishuCommandDefinitionByID(strings.TrimSpace(view.CommandID))
 	title := strings.TrimSpace(view.Title)
 	if title == "" {
@@ -12,75 +12,52 @@ func BuildFeishuCommandPageCatalog(view FeishuCommandPageView) FeishuDirectComma
 	if displayStyle == "" {
 		displayStyle = CommandCatalogDisplayCompactButtons
 	}
-	breadcrumbs := append([]CommandCatalogBreadcrumb(nil), view.Breadcrumbs...)
+	breadcrumbs := cloneCommandBreadcrumbs(view.Breadcrumbs)
 	if len(breadcrumbs) == 0 && strings.TrimSpace(def.GroupID) != "" {
 		breadcrumbs = FeishuCommandBreadcrumbs(def.GroupID, title)
 	}
 	bodySections := BuildFeishuCommandPageBodySections(view)
 	noticeSections := BuildFeishuCommandPageNoticeSections(view)
-	sections := append([]CommandCatalogSection(nil), view.Sections...)
-	relatedButtons := append([]CommandCatalogButton(nil), view.RelatedButtons...)
+	sections := cloneCommandCatalogSections(view.Sections)
+	relatedButtons := cloneCommandCatalogButtons(view.RelatedButtons)
 	interactive := view.Interactive
 	if view.Sealed {
 		interactive = false
 		relatedButtons = nil
 	}
-	if len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" {
+	if len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" && !view.Sealed {
 		relatedButtons = FeishuCommandBackButtons(def.GroupID)
 	}
-	if view.Sealed {
-		relatedButtons = nil
-	}
-	return FeishuDirectCommandCatalog{
+	return FeishuCommandPageView{
+		CommandID:       strings.TrimSpace(view.CommandID),
 		Title:           title,
 		MessageID:       strings.TrimSpace(view.MessageID),
 		TrackingKey:     strings.TrimSpace(view.TrackingKey),
 		ThemeKey:        strings.TrimSpace(view.ThemeKey),
 		Patchable:       view.Patchable,
+		Breadcrumbs:     breadcrumbs,
 		SummarySections: cloneNormalizedFeishuCardSections(bodySections),
 		BodySections:    bodySections,
 		NoticeSections:  noticeSections,
 		Interactive:     interactive,
 		Sealed:          view.Sealed,
 		DisplayStyle:    displayStyle,
-		Breadcrumbs:     breadcrumbs,
 		Sections:        sections,
 		RelatedButtons:  relatedButtons,
 	}
 }
 
-func FeishuCommandPageViewFromCatalog(commandID string, catalog FeishuDirectCommandCatalog, breadcrumbs []CommandCatalogBreadcrumb, relatedButtons []CommandCatalogButton) FeishuCommandPageView {
-	view := FeishuCommandPageView{
-		CommandID:       strings.TrimSpace(commandID),
-		Title:           strings.TrimSpace(catalog.Title),
-		MessageID:       strings.TrimSpace(catalog.MessageID),
-		TrackingKey:     strings.TrimSpace(catalog.TrackingKey),
-		ThemeKey:        strings.TrimSpace(catalog.ThemeKey),
-		Patchable:       catalog.Patchable,
-		Breadcrumbs:     append([]CommandCatalogBreadcrumb(nil), breadcrumbs...),
-		SummarySections: cloneNormalizedFeishuCardSections(firstNonEmptyFeishuCardSections(catalog.BodySections, catalog.SummarySections)),
-		BodySections:    cloneNormalizedFeishuCardSections(firstNonEmptyFeishuCardSections(catalog.BodySections, catalog.SummarySections)),
-		NoticeSections:  cloneNormalizedFeishuCardSections(catalog.NoticeSections),
-		Interactive:     catalog.Interactive,
-		Sealed:          catalog.Sealed,
-		DisplayStyle:    catalog.DisplayStyle,
-		Sections:        append([]CommandCatalogSection(nil), catalog.Sections...),
-		RelatedButtons:  append([]CommandCatalogButton(nil), relatedButtons...),
+func FeishuCommandPageViewFromView(view FeishuCommandView, productMode, menuStage string) (FeishuCommandPageView, bool) {
+	switch {
+	case view.Menu != nil:
+		return BuildFeishuCommandMenuPageView(*view.Menu, productMode, menuStage), true
+	case view.Config != nil:
+		return BuildFeishuCommandConfigPageView(*view.Config), true
+	case view.Page != nil:
+		return NormalizeFeishuCommandPageView(*view.Page), true
+	default:
+		return FeishuCommandPageView{}, false
 	}
-	if view.DisplayStyle == "" {
-		view.DisplayStyle = CommandCatalogDisplayDefault
-	}
-	if len(view.BodySections) == 0 {
-		lines := splitFeishuCommandPageSummaryLines(catalog.Summary)
-		if len(lines) != 0 {
-			view.BodySections = []FeishuCardTextSection{{Lines: lines}}
-			view.SummarySections = cloneNormalizedFeishuCardSections(view.BodySections)
-		}
-	}
-	if view.CommandID == "" {
-		view.CommandID = strings.TrimSpace(commandID)
-	}
-	return view
 }
 
 func BuildFeishuCommandPageSummarySections(view FeishuCommandPageView) []FeishuCardTextSection {
@@ -194,4 +171,59 @@ func firstNonEmptyFeishuCardSections(values ...[]FeishuCardTextSection) []Feishu
 		}
 	}
 	return nil
+}
+
+func cloneCommandBreadcrumbs(source []CommandCatalogBreadcrumb) []CommandCatalogBreadcrumb {
+	if len(source) == 0 {
+		return nil
+	}
+	return append([]CommandCatalogBreadcrumb(nil), source...)
+}
+
+func cloneCommandCatalogButtons(source []CommandCatalogButton) []CommandCatalogButton {
+	if len(source) == 0 {
+		return nil
+	}
+	return append([]CommandCatalogButton(nil), source...)
+}
+
+func cloneCommandCatalogSections(source []CommandCatalogSection) []CommandCatalogSection {
+	if len(source) == 0 {
+		return nil
+	}
+	out := make([]CommandCatalogSection, 0, len(source))
+	for _, section := range source {
+		cloned := CommandCatalogSection{
+			Title:   strings.TrimSpace(section.Title),
+			Entries: make([]CommandCatalogEntry, 0, len(section.Entries)),
+		}
+		for _, entry := range section.Entries {
+			cloned.Entries = append(cloned.Entries, CommandCatalogEntry{
+				Title:       strings.TrimSpace(entry.Title),
+				Commands:    append([]string(nil), entry.Commands...),
+				Description: strings.TrimSpace(entry.Description),
+				Examples:    append([]string(nil), entry.Examples...),
+				Buttons:     cloneCommandCatalogButtons(entry.Buttons),
+				Form:        cloneCommandCatalogForm(entry.Form),
+			})
+		}
+		out = append(out, cloned)
+	}
+	return out
+}
+
+func cloneCommandCatalogForm(form *CommandCatalogForm) *CommandCatalogForm {
+	if form == nil {
+		return nil
+	}
+	cloned := *form
+	cloned.Field = CommandCatalogFormField{
+		Name:         strings.TrimSpace(form.Field.Name),
+		Kind:         form.Field.Kind,
+		Label:        strings.TrimSpace(form.Field.Label),
+		Placeholder:  strings.TrimSpace(form.Field.Placeholder),
+		DefaultValue: strings.TrimSpace(form.Field.DefaultValue),
+		Options:      append([]CommandCatalogFormFieldOption(nil), form.Field.Options...),
+	}
+	return &cloned
 }

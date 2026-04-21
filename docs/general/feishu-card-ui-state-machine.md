@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-21`
-> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1，并让 target picker / path picker / history 三类前台卡都显式承载 `body / notice / sealed` contract：处理中和终态不再把整张卡覆写成一句状态，而是保留业务区上下文，把反馈收进 notice 区，sealed 后移除交互；显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续并入共享过程卡（quiet 静默，normal/verbose 可见）；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（requested 进度态继续占用原卡，completed / no-op / failed 才 seal 收口），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；统一 command card 现在已扩展为 `Menu / Config / Page` 三类 read model，其中 bare config cards 与 `FeishuCommandView.Page` / `FeishuDirectCommandCatalog` 都显式承载 `body / notice / sealed` contract：业务区保留当前值/目标值等上下文，notice 区承接状态反馈与重开提示，sealed 态移除交互按钮；bare `/cron`、`/upgrade`、`/debug`、`/vscode-migrate` 与 bare `/plan` 的参数页/结果页都收敛到同一套 command-page / config-page 结构，`plan_proposal` 提案计划卡则新增为单独 page-owner callback family：turn 完成后 append 一张带三按钮的 patchable page card，后续点击或失效继续在原卡 seal 收口；stamped current-card callback 也改走 command-page result replacement，bare continuation 当前已无活跃命中，legacy command catalog 经 `Page` 往返后也会保留原有 summary fallback 与默认 displayStyle 语义；request cards 当前统一改为 `FeishuRequestView` 穿过 `UIEvent` 边界，且 `request_user_input` / form 模式 `mcp_server_elicitation` 已收敛到“同一张卡内分步答题/填表”：卡面只显示当前题，`上一题 / 下一题`、`保存本题`、`提交答案 / 提交并继续` 都在同卡内推进，中间步骤只做 inline replace，不再每答一题 append 新 request 卡；legacy selection prompt 只剩 `FeishuSelectionView.Prompt` compat 壳，VS Code `/list` 与 `/use` / `/useall` 现在分别收敛到结构化按钮式 instance view 与下拉式 thread view；live thread-selection announce 当前已改走 `UIEventNotice + ThreadSelection metadata` 的 notice-family 语义，`UIEventThreadSelectionChange` 只保留兼容 fallback；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/plan`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，且同一 surface 后续异步到达的 VS Code guidance（兼容修复、open prompt、恢复成功/失败、未接管 `/list` 提示）也会继续 patch 回这张 guidance 卡；`/vscode-migrate` root page 与 `vscode_migrate_owner_flow` 结果同样改成同一张 page-owner card 收口，并继续承接后续 VS Code guidance；`/upgrade latest` 的 checking / confirm / running / terminal owner card 现在也统一依赖 page `TrackingKey -> message_id` 回写，把后续 patch 收口到同一张升级卡；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
+> Summary: 当前实现已把 target picker 收敛到 owner-card runtime v2、`/history` 收敛到 owner-card runtime v1，并让 target picker / path picker / history 三类前台卡都显式承载 `body / notice / sealed` contract：处理中和终态不再把整张卡覆写成一句状态，而是保留业务区上下文，把反馈收进 notice 区，sealed 后移除交互；显式 `/compact` 收敛为前台 compact owner-card（文本入口 append 新卡，menu `current_work` 入口则直接把原菜单卡绑定成 compact owner card）、被动 compact 继续并入共享过程卡（quiet 静默，normal/verbose 可见）；同时 `current_work` 菜单里的 `/steerall` 已改成原卡收口（requested 进度态继续占用原卡，completed / no-op / failed 才 seal 收口），`/sendfile` 也已补齐“菜单卡替换为 picker -> cancel / 启动前失败 / 启动成功 / 不可用都继续在同卡收口”的边界；`maintenance` / `switch_target` 菜单里的 `/help`、`/status`、`/list`、`/use`、`/useall` 现在都会直接把首个真实结果卡替成当前菜单卡，`/stop`、`/new`、`/follow`、`/detach` 也已退出旧的 submission-anchor + recall 路径，改成用首个结果卡/终态卡直接 seal 原菜单卡；统一 command card 现在仍暴露 `Menu / Config / Page` 三类 read model，但 adapter 会先把它们统一规范化到 `FeishuCommandPageView`，再渲染最终 Feishu V2 卡片；command page 显式承载 `body / notice / sealed` contract：业务区保留当前值/目标值等上下文，notice 区承接状态反馈与重开提示，sealed 态移除交互按钮；bare `/cron`、`/upgrade`、`/debug`、`/vscode-migrate` 与 bare `/plan` 的参数页/结果页都收敛到同一套 command-page / config-page 结构，`plan_proposal` 提案计划卡则新增为单独 page-owner callback family：turn 完成后 append 一张带三按钮的 patchable page card，后续点击或失效继续在原卡 seal 收口；stamped current-card callback 也改走 command-page result replacement，bare continuation 当前已无活跃命中；request cards 当前统一改为 `FeishuRequestView` 穿过 `UIEvent` 边界，且 `request_user_input` / form 模式 `mcp_server_elicitation` 已收敛到“同一张卡内分步答题/填表”：卡面只显示当前题，`上一题 / 下一题`、`保存本题`、`提交答案 / 提交并继续` 都在同卡内推进，中间步骤只做 inline replace，不再每答一题 append 新 request 卡；legacy selection prompt 只剩 `FeishuSelectionView.Prompt` compat 壳，VS Code `/list` 与 `/use` / `/useall` 现在分别收敛到结构化按钮式 instance view 与下拉式 thread view；live thread-selection announce 当前已改走 `UIEventNotice + ThreadSelection metadata` 的 notice-family 语义，`UIEventThreadSelectionChange` 只保留兼容 fallback；bare config cards 里 `/mode`、`/autowhip`、`/reasoning`、`/access`、`/plan`、`/verbose` 已去掉多余的手动输入，`/model` 改成“常见模型 `select_static` 下拉 + 手动输入”；stamped `/mode vscode` 若立刻命中 VS Code 兼容修复、open prompt 或恢复提示，也会继续承接当前卡，且同一 surface 后续异步到达的 VS Code guidance（兼容修复、open prompt、恢复成功/失败、未接管 `/list` 提示）也会继续 patch 回这张 guidance 卡；`/vscode-migrate` root page 与 `vscode_migrate_owner_flow` 结果同样改成同一张 page-owner card 收口，并继续承接后续 VS Code guidance；`/upgrade latest` 的 checking / confirm / running / terminal owner card 现在也统一依赖 page `TrackingKey -> message_id` 回写，把后续 patch 收口到同一张升级卡；共享过程卡当前在 projector 层改成单卡滚动窗口，超长时丢弃最旧可见行并在顶部补“较早过程已省略”提示，同时 `file_change` 已并入这条过程卡：normal 显示文件行与 `+/-` 统计，verbose 再追加 diff code block；Feishu turn delivery 当前不再是 final-only reply：final reply、可见的 assistant 普通文本，以及 steer accept 后的 `用户补充` timeline text 都会 reply 到 turn anchor，而 request / plan / 共享过程卡 / 图片输出 / 补充预览 / notice 继续保持顶层 append-only。
 
 ## 1. 文档定位
 
@@ -71,7 +71,7 @@
   - 负责把当前需要的 callback payload 字段写进卡片按钮/表单/下拉
   - 对共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `file_change` / 被动 `context_compaction`），负责在首次发送时打开 `config.update_multi=true`，让后续同一窗口卡可被 `message.patch` 更新；首卡当前固定顶层 append，不继承 turn reply anchor。若当前窗口卡在 projector 层按“每行一个 element”的粒度已放不下，projector 会继续 patch 同一张卡：丢弃最旧可见行、把 `card_start_seq` 前移到当前窗口首行，并在顶部补一行“较早过程已省略，仅保留最近进度。”
   - 对 turn timeline 文本（final reply、非 final assistant 文本、`用户补充` 这类轻量 text event），负责根据 `ReplyToMessageID` 选择 reply 发送；reply 失败时 gateway 会回退到普通 text/card create
-  - 对显式 `/compact` 这种 direct-command owner card，当前通过 patchable `FeishuDirectCommandCatalog` 发送首卡，并依赖 `TrackingKey -> message_id` 回写把 running / terminal 状态继续 patch 回同一张卡
+  - 对显式 `/compact` 这种 direct-command owner card，当前通过 patchable `FeishuCommandPageView` 发送首卡，并依赖 `TrackingKey -> message_id` 回写把 running / terminal 状态继续 patch 回同一张卡
   - 当前是 selection / target-picker / command/config cards 最终 projection 的 owner：
     [internal/adapter/feishu/projector_target_picker.go](../../internal/adapter/feishu/projector_target_picker.go)
     负责把 `FeishuTargetPickerView` 投影成 unified target picker 卡片
@@ -80,7 +80,7 @@
     [internal/adapter/feishu/projector_selection_structured.go](../../internal/adapter/feishu/projector_selection_structured.go)
     负责 VS Code `/list` 按钮式 instance view 与 `/use` / `/useall` 下拉式 thread view 的直接结构化投影
     [internal/adapter/feishu/projector_command_view.go](../../internal/adapter/feishu/projector_command_view.go)
-    负责把 `FeishuCommandView` 投影成当前仍被卡片 renderer 消费的 `FeishuDirectCommandCatalog`
+    负责把 `FeishuCommandView` 统一规范化成 `FeishuCommandPageView`
     [internal/adapter/feishu/projector_path_picker.go](../../internal/adapter/feishu/projector_path_picker.go)
     负责把 `FeishuPathPickerView` 投影成当前复用路径选择器卡片
 - `orchestrator`
@@ -122,14 +122,10 @@
 - request cards 现在跨 `UIEvent` 边界携带的是 `control.FeishuRequestView`
   - `FeishuRequestView` 当前已经是独立的 UI-owned request view，不再借用 retained direct request DTO alias 过边界
   - projector 直接把它当作 request-card owner payload 渲染，不再依赖 `FeishuDirectRequestPrompt` 这类过渡形状
-- `control.FeishuDirectCommandCatalog` 仍保留为当前 card renderer 的过渡 DTO，但已经不再是 `/menu` 与 bare config cards 跨 `UIEvent` 边界的主载体：
-  - `/help` 当前也会先落到 `FeishuCommandView.Page` 再投影；仍直接使用 `FeishuDirectCommandCatalog` 的主要只剩 daemon upgrade / vscode migration cards 与 legacy 测试样例
-  - `/menu` 与 bare config cards 现在跨边界携带的是 `control.FeishuCommandView`
-  - projector 在 adapter 层把它投影成当前卡片 renderer 仍可消费的 `FeishuDirectCommandCatalog`
-  - `FeishuCommandView.Page` 与投影后的 `FeishuDirectCommandCatalog` 当前都显式带有 `BodySections / NoticeSections / Sealed`
-  - projector 当前按 `业务区 -> notice 区 -> footer` 的顺序渲染；notice 区只有在存在内容时才出现，且会在业务区与 footer 之间插入分隔线
+- command/config cards 当前已经不再保留旧 catalog 过渡 DTO：
+  - `/menu`、bare config cards、bare command pages、compact/upgrade/debug/cron 这些命令卡当前跨边界统一携带的是 `control.FeishuCommandView`
+  - adapter 会先把 `FeishuCommandView` 规范化到 `FeishuCommandPageView`，再按 `业务区 -> notice 区 -> footer` 的顺序渲染最终卡片；notice 区只有在存在内容时才出现，且会在业务区与 footer 之间插入分隔线
   - compact owner card 已作为首条样板流迁到这套 page contract：running 态保留“当前会话”业务区，终态把结果提示放在 notice 区并标记 sealed
-  - 若 legacy catalog 先经 `FeishuCommandPageViewFromCatalog(...)` 过渡到 `Page` view，再回投影成 catalog，当前会保留原有 `Summary` fallback 与 ``DisplayStyle="" => default`` 的旧语义，不会无声丢失摘要或被默认改成 compact layout
 - `control.FeishuTargetPickerView` 当前已经是 normal mode `/list` / `/use` / `/useall` 跨 `UIEvent` 边界的主载体：
   - unified target picker 现在跨边界携带的是 `control.FeishuTargetPickerView`
   - projector 直接以它为 owner 生成 `target_picker_*` callback payload
@@ -151,7 +147,7 @@
   - Feishu UI controller 已通过这层 boundary 分流 pure navigation；后续继续扩 controller 时，默认仍应优先依赖这些 query/context 元数据，而不是继续直接读 orchestrator 内部字段
   - target picker cards 现在是 “read model -> `FeishuTargetPickerView` -> adapter projection -> Feishu V2 卡片” 三段；后续修改 normal `/list` / `/use` / `/useall` 的默认选择、页头单题文案、前置阻塞校验、confirm 按钮或 stale-selection 行为时，默认应落在 target picker read model / projection 层，而不是回到旧 selection query 函数里继续混改
   - selection cards 现在主要服务于 VS Code / legacy selection path；其中 VS Code `/list` / `/use` / `/useall` 已是 “read model -> `FeishuSelectionView` -> adapter structured projection -> Feishu V2 卡片” 三段，其余 compat prompt 仍保留 “read model -> `FeishuSelectionView` -> adapter projection -> `FeishuDirectSelectionPrompt`” 四段；后续修改这些路径的交互与文案时，默认仍应落在 adapter structured projection / compat projection 或 selection view 结构层
-  - command/config cards 现在是 “read model -> `FeishuCommandView` -> adapter projection -> `FeishuDirectCommandCatalog`” 四段；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认也应落在 adapter projection 或 command view 结构层，而不是回到 orchestrator query 函数里继续混改
+  - command/config cards 现在是 “read model -> `FeishuCommandView` -> normalized `FeishuCommandPageView` -> Feishu V2 卡片” 四段；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认也应落在 command view / page normalization / projector 层，而不是回到 orchestrator query 函数里继续混改
 - `ActionShow*` 与 bare config `Action*Command` 当前若仍存在，属于 gateway / parser 的 transport compatibility 层；live path 会先归并到 `FeishuUIIntent`，不再代表主产品 reducer owner。
 - 如果只是换卡片样式、按钮 payload、inline replace 策略，优先更新本文。
 - 如果改了 DTO 里的可选项语义、route 约束或 request gate 行为，必须同时更新 core 状态机文档。
@@ -658,7 +654,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/core/control/feishu_ui_intent_test.go](../../internal/core/control/feishu_ui_intent_test.go)
   - 锁定哪些动作会被分流到 Feishu UI controller，哪些 mixed/product-owned 动作仍留在主 reducer
 - [internal/adapter/feishu/projector_test.go](../../internal/adapter/feishu/projector_test.go)
-  - 锁定 `FeishuDirectSelectionPrompt` / `FeishuSelectionView` / `FeishuSelectionPromptView` / `FeishuCommandView` / `FeishuDirectCommandCatalog` / `FeishuRequestView` 的 lifecycle stamp、projection 结果、request prompt 顶层投递语义与 callback payload 结构
+  - 锁定 `FeishuDirectSelectionPrompt` / `FeishuSelectionView` / `FeishuSelectionPromptView` / `FeishuCommandView` / `FeishuCommandPageView` / `FeishuRequestView` 的 lifecycle stamp、projection 结果、request prompt 顶层投递语义与 callback payload 结构
 - [internal/adapter/feishu/projector_notice_test.go](../../internal/adapter/feishu/projector_notice_test.go)
   - 锁定结构化 notice 继续走纯文本 section 渲染，以及 `global runtime` notice 的独立 append-only delivery lane
 - [internal/adapter/feishu/projector_plan_update_test.go](../../internal/adapter/feishu/projector_plan_update_test.go)

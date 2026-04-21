@@ -8,12 +8,12 @@ import (
 
 func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:        "模型",
-		Summary:      "直接在卡片里输入模型名。",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
-		Breadcrumbs:  []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "模型",
+		SummarySections: summarySections("直接在卡片里输入模型名。"),
+		Interactive:     true,
+		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
+		Breadcrumbs:     []control.CommandCatalogBreadcrumb{{Label: "菜单首页"}, {Label: "发送设置"}, {Label: "模型"}},
 		Sections: []control.CommandCatalogSection{{
 			Title: "手动输入",
 			Entries: []control.CommandCatalogEntry{{
@@ -104,7 +104,7 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 
 func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
 		Title:       "模型",
 		Interactive: true,
 		Sections: []control.CommandCatalogSection{{
@@ -163,7 +163,7 @@ func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testi
 
 func TestProjectCommandCatalogRendersNoticeAreaBetweenBusinessAndFooter(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
 		Title: "上下文已压缩",
 		BodySections: []control.FeishuCardTextSection{{
 			Label: "当前会话",

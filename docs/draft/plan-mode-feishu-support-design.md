@@ -267,7 +267,7 @@ translator 规则固定为：
 
 1. `FeishuCommandDefinition`
 2. `FeishuCommandConfigView`
-3. `BuildFeishuCommandConfigCatalog(...)`
+3. `BuildFeishuCommandConfigPageView(...)`
 4. `handlePlanCommand(...)`
 
 ### 6.6 surface resume

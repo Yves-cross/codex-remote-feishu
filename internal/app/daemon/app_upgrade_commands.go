@@ -71,83 +71,7 @@ func parseUpgradeCommandText(text string) (parsedUpgradeCommand, error) {
 	}
 }
 
-func buildDebugStatusCatalog(stateValue install.InstallState, checkInFlight bool) *control.FeishuDirectCommandCatalog {
-	summaryLines := []string{
-		fmt.Sprintf("当前来源：%s", displayInstallSource(stateValue.InstallSource)),
-		fmt.Sprintf("当前 track：%s", firstNonEmpty(string(stateValue.CurrentTrack), "unknown")),
-		fmt.Sprintf("当前版本：%s", firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown")),
-		fmt.Sprintf("最近检查：%s", formatOptionalTime(stateValue.LastCheckAt)),
-	}
-	if latest := strings.TrimSpace(stateValue.LastKnownLatestVersion); latest != "" {
-		summaryLines = append(summaryLines, fmt.Sprintf("最近看到的最新版本：%s", latest))
-	}
-	if pending := describePendingUpgrade(stateValue.PendingUpgrade); pending != "" {
-		summaryLines = append(summaryLines, "待处理升级："+pending)
-	} else {
-		summaryLines = append(summaryLines, "待处理升级：无")
-	}
-	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
-	return &control.FeishuDirectCommandCatalog{
-		Title:           "Debug",
-		SummarySections: commandCatalogSummarySections(summaryLines...),
-		Interactive:     true,
-		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Sections: []control.CommandCatalogSection{
-			{
-				Title: "调试",
-				Entries: []control.CommandCatalogEntry{{
-					Buttons: []control.CommandCatalogButton{
-						runCommandButton("管理页外链", "/debug admin", "primary", false),
-					},
-				}},
-			},
-		},
-	}
-}
-
-func buildUpgradeStatusCatalog(stateValue install.InstallState, checkInFlight bool) *control.FeishuDirectCommandCatalog {
-	summaryLines := []string{
-		fmt.Sprintf("当前来源：%s", displayInstallSource(stateValue.InstallSource)),
-		fmt.Sprintf("当前 track：%s", firstNonEmpty(string(stateValue.CurrentTrack), "unknown")),
-		fmt.Sprintf("当前版本：%s", firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown")),
-		fmt.Sprintf("最近检查：%s", formatOptionalTime(stateValue.LastCheckAt)),
-	}
-	if install.CurrentBuildAllowsLocalUpgrade() {
-		summaryLines = append(summaryLines, fmt.Sprintf("本地升级产物：%s", install.LocalUpgradeArtifactPath(stateValue)))
-	}
-	if latest := strings.TrimSpace(stateValue.LastKnownLatestVersion); latest != "" {
-		summaryLines = append(summaryLines, fmt.Sprintf("最近看到的最新版本：%s", latest))
-	}
-	if pending := describePendingUpgrade(stateValue.PendingUpgrade); pending != "" {
-		summaryLines = append(summaryLines, "待处理升级："+pending)
-	} else {
-		summaryLines = append(summaryLines, "待处理升级：无")
-	}
-	summaryLines = append(summaryLines, upgradeCheckSummaryLine(checkInFlight))
-	quickButtons := []control.CommandCatalogButton{
-		runCommandButton("查看 track", "/upgrade track", "", false),
-		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
-	}
-	if install.CurrentBuildAllowsLocalUpgrade() {
-		quickButtons = append(quickButtons, runCommandButton("本地升级", "/upgrade local", "", false))
-	}
-	return &control.FeishuDirectCommandCatalog{
-		Title:           "Upgrade",
-		SummarySections: commandCatalogSummarySections(summaryLines...),
-		Interactive:     true,
-		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		Sections: []control.CommandCatalogSection{
-			{
-				Title: "升级",
-				Entries: []control.CommandCatalogEntry{{
-					Buttons: quickButtons,
-				}},
-			},
-		},
-	}
-}
-
-func buildUpgradePromptCatalog(stateValue install.InstallState) *control.FeishuDirectCommandCatalog {
+func buildUpgradePromptPageView(stateValue install.InstallState) control.FeishuCommandPageView {
 	targetVersion := ""
 	title := "发现可升级版本"
 	confirmCommand := "/upgrade latest"
@@ -181,7 +105,8 @@ func buildUpgradePromptCatalog(stateValue install.InstallState) *control.FeishuD
 			commandCatalogTextSection("下一步", "再次发送 /upgrade latest 继续升级流程。"),
 		}
 	}
-	return &control.FeishuDirectCommandCatalog{
+	return control.NormalizeFeishuCommandPageView(control.FeishuCommandPageView{
+		CommandID:       control.FeishuCommandUpgrade,
 		Title:           title,
 		SummarySections: summarySections,
 		Interactive:     true,
@@ -196,7 +121,7 @@ func buildUpgradePromptCatalog(stateValue install.InstallState) *control.FeishuD
 				},
 			}},
 		}},
-	}
+	})
 }
 
 func buildTrackSummary(stateValue install.InstallState) string {

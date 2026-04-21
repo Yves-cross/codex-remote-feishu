@@ -885,9 +885,9 @@ func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 
 func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:   "Slash 命令帮助",
-		Summary: "当前支持的 slash command 如下。",
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "Slash 命令帮助",
+		SummarySections: summarySections("当前支持的 slash command 如下。"),
 		Sections: []control.CommandCatalogSection{{
 			Title: "帮助",
 			Entries: []control.CommandCatalogEntry{{
@@ -923,9 +923,9 @@ func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 
 func TestProjectCommandHelpCatalogPreservesAmpersandsInPlainText(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:   "命令帮助",
-		Summary: "常用联调命令。",
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "命令帮助",
+		SummarySections: summarySections("常用联调命令。"),
 		Sections: []control.CommandCatalogSection{{
 			Title: "联调",
 			Entries: []control.CommandCatalogEntry{{
@@ -958,7 +958,7 @@ func TestProjectCommandHelpCatalogPreservesAmpersandsInPlainText(t *testing.T) {
 
 func TestProjectBuiltinCommandHelpCatalogPreservesPlaceholdersAndHidesKillInstance(t *testing.T) {
 	projector := NewProjector()
-	catalog := control.FeishuCommandHelpCatalog()
+	catalog := control.FeishuCommandHelpPageView()
 	ops := projector.Project("chat-1", commandCatalogEvent(catalog))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -996,10 +996,11 @@ func TestProjectBuiltinCommandHelpCatalogPreservesPlaceholdersAndHidesKillInstan
 
 func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:       "命令菜单",
-		Summary:     "固定动作可直接点击。",
-		Interactive: true,
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "命令菜单",
+		SummarySections: summarySections("固定动作可直接点击。"),
+		Interactive:     true,
+		DisplayStyle:    control.CommandCatalogDisplayDefault,
 		Sections: []control.CommandCatalogSection{{
 			Title: "实例与会话",
 			Entries: []control.CommandCatalogEntry{{
@@ -1047,11 +1048,11 @@ func TestProjectInteractiveCommandCatalogAddsRunCommandButtons(t *testing.T) {
 
 func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:        "推理强度",
-		Summary:      "当前：`high`；飞书覆盖：`high`。",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "推理强度",
+		SummarySections: summarySections("当前：`high`；飞书覆盖：`high`。"),
+		Interactive:     true,
+		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{{
 			Title: "立即应用",
 			Entries: []control.CommandCatalogEntry{{
@@ -1106,15 +1107,11 @@ func TestProjectCompactCommandCatalogStacksButtonsWithoutEntryMarkdown(t *testin
 }
 
 func TestCommandCatalogFromViewBuildsDetachedMenuHome(t *testing.T) {
-	catalog, ok := FeishuDirectCommandCatalogFromView(control.FeishuCommandView{
+	catalog, ok := control.FeishuCommandPageViewFromView(control.FeishuCommandView{
 		Menu: &control.FeishuCommandMenuView{Stage: "detached"},
-	}, &control.FeishuUICommandContext{
-		DTOOwner:  control.FeishuUIDTOwnerCommand,
-		ViewKind:  "menu",
-		MenuStage: "detached",
-	})
+	}, "", "detached")
 	if !ok {
-		t.Fatalf("expected menu view to project into command catalog")
+		t.Fatalf("expected menu view to project into command page")
 	}
 	if catalog.Title != "命令菜单" || !catalog.Interactive {
 		t.Fatalf("unexpected menu catalog: %#v", catalog)
@@ -1128,9 +1125,9 @@ func TestCommandCatalogFromViewBuildsDetachedMenuHome(t *testing.T) {
 }
 
 func TestCommandCatalogFromViewCurrentWorkHonorsStageVisibility(t *testing.T) {
-	normalCatalog, ok := FeishuDirectCommandCatalogFromView(control.FeishuCommandView{
+	normalCatalog, ok := control.FeishuCommandPageViewFromView(control.FeishuCommandView{
 		Menu: &control.FeishuCommandMenuView{Stage: "normal_working", GroupID: "current_work"},
-	}, nil)
+	}, "", "")
 	if !ok {
 		t.Fatalf("expected normal current_work menu to project")
 	}
@@ -1140,9 +1137,9 @@ func TestCommandCatalogFromViewCurrentWorkHonorsStageVisibility(t *testing.T) {
 		t.Fatalf("normal current_work commands = %#v, want %#v", gotNormal, wantNormal)
 	}
 
-	vscodeCatalog, ok := FeishuDirectCommandCatalogFromView(control.FeishuCommandView{
+	vscodeCatalog, ok := control.FeishuCommandPageViewFromView(control.FeishuCommandView{
 		Menu: &control.FeishuCommandMenuView{Stage: "vscode_working", GroupID: "current_work"},
-	}, nil)
+	}, "", "")
 	if !ok {
 		t.Fatalf("expected vscode current_work menu to project")
 	}
@@ -1166,7 +1163,7 @@ func firstCommandTexts(entries []control.CommandCatalogEntry) []string {
 
 func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := commandCatalogEvent(control.FeishuDirectCommandCatalog{
+	event := commandCatalogEvent(control.FeishuCommandPageView{
 		Interactive: true,
 		Sections: []control.CommandCatalogSection{{
 			Entries: []control.CommandCatalogEntry{{
@@ -1194,7 +1191,7 @@ func TestProjectCommandFormStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := commandCatalogEvent(control.FeishuDirectCommandCatalog{
+	event := commandCatalogEvent(control.FeishuCommandPageView{
 		Interactive: true,
 		Sections: []control.CommandCatalogSection{{
 			Entries: []control.CommandCatalogEntry{{
@@ -1216,11 +1213,11 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuDirectCommandCatalog{
-		Title:        "发送设置",
-		Summary:      "请选择操作。",
-		Interactive:  true,
-		DisplayStyle: control.CommandCatalogDisplayDefault,
+	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuCommandPageView{
+		Title:           "发送设置",
+		SummarySections: summarySections("请选择操作。"),
+		Interactive:     true,
+		DisplayStyle:    control.CommandCatalogDisplayDefault,
 		RelatedButtons: []control.CommandCatalogButton{{
 			Label:       "返回菜单",
 			CommandText: "/menu",

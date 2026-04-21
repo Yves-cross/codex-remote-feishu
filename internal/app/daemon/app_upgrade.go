@@ -413,7 +413,7 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 		flow.TargetVersion = pendingTargetVersion(pending)
 		return []control.UIEvent{upgradeOwnerConfirmEvent(surface.SurfaceSessionID, flow, stateValue)}
 	}
-	page := control.FeishuCommandPageViewFromCatalog(control.FeishuCommandUpgrade, *buildUpgradePromptCatalog(stateValue), nil, nil)
+	page := buildUpgradePromptPageView(stateValue)
 	view := control.FeishuCommandView{Page: &page}
 	return []control.UIEvent{{
 		Kind:              control.UIEventFeishuCommandView,

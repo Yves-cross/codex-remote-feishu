@@ -39,7 +39,7 @@ func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode 
 	return projected, true
 }
 
-func BuildFeishuCommandCatalogForDisplay(title, summary string, interactive bool, productMode, menuStage string) FeishuDirectCommandCatalog {
+func BuildFeishuCommandDisplayPageView(title, summary string, interactive bool, productMode, menuStage string) FeishuCommandPageView {
 	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
 	for _, group := range feishuCommandGroups {
 		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
@@ -62,10 +62,13 @@ func BuildFeishuCommandCatalogForDisplay(title, summary string, interactive bool
 			Entries: entries,
 		})
 	}
-	return FeishuDirectCommandCatalog{
+	view := FeishuCommandPageView{
 		Title:       title,
-		Summary:     summary,
 		Interactive: interactive,
 		Sections:    sections,
 	}
+	if lines := splitFeishuCommandPageSummaryLines(summary); len(lines) != 0 {
+		view.SummarySections = []FeishuCardTextSection{{Lines: lines}}
+	}
+	return NormalizeFeishuCommandPageView(view)
 }
