@@ -200,8 +200,11 @@ func parseThreadHistoryTurns(source any) []agentproto.ThreadHistoryTurnRecord {
 			StartedAt:    parseProtocolTime(firstNonNil(turnMap["startedAt"], turnMap["started_at"], turnMap["createdAt"], turnMap["created_at"])),
 			CompletedAt:  parseProtocolTime(firstNonNil(turnMap["completedAt"], turnMap["completed_at"], turnMap["finishedAt"], turnMap["finished_at"])),
 			ErrorMessage: choose(lookupStringFromAny(turnMap["errorMessage"]), lookupString(turnMap, "error", "message")),
-			RequestID:    choose(lookupStringFromAny(turnMap["requestId"]), lookupStringFromAny(turnMap["request_id"])),
-			Items:        parseThreadHistoryItems(turnMap["items"]),
+			RequestID: choose(
+				canonicalRequestID(turnMap["requestId"]),
+				canonicalRequestID(turnMap["request_id"]),
+			),
+			Items: parseThreadHistoryItems(turnMap["items"]),
 		}
 		if record.TurnID == "" {
 			continue

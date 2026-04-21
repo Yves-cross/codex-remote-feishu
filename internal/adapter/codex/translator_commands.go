@@ -244,7 +244,7 @@ func (t *Translator) translateRequestRespond(command agentproto.Command) ([][]by
 		result = command.Request.Response
 	}
 	payload := map[string]any{
-		"id":     command.Request.RequestID,
+		"id":     decodeNativeRequestID(command.Request.RequestID),
 		"result": result,
 	}
 	bytes, err := json.Marshal(payload)

@@ -1,11 +1,15 @@
 package codex
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
+
+const nativeRequestIDPrefix = "__native_request_id_json__:"
 
 func extractRequestPayload(message map[string]any) map[string]any {
 	request := lookupMap(message, "params", "request")
@@ -20,12 +24,62 @@ func extractRequestPayload(message map[string]any) map[string]any {
 }
 
 func extractRequestID(message map[string]any, request map[string]any) string {
-	return firstNonEmptyString(
-		lookupStringFromAny(request["id"]),
-		lookupStringFromAny(message["id"]),
-		lookupString(message, "params", "requestId"),
-		lookupString(message, "params", "id"),
-	)
+	for _, candidate := range []any{
+		request["id"],
+		message["id"],
+		lookupAny(message, "params", "requestId"),
+		lookupAny(message, "params", "id"),
+	} {
+		if requestID := canonicalRequestID(candidate); requestID != "" {
+			return requestID
+		}
+	}
+	return ""
+}
+
+func canonicalRequestID(value any) string {
+	switch current := value.(type) {
+	case nil:
+		return ""
+	case string:
+		current = strings.TrimSpace(current)
+		if current == "" {
+			return ""
+		}
+		if strings.HasPrefix(current, nativeRequestIDPrefix) {
+			return encodeNativeRequestIDJSON(current)
+		}
+		return current
+	default:
+		return encodeNativeRequestIDJSON(current)
+	}
+}
+
+func encodeNativeRequestIDJSON(value any) string {
+	raw, err := json.Marshal(value)
+	if err != nil || string(raw) == "null" {
+		return ""
+	}
+	return nativeRequestIDPrefix + base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func decodeNativeRequestID(requestID string) any {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return ""
+	}
+	if !strings.HasPrefix(requestID, nativeRequestIDPrefix) {
+		return requestID
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(requestID, nativeRequestIDPrefix))
+	if err != nil {
+		return requestID
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return requestID
+	}
+	return value
 }
 
 func extractRequestThreadID(message map[string]any, request map[string]any) string {

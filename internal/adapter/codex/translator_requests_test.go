@@ -131,6 +131,88 @@ func TestObserveServerTopLevelToolRequestUserInputProducesQuestionMetadata(t *te
 	}
 }
 
+func TestObserveServerItemToolRequestUserInputWithNumericRequestIDRoundTripsResponseID(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"id":0,"method":"item/tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","questions":[{"id":"mode","header":"模式","question":"请选择模式","options":[{"label":"自动"},{"label":"手动"}]}]}}`))
+	if err != nil {
+		t.Fatalf("observe numeric request user input: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", started.Events)
+	}
+	event := started.Events[0]
+	if event.Kind != agentproto.EventRequestStarted || event.RequestID == "" {
+		t.Fatalf("expected non-empty request started event, got %#v", event)
+	}
+	if event.Metadata["requestType"] != "request_user_input" || event.Metadata["itemId"] != "item-1" {
+		t.Fatalf("unexpected request metadata: %#v", event.Metadata)
+	}
+
+	commands, err := tr.TranslateCommand(agentproto.Command{
+		Kind: agentproto.CommandRequestRespond,
+		Request: agentproto.Request{
+			RequestID: event.RequestID,
+			Response: map[string]any{
+				"type": "structured",
+				"result": map[string]any{
+					"mode": "自动",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("translate numeric request response: %v", err)
+	}
+	if len(commands) != 1 {
+		t.Fatalf("expected one response payload, got %d", len(commands))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(commands[0], &payload); err != nil {
+		t.Fatalf("unmarshal translated response: %v", err)
+	}
+	if got, ok := payload["id"].(float64); !ok || got != 0 {
+		t.Fatalf("expected numeric request id to round-trip, got %#v", payload["id"])
+	}
+	result, _ := payload["result"].(map[string]any)
+	structured, _ := result["result"].(map[string]any)
+	if structured["mode"] != "自动" {
+		t.Fatalf("expected structured answer payload, got %#v", payload["result"])
+	}
+}
+
+func TestObserveServerRequestResolvedWithNumericRequestIDMatchesStartedEvent(t *testing.T) {
+	tr := NewTranslator("inst-1")
+
+	started, err := tr.ObserveServer([]byte(`{"id":0,"method":"item/tool/requestUserInput","params":{"threadId":"thread-1","turnId":"turn-1","itemId":"item-1","questions":[{"id":"mode","header":"模式","question":"请选择模式","options":[{"label":"自动"},{"label":"手动"}]}]}}`))
+	if err != nil {
+		t.Fatalf("observe numeric request user input: %v", err)
+	}
+	if len(started.Events) != 1 {
+		t.Fatalf("expected one request started event, got %#v", started.Events)
+	}
+	requestID := started.Events[0].RequestID
+	if requestID == "" {
+		t.Fatal("expected non-empty canonical request id")
+	}
+
+	resolved, err := tr.ObserveServer([]byte(`{"method":"request/resolved","params":{"threadId":"thread-1","turnId":"turn-1","requestId":0,"result":{"decision":"decline"}}}`))
+	if err != nil {
+		t.Fatalf("observe numeric request resolved: %v", err)
+	}
+	if len(resolved.Events) != 1 {
+		t.Fatalf("expected one request resolved event, got %#v", resolved.Events)
+	}
+	event := resolved.Events[0]
+	if event.Kind != agentproto.EventRequestResolved || event.RequestID != requestID {
+		t.Fatalf("expected resolved request to reuse canonical id %q, got %#v", requestID, event)
+	}
+	if event.Metadata["decision"] != "decline" {
+		t.Fatalf("unexpected resolved metadata: %#v", event.Metadata)
+	}
+}
+
 func TestObserveServerRequestResolvedSupportsLegacyMethod(t *testing.T) {
 	tr := NewTranslator("inst-1")
 	if _, err := tr.ObserveClient([]byte(`{"method":"thread/resume","params":{"threadId":"thread-1","cwd":"/tmp/project"}}`)); err != nil {
@@ -801,7 +883,7 @@ func TestObserveThreadHistoryReadResultEmitsStructuredHistoryEvent(t *testing.T)
 	}
 	requestID, _ := request["id"].(string)
 
-	result, err := tr.ObserveServer([]byte(`{"id":"` + requestID + `","result":{"thread":{"id":"thread-1","name":"修复登录","cwd":"/tmp/project","turns":[{"id":"turn-1","status":"completed","startedAt":"2026-04-14T01:00:00Z","completedAt":"2026-04-14T01:01:00Z","items":[{"id":"item-user-1","type":"user_message","text":"请修一下登录"},{"id":"item-cmd-1","type":"commandExecution","status":"failed","command":"npm test","cwd":"/tmp/project","exitCode":1},{"id":"item-agent-1","type":"agent_message","text":"我已经定位到问题。"}]}]}}}`))
+	result, err := tr.ObserveServer([]byte(`{"id":"` + requestID + `","result":{"thread":{"id":"thread-1","name":"修复登录","cwd":"/tmp/project","turns":[{"id":"turn-1","status":"completed","requestId":0,"startedAt":"2026-04-14T01:00:00Z","completedAt":"2026-04-14T01:01:00Z","items":[{"id":"item-user-1","type":"user_message","text":"请修一下登录"},{"id":"item-cmd-1","type":"commandExecution","status":"failed","command":"npm test","cwd":"/tmp/project","exitCode":1},{"id":"item-agent-1","type":"agent_message","text":"我已经定位到问题。"}]}]}}}`))
 	if err != nil {
 		t.Fatalf("observe history result: %v", err)
 	}
@@ -821,6 +903,9 @@ func TestObserveThreadHistoryReadResultEmitsStructuredHistoryEvent(t *testing.T)
 	turn := event.ThreadHistory.Turns[0]
 	if turn.TurnID != "turn-1" || turn.Status != "completed" || len(turn.Items) != 3 {
 		t.Fatalf("unexpected turn history payload: %#v", turn)
+	}
+	if got := decodeNativeRequestID(turn.RequestID); got != float64(0) {
+		t.Fatalf("expected history turn request id to decode back to numeric 0, got %#v", got)
 	}
 	if turn.Items[1].Kind != "command_execution" || turn.Items[1].Command != "npm test" || turn.Items[1].ExitCode == nil || *turn.Items[1].ExitCode != 1 {
 		t.Fatalf("expected command execution item details, got %#v", turn.Items[1])
