@@ -377,7 +377,9 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsAfterDetach(t *testing.T) {
 func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *testing.T) {
 	gateway := &messageIDAssigningGateway{notify: make(chan struct{}, 16)}
 	previewer := &secondChancePreviewer{
-		secondDone: make(chan struct{}),
+		secondGate:  make(chan struct{}),
+		secondStart: make(chan struct{}, 1),
+		secondDone:  make(chan struct{}),
 		secondTransform: func(text string) string {
 			return strings.Replace(text, "./docs/very/very/very/long/path/design.md", "https://p", 1)
 		},
@@ -421,6 +423,11 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 	if err := app.deliverUIEventWithContext(context.Background(), event); err != nil {
 		t.Fatalf("deliver final block: %v", err)
 	}
+	select {
+	case <-previewer.secondStart:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second-chance preview attempt to start")
+	}
 	initialOps := gateway.snapshotOperations()
 	if len(initialOps) < 2 {
 		t.Fatalf("expected initial final reply to split, got %#v", initialOps)
@@ -442,6 +449,7 @@ func TestDeliverUIEventSecondChanceFinalPatchUpdatesOnlyPrimarySplitCard(t *test
 	if len(rewrittenOps) < 2 {
 		t.Fatalf("expected rewritten final body to remain split for primary-only patch path, got %#v", rewrittenOps)
 	}
+	close(previewer.secondGate)
 	select {
 	case <-previewer.secondDone:
 	case <-time.After(2 * time.Second):
