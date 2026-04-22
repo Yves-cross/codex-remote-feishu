@@ -364,8 +364,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
 		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, *intent))
 	}
-	if shouldSealMenuFlowForAction(action.Kind) {
-		s.markMenuFlowEnteredBusiness(surface, menuFlowPhaseBusinessHandoff)
+	if shouldSealCommandLauncherForAction(action.Kind) {
+		s.markCommandLauncherEnteredBusiness(surface, commandLauncherPhaseBusinessHandoff)
 	}
 	var events []control.UIEvent
 	switch action.Kind {
@@ -539,7 +539,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionStop:
 		events = s.stopSurface(surface)
 	case control.ActionStatus:
-		s.markMenuFlowTerminal(surface)
+		s.markCommandLauncherTerminal(surface)
 		events = []control.UIEvent{{Kind: control.UIEventSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
 	case control.ActionDetach:
 		events = s.detach(surface)

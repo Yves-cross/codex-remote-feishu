@@ -8,8 +8,40 @@ const (
 	FeishuUIInlineReplaceOwnerController          = "feishu_ui_controller"
 )
 
-// FeishuUIInlineReplacePolicy makes the current inline-replace lifecycle
-// strategy explicit without changing user-visible behavior.
+type FeishuFrontstageCurrentCardMode string
+
+const (
+	FeishuFrontstageCurrentCardNone            FeishuFrontstageCurrentCardMode = ""
+	FeishuFrontstageCurrentCardInlineView      FeishuFrontstageCurrentCardMode = "inline_view"
+	FeishuFrontstageCurrentCardFirstResultCard FeishuFrontstageCurrentCardMode = "first_result_card"
+)
+
+type FeishuFrontstageLauncherDisposition string
+
+const (
+	FeishuFrontstageLauncherKeep          FeishuFrontstageLauncherDisposition = "keep"
+	FeishuFrontstageLauncherEnterOwner    FeishuFrontstageLauncherDisposition = "enter_owner"
+	FeishuFrontstageLauncherEnterTerminal FeishuFrontstageLauncherDisposition = "enter_terminal"
+)
+
+// FeishuFrontstageActionContract is the single action-level contract that
+// decides whether the current stamped card may be replaced synchronously and
+// whether an existing launcher flow should stay alive or hand off.
+type FeishuFrontstageActionContract struct {
+	CurrentCardMode                FeishuFrontstageCurrentCardMode
+	LauncherDisposition            FeishuFrontstageLauncherDisposition
+	RequiresDaemonFreshness        bool
+	DaemonFreshness                string
+	RequiresViewSession            bool
+	ViewSessionStrategy            string
+	ContinuationDaemonCommand      DaemonCommandKind
+	TerminalResult                 bool
+	DropNoticeEventsAfterResult    bool
+	DropThreadSelectionAfterResult bool
+}
+
+// FeishuUIInlineReplacePolicy remains as a compatibility view for tests and
+// legacy callers that still consume the inline-specific policy shape.
 type FeishuUIInlineReplacePolicy struct {
 	Owner                   string
 	ReplaceCurrentCard      bool
@@ -19,19 +51,139 @@ type FeishuUIInlineReplacePolicy struct {
 	ViewSessionStrategy     string
 }
 
+func ResolveFeishuFrontstageActionContract(action Action) FeishuFrontstageActionContract {
+	contract := FeishuFrontstageActionContract{
+		LauncherDisposition:     ResolveFeishuLauncherDisposition(action),
+		RequiresDaemonFreshness: true,
+		DaemonFreshness:         FeishuUIInlineReplaceFreshnessDaemonLifecycle,
+		RequiresViewSession:     false,
+		ViewSessionStrategy:     FeishuUIInlineReplaceViewSessionSurfaceState,
+	}
+
+	switch {
+	case inlineReplaceableFeishuUIIntentAction(action):
+		contract.CurrentCardMode = FeishuFrontstageCurrentCardInlineView
+		return contract
+	case firstResultCardReplaceableAction(action):
+		contract.CurrentCardMode = FeishuFrontstageCurrentCardFirstResultCard
+	}
+
+	switch action.Kind {
+	case ActionUpgradeCommand:
+		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+			contract.ContinuationDaemonCommand = DaemonCommandUpgrade
+		}
+	case ActionDebugCommand:
+		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+			contract.ContinuationDaemonCommand = DaemonCommandDebug
+		}
+	case ActionCronCommand:
+		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+			contract.ContinuationDaemonCommand = DaemonCommandCron
+		}
+	case ActionVSCodeMigrateCommand:
+		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+			contract.ContinuationDaemonCommand = DaemonCommandVSCodeMigrateCommand
+		}
+	case ActionVSCodeMigrate:
+		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+			contract.ContinuationDaemonCommand = DaemonCommandVSCodeMigrate
+		}
+	}
+
+	switch action.Kind {
+	case ActionShowCommandHelp, ActionStatus, ActionStop, ActionNewThread, ActionFollowLocal, ActionDetach:
+		contract.TerminalResult = true
+		contract.DropNoticeEventsAfterResult = true
+	case ActionAttachInstance:
+		contract.DropThreadSelectionAfterResult = true
+	}
+
+	return contract
+}
+
+func ResolveFeishuLauncherDisposition(action Action) FeishuFrontstageLauncherDisposition {
+	switch action.Kind {
+	case ActionShowCommandMenu,
+		ActionModeCommand,
+		ActionAutoContinueCommand,
+		ActionReasoningCommand,
+		ActionAccessCommand,
+		ActionPlanCommand,
+		ActionModelCommand,
+		ActionVerboseCommand:
+		return FeishuFrontstageLauncherKeep
+	case ActionShowCommandHelp, ActionStatus:
+		return FeishuFrontstageLauncherEnterTerminal
+	default:
+		return FeishuFrontstageLauncherEnterOwner
+	}
+}
+
+func ActionTargetsCurrentFeishuCard(action Action) bool {
+	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
+}
+
+func SupportsFeishuSynchronousCurrentCardReplacement(action Action) bool {
+	contract := ResolveFeishuFrontstageActionContract(action)
+	if contract.CurrentCardMode == FeishuFrontstageCurrentCardNone {
+		return false
+	}
+	if !contract.RequiresDaemonFreshness {
+		return true
+	}
+	return ActionTargetsCurrentFeishuCard(action)
+}
+
 func InlineCardReplacementPolicy(action Action) (FeishuUIInlineReplacePolicy, bool) {
-	if !inlineReplaceableFeishuUIIntentAction(action) {
+	contract := ResolveFeishuFrontstageActionContract(action)
+	if contract.CurrentCardMode != FeishuFrontstageCurrentCardInlineView {
 		return FeishuUIInlineReplacePolicy{}, false
 	}
 	return FeishuUIInlineReplacePolicy{
 		Owner:                   FeishuUIInlineReplaceOwnerController,
 		ReplaceCurrentCard:      true,
-		RequiresDaemonFreshness: true,
-		DaemonFreshness:         FeishuUIInlineReplaceFreshnessDaemonLifecycle,
-		RequiresViewSession:     false,
-		ViewSessionStrategy:     FeishuUIInlineReplaceViewSessionSurfaceState,
+		RequiresDaemonFreshness: contract.RequiresDaemonFreshness,
+		DaemonFreshness:         contract.DaemonFreshness,
+		RequiresViewSession:     contract.RequiresViewSession,
+		ViewSessionStrategy:     contract.ViewSessionStrategy,
 	}, true
 }
+
+func AllowsInlineCardReplacement(action Action) bool {
+	contract := ResolveFeishuFrontstageActionContract(action)
+	if contract.CurrentCardMode != FeishuFrontstageCurrentCardInlineView {
+		return false
+	}
+	return SupportsFeishuSynchronousCurrentCardReplacement(action)
+}
+
+func AllowsCommandCardResultReplacement(action Action) bool {
+	if !ActionTargetsCurrentFeishuCard(action) {
+		return false
+	}
+	switch action.Kind {
+	case ActionListInstances,
+		ActionShowThreads,
+		ActionShowAllThreads,
+		ActionAttachInstance,
+		ActionUseThread,
+		ActionShowCommandHelp,
+		ActionStatus,
+		ActionStop,
+		ActionNewThread,
+		ActionFollowLocal,
+		ActionDetach,
+		ActionVSCodeMigrate:
+		return true
+	default:
+		return firstResultCardReplaceableAction(action)
+	}
+}
+
+func AllowsBareCommandContinuation(Action) bool { return false }
+
+func AllowsCommandSubmissionAnchorReplacement(Action) bool { return false }
 
 func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	switch action.Kind {
@@ -96,24 +248,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	}
 }
 
-func AllowsInlineCardReplacement(action Action) bool {
-	policy, ok := InlineCardReplacementPolicy(action)
-	if !ok || !policy.ReplaceCurrentCard {
-		return false
-	}
-	if !policy.RequiresDaemonFreshness {
-		return true
-	}
-	return action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""
-}
-
-// AllowsCommandCardResultReplacement returns whether this stamped card-triggered
-// command should synchronously replace the current card with its first real
-// result card instead of acknowledging immediately or using a submitted anchor.
-func AllowsCommandCardResultReplacement(action Action) bool {
-	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
-		return false
-	}
+func firstResultCardReplaceableAction(action Action) bool {
 	switch action.Kind {
 	case ActionListInstances,
 		ActionShowThreads,
@@ -128,29 +263,6 @@ func AllowsCommandCardResultReplacement(action Action) bool {
 		ActionDetach,
 		ActionVSCodeMigrate:
 		return true
-	default:
-		return allowsCommandPageResultReplacement(action)
-	}
-}
-
-// AllowsBareCommandContinuation returns whether this stamped card-triggered
-// command should synchronously replace the current card with the first follow-up
-// card produced by the daemon command continuation path.
-func AllowsBareCommandContinuation(action Action) bool {
-	if AllowsInlineCardReplacement(action) || AllowsCommandCardResultReplacement(action) {
-		return false
-	}
-	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
-		return false
-	}
-	if !isSingleTokenSlashCommand(action.Text) {
-		return false
-	}
-	return false
-}
-
-func allowsCommandPageResultReplacement(action Action) bool {
-	switch action.Kind {
 	case ActionCronCommand:
 		return !cronCommandRunsImmediately(action.Text)
 	case ActionUpgradeCommand:
@@ -224,21 +336,6 @@ func isReleaseTrackToken(value string) bool {
 	default:
 		return false
 	}
-}
-
-// AllowsCommandSubmissionAnchorReplacement returns whether this card-triggered
-// command should synchronously return a lightweight "已提交" replacement card
-// while keeping command results append-only.
-func AllowsCommandSubmissionAnchorReplacement(action Action) bool {
-	if AllowsInlineCardReplacement(action) ||
-		AllowsCommandCardResultReplacement(action) ||
-		AllowsBareCommandContinuation(action) {
-		return false
-	}
-	if action.Inbound == nil || strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) == "" {
-		return false
-	}
-	return false
 }
 
 func isSingleTokenSlashCommand(text string) bool {

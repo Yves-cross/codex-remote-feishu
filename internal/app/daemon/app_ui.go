@@ -303,22 +303,6 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			break
 		}
 	}
-	if event.FeishuPageContext != nil && strings.TrimSpace(event.FeishuPageContext.MenuFlowID) != "" {
-		for _, operation := range operations {
-			if operation.Kind != feishu.OperationSendCard {
-				continue
-			}
-			if strings.TrimSpace(operation.MessageID) == "" {
-				continue
-			}
-			a.service.RecordMenuFlowMessage(
-				event.SurfaceSessionID,
-				event.FeishuPageContext.MenuFlowID,
-				operation.MessageID,
-			)
-			break
-		}
-	}
 	if event.FeishuPageView != nil && strings.TrimSpace(event.FeishuPageView.TrackingKey) != "" {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {

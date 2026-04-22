@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -239,24 +238,11 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 		return nil
 	}
 	events := a.applyIngressActionLocked(action)
-	inlineResult, appendEvents := a.inlineCardActionResultLocked(action, events)
-	commandSubmissionAnchorReplace := false
-	if inlineResult == nil {
-		inlineResult, appendEvents = a.commandCardResultReplacementLocked(action, events)
-	}
-	if inlineResult == nil {
-		inlineResult, appendEvents = a.bareCommandContinuationResultLocked(action, events)
-	}
-	if inlineResult == nil {
-		inlineResult = a.commandSubmissionAnchorResultLocked(action)
-		commandSubmissionAnchorReplace = inlineResult != nil
-	}
-	inlineNavigationReplace := inlineResult != nil && control.AllowsInlineCardReplacement(action)
+	contract := control.ResolveFeishuFrontstageActionContract(action)
+	inlineResult, appendEvents := a.synchronousCurrentCardActionResultLocked(action, contract, events)
+	inlineNavigationReplace := inlineResult != nil && contract.CurrentCardMode == control.FeishuFrontstageCurrentCardInlineView
 	if !inlineNavigationReplace || len(appendEvents) != 0 {
 		a.handleUIEventsLocked(ctx, appendEvents)
-	}
-	if commandSubmissionAnchorReplace {
-		a.scheduleCommandSubmissionAnchorRecall(action)
 	}
 	var clearTargets map[string]bool
 	if a.shouldClearSurfaceResumeTargetLocked(action, before) {
@@ -298,8 +284,41 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	return inlineResult
 }
 
-func (a *App) inlineCardActionResultLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
-	if !control.AllowsInlineCardReplacement(action) || len(events) == 0 {
+func (a *App) synchronousCurrentCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+	if !control.SupportsFeishuSynchronousCurrentCardReplacement(action) || len(events) == 0 {
+		return nil, events
+	}
+	switch contract.CurrentCardMode {
+	case control.FeishuFrontstageCurrentCardInlineView:
+		replace, appendEvents := a.inlineViewCurrentCardActionResultLocked(action, events)
+		if replace != nil {
+			return replace, appendEvents
+		}
+		if inlineFallbackReplacementBlockedByActivePicker(events) {
+			return nil, events
+		}
+		return a.firstResultCardActionResultLocked(action, contract, events)
+	case control.FeishuFrontstageCurrentCardFirstResultCard:
+		return a.firstResultCardActionResultLocked(action, contract, events)
+	default:
+		return nil, events
+	}
+}
+
+func inlineFallbackReplacementBlockedByActivePicker(events []control.UIEvent) bool {
+	if len(events) != 1 || events[0].Notice == nil {
+		return false
+	}
+	switch strings.TrimSpace(events[0].Notice.Code) {
+	case "path_picker_active", "target_picker_processing":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) inlineViewCurrentCardActionResultLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+	if len(events) == 0 {
 		return nil, events
 	}
 	event := events[0]
@@ -312,15 +331,6 @@ func (a *App) inlineCardActionResultLocked(action control.Action, events []contr
 		return nil, events
 	}
 	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}, events[1:]
-}
-
-func commandCardTerminalResult(action control.Action) bool {
-	switch action.Kind {
-	case control.ActionStop, control.ActionNewThread, control.ActionFollowLocal, control.ActionDetach:
-		return true
-	default:
-		return false
-	}
 }
 
 func removeUIEventAt(events []control.UIEvent, idx int) []control.UIEvent {
@@ -354,14 +364,14 @@ func filterThreadSelectionUIEvents(events []control.UIEvent) []control.UIEvent {
 	return out
 }
 
-func (a *App) commandCardResultReplacementLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
-	if !control.AllowsCommandCardResultReplacement(action) || len(events) == 0 {
+func (a *App) firstResultCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+	if len(events) == 0 {
 		return nil, events
 	}
 	replace, appendEvents := a.firstProjectableCardReplacementLocked(action, events)
-	if replace == nil && len(events) == 1 && events[0].DaemonCommand != nil {
+	if replace == nil && contract.ContinuationDaemonCommand != "" && len(events) == 1 && events[0].DaemonCommand != nil {
 		daemonCommand := *events[0].DaemonCommand
-		if daemonCommandMatchesCommandCardResultReplacement(action, daemonCommand) {
+		if daemonCommand.Kind == contract.ContinuationDaemonCommand {
 			followup := a.handleDaemonCommandLocked(daemonCommand)
 			if len(followup) == 0 {
 				return nil, nil
@@ -375,30 +385,13 @@ func (a *App) commandCardResultReplacementLocked(action control.Action, events [
 	if replace == nil {
 		return nil, events
 	}
-	if commandCardTerminalResult(action) {
+	if contract.DropNoticeEventsAfterResult {
 		appendEvents = filterNoticeUIEvents(appendEvents)
 	}
-	if action.Kind == control.ActionAttachInstance {
+	if contract.DropThreadSelectionAfterResult {
 		appendEvents = filterThreadSelectionUIEvents(appendEvents)
 	}
 	return replace, appendEvents
-}
-
-func daemonCommandMatchesCommandCardResultReplacement(action control.Action, command control.DaemonCommand) bool {
-	switch action.Kind {
-	case control.ActionUpgradeCommand:
-		return command.Kind == control.DaemonCommandUpgrade
-	case control.ActionDebugCommand:
-		return command.Kind == control.DaemonCommandDebug
-	case control.ActionCronCommand:
-		return command.Kind == control.DaemonCommandCron
-	case control.ActionVSCodeMigrateCommand:
-		return command.Kind == control.DaemonCommandVSCodeMigrateCommand
-	case control.ActionVSCodeMigrate:
-		return command.Kind == control.DaemonCommandVSCodeMigrate
-	default:
-		return false
-	}
 }
 
 func (a *App) firstProjectableCardReplacementLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
@@ -410,75 +403,6 @@ func (a *App) firstProjectableCardReplacementLocked(action control.Action, event
 		return replace, removeUIEventAt(events, i)
 	}
 	return nil, events
-}
-
-func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu.ActionResult {
-	if !control.AllowsCommandSubmissionAnchorReplacement(action) {
-		return nil
-	}
-	commandText := commandSubmissionAnchorCommandText(action)
-	if commandText == "" {
-		return nil
-	}
-	page := control.NormalizeFeishuPageView(control.FeishuPageView{
-		Title:           "命令已提交",
-		SummarySections: commandCatalogSummarySections(fmt.Sprintf("已执行 %s，结果会显示在下方。", commandText)),
-		Interactive:     true,
-		DisplayStyle:    control.CommandCatalogDisplayCompactButtons,
-		RelatedButtons: []control.CommandCatalogButton{{
-			Label:       "重新打开菜单",
-			Kind:        control.CommandCatalogButtonAction,
-			CommandText: "/menu",
-		}},
-	})
-	pageView := control.FeishuPageViewFromCommandPageView(page)
-	event := control.UIEvent{
-		Kind:              control.UIEventFeishuPageView,
-		GatewayID:         action.GatewayID,
-		SurfaceSessionID:  action.SurfaceSessionID,
-		DaemonLifecycleID: a.daemonLifecycleID,
-		FeishuPageView:    &pageView,
-	}
-	ops := a.projector.Project(a.service.SurfaceChatID(action.SurfaceSessionID), event)
-	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
-		return nil
-	}
-	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}
-}
-
-func (a *App) bareCommandContinuationResultLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
-	if !control.AllowsBareCommandContinuation(action) || len(events) != 1 || events[0].DaemonCommand == nil {
-		return nil, events
-	}
-	daemonCommand := *events[0].DaemonCommand
-	if !daemonCommandMatchesBareContinuation(action, daemonCommand) {
-		return nil, events
-	}
-	followup := a.handleDaemonCommandLocked(daemonCommand)
-	if len(followup) == 0 {
-		return nil, nil
-	}
-	replace := a.projectFirstCardAsReplacementLocked(action, followup[0])
-	if replace == nil {
-		return nil, followup
-	}
-	if len(followup) == 1 {
-		return replace, nil
-	}
-	return replace, followup[1:]
-}
-
-func daemonCommandMatchesBareContinuation(action control.Action, command control.DaemonCommand) bool {
-	switch action.Kind {
-	case control.ActionUpgradeCommand:
-		return command.Kind == control.DaemonCommandUpgrade
-	case control.ActionDebugCommand:
-		return command.Kind == control.DaemonCommandDebug
-	case control.ActionCronCommand:
-		return command.Kind == control.DaemonCommandCron
-	default:
-		return false
-	}
 }
 
 func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event control.UIEvent) *feishu.ActionResult {
@@ -497,49 +421,6 @@ func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event c
 		return nil
 	}
 	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}
-}
-
-func commandSubmissionAnchorCommandText(action control.Action) string {
-	switch action.Kind {
-	case control.ActionShowThreads:
-		return "/use"
-	case control.ActionShowAllThreads:
-		return "/useall"
-	default:
-		return ""
-	}
-}
-
-func (a *App) scheduleCommandSubmissionAnchorRecall(action control.Action) {
-	messageID := strings.TrimSpace(action.MessageID)
-	if messageID == "" || a.commandAnchorRecallDelay < 0 {
-		return
-	}
-	delay := a.commandAnchorRecallDelay
-	surfaceID := strings.TrimSpace(action.SurfaceSessionID)
-	gatewayID := strings.TrimSpace(action.GatewayID)
-	go func() {
-		if delay > 0 {
-			time.Sleep(delay)
-		}
-		a.mu.Lock()
-		shuttingDown := a.shuttingDown
-		a.mu.Unlock()
-		if shuttingDown {
-			return
-		}
-		ctx, cancel := a.newTimeoutContext(context.Background(), a.gatewayApplyTimeout)
-		defer cancel()
-		err := a.gateway.Apply(ctx, []feishu.Operation{{
-			Kind:             feishu.OperationDeleteMessage,
-			GatewayID:        gatewayID,
-			SurfaceSessionID: surfaceID,
-			MessageID:        messageID,
-		}})
-		if err != nil {
-			log.Printf("command submission anchor recall skipped: surface=%s message=%s err=%v", surfaceID, messageID, err)
-		}
-	}()
 }
 
 func (a *App) ensureSurfaceRouteForNotice(action control.Action) {

@@ -72,18 +72,11 @@ type FeishuUISelectionContext struct {
 // FeishuUIPageContext describes the stable query/policy inputs for the
 // generic page-card family.
 type FeishuUIPageContext struct {
-	DTOOwner        FeishuUIDTOwner
-	Surface         FeishuUISurfaceContext
-	PageID          string
-	CommandID       string
-	Title           string
-	Phase           string
-	MenuFlowID      string
-	MenuFlowRev     int
-	OriginMenuNode  string
-	CurrentMenuNode string
-	BackTarget      string
-	EnteredBusiness bool
+	DTOOwner  FeishuUIDTOwner
+	Surface   FeishuUISurfaceContext
+	PageID    string
+	CommandID string
+	Title     string
 }
 
 // FeishuUIRequestContext describes the stable query/policy inputs that back a

@@ -45,14 +45,14 @@ func (s *Service) workspacePageParentCommand(surface *state.SurfaceConsoleRecord
 }
 
 func (s *Service) workspacePageTriggeredFromMenu(surface *state.SurfaceConsoleRecord, sourceMessageID string) bool {
-	if surface == nil || surface.MenuFlow == nil || surface.MenuFlow.EnteredBusiness {
+	if surface == nil {
 		return false
 	}
 	sourceMessageID = strings.TrimSpace(sourceMessageID)
 	if sourceMessageID == "" {
 		return false
 	}
-	return strings.TrimSpace(surface.MenuFlow.MessageID) == sourceMessageID
+	return s.activeCommandLauncherMessageID(surface) == sourceMessageID
 }
 
 func (s *Service) workspacePageEvent(surface *state.SurfaceConsoleRecord, commandID string, fromMenu bool) control.UIEvent {
@@ -61,14 +61,11 @@ func (s *Service) workspacePageEvent(surface *state.SurfaceConsoleRecord, comman
 		s.clearTargetPickerRuntime(surface)
 		s.clearWorkspacePageRuntime(surface)
 	}
-	if fromMenu {
-		s.ensureMenuFlow(surface, control.FeishuCommandGroupSwitchTarget, menuFlowPhaseGroup)
-	}
 	ownerUserID := ""
 	if surface != nil {
 		ownerUserID = firstNonEmpty(surface.ActorUserID)
 	}
-	flowID := s.pickers.nextMenuFlowToken()
+	flowID := s.pickers.nextLauncherFlowToken()
 	flow := newOwnerCardFlowRecord(ownerCardFlowKindWorkspacePage, flowID, ownerUserID, s.now(), defaultTargetPickerTTL, ownerCardFlowPhaseEditing)
 	page := &activeWorkspacePageRecord{
 		FlowID:      flowID,

@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	menuFlowPhaseHome            = "home"
-	menuFlowPhaseGroup           = "group"
-	menuFlowPhaseConfig          = "config"
-	menuFlowPhaseBusinessHandoff = "business_handoff"
-	menuFlowPhaseTerminal        = "terminal"
+	commandLauncherPhaseHome            = "home"
+	commandLauncherPhaseGroup           = "group"
+	commandLauncherPhaseConfig          = "config"
+	commandLauncherPhaseBusinessHandoff = "business_handoff"
+	commandLauncherPhaseTerminal        = "terminal"
 )
 
 func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) control.UIEvent {
@@ -38,23 +38,27 @@ func (s *Service) menuPageEvent(surface *state.SurfaceConsoleRecord, raw string)
 	}
 	view := s.buildCommandMenuView(surface, raw)
 	page := control.FeishuPageViewFromCommandPageView(s.commandPageFromView(surface, view))
-	phase := menuFlowPhaseHome
+	phase := commandLauncherPhaseHome
 	if strings.TrimSpace(groupID) != "" {
-		phase = menuFlowPhaseGroup
+		phase = commandLauncherPhaseGroup
 	}
-	s.ensureMenuFlow(surface, groupID, phase)
+	if flow := s.ensureCommandLauncherFlow(surface, groupID, phase); flow != nil {
+		page.TrackingKey = strings.TrimSpace(flow.FlowID)
+	}
 	return s.pageEvent(surface, page)
 }
 
 func (s *Service) configPageEventFromCatalogView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) control.UIEvent {
 	page := control.FeishuPageViewFromCommandPageView(s.commandPageFromView(surface, view))
-	if surface != nil && surface.MenuFlow != nil && !surface.MenuFlow.EnteredBusiness {
-		s.markMenuFlowConfigPhase(surface)
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow != nil && flow.Role == frontstageFlowRoleLauncher {
+		s.markCommandLauncherConfigPhase(surface)
 		page.RelatedButtons = []control.CommandCatalogButton{{
 			Label:       "返回菜单",
 			Kind:        control.CommandCatalogButtonAction,
-			CommandText: s.menuFlowBackCommand(surface),
+			CommandText: s.commandLauncherBackCommand(surface),
 		}}
+		page.TrackingKey = strings.TrimSpace(flow.FlowID)
 	} else {
 		page.RelatedButtons = nil
 	}
@@ -67,87 +71,119 @@ func (s *Service) helpTerminalPageEvent(surface *state.SurfaceConsoleRecord) con
 	page.Sealed = true
 	page.Interactive = false
 	page.RelatedButtons = nil
-	s.markMenuFlowTerminal(surface)
+	if flow := s.markCommandLauncherTerminal(surface); flow != nil {
+		page.TrackingKey = strings.TrimSpace(flow.FlowID)
+	}
 	return s.pageEvent(surface, control.NormalizeFeishuPageView(page))
 }
 
-func (s *Service) ensureMenuFlow(surface *state.SurfaceConsoleRecord, currentNode, phase string) *state.MenuFlowRuntimeRecord {
+func (s *Service) activeCommandLauncherFlow(surface *state.SurfaceConsoleRecord) *activeOwnerCardFlowRecord {
+	flow := s.activeOwnerCardFlow(surface)
+	if flow == nil || flow.Kind != ownerCardFlowKindCommandMenu {
+		return nil
+	}
+	return flow
+}
+
+func (s *Service) ensureCommandLauncherFlow(surface *state.SurfaceConsoleRecord, currentNode, phase string) *activeOwnerCardFlowRecord {
 	if surface == nil {
 		return nil
 	}
+	now := s.now()
 	node := strings.TrimSpace(currentNode)
-	if surface.MenuFlow == nil || surface.MenuFlow.EnteredBusiness {
-		flowID := s.pickers.nextMenuFlowToken()
-		surface.MenuFlow = &state.MenuFlowRuntimeRecord{
-			FlowID:          flowID,
-			Revision:        1,
-			OriginMenuNode:  node,
-			CurrentMenuNode: node,
-			BackTarget:      "",
-			Phase:           strings.TrimSpace(phase),
-		}
-		if surface.MenuFlow.Phase == "" {
-			surface.MenuFlow.Phase = menuFlowPhaseHome
-		}
-		return surface.MenuFlow
+	flow := s.activeCommandLauncherFlow(surface)
+	recreate := flow == nil || flow.Role != frontstageFlowRoleLauncher
+	if flow != nil && !flow.ExpiresAt.IsZero() && !flow.ExpiresAt.After(now) {
+		recreate = true
 	}
-	flow := surface.MenuFlow
-	flow.Revision++
+	if recreate {
+		flow = newOwnerCardFlowRecord(
+			ownerCardFlowKindCommandMenu,
+			s.pickers.nextLauncherFlowToken(),
+			firstNonEmpty(surface.ActorUserID),
+			now,
+			defaultTargetPickerTTL,
+			ownerCardFlowPhaseEditing,
+		)
+		flow.Role = frontstageFlowRoleLauncher
+		s.setActiveOwnerCardFlow(surface, flow)
+	} else {
+		bumpOwnerCardFlowRevision(flow)
+	}
+	flow.Role = frontstageFlowRoleLauncher
+	flow.Phase = ownerCardFlowPhaseEditing
+	flow.CreatedAt = now
+	flow.ExpiresAt = now.Add(defaultTargetPickerTTL)
 	if strings.TrimSpace(flow.OriginMenuNode) == "" {
 		flow.OriginMenuNode = node
 	}
 	flow.CurrentMenuNode = node
 	flow.BackTarget = ""
-	flow.Phase = strings.TrimSpace(phase)
-	if flow.Phase == "" {
-		flow.Phase = menuFlowPhaseHome
+	flow.LauncherPhase = strings.TrimSpace(phase)
+	if flow.LauncherPhase == "" {
+		flow.LauncherPhase = commandLauncherPhaseHome
 	}
 	return flow
 }
 
-func (s *Service) menuFlowBackCommand(surface *state.SurfaceConsoleRecord) string {
-	if surface == nil || surface.MenuFlow == nil {
+func (s *Service) commandLauncherBackCommand(surface *state.SurfaceConsoleRecord) string {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil {
 		return ""
 	}
-	target := strings.TrimSpace(surface.MenuFlow.BackTarget)
+	target := strings.TrimSpace(flow.BackTarget)
 	if target == "" {
 		return "/menu"
 	}
 	return "/menu " + target
 }
 
-func (s *Service) markMenuFlowConfigPhase(surface *state.SurfaceConsoleRecord) {
-	if surface == nil || surface.MenuFlow == nil || surface.MenuFlow.EnteredBusiness {
+func (s *Service) markCommandLauncherConfigPhase(surface *state.SurfaceConsoleRecord) {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil || flow.Role != frontstageFlowRoleLauncher {
 		return
 	}
-	surface.MenuFlow.Revision++
-	surface.MenuFlow.Phase = menuFlowPhaseConfig
-	surface.MenuFlow.BackTarget = strings.TrimSpace(surface.MenuFlow.CurrentMenuNode)
+	flow.CreatedAt = s.now()
+	flow.ExpiresAt = flow.CreatedAt.Add(defaultTargetPickerTTL)
+	flow.LauncherPhase = commandLauncherPhaseConfig
+	flow.BackTarget = strings.TrimSpace(flow.CurrentMenuNode)
+	flow.Phase = ownerCardFlowPhaseEditing
+	bumpOwnerCardFlowRevision(flow)
 }
 
-func (s *Service) markMenuFlowTerminal(surface *state.SurfaceConsoleRecord) {
-	if surface == nil || surface.MenuFlow == nil {
+func (s *Service) markCommandLauncherTerminal(surface *state.SurfaceConsoleRecord) *activeOwnerCardFlowRecord {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil {
+		return nil
+	}
+	flow.Role = frontstageFlowRoleOwner
+	flow.Phase = ownerCardFlowPhaseCompleted
+	flow.LauncherPhase = commandLauncherPhaseTerminal
+	flow.BackTarget = ""
+	flow.CreatedAt = s.now()
+	flow.ExpiresAt = flow.CreatedAt.Add(defaultTargetPickerTTL)
+	bumpOwnerCardFlowRevision(flow)
+	return flow
+}
+
+func (s *Service) markCommandLauncherEnteredBusiness(surface *state.SurfaceConsoleRecord, phase string) {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil || flow.Role != frontstageFlowRoleLauncher {
 		return
 	}
-	surface.MenuFlow.Revision++
-	surface.MenuFlow.Phase = menuFlowPhaseTerminal
-	surface.MenuFlow.BackTarget = ""
+	flow.Role = frontstageFlowRoleOwner
+	flow.BackTarget = ""
+	flow.Phase = ownerCardFlowPhaseRunning
+	flow.LauncherPhase = strings.TrimSpace(phase)
+	if flow.LauncherPhase == "" {
+		flow.LauncherPhase = commandLauncherPhaseBusinessHandoff
+	}
+	flow.CreatedAt = s.now()
+	flow.ExpiresAt = flow.CreatedAt.Add(defaultTargetPickerTTL)
+	bumpOwnerCardFlowRevision(flow)
 }
 
-func (s *Service) markMenuFlowEnteredBusiness(surface *state.SurfaceConsoleRecord, phase string) {
-	if surface == nil || surface.MenuFlow == nil {
-		return
-	}
-	surface.MenuFlow.Revision++
-	surface.MenuFlow.EnteredBusiness = true
-	surface.MenuFlow.BackTarget = ""
-	surface.MenuFlow.Phase = strings.TrimSpace(phase)
-	if surface.MenuFlow.Phase == "" {
-		surface.MenuFlow.Phase = menuFlowPhaseBusinessHandoff
-	}
-}
-
-func shouldSealMenuFlowForAction(kind control.ActionKind) bool {
+func shouldSealCommandLauncherForAction(kind control.ActionKind) bool {
 	switch kind {
 	case control.ActionShowCommandMenu,
 		control.ActionShowCommandHelp,
@@ -165,20 +201,28 @@ func shouldSealMenuFlowForAction(kind control.ActionKind) bool {
 	}
 }
 
-func (s *Service) setMenuFlowMessageID(surface *state.SurfaceConsoleRecord, messageID string) {
-	if surface == nil || surface.MenuFlow == nil {
-		return
+func (s *Service) activeCommandLauncherMessageID(surface *state.SurfaceConsoleRecord) string {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil || flow.Role != frontstageFlowRoleLauncher {
+		return ""
 	}
-	surface.MenuFlow.MessageID = strings.TrimSpace(messageID)
+	return strings.TrimSpace(flow.MessageID)
 }
 
-func (s *Service) RecordMenuFlowMessage(surfaceID, flowID, messageID string) {
-	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
-	if surface == nil || surface.MenuFlow == nil {
+func (s *Service) refreshCommandLauncherMessage(surface *state.SurfaceConsoleRecord, messageID string) {
+	flow := s.activeCommandLauncherFlow(surface)
+	if flow == nil || flow.Role != frontstageFlowRoleLauncher {
 		return
 	}
-	if strings.TrimSpace(flowID) == "" || strings.TrimSpace(surface.MenuFlow.FlowID) != strings.TrimSpace(flowID) {
+	messageID = strings.TrimSpace(messageID)
+	if messageID == "" {
 		return
 	}
-	s.setMenuFlowMessageID(surface, messageID)
+	if flow.MessageID == messageID {
+		return
+	}
+	flow.MessageID = messageID
+	flow.CreatedAt = s.now()
+	flow.ExpiresAt = flow.CreatedAt.Add(defaultTargetPickerTTL)
+	bumpOwnerCardFlowRevision(flow)
 }

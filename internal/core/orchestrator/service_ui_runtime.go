@@ -18,11 +18,19 @@ const (
 type ownerCardFlowKind string
 
 const (
+	ownerCardFlowKindCommandMenu   ownerCardFlowKind = "command_menu"
 	ownerCardFlowKindThreadHistory ownerCardFlowKind = "thread_history"
 	ownerCardFlowKindTargetPicker  ownerCardFlowKind = "target_picker"
 	ownerCardFlowKindCompact       ownerCardFlowKind = "compact"
 	ownerCardFlowKindPlanProposal  ownerCardFlowKind = "plan_proposal"
 	ownerCardFlowKindWorkspacePage ownerCardFlowKind = "workspace_page"
+)
+
+type frontstageFlowRole string
+
+const (
+	frontstageFlowRoleLauncher frontstageFlowRole = "launcher"
+	frontstageFlowRoleOwner    frontstageFlowRole = "owner"
 )
 
 type ownerCardFlowPhase string
@@ -38,14 +46,20 @@ const (
 )
 
 type activeOwnerCardFlowRecord struct {
-	FlowID      string
-	Kind        ownerCardFlowKind
-	OwnerUserID string
-	MessageID   string
-	Revision    int
-	Phase       ownerCardFlowPhase
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
+	FlowID          string
+	Kind            ownerCardFlowKind
+	Role            frontstageFlowRole
+	OwnerUserID     string
+	MessageID       string
+	Revision        int
+	Phase           ownerCardFlowPhase
+	LauncherPhase   string
+	CommandID       string
+	OriginMenuNode  string
+	CurrentMenuNode string
+	BackTarget      string
+	CreatedAt       time.Time
+	ExpiresAt       time.Time
 }
 
 type activeTargetPickerRecord struct {
@@ -142,6 +156,7 @@ type surfaceUIRuntimeRecord struct {
 type SurfaceUIRuntimeSummary struct {
 	ActiveOwnerCardFlowID    string
 	ActiveOwnerCardFlowKind  string
+	ActiveOwnerCardFlowRole  string
 	ActiveOwnerCardFlowPhase string
 	ActiveOwnerCardRevision  int
 	ActiveTargetPickerID     string
@@ -341,6 +356,7 @@ func (s *Service) SurfaceUIRuntimeSummary(surfaceID string) SurfaceUIRuntimeSumm
 	if runtime.ActiveOwnerCardFlow != nil {
 		summary.ActiveOwnerCardFlowID = strings.TrimSpace(runtime.ActiveOwnerCardFlow.FlowID)
 		summary.ActiveOwnerCardFlowKind = strings.TrimSpace(string(runtime.ActiveOwnerCardFlow.Kind))
+		summary.ActiveOwnerCardFlowRole = strings.TrimSpace(string(runtime.ActiveOwnerCardFlow.Role))
 		summary.ActiveOwnerCardFlowPhase = strings.TrimSpace(string(runtime.ActiveOwnerCardFlow.Phase))
 		summary.ActiveOwnerCardRevision = runtime.ActiveOwnerCardFlow.Revision
 	}
@@ -366,6 +382,7 @@ func newOwnerCardFlowRecord(kind ownerCardFlowKind, flowID, ownerUserID string, 
 	flow := &activeOwnerCardFlowRecord{
 		FlowID:      strings.TrimSpace(flowID),
 		Kind:        kind,
+		Role:        frontstageFlowRoleOwner,
 		OwnerUserID: strings.TrimSpace(ownerUserID),
 		Revision:    1,
 		Phase:       phase,

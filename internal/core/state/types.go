@@ -225,19 +225,7 @@ type SurfaceConsoleRecord struct {
 	RecentFinalCards     []*FinalCardRecord
 	LastThreadHistory    *agentproto.ThreadHistoryRecord
 	LastSelection        *SelectionAnnouncementRecord
-	MenuFlow             *MenuFlowRuntimeRecord
 	AutoContinue         AutoContinueRuntimeRecord
-}
-
-type MenuFlowRuntimeRecord struct {
-	FlowID          string
-	Revision        int
-	MessageID       string
-	OriginMenuNode  string
-	CurrentMenuNode string
-	BackTarget      string
-	Phase           string
-	EnteredBusiness bool
 }
 
 type ExecCommandProgressEntryRecord struct {

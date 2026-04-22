@@ -17,7 +17,7 @@ type servicePickerRuntime struct {
 	nextThreadHistoryID    int
 	nextCompactFlowID      int
 	nextPlanProposalID     int
-	nextMenuFlowID         int
+	nextLauncherFlowID     int
 	pathPickerConsumers    map[string]PathPickerConsumer
 	pathPickerEntryFilters map[string]PathPickerEntryFilter
 }
@@ -109,9 +109,9 @@ func (r *servicePickerRuntime) nextPlanProposalToken() string {
 	return fmt.Sprintf("plan-proposal-%d", r.nextPlanProposalID)
 }
 
-func (r *servicePickerRuntime) nextMenuFlowToken() string {
-	r.nextMenuFlowID++
-	return fmt.Sprintf("menu-flow-%d", r.nextMenuFlowID)
+func (r *servicePickerRuntime) nextLauncherFlowToken() string {
+	r.nextLauncherFlowID++
+	return fmt.Sprintf("launcher-flow-%d", r.nextLauncherFlowID)
 }
 
 func (r *servicePickerRuntime) recordSurfaceThreadHistory(surfaceID string, history agentproto.ThreadHistoryRecord) {
