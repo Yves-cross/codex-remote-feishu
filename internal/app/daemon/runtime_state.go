@@ -97,6 +97,7 @@ type feishuRuntimeState struct {
 	permissionMu              sync.RWMutex
 	runtimeApply              map[string]feishuRuntimeApplyPendingState
 	timeSensitive             map[string]feishuTimeSensitiveState
+	attentionRequests         map[string]time.Time
 	permissionGaps            map[string]map[string]*feishuPermissionGapRecord
 	permissionRefreshEvery    time.Duration
 	permissionNextRefresh     time.Time
@@ -143,6 +144,7 @@ func newFeishuRuntimeState() feishuRuntimeState {
 	return feishuRuntimeState{
 		runtimeApply:           map[string]feishuRuntimeApplyPendingState{},
 		timeSensitive:          map[string]feishuTimeSensitiveState{},
+		attentionRequests:      map[string]time.Time{},
 		permissionGaps:         map[string]map[string]*feishuPermissionGapRecord{},
 		permissionRefreshEvery: defaultFeishuPermissionRefreshEvery,
 		onboarding:             map[string]*feishuOnboardingSession{},

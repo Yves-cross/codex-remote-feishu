@@ -35,6 +35,7 @@ type Operation struct {
 	EmojiType            string
 	TimeSensitive        bool
 	Text                 string
+	MentionUserID        string
 	ImagePath            string
 	ImageBase64          string
 	CardTitle            string
@@ -233,6 +234,7 @@ func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
 			ChatID:           chatID,
 			ReplyToMessageID: replyToMessageID,
 			Text:             text,
+			MentionUserID:    strings.TrimSpace(event.TimelineText.MentionUserID),
 		}}
 	case control.UIEventFeishuPathPicker:
 		if event.FeishuPathPickerView == nil {

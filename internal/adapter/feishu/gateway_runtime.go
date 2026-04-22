@@ -142,7 +142,10 @@ func (g *LiveGateway) Apply(ctx context.Context, operations []Operation) error {
 func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error {
 	switch operation.Kind {
 	case OperationSendText:
-		body, _ := json.Marshal(map[string]string{"text": operation.Text})
+		msgType, content, err := sendTextPayload(*operation)
+		if err != nil {
+			return err
+		}
 		receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
 		if receiveID == "" || receiveIDType == "" {
 			receiveID, receiveIDType = ResolveReceiveTarget(operation.ChatID, "")
@@ -151,7 +154,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			return fmt.Errorf("send text failed: missing receive target")
 		}
 		if strings.TrimSpace(operation.ReplyToMessageID) != "" {
-			resp, err := g.replyMessageFn(ctx, operation.ReplyToMessageID, "text", string(body))
+			resp, err := g.replyMessageFn(ctx, operation.ReplyToMessageID, msgType, content)
 			if err == nil && resp != nil && resp.Success() {
 				if resp.Data != nil {
 					operation.MessageID = stringPtr(resp.Data.MessageId)
@@ -168,7 +171,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 				replyRespMsg(resp),
 			)
 		}
-		resp, err := g.createMessageFn(ctx, receiveIDType, receiveID, "text", string(body))
+		resp, err := g.createMessageFn(ctx, receiveIDType, receiveID, msgType, content)
 		if err != nil {
 			return err
 		}
@@ -375,6 +378,39 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 	default:
 		return nil
 	}
+}
+
+func sendTextPayload(operation Operation) (string, string, error) {
+	text := strings.TrimSpace(operation.Text)
+	if text == "" {
+		return "text", `{"text":""}`, nil
+	}
+	if strings.TrimSpace(operation.MentionUserID) == "" {
+		body, err := json.Marshal(feishuTextContent{Text: text})
+		if err != nil {
+			return "", "", err
+		}
+		return "text", string(body), nil
+	}
+	post := feishuLocalizedPostContent{
+		ZhCN: feishuPostContent{
+			Content: [][]feishuPostNode{{
+				{
+					Tag:    "at",
+					UserID: strings.TrimSpace(operation.MentionUserID),
+				},
+				{
+					Tag:  "text",
+					Text: " " + text,
+				},
+			}},
+		},
+	}
+	body, err := json.Marshal(post)
+	if err != nil {
+		return "", "", err
+	}
+	return "post", string(body), nil
 }
 
 func trimCardPayloadForInlineCallback(payload map[string]any) map[string]any {

@@ -133,3 +133,122 @@ func TestApplySendTextFallsBackToCreateWhenReplyFails(t *testing.T) {
 		t.Fatalf("expected fallback text message to be tracked for surface callbacks, got %#v", gateway.messages)
 	}
 }
+
+func TestApplySendTextMentionRepliesWithPostPayload(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var (
+		replyMessageID string
+		replyMsgType   string
+		replyContent   string
+	)
+	gateway.replyMessageFn = func(_ context.Context, messageID, msgType, content string) (*larkim.ReplyMessageResp, error) {
+		replyMessageID = messageID
+		replyMsgType = msgType
+		replyContent = content
+		return &larkim.ReplyMessageResp{
+			ApiResp: &larkcore.ApiResp{},
+			CodeError: larkcore.CodeError{
+				Code: 0,
+				Msg:  "ok",
+			},
+			Data: &larkim.ReplyMessageRespData{
+				MessageId: stringRef("om-post-1"),
+			},
+		}, nil
+	}
+
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:             OperationSendText,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "oc_chat",
+		ReceiveID:        "oc_chat",
+		ReceiveIDType:    "chat_id",
+		ReplyToMessageID: "om-source-1",
+		Text:             "请处理这条请求。",
+		MentionUserID:    "ou-user-1",
+	}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if replyMessageID != "om-source-1" || replyMsgType != "post" {
+		t.Fatalf("unexpected mention reply request: message=%q type=%q", replyMessageID, replyMsgType)
+	}
+	var payload feishuLocalizedPostContent
+	if err := json.Unmarshal([]byte(replyContent), &payload); err != nil {
+		t.Fatalf("mention reply content is not valid json: %v", err)
+	}
+	if len(payload.ZhCN.Content) != 1 || len(payload.ZhCN.Content[0]) != 2 {
+		t.Fatalf("unexpected mention reply payload: %#v", payload)
+	}
+	if payload.ZhCN.Content[0][0].Tag != "at" || payload.ZhCN.Content[0][0].UserID != "ou-user-1" {
+		t.Fatalf("unexpected mention target payload: %#v", payload)
+	}
+	if payload.ZhCN.Content[0][1].Tag != "text" || payload.ZhCN.Content[0][1].Text != " 请处理这条请求。" {
+		t.Fatalf("unexpected mention text payload: %#v", payload)
+	}
+}
+
+func TestApplySendTextMentionFallsBackToCreateWhenReplyFails(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var (
+		replyCalls    int
+		createCalls   int
+		createType    string
+		createContent string
+	)
+	gateway.replyMessageFn = func(_ context.Context, _, _, _ string) (*larkim.ReplyMessageResp, error) {
+		replyCalls++
+		return &larkim.ReplyMessageResp{
+			ApiResp: &larkcore.ApiResp{},
+			CodeError: larkcore.CodeError{
+				Code: 230001,
+				Msg:  "message not found",
+			},
+		}, nil
+	}
+	gateway.createMessageFn = func(_ context.Context, receiveIDType, receiveID, msgType, content string) (*larkim.CreateMessageResp, error) {
+		createCalls++
+		if receiveIDType != "chat_id" || receiveID != "oc_chat" {
+			t.Fatalf("unexpected fallback receive target: type=%q id=%q", receiveIDType, receiveID)
+		}
+		createType = msgType
+		createContent = content
+		return &larkim.CreateMessageResp{
+			ApiResp: &larkcore.ApiResp{},
+			CodeError: larkcore.CodeError{
+				Code: 0,
+				Msg:  "ok",
+			},
+			Data: &larkim.CreateMessageRespData{
+				MessageId: stringRef("om-post-2"),
+			},
+		}, nil
+	}
+
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:             OperationSendText,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "oc_chat",
+		ReceiveID:        "oc_chat",
+		ReceiveIDType:    "chat_id",
+		ReplyToMessageID: "om-source-1",
+		Text:             "本轮执行已结束。",
+		MentionUserID:    "ou-user-1",
+	}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if replyCalls != 1 || createCalls != 1 {
+		t.Fatalf("expected one reply attempt and one fallback create, got reply=%d create=%d", replyCalls, createCalls)
+	}
+	if createType != "post" {
+		t.Fatalf("unexpected fallback message type: %q", createType)
+	}
+	var payload feishuLocalizedPostContent
+	if err := json.Unmarshal([]byte(createContent), &payload); err != nil {
+		t.Fatalf("fallback mention content is not valid json: %v", err)
+	}
+	if payload.ZhCN.Content[0][0].UserID != "ou-user-1" {
+		t.Fatalf("unexpected fallback mention target payload: %#v", payload)
+	}
+}

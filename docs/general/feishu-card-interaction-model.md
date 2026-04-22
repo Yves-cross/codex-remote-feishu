@@ -1,8 +1,8 @@
 # 飞书卡片交互模型
 
 > Type: `general`
-> Updated: `2026-04-21`
-> Summary: 固化当前产品讨论收敛出的飞书交互模型，补充前台抓注意力状态、前台卡 notice 区、notice 的前后台投递规则，以及将 thread selection change 收敛进 notice 体系。
+> Updated: `2026-04-22`
+> Summary: 固化当前产品讨论收敛出的飞书交互模型，补充前台抓注意力状态、前台卡 notice 区、notice 的前后台投递规则，将 thread selection change 收敛进 notice 体系，并明确派生 `@` attention ping 不是新的前台卡模型。
 
 ## 1. 文档定位
 
@@ -243,6 +243,7 @@
 - 正常的 agent message 文本
 - 图片输出
 - 后台 notice
+- 派生的 `@` attention ping
 - 其他最终独立渲染出来、但不属于前台卡、共享过程卡或检查点卡的内容
 
 产品要求：
@@ -250,6 +251,7 @@
 - 这类内容按时间线独立追加
 - 它们不是前台卡的一部分
 - 它们只要真的渲染出来，就会打断当前共享过程卡
+- `attention ping` 只是跟随某个已投递原事件追加的一条派生消息，不单独承接业务状态，也不替代原卡 / 原 notice / 原 final
 
 ## 6. notice 体系
 
@@ -301,6 +303,7 @@
 
 - notice 可以作为后台独立时间线项发出
 - 当前实现先按单发卡来定义
+- 如果产品需要把“需要当前发起人回来处理”的后台时刻再单独拉高注意力，可以在原独立项之后追加一条派生 `@` attention ping；这条 ping 仍属于独立时间线项，不把原 notice 或原结果卡改造成新的前台卡
 
 ### 前台释放后的行为
 
@@ -412,6 +415,7 @@
 - 这类 notice 通常是后台独立项
 - 它们当前也已有单独的 delivery class / family / 节流逻辑
 - 不应假装自己属于某张普通前台业务卡
+- 如果某一类后台 runtime notice 明确需要把当前发起人叫回来处理，可以在原 notice 后追加派生 `@` attention ping；但这条 ping 仍只是附属提醒，不引入新的业务卡模型
 
 ### E. 问题 / 错误 notice
 
@@ -593,7 +597,7 @@ normal mode 的主 `/list` / `/use` / `/useall` 已经迁到 target picker。
 | `/status` 这类主动触发的单步状态卡 | 前台卡 |
 | exec/tool/file change/compaction 等最近过程窗口 | 共享过程卡 |
 | `plan`、`final` | 检查点卡 |
-| 普通文本、图片、后台独立 notice | 独立时间线项 |
+| 普通文本、图片、后台独立 notice、派生 `@` attention ping | 独立时间线项 |
 | 原 `thread selection change` | `notice` 体系中的 `目标 / 路由 notice` |
 | reaction | 辅助微交互，不属于上面四种主模型，也不属于 notice 主体 |
 

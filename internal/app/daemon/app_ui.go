@@ -21,6 +21,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
 
 func (a *App) handleUIEventsLocked(ctx context.Context, events []control.UIEvent) {
 	_ = ctx
+	events = a.appendAttentionPingsLocked(events, time.Now())
 	for _, event := range events {
 		if event.DaemonCommand != nil {
 			a.mu.Unlock()

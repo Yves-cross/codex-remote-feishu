@@ -837,6 +837,27 @@ func TestProjectTimelineTextRepliesToTurnAnchor(t *testing.T) {
 	}
 }
 
+func TestProjectAttentionPingUsesMentionCarrier(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", control.UIEvent{
+		Kind: control.UIEventTimelineText,
+		TimelineText: &control.TimelineText{
+			Type:          control.TimelineTextAttentionPing,
+			Text:          "需要你回来处理：本轮执行已结束。",
+			MentionUserID: "ou-user-1",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendText {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].ReplyToMessageID != "" || ops[0].MentionUserID != "ou-user-1" {
+		t.Fatalf("unexpected attention ping operation: %#v", ops[0])
+	}
+	if ops[0].Text != "需要你回来处理：本轮执行已结束。" {
+		t.Fatalf("unexpected attention ping text: %#v", ops[0])
+	}
+}
+
 func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", control.UIEvent{

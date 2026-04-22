@@ -109,6 +109,12 @@ func (a *App) flushPendingGlobalRuntimeNoticesLocked(surfaceID string) {
 		if err := a.deliverUIEventLocked(context.Background(), event); err != nil {
 			return
 		}
+		if ping := a.globalRuntimeAttentionPingForEventLocked(event, time.Now(), false); ping != nil {
+			if err := a.deliverUIEventLocked(context.Background(), *ping); err != nil {
+				// The original notice is already visible. Drop the follow-up ping and
+				// avoid re-queueing the notice on the next flush.
+			}
+		}
 		a.recordGlobalRuntimeNoticeLocked(event, time.Now())
 	}
 	delete(a.pendingGlobalRuntimeNotices, surfaceID)
