@@ -204,6 +204,11 @@ func cloneCardAny(value any) any {
 	}
 }
 
+func cardStringValue(raw any) string {
+	value, _ := raw.(string)
+	return value
+}
+
 func formatNeutralTextTag(text string) string {
 	return "<text_tag color='neutral'>" + html.EscapeString(strings.TrimSpace(text)) + "</text_tag>"
 }
