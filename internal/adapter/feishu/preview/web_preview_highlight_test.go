@@ -70,6 +70,30 @@ func TestDriveMarkdownPreviewerHighlightsMarkdownFencedCodeBlocks(t *testing.T) 
 	}
 }
 
+func TestDriveMarkdownPreviewerHighlightsLineAddressedSourcePreview(t *testing.T) {
+	root := t.TempDir()
+	previewer := newWebPreviewerForTest(root)
+
+	content := []byte("package main\n\nfunc main() {}\n")
+	_, previewID := publishWebPreviewArtifactForTest(t, previewer, filepath.Join(root, "internal", "main.go"), content, time.Date(2026, 4, 17, 12, 12, 0, 0, time.UTC))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/preview/s/"+testPreviewScopePublicID+"/"+previewID+"?loc=L3C6", nil)
+	if ok := previewer.ServeWebPreview(rec, req, testPreviewScopePublicID, previewID, false); !ok {
+		t.Fatal("expected line-addressed go preview to be served")
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="source-line source-line--target"`) {
+		t.Fatalf("expected target line wrapper, got %q", body)
+	}
+	if !strings.Contains(body, `class="source-column-target"`) {
+		t.Fatalf("expected target column wrapper, got %q", body)
+	}
+	if !strings.Contains(body, `class="pv-kd"`) || !strings.Contains(body, `class="pv-nf"`) {
+		t.Fatalf("expected line-addressed preview to keep syntax token classes, got %q", body)
+	}
+}
+
 func TestDriveMarkdownPreviewerLeavesMarkdownCodeBlocksWithoutInfoStringPlain(t *testing.T) {
 	root := t.TempDir()
 	previewer := newWebPreviewerForTest(root)

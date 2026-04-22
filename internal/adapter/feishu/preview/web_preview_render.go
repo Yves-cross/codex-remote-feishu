@@ -159,6 +159,13 @@ func buildWebPreviewPage(current, previous *webPreviewArtifact, downloadHref str
 		return page
 	case "text":
 		if lineAddressed {
+			if shouldHighlightSourcePreview(record) {
+				html, err := renderLineAddressedHighlightedSourcePreviewHTML(record.SourcePath, current.Content, location)
+				if err == nil && strings.TrimSpace(html) != "" {
+					page.BodyHTML = html
+					return page
+				}
+			}
 			page.BodyHTML = renderLineAddressedSourcePreviewHTML(current.Content, location)
 			return page
 		}
@@ -184,6 +191,13 @@ func buildWebPreviewPage(current, previous *webPreviewArtifact, downloadHref str
 	case "html_source":
 		if lineAddressed {
 			page.Notice = previewLocationNotice(location, record.RendererKind) + " 出于安全考虑，HTML 以源码方式展示，不会在页面内直接执行。"
+			if shouldHighlightSourcePreview(record) {
+				html, err := renderLineAddressedHighlightedSourcePreviewHTML(record.SourcePath, current.Content, location)
+				if err == nil && strings.TrimSpace(html) != "" {
+					page.BodyHTML = html
+					return page
+				}
+			}
 			page.BodyHTML = renderLineAddressedSourcePreviewHTML(current.Content, location)
 			return page
 		}
@@ -204,6 +218,13 @@ func buildWebPreviewPage(current, previous *webPreviewArtifact, downloadHref str
 	case "svg_source":
 		if lineAddressed {
 			page.Notice = previewLocationNotice(location, record.RendererKind) + " 出于安全考虑，SVG 以源码方式展示，不会作为同源文档直接渲染。"
+			if shouldHighlightSourcePreview(record) {
+				html, err := renderLineAddressedHighlightedSourcePreviewHTML(record.SourcePath, current.Content, location)
+				if err == nil && strings.TrimSpace(html) != "" {
+					page.BodyHTML = html
+					return page
+				}
+			}
 			page.BodyHTML = renderLineAddressedSourcePreviewHTML(current.Content, location)
 			return page
 		}
