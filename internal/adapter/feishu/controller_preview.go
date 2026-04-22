@@ -3,6 +3,8 @@ package feishu
 import (
 	"context"
 	"net/http"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 type gatewayPreviewRuntime interface {
@@ -28,14 +30,17 @@ func (noopGatewayPreviewer) ServeWebPreview(http.ResponseWriter, *http.Request, 
 
 func (c *MultiGatewayController) RewriteFinalBlock(ctx context.Context, req FinalBlockPreviewRequest) (result FinalBlockPreviewResult, err error) {
 	result = FinalBlockPreviewResult{Block: req.Block}
-	gatewayID := normalizeGatewayID(firstNonEmpty(req.GatewayID, gatewayIDFromSurface(req.SurfaceSessionID)))
-	c.mu.RLock()
-	worker := c.workers[gatewayID]
-	c.mu.RUnlock()
-	if worker == nil || worker.previewer == nil {
+	resolution := c.resolveGatewayTarget(eventcontract.TargetRef{
+		GatewayID:        req.GatewayID,
+		SurfaceSessionID: req.SurfaceSessionID,
+		SelectionPolicy:  eventcontract.GatewaySelectionAllowSurfaceDerived,
+		FailurePolicy:    eventcontract.GatewayFailureNoop,
+	}, gatewayTargetRequirePreviewer)
+	if !resolution.ok() {
 		return result, nil
 	}
-	return worker.previewer.RewriteFinalBlock(ctx, req)
+	req.GatewayID = resolution.GatewayID
+	return resolution.Worker.previewer.RewriteFinalBlock(ctx, req)
 }
 
 func (c *MultiGatewayController) SetWebPreviewPublisher(publisher WebPreviewPublisher) {
