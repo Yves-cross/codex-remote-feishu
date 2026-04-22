@@ -5,24 +5,24 @@ import "strings"
 // FeishuPageView is the generic page-card DTO used by menu/config/root pages.
 // It intentionally avoids command-specific implicit defaults.
 type FeishuPageView struct {
-	PageID         string
-	CommandID      string
-	Title          string
-	MessageID      string
-	TrackingKey    string
-	ThemeKey       string
-	Patchable      bool
-	Breadcrumbs    []CommandCatalogBreadcrumb
+	PageID          string
+	CommandID       string
+	Title           string
+	MessageID       string
+	TrackingKey     string
+	ThemeKey        string
+	Patchable       bool
+	Breadcrumbs     []CommandCatalogBreadcrumb
 	SummarySections []FeishuCardTextSection
-	BodySections   []FeishuCardTextSection
-	NoticeSections []FeishuCardTextSection
-	StatusKind     string
-	StatusText     string
-	Interactive    bool
-	Sealed         bool
-	DisplayStyle   CommandCatalogDisplayStyle
-	Sections       []CommandCatalogSection
-	RelatedButtons []CommandCatalogButton
+	BodySections    []FeishuCardTextSection
+	NoticeSections  []FeishuCardTextSection
+	StatusKind      string
+	StatusText      string
+	Interactive     bool
+	Sealed          bool
+	DisplayStyle    CommandCatalogDisplayStyle
+	Sections        []CommandCatalogSection
+	RelatedButtons  []CommandCatalogButton
 }
 
 func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {

@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	menuFlowPhaseHome           = "home"
-	menuFlowPhaseGroup          = "group"
-	menuFlowPhaseConfig         = "config"
+	menuFlowPhaseHome            = "home"
+	menuFlowPhaseGroup           = "group"
+	menuFlowPhaseConfig          = "config"
 	menuFlowPhaseBusinessHandoff = "business_handoff"
-	menuFlowPhaseTerminal       = "terminal"
+	menuFlowPhaseTerminal        = "terminal"
 )
 
 func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) control.UIEvent {
