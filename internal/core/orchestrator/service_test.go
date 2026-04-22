@@ -319,7 +319,7 @@ func TestApplyFeishuUIIntentBuildsVerboseCatalog(t *testing.T) {
 		t.Fatalf("expected verbose catalog event, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if catalog.Title != "前端详细程度" {
+	if catalog.Title != "提示详细程度" {
 		t.Fatalf("unexpected verbose catalog: %#v", catalog)
 	}
 	if events[0].FeishuPageView == nil || events[0].FeishuPageView.CommandID != control.FeishuCommandVerbose {
@@ -372,7 +372,7 @@ func TestApplySurfaceActionModelInvalidReasoningReturnsCommandView(t *testing.T)
 		t.Fatalf("expected invalid model args to reopen command view, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if catalog.Title != "模型" {
+	if catalog.Title != "使用模型" {
 		t.Fatalf("unexpected model error catalog: %#v", catalog)
 	}
 	if summary := commandCatalogSummaryText(catalog); !strings.Contains(summary, "推理强度建议使用") {

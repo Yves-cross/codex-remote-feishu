@@ -663,28 +663,29 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 当前行为：
 
 1. `/menu` 首页当前只保留分组导航，不再在首页额外平铺“常用操作”或“前排固定命令”：
-   1. `当前工作`
-   2. `发送设置`
-   3. `切换目标`
-   4. `低频与维护`
+   1. `基本命令`
+   2. `参数设置`
+   3. `工作会话`
+   4. `常用工具`
+   5. `系统管理`
 2. 二级分组顺序稳定，但组内可见命令会按当前 `product mode + menu stage` 做 display projection：
-   1. `normal mode` 的 `切换目标` 当前只显示一个统一入口：标题为 `选择工作区/会话`，实际 canonical slash 仍是 `/list`。
+   1. `normal mode` 的 `工作会话` 当前只显示一个统一入口：标题为 `工作会话`，实际 canonical slash 仍是 `/list`。
    2. `normal mode` 下 `/use`、`/useall` 不再作为并列菜单项展示，但 alias / parser 兼容仍保留。
-   3. `vscode mode` 的 `切换目标` 仍分别显示 `/list`、`/use`、`/useall`。
+   3. `vscode mode` 的 `工作会话` 仍分别显示 `/list`、`/use`、`/useall`。
    4. `normal mode` 不展示 `/follow`；`vscode mode` 才展示 `/follow`。
-   5. `/new` 只在 `normal` working 可见，`/history` 当前在 normal / vscode 都可见。
+   5. `/new` 只在 `normal` working 可见；`/status` 当前在 `基本命令`，`/history` 在 `常用工具`，两者在 normal / vscode 都可见。
 3. `/help` 当前也复用同一套 display projection：
-   1. `normal mode` 下帮助文本里的主展示入口也会把 `/list` 呈现为 `选择工作区/会话`。
+   1. `normal mode` 下帮助文本里的主展示入口也会把 `/list` 呈现为 `工作会话`。
    2. `vscode mode` 下帮助文本仍保留 `/list`、`/use`、`/useall` 三个独立入口。
 4. bare 参数命令现在统一走“快捷按钮 + 单字段表单”：
-   1. `send settings`：`/reasoning`、`/model`、`/access`
-   2. `maintenance`：`/mode`、`/autowhip`
+   1. `参数设置`：`/reasoning`、`/model`、`/access`、`/plan`、`/verbose`
+   2. `常用工具 / 系统管理`：`/autowhip`、`/mode`
    3. 表单提交通过 card callback `page_submit` 直接回填结构化 `action_kind/field_name/action_arg_prefix`，再生成 canonical `Action.Text`。
-5. `maintenance` 分组里的 `/debug`、`/upgrade` 当前仍然是直接触发 daemon 动作的命令入口，不属于参数卡表单。
+5. `常用工具` 分组里的 `/cron`，以及 `系统管理` 分组里的 `/debug`、`/upgrade` 当前仍然是直接触发 daemon 动作的命令入口，不属于参数卡表单。
 7. 二级分组当前通过卡片按钮 + breadcrumb 返回首页实现，不依赖飞书后台把整棵导航树都铺成静态菜单。
 8. 同上下文菜单导航当前已经支持“替换当前卡片”而不是追加新卡，但只限窄范围：
    1. `/menu` 首页 <-> 二级分组页
-   2. 从 `/menu` 分组页打开 bare `/mode`、`/autowhip`、`/reasoning`、`/access`、`/model`
+   2. 从 `/menu` 分组页打开 bare `/mode`、`/autowhip`、`/reasoning`、`/access`、`/plan`、`/model`、`/verbose`
    3. bare 参数卡里的“返回上一层”
 9. 这条原地替换链路当前只在动作来自带 `CardDaemonLifecycleID` 的飞书卡片时启用：
    1. 网关通过 card callback 同步回包返回替换后的整张卡

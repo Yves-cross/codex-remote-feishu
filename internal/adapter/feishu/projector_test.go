@@ -886,7 +886,7 @@ func TestProjectVSCodeAllSelectionPromptUsesNumberedMetaRows(t *testing.T) {
 func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuPageView{
-		Title:           "Slash 命令帮助",
+		Title:           "命令帮助",
 		SummarySections: summarySections("当前支持的 slash command 如下。"),
 		Sections: []control.CommandCatalogSection{{
 			Title: "帮助",
@@ -900,7 +900,7 @@ func TestProjectCommandHelpCatalogAsCard(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].CardTitle != "Slash 命令帮助" {
+	if ops[0].CardTitle != "命令帮助" {
 		t.Fatalf("unexpected card title: %#v", ops[0])
 	}
 	if ops[0].CardBody != "" {
@@ -1112,7 +1112,7 @@ func TestCommandCatalogFromViewBuildsDetachedMenuHome(t *testing.T) {
 	if catalog.Title != "命令菜单" || !catalog.Interactive {
 		t.Fatalf("unexpected menu catalog: %#v", catalog)
 	}
-	if len(catalog.Sections) != 1 || catalog.Sections[0].Title != "全部分组" {
+	if len(catalog.Sections) != 1 || catalog.Sections[0].Title != "" {
 		t.Fatalf("unexpected menu sections: %#v", catalog.Sections)
 	}
 	if got := firstCommandTexts(catalog.Sections[0].Entries); len(got) != 0 {
@@ -1128,7 +1128,7 @@ func TestCommandCatalogFromViewCurrentWorkHonorsStageVisibility(t *testing.T) {
 		t.Fatalf("expected normal current_work menu to project")
 	}
 	gotNormal := firstCommandTexts(normalCatalog.Sections[0].Entries)
-	wantNormal := []string{"/stop", "/compact", "/steerall", "/new", "/history", "/sendfile"}
+	wantNormal := []string{"/stop", "/compact", "/steerall", "/new", "/status"}
 	if fmt.Sprint(gotNormal) != fmt.Sprint(wantNormal) {
 		t.Fatalf("normal current_work commands = %#v, want %#v", gotNormal, wantNormal)
 	}
@@ -1140,7 +1140,7 @@ func TestCommandCatalogFromViewCurrentWorkHonorsStageVisibility(t *testing.T) {
 		t.Fatalf("expected vscode current_work menu to project")
 	}
 	gotVSCode := firstCommandTexts(vscodeCatalog.Sections[0].Entries)
-	wantVSCode := []string{"/stop", "/compact", "/steerall", "/history", "/sendfile"}
+	wantVSCode := []string{"/stop", "/compact", "/steerall", "/status"}
 	if fmt.Sprint(gotVSCode) != fmt.Sprint(wantVSCode) {
 		t.Fatalf("vscode current_work commands = %#v, want %#v", gotVSCode, wantVSCode)
 	}
@@ -1211,7 +1211,7 @@ func TestProjectInteractiveCommandCatalogStampsDaemonLifecycleID(t *testing.T) {
 func TestProjectInteractiveCommandCatalogRelatedButtonsUseV2WhenNoForm(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuPageView{
-		Title:           "发送设置",
+		Title:           "参数设置",
 		SummarySections: summarySections("请选择操作。"),
 		Interactive:     true,
 		DisplayStyle:    control.CommandCatalogDisplayDefault,

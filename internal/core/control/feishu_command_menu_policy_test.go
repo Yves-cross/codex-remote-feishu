@@ -10,10 +10,10 @@ func TestFeishuMenuGroupClassificationMatchesTaskModel(t *testing.T) {
 		groupID string
 		want    []string
 	}{
-		{
-			groupID: FeishuCommandGroupCurrentWork,
-			want:    []string{FeishuCommandStop, FeishuCommandCompact, FeishuCommandSteerAll, FeishuCommandNew, FeishuCommandHistory, FeishuCommandSendFile},
-		},
+	{
+		groupID: FeishuCommandGroupCurrentWork,
+		want:    []string{FeishuCommandStop, FeishuCommandCompact, FeishuCommandSteerAll, FeishuCommandNew, FeishuCommandStatus},
+	},
 		{
 			groupID: FeishuCommandGroupSendSettings,
 			want:    []string{FeishuCommandReasoning, FeishuCommandModel, FeishuCommandAccess, FeishuCommandPlan, FeishuCommandVerbose},
@@ -22,10 +22,14 @@ func TestFeishuMenuGroupClassificationMatchesTaskModel(t *testing.T) {
 			groupID: FeishuCommandGroupSwitchTarget,
 			want:    []string{FeishuCommandList, FeishuCommandUse, FeishuCommandUseAll, FeishuCommandDetach, FeishuCommandFollow},
 		},
-		{
-			groupID: FeishuCommandGroupMaintenance,
-			want:    []string{FeishuCommandStatus, FeishuCommandMode, FeishuCommandAutoContinue, FeishuCommandHelp, FeishuCommandCron, FeishuCommandUpgrade, FeishuCommandDebug},
-		},
+	{
+		groupID: FeishuCommandGroupCommonTools,
+		want:    []string{FeishuCommandAutoContinue, FeishuCommandHistory, FeishuCommandCron, FeishuCommandSendFile},
+	},
+	{
+		groupID: FeishuCommandGroupMaintenance,
+		want:    []string{FeishuCommandMode, FeishuCommandUpgrade, FeishuCommandDebug, FeishuCommandHelp},
+	},
 	}
 
 	totalVisible := 0

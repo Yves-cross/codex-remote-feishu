@@ -45,7 +45,7 @@ func buildUpgradeRootPageView(stateValue install.InstallState, formDefault, stat
 		DisplayStyle: control.CommandCatalogDisplayCompactButtons,
 		Sections: []control.CommandCatalogSection{
 			{
-				Title: "升级",
+				Title: "升级系统",
 				Entries: []control.CommandCatalogEntry{{
 					Buttons: quickButtons,
 				}},

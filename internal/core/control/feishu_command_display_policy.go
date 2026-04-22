@@ -32,9 +32,6 @@ func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode 
 		return FeishuCommandDefinition{}, false
 	case FeishuCommandVSCodeMigrate:
 		return FeishuCommandDefinition{}, false
-	case FeishuCommandList:
-		projected.Title = "选择工作区/会话"
-		projected.Description = "打开统一的工作区/会话选择卡；可选择工作区、选择会话，也可添加工作区。"
 	}
 	return projected, true
 }
