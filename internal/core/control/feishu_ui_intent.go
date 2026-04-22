@@ -168,6 +168,5 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 }
 
 func isBareInlineCommand(text, command string) bool {
-	fields := strings.Fields(strings.TrimSpace(text))
-	return len(fields) == 1 && strings.EqualFold(fields[0], strings.TrimSpace(command))
+	return strings.EqualFold(strings.TrimSpace(text), strings.TrimSpace(command))
 }

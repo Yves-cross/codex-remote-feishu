@@ -55,6 +55,11 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	}
 	switch intent.Kind {
 	case FeishuUIIntentShowCommandMenu,
+		FeishuUIIntentShowWorkspaceRoot,
+		FeishuUIIntentShowWorkspaceList,
+		FeishuUIIntentShowWorkspaceNew,
+		FeishuUIIntentShowWorkspaceNewDir,
+		FeishuUIIntentShowWorkspaceNewGit,
 		FeishuUIIntentShowHistory,
 		FeishuUIIntentShowModeCatalog,
 		FeishuUIIntentShowAutoContinueCatalog,

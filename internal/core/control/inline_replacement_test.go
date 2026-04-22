@@ -37,6 +37,31 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "workspace root page",
+			action: Action{Kind: ActionWorkspaceRoot, Text: "/workspace"},
+			want:   true,
+		},
+		{
+			name:   "workspace new page",
+			action: Action{Kind: ActionWorkspaceNew, Text: "/workspace new"},
+			want:   true,
+		},
+		{
+			name:   "workspace list page handoff",
+			action: Action{Kind: ActionWorkspaceList, Text: "/workspace list"},
+			want:   true,
+		},
+		{
+			name:   "workspace new dir handoff",
+			action: Action{Kind: ActionWorkspaceNewDir, Text: "/workspace new dir"},
+			want:   true,
+		},
+		{
+			name:   "workspace new git handoff",
+			action: Action{Kind: ActionWorkspaceNewGit, Text: "/workspace new git"},
+			want:   true,
+		},
+		{
 			name:   "bare mode",
 			action: Action{Kind: ActionModeCommand, Text: "/mode"},
 			want:   true,

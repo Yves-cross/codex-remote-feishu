@@ -22,6 +22,11 @@ func TestFeishuUIIntentFromAction(t *testing.T) {
 			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowModeCatalog, RawText: "/mode"},
 		},
 		{
+			name:   "workspace new page",
+			action: Action{Kind: ActionWorkspaceNew, Text: "/workspace new"},
+			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceNew, RawText: "/workspace new"},
+		},
+		{
 			name:   "mode apply stays product owned",
 			action: Action{Kind: ActionModeCommand, Text: "/mode vscode"},
 			want:   nil,
