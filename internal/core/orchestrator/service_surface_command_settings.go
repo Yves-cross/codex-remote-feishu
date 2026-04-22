@@ -90,7 +90,7 @@ func (s *Service) buildCommandConfigViewForAction(surface *state.SurfaceConsoleR
 
 func (s *Service) inlineCommandCardEvents(surface *state.SurfaceConsoleRecord, action control.Action, cardState control.FeishuCommandConfigView, extra ...control.UIEvent) []control.UIEvent {
 	view := s.buildCommandConfigViewForAction(surface, action, cardState)
-	events := []control.UIEvent{s.commandViewEvent(surface, view)}
+	events := []control.UIEvent{s.configPageEventFromCommandView(surface, view)}
 	return append(events, extra...)
 }
 
@@ -98,7 +98,7 @@ func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action 
 	current := s.normalizeSurfaceProductMode(surface)
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildModeCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildModeCommandView(surface))}
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
@@ -168,7 +168,7 @@ func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action 
 func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildAutoContinueCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildAutoContinueCommandView(surface))}
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
@@ -222,7 +222,7 @@ func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord,
 func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildVerboseCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildVerboseCommandView(surface))}
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
@@ -264,7 +264,7 @@ func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, acti
 func (s *Service) handlePlanCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildPlanCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildPlanCommandView(surface))}
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCommandConfigView{
@@ -311,7 +311,7 @@ func (s *Service) handlePlanCommand(surface *state.SurfaceConsoleRecord, action 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildModelCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildModelCommandView(surface))}
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
@@ -371,7 +371,7 @@ func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action
 func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildReasoningCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildReasoningCommandView(surface))}
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
@@ -418,7 +418,7 @@ func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, ac
 func (s *Service) handleAccessCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildAccessCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildAccessCommandView(surface))}
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {

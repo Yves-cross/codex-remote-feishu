@@ -7,12 +7,11 @@ import (
 )
 
 func commandPageEvent(surfaceID string, view control.FeishuCommandPageView) control.UIEvent {
+	page := control.FeishuPageViewFromCommandPageView(control.NormalizeFeishuCommandPageView(view))
 	return control.UIEvent{
-		Kind:             control.UIEventFeishuCommandView,
+		Kind:             control.UIEventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
-		FeishuCommandView: &control.FeishuCommandView{
-			Page: &view,
-		},
+		FeishuPageView:   &page,
 	}
 }
 

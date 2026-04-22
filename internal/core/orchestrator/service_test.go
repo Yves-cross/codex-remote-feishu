@@ -293,11 +293,11 @@ func TestApplyFeishuUIIntentBuildsModeCatalog(t *testing.T) {
 	if catalog.Title != "切换模式" {
 		t.Fatalf("unexpected mode catalog: %#v", catalog)
 	}
-	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil || events[0].FeishuCommandView.Config.CommandID != control.FeishuCommandMode {
-		t.Fatalf("expected feishu command view for mode catalog, got %#v", events[0].FeishuCommandView)
+	if events[0].FeishuPageView == nil || events[0].FeishuPageView.CommandID != control.FeishuCommandMode {
+		t.Fatalf("expected feishu page view for mode catalog, got %#v", events[0].FeishuPageView)
 	}
-	if events[0].FeishuCommandContext == nil || events[0].FeishuCommandContext.DTOOwner != control.FeishuUIDTOwnerCommand || events[0].FeishuCommandContext.CommandID != control.FeishuCommandMode {
-		t.Fatalf("expected feishu command context for mode catalog, got %#v", events[0].FeishuCommandContext)
+	if events[0].FeishuPageContext == nil || events[0].FeishuPageContext.DTOOwner != control.FeishuUIDTOwnerPage || events[0].FeishuPageContext.CommandID != control.FeishuCommandMode {
+		t.Fatalf("expected feishu page context for mode catalog, got %#v", events[0].FeishuPageContext)
 	}
 }
 
@@ -322,11 +322,11 @@ func TestApplyFeishuUIIntentBuildsVerboseCatalog(t *testing.T) {
 	if catalog.Title != "前端详细程度" {
 		t.Fatalf("unexpected verbose catalog: %#v", catalog)
 	}
-	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil || events[0].FeishuCommandView.Config.CommandID != control.FeishuCommandVerbose {
-		t.Fatalf("expected feishu command view for verbose catalog, got %#v", events[0].FeishuCommandView)
+	if events[0].FeishuPageView == nil || events[0].FeishuPageView.CommandID != control.FeishuCommandVerbose {
+		t.Fatalf("expected feishu page view for verbose catalog, got %#v", events[0].FeishuPageView)
 	}
-	if got := events[0].FeishuCommandView.Config.CurrentValue; got != string(state.SurfaceVerbosityNormal) {
-		t.Fatalf("expected default verbosity current value, got %q", got)
+	if summary := commandCatalogSummaryText(catalog); !strings.Contains(summary, string(state.SurfaceVerbosityNormal)) {
+		t.Fatalf("expected default verbosity in summary, got %q", summary)
 	}
 }
 
@@ -341,18 +341,15 @@ func TestApplySurfaceActionModeInvalidArgsReturnsCommandView(t *testing.T) {
 		ActorUserID:      "user-1",
 		Text:             "/mode nope",
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected invalid mode to reopen command view, got %#v", events)
-	}
-	if got := events[0].FeishuCommandView.Config.StatusKind; got != "error" {
-		t.Fatalf("expected error status kind, got %#v", events[0].FeishuCommandView.Config)
-	}
-	if got := events[0].FeishuCommandView.Config.FormDefaultValue; got != "nope" {
-		t.Fatalf("expected invalid mode args to stay in form, got %#v", events[0].FeishuCommandView.Config)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
 	if catalog.Title != "切换模式" {
 		t.Fatalf("unexpected mode error catalog: %#v", catalog)
+	}
+	if summary := commandCatalogSummaryText(catalog); !strings.Contains(summary, "用法") {
+		t.Fatalf("expected mode usage error summary, got %q", summary)
 	}
 }
 
@@ -371,18 +368,15 @@ func TestApplySurfaceActionModelInvalidReasoningReturnsCommandView(t *testing.T)
 		ActorUserID:      "user-1",
 		Text:             "/model gpt-5.4 nope",
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected invalid model args to reopen command view, got %#v", events)
-	}
-	if got := events[0].FeishuCommandView.Config.StatusKind; got != "error" {
-		t.Fatalf("expected error status kind, got %#v", events[0].FeishuCommandView.Config)
-	}
-	if got := events[0].FeishuCommandView.Config.FormDefaultValue; got != "gpt-5.4 nope" {
-		t.Fatalf("expected invalid model args to stay in form, got %#v", events[0].FeishuCommandView.Config)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
 	if catalog.Title != "模型" {
 		t.Fatalf("unexpected model error catalog: %#v", catalog)
+	}
+	if summary := commandCatalogSummaryText(catalog); !strings.Contains(summary, "推理强度建议使用") {
+		t.Fatalf("expected model usage error summary, got %q", summary)
 	}
 }
 

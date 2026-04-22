@@ -9,6 +9,7 @@ const (
 	FeishuUIDTOwnerDirectDTO     FeishuUIDTOwner = "feishu_direct_dto"
 	FeishuUIDTOwnerSelection     FeishuUIDTOwner = "feishu_selection_view"
 	FeishuUIDTOwnerCommand       FeishuUIDTOwner = "feishu_command_view"
+	FeishuUIDTOwnerPage          FeishuUIDTOwner = "feishu_page_view"
 	FeishuUIDTOwnerRequest       FeishuUIDTOwner = "feishu_request_view"
 	FeishuUIDTOwnerPathPicker    FeishuUIDTOwner = "feishu_path_picker_view"
 	FeishuUIDTOwnerTargetPicker  FeishuUIDTOwner = "feishu_target_picker_view"
@@ -82,6 +83,23 @@ type FeishuUICommandContext struct {
 	Title       string
 	Summary     string
 	Breadcrumbs []CommandCatalogBreadcrumb
+}
+
+// FeishuUIPageContext describes the stable query/policy inputs for the
+// generic page-card family.
+type FeishuUIPageContext struct {
+	DTOOwner        FeishuUIDTOwner
+	Surface         FeishuUISurfaceContext
+	PageID          string
+	CommandID       string
+	Title           string
+	Phase           string
+	MenuFlowID      string
+	MenuFlowRev     int
+	OriginMenuNode  string
+	CurrentMenuNode string
+	BackTarget      string
+	EnteredBusiness bool
 }
 
 // FeishuUIRequestContext describes the stable query/policy inputs that back a

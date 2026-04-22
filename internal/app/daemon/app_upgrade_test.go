@@ -111,11 +111,11 @@ func TestDebugTrackAliasRejected(t *testing.T) {
 		SurfaceSessionID: "feishu:main:chat:1",
 		Text:             "/debug track beta",
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Page == nil {
-		t.Fatalf("expected error command page, got %#v", events)
+	if len(events) != 1 {
+		t.Fatalf("expected error debug page, got %#v", events)
 	}
-	page := events[0].FeishuCommandView.Page
-	if page.StatusKind != "error" || !strings.Contains(page.StatusText, "不支持的 /debug 子命令") {
+	page := catalogFromUIEvent(t, events[0])
+	if !strings.Contains(catalogSummaryText(page), "不支持的 /debug 子命令") {
 		t.Fatalf("expected unsupported-subcommand error on debug page, got %#v", page)
 	}
 

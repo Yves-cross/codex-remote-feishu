@@ -247,6 +247,22 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		action.MessageID = messageID
 		action.Inbound = meta
 		return action, true
+	case cardActionKindPageAction:
+		actionKind := control.ActionKind(strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyActionKind)))
+		if actionKind == "" {
+			return control.Action{}, false
+		}
+		actionArg := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyActionArg))
+		return control.Action{
+			Kind:             actionKind,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			Text:             control.BuildFeishuActionText(actionKind, actionArg),
+			Inbound:          meta,
+		}, true
 	case cardActionKindUpgradeOwnerFlow:
 		flowID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyPickerID))
 		optionID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyOptionID))
@@ -326,6 +342,33 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		action.MessageID = messageID
 		action.Inbound = meta
 		return action, true
+	case cardActionKindPageSubmit:
+		actionKind := control.ActionKind(strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyActionKind)))
+		if actionKind == "" {
+			return control.Action{}, false
+		}
+		fieldName := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyFieldName))
+		if fieldName == "" {
+			fieldName = cardActionPayloadDefaultCommandFieldName
+		}
+		actionArg := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyActionArgPrefix))
+		argValue := commandFormArgumentValue(event.Event.Action, fieldName)
+		if argValue != "" {
+			if actionArg != "" {
+				actionArg += " "
+			}
+			actionArg += argValue
+		}
+		return control.Action{
+			Kind:             actionKind,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			Text:             control.BuildFeishuActionText(actionKind, actionArg),
+			Inbound:          meta,
+		}, true
 	case cardActionKindSubmitRequestForm:
 		requestID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestID))
 		if requestID == "" {

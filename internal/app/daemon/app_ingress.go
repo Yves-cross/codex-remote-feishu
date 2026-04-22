@@ -431,13 +431,13 @@ func (a *App) commandSubmissionAnchorResultLocked(action control.Action) *feishu
 			CommandText: "/menu",
 		}},
 	})
-	view := control.FeishuCommandView{Page: &page}
+	pageView := control.FeishuPageViewFromCommandPageView(page)
 	event := control.UIEvent{
-		Kind:              control.UIEventFeishuCommandView,
+		Kind:              control.UIEventFeishuPageView,
 		GatewayID:         action.GatewayID,
 		SurfaceSessionID:  action.SurfaceSessionID,
 		DaemonLifecycleID: a.daemonLifecycleID,
-		FeishuCommandView: &view,
+		FeishuPageView:    &pageView,
 	}
 	ops := a.projector.Project(a.service.SurfaceChatID(action.SurfaceSessionID), event)
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {

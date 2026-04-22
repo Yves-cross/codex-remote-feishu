@@ -47,6 +47,29 @@ func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuComm
 		}
 		return &catalog
 	}
+	if event.FeishuPageView != nil {
+		page := control.NormalizeFeishuPageView(*event.FeishuPageView)
+		catalog := control.NormalizeFeishuCommandPageView(control.FeishuCommandPageView{
+			CommandID:       page.CommandID,
+			Title:           page.Title,
+			MessageID:       page.MessageID,
+			TrackingKey:     page.TrackingKey,
+			ThemeKey:        page.ThemeKey,
+			Patchable:       page.Patchable,
+			Breadcrumbs:     append([]control.CommandCatalogBreadcrumb(nil), page.Breadcrumbs...),
+			SummarySections: append([]control.FeishuCardTextSection(nil), page.SummarySections...),
+			BodySections:    append([]control.FeishuCardTextSection(nil), page.BodySections...),
+			NoticeSections:  append([]control.FeishuCardTextSection(nil), page.NoticeSections...),
+			StatusKind:      page.StatusKind,
+			StatusText:      page.StatusText,
+			Interactive:     page.Interactive,
+			Sealed:          page.Sealed,
+			DisplayStyle:    page.DisplayStyle,
+			Sections:        append([]control.CommandCatalogSection(nil), page.Sections...),
+			RelatedButtons:  append([]control.CommandCatalogButton(nil), page.RelatedButtons...),
+		})
+		return &catalog
+	}
 	t.Fatalf("expected catalog or command view event, got %#v", event)
 	return nil
 }

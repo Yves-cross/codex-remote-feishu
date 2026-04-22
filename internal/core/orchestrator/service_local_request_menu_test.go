@@ -25,7 +25,7 @@ func TestHelpActionBuildsCommandCatalogEvent(t *testing.T) {
 		t.Fatalf("expected command catalog event, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if events[0].Kind != control.UIEventFeishuCommandView {
+	if events[0].Kind != control.UIEventFeishuCommandView && events[0].Kind != control.UIEventFeishuPageView {
 		t.Fatalf("unexpected event kind: %#v", events[0])
 	}
 	if catalog.Interactive {
@@ -123,26 +123,23 @@ func TestMenuActionBuildsInteractiveCommandCatalogEvent(t *testing.T) {
 	if catalog.Title != "命令菜单" {
 		t.Fatalf("unexpected menu catalog title: %#v", catalog)
 	}
-	if events[0].FeishuCommandContext == nil {
-		t.Fatalf("expected feishu command context, got %#v", events[0])
+	if events[0].FeishuPageContext == nil {
+		t.Fatalf("expected feishu page context, got %#v", events[0])
 	}
-	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Menu == nil {
-		t.Fatalf("expected feishu command view menu payload, got %#v", events[0].FeishuCommandView)
+	if events[0].FeishuPageView == nil {
+		t.Fatalf("expected feishu page view menu payload, got %#v", events[0].FeishuPageView)
 	}
-	if events[0].FeishuCommandContext.DTOOwner != control.FeishuUIDTOwnerCommand {
-		t.Fatalf("unexpected dto owner: %#v", events[0].FeishuCommandContext)
+	if events[0].FeishuPageContext.DTOOwner != control.FeishuUIDTOwnerPage {
+		t.Fatalf("unexpected dto owner: %#v", events[0].FeishuPageContext)
 	}
-	if events[0].FeishuCommandContext.ViewKind != "menu" || events[0].FeishuCommandContext.MenuStage != "detached" {
-		t.Fatalf("unexpected command context: %#v", events[0].FeishuCommandContext)
+	if events[0].FeishuPageContext.Surface.CallbackPayloadOwner != control.FeishuUICallbackPayloadOwnerAdapter {
+		t.Fatalf("unexpected callback payload owner: %#v", events[0].FeishuPageContext)
 	}
-	if events[0].FeishuCommandContext.Surface.CallbackPayloadOwner != control.FeishuUICallbackPayloadOwnerAdapter {
-		t.Fatalf("unexpected callback payload owner: %#v", events[0].FeishuCommandContext)
+	if events[0].FeishuPageContext.Surface.InlineReplaceFreshness != "daemon_lifecycle" || !events[0].FeishuPageContext.Surface.InlineReplaceRequiresFreshness {
+		t.Fatalf("unexpected inline replace context: %#v", events[0].FeishuPageContext.Surface)
 	}
-	if events[0].FeishuCommandContext.Surface.InlineReplaceFreshness != "daemon_lifecycle" || !events[0].FeishuCommandContext.Surface.InlineReplaceRequiresFreshness {
-		t.Fatalf("unexpected inline replace context: %#v", events[0].FeishuCommandContext.Surface)
-	}
-	if events[0].FeishuCommandContext.Surface.InlineReplaceViewSession != "surface_state_rederived" || events[0].FeishuCommandContext.Surface.InlineReplaceRequiresViewState {
-		t.Fatalf("unexpected inline replace view/session context: %#v", events[0].FeishuCommandContext.Surface)
+	if events[0].FeishuPageContext.Surface.InlineReplaceViewSession != "surface_state_rederived" || events[0].FeishuPageContext.Surface.InlineReplaceRequiresViewState {
+		t.Fatalf("unexpected inline replace view/session context: %#v", events[0].FeishuPageContext.Surface)
 	}
 }
 
@@ -322,10 +319,10 @@ func TestBareReasoningCommandBuildsParameterCard(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected reasoning command catalog, got %#v", events)
 	}
-	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil || events[0].FeishuCommandView.Config.CommandID != control.FeishuCommandReasoning {
-		t.Fatalf("expected reasoning command view, got %#v", events[0].FeishuCommandView)
-	}
 	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.CommandID != control.FeishuCommandReasoning {
+		t.Fatalf("expected reasoning command page, got %#v", catalog)
+	}
 	if catalog.Title != "推理强度" {
 		t.Fatalf("unexpected reasoning catalog title: %#v", catalog)
 	}
@@ -362,10 +359,10 @@ func TestBareModelCommandBuildsDropdownAndManualFormCard(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected model catalog, got %#v", events)
 	}
-	if events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil || events[0].FeishuCommandView.Config.CommandID != control.FeishuCommandModel {
-		t.Fatalf("expected model command view, got %#v", events[0].FeishuCommandView)
-	}
 	catalog := commandCatalogFromEvent(t, events[0])
+	if catalog.CommandID != control.FeishuCommandModel {
+		t.Fatalf("expected model command page, got %#v", catalog)
+	}
 	if len(catalog.Sections) != 2 {
 		t.Fatalf("expected dropdown + manual sections, got %#v", catalog.Sections)
 	}

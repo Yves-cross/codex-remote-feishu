@@ -267,7 +267,7 @@ func TestHandleGatewayActionReplacesMenuCardForCardNavigation(t *testing.T) {
 	if result.ReplaceCurrentCard.CardTitle != "命令菜单" {
 		t.Fatalf("unexpected replacement card: %#v", result.ReplaceCurrentCard)
 	}
-	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/menu") {
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionShowCommandMenu)) {
 		t.Fatalf("expected replacement submenu card to include back-to-home command, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
@@ -358,6 +358,17 @@ func TestHandleGatewayActionReplacesBareModeCardForCardNavigation(t *testing.T) 
 		StartedAt: time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC),
 	})
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/menu maintenance",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
 
 	result := app.HandleGatewayAction(context.Background(), control.Action{
 		Kind:             control.ActionModeCommand,
@@ -380,7 +391,8 @@ func TestHandleGatewayActionReplacesBareModeCardForCardNavigation(t *testing.T) 
 	if result.ReplaceCurrentCard.CardTitle != "切换模式" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
-	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/menu maintenance") {
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionShowCommandMenu)) ||
+		!operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_arg", "maintenance") {
 		t.Fatalf("expected replacement mode card to include return action, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
@@ -406,6 +418,17 @@ func TestHandleGatewayActionReplacesBareModelCardForCardNavigation(t *testing.T)
 		ActorUserID:      "user-1",
 		InstanceID:       "inst-1",
 	})
+	app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/menu send_settings",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
 
 	result := app.HandleGatewayAction(context.Background(), control.Action{
 		Kind:             control.ActionModelCommand,
@@ -428,7 +451,8 @@ func TestHandleGatewayActionReplacesBareModelCardForCardNavigation(t *testing.T)
 	if result.ReplaceCurrentCard.CardTitle != "模型" {
 		t.Fatalf("unexpected replacement card title: %#v", result.ReplaceCurrentCard)
 	}
-	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/menu send_settings") {
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionShowCommandMenu)) ||
+		!operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_arg", "send_settings") {
 		t.Fatalf("expected replacement model card to include return action, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }
@@ -602,10 +626,10 @@ func TestHandleGatewayActionRerendersMenuFromCurrentSurfaceStateWithoutViewSessi
 	if result == nil || result.ReplaceCurrentCard == nil {
 		t.Fatalf("expected inline replacement result, got %#v", result)
 	}
-	if !operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/new") {
+	if !operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionNewThread)) {
 		t.Fatalf("expected rerendered menu to reflect current attached state, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
-	if operationHasActionValue(*result.ReplaceCurrentCard, "run_command", "command_text", "/follow") {
+	if operationHasActionValue(*result.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionFollowLocal)) {
 		t.Fatalf("expected current_work menu not to show /follow, got %#v", result.ReplaceCurrentCard.CardElements)
 	}
 }

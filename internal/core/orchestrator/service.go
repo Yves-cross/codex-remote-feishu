@@ -364,6 +364,9 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
 		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, *intent))
 	}
+	if shouldSealMenuFlowForAction(action.Kind) {
+		s.markMenuFlowEnteredBusiness(surface, menuFlowPhaseBusinessHandoff)
+	}
 	var events []control.UIEvent
 	switch action.Kind {
 	case control.ActionListInstances:
@@ -387,7 +390,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionTargetPickerConfirm:
 		events = s.handleTargetPickerConfirm(surface, action.PickerID, action.ActorUserID, action.WorkspaceKey, action.TargetPickerValue, action.RequestAnswers)
 	case control.ActionShowCommandHelp:
-		events = []control.UIEvent{s.commandViewEvent(surface, s.buildCommandHelpView(surface))}
+		events = []control.UIEvent{s.helpTerminalPageEvent(surface)}
 	case control.ActionShowHistory:
 		events = s.openThreadHistory(surface, action.MessageID, action.IsCardAction())
 	case control.ActionDebugCommand:
@@ -533,6 +536,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 	case control.ActionStop:
 		events = s.stopSurface(surface)
 	case control.ActionStatus:
+		s.markMenuFlowTerminal(surface)
 		events = []control.UIEvent{{Kind: control.UIEventSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
 	case control.ActionDetach:
 		events = s.detach(surface)

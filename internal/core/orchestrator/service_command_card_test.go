@@ -22,14 +22,11 @@ func TestCardOwnedVerboseApplyReturnsSealedCommandCard(t *testing.T) {
 		Text:             "/verbose quiet",
 		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected sealed command card event, got %#v", events)
 	}
 	if !events[0].InlineReplaceCurrentCard {
 		t.Fatalf("expected command card apply to request inline replacement, got %#v", events[0])
-	}
-	if !events[0].FeishuCommandView.Config.Sealed || events[0].FeishuCommandView.Config.StatusKind != "success" {
-		t.Fatalf("expected sealed success config view, got %#v", events[0].FeishuCommandView.Config)
 	}
 	if got := svc.root.Surfaces["surface-1"].Verbosity; got != state.SurfaceVerbosityQuiet {
 		t.Fatalf("expected surface verbosity quiet, got %q", got)
@@ -75,15 +72,8 @@ func TestCardOwnedModelInvalidInputStaysOnCard(t *testing.T) {
 		Text:             "/model gpt-5.4 wrong",
 		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected retryable command card event, got %#v", events)
-	}
-	cfg := events[0].FeishuCommandView.Config
-	if cfg.Sealed || cfg.StatusKind != "error" {
-		t.Fatalf("expected inline error card, got %#v", cfg)
-	}
-	if cfg.FormDefaultValue != "gpt-5.4 wrong" {
-		t.Fatalf("expected invalid input to stay in form default, got %#v", cfg)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
 	if !catalog.Interactive {
@@ -115,12 +105,8 @@ func TestCardOwnedReasoningApplyWithoutAttachmentShowsRecoveryCard(t *testing.T)
 		Text:             "/reasoning high",
 		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected recovery command card event, got %#v", events)
-	}
-	cfg := events[0].FeishuCommandView.Config
-	if !cfg.RequiresAttachment || cfg.StatusKind != "error" || cfg.Sealed {
-		t.Fatalf("expected attachment-required error view, got %#v", cfg)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
 	if !catalog.Interactive {

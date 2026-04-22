@@ -7,6 +7,14 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
+func cloneMenuFlowRuntime(record *state.MenuFlowRuntimeRecord) *state.MenuFlowRuntimeRecord {
+	if record == nil {
+		return nil
+	}
+	cloned := *record
+	return &cloned
+}
+
 func (s *Service) buildFeishuUIOwnerCardFlowContext(flow *activeOwnerCardFlowRecord) *control.FeishuUIOwnerCardFlowContext {
 	if flow == nil {
 		return nil
@@ -199,6 +207,31 @@ func (s *Service) buildFeishuRequestContextFromView(surface *state.SurfaceConsol
 		ThreadTitle: strings.TrimSpace(prompt.ThreadTitle),
 		Title:       strings.TrimSpace(prompt.Title),
 	}
+}
+
+func (s *Service) buildFeishuPageContextFromView(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) *control.FeishuUIPageContext {
+	context := &control.FeishuUIPageContext{
+		DTOOwner:  control.FeishuUIDTOwnerPage,
+		Surface:   s.buildFeishuUISurfaceContext(surface),
+		PageID:    strings.TrimSpace(view.PageID),
+		CommandID: strings.TrimSpace(view.CommandID),
+		Title:     strings.TrimSpace(view.Title),
+	}
+	if surface == nil || surface.MenuFlow == nil {
+		return context
+	}
+	flow := cloneMenuFlowRuntime(surface.MenuFlow)
+	if flow == nil {
+		return context
+	}
+	context.MenuFlowID = strings.TrimSpace(flow.FlowID)
+	context.MenuFlowRev = flow.Revision
+	context.OriginMenuNode = strings.TrimSpace(flow.OriginMenuNode)
+	context.CurrentMenuNode = strings.TrimSpace(flow.CurrentMenuNode)
+	context.BackTarget = strings.TrimSpace(flow.BackTarget)
+	context.Phase = strings.TrimSpace(flow.Phase)
+	context.EnteredBusiness = flow.EnteredBusiness
+	return context
 }
 
 func (s *Service) buildFeishuPathPickerContextFromView(surface *state.SurfaceConsoleRecord, view control.FeishuPathPickerView) *control.FeishuUIPathPickerContext {

@@ -339,11 +339,15 @@ func TestDaemonPersistsSurfaceVerbosityAcrossRestart(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		Text:             "/verbose",
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one verbose config event after restart, got %#v", events)
 	}
-	if got := events[0].FeishuCommandView.Config.CurrentValue; got != "quiet" {
-		t.Fatalf("expected quiet verbosity after restart, got %q", got)
+	catalog := catalogFromUIEvent(t, events[0])
+	if catalog.CommandID != control.FeishuCommandVerbose {
+		t.Fatalf("expected verbose config catalog after restart, got %#v", catalog)
+	}
+	if summary := catalogSummaryText(catalog); !strings.Contains(summary, "quiet") {
+		t.Fatalf("expected quiet verbosity after restart, got summary %q", summary)
 	}
 }
 
@@ -386,11 +390,15 @@ func TestDaemonMaterializesLatentSurfaceFromSurfaceResumeStateOnRestart(t *testi
 		SurfaceSessionID: "surface-1",
 		Text:             "/verbose",
 	})
-	if len(events) != 1 || events[0].FeishuCommandView == nil || events[0].FeishuCommandView.Config == nil {
+	if len(events) != 1 {
 		t.Fatalf("expected one verbose config event after resume materialization, got %#v", events)
 	}
-	if got := events[0].FeishuCommandView.Config.CurrentValue; got != "verbose" {
-		t.Fatalf("expected verbose setting after restart materialization, got %q", got)
+	catalog := catalogFromUIEvent(t, events[0])
+	if catalog.CommandID != control.FeishuCommandVerbose {
+		t.Fatalf("expected verbose config catalog after restart materialization, got %#v", catalog)
+	}
+	if summary := catalogSummaryText(catalog); !strings.Contains(summary, "verbose") {
+		t.Fatalf("expected verbose setting after restart materialization, got summary %q", summary)
 	}
 	if snapshot.Attachment.InstanceID != "" || snapshot.PendingHeadless.InstanceID != "" {
 		t.Fatalf("expected restored surface to stay detached, got %#v", snapshot)

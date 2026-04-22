@@ -154,6 +154,29 @@ func eventCommandCatalog(event control.UIEvent) (*control.FeishuCommandPageView,
 		}
 		return &catalog, true
 	}
+	if event.FeishuPageView != nil {
+		page := control.NormalizeFeishuPageView(*event.FeishuPageView)
+		catalog := control.NormalizeFeishuCommandPageView(control.FeishuCommandPageView{
+			CommandID:       page.CommandID,
+			Title:           page.Title,
+			MessageID:       page.MessageID,
+			TrackingKey:     page.TrackingKey,
+			ThemeKey:        page.ThemeKey,
+			Patchable:       page.Patchable,
+			Breadcrumbs:     append([]control.CommandCatalogBreadcrumb(nil), page.Breadcrumbs...),
+			SummarySections: append([]control.FeishuCardTextSection(nil), page.SummarySections...),
+			BodySections:    append([]control.FeishuCardTextSection(nil), page.BodySections...),
+			NoticeSections:  append([]control.FeishuCardTextSection(nil), page.NoticeSections...),
+			StatusKind:      page.StatusKind,
+			StatusText:      page.StatusText,
+			Interactive:     page.Interactive,
+			Sealed:          page.Sealed,
+			DisplayStyle:    page.DisplayStyle,
+			Sections:        append([]control.CommandCatalogSection(nil), page.Sections...),
+			RelatedButtons:  append([]control.CommandCatalogButton(nil), page.RelatedButtons...),
+		})
+		return &catalog, true
+	}
 	return nil, false
 }
 

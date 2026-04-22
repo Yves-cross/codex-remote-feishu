@@ -303,6 +303,22 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 			break
 		}
 	}
+	if event.FeishuPageContext != nil && strings.TrimSpace(event.FeishuPageContext.MenuFlowID) != "" {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendCard {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordMenuFlowMessage(
+				event.SurfaceSessionID,
+				event.FeishuPageContext.MenuFlowID,
+				operation.MessageID,
+			)
+			break
+		}
+	}
 	if event.FeishuCommandView != nil && event.FeishuCommandView.Page != nil && strings.TrimSpace(event.FeishuCommandView.Page.TrackingKey) != "" {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
@@ -321,6 +337,27 @@ func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.O
 				operation.MessageID,
 			)
 			a.recordVSCodeMigrationFlowMessageLocked(event.FeishuCommandView.Page.TrackingKey, operation.MessageID)
+			break
+		}
+	}
+	if event.FeishuPageView != nil && strings.TrimSpace(event.FeishuPageView.TrackingKey) != "" {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendCard {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordOwnerCardFlowMessage(
+				event.SurfaceSessionID,
+				event.FeishuPageView.TrackingKey,
+				operation.MessageID,
+			)
+			a.recordUpgradeOwnerCardMessageLocked(
+				event.FeishuPageView.TrackingKey,
+				operation.MessageID,
+			)
+			a.recordVSCodeMigrationFlowMessageLocked(event.FeishuPageView.TrackingKey, operation.MessageID)
 			break
 		}
 	}

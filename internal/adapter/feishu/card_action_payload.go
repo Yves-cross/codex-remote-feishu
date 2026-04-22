@@ -21,6 +21,9 @@ const (
 	cardActionPayloadKeyRequestRevision       = "request_revision"
 	cardActionPayloadKeyCommandID             = "command_id"
 	cardActionPayloadKeyCommandText           = "command_text"
+	cardActionPayloadKeyActionKind            = "action_kind"
+	cardActionPayloadKeyActionArg             = "action_arg"
+	cardActionPayloadKeyActionArgPrefix       = "action_arg_prefix"
 	cardActionPayloadKeyFieldName             = "field_name"
 	cardActionPayloadKeyPickerID              = "picker_id"
 	cardActionPayloadKeyEntryName             = "entry_name"
@@ -50,10 +53,12 @@ const (
 	cardActionKindKickThreadCancel            = "kick_thread_cancel"
 	cardActionKindRequestRespond              = "request_respond"
 	cardActionKindRunCommand                  = "run_command"
+	cardActionKindPageAction                  = "page_action"
 	cardActionKindUpgradeOwnerFlow            = "upgrade_owner_flow"
 	cardActionKindVSCodeMigrateOwnerFlow      = "vscode_migrate_owner_flow"
 	cardActionKindPlanProposal                = "plan_proposal"
 	cardActionKindSubmitCommandForm           = "submit_command_form"
+	cardActionKindPageSubmit                  = "page_submit"
 	cardActionKindSubmitRequestForm           = "submit_request_form"
 	cardActionKindPathPickerEnter             = "path_picker_enter"
 	cardActionKindPathPickerUp                = "path_picker_up"
@@ -167,6 +172,17 @@ func actionPayloadRunCommand(commandText string) map[string]any {
 	}
 }
 
+func actionPayloadPageAction(actionKind, actionArg string) map[string]any {
+	payload := map[string]any{
+		cardActionPayloadKeyKind:       cardActionKindPageAction,
+		cardActionPayloadKeyActionKind: strings.TrimSpace(actionKind),
+	}
+	if strings.TrimSpace(actionArg) != "" {
+		payload[cardActionPayloadKeyActionArg] = strings.TrimSpace(actionArg)
+	}
+	return payload
+}
+
 func actionPayloadUpgradeOwnerFlow(flowID, optionID string) map[string]any {
 	return map[string]any{
 		cardActionPayloadKeyKind:     cardActionKindUpgradeOwnerFlow,
@@ -194,6 +210,22 @@ func actionPayloadSubmitCommandForm(commandID, commandText, fieldName string) ma
 		cardActionPayloadKeyCommandText: strings.TrimSpace(commandText),
 		cardActionPayloadKeyFieldName:   fieldName,
 	}
+}
+
+func actionPayloadPageSubmit(actionKind, actionArgPrefix, fieldName string) map[string]any {
+	fieldName = strings.TrimSpace(fieldName)
+	if fieldName == "" {
+		fieldName = cardActionPayloadDefaultCommandFieldName
+	}
+	payload := map[string]any{
+		cardActionPayloadKeyKind:       cardActionKindPageSubmit,
+		cardActionPayloadKeyActionKind: strings.TrimSpace(actionKind),
+		cardActionPayloadKeyFieldName:  fieldName,
+	}
+	if strings.TrimSpace(actionArgPrefix) != "" {
+		payload[cardActionPayloadKeyActionArgPrefix] = strings.TrimSpace(actionArgPrefix)
+	}
+	return payload
 }
 
 func actionPayloadRequestRespond(requestID, requestType, requestOptionID string, requestAnswers map[string]any) map[string]any {

@@ -575,6 +575,7 @@ const (
 	UIEventSnapshot            UIEventKind = "snapshot.updated"
 	UIEventFeishuSelectionView UIEventKind = "selection.prompt"
 	UIEventFeishuCommandView   UIEventKind = "command.catalog"
+	UIEventFeishuPageView      UIEventKind = "page.view"
 	UIEventFeishuRequestView   UIEventKind = "request.prompt"
 	UIEventFeishuPathPicker    UIEventKind = "path.picker"
 	UIEventFeishuTargetPicker  UIEventKind = "target.picker"
@@ -640,6 +641,8 @@ type UIEvent struct {
 	FeishuSelectionContext     *FeishuUISelectionContext
 	FeishuCommandView          *FeishuCommandView
 	FeishuCommandContext       *FeishuUICommandContext
+	FeishuPageView             *FeishuPageView
+	FeishuPageContext          *FeishuUIPageContext
 	FeishuRequestView          *FeishuRequestView
 	FeishuRequestContext       *FeishuUIRequestContext
 	FeishuPathPickerView       *FeishuPathPickerView

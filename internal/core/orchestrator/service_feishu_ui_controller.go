@@ -13,23 +13,23 @@ func (s *Service) ApplyFeishuUIIntent(action control.Action, intent control.Feis
 func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, intent control.FeishuUIIntent) []control.UIEvent {
 	switch intent.Kind {
 	case control.FeishuUIIntentShowCommandMenu:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildCommandMenuView(surface, intent.RawText))}
+		return []control.UIEvent{s.menuPageEvent(surface, intent.RawText)}
 	case control.FeishuUIIntentShowHistory:
 		return s.openThreadHistory(surface, intent.SourceMessageID, intent.Inline)
 	case control.FeishuUIIntentShowModeCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildModeCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildModeCommandView(surface))}
 	case control.FeishuUIIntentShowAutoContinueCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildAutoContinueCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildAutoContinueCommandView(surface))}
 	case control.FeishuUIIntentShowReasoningCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildReasoningCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildReasoningCommandView(surface))}
 	case control.FeishuUIIntentShowAccessCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildAccessCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildAccessCommandView(surface))}
 	case control.FeishuUIIntentShowPlanCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildPlanCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildPlanCommandView(surface))}
 	case control.FeishuUIIntentShowModelCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildModelCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildModelCommandView(surface))}
 	case control.FeishuUIIntentShowVerboseCatalog:
-		return []control.UIEvent{s.commandViewEvent(surface, s.buildVerboseCommandView(surface))}
+		return []control.UIEvent{s.configPageEventFromCommandView(surface, s.buildVerboseCommandView(surface))}
 	case control.FeishuUIIntentShowList:
 		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
 			return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, "", intent.SourceMessageID, true)
