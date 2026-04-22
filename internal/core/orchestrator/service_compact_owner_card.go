@@ -21,22 +21,20 @@ func compactOwnerFlowTrackingKey(flow *activeOwnerCardFlowRecord) string {
 func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, title, theme string, sections []control.FeishuCardTextSection) control.UIEvent {
 	bodySections, noticeSections := compactOwnerCardSplitSections(sections)
 	sealed := flow != nil && (flow.Phase == ownerCardFlowPhaseCompleted || flow.Phase == ownerCardFlowPhaseCancelled || flow.Phase == ownerCardFlowPhaseError)
-	view := control.FeishuCommandView{
-		Page: &control.FeishuCommandPageView{
-			Title:          strings.TrimSpace(title),
-			MessageID:      strings.TrimSpace(flow.MessageID),
-			TrackingKey:    compactOwnerFlowTrackingKey(flow),
-			ThemeKey:       strings.TrimSpace(theme),
-			Patchable:      true,
-			BodySections:   bodySections,
-			NoticeSections: noticeSections,
-			Sealed:         sealed,
-		},
-	}
+	view := control.NormalizeFeishuPageView(control.FeishuPageView{
+		Title:          strings.TrimSpace(title),
+		MessageID:      strings.TrimSpace(flow.MessageID),
+		TrackingKey:    compactOwnerFlowTrackingKey(flow),
+		ThemeKey:       strings.TrimSpace(theme),
+		Patchable:      true,
+		BodySections:   bodySections,
+		NoticeSections: noticeSections,
+		Sealed:         sealed,
+	})
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuCommandView,
-		SurfaceSessionID:  strings.TrimSpace(surfaceID),
-		FeishuCommandView: &view,
+		Kind:            control.UIEventFeishuPageView,
+		SurfaceSessionID: strings.TrimSpace(surfaceID),
+		FeishuPageView:  &view,
 	}
 }
 

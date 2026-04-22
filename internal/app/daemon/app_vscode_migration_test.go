@@ -466,7 +466,8 @@ func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
 	if !strings.Contains(operationCardText(ops[0]), "/list") {
 		t.Fatalf("expected follow-up guidance text to keep /list hint, got %#v", ops[0].CardElements)
 	}
-	if !operationHasCommandButton(ops[0], "选择实例", "/list") {
+	if !operationHasCommandButton(ops[0], "选择实例", "/list") &&
+		!operationHasActionValue(ops[0], "page_action", "action_kind", string(control.ActionListInstances)) {
 		t.Fatalf("expected follow-up guidance to keep select-instance button, got %#v", ops[0].CardElements)
 	}
 }

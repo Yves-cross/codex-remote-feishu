@@ -71,7 +71,7 @@
   - 负责把当前需要的 callback payload 字段写进卡片按钮/表单/下拉
   - 对共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `file_change` / 被动 `context_compaction`），负责在首次发送时打开 `config.update_multi=true`，让后续同一窗口卡可被 `message.patch` 更新；首卡当前固定顶层 append，不继承 turn reply anchor。若当前窗口卡在 projector 层按“每行一个 element”的粒度已放不下，projector 会继续 patch 同一张卡：丢弃最旧可见行、把 `card_start_seq` 前移到当前窗口首行，并在顶部补一行“较早过程已省略，仅保留最近进度。”
   - 对 turn timeline 文本（final reply、非 final assistant 文本、`用户补充` 这类轻量 text event），负责根据 `ReplyToMessageID` 选择 reply 发送；reply 失败时 gateway 会回退到普通 text/card create
-  - 对显式 `/compact` 这种 direct-command owner card，当前通过 patchable `FeishuCommandPageView` 发送首卡，并依赖 `TrackingKey -> message_id` 回写把 running / terminal 状态继续 patch 回同一张卡
+  - 对显式 `/compact` 这种 direct-command owner card，当前通过 patchable `FeishuPageView` 发送首卡，并依赖 `TrackingKey -> message_id` 回写把 running / terminal 状态继续 patch 回同一张卡
   - 当前是 selection / target-picker / command/config cards 最终 projection 的 owner：
     [internal/adapter/feishu/projector_target_picker.go](../../internal/adapter/feishu/projector_target_picker.go)
     负责把 `FeishuTargetPickerView` 投影成 unified target picker 卡片
@@ -82,7 +82,7 @@
     [internal/adapter/feishu/projector_page_catalog.go](../../internal/adapter/feishu/projector_page_catalog.go)
     负责把 `FeishuPageView` 投影成页面卡，并为按钮/表单写入 `page_action` / `page_submit` payload
     [internal/adapter/feishu/projector_command_view.go](../../internal/adapter/feishu/projector_command_view.go)
-    负责 legacy `FeishuCommandView` 投影（owner-card 与历史兼容路径）
+    负责 legacy `FeishuCommandView` 投影（历史 command 卡兼容路径）
     [internal/adapter/feishu/projector_path_picker.go](../../internal/adapter/feishu/projector_path_picker.go)
     负责把 `FeishuPathPickerView` 投影成当前复用路径选择器卡片
 - `orchestrator`
@@ -111,9 +111,9 @@
 | stamped `/menu current_work|switch_target -> /stop` / `/new` / `/follow` / `/detach` | `mixed` | 当前不再走提交态锚点；点击后 daemon 会把 handler 返回的首个 notice / thread-selection 结果卡直接作为 `ReplaceCurrentCard`，并把重复 notice 留在原卡内收口，不再额外 append 终态 notice，也不再做 recall |
 | stamped `/menu current_work -> /steerall` | `mixed` | 当前不再走提交态锚点；点击后会把当前菜单卡直接交给 steer-all owner flow。requested 进度态会继续占用并 patch 同一张原卡，但保持未 sealed；completed、no-op、failed / disconnect restore 才会把这张卡收口成 sealed terminal card，不再留下可重复点击的旧菜单 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/plan` / `/model` / `/verbose` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；其中 `/mode` `/autowhip` `/reasoning` `/access` `/plan` `/verbose` 只保留固定选项，`/model` 额外保留一张手动输入表单。参数卡当前也统一承接 `body / notice / sealed` contract：业务区保留当前值/覆盖值/模型等上下文，notice 区承接成功、错误和 reopen 提示；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；其中 `/plan` 的 apply 只改当前 surface 的后续 `PlanMode`，不会追溯改写当前 running turn；如果某轮 turn 结束时存在最终 `item/plan/delta`，后续 append 的“提案计划”卡则单独归到 `plan_proposal` owner family，不复用 bare `/plan` 参数卡本身；其中 stamped `/mode vscode` 若切换后立刻命中 legacy `editor_settings` 且存在可接管入口，daemon 会先同步静默自动迁到 `managed_shim`，成功后不再额外弹迁移提示卡；若仍需要可见下一步（缺 target、自动迁移失败、managed shim 修复、open prompt 或恢复提示），daemon 才会把首张可投影提示卡同位替回当前卡，并把该 surface 记录成可继续 patch 的 VS Code guidance card；后续异步 runtime 提示只要仍命中这块 card，就继续回写同一张卡；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
-| `plan_proposal` | `mixed` | turn 完成后若本轮缓存了最终 `item/plan/delta`，orchestrator 会 append 一张 patchable `FeishuCommandView.Page` 提案计划卡；点击 `直接执行` / `清空上下文并执行` / `取消` 时，gateway 解析 `picker_id + option_id` 回到 `ActionPlanProposalDecision`，并继续在同一张卡上 seal 收口。该卡不是 request gate，不阻塞后续输入；一旦用户继续输入、切线程/切 route、开始新 turn 或卡片过期，也会被服务端 seal 成失效态 |
+| `plan_proposal` | `mixed` | turn 完成后若本轮缓存了最终 `item/plan/delta`，orchestrator 会 append 一张 patchable `FeishuPageView` 提案计划卡（内容沿用 command-page contract）；点击 `直接执行` / `清空上下文并执行` / `取消` 时，gateway 解析 `picker_id + option_id` 回到 `ActionPlanProposalDecision`，并继续在同一张卡上 seal 收口。该卡不是 request gate，不阻塞后续输入；一旦用户继续输入、切线程/切 route、开始新 turn 或卡片过期，也会被服务端 seal 成失效态 |
 | bare `/cron` / `/upgrade` / `/debug` | `mixed` | 参数不足时当前统一打开 `FeishuPageView` 根页，不再顺手展示独立状态卡；根页现在只保留实际菜单入口，不再混入“快捷操作 / 手动输入 / 说明文案”，其中 `/debug` 根页当前仅保留 `管理页外链`，`/upgrade track` 子页当前仅保留 track 切换按钮。若来自带 `daemon_lifecycle_id` 的当前 page callback，且动作属于“不立即执行”的根页 / 子页 / 非法参数回显路径，daemon 会走 page result replacement，把下一张 page 继续同位替回当前卡；真正立即执行的动作（如 `/cron reload`、`/cron repair`、`/cron run <id>`、`/upgrade latest`、`/upgrade dev`、`/upgrade local`、`/debug admin`）仍进入各自原有执行流。文本或表单输入的非法参数当前不会外跳 notice，而是继续留在同一张 page 上显示错误并保留表单默认值 |
-| stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 `FeishuCommandView.Page` root page；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 command-page result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由 `run_command(/vscode-migrate)` 或 bare continuation |
+| stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 page contract root page（`FeishuPageView`，内容仍复用 command-page contract）；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 command-page result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由 `run_command(/vscode-migrate)` 或 bare continuation |
 | `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` / form 模式 `mcp_server_elicitation` 的当前题索引、分步暂存、留空确认、同卡刷新边界，以及 permissions / elicitation 的结构化回写与最终提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
@@ -126,9 +126,9 @@
   - projector 直接把它当作 request-card owner payload 渲染，不再依赖 `FeishuDirectRequestPrompt` 这类过渡形状
 - command/config cards 当前已分为两条 read-model 边界：
   - `/menu`、bare config cards、bare `/cron` `/upgrade` `/debug` 根页当前跨边界统一携带 `control.FeishuPageView`（`UIEventFeishuPageView`）
-  - compact/upgrade owner-flow/vscode guidance 等历史 owner-card 路径仍可继续携带 `control.FeishuCommandView`
-  - adapter 对 page 路径直接按 `FeishuPageView` 渲染；对 legacy command 路径仍先规范化到 `FeishuCommandPageView` 再渲染；两者都遵循 `业务区 -> notice 区 -> footer`，notice 区仅在存在内容时出现
-  - compact owner card 已作为首条样板流迁到这套 page contract：running 态保留“当前会话”业务区，终态把结果提示放在 notice 区并标记 sealed
+  - compact / steerall / sendfile terminal、plan proposal、upgrade owner-flow、vscode guidance 等活跃 owner-card 路径当前也统一携带 `control.FeishuPageView`
+  - `control.FeishuCommandView` 当前只保留 legacy command-path 兼容载体；adapter 对 page 路径直接按 `FeishuPageView` 渲染，对 legacy command 路径仍先规范化到 `FeishuCommandPageView` 再渲染；两者都遵循 `业务区 -> notice 区 -> footer`，notice 区仅在存在内容时出现
+  - compact owner card 当前已完全迁到 page contract：running 态保留“当前会话”业务区，终态把结果提示放在 notice 区并标记 sealed
 - `control.FeishuTargetPickerView` 当前已经是 normal mode `/list` / `/use` / `/useall` 跨 `UIEvent` 边界的主载体：
   - unified target picker 现在跨边界携带的是 `control.FeishuTargetPickerView`
   - projector 直接以它为 owner 生成 `target_picker_*` callback payload
@@ -150,7 +150,7 @@
   - Feishu UI controller 已通过这层 boundary 分流 pure navigation；后续继续扩 controller 时，默认仍应优先依赖这些 query/context 元数据，而不是继续直接读 orchestrator 内部字段
   - target picker cards 现在是 “read model -> `FeishuTargetPickerView` -> adapter projection -> Feishu V2 卡片” 三段；后续修改 normal `/list` / `/use` / `/useall` 的默认选择、页头单题文案、前置阻塞校验、confirm 按钮或 stale-selection 行为时，默认应落在 target picker read model / projection 层，而不是回到旧 selection query 函数里继续混改
   - selection cards 现在主要服务于 VS Code / legacy selection path；其中 VS Code `/list` / `/use` / `/useall` 已是 “read model -> `FeishuSelectionView` -> adapter structured projection -> Feishu V2 卡片” 三段，其余 compat prompt 仍保留 “read model -> `FeishuSelectionView` -> adapter structured entrypoint -> compat helper -> `FeishuDirectSelectionPrompt`” 四段；后续修改这些路径的交互与文案时，默认仍应落在 adapter structured projection / compat projection 或 selection view 结构层
-  - menu/config/root pages 现在是 “read model -> `FeishuPageView` -> page projector -> Feishu V2 卡片” 三段；legacy owner-card 仍是 “`FeishuCommandView` -> normalized `FeishuCommandPageView` -> Feishu V2 卡片” 路径；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认应落在 page read model / projector 层
+  - menu/config/root pages 现在是 “read model -> `FeishuPageView` -> page projector -> Feishu V2 卡片” 三段；legacy command-card 兼容路径仍是 “`FeishuCommandView` -> normalized `FeishuCommandPageView` -> Feishu V2 卡片”；后续修改 `/menu` 或 bare config cards 的 breadcrumbs、按钮布局、回退按钮、摘要文案时，默认应落在 page read model / projector 层
 - `ActionShow*` 与 bare config `Action*Command` 当前若仍存在，属于 gateway / parser 的 transport compatibility 层；live path 会先归并到 `FeishuUIIntent`，不再代表主产品 reducer owner。
 - 如果只是换卡片样式、按钮 payload、inline replace 策略，优先更新本文。
 - 如果改了 DTO 里的可选项语义、route 约束或 request gate 行为，必须同时更新 core 状态机文档。
@@ -460,8 +460,8 @@ MCP request 卡片当前新增的可视语义：
   - `/compact`、`/steerall`、`/sendfile` 的 `current_work` 菜单入口不再复用锚点路径，而是直接把原菜单卡交给 owner/terminal card 流继续收口
 - stamped 参数卡与迁移卡的非 inline 命令当前额外分两类：
   - stamped `/mode vscode` 若切换后立刻命中 legacy `editor_settings` 且存在可接管入口，daemon 会先同步静默自动迁到 `managed_shim`；只有缺 target、自动迁移失败、状态检查仍异常，或后续进入 open prompt / 恢复提示时，才会把首张可投影提示卡替回当前参数卡。之后这张卡会被登记为当前 surface 的 `vscode guidance card`，后续异步命中的兼容修复、open prompt、恢复成功/失败、`not_attached_vscode` `/list` 提示，都会继续以 `message.patch` 回到同一张卡；这条强制同步兼容性检测只用于 stamped callback，纯文本 `/mode vscode` 仍保持旧的异步提示语义
-  - `/vscode-migrate` 当前也已并入同一套 `FeishuCommandView.Page` 根页 / 校验页模型；stamped current-card callback 会先把 root page 或错误页同位替回当前卡，真正执行迁移则改走 `vscode_migrate_owner_flow` callback。迁移结果与后续异步 guidance 继续 patch 在同一张 guidance card 上，不再经由 `run_command(/vscode-migrate)` 或 bare continuation
-- bare `/upgrade`、bare `/debug`、bare `/cron`、bare `/vscode-migrate` 当前已经退出 bare continuation 与提交态锚点；它们统一改成 `FeishuCommandView.Page` 根页/子页模型，stamped current-card callback 会直接把下一张 command page 同位替回当前卡，非法参数也继续留在当前页内报错。
+- `/vscode-migrate` 当前也已并入同一套 page contract 根页 / 校验页模型（内容仍复用 command-page contract）；stamped current-card callback 会先把 root page 或错误页同位替回当前卡，真正执行迁移则改走 `vscode_migrate_owner_flow` callback。迁移结果与后续异步 guidance 继续 patch 在同一张 guidance card 上，不再经由 `run_command(/vscode-migrate)` 或 bare continuation
+- bare `/upgrade`、bare `/debug`、bare `/cron`、bare `/vscode-migrate` 当前已经退出 bare continuation 与提交态锚点；它们统一改成 page contract 根页/子页模型（内容仍复用 command-page contract），stamped current-card callback 会直接把下一张 page 同位替回当前卡，非法参数也继续留在当前页内报错。
 - `/upgrade latest` 当前不走 callback 同步 replace；但只要进入 daemon owner-card 流，同一张升级卡会继续通过 `message.patch` 在 `checking -> confirm -> running/cancelling -> restarting(sealed)` 之间推进，不再依赖“再次发送 `/upgrade latest`”。
 - turn-owned 的投递策略当前已经改成“高价值文本 reply、过程卡仍顶层 append”：
   - `当前计划`、request prompt、共享过程卡、图片输出、preview supplement、turn-owned notice 当前都固定顶层 append，不再继承 `SourceMessageID`

@@ -174,24 +174,22 @@ func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) co
 
 func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection, buttons []control.CommandCatalogButton, sealed bool) control.UIEvent {
 	interactive := len(buttons) > 0 && !sealed
-	view := control.FeishuCommandView{
-		Page: &control.FeishuCommandPageView{
-			Title:          strings.TrimSpace(title),
-			MessageID:      strings.TrimSpace(flowMessageID(flow)),
-			TrackingKey:    strings.TrimSpace(flowTrackingKey(flow)),
-			ThemeKey:       strings.TrimSpace(theme),
-			Patchable:      true,
-			BodySections:   append([]control.FeishuCardTextSection(nil), bodySections...),
-			NoticeSections: append([]control.FeishuCardTextSection(nil), noticeSections...),
-			Interactive:    interactive,
-			Sealed:         sealed,
-			RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
-		},
-	}
+	view := control.NormalizeFeishuPageView(control.FeishuPageView{
+		Title:          strings.TrimSpace(title),
+		MessageID:      strings.TrimSpace(flowMessageID(flow)),
+		TrackingKey:    strings.TrimSpace(flowTrackingKey(flow)),
+		ThemeKey:       strings.TrimSpace(theme),
+		Patchable:      true,
+		BodySections:   append([]control.FeishuCardTextSection(nil), bodySections...),
+		NoticeSections: append([]control.FeishuCardTextSection(nil), noticeSections...),
+		Interactive:    interactive,
+		Sealed:         sealed,
+		RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
+	})
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuCommandView,
-		SurfaceSessionID:  strings.TrimSpace(surfaceID),
-		FeishuCommandView: &view,
+		Kind:            control.UIEventFeishuPageView,
+		SurfaceSessionID: strings.TrimSpace(surfaceID),
+		FeishuPageView:  &view,
 	}
 }
 

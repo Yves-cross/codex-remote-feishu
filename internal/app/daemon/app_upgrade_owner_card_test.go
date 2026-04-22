@@ -215,10 +215,7 @@ func TestUpgradeOwnerConfirmEventUsesBodyAndNoticeSections(t *testing.T) {
 		CurrentTrack:   install.ReleaseTrackAlpha,
 		CurrentVersion: "v1.0.0",
 	})
-	if event.FeishuCommandView == nil || event.FeishuCommandView.Page == nil {
-		t.Fatalf("expected command page event, got %#v", event)
-	}
-	page := event.FeishuCommandView.Page
+	page := catalogFromUIEvent(t, event)
 	if page.Sealed || !page.Interactive {
 		t.Fatalf("expected confirm page to stay interactive, got %#v", page)
 	}
@@ -246,10 +243,7 @@ func TestUpgradeOwnerTerminalEventSealsPageContract(t *testing.T) {
 		upgradeOwnerContextSections(flow.CurrentVersion, flow.TargetVersion, string(flow.Track)),
 		upgradeOwnerNoticeSections("下载失败，请稍后重试。"),
 	)
-	if event.FeishuCommandView == nil || event.FeishuCommandView.Page == nil {
-		t.Fatalf("expected command page event, got %#v", event)
-	}
-	page := event.FeishuCommandView.Page
+	page := catalogFromUIEvent(t, event)
 	if !page.Sealed || page.Interactive || len(page.RelatedButtons) != 0 {
 		t.Fatalf("expected terminal upgrade page to be sealed without footer actions, got %#v", page)
 	}

@@ -129,10 +129,12 @@ func TestTurnCompletedPresentsPlanProposalCard(t *testing.T) {
 
 	var page *control.FeishuCommandPageView
 	for _, event := range events {
-		if event.Kind == control.UIEventFeishuCommandView && event.FeishuCommandView != nil && event.FeishuCommandView.Page != nil {
-			page = event.FeishuCommandView.Page
-			break
+		catalog, ok := eventCommandCatalog(event)
+		if !ok {
+			continue
 		}
+		page = catalog
+		break
 	}
 	if page == nil {
 		t.Fatalf("expected plan proposal command page, got %#v", events)
@@ -237,7 +239,7 @@ func TestPlanProposalExecuteEnqueuesContinuationAndDisablesPlanMode(t *testing.T
 	foundSeal := false
 	foundDispatch := false
 	for _, event := range events {
-		if event.Kind == control.UIEventFeishuCommandView && event.FeishuCommandView != nil && event.FeishuCommandView.Page != nil && event.FeishuCommandView.Page.Sealed {
+		if catalog, ok := eventCommandCatalog(event); ok && catalog.Sealed {
 			foundSeal = true
 		}
 		if event.Kind == control.UIEventAgentCommand && event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {

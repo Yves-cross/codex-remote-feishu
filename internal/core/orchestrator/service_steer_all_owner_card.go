@@ -18,20 +18,18 @@ func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, sealed bo
 	if len(bodyLines) != 0 {
 		noticeSections = append(noticeSections, control.FeishuCardTextSection{Lines: bodyLines})
 	}
-	view := control.FeishuCommandView{
-		Page: &control.FeishuCommandPageView{
-			MessageID:      strings.TrimSpace(messageID),
-			Title:          strings.TrimSpace(title),
-			ThemeKey:       strings.TrimSpace(theme),
-			Interactive:    false,
-			NoticeSections: noticeSections,
-			Sealed:         sealed,
-		},
-	}
+	view := control.NormalizeFeishuPageView(control.FeishuPageView{
+		MessageID:      strings.TrimSpace(messageID),
+		Title:          strings.TrimSpace(title),
+		ThemeKey:       strings.TrimSpace(theme),
+		Interactive:    false,
+		NoticeSections: noticeSections,
+		Sealed:         sealed,
+	})
 	return control.UIEvent{
-		Kind:              control.UIEventFeishuCommandView,
-		SurfaceSessionID:  strings.TrimSpace(surfaceID),
-		FeishuCommandView: &view,
+		Kind:            control.UIEventFeishuPageView,
+		SurfaceSessionID: strings.TrimSpace(surfaceID),
+		FeishuPageView:  &view,
 	}
 }
 

@@ -91,7 +91,7 @@ func planProposalTrackingKey(flow *activeOwnerCardFlowRecord) string {
 	return strings.TrimSpace(flow.FlowID)
 }
 
-func buildPlanProposalView(flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool) control.FeishuCommandView {
+func buildPlanProposalPageView(flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool) control.FeishuPageView {
 	interactive := len(buttons) != 0 && !sealed
 	bodySections := []control.FeishuCardTextSection(nil)
 	if proposal != nil {
@@ -121,17 +121,17 @@ func buildPlanProposalView(flow *activeOwnerCardFlowRecord, proposal *activePlan
 			}},
 		}}
 	}
-	return control.FeishuCommandView{Page: &view}
+	return control.FeishuPageViewFromCommandPageView(view)
 }
 
 func planProposalEvent(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool, inlineReplace bool) control.UIEvent {
-	view := buildPlanProposalView(flow, proposal, inlineMessageID, statusText, theme, buttons, sealed)
+	view := buildPlanProposalPageView(flow, proposal, inlineMessageID, statusText, theme, buttons, sealed)
 	return control.UIEvent{
-		Kind:                     control.UIEventFeishuCommandView,
+		Kind:                     control.UIEventFeishuPageView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: inlineReplace,
-		FeishuCommandView:        &view,
+		FeishuPageView:           &view,
 	}
 }
 
