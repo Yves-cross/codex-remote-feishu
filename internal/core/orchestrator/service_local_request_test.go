@@ -701,10 +701,14 @@ func TestRespondRequestDispatchesCommandAndClearsOnResolve(t *testing.T) {
 		RequestID:        "req-1",
 		RequestOptionID:  "accept",
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one agent command event, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)
 	}
-	command := events[0].Command
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed || prompt.Phase != "waiting_dispatch" {
+		t.Fatalf("expected approval request to seal before dispatch, got %#v", prompt)
+	}
+	command := events[1].Command
 	if command.Kind != agentproto.CommandRequestRespond || command.Request.RequestID != "req-1" {
 		t.Fatalf("unexpected request respond command: %#v", command)
 	}
@@ -778,11 +782,15 @@ func TestRespondRequestAcceptForSessionDispatchesDecision(t *testing.T) {
 		RequestID:        "req-1",
 		RequestOptionID:  "acceptForSession",
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one agent command event, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)
 	}
-	if events[0].Command.Request.Response["decision"] != "acceptForSession" {
-		t.Fatalf("unexpected request decision payload: %#v", events[0].Command.Request.Response)
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed || prompt.Phase != "waiting_dispatch" {
+		t.Fatalf("expected approval request to seal before dispatch, got %#v", prompt)
+	}
+	if events[1].Command.Request.Response["decision"] != "acceptForSession" {
+		t.Fatalf("unexpected request decision payload: %#v", events[1].Command.Request.Response)
 	}
 }
 

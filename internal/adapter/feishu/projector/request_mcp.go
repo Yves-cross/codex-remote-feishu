@@ -4,11 +4,13 @@ import (
 	"fmt"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 const requestControlCancelRequest = "cancel_request"
 
 func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
+	prompt = control.NormalizeFeishuRequestView(prompt)
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -18,12 +20,14 @@ func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLi
 		}
 	}
 	actions := make([]map[string]any, 0, len(options))
-	for _, option := range options {
-		button := requestPromptButton(prompt, option, daemonLifecycleID)
-		if len(button) == 0 {
-			continue
+	if frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) {
+		for _, option := range options {
+			button := requestPromptButton(prompt, option, daemonLifecycleID)
+			if len(button) == 0 {
+				continue
+			}
+			actions = append(actions, button)
 		}
-		actions = append(actions, button)
 	}
 	elements := make([]map[string]any, 0, 2)
 	if row := cardButtonGroupElement(actions); len(row) != 0 {
@@ -33,10 +37,17 @@ func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLi
 		"tag":     "markdown",
 		"content": "你可以选择仅授权当前这一次，或在当前会话内持续授权。",
 	})
+	if status := requestPromptStatusMarkdown(prompt); status != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": status,
+		})
+	}
 	return elements
 }
 
 func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
+	prompt = control.NormalizeFeishuRequestView(prompt)
 	if len(prompt.Questions) == 0 {
 		return mcpElicitationChoiceElements(prompt, daemonLifecycleID)
 	}
@@ -72,6 +83,7 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 }
 
 func mcpElicitationChoiceElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
+	prompt = control.NormalizeFeishuRequestView(prompt)
 	options := prompt.Options
 	if len(options) == 0 {
 		options = []control.RequestPromptOption{
@@ -81,12 +93,14 @@ func mcpElicitationChoiceElements(prompt control.FeishuRequestView, daemonLifecy
 		}
 	}
 	actions := make([]map[string]any, 0, len(options))
-	for _, option := range options {
-		button := requestPromptButton(prompt, option, daemonLifecycleID)
-		if len(button) == 0 {
-			continue
+	if frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) {
+		for _, option := range options {
+			button := requestPromptButton(prompt, option, daemonLifecycleID)
+			if len(button) == 0 {
+				continue
+			}
+			actions = append(actions, button)
 		}
-		actions = append(actions, button)
 	}
 	elements := make([]map[string]any, 0, 2)
 	if row := cardButtonGroupElement(actions); len(row) != 0 {
@@ -96,11 +110,17 @@ func mcpElicitationChoiceElements(prompt control.FeishuRequestView, daemonLifecy
 		"tag":     "markdown",
 		"content": "如果需要先完成外部页面操作，请完成后再点击“继续”；如果不打算继续，可直接拒绝或取消。",
 	})
+	if status := requestPromptStatusMarkdown(prompt); status != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": status,
+		})
+	}
 	return elements
 }
 
 func mcpElicitationCancelFooterElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
-	if prompt.Sealed {
+	if !frontstagecontract.AllowsCancelAction(prompt.ActionPolicy) {
 		return nil
 	}
 	return []map[string]any{

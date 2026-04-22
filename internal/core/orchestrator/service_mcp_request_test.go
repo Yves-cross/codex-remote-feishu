@@ -78,10 +78,14 @@ func TestRespondPermissionsRequestBuildsStructuredGrantPayload(t *testing.T) {
 		RequestOptionID:  "acceptForSession",
 	})
 
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one request respond command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed request replacement plus one request respond command, got %#v", events)
 	}
-	response := events[0].Command.Request.Response
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed || prompt.Phase != "waiting_dispatch" {
+		t.Fatalf("expected permissions request to seal before dispatch, got %#v", prompt)
+	}
+	response := events[1].Command.Request.Response
 	if response["scope"] != "session" {
 		t.Fatalf("expected session-scoped permission grant, got %#v", response)
 	}
@@ -236,10 +240,14 @@ func TestRespondMCPElicitationURLAcceptBuildsContinuePayload(t *testing.T) {
 		RequestOptionID:  "accept",
 	})
 
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one mcp url respond command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed request replacement plus one mcp url respond command, got %#v", events)
 	}
-	response := events[0].Command.Request.Response
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed || prompt.Phase != "waiting_dispatch" {
+		t.Fatalf("expected url elicitation request to seal before dispatch, got %#v", prompt)
+	}
+	response := events[1].Command.Request.Response
 	if response["action"] != "accept" {
 		t.Fatalf("expected accept action for url elicitation, got %#v", response)
 	}

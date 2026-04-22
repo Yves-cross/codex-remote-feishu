@@ -8,6 +8,7 @@ import (
 )
 
 func PathPickerElements(view control.FeishuPathPickerView, daemonLifecycleID string) []map[string]any {
+	view = control.NormalizeFeishuPathPickerView(view)
 	if view.Terminal || view.Sealed {
 		return sealedPathPickerElements(view)
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 const (
@@ -30,6 +31,7 @@ func requestPromptSections(prompt control.FeishuRequestView) []control.FeishuCar
 }
 
 func RequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
+	prompt = control.NormalizeFeishuRequestView(prompt)
 	elements := appendCardTextSections(nil, requestPromptSections(prompt))
 	switch normalizeRequestPromptType(prompt.RequestType) {
 	case "request_user_input":
@@ -50,12 +52,14 @@ func RequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID s
 		}
 	}
 	actions := make([]map[string]any, 0, len(options))
-	for _, option := range options {
-		button := requestPromptButton(prompt, option, daemonLifecycleID)
-		if len(button) == 0 {
-			continue
+	if frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) {
+		for _, option := range options {
+			button := requestPromptButton(prompt, option, daemonLifecycleID)
+			if len(button) == 0 {
+				continue
+			}
+			actions = append(actions, button)
 		}
-		actions = append(actions, button)
 	}
 	hint := "这个确认只影响当前这一次请求。"
 	if requestPromptContainsOption(options, "captureFeedback") {
@@ -68,6 +72,12 @@ func RequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID s
 		"tag":     "markdown",
 		"content": hint,
 	})
+	if status := requestPromptStatusMarkdown(prompt); status != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": status,
+		})
+	}
 	return elements
 }
 
@@ -111,7 +121,7 @@ func appendCurrentRequestQuestionElements(elements []map[string]any, prompt cont
 	if section, ok := requestPromptQuestionSection(index, len(prompt.Questions), question); ok {
 		elements = appendCardTextSections(elements, []control.FeishuCardTextSection{section})
 	}
-	if prompt.Sealed || !question.DirectResponse || len(question.Options) == 0 {
+	if !frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) || !question.DirectResponse || len(question.Options) == 0 {
 		return elements
 	}
 	actions := make([]map[string]any, 0, len(question.Options))
@@ -258,7 +268,7 @@ func requestPromptCurrentQuestion(prompt control.FeishuRequestView) (control.Req
 
 func requestPromptNeedsForm(prompt control.FeishuRequestView) bool {
 	question, _, ok := requestPromptCurrentQuestion(prompt)
-	if !ok || prompt.Sealed {
+	if !ok || !frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) {
 		return false
 	}
 	return requestPromptQuestionNeedsFormInput(question)
@@ -327,7 +337,7 @@ func requestPromptFormElement(prompt control.FeishuRequestView, daemonLifecycleI
 }
 
 func requestPromptRetryActionElement(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
-	if prompt.Sealed || !requestPromptQuestionsComplete(prompt) {
+	if !frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) || !requestPromptQuestionsComplete(prompt) {
 		return nil
 	}
 	return cardCallbackButtonElement("重新提交", "primary", stampActionValue(actionPayloadRequestRespond(prompt.RequestID, prompt.RequestType, "", nil, prompt.RequestRevision), daemonLifecycleID), false, "fill")
@@ -335,7 +345,7 @@ func requestPromptRetryActionElement(prompt control.FeishuRequestView, daemonLif
 
 func requestPromptSkipOptionalElement(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
 	question, _, ok := requestPromptCurrentQuestion(prompt)
-	if !ok || prompt.Sealed || !question.Optional || question.Answered || question.Skipped {
+	if !ok || !frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) || !question.Optional || question.Answered || question.Skipped {
 		return nil
 	}
 	return cardCallbackButtonElement("跳过", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlSkipOption, question.ID, prompt.RequestRevision), daemonLifecycleID), false, "fill")
@@ -349,14 +359,22 @@ func requestPromptStatusMarkdown(prompt control.FeishuRequestView) string {
 }
 
 func requestPromptCancelFooterElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
-	if prompt.Sealed {
+	if !frontstagecontract.AllowsCancelAction(prompt.ActionPolicy) {
 		return nil
 	}
 	requestType := normalizeRequestPromptType(prompt.RequestType)
-	if requestType == "request_user_input" {
+	switch requestType {
+	case "request_user_input":
 		return []map[string]any{
 			cardDividerElement(),
 			cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelTurn, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+		}
+	case "mcp_server_elicitation":
+		if prompt.ActionPolicy == frontstagecontract.ActionPolicyCancelOnly {
+			return []map[string]any{
+				cardDividerElement(),
+				cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+			}
 		}
 	}
 	return nil

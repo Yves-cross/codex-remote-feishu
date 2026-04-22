@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -279,6 +280,7 @@ func (s *Service) restorePendingRequestDispatch(surface *state.SurfaceConsoleRec
 			continue
 		}
 		request.PendingDispatchCommandID = ""
+		request.Phase = frontstagecontract.PhaseEditing
 		bumpRequestCardRevision(request)
 		noticeText := "请求提交失败，请在最新卡片上重试。"
 		if noticeCode == "command_rejected" {

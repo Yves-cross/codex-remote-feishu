@@ -2,6 +2,8 @@ package control
 
 import "time"
 
+import "github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+
 type TargetPickerRequestSource string
 
 const (
@@ -82,6 +84,8 @@ type FeishuTargetPickerView struct {
 	Question               string
 	BodySections           []FeishuCardTextSection
 	NoticeSections         []FeishuCardTextSection
+	Phase                  frontstagecontract.Phase
+	ActionPolicy           frontstagecontract.ActionPolicy
 	Sealed                 bool
 	StatusTitle            string
 	StatusText             string
@@ -174,4 +178,44 @@ type TargetPickerResult struct {
 	OwnerUserID  string
 	CreatedAt    time.Time
 	ExpiresAt    time.Time
+}
+
+func NormalizeFeishuTargetPickerView(view FeishuTargetPickerView) FeishuTargetPickerView {
+	frame := frontstagecontract.NormalizeFrame(frontstagecontract.Frame{
+		OwnerKind:    frontstagecontract.OwnerCardTargetPicker,
+		Phase:        normalizeTargetPickerPhase(view),
+		ActionPolicy: normalizeTargetPickerActionPolicy(view),
+	})
+	view.Phase = frame.Phase
+	view.ActionPolicy = frame.ActionPolicy
+	view.Sealed = frontstagecontract.SealedForPhase(frame.Phase)
+	return view
+}
+
+func normalizeTargetPickerPhase(view FeishuTargetPickerView) frontstagecontract.Phase {
+	if view.Phase != "" {
+		return view.Phase
+	}
+	switch view.Stage {
+	case FeishuTargetPickerStageProcessing:
+		return frontstagecontract.PhaseProcessing
+	case FeishuTargetPickerStageSucceeded:
+		return frontstagecontract.PhaseSucceeded
+	case FeishuTargetPickerStageFailed:
+		return frontstagecontract.PhaseFailed
+	case FeishuTargetPickerStageCancelled:
+		return frontstagecontract.PhaseCancelled
+	default:
+		return frontstagecontract.PhaseEditing
+	}
+}
+
+func normalizeTargetPickerActionPolicy(view FeishuTargetPickerView) frontstagecontract.ActionPolicy {
+	if view.ActionPolicy != "" {
+		return view.ActionPolicy
+	}
+	if normalizeTargetPickerPhase(view) == frontstagecontract.PhaseProcessing && view.CanCancelProcessing {
+		return frontstagecontract.ActionPolicyCancelOnly
+	}
+	return ""
 }

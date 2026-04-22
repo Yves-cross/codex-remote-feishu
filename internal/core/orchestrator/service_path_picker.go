@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -292,7 +293,7 @@ func (s *Service) buildPathPickerView(surface *state.SurfaceConsoleRecord, recor
 			view.Hint = strings.TrimSpace(view.Hint) + "\n" + extraHint
 		}
 	}
-	return view, nil
+	return control.NormalizeFeishuPathPickerView(view), nil
 }
 
 func (s *Service) buildPathPickerEntries(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord) ([]control.FeishuPathPickerEntry, error) {
@@ -486,13 +487,13 @@ func (s *Service) dispatchPathPickerConfirmed(surface *state.SurfaceConsoleRecor
 				s.clearSurfacePathPicker(surface)
 				return events
 			}
-			return s.finishPathPickerWithStatus(surface, record, "已确认路径", firstNonEmpty(pathPickerFirstNoticeText(events), fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath)), nil, "", false, nil)
+			return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseSucceeded, "已确认路径", firstNonEmpty(pathPickerFirstNoticeText(events), fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath)), nil, "", false, nil)
 		}
 	}
 	if strings.TrimSpace(result.ConsumerKind) != "" && !ok {
-		return s.finishPathPickerWithStatus(surface, record, "当前路径处理器不可用", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。", nil, "", false, nil)
+		return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseFailed, "当前路径处理器不可用", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。", nil, "", false, nil)
 	}
-	return s.finishPathPickerWithStatus(surface, record, "已确认路径", fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath), nil, "", false, nil)
+	return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseSucceeded, "已确认路径", fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath), nil, "", false, nil)
 }
 
 func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, result control.PathPickerResult) []control.UIEvent {
@@ -504,13 +505,13 @@ func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecor
 				s.clearSurfacePathPicker(surface)
 				return events
 			}
-			return s.finishPathPickerWithStatus(surface, record, "已取消路径选择", firstNonEmpty(pathPickerFirstNoticeText(events), "已取消路径选择。"), nil, "", false, nil)
+			return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseCancelled, "已取消路径选择", firstNonEmpty(pathPickerFirstNoticeText(events), "已取消路径选择。"), nil, "", false, nil)
 		}
 	}
 	if strings.TrimSpace(result.ConsumerKind) != "" && !ok {
-		return s.finishPathPickerWithStatus(surface, record, "当前路径处理器不可用", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。", nil, "", false, nil)
+		return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseFailed, "当前路径处理器不可用", "当前路径选择结果缺少可用的业务处理器，请重新发起或联系维护者检查配置。", nil, "", false, nil)
 	}
-	return s.finishPathPickerWithStatus(surface, record, "已取消路径选择", "已取消路径选择。", nil, "", false, nil)
+	return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseCancelled, "已取消路径选择", "已取消路径选择。", nil, "", false, nil)
 }
 
 func (s *Service) lookupPathPickerConsumer(kind string) (PathPickerConsumer, bool) {

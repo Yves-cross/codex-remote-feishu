@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 func TargetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID string) []map[string]any {
+	view = control.NormalizeFeishuTargetPickerView(view)
 	elements := make([]map[string]any, 0, 18)
-	if view.Stage != "" && view.Stage != control.FeishuTargetPickerStageEditing {
+	if view.Phase != frontstagecontract.PhaseEditing {
 		return targetPickerStageElements(view, daemonLifecycleID)
 	}
 	elements = append(elements, targetPickerHeaderElements(view.StageLabel, view.Question)...)
@@ -48,6 +50,7 @@ func TargetPickerElements(view control.FeishuTargetPickerView, daemonLifecycleID
 }
 
 func targetPickerStageElements(view control.FeishuTargetPickerView, daemonLifecycleID string) []map[string]any {
+	view = control.NormalizeFeishuTargetPickerView(view)
 	elements := make([]map[string]any, 0, 8)
 	elements = append(elements, targetPickerHeaderElements(view.StageLabel, view.Question)...)
 	if bodySections := targetPickerBodySectionsForView(view); len(bodySections) != 0 {
@@ -59,7 +62,7 @@ func targetPickerStageElements(view control.FeishuTargetPickerView, daemonLifecy
 		}
 		elements = appendCardTextSections(elements, noticeSections)
 	}
-	if view.Stage != control.FeishuTargetPickerStageProcessing || view.Sealed || !view.CanCancelProcessing {
+	if view.Phase != frontstagecontract.PhaseProcessing || view.ActionPolicy != frontstagecontract.ActionPolicyCancelOnly {
 		return elements
 	}
 	return appendCardFooterButtonGroup(elements, []map[string]any{

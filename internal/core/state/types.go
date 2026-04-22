@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 type RouteMode string
@@ -424,6 +425,7 @@ type RequestPromptRecord struct {
 	DraftAnswers             map[string]string
 	SkippedQuestionIDs       map[string]bool
 	CardRevision             int
+	Phase                    frontstagecontract.Phase
 	PendingDispatchCommandID string
 	CreatedAt                time.Time
 }

@@ -100,10 +100,14 @@ func TestRespondRequestCancelDispatchesDecision(t *testing.T) {
 		RequestID:        "req-cmd-1",
 		RequestOptionID:  "cancel",
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one agent command event, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)
 	}
-	if events[0].Command.Request.Response["decision"] != "cancel" {
-		t.Fatalf("unexpected request cancel payload: %#v", events[0].Command.Request.Response)
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed || prompt.Phase != "waiting_dispatch" {
+		t.Fatalf("expected approval request to seal before dispatch, got %#v", prompt)
+	}
+	if events[1].Command.Request.Response["decision"] != "cancel" {
+		t.Fatalf("unexpected request cancel payload: %#v", events[1].Command.Request.Response)
 	}
 }

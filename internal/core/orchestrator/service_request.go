@@ -2,8 +2,10 @@ package orchestrator
 
 import (
 	"fmt"
+
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"strconv"
 	"strings"
@@ -180,6 +182,7 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		DraftAnswers:         map[string]string{},
 		SkippedQuestionIDs:   map[string]bool{},
 		CardRevision:         1,
+		Phase:                frontstagecontract.PhaseEditing,
 		CreatedAt:            s.now(),
 	}
 	surface.PendingRequests[event.RequestID] = record
@@ -540,10 +543,6 @@ func requestPromptQuestionsComplete(request *state.RequestPromptRecord) bool {
 	return true
 }
 
-func requestPromptShouldSealDuringDispatch(request *state.RequestPromptRecord) bool {
-	return request != nil && len(request.Questions) != 0
-}
-
 func requestPromptPendingDispatchStatusText(request *state.RequestPromptRecord) string {
 	if request == nil {
 		return "已提交当前请求，等待 Codex 继续。"
@@ -612,12 +611,15 @@ func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTit
 		Options:              requestPromptOptionsToControl(record.Options),
 		Questions:            requestPromptQuestionsToControl(record.Questions, record.DraftAnswers, record.SkippedQuestionIDs),
 		CurrentQuestionIndex: normalizedRequestPromptCurrentQuestionIndex(record),
+		Phase:                record.Phase,
 	}
 	if strings.TrimSpace(record.PendingDispatchCommandID) != "" {
-		view.Sealed = true
-		view.StatusText = requestPromptPendingDispatchStatusText(record)
+		view.Phase = frontstagecontract.PhaseWaitingDispatch
+		if strings.TrimSpace(view.StatusText) == "" {
+			view.StatusText = requestPromptPendingDispatchStatusText(record)
+		}
 	}
-	return view
+	return control.NormalizeFeishuRequestView(view)
 }
 
 func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
@@ -646,11 +648,11 @@ func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRe
 	return events
 }
 
-func (s *Service) requestPromptInlineTerminalEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint, statusText string) control.UIEvent {
+func (s *Service) requestPromptInlinePhaseEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string, phase frontstagecontract.Phase, statusText string) control.UIEvent {
 	view := s.requestPromptView(record, threadTitleHint)
-	view.Sealed = true
+	view.Phase = phase
 	view.StatusText = strings.TrimSpace(statusText)
-	event := s.requestViewEvent(surface, view)
+	event := s.requestViewEvent(surface, control.NormalizeFeishuRequestView(view))
 	event.InlineReplaceCurrentCard = true
 	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
 	return event
@@ -661,10 +663,11 @@ func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, r
 		return nil
 	}
 	request.PendingDispatchCommandID = s.nextRequestDispatchCommandID()
+	request.Phase = frontstagecontract.PhaseWaitingDispatch
 	bumpRequestCardRevision(request)
 	events := make([]control.UIEvent, 0, 2)
-	if requestPromptShouldSealDuringDispatch(request) {
-		events = append(events, s.requestPromptInlineTerminalEvent(surface, request, "", firstNonEmpty(strings.TrimSpace(statusText), requestPromptPendingDispatchStatusText(request))))
+	if requestPromptRenderable(request.RequestType) {
+		events = append(events, s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseWaitingDispatch, firstNonEmpty(strings.TrimSpace(statusText), requestPromptPendingDispatchStatusText(request))))
 	}
 	events = append(events, control.UIEvent{
 		Kind:             control.UIEventAgentCommand,
@@ -737,13 +740,14 @@ func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord
 	if surface == nil || request == nil {
 		return nil
 	}
-	events := []control.UIEvent{s.requestPromptInlineTerminalEvent(surface, request, "", "已放弃答题，并向当前 turn 发送停止请求。")}
+	request.Phase = frontstagecontract.PhaseCancelled
+	events := []control.UIEvent{s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseCancelled, "已放弃答题，并向当前 turn 发送停止请求。")}
 	if strings.TrimSpace(request.RequestID) != "" && surface.PendingRequests != nil {
 		delete(surface.PendingRequests, request.RequestID)
 	}
 	clearSurfaceRequestCaptureByRequestID(surface, request.RequestID)
 	if request.ThreadID == "" && request.TurnID == "" {
-		events[0] = s.requestPromptInlineTerminalEvent(surface, request, "", "已放弃答题。当前 turn 已不在可中断状态。")
+		events[0] = s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseCancelled, "已放弃答题。当前 turn 已不在可中断状态。")
 		return events
 	}
 	events = append(events, control.UIEvent{

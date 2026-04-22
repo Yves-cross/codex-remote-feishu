@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -82,6 +83,7 @@ func (s *Service) pathPickerInlineNotice(surface *state.SurfaceConsoleRecord, re
 func (s *Service) finishPathPickerWithStatus(
 	surface *state.SurfaceConsoleRecord,
 	record *activePathPickerRecord,
+	phase frontstagecontract.Phase,
 	title, text string,
 	sections []control.FeishuCardTextSection,
 	footer string,
@@ -100,8 +102,8 @@ func (s *Service) finishPathPickerWithStatus(
 		}
 		return notice(surface, "path_picker_unavailable", err.Error())
 	}
-	view.Terminal = true
-	view.Sealed = true
+	view.Phase = phase
+	view = control.NormalizeFeishuPathPickerView(view)
 	event := s.pathPickerViewEvent(surface, view, inline)
 	s.clearSurfacePathPicker(surface)
 	return append([]control.UIEvent{event}, appendEvents...)

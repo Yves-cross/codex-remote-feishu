@@ -1,6 +1,10 @@
 package control
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+)
 
 // FeishuPageView is the generic page-card DTO used by menu/config/root pages.
 // It intentionally avoids command-specific implicit defaults.
@@ -18,6 +22,8 @@ type FeishuPageView struct {
 	NoticeSections                []FeishuCardTextSection
 	StatusKind                    string
 	StatusText                    string
+	Phase                         frontstagecontract.Phase
+	ActionPolicy                  frontstagecontract.ActionPolicy
 	Interactive                   bool
 	Sealed                        bool
 	DisplayStyle                  CommandCatalogDisplayStyle
@@ -46,8 +52,18 @@ func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {
 	noticeSections := BuildFeishuPageNoticeSections(view)
 	sections := cloneCommandCatalogSections(view.Sections)
 	relatedButtons := cloneCommandCatalogButtons(view.RelatedButtons)
-	interactive := view.Interactive
-	if view.Sealed {
+	actionPolicy := view.ActionPolicy
+	if actionPolicy == "" && !view.Sealed && !view.Interactive {
+		actionPolicy = frontstagecontract.ActionPolicyReadOnly
+	}
+	frame := frontstagecontract.NormalizeFrame(frontstagecontract.Frame{
+		OwnerKind:    frontstagecontract.OwnerCardPage,
+		Phase:        normalizePagePhase(view),
+		ActionPolicy: actionPolicy,
+	})
+	interactive := frontstagecontract.AllowsPrimaryInput(frame.ActionPolicy)
+	sealed := frontstagecontract.SealedForPhase(frame.Phase)
+	if sealed {
 		interactive = false
 		relatedButtons = nil
 	} else if allowCommandGroupFallback && len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" && !view.SuppressDefaultRelatedButtons {
@@ -67,13 +83,28 @@ func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {
 		NoticeSections:                noticeSections,
 		StatusKind:                    "",
 		StatusText:                    "",
+		Phase:                         frame.Phase,
+		ActionPolicy:                  frame.ActionPolicy,
 		Interactive:                   interactive,
-		Sealed:                        view.Sealed,
+		Sealed:                        sealed,
 		DisplayStyle:                  displayStyle,
 		Sections:                      sections,
 		RelatedButtons:                relatedButtons,
 		SuppressDefaultRelatedButtons: view.SuppressDefaultRelatedButtons,
 	}
+}
+
+func normalizePagePhase(view FeishuPageView) frontstagecontract.Phase {
+	if view.Phase != "" {
+		return view.Phase
+	}
+	if view.Sealed {
+		if strings.TrimSpace(view.StatusKind) == "error" {
+			return frontstagecontract.PhaseFailed
+		}
+		return frontstagecontract.PhaseSucceeded
+	}
+	return frontstagecontract.PhaseEditing
 }
 
 func BuildFeishuPageBodySections(view FeishuPageView) []FeishuCardTextSection {
@@ -125,6 +156,8 @@ func FeishuPageViewFromCommandPageView(view FeishuPageView) FeishuPageView {
 		NoticeSections:                cloneNormalizedFeishuCardSections(view.NoticeSections),
 		StatusKind:                    strings.TrimSpace(view.StatusKind),
 		StatusText:                    strings.TrimSpace(view.StatusText),
+		Phase:                         view.Phase,
+		ActionPolicy:                  view.ActionPolicy,
 		Interactive:                   view.Interactive,
 		Sealed:                        view.Sealed,
 		DisplayStyle:                  view.DisplayStyle,

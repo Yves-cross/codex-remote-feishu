@@ -532,8 +532,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		gitFinalPath,
 	)
 	noticeSections := targetPickerStatusNoticeSections(record)
-	sealed := targetPickerStageSealed(stage)
-	return control.FeishuTargetPickerView{
+	return control.NormalizeFeishuTargetPickerView(control.FeishuTargetPickerView{
 		PickerID:               record.PickerID,
 		Title:                  targetPickerTitle(record.Source),
 		Source:                 record.Source,
@@ -543,7 +542,6 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		Question:               targetPickerViewQuestion(record, page),
 		BodySections:           bodySections,
 		NoticeSections:         noticeSections,
-		Sealed:                 sealed,
 		StatusTitle:            strings.TrimSpace(record.StatusTitle),
 		StatusText:             strings.TrimSpace(record.StatusText),
 		StatusSections:         cloneFeishuCardSections(record.StatusSections),
@@ -586,7 +584,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		GitFinalPath:           gitFinalPath,
 		Messages:               messages,
 		SourceMessages:         sourceMessages,
-	}, nil
+	}), nil
 }
 
 func (s *Service) targetPickerWorkspaceEntries(surface *state.SurfaceConsoleRecord) []workspaceSelectionEntry {

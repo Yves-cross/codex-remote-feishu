@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 func TestProjectPermissionsRequestPromptAsCard(t *testing.T) {
@@ -198,5 +199,61 @@ func TestProjectMCPElicitationFormPromptRendersCurrentFormFieldAsSingleStepForm(
 	saveValue := renderedButtonCallbackValue(t, rowRightElements[0])
 	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != nil || saveValue["request_revision"] != 6 {
 		t.Fatalf("unexpected compact mcp submit payload: %#v", saveValue)
+	}
+}
+
+func TestProjectPermissionsRequestPromptSealedStateDropsActions(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
+		RequestID:   "req-perm-2",
+		RequestType: "permissions_request_approval",
+		Title:       "需要授予权限",
+		Phase:       frontstagecontract.PhaseWaitingDispatch,
+		StatusText:  "已提交当前请求，等待 Codex 继续。",
+		Sections: []control.FeishuCardTextSection{
+			{Lines: []string{"本地 Codex 正在等待授予附加权限。"}},
+		},
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "允许本次", Style: "primary"},
+			{OptionID: "acceptForSession", Label: "本会话允许", Style: "default"},
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+		},
+	}))
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(cardActionsFromElements(ops[0].CardElements)) != 0 {
+		t.Fatalf("expected sealed permissions prompt to drop all actions, got %#v", ops[0].CardElements)
+	}
+	if got := markdownContent(ops[0].CardElements[len(ops[0].CardElements)-1]); !strings.Contains(got, "已提交当前请求") {
+		t.Fatalf("expected sealed permissions prompt to render waiting status, got %#v", ops[0].CardElements)
+	}
+}
+
+func TestProjectMCPElicitationURLPromptSealedStateDropsActions(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
+		RequestID:   "req-mcp-url-2",
+		RequestType: "mcp_server_elicitation",
+		Title:       "需要处理 MCP 请求",
+		Phase:       frontstagecontract.PhaseWaitingDispatch,
+		StatusText:  "已提交当前请求，等待 Codex 继续。",
+		Sections: []control.FeishuCardTextSection{{
+			Lines: []string{"请完成外部授权", "授权页面：https://example.com/approve"},
+		}},
+		Options: []control.RequestPromptOption{
+			{OptionID: "accept", Label: "继续", Style: "primary"},
+			{OptionID: "decline", Label: "拒绝", Style: "default"},
+			{OptionID: "cancel", Label: "取消", Style: "default"},
+		},
+	}))
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if len(cardActionsFromElements(ops[0].CardElements)) != 0 {
+		t.Fatalf("expected sealed url elicitation prompt to drop all actions, got %#v", ops[0].CardElements)
+	}
+	if got := markdownContent(ops[0].CardElements[len(ops[0].CardElements)-1]); !strings.Contains(got, "已提交当前请求") {
+		t.Fatalf("expected sealed url elicitation prompt to render waiting status, got %#v", ops[0].CardElements)
 	}
 }

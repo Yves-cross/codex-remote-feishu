@@ -2,6 +2,8 @@ package control
 
 import "time"
 
+import "github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+
 type PathPickerMode string
 
 const (
@@ -68,6 +70,8 @@ type FeishuPathPickerView struct {
 	Question       string
 	BodySections   []FeishuCardTextSection
 	NoticeSections []FeishuCardTextSection
+	Phase          frontstagecontract.Phase
+	ActionPolicy   frontstagecontract.ActionPolicy
 	Sealed         bool
 	RootPath       string
 	CurrentPath    string
@@ -93,4 +97,27 @@ type FeishuPathPickerEntry struct {
 	Disabled       bool
 	DisabledReason string
 	Selected       bool
+}
+
+func NormalizeFeishuPathPickerView(view FeishuPathPickerView) FeishuPathPickerView {
+	frame := frontstagecontract.NormalizeFrame(frontstagecontract.Frame{
+		OwnerKind:    frontstagecontract.OwnerCardPathPicker,
+		Phase:        normalizePathPickerPhase(view),
+		ActionPolicy: view.ActionPolicy,
+	})
+	view.Phase = frame.Phase
+	view.ActionPolicy = frame.ActionPolicy
+	view.Sealed = frontstagecontract.SealedForPhase(frame.Phase)
+	view.Terminal = frontstagecontract.IsTerminalPhase(frame.Phase)
+	return view
+}
+
+func normalizePathPickerPhase(view FeishuPathPickerView) frontstagecontract.Phase {
+	if view.Phase != "" {
+		return view.Phase
+	}
+	if view.Terminal || view.Sealed {
+		return frontstagecontract.PhaseSucceeded
+	}
+	return frontstagecontract.PhaseEditing
 }

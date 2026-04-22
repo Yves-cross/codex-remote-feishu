@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -102,17 +103,16 @@ func (s *Service) sendFileCancelledTerminalEvents(surface *state.SurfaceConsoleR
 			Lines: []string{selected},
 		}}, statusSections...)
 	}
-	view := control.FeishuPathPickerView{
+	view := control.NormalizeFeishuPathPickerView(control.FeishuPathPickerView{
 		PickerID:       strings.TrimSpace(result.PickerID),
 		MessageID:      strings.TrimSpace(result.MessageID),
 		Mode:           control.PathPickerModeFile,
 		Title:          "发送文件",
 		SelectedPath:   strings.TrimSpace(result.SelectedPath),
-		Terminal:       true,
-		Sealed:         true,
+		Phase:          frontstagecontract.PhaseCancelled,
 		StatusTitle:    "已取消发送文件",
 		StatusSections: statusSections,
-	}
+	})
 	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}
 }
 
@@ -187,17 +187,16 @@ func (s *Service) HandleSendFileStarted(surfaceID, pickerID, selectedPath string
 	if strings.TrimSpace(record.ConsumerKind) != sendFilePathPickerConsumerKind {
 		return notice(surface, "send_file_failed", "这张发送文件卡片已失效，请重新发起。"), false
 	}
-	view := control.FeishuPathPickerView{
+	view := control.NormalizeFeishuPathPickerView(control.FeishuPathPickerView{
 		PickerID:       strings.TrimSpace(record.PickerID),
 		MessageID:      strings.TrimSpace(record.MessageID),
 		Mode:           control.PathPickerModeFile,
 		Title:          strings.TrimSpace(firstNonEmpty(record.Title, "发送文件")),
 		SelectedPath:   strings.TrimSpace(selectedPath),
-		Terminal:       true,
-		Sealed:         true,
+		Phase:          frontstagecontract.PhaseSucceeded,
 		StatusTitle:    "已开始发送，可继续其他操作",
 		StatusSections: sendFileStartedStatusSections(selectedPath, sizeBytes),
-	}
+	})
 	s.clearSurfacePathPicker(surface)
 	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}, true
 }
