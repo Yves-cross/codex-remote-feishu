@@ -11,13 +11,11 @@ import (
 )
 
 const (
-	requestUserInputSubmitOptionID                      = "submit"
-	requestUserInputSubmitWithUnansweredOptionID        = "submit_with_unanswered"
-	requestUserInputConfirmSubmitWithUnansweredOptionID = "confirm_submit_with_unanswered"
-	requestUserInputCancelSubmitWithUnansweredOptionID  = "cancel_submit_with_unanswered"
-	requestPromptStepPreviousOptionID                   = "step_previous"
-	requestPromptStepNextOptionID                       = "step_next"
-	requestPromptStepSaveOptionID                       = "step_save"
+	requestControlCancelTurn          = "cancel_turn"
+	requestControlCancelRequest       = "cancel_request"
+	requestControlSkipOptional        = "skip_optional"
+	requestPromptStepPreviousOptionID = "step_previous"
+	requestPromptStepNextOptionID     = "step_next"
 )
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
@@ -55,30 +53,50 @@ func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action con
 	if response == nil {
 		return nil
 	}
-	request.PendingDispatchCommandID = s.nextRequestDispatchCommandID()
-	return []control.UIEvent{{
-		Kind:             control.UIEventAgentCommand,
-		SurfaceSessionID: surface.SurfaceSessionID,
-		Command: &agentproto.Command{
-			CommandID: request.PendingDispatchCommandID,
-			Kind:      agentproto.CommandRequestRespond,
-			Origin: agentproto.Origin{
-				Surface:   surface.SurfaceSessionID,
-				UserID:    surface.ActorUserID,
-				ChatID:    surface.ChatID,
-				MessageID: action.MessageID,
-			},
-			Target: agentproto.Target{
-				ThreadID:               request.ThreadID,
-				TurnID:                 request.TurnID,
-				UseActiveTurnIfOmitted: request.TurnID == "",
-			},
-			Request: agentproto.Request{
-				RequestID: request.RequestID,
-				Response:  response,
-			},
-		},
-	}}
+	return s.dispatchRequestResponse(surface, request, action, response, "")
+}
+
+func (s *Service) controlRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+	requestControl := requestControlFromAction(action)
+	if surface == nil || requestControl == nil || strings.TrimSpace(requestControl.RequestID) == "" {
+		return nil
+	}
+	if surface.PendingRequests == nil {
+		surface.PendingRequests = map[string]*state.RequestPromptRecord{}
+	}
+	request := surface.PendingRequests[requestControl.RequestID]
+	if request == nil {
+		return notice(surface, "request_expired", "这个确认请求已经结束或过期了。")
+	}
+	if request.PendingDispatchCommandID != "" {
+		return notice(surface, "request_pending_dispatch", "这条请求已经提交，正在等待本地 Codex 处理。")
+	}
+	if requestControl.RequestRevision != 0 && requestControl.RequestRevision != request.CardRevision {
+		return notice(surface, "request_card_expired", "这张请求卡片已经过期，请使用最新卡片继续操作。")
+	}
+	switch normalizedRequestControl(requestControl.Control) {
+	case normalizedRequestControl(requestControlSkipOptional):
+		return s.skipOptionalRequestQuestion(surface, request, action, requestControl)
+	case normalizedRequestControl(requestControlCancelTurn):
+		if normalizeRequestType(firstNonEmpty(requestControl.RequestType, request.RequestType)) != "request_user_input" {
+			return notice(surface, "request_invalid", "当前请求不支持中断 turn。")
+		}
+		return s.cancelRequestUserInputTurn(surface, request, action)
+	case normalizedRequestControl(requestControlCancelRequest):
+		requestType := normalizeRequestType(firstNonEmpty(requestControl.RequestType, request.RequestType))
+		if requestType != "mcp_server_elicitation" || len(request.Questions) == 0 {
+			return notice(surface, "request_invalid", "当前请求不支持直接取消。")
+		}
+		return s.dispatchRequestResponse(
+			surface,
+			request,
+			action,
+			buildMCPElicitationPayload("cancel", nil, promptMCPElicitationMeta(request.Prompt, nil)),
+			"已提交取消请求，等待 Codex 继续。",
+		)
+	default:
+		return notice(surface, "request_invalid", "这个请求控制动作当前不支持。")
+	}
 }
 
 func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
@@ -159,6 +177,8 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 		Options:              options,
 		Questions:            questions,
 		CurrentQuestionIndex: 0,
+		DraftAnswers:         map[string]string{},
+		SkippedQuestionIDs:   map[string]bool{},
 		CardRevision:         1,
 		CreatedAt:            s.now(),
 	}
@@ -287,53 +307,27 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 		}, false, nil
 	case "request_user_input":
 		if requestPromptStepPrevious(requestAction.RequestOptionID) {
-			clearRequestUserInputSubmitConfirmState(request)
 			moveRequestPromptCurrentQuestion(request, -1)
 			bumpRequestCardRevision(request)
 			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		if requestPromptStepNext(requestAction.RequestOptionID) {
-			clearRequestUserInputSubmitConfirmState(request)
 			moveRequestPromptCurrentQuestion(request, 1)
 			bumpRequestCardRevision(request)
 			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 		}
-		if requestUserInputCancelSubmitWithUnanswered(requestAction.RequestOptionID) {
-			if !request.SubmitWithUnansweredConfirmPending {
-				return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
-			}
-			clearRequestUserInputSubmitConfirmState(request)
-			setRequestPromptCurrentQuestionIndex(request, firstUnansweredRequestQuestionIndex(request))
-			bumpRequestCardRevision(request)
-			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
-		}
-		if requestUserInputConfirmSubmitWithUnanswered(requestAction.RequestOptionID) && !request.SubmitWithUnansweredConfirmPending {
-			return nil, false, notice(surface, "request_invalid", "留空提交确认已失效，请先点击“提交答案”。")
-		}
-		submitIntent := requestUserInputSubmitIntent(requestAction.RequestOptionID)
-		allowSubmitWithUnanswered := requestUserInputAllowSubmitWithUnanswered(requestAction.RequestOptionID)
-		response, complete, missingLabels, errText := buildRequestUserInputResponse(request, requestAnswers, allowSubmitWithUnanswered)
+		response, complete, errText := buildRequestUserInputResponse(request, requestAnswers)
 		if errText != "" {
 			return nil, false, notice(surface, "request_invalid", errText)
 		}
 		if !complete {
-			if submitIntent {
-				setRequestUserInputSubmitConfirmState(request, missingLabels)
-				setRequestPromptCurrentQuestionIndex(request, firstUnansweredRequestQuestionIndex(request))
-				bumpRequestCardRevision(request)
-				return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
-			}
 			if len(requestAnswers) == 0 {
-				if len(missingLabels) != 0 {
-					return nil, false, notice(surface, "request_invalid", fmt.Sprintf("问题“%s”还没有填写答案。", missingLabels[0]))
-				}
-				return nil, false, notice(surface, "request_invalid", "当前没有可提交的答案。")
+				return nil, false, notice(surface, "request_invalid", requestCurrentQuestionPendingText(request))
 			}
 			bumpRequestCardRevision(request)
-			advanceRequestPromptAfterPartialSave(request)
+			setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
 			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
 		}
-		clearRequestUserInputSubmitConfirmState(request)
 		return response, true, nil
 	case "permissions_request_approval":
 		response, complete, followup := buildPermissionsRequestResponse(request, action)
@@ -369,14 +363,23 @@ func requestActionFromCompatibilityFields(action control.Action) *control.Action
 	}
 }
 
-func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswers map[string][]string, allowSubmitWithUnanswered bool) (map[string]any, bool, []string, string) {
+func requestControlFromAction(action control.Action) *control.ActionRequestControl {
+	if action.RequestControl != nil {
+		return action.RequestControl
+	}
+	return nil
+}
+
+func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswers map[string][]string) (map[string]any, bool, string) {
 	if request == nil || len(request.Questions) == 0 {
-		return nil, false, nil, "这个问题请求缺少有效的问题定义，当前无法提交。"
+		return nil, false, "这个问题请求缺少有效的问题定义，当前无法提交。"
 	}
 	if request.DraftAnswers == nil {
 		request.DraftAnswers = map[string]string{}
 	}
-	sawNewAnswer := false
+	if request.SkippedQuestionIDs == nil {
+		request.SkippedQuestionIDs = map[string]bool{}
+	}
 	for _, question := range request.Questions {
 		questionID := strings.TrimSpace(question.ID)
 		if questionID == "" {
@@ -390,116 +393,54 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 			answerText = canonical
 		} else if len(question.Options) != 0 && !question.AllowOther {
 			label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), questionID)
-			return nil, false, nil, fmt.Sprintf("问题“%s”的答案不在可选项中。", label)
+			return nil, false, fmt.Sprintf("问题“%s”的答案不在可选项中。", label)
 		}
 		request.DraftAnswers[questionID] = answerText
-		sawNewAnswer = true
-	}
-	if sawNewAnswer {
-		clearRequestUserInputSubmitConfirmState(request)
+		delete(request.SkippedQuestionIDs, questionID)
 	}
 	answers := map[string]any{}
-	missingLabels := make([]string, 0, len(request.Questions))
+	complete := true
 	for _, question := range request.Questions {
-		if question.Optional {
-			continue
-		}
 		questionID := strings.TrimSpace(question.ID)
 		if questionID == "" {
 			continue
 		}
 		answerText := strings.TrimSpace(request.DraftAnswers[questionID])
 		if answerText == "" {
-			missingLabels = append(missingLabels, firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), questionID))
-			if allowSubmitWithUnanswered {
-				answers[questionID] = map[string]any{"answers": []string{}}
+			if question.Optional && requestQuestionSkipped(request, question) {
+				continue
 			}
+			complete = false
 			continue
 		}
 		if canonical, ok := canonicalQuestionOptionAnswer(question, answerText); ok {
 			answerText = canonical
 		} else if len(question.Options) != 0 && !question.AllowOther {
 			label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), questionID)
-			return nil, false, nil, fmt.Sprintf("问题“%s”的答案不在可选项中。", label)
+			return nil, false, fmt.Sprintf("问题“%s”的答案不在可选项中。", label)
 		}
 		answers[questionID] = map[string]any{"answers": []string{answerText}}
 	}
-	if len(answers) == 0 {
-		return nil, false, missingLabels, "当前没有可提交的答案。"
+	if !complete {
+		return nil, false, ""
 	}
-	if len(missingLabels) != 0 && !allowSubmitWithUnanswered {
-		return nil, false, missingLabels, ""
-	}
-	return map[string]any{"answers": answers}, true, nil, ""
-}
-
-func requestUserInputAllowSubmitWithUnanswered(optionID string) bool {
-	normalized := requestUserInputNormalizedOptionID(optionID)
-	switch normalized {
-	case "submitwithunanswered", "allowunanswered", "submitpartial", "proceedwithunanswered":
-		return true
-	case requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID):
-		return true
-	default:
-		return false
-	}
-}
-
-func requestUserInputConfirmSubmitWithUnanswered(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID)
-}
-
-func requestUserInputCancelSubmitWithUnanswered(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestUserInputCancelSubmitWithUnansweredOptionID)
+	return map[string]any{"answers": answers}, true, ""
 }
 
 func requestPromptStepPrevious(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepPreviousOptionID)
+	return normalizedRequestControl(optionID) == normalizedRequestControl(requestPromptStepPreviousOptionID)
 }
 
 func requestPromptStepNext(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepNextOptionID)
+	return normalizedRequestControl(optionID) == normalizedRequestControl(requestPromptStepNextOptionID)
 }
 
-func requestPromptStepSave(optionID string) bool {
-	return requestUserInputNormalizedOptionID(optionID) == requestUserInputNormalizedOptionID(requestPromptStepSaveOptionID)
-}
-
-func requestUserInputSubmitIntent(optionID string) bool {
-	normalized := requestUserInputNormalizedOptionID(optionID)
-	switch normalized {
-	case requestUserInputNormalizedOptionID(requestUserInputSubmitOptionID),
-		requestUserInputNormalizedOptionID("submit_answers"),
-		requestUserInputNormalizedOptionID(requestUserInputSubmitWithUnansweredOptionID),
-		requestUserInputNormalizedOptionID(requestUserInputConfirmSubmitWithUnansweredOptionID):
-		return true
-	default:
-		return false
-	}
-}
-
-func requestUserInputNormalizedOptionID(optionID string) string {
+func normalizedRequestControl(optionID string) string {
 	normalized := strings.ToLower(strings.TrimSpace(optionID))
 	normalized = strings.ReplaceAll(normalized, "-", "")
 	normalized = strings.ReplaceAll(normalized, "_", "")
 	normalized = strings.ReplaceAll(normalized, " ", "")
 	return normalized
-}
-
-func setRequestUserInputSubmitConfirmState(request *state.RequestPromptRecord, missingLabels []string) {
-	if request == nil {
-		return
-	}
-	request.SubmitWithUnansweredConfirmPending = true
-	request.SubmitWithUnansweredMissingLabels = append([]string(nil), missingLabels...)
-}
-
-func clearRequestUserInputSubmitConfirmState(request *state.RequestPromptRecord) {
-	if request == nil {
-		return
-	}
-	request.SubmitWithUnansweredConfirmPending = false
-	request.SubmitWithUnansweredMissingLabels = nil
 }
 
 func bumpRequestCardRevision(request *state.RequestPromptRecord) {
@@ -561,37 +502,96 @@ func requestQuestionAnswered(request *state.RequestPromptRecord, question state.
 	return strings.TrimSpace(request.DraftAnswers[strings.TrimSpace(question.ID)]) != ""
 }
 
-func firstUnansweredRequestQuestionIndex(request *state.RequestPromptRecord) int {
+func requestQuestionSkipped(request *state.RequestPromptRecord, question state.RequestPromptQuestionRecord) bool {
+	if request == nil || request.SkippedQuestionIDs == nil {
+		return false
+	}
+	return request.SkippedQuestionIDs[strings.TrimSpace(question.ID)]
+}
+
+func requestQuestionCompleted(request *state.RequestPromptRecord, question state.RequestPromptQuestionRecord) bool {
+	if requestQuestionAnswered(request, question) {
+		return true
+	}
+	return question.Optional && requestQuestionSkipped(request, question)
+}
+
+func firstIncompleteRequestQuestionIndex(request *state.RequestPromptRecord) int {
 	if request == nil {
 		return 0
 	}
 	for index, question := range request.Questions {
-		if !requestQuestionAnswered(request, question) {
+		if !requestQuestionCompleted(request, question) {
 			return index
 		}
 	}
 	return normalizedRequestPromptCurrentQuestionIndex(request)
 }
 
-func advanceRequestPromptAfterPartialSave(request *state.RequestPromptRecord) {
+func requestPromptQuestionsComplete(request *state.RequestPromptRecord) bool {
 	if request == nil || len(request.Questions) == 0 {
-		return
+		return false
 	}
-	current := normalizedRequestPromptCurrentQuestionIndex(request)
-	for index := current + 1; index < len(request.Questions); index++ {
-		if !requestQuestionAnswered(request, request.Questions[index]) {
-			request.CurrentQuestionIndex = index
-			return
+	for _, question := range request.Questions {
+		if !requestQuestionCompleted(request, question) {
+			return false
 		}
 	}
-	if current+1 < len(request.Questions) {
-		request.CurrentQuestionIndex = current + 1
-		return
-	}
-	request.CurrentQuestionIndex = len(request.Questions) - 1
+	return true
 }
 
-func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+func requestPromptShouldSealDuringDispatch(request *state.RequestPromptRecord) bool {
+	return request != nil && len(request.Questions) != 0
+}
+
+func requestPromptPendingDispatchStatusText(request *state.RequestPromptRecord) string {
+	if request == nil {
+		return "已提交当前请求，等待 Codex 继续。"
+	}
+	switch normalizeRequestType(request.RequestType) {
+	case "mcp_server_elicitation":
+		return "已提交当前表单，等待 Codex 继续。"
+	default:
+		return "已提交当前答案，等待 Codex 继续。"
+	}
+}
+
+func requestCurrentQuestionPendingText(request *state.RequestPromptRecord) string {
+	question, _, ok := requestPromptCurrentQuestionRecord(request)
+	if !ok {
+		return "当前没有可提交的答案。"
+	}
+	label := firstNonEmpty(strings.TrimSpace(question.Header), strings.TrimSpace(question.Question), strings.TrimSpace(question.ID))
+	if question.Optional {
+		return fmt.Sprintf("问题“%s”还没有处理。你可以先填写答案，或直接跳过。", label)
+	}
+	return fmt.Sprintf("问题“%s”还没有填写答案。", label)
+}
+
+func requestPromptCurrentQuestionRecord(request *state.RequestPromptRecord) (state.RequestPromptQuestionRecord, int, bool) {
+	if request == nil || len(request.Questions) == 0 {
+		return state.RequestPromptQuestionRecord{}, 0, false
+	}
+	index := normalizedRequestPromptCurrentQuestionIndex(request)
+	return request.Questions[index], index, true
+}
+
+func markRequestQuestionSkipped(request *state.RequestPromptRecord, questionID string) {
+	if request == nil {
+		return
+	}
+	if request.SkippedQuestionIDs == nil {
+		request.SkippedQuestionIDs = map[string]bool{}
+	}
+	questionID = strings.TrimSpace(questionID)
+	if questionID == "" {
+		return
+	}
+	request.SkippedQuestionIDs[questionID] = true
+	delete(request.DraftAnswers, questionID)
+}
+
+func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTitleHint string) control.FeishuRequestView {
 	threadTitle := strings.TrimSpace(threadTitleHint)
 	if threadTitle == "" {
 		inst := s.root.Instances[record.InstanceID]
@@ -601,20 +601,27 @@ func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record
 		}
 		threadTitle = displayThreadTitle(inst, thread, record.ThreadID)
 	}
-	event := s.requestViewEvent(surface, control.FeishuRequestView{
-		RequestID:                          record.RequestID,
-		RequestType:                        record.RequestType,
-		RequestRevision:                    record.CardRevision,
-		Title:                              record.Title,
-		ThreadID:                           record.ThreadID,
-		ThreadTitle:                        threadTitle,
-		Sections:                           requestPromptSectionsToControl(record.Sections),
-		Options:                            requestPromptOptionsToControl(record.Options),
-		Questions:                          requestPromptQuestionsToControl(record.Questions, record.DraftAnswers),
-		CurrentQuestionIndex:               normalizedRequestPromptCurrentQuestionIndex(record),
-		SubmitWithUnansweredConfirmPending: record.SubmitWithUnansweredConfirmPending,
-		SubmitWithUnansweredMissingLabels:  append([]string(nil), record.SubmitWithUnansweredMissingLabels...),
-	})
+	view := control.FeishuRequestView{
+		RequestID:            record.RequestID,
+		RequestType:          record.RequestType,
+		RequestRevision:      record.CardRevision,
+		Title:                record.Title,
+		ThreadID:             record.ThreadID,
+		ThreadTitle:          threadTitle,
+		Sections:             requestPromptSectionsToControl(record.Sections),
+		Options:              requestPromptOptionsToControl(record.Options),
+		Questions:            requestPromptQuestionsToControl(record.Questions, record.DraftAnswers, record.SkippedQuestionIDs),
+		CurrentQuestionIndex: normalizedRequestPromptCurrentQuestionIndex(record),
+	}
+	if strings.TrimSpace(record.PendingDispatchCommandID) != "" {
+		view.Sealed = true
+		view.StatusText = requestPromptPendingDispatchStatusText(record)
+	}
+	return view
+}
+
+func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+	event := s.requestViewEvent(surface, s.requestPromptView(record, threadTitleHint))
 	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
 	return event
 }
@@ -634,6 +641,127 @@ func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRe
 		Notice: &control.Notice{
 			Code: code,
 			Text: text,
+		},
+	})
+	return events
+}
+
+func (s *Service) requestPromptInlineTerminalEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint, statusText string) control.UIEvent {
+	view := s.requestPromptView(record, threadTitleHint)
+	view.Sealed = true
+	view.StatusText = strings.TrimSpace(statusText)
+	event := s.requestViewEvent(surface, view)
+	event.InlineReplaceCurrentCard = true
+	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
+	return event
+}
+
+func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, response map[string]any, statusText string) []control.UIEvent {
+	if surface == nil || request == nil || response == nil {
+		return nil
+	}
+	request.PendingDispatchCommandID = s.nextRequestDispatchCommandID()
+	bumpRequestCardRevision(request)
+	events := make([]control.UIEvent, 0, 2)
+	if requestPromptShouldSealDuringDispatch(request) {
+		events = append(events, s.requestPromptInlineTerminalEvent(surface, request, "", firstNonEmpty(strings.TrimSpace(statusText), requestPromptPendingDispatchStatusText(request))))
+	}
+	events = append(events, control.UIEvent{
+		Kind:             control.UIEventAgentCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Command: &agentproto.Command{
+			CommandID: request.PendingDispatchCommandID,
+			Kind:      agentproto.CommandRequestRespond,
+			Origin: agentproto.Origin{
+				Surface:   surface.SurfaceSessionID,
+				UserID:    surface.ActorUserID,
+				ChatID:    surface.ChatID,
+				MessageID: action.MessageID,
+			},
+			Target: agentproto.Target{
+				ThreadID:               request.ThreadID,
+				TurnID:                 request.TurnID,
+				UseActiveTurnIfOmitted: request.TurnID == "",
+			},
+			Request: agentproto.Request{
+				RequestID: request.RequestID,
+				Response:  response,
+			},
+		},
+	})
+	return events
+}
+
+func (s *Service) skipOptionalRequestQuestion(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestControl *control.ActionRequestControl) []control.UIEvent {
+	if request == nil || requestControl == nil {
+		return nil
+	}
+	question, _, ok := requestPromptCurrentQuestionRecord(request)
+	if !ok {
+		return notice(surface, "request_invalid", "当前没有可跳过的问题。")
+	}
+	if !question.Optional {
+		return notice(surface, "request_invalid", "当前问题不是可跳过题。")
+	}
+	if questionID := strings.TrimSpace(requestControl.QuestionID); questionID != "" && questionID != strings.TrimSpace(question.ID) {
+		return notice(surface, "request_card_expired", "当前题目已变化，请使用最新卡片继续。")
+	}
+	markRequestQuestionSkipped(request, question.ID)
+	requestType := normalizeRequestType(firstNonEmpty(requestControl.RequestType, request.RequestType))
+	switch requestType {
+	case "request_user_input":
+		response, complete, errText := buildRequestUserInputResponse(request, nil)
+		if errText != "" {
+			return notice(surface, "request_invalid", errText)
+		}
+		if complete {
+			return s.dispatchRequestResponse(surface, request, action, response, "")
+		}
+	case "mcp_server_elicitation":
+		content, complete, _, errText := buildMCPElicitationContent(request, nil)
+		if errText != "" {
+			return notice(surface, "request_invalid", errText)
+		}
+		if complete {
+			return s.dispatchRequestResponse(surface, request, action, buildMCPElicitationPayload("accept", content, promptMCPElicitationMeta(request.Prompt, nil)), "")
+		}
+	default:
+		return notice(surface, "request_invalid", "当前请求不支持跳过可选题。")
+	}
+	bumpRequestCardRevision(request)
+	setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
+	return []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+}
+
+func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) []control.UIEvent {
+	if surface == nil || request == nil {
+		return nil
+	}
+	events := []control.UIEvent{s.requestPromptInlineTerminalEvent(surface, request, "", "已放弃答题，并向当前 turn 发送停止请求。")}
+	if strings.TrimSpace(request.RequestID) != "" && surface.PendingRequests != nil {
+		delete(surface.PendingRequests, request.RequestID)
+	}
+	clearSurfaceRequestCaptureByRequestID(surface, request.RequestID)
+	if request.ThreadID == "" && request.TurnID == "" {
+		events[0] = s.requestPromptInlineTerminalEvent(surface, request, "", "已放弃答题。当前 turn 已不在可中断状态。")
+		return events
+	}
+	events = append(events, control.UIEvent{
+		Kind:             control.UIEventAgentCommand,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		Command: &agentproto.Command{
+			Kind: agentproto.CommandTurnInterrupt,
+			Origin: agentproto.Origin{
+				Surface:   surface.SurfaceSessionID,
+				UserID:    surface.ActorUserID,
+				ChatID:    surface.ChatID,
+				MessageID: action.MessageID,
+			},
+			Target: agentproto.Target{
+				ThreadID:               request.ThreadID,
+				TurnID:                 request.TurnID,
+				UseActiveTurnIfOmitted: request.TurnID == "",
+			},
 		},
 	})
 	return events

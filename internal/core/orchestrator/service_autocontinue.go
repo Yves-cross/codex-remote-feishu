@@ -97,6 +97,14 @@ func (s *Service) noteAutoContinueAction(surface *state.SurfaceConsoleRecord, ac
 		if (inst != nil && inst.ActiveTurnID != "") || surface.ActiveQueueItemID != "" {
 			surface.AutoContinue.SuppressOnce = true
 		}
+	case control.ActionControlRequest:
+		s.resetAutoContinueProgress(surface)
+		if action.RequestControl != nil && normalizedRequestControl(action.RequestControl.Control) == normalizedRequestControl(requestControlCancelTurn) {
+			inst := s.root.Instances[surface.AttachedInstanceID]
+			if (inst != nil && inst.ActiveTurnID != "") || surface.ActiveQueueItemID != "" {
+				surface.AutoContinue.SuppressOnce = true
+			}
+		}
 	}
 }
 

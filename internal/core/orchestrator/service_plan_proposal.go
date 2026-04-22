@@ -101,17 +101,18 @@ func buildPlanProposalPageView(flow *activeOwnerCardFlowRecord, proposal *active
 		}.Normalized())
 	}
 	view := control.FeishuPageView{
-		CommandID:      control.FeishuCommandPlan,
-		Title:          "提案计划",
-		MessageID:      planProposalMessageID(flow, inlineMessageID),
-		TrackingKey:    planProposalTrackingKey(flow),
-		ThemeKey:       firstNonEmpty(strings.TrimSpace(theme), "plan"),
-		Patchable:      true,
-		BodySections:   bodySections,
-		NoticeSections: planProposalNoticeSections(statusText, theme),
-		Interactive:    interactive,
-		Sealed:         sealed,
-		DisplayStyle:   control.CommandCatalogDisplayCompactButtons,
+		CommandID:                     control.FeishuCommandPlan,
+		Title:                         "提案计划",
+		MessageID:                     planProposalMessageID(flow, inlineMessageID),
+		TrackingKey:                   planProposalTrackingKey(flow),
+		ThemeKey:                      firstNonEmpty(strings.TrimSpace(theme), "plan"),
+		Patchable:                     true,
+		BodySections:                  bodySections,
+		NoticeSections:                planProposalNoticeSections(statusText, theme),
+		Interactive:                   interactive,
+		Sealed:                        sealed,
+		DisplayStyle:                  control.CommandCatalogDisplayCompactButtons,
+		SuppressDefaultRelatedButtons: true,
 	}
 	if interactive {
 		view.Sections = []control.CommandCatalogSection{{

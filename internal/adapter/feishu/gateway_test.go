@@ -1734,6 +1734,45 @@ func TestParseCardActionTriggerEventBuildsRequestRespondAnswers(t *testing.T) {
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsRequestControlAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-4b", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":             "request_control",
+					"request_id":       "req-ui-1",
+					"request_type":     "request_user_input",
+					"request_control":  "skip_optional",
+					"question_id":      "notes",
+					"request_revision": 4,
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-4b",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected request control callback to be parsed")
+	}
+	if action.Kind != control.ActionControlRequest || action.RequestControl == nil {
+		t.Fatalf("unexpected action: %#v", action)
+	}
+	if action.RequestControl.RequestID != "req-ui-1" || action.RequestControl.RequestType != "request_user_input" || action.RequestControl.Control != "skip_optional" || action.RequestControl.QuestionID != "notes" {
+		t.Fatalf("unexpected request control payload: %#v", action.RequestControl)
+	}
+	if action.RequestControl.RequestRevision != 4 {
+		t.Fatalf("expected request control revision to be parsed, got %#v", action.RequestControl)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-5", "feishu:app-1:user:user-1")
@@ -1743,11 +1782,10 @@ func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) 
 			Operator: &larkcallback.Operator{UserID: &userID},
 			Action: &larkcallback.CallBackAction{
 				Value: map[string]interface{}{
-					"kind":              "submit_request_form",
-					"request_id":        "req-ui-2",
-					"request_type":      "request_user_input",
-					"request_option_id": "submit_with_unanswered",
-					"request_revision":  5,
+					"kind":             "submit_request_form",
+					"request_id":       "req-ui-2",
+					"request_type":     "request_user_input",
+					"request_revision": 5,
 				},
 				FormValue: map[string]interface{}{
 					"model": "gpt-5.4",
@@ -1768,7 +1806,7 @@ func TestParseCardActionTriggerEventBuildsSubmitRequestFormAction(t *testing.T) 
 	if action.Kind != control.ActionRespondRequest || action.Request == nil || action.Request.RequestID != "req-ui-2" {
 		t.Fatalf("unexpected action: %#v", action)
 	}
-	if action.Request.RequestOptionID != "submit_with_unanswered" {
+	if action.Request.RequestOptionID != "" {
 		t.Fatalf("unexpected request option id: %#v", action)
 	}
 	if got := action.Request.Answers["notes"]; len(got) != 1 || got[0] != "请用中文回复" {

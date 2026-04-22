@@ -142,8 +142,14 @@ func TestTurnCompletedPresentsPlanProposalCard(t *testing.T) {
 	if page.CommandID != control.FeishuCommandPlan || page.Title != "提案计划" || !page.Interactive {
 		t.Fatalf("unexpected plan proposal page: %#v", page)
 	}
+	if !page.SuppressDefaultRelatedButtons {
+		t.Fatalf("expected plan proposal page to suppress default related buttons, got %#v", page)
+	}
 	if len(page.BodySections) != 1 || page.BodySections[0].Label != "提案内容" {
 		t.Fatalf("expected proposal body section, got %#v", page.BodySections)
+	}
+	if normalized := control.NormalizeFeishuPageView(*page); len(normalized.RelatedButtons) != 0 {
+		t.Fatalf("expected normalized plan proposal page to omit back buttons, got %#v", normalized.RelatedButtons)
 	}
 	if len(page.Sections) != 1 || len(page.Sections[0].Entries) != 1 || len(page.Sections[0].Entries[0].Buttons) != 3 {
 		t.Fatalf("expected three proposal buttons, got %#v", page.Sections)

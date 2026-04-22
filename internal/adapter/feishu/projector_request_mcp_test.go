@@ -104,30 +104,33 @@ func TestProjectMCPElicitationFormPromptAsCard(t *testing.T) {
 	if got := plainTextContent(ops[0].CardElements[3]); !containsAll(got, "标题：模式", "说明：", "选择执行模式（必填）", "可选项：", "- auto") {
 		t.Fatalf("expected first mcp question body to stay plain_text, got %#v", ops[0].CardElements[3])
 	}
-	optionRow := cardElementButtons(t, ops[0].CardElements[4])
-	if len(optionRow) != 2 {
-		t.Fatalf("expected direct response buttons for first field, got %#v", ops[0].CardElements[4])
-	}
-	optionValue := cardButtonPayload(t, optionRow[0])
+	optionValue := cardButtonPayload(t, ops[0].CardElements[4])
 	requestAnswers, _ := optionValue["request_answers"].(map[string]any)
 	modeAnswers, _ := requestAnswers["mode"].([]any)
 	if optionValue["kind"] != "request_respond" || len(modeAnswers) != 1 || modeAnswers[0] != "auto" {
 		t.Fatalf("unexpected direct response payload: %#v", optionValue)
 	}
-	navRow := cardElementButtons(t, ops[0].CardElements[6])
-	if len(navRow) != 2 {
-		t.Fatalf("expected current-step navigation row, got %#v", ops[0].CardElements[6])
+	if optionValue["request_revision"] != 5 {
+		t.Fatalf("expected direct response payload to carry request revision, got %#v", optionValue)
 	}
-	submitValue := cardButtonPayload(t, ops[0].CardElements[7])
-	if submitValue["request_option_id"] != "submit" || submitValue["request_revision"] != 5 {
-		t.Fatalf("unexpected mcp form submit payload: %#v", submitValue)
+	secondOptionValue := cardButtonPayload(t, ops[0].CardElements[5])
+	secondRequestAnswers, _ := secondOptionValue["request_answers"].(map[string]any)
+	secondModeAnswers, _ := secondRequestAnswers["mode"].([]any)
+	if secondOptionValue["kind"] != "request_respond" || len(secondModeAnswers) != 1 || secondModeAnswers[0] != "manual" {
+		t.Fatalf("unexpected second direct response payload: %#v", secondOptionValue)
 	}
-	terminalRow := cardElementButtons(t, ops[0].CardElements[8])
-	if len(terminalRow) != 2 {
-		t.Fatalf("expected decline/cancel row, got %#v", ops[0].CardElements[8])
+	if ops[0].CardElements[6]["tag"] != "hr" {
+		t.Fatalf("expected cancel footer divider, got %#v", ops[0].CardElements[6])
 	}
-	if got := cardButtonLabel(t, terminalRow[0]); got != "拒绝" {
-		t.Fatalf("unexpected terminal action row: %#v", ops[0].CardElements[8])
+	cancelValue := cardButtonPayload(t, ops[0].CardElements[7])
+	if cancelValue["kind"] != "request_control" || cancelValue["request_control"] != "cancel_request" || cancelValue["request_revision"] != 5 {
+		t.Fatalf("unexpected mcp cancel payload: %#v", cancelValue)
+	}
+	for _, action := range cardActionsFromElements(ops[0].CardElements) {
+		value := cardValueMap(action)
+		if value["request_option_id"] == "submit" || value["request_option_id"] == "decline" {
+			t.Fatalf("did not expect explicit submit/decline payloads in auto-advance mcp prompt, got %#v", ops[0].CardElements)
+		}
 	}
 }
 
@@ -170,19 +173,30 @@ func TestProjectMCPElicitationFormPromptRendersCurrentFormFieldAsSingleStepForm(
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "填写进度") || !strings.Contains(got, "1/2") || !strings.Contains(got, "当前第 2 题") {
 		t.Fatalf("expected step-aware mcp progress, got %#v", ops[0].CardElements[0])
 	}
-	form := ops[0].CardElements[4]
+	var form map[string]any
+	for _, element := range ops[0].CardElements {
+		if cardStringValue(element["tag"]) == "form" {
+			form = element
+			break
+		}
+	}
 	if form["tag"] != "form" {
 		t.Fatalf("expected current-step mcp form, got %#v", form)
 	}
 	formElements, _ := form["elements"].([]map[string]any)
-	if len(formElements) != 2 {
-		t.Fatalf("expected one input and one save button, got %#v", form)
+	if len(formElements) != 1 || formElements[0]["tag"] != "column_set" {
+		t.Fatalf("expected compact single-row mcp form, got %#v", form)
 	}
-	if label := cardButtonLabel(t, formElements[1]); label != "保存本题" {
-		t.Fatalf("unexpected step-save label: %#v", formElements[1])
+	columns, _ := formElements[0]["columns"].([]map[string]any)
+	if len(columns) != 2 {
+		t.Fatalf("expected compact row to keep input+submit columns, got %#v", formElements[0])
 	}
-	saveValue := cardButtonPayload(t, formElements[1])
-	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != "step_save" || saveValue["request_revision"] != 6 {
-		t.Fatalf("unexpected step-save payload: %#v", saveValue)
+	rowRightElements, _ := columns[1]["elements"].([]map[string]any)
+	if len(rowRightElements) != 1 || rowRightElements[0]["tag"] != "button" || cardButtonLabel(t, rowRightElements[0]) != "提交" {
+		t.Fatalf("unexpected compact mcp submit row: %#v", formElements[0])
+	}
+	saveValue := renderedButtonCallbackValue(t, rowRightElements[0])
+	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != nil || saveValue["request_revision"] != 6 {
+		t.Fatalf("unexpected compact mcp submit payload: %#v", saveValue)
 	}
 }

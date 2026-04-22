@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-22`
-> Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三张独立业务卡，`/list` `/use` `/useall` 只保留 alias；同时保持 VS Code `/list` / `/use` / `/useall` 的结构化实例/线程卡、统一参数页、target-picker/path-picker/request gate、upgrade owner-flow、surface resume state 与 global runtime 提示等现状，细节见正文。
+> Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三张独立业务卡，`/list` `/use` `/useall` 只保留 alias；同时保持 VS Code `/list` / `/use` / `/useall` 的结构化实例/线程卡、统一参数页、target-picker/path-picker/request gate、upgrade owner-flow、surface resume state 与 global runtime 提示等现状。此次还把 `request_user_input` / form 模式 `mcp_server_elicitation` 的 request gate 收敛到“单题自动推进 + 显式 skip/cancel 控制 + 最后一题才 resolve request”的语义，并把 turn 完成后的 `item/plan/delta` 继续落成独立的提案计划 page card；细节见正文。
 
 ## 1. 文档定位
 
@@ -1171,7 +1171,7 @@ transport degraded retained attachment
 | 覆盖状态 | 当前行为 |
 | --- | --- |
 | `G1 PendingHeadlessStarting` | 只允许 `/status`、`/autowhip`、`/debug`、`/upgrade`、`/mode`、`/detach`、revoke/reaction；其中 `/mode vscode` 会直接 kill 当前恢复流程并清空 headless restore 语义；reaction 即使放行到 action 层，也只会在满足 steering 条件时生效。若当前 pending 只是后台 auto-restore 占位，手动 `/upgrade latest` / `/upgrade dev` 允许继续弹候选升级卡 |
-| `G2 PendingRequest` | 普通文本、图片、文件、`/new`、`/compact` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。通用 approval 现在覆盖 approval、`approval_command`、`approval_file_change`、`approval_network`，并直接按归一化后的 `availableDecisions` 响应，当前包含 `accept`、`acceptForSession`、`decline`、`cancel`；`request_user_input` 现在支持“分题暂存”：按钮/表单先记录局部答案，待问题凑齐后提交；用户点击“提交答案”后若仍有未答题，会先进入确认态，再决定是否留空提交并清 gate。顶层 `tool/requestUserInput` 与 `item` alias 继续共用这套状态机。`permissions_request_approval` 现在会投影成权限授予卡，支持“允许本次 / 本会话允许 / 拒绝”；`mcp_server_elicitation` 现在会按 mode 投影成“继续/拒绝/取消”卡，或带 schema 派生字段的表单卡。表单型 elicitation 也会暂存局部答案，并在 `request_revision` 上做 same-daemon freshness 校验 |
+| `G2 PendingRequest` | 普通文本、图片、文件、`/new`、`/compact` 被挡；`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被冻结；`/mode` 允许，并会把 request gate 一并清掉；用户也可以先处理请求卡片。通用 approval 现在覆盖 approval、`approval_command`、`approval_file_change`、`approval_network`，并直接按归一化后的 `availableDecisions` 响应，当前包含 `accept`、`acceptForSession`、`decline`、`cancel`；`request_user_input` 现在支持“单题自动推进”：按钮/表单先记录当前题答案，若仍有未完成题则 inline 刷到下一题；optional 题只能显式 `skip_optional`，最后一题答完后才会真正 seal 当前卡并提交。`cancel_turn` 会在清 gate 前先向当前 turn 发送 interrupt。顶层 `tool/requestUserInput` 与 `item` alias 继续共用这套状态机。`permissions_request_approval` 现在会投影成权限授予卡，支持“允许本次 / 本会话允许 / 拒绝”；`mcp_server_elicitation` 现在会按 mode 投影成“继续/拒绝/取消”卡，或带 schema 派生字段的单题表单卡。form 型 elicitation 同样是单题自动推进，optional 字段需要显式 `skip_optional`，底部 `cancel_request` 只取消当前 request、不打断 turn；两类卡都会在 `request_revision` 上做 same-daemon freshness 校验 |
 | `G3 RequestCapture` | 下一条文本优先被当成反馈；图片、文件、`/new`、`/compact`、`/use`、`/follow`、follow 自动重绑定只要会改路由也都会被 request-capture gate 冻住；`/mode` 允许，并会把 capture gate 一并清掉 |
 | `G4 PathPicker` | 只允许当前 active picker 自己的 enter/up/select/confirm/cancel callback、`/status`、普通文本/图片/文件、revoke/reaction；`/workspace` 命令族、`/list`、`/use`、`/useall`、`/follow`、`/new`、`/detach`，以及 `/menu` / bare config / 其它 competing Feishu card flow 当前都会被挡住并提示先确认或取消 picker。confirm / cancel 会先清 gate，再把结果交给 consumer 或默认 notice；unauthorized 只回拒绝 notice，不清当前 gate；若 picker 已过期，则会在下一次 action 入口自动清 gate |
 | `G5 TargetPickerProcessing` | 只允许当前 Git 导入 owner-card 自己的 `target_picker_cancel`、`/status`、reaction/recall；普通文本/图片/文件、`/workspace` 命令族、`/list`、`/use`、`/useall`、`/new`、`/follow`、`/detach`、bare config 与其它 competing Feishu card flow 当前都会被挡住，并提示“正在导入 Git 工作区，请等待完成或取消；如需查看状态，可继续使用 `/status`”；unauthorized 只回拒绝 notice，不清当前 gate；Git clone / prepare 完成、失败、取消或 flow 失效后会清 gate |
@@ -1216,8 +1216,9 @@ retained-offline overlay 额外规则：
 | `target_picker_open_path_picker` | `ActionTargetPickerOpenPathPicker` | `/workspace new dir` / `/workspace new git` 的子步骤导航回调；会打开目录 path picker，并把 Git 主卡草稿一起保存在 active target picker runtime 里；path picker confirm/cancel 回调会先异步 ack，再把最新主卡 patch 回原 target picker owner card |
 | `target_picker_cancel` | `ActionTargetPickerCancel` | 三张工作会话业务卡共用的退出按钮；编辑态会把当前卡 inline replace 成 `已取消`，Git processing 态会 replace 成 `已取消导入` 并 best-effort 停止 clone / prepare；surface route 只保留取消后的安全状态 |
 | `target_picker_confirm` | `ActionTargetPickerConfirm` | 三张工作会话业务卡共用的确认按钮；`/workspace list` 真正执行 attach / switch，`/workspace new dir` / `git` 则消费主卡里已保存的目录/Git 草稿来执行接入或导入 |
-| `request_respond` | `ActionRespondRequest` | 承载 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation` 的按钮回传。通用 approval 会沿用归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；`request_user_input` 支持分题局部提交并在 pending request 上暂存答案，局部保存后会刷新当前 request 卡并递增 `request_revision`；`permissions_request_approval` 会按按钮回写 `{permissions, scope}`；`mcp_server_elicitation` 会按按钮回写 `{action, content, _meta}`，其中 form 模式的 direct-response 按钮也先写入局部草稿，再由显式提交触发 accept |
-| `submit_request_form` | `ActionRespondRequest` | 顶层/`item` 两种 `request_user_input` 与 form 模式 `mcp_server_elicitation` 的表单提交入口；按 `question.id -> answers[]` 回传。`request_user_input` 的表单“提交答案”会带 `request_option_id=submit`；`mcp_server_elicitation` 的表单“提交并继续”同样带 `request_option_id=submit`，由 orchestrator 决定是先保存草稿还是最终 accept |
+| `request_respond` | `ActionRespondRequest` | 承载 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation` 的按钮回传。通用 approval 会沿用归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；`request_user_input` 的纵向 direct-response 按钮会把当前题答案写入 pending request 草稿，并在未完成时刷新到下一题；`permissions_request_approval` 会按按钮回写 `{permissions, scope}`；`mcp_server_elicitation` 会按按钮回写 `{action, content, _meta}`，其中 form 模式的 direct-response 按钮同样先写入局部草稿，只有最后一题答完后才会真正 accept |
+| `request_control` | `ActionControlRequest` | 承载 request 的非回答型动作。当前 live 路径使用 `skip_optional`、`cancel_turn`、`cancel_request`：`skip_optional` 会标记当前 optional 题已跳过，并在必要时直接触发最终 dispatch；`cancel_turn` 会把 `request_user_input` 当前卡 seal 后发送 `turn.interrupt`；`cancel_request` 只用于 form 模式 `mcp_server_elicitation` 的请求级取消 |
+| `submit_request_form` | `ActionRespondRequest` | 顶层/`item` 两种 `request_user_input` 与 form 模式 `mcp_server_elicitation` 的表单提交入口；按 `question.id -> answers[]` 回传，不再额外携带 live `request_option_id`。orchestrator 会根据当前是否还有未完成题，决定是“保存草稿并自动跳到下一题”还是“seal 当前卡并最终提交” |
 | `kick_thread_confirm` | `ActionConfirmKickThread` | 强踢前再次校验实时状态 |
 | `kick_thread_cancel` | `ActionCancelKickThread` | 仅回 notice |
 | `/vscode-migrate` | `ActionVSCodeMigrateCommand` | 打开 VS Code 迁移 page root；仅在 vscode mode 的 slash help 中展示，normal mode 下不进入 help/menu，直接输入则返回“仅 VS Code 模式可用”页 |
@@ -1338,7 +1339,7 @@ retained-offline overlay 额外规则：
 3. 有没有让未冻结草稿在 route change 时静默改投目标。
 4. 有没有把 UI helper 状态重新变回服务端持久 modal state。
 5. 有没有让 `R5 NewThreadReady` 在首条消息失败后落回无恢复路径的状态。
-6. `request_user_input` 与 form 模式 `mcp_server_elicitation` 的按钮/表单提交后，是否符合“局部输入先暂存、显式提交才真正 resolve request、旧 revision 不能继续改写当前草稿”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
+6. `request_user_input` 与 form 模式 `mcp_server_elicitation` 的按钮/表单提交后，是否符合“单题自动推进、optional 只能显式跳过、最后一题才真正 resolve request、旧 revision 不能继续改写当前草稿”的现状语义，并确保 turn 完成、切线程、重连时不会残留旧问题卡。
 
 ## 11. 待讨论取舍
 

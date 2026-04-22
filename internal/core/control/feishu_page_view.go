@@ -5,24 +5,25 @@ import "strings"
 // FeishuPageView is the generic page-card DTO used by menu/config/root pages.
 // It intentionally avoids command-specific implicit defaults.
 type FeishuPageView struct {
-	PageID          string
-	CommandID       string
-	Title           string
-	MessageID       string
-	TrackingKey     string
-	ThemeKey        string
-	Patchable       bool
-	Breadcrumbs     []CommandCatalogBreadcrumb
-	SummarySections []FeishuCardTextSection
-	BodySections    []FeishuCardTextSection
-	NoticeSections  []FeishuCardTextSection
-	StatusKind      string
-	StatusText      string
-	Interactive     bool
-	Sealed          bool
-	DisplayStyle    CommandCatalogDisplayStyle
-	Sections        []CommandCatalogSection
-	RelatedButtons  []CommandCatalogButton
+	PageID                        string
+	CommandID                     string
+	Title                         string
+	MessageID                     string
+	TrackingKey                   string
+	ThemeKey                      string
+	Patchable                     bool
+	Breadcrumbs                   []CommandCatalogBreadcrumb
+	SummarySections               []FeishuCardTextSection
+	BodySections                  []FeishuCardTextSection
+	NoticeSections                []FeishuCardTextSection
+	StatusKind                    string
+	StatusText                    string
+	Interactive                   bool
+	Sealed                        bool
+	DisplayStyle                  CommandCatalogDisplayStyle
+	Sections                      []CommandCatalogSection
+	RelatedButtons                []CommandCatalogButton
+	SuppressDefaultRelatedButtons bool
 }
 
 func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {
@@ -49,28 +50,29 @@ func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {
 	if view.Sealed {
 		interactive = false
 		relatedButtons = nil
-	} else if allowCommandGroupFallback && len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" {
+	} else if allowCommandGroupFallback && len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" && !view.SuppressDefaultRelatedButtons {
 		relatedButtons = FeishuCommandBackButtons(def.GroupID)
 	}
 	return FeishuPageView{
-		PageID:          strings.TrimSpace(view.PageID),
-		CommandID:       commandID,
-		Title:           title,
-		MessageID:       strings.TrimSpace(view.MessageID),
-		TrackingKey:     strings.TrimSpace(view.TrackingKey),
-		ThemeKey:        strings.TrimSpace(view.ThemeKey),
-		Patchable:       view.Patchable,
-		Breadcrumbs:     breadcrumbs,
-		SummarySections: cloneNormalizedFeishuCardSections(bodySections),
-		BodySections:    bodySections,
-		NoticeSections:  noticeSections,
-		StatusKind:      "",
-		StatusText:      "",
-		Interactive:     interactive,
-		Sealed:          view.Sealed,
-		DisplayStyle:    displayStyle,
-		Sections:        sections,
-		RelatedButtons:  relatedButtons,
+		PageID:                        strings.TrimSpace(view.PageID),
+		CommandID:                     commandID,
+		Title:                         title,
+		MessageID:                     strings.TrimSpace(view.MessageID),
+		TrackingKey:                   strings.TrimSpace(view.TrackingKey),
+		ThemeKey:                      strings.TrimSpace(view.ThemeKey),
+		Patchable:                     view.Patchable,
+		Breadcrumbs:                   breadcrumbs,
+		SummarySections:               cloneNormalizedFeishuCardSections(bodySections),
+		BodySections:                  bodySections,
+		NoticeSections:                noticeSections,
+		StatusKind:                    "",
+		StatusText:                    "",
+		Interactive:                   interactive,
+		Sealed:                        view.Sealed,
+		DisplayStyle:                  displayStyle,
+		Sections:                      sections,
+		RelatedButtons:                relatedButtons,
+		SuppressDefaultRelatedButtons: view.SuppressDefaultRelatedButtons,
 	}
 }
 
@@ -110,23 +112,24 @@ func pageFeedbackSection(statusKind, statusText string) (FeishuCardTextSection, 
 
 func FeishuPageViewFromCommandPageView(view FeishuPageView) FeishuPageView {
 	return NormalizeFeishuPageView(FeishuPageView{
-		PageID:          strings.TrimSpace(view.CommandID),
-		CommandID:       strings.TrimSpace(view.CommandID),
-		Title:           strings.TrimSpace(view.Title),
-		MessageID:       strings.TrimSpace(view.MessageID),
-		TrackingKey:     strings.TrimSpace(view.TrackingKey),
-		ThemeKey:        strings.TrimSpace(view.ThemeKey),
-		Patchable:       view.Patchable,
-		Breadcrumbs:     cloneCommandBreadcrumbs(view.Breadcrumbs),
-		SummarySections: cloneNormalizedFeishuCardSections(view.SummarySections),
-		BodySections:    cloneNormalizedFeishuCardSections(view.BodySections),
-		NoticeSections:  cloneNormalizedFeishuCardSections(view.NoticeSections),
-		StatusKind:      strings.TrimSpace(view.StatusKind),
-		StatusText:      strings.TrimSpace(view.StatusText),
-		Interactive:     view.Interactive,
-		Sealed:          view.Sealed,
-		DisplayStyle:    view.DisplayStyle,
-		Sections:        cloneCommandCatalogSections(view.Sections),
-		RelatedButtons:  cloneCommandCatalogButtons(view.RelatedButtons),
+		PageID:                        strings.TrimSpace(view.CommandID),
+		CommandID:                     strings.TrimSpace(view.CommandID),
+		Title:                         strings.TrimSpace(view.Title),
+		MessageID:                     strings.TrimSpace(view.MessageID),
+		TrackingKey:                   strings.TrimSpace(view.TrackingKey),
+		ThemeKey:                      strings.TrimSpace(view.ThemeKey),
+		Patchable:                     view.Patchable,
+		Breadcrumbs:                   cloneCommandBreadcrumbs(view.Breadcrumbs),
+		SummarySections:               cloneNormalizedFeishuCardSections(view.SummarySections),
+		BodySections:                  cloneNormalizedFeishuCardSections(view.BodySections),
+		NoticeSections:                cloneNormalizedFeishuCardSections(view.NoticeSections),
+		StatusKind:                    strings.TrimSpace(view.StatusKind),
+		StatusText:                    strings.TrimSpace(view.StatusText),
+		Interactive:                   view.Interactive,
+		Sealed:                        view.Sealed,
+		DisplayStyle:                  view.DisplayStyle,
+		Sections:                      cloneCommandCatalogSections(view.Sections),
+		RelatedButtons:                cloneCommandCatalogButtons(view.RelatedButtons),
+		SuppressDefaultRelatedButtons: view.SuppressDefaultRelatedButtons,
 	})
 }

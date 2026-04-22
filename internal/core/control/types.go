@@ -40,6 +40,7 @@ const (
 	ActionModeCommand                 ActionKind = "surface.command.mode"
 	ActionSendFile                    ActionKind = "surface.command.send_file"
 	ActionRespondRequest              ActionKind = "surface.request.respond"
+	ActionControlRequest              ActionKind = "surface.request.control"
 	ActionTextMessage                 ActionKind = "surface.message.text"
 	ActionImageMessage                ActionKind = "surface.message.image"
 	ActionFileMessage                 ActionKind = "surface.message.file"
@@ -119,6 +120,7 @@ type Action struct {
 	RequestOptionID     string
 	RequestRevision     int
 	Request             *ActionRequestResponse
+	RequestControl      *ActionRequestControl
 	OwnerFlow           *ActionOwnerCardFlow
 	CommandID           string
 	ParentCommandText   string
@@ -368,6 +370,8 @@ type RequestPromptQuestion struct {
 	Header         string
 	Question       string
 	Answered       bool
+	Skipped        bool
+	Optional       bool
 	AllowOther     bool
 	Secret         bool
 	Options        []RequestPromptQuestionOption

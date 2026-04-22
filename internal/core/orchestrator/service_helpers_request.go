@@ -119,7 +119,7 @@ func requestPromptOptionsToControl(options []state.RequestPromptOptionRecord) []
 	return out
 }
 
-func requestPromptQuestionsToControl(questions []state.RequestPromptQuestionRecord, draftAnswers map[string]string) []control.RequestPromptQuestion {
+func requestPromptQuestionsToControl(questions []state.RequestPromptQuestionRecord, draftAnswers map[string]string, skippedQuestionIDs map[string]bool) []control.RequestPromptQuestion {
 	if len(questions) == 0 {
 		return nil
 	}
@@ -151,6 +151,8 @@ func requestPromptQuestionsToControl(questions []state.RequestPromptQuestionReco
 			Header:         strings.TrimSpace(question.Header),
 			Question:       strings.TrimSpace(question.Question),
 			Answered:       answered,
+			Skipped:        question.Optional && skippedQuestionIDs != nil && skippedQuestionIDs[questionID],
+			Optional:       question.Optional,
 			AllowOther:     question.AllowOther,
 			Secret:         question.Secret,
 			Options:        options,
@@ -436,13 +438,13 @@ func pendingRequestNoticeText(request *state.RequestPromptRecord) string {
 	}
 	switch normalizeRequestType(request.RequestType) {
 	case "request_user_input":
-		return "当前有待回答问题。请先在卡片上点击选项或提交表单。"
+		return "当前有待回答问题。请先在卡片上点击选项、提交当前答案，或跳过可选题。"
 	case "approval":
 		return "当前有待确认请求。请先点击卡片上的处理按钮后再继续。"
 	case "permissions_request_approval":
 		return "当前有待授予权限请求。请先在卡片上选择“允许本次”、“本会话允许”或“拒绝”。"
 	case "mcp_server_elicitation":
-		return "当前有待处理的 MCP 请求。请先在卡片上填写返回内容，或选择继续/拒绝/取消。"
+		return "当前有待处理的 MCP 请求。请先在卡片上填写返回内容、提交当前答案，或取消请求。"
 	default:
 		return "当前有待处理请求。这个请求类型暂时不能在飞书端直接处理，请先回到本地处理或等待后续支持。"
 	}

@@ -101,7 +101,7 @@ func buildMCPElicitationSections(prompt *agentproto.RequestPrompt, metadata map[
 			lines = append(lines, "完成外部授权后，再点击“继续”。")
 		}
 	case "form":
-		lines = append(lines, "请填写需要返回给 MCP server 的内容，然后提交继续。")
+		lines = append(lines, "请依次填写需要返回给 MCP server 的内容，当前题提交后会自动继续。")
 	}
 	if len(lines) == 0 {
 		lines = append(lines, "本地 Codex 正在等待 MCP server 返回更多信息。")
@@ -139,7 +139,6 @@ func buildMCPElicitationQuestions(prompt *agentproto.RequestPrompt, metadata map
 func buildMCPElicitationOptions(prompt *agentproto.RequestPrompt, metadata map[string]any, questions []state.RequestPromptQuestionRecord) []state.RequestPromptOptionRecord {
 	if mcpElicitationMode(prompt, metadata) == "form" || len(questions) != 0 {
 		return []state.RequestPromptOptionRecord{
-			{OptionID: "decline", Label: "拒绝", Style: "default"},
 			{OptionID: "cancel", Label: "取消", Style: "default"},
 		}
 	}
@@ -181,27 +180,20 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 	if len(request.Questions) == 0 && optionID == "accept" {
 		return buildMCPElicitationPayload("accept", nil, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
 	}
-	submitIntent := optionID == "accept" || optionID == requestUserInputNormalizedOptionID(requestUserInputSubmitOptionID)
 	content, complete, missingLabels, errText := buildMCPElicitationContent(request, requestAnswers)
 	if errText != "" {
 		return nil, false, notice(surface, "request_invalid", errText)
 	}
-	if !submitIntent {
+	if !complete {
 		if len(requestAnswers) == 0 {
-			return nil, false, notice(surface, "request_invalid", "请先填写或选择返回内容，再提交给 MCP server。")
+			if len(missingLabels) == 1 {
+				return nil, false, notice(surface, "request_invalid", fmt.Sprintf("字段“%s”还没有处理。你可以先填写答案，或直接跳过。", missingLabels[0]))
+			}
+			return nil, false, notice(surface, "request_invalid", "请先处理当前字段后再继续。")
 		}
 		bumpRequestCardRevision(request)
-		advanceRequestPromptAfterPartialSave(request)
+		setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
 		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
-	}
-	if !complete {
-		if len(missingLabels) == 1 {
-			return nil, false, notice(surface, "request_invalid", fmt.Sprintf("字段“%s”还没有填写。", missingLabels[0]))
-		}
-		if len(missingLabels) != 0 {
-			return nil, false, notice(surface, "request_invalid", fmt.Sprintf("仍有 %d 个字段未填写，请补全后再提交。", len(missingLabels)))
-		}
-		return nil, false, notice(surface, "request_invalid", "当前没有可提交的 MCP 返回内容。")
 	}
 	return buildMCPElicitationPayload("accept", content, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
 }
@@ -225,12 +217,16 @@ func buildMCPElicitationContent(request *state.RequestPromptRecord, rawAnswers m
 	if request.DraftAnswers == nil {
 		request.DraftAnswers = map[string]string{}
 	}
+	if request.SkippedQuestionIDs == nil {
+		request.SkippedQuestionIDs = map[string]bool{}
+	}
 	for key, values := range rawAnswers {
 		answer := firstTrimmedAnswer(values)
 		if strings.TrimSpace(key) == "" || answer == "" {
 			continue
 		}
 		request.DraftAnswers[strings.TrimSpace(key)] = answer
+		delete(request.SkippedQuestionIDs, strings.TrimSpace(key))
 	}
 	if len(request.Questions) == 1 && request.Questions[0].ID == mcpElicitationJSONFieldID {
 		answer := strings.TrimSpace(request.DraftAnswers[mcpElicitationJSONFieldID])
@@ -254,6 +250,7 @@ func buildMCPElicitationContent(request *state.RequestPromptRecord, rawAnswers m
 	}
 	content := map[string]any{}
 	missing := []string{}
+	complete := true
 	keys := make([]string, 0, len(properties))
 	for name := range properties {
 		keys = append(keys, name)
@@ -269,6 +266,14 @@ func buildMCPElicitationContent(request *state.RequestPromptRecord, rawAnswers m
 					lookupStringFromAny(property["description"]),
 					name,
 				))
+				complete = false
+			} else if !request.SkippedQuestionIDs[name] {
+				missing = append(missing, firstNonEmpty(
+					lookupStringFromAny(property["title"]),
+					lookupStringFromAny(property["description"]),
+					name,
+				))
+				complete = false
 			}
 			continue
 		}
@@ -278,7 +283,7 @@ func buildMCPElicitationContent(request *state.RequestPromptRecord, rawAnswers m
 		}
 		content[name] = value
 	}
-	return content, len(missing) == 0 && len(content) != 0, missing, ""
+	return content, complete, missing, ""
 }
 
 func buildMCPElicitationFlatQuestions(schema map[string]any) []state.RequestPromptQuestionRecord {
@@ -312,6 +317,7 @@ func buildMCPElicitationFlatQuestions(schema map[string]any) []state.RequestProm
 			ID:             name,
 			Header:         firstNonEmpty(lookupStringFromAny(property["title"]), name),
 			Question:       questionText,
+			Optional:       !requiredSet[name],
 			AllowOther:     !directResponse,
 			Secret:         lookupBoolFromAny(property["secret"]) || strings.EqualFold(strings.TrimSpace(lookupStringFromAny(property["format"])), "password"),
 			Options:        options,

@@ -195,7 +195,8 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		ActionModelCommand,
 		ActionVerboseCommand,
 		ActionPlanProposalDecision,
-		ActionRespondRequest:
+		ActionRespondRequest,
+		ActionControlRequest:
 		if isSingleTokenSlashCommand(action.Text) {
 			break
 		}

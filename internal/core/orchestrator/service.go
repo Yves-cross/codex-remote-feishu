@@ -495,6 +495,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []control.UIEvent {
 		events = s.handleModeCommand(surface, action)
 	case control.ActionRespondRequest:
 		events = s.respondRequest(surface, action)
+	case control.ActionControlRequest:
+		events = s.controlRequest(surface, action)
 	case control.ActionUseThread:
 		events = s.useThread(surface, action.ThreadID, action.AllowCrossWorkspace)
 	case control.ActionConfirmKickThread:

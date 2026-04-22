@@ -19,6 +19,8 @@ const (
 	cardActionPayloadKeyRequestOptionID       = "request_option_id"
 	cardActionPayloadKeyRequestAnswers        = "request_answers"
 	cardActionPayloadKeyRequestRevision       = "request_revision"
+	cardActionPayloadKeyRequestControl        = "request_control"
+	cardActionPayloadKeyQuestionID            = "question_id"
 	cardActionPayloadKeyCommandID             = "command_id"
 	cardActionPayloadKeyActionKind            = "action_kind"
 	cardActionPayloadKeyActionArg             = "action_arg"
@@ -51,6 +53,7 @@ const (
 	cardActionKindKickThreadConfirm           = "kick_thread_confirm"
 	cardActionKindKickThreadCancel            = "kick_thread_cancel"
 	cardActionKindRequestRespond              = "request_respond"
+	cardActionKindRequestControl              = "request_control"
 	cardActionKindPageAction                  = "page_action"
 	cardActionKindUpgradeOwnerFlow            = "upgrade_owner_flow"
 	cardActionKindVSCodeMigrateOwnerFlow      = "vscode_migrate_owner_flow"
@@ -205,7 +208,7 @@ func actionPayloadPageSubmit(actionKind, actionArgPrefix, fieldName string) map[
 	return payload
 }
 
-func actionPayloadRequestRespond(requestID, requestType, requestOptionID string, requestAnswers map[string]any) map[string]any {
+func actionPayloadRequestRespond(requestID, requestType, requestOptionID string, requestAnswers map[string]any, requestRevision int) map[string]any {
 	payload := map[string]any{
 		cardActionPayloadKeyKind:            cardActionKindRequestRespond,
 		cardActionPayloadKeyRequestID:       strings.TrimSpace(requestID),
@@ -214,6 +217,25 @@ func actionPayloadRequestRespond(requestID, requestType, requestOptionID string,
 	}
 	if len(requestAnswers) != 0 {
 		payload[cardActionPayloadKeyRequestAnswers] = requestAnswers
+	}
+	if requestRevision > 0 {
+		payload[cardActionPayloadKeyRequestRevision] = requestRevision
+	}
+	return payload
+}
+
+func actionPayloadRequestControl(requestID, requestType, requestControl, questionID string, requestRevision int) map[string]any {
+	payload := map[string]any{
+		cardActionPayloadKeyKind:           cardActionKindRequestControl,
+		cardActionPayloadKeyRequestID:      strings.TrimSpace(requestID),
+		cardActionPayloadKeyRequestType:    strings.TrimSpace(requestType),
+		cardActionPayloadKeyRequestControl: strings.TrimSpace(requestControl),
+	}
+	if strings.TrimSpace(questionID) != "" {
+		payload[cardActionPayloadKeyQuestionID] = strings.TrimSpace(questionID)
+	}
+	if requestRevision > 0 {
+		payload[cardActionPayloadKeyRequestRevision] = requestRevision
 	}
 	return payload
 }

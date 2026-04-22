@@ -1405,11 +1405,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if got := plainTextContent(ops[0].CardElements[4]); !containsAll(got, "标题：模型", "说明：", "请选择模型", "可选项：", "- gpt-5.4：推荐") {
 		t.Fatalf("expected first question body after heading, got %#v", ops[0].CardElements[4])
 	}
-	actionRow := cardElementButtons(t, ops[0].CardElements[5])
-	if len(actionRow) != 2 {
-		t.Fatalf("expected direct response buttons for first question, got %#v", ops[0].CardElements[5])
-	}
-	value := cardButtonPayload(t, actionRow[0])
+	value := cardButtonPayload(t, ops[0].CardElements[5])
 	requestAnswers, _ := value["request_answers"].(map[string]any)
 	modelAnswers, _ := requestAnswers["model"].([]any)
 	if value["kind"] != "request_respond" || len(modelAnswers) != 1 || modelAnswers[0] != "gpt-5.4" {
@@ -1418,26 +1414,29 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if value["request_revision"] != 3 {
 		t.Fatalf("expected request option to carry request revision, got %#v", value)
 	}
-	navRow := cardElementButtons(t, ops[0].CardElements[7])
-	if len(navRow) != 2 {
-		t.Fatalf("expected current-step navigation row, got %#v", ops[0].CardElements[7])
+	secondValue := cardButtonPayload(t, ops[0].CardElements[6])
+	secondAnswers, _ := secondValue["request_answers"].(map[string]any)
+	secondModelAnswers, _ := secondAnswers["model"].([]any)
+	if secondValue["kind"] != "request_respond" || len(secondModelAnswers) != 1 || secondModelAnswers[0] != "gpt-5.3" {
+		t.Fatalf("unexpected second request option payload: %#v", secondValue)
 	}
-	prevValue := cardButtonPayload(t, navRow[0])
-	nextValue := cardButtonPayload(t, navRow[1])
-	if prevValue["request_option_id"] != "step_previous" || nextValue["request_option_id"] != "step_next" {
-		t.Fatalf("expected prev/next navigation payloads, got %#v / %#v", prevValue, nextValue)
+	if ops[0].CardElements[7]["tag"] != "hr" {
+		t.Fatalf("expected cancel footer divider, got %#v", ops[0].CardElements[7])
 	}
-	submitValue := cardButtonPayload(t, ops[0].CardElements[8])
-	if submitValue["kind"] != "request_respond" || submitValue["request_id"] != "req-ui-1" || submitValue["request_option_id"] != "submit" {
-		t.Fatalf("unexpected request submit payload: %#v", submitValue)
-	}
-	if submitValue["request_revision"] != 3 {
-		t.Fatalf("expected request submit action to carry request revision, got %#v", submitValue)
+	cancelValue := cardButtonPayload(t, ops[0].CardElements[8])
+	if cancelValue["kind"] != "request_control" || cancelValue["request_control"] != "cancel_turn" || cancelValue["request_revision"] != 3 {
+		t.Fatalf("unexpected request cancel payload: %#v", cancelValue)
 	}
 	if ops[0].cardEnvelope != cardEnvelopeV2 || ops[0].card == nil {
 		t.Fatalf("expected request_user_input prompt to use structured V2 send path, got %#v", ops[0])
 	}
 	assertNoLegacyCardModelMarkers(t, ops[0].CardElements)
+	for _, action := range cardActionsFromElements(ops[0].CardElements) {
+		value := cardValueMap(action)
+		if value["request_option_id"] == "submit" || value["request_option_id"] == "step_previous" || value["request_option_id"] == "step_next" {
+			t.Fatalf("did not expect explicit submit/navigation payloads in auto-advance prompt, got %#v", ops[0].CardElements)
+		}
+	}
 	renderedElements := renderedV2BodyElements(t, ops[0])
 	if got := plainTextContent(renderedElements[0]); !containsAll(got, "当前会话：droid · 修复登录流程") {
 		t.Fatalf("expected rendered thread section at top, got %#v", renderedElements[0])
@@ -1454,11 +1453,7 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if got := plainTextContent(renderedElements[4]); !containsAll(got, "标题：模型", "说明：", "请选择模型") {
 		t.Fatalf("expected rendered question body after heading, got %#v", renderedElements[4])
 	}
-	renderedButtons := renderedColumnButtons(t, renderedElements[5])
-	if len(renderedButtons) != 2 {
-		t.Fatalf("expected rendered direct-response button row, got %#v", renderedElements[5])
-	}
-	renderedValue := renderedButtonCallbackValue(t, renderedButtons[0])
+	renderedValue := renderedButtonCallbackValue(t, renderedElements[5])
 	renderedAnswers, _ := renderedValue["request_answers"].(map[string]any)
 	renderedModelAnswers, _ := renderedAnswers["model"].([]any)
 	if renderedValue["kind"] != "request_respond" || len(renderedModelAnswers) != 1 || renderedModelAnswers[0] != "gpt-5.4" {
@@ -1467,21 +1462,24 @@ func TestProjectRequestUserInputPromptAsCard(t *testing.T) {
 	if renderedValue["request_revision"] != 3 {
 		t.Fatalf("expected rendered direct-response payload to carry request revision, got %#v", renderedValue)
 	}
-	renderedNav := renderedColumnButtons(t, renderedElements[7])
-	if len(renderedNav) != 2 {
-		t.Fatalf("expected rendered navigation row, got %#v", renderedElements[7])
+	renderedSecondValue := renderedButtonCallbackValue(t, renderedElements[6])
+	renderedSecondAnswers, _ := renderedSecondValue["request_answers"].(map[string]any)
+	renderedSecondModelAnswers, _ := renderedSecondAnswers["model"].([]any)
+	if renderedSecondValue["kind"] != "request_respond" || len(renderedSecondModelAnswers) != 1 || renderedSecondModelAnswers[0] != "gpt-5.3" {
+		t.Fatalf("unexpected rendered second direct-response payload: %#v", renderedSecondValue)
 	}
-	renderedPrevValue := renderedButtonCallbackValue(t, renderedNav[0])
-	renderedNextValue := renderedButtonCallbackValue(t, renderedNav[1])
-	if renderedPrevValue["request_option_id"] != "step_previous" || renderedNextValue["request_option_id"] != "step_next" {
-		t.Fatalf("unexpected rendered navigation payloads: %#v / %#v", renderedPrevValue, renderedNextValue)
+	if renderedElements[7]["tag"] != "hr" {
+		t.Fatalf("expected rendered cancel footer divider, got %#v", renderedElements[7])
 	}
-	renderedSubmitValue := renderedButtonCallbackValue(t, renderedElements[8])
-	if renderedSubmitValue["kind"] != "request_respond" || renderedSubmitValue["request_id"] != "req-ui-1" || renderedSubmitValue["request_option_id"] != "submit" {
-		t.Fatalf("unexpected rendered request submit payload: %#v", renderedSubmitValue)
+	renderedCancelValue := renderedButtonCallbackValue(t, renderedElements[8])
+	if renderedCancelValue["kind"] != "request_control" || renderedCancelValue["request_control"] != "cancel_turn" || renderedCancelValue["request_revision"] != 3 {
+		t.Fatalf("unexpected rendered request cancel payload: %#v", renderedCancelValue)
 	}
-	if renderedSubmitValue["request_revision"] != 3 {
-		t.Fatalf("expected rendered request submit payload to carry request revision, got %#v", renderedSubmitValue)
+	for _, action := range cardActionsFromElements(renderedElements) {
+		value := cardValueMap(action)
+		if value["request_option_id"] == "submit" || value["request_option_id"] == "step_previous" || value["request_option_id"] == "step_next" {
+			t.Fatalf("did not expect rendered explicit submit/navigation payloads, got %#v", renderedElements)
+		}
 	}
 }
 
@@ -1527,24 +1525,35 @@ func TestProjectRequestUserInputPromptRendersCurrentFormQuestionAsSingleStepForm
 	if got := plainTextContent(ops[0].CardElements[2]); !containsAll(got, "标题：备注", "状态：待回答", "该答案按私密输入处理") {
 		t.Fatalf("expected current form question body, got %#v", ops[0].CardElements[2])
 	}
-	form := ops[0].CardElements[4]
+	var form map[string]any
+	for _, element := range ops[0].CardElements {
+		if cardStringValue(element["tag"]) == "form" {
+			form = element
+			break
+		}
+	}
 	if form["tag"] != "form" {
 		t.Fatalf("expected current-step form, got %#v", form)
 	}
 	formElements, _ := form["elements"].([]map[string]any)
-	if len(formElements) != 2 {
-		t.Fatalf("expected one input and one save button, got %#v", form)
+	if len(formElements) != 1 || formElements[0]["tag"] != "column_set" {
+		t.Fatalf("expected compact single-row form, got %#v", form)
 	}
-	if label := cardButtonLabel(t, formElements[1]); label != "保存本题" {
-		t.Fatalf("expected step-save label, got %#v", formElements[1])
+	columns, _ := formElements[0]["columns"].([]map[string]any)
+	if len(columns) != 2 {
+		t.Fatalf("expected compact row to keep input+submit columns, got %#v", formElements[0])
 	}
-	saveValue := cardButtonPayload(t, formElements[1])
-	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != "step_save" || saveValue["request_revision"] != 6 {
-		t.Fatalf("unexpected step-save payload: %#v", saveValue)
+	rowRightElements, _ := columns[1]["elements"].([]map[string]any)
+	if len(rowRightElements) != 1 || rowRightElements[0]["tag"] != "button" || cardButtonLabel(t, rowRightElements[0]) != "提交" {
+		t.Fatalf("expected compact row submit button, got %#v", formElements[0])
+	}
+	saveValue := renderedButtonCallbackValue(t, rowRightElements[0])
+	if saveValue["kind"] != "submit_request_form" || saveValue["request_option_id"] != nil || saveValue["request_revision"] != 6 {
+		t.Fatalf("unexpected compact submit payload: %#v", saveValue)
 	}
 }
 
-func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
+func TestProjectRequestUserInputPromptRendersCancelFooterWithoutSubmitAction(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-ui-submit",
@@ -1575,27 +1584,34 @@ func TestProjectRequestUserInputPromptAddsSubmitActionWhenNoForm(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if len(ops[0].CardElements) < 7 {
-		t.Fatalf("expected submit action row for no-form prompt, got %#v", ops[0].CardElements)
+	actions := cardActionsFromElements(ops[0].CardElements)
+	var hasSubmit bool
+	var cancelPayload map[string]any
+	for _, action := range actions {
+		value := cardValueMap(action)
+		if value["request_option_id"] == "submit" {
+			hasSubmit = true
+		}
+		if value["kind"] == "request_control" {
+			cancelPayload = value
+		}
 	}
-	submitRow := cardElementButtons(t, ops[0].CardElements[6])
-	if len(submitRow) != 1 {
-		t.Fatalf("expected one submit action button, got %#v", ops[0].CardElements[6])
+	if hasSubmit {
+		t.Fatalf("did not expect explicit submit action in auto-advance prompt, got %#v", ops[0].CardElements)
 	}
-	value := cardButtonPayload(t, submitRow[0])
-	if value["kind"] != "request_respond" || value["request_option_id"] != "submit" {
-		t.Fatalf("unexpected submit action payload: %#v", value)
+	if cancelPayload == nil || cancelPayload["request_control"] != "cancel_turn" {
+		t.Fatalf("expected cancel footer request_control payload, got %#v", actions)
 	}
 }
 
-func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) {
+func TestProjectRequestUserInputPromptRendersSealedStatusWithoutActions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
-		RequestID:                          "req-ui-3",
-		RequestType:                        "request_user_input",
-		RequestRevision:                    4,
-		SubmitWithUnansweredConfirmPending: true,
-		SubmitWithUnansweredMissingLabels:  []string{"推理强度"},
+		RequestID:       "req-ui-3",
+		RequestType:     "request_user_input",
+		RequestRevision: 4,
+		Sealed:          true,
+		StatusText:      "已提交当前答案，等待 Codex 继续。",
 		Questions: []control.RequestPromptQuestion{
 			{
 				ID:             "model",
@@ -1622,32 +1638,14 @@ func TestProjectRequestUserInputPromptRendersConfirmSubmitActions(t *testing.T) 
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if len(ops[0].CardElements) != 3 {
-		t.Fatalf("expected confirm markdown and confirm action row, got %#v", ops[0].CardElements)
+	if len(cardActionsFromElements(ops[0].CardElements)) != 0 {
+		t.Fatalf("did not expect sealed prompt to keep interactive actions, got %#v", ops[0].CardElements)
 	}
 	if got := markdownContent(ops[0].CardElements[0]); !strings.Contains(got, "回答进度") || !strings.Contains(got, "0/2") {
-		t.Fatalf("expected progress markdown for multi direct card, got %#v", ops[0].CardElements[0])
+		t.Fatalf("expected progress markdown for sealed prompt, got %#v", ops[0].CardElements[0])
 	}
-	if confirmMarkdown := markdownContent(ops[0].CardElements[1]); !strings.Contains(confirmMarkdown, "仍有 1 个问题未回答") {
-		t.Fatalf("expected confirm warning markdown, got %#v", ops[0].CardElements[1])
-	}
-	confirmRow := cardElementButtons(t, ops[0].CardElements[2])
-	if len(confirmRow) != 2 {
-		t.Fatalf("expected two confirm action buttons, got %#v", ops[0].CardElements[2])
-	}
-	cancelValue := cardButtonPayload(t, confirmRow[0])
-	if cancelValue["kind"] != "request_respond" || cancelValue["request_option_id"] != "cancel_submit_with_unanswered" {
-		t.Fatalf("unexpected cancel submit payload: %#v", cancelValue)
-	}
-	if cancelValue["request_revision"] != 4 {
-		t.Fatalf("expected cancel action to carry request revision, got %#v", cancelValue)
-	}
-	confirmValue := cardButtonPayload(t, confirmRow[1])
-	if confirmValue["kind"] != "request_respond" || confirmValue["request_option_id"] != "confirm_submit_with_unanswered" {
-		t.Fatalf("unexpected confirm submit payload: %#v", confirmValue)
-	}
-	if confirmValue["request_revision"] != 4 {
-		t.Fatalf("expected confirm action to carry request revision, got %#v", confirmValue)
+	if got := markdownContent(ops[0].CardElements[len(ops[0].CardElements)-1]); !strings.Contains(got, "等待 Codex 继续") {
+		t.Fatalf("expected sealed status markdown, got %#v", ops[0].CardElements)
 	}
 }
 
@@ -1691,12 +1689,8 @@ func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *te
 	if !strings.Contains(firstQuestion, "状态：已回答") || !strings.Contains(firstQuestion, "当前答案：gpt-5.4") {
 		t.Fatalf("expected first question to include answered status and current answer, got %q", firstQuestion)
 	}
-	firstRow := cardElementButtons(t, ops[0].CardElements[3])
-	if len(firstRow) != 2 {
-		t.Fatalf("expected first question direct options row, got %#v", ops[0].CardElements[3])
-	}
-	firstButton := firstRow[0]
-	secondButton := firstRow[1]
+	firstButton := ops[0].CardElements[3]
+	secondButton := ops[0].CardElements[4]
 	if firstButton["type"] != "primary" || secondButton["type"] != "default" {
 		t.Fatalf("expected selected option highlighted and others downgraded, got %#v / %#v", firstButton, secondButton)
 	}

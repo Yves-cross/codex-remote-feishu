@@ -422,13 +422,10 @@ type RequestPromptRecord struct {
 	LocalKind                string
 	LocalMeta                map[string]string
 	DraftAnswers             map[string]string
+	SkippedQuestionIDs       map[string]bool
 	CardRevision             int
 	PendingDispatchCommandID string
-	// SubmitWithUnansweredConfirmPending marks request_user_input cards that are
-	// waiting for explicit user confirmation before submitting unanswered fields.
-	SubmitWithUnansweredConfirmPending bool
-	SubmitWithUnansweredMissingLabels  []string
-	CreatedAt                          time.Time
+	CreatedAt                time.Time
 }
 
 type RequestCaptureRecord struct {

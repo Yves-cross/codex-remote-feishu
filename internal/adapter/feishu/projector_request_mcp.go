@@ -2,10 +2,11 @@ package feishu
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
+
+const requestControlCancelRequest = "cancel_request"
 
 func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	options := prompt.Options
@@ -39,7 +40,7 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 	if len(prompt.Questions) == 0 {
 		return mcpElicitationChoiceElements(prompt, daemonLifecycleID)
 	}
-	elements := make([]map[string]any, 0, 9)
+	elements := make([]map[string]any, 0, 12)
 	if progress := mcpElicitationProgressMarkdown(prompt); progress != "" {
 		elements = append(elements, map[string]any{
 			"tag":     "markdown",
@@ -47,25 +48,25 @@ func mcpElicitationPromptElements(prompt control.FeishuRequestView, daemonLifecy
 		})
 	}
 	elements = appendCurrentRequestQuestionElements(elements, prompt, daemonLifecycleID)
-	if hint := mcpElicitationQuestionHint(prompt); hint != "" {
-		elements = append(elements, map[string]any{
-			"tag":     "markdown",
-			"content": hint,
-		})
-	}
-	if requestPromptNeedsForm(prompt) {
+	if requestPromptNeedsForm(prompt) && !prompt.Sealed {
 		if form := requestPromptFormElement(prompt, daemonLifecycleID); len(form) != 0 {
 			elements = append(elements, form)
 		}
 	}
-	if row := requestPromptNavigationActionRow(prompt, daemonLifecycleID); len(row) != 0 {
-		elements = append(elements, row)
+	if retry := requestPromptRetryActionElement(prompt, daemonLifecycleID); len(retry) != 0 {
+		elements = append(elements, retry)
 	}
-	if row := requestPromptSubmitActionRow(prompt, daemonLifecycleID); len(row) != 0 {
-		elements = append(elements, row)
+	if skip := requestPromptSkipOptionalElement(prompt, daemonLifecycleID); len(skip) != 0 {
+		elements = append(elements, skip)
 	}
-	if row := mcpElicitationTerminalActionRow(prompt, daemonLifecycleID); len(row) != 0 {
-		elements = append(elements, row)
+	if status := requestPromptStatusMarkdown(prompt); status != "" {
+		elements = append(elements, map[string]any{
+			"tag":     "markdown",
+			"content": status,
+		})
+	}
+	if footer := mcpElicitationCancelFooterElements(prompt, daemonLifecycleID); len(footer) != 0 {
+		elements = append(elements, footer...)
 	}
 	return elements
 }
@@ -98,48 +99,25 @@ func mcpElicitationChoiceElements(prompt control.FeishuRequestView, daemonLifecy
 	return elements
 }
 
-func mcpElicitationTerminalActionRow(prompt control.FeishuRequestView, daemonLifecycleID string) map[string]any {
-	return cardButtonGroupElement([]map[string]any{
-		cardCallbackButtonElement("拒绝", "default", stampActionValue(map[string]any{
-			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
-			cardActionPayloadKeyRequestID:       prompt.RequestID,
-			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
-			cardActionPayloadKeyRequestOptionID: "decline",
-			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, "fill"),
-		cardCallbackButtonElement("取消", "default", stampActionValue(map[string]any{
-			cardActionPayloadKeyKind:            cardActionKindRequestRespond,
-			cardActionPayloadKeyRequestID:       prompt.RequestID,
-			cardActionPayloadKeyRequestType:     strings.TrimSpace(prompt.RequestType),
-			cardActionPayloadKeyRequestOptionID: "cancel",
-			cardActionPayloadKeyRequestRevision: prompt.RequestRevision,
-		}, daemonLifecycleID), false, "fill"),
-	})
+func mcpElicitationCancelFooterElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
+	if prompt.Sealed {
+		return nil
+	}
+	return []map[string]any{
+		cardDividerElement(),
+		cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+	}
 }
 
 func mcpElicitationProgressMarkdown(prompt control.FeishuRequestView) string {
 	if len(prompt.Questions) == 0 {
 		return ""
 	}
-	answered := 0
+	completed := 0
 	for _, question := range prompt.Questions {
-		if question.Answered {
-			answered++
+		if question.Answered || question.Skipped {
+			completed++
 		}
 	}
-	return fmt.Sprintf("**填写进度** %d/%d · 当前第 %d 题", answered, len(prompt.Questions), normalizedRequestPromptCurrentQuestionIndex(prompt)+1)
-}
-
-func mcpElicitationQuestionHint(prompt control.FeishuRequestView) string {
-	question, _, ok := requestPromptCurrentQuestion(prompt)
-	if !ok {
-		return ""
-	}
-	if question.DirectResponse && requestPromptQuestionNeedsFormInput(question) {
-		return "当前题可先点选，也可补充文字或 JSON；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
-	}
-	if question.DirectResponse {
-		return "当前题可直接点选字段值；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
-	}
-	return "填写当前题后先保存本题；可用“上一题 / 下一题”切换，确认无误后点击“提交并继续”。"
+	return fmt.Sprintf("**填写进度** %d/%d · 当前第 %d 题", completed, len(prompt.Questions), normalizedRequestPromptCurrentQuestionIndex(prompt)+1)
 }

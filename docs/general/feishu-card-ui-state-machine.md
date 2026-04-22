@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-22`
-> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；菜单、帮助、page-result replacement、request cards、VS Code guidance、upgrade owner-flow、共享过程卡、attention ping 与 turn reply 语义见正文。
+> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、upgrade owner-flow、共享过程卡、attention ping 与 turn reply 语义见正文。其中 `request_user_input` 与 form 模式 `mcp_server_elicitation` 已收敛到“单题自动推进”：卡面只显示当前题，选项纵向排列，自由输入改成同一行紧凑表单并在行尾放 `提交`，底部只保留 `取消`；`request_control` 负责 `skip_optional`、`cancel_turn`、`cancel_request` 这类非回答型动作；提案计划卡使用 `FeishuPageView` 并显式抑制默认 related back button。
 
 ## 1. 文档定位
 
@@ -113,10 +113,10 @@
 | stamped `/menu current_work|switch_target -> /stop` / `/new` / `/follow` / `/detach` | `launcher -> terminal` | 点击后 daemon 会把 handler 返回的首个 notice / thread-selection 结果卡直接作为 `ReplaceCurrentCard`，并抑制重复终态 append。菜单 launcher flow 在 handoff 后立即退出，不再保留“半菜单半业务”活跃态 |
 | stamped `/menu current_work -> /steerall` | `launcher -> owner(steerall)` | 点击后会把当前菜单卡直接交给 steer-all owner flow。requested 进度态继续 patch 同一张卡；completed、no-op、failed / disconnect restore 才会把这张卡封成 sealed terminal，不再留下可重复点击的旧菜单 |
 | bare `/mode` / `/autowhip` / `/reasoning` / `/access` / `/plan` / `/model` / `/verbose` | `mixed` | bare open-card 当前由 Feishu UI controller 处理；其中 `/mode` `/autowhip` `/reasoning` `/access` `/plan` `/verbose` 只保留固定选项，`/model` 额外保留一张手动输入表单。参数卡当前也统一承接 `body / notice / sealed` contract：业务区保留当前值/覆盖值/模型等上下文，notice 区承接成功、错误和 reopen 提示；若 apply 来自带 `daemon_lifecycle_id` 的当前参数卡 callback，则同一张参数卡会继续被 patch 成同卡反馈/终态；其中 `/plan` 的 apply 只改当前 surface 的后续 `PlanMode`，不会追溯改写当前 running turn；如果某轮 turn 结束时存在最终 `item/plan/delta`，后续 append 的“提案计划”卡则单独归到 `plan_proposal` owner family，不复用 bare `/plan` 参数卡本身；其中 stamped `/mode vscode` 若切换后立刻命中 legacy `editor_settings` 且存在可接管入口，daemon 会先同步静默自动迁到 `managed_shim`，成功后不再额外弹迁移提示卡；若仍需要可见下一步（缺 target、自动迁移失败、managed shim 修复、open prompt 或恢复提示），daemon 才会把首张可投影提示卡同位替回当前卡，并把该 surface 记录成可继续 patch 的 VS Code guidance card；后续异步 runtime 提示只要仍命中这块 card，就继续回写同一张卡；若是纯文本 slash 或其他非 card-owned 入口，则仍保持 append-only |
-| `plan_proposal` | `mixed` | turn 完成后若本轮缓存了最终 `item/plan/delta`，orchestrator 会 append 一张 patchable `FeishuPageView` 提案计划卡（内容沿用 page contract）；点击 `直接执行` / `清空上下文并执行` / `取消` 时，gateway 解析 `picker_id + option_id` 回到 `ActionPlanProposalDecision`，并继续在同一张卡上 seal 收口。该卡不是 request gate，不阻塞后续输入；一旦用户继续输入、切线程/切 route、开始新 turn 或卡片过期，也会被服务端 seal 成失效态 |
+| `plan_proposal` | `mixed` | turn 完成后若本轮缓存了最终 `item/plan/delta`，orchestrator 会 append 一张 patchable `FeishuPageView` 提案计划卡；这张 page 当前显式设置 `SuppressDefaultRelatedButtons=true`，不会自动补默认 related back button。点击 `直接执行` / `清空上下文并执行` / `取消` 时，gateway 解析 `picker_id + option_id` 回到 `ActionPlanProposalDecision`，并继续在同一张卡上 seal 收口。该卡不是 request gate，不阻塞后续输入；一旦用户继续输入、切线程/切 route、开始新 turn 或卡片过期，也会被服务端 seal 成失效态 |
 | bare `/cron` / `/upgrade` / `/debug` | `mixed` | 参数不足时当前统一打开 `FeishuPageView` 根页，不再顺手展示独立状态卡；根页现在只保留实际菜单入口，不再混入“快捷操作 / 手动输入 / 说明文案”，其中 `/debug` 根页当前仅保留 `管理页外链`，`/upgrade track` 子页当前仅保留 track 切换按钮。若来自带 `daemon_lifecycle_id` 的当前 page callback，且动作属于“不立即执行”的根页 / 子页 / 非法参数回显路径，daemon 会走 page result replacement，把下一张 page 继续同位替回当前卡；真正立即执行的动作（如 `/cron reload`、`/cron repair`、`/cron run <id>`、`/upgrade latest`、`/upgrade dev`、`/upgrade local`、`/debug admin`）仍进入各自原有执行流。文本或表单输入的非法参数当前不会外跳 notice，而是继续留在同一张 page 上显示错误并保留表单默认值 |
-| stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 page contract root page（`FeishuPageView`，内容直接使用 page contract）；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 page-result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由旧文本重解析回调或 bare continuation |
-| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` / form 模式 `mcp_server_elicitation` 的当前题索引、分步暂存、留空确认、同卡刷新边界，以及 permissions / elicitation 的结构化回写与最终提交校验属于产品状态机 |
+| stamped `/vscode-migrate` / `vscode_migrate_owner_flow` | `mixed` | `/vscode-migrate` 当前先打开 `FeishuPageView` root page；若入口来自带 `daemon_lifecycle_id` 的当前卡 callback，daemon 会走 page-result replacement，把 root page / 校验失败页 / `仅 VS Code 模式可用` 页同位替回当前卡。真正执行迁移的按钮当前发 `vscode_migrate_owner_flow` callback，迁移结果与后续 `/list` / open VS Code / 恢复提示都会继续 patch 在同一张 guidance card 上，不再经由旧文本重解析回调或 bare continuation |
+| `request approve` / `approval_command` / `approval_file_change` / `approval_network` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` / `captureFeedback` | `mixed` | 卡片按钮、表单字段、`request_control` payload、lifecycle stamp 属于 Feishu UI；request gate、反馈 capture、通用 approval 的 `requestKind`/`availableDecisions` 归一化、`request_user_input` / form 模式 `mcp_server_elicitation` 的当前题索引、分步暂存、`skip_optional`、turn/request 级取消、sealed waiting 态，以及 permissions / elicitation 的结构化回写与最终提交校验属于产品状态机 |
 | `attach_instance` / `attach_workspace` / `use_thread` | `product-owned` | 卡片只负责把选择结果送入产品层；是否允许接管、是否跨 workspace、接管后进入什么 route 都由 orchestrator 决定 |
 | `/follow` | `product-owned` | 是否可用、是否被冻结、跟随到哪个 thread、normal/vscode mode 差异都属于 core 状态机 |
 | `/new` | `product-owned` | 是否进入 `new_thread_ready`、何时消耗第一条消息、request gate 是否阻断都属于 core 状态机 |
@@ -210,8 +210,9 @@
 | `path_picker_select` | `picker_id`、`entry_name` 或 `field_name + selected option` | 在当前 active picker 里选择一个文件或目录；`/sendfile` 文件模式下通常来自文件下拉，当前只更新待发送文件，不直接触发发送 |
 | `path_picker_confirm` | `picker_id` | 用当前 active picker 的已校验结果触发 consumer handoff；若 picker 带有 `owner_flow_id` 且命中 target picker owner card，consumer 可直接回填并 patch 原 owner card；独立 `/sendfile` picker 则会在 confirm 后保留自身 lifecycle，启动前失败继续 patch 当前卡，启动成功把当前卡封成 terminal |
 | `path_picker_cancel` | `picker_id` | 结束当前 active picker，并把取消结果交给 consumer 或默认 notice；target picker 子步骤当前会直接恢复原 owner card，而不是额外发一张取消卡 |
-| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。通用 approval 现在会保留归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`request_user_input` / form 模式 `mcp_server_elicitation` 还会用这条 payload 承载 `step_previous` / `step_next`、局部答案按钮直填、以及显式最终提交；`mcp_server_elicitation` 在 url 模式下继续直接承载 continue/decline/cancel |
-| `submit_request_form` | `request_id`、`request_type`、`request_option_id`、`request_revision`、`field_name(可选)` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation`，分步卡片里默认携带 `request_option_id=step_save` 表示“保存当前题” |
+| `request_respond` | `request_id`、`request_type`、`request_option_id`、`request_answers`、`request_revision` | 响应 approval、`approval_command`、`approval_file_change`、`approval_network`、`request_user_input`、`permissions_request_approval`、`mcp_server_elicitation`。通用 approval 现在会保留归一化后的 `requestKind` 与 `availableDecisions`，包括 `cancel`；顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 继续共用 `request_user_input` 提交流程；`permissions_request_approval` 通过按钮直接携带 scope 语义；`request_user_input` 与 form 模式 `mcp_server_elicitation` 会用这条 payload 承载纵向 direct-response 按钮与恢复态 `重新提交`；url 模式 `mcp_server_elicitation` 仍直接承载 continue/decline/cancel |
+| `request_control` | `request_id`、`request_type`、`request_control`、`question_id(可选)`、`request_revision` | 承载 request 的非回答型动作。当前 live 路径只用 `skip_optional`、`cancel_turn`、`cancel_request`：`skip_optional` 会把当前 optional 题标记为已跳过，并在必要时直接触发最终 dispatch；`cancel_turn` 会把 `request_user_input` 当前卡 seal 为终态后发 `turn.interrupt`；`cancel_request` 则用于 form 模式 `mcp_server_elicitation` 的请求级取消 |
+| `submit_request_form` | `request_id`、`request_type`、`request_revision`、`field_name(可选)` | 从表单里提取 `request_answers` 后回到 request 响应路径；当前用于顶层/`item` 两种 `request_user_input` 以及 form 模式 `mcp_server_elicitation`。表单只负责提交当前题，服务端会决定是“保存后自动跳到下一题”还是“当前题答完后直接 seal + dispatch” |
 
 ### 4.3 当前表单提交规则
 
@@ -228,20 +229,19 @@
 - `submit_request_form`
   - 优先把 `form_value` 整体转成 `request_answers`
   - `request_user_input` 与 form 模式 `mcp_server_elicitation` 当前都只会为“需要手填”的字段渲染 form input（纯选项题不再渲染自由输入框）
-  - `request_user_input` 里的 optional 字段当前不会阻止最终提交
-  - 分步 request form 的保存按钮当前统一带 `request_option_id=step_save`
-    - `request_user_input` 与 `mcp_server_elicitation` 的文案当前都统一为“保存本题”
-    - 这一步只保存当前题，不负责最终提交
-  - 真正的最终提交当前统一走独立 `request_respond`
-    - `request_user_input` 的文案是“提交答案”
-    - `mcp_server_elicitation` 的文案是“提交并继续”
-  - `request_user_input` 若显式最终提交时仍有未答题，orchestrator 会把 request 切到“确认留空提交”状态并同卡刷新 request 卡片
+  - 当前不再额外携带 `request_option_id`
+  - 表单按钮文案当前统一为 `提交`
+  - 这一步只提交当前题：
+    - 若仍有未完成题，orchestrator 会保存草稿、递增 `request_revision`、把当前卡 inline replace 到下一题
+    - 若当前题提交后已经凑齐完整答案，orchestrator 会先把当前卡 seal 成等待态，再派发最终 request response
+  - `request_user_input` 与 form 模式 `mcp_server_elicitation` 的 optional 字段当前都必须显式回答或显式 `skip_optional`；仅仅留空不会被视为已完成
+  - 旧的“显式最终提交 / 留空确认提交 / 取消确认提交”按钮流当前已不再是 live UI 合同；服务端只保留旧 `request_respond(step_*)` 的兼容处理，不再由 projector 生成这些按钮
   - request 卡的按钮与表单提交都会携带 `request_revision`
-    - 只要当前 request 因为“上一题/下一题”“局部答案已保存”“进入确认态”“取消确认态”“提交失败恢复”而刷新，revision 就会递增
+    - 只要当前 request 因为“当前题已保存”“跳过 optional”“进入 sealed waiting”“提交失败恢复”而刷新，revision 就会递增
     - 同 daemon 生命周期里的旧 request 卡，如果 revision 落后于当前 pending request，会收到 `request_card_expired`，不会再改写当前草稿状态
-  - 确认态按钮用 `request_respond` 回传：
-    - `request_option_id=confirm_submit_with_unanswered`：确认留空提交
-    - `request_option_id=cancel_submit_with_unanswered`：返回继续补答
+  - 非回答型动作当前统一改走 `request_control`
+    - `skip_optional` 需要额外带 `question_id`
+    - `cancel_turn` / `cancel_request` 不再复用 `request_respond`
   - 若表单没有字段值，再回退 `input_value`
   - approval 旧写法 `approved=true/false` fallback 已下线；approval 决策必须走 `request_option_id`
 - `path_picker_enter` / `path_picker_select`
@@ -259,20 +259,23 @@
 `request_user_input` 卡片当前额外的可视语义：
 
 - 卡片顶部会展示 `回答进度 x/y · 当前第 N 题`
-- 若存在未答题且用户触发提交，会进入“确认留空提交”提示块（含“继续补答”/“确认提交已有答案”）
 - answering 态当前只渲染**当前题**，不再把所有题一口气铺在同一张卡里
 - 当前题会先渲染固定题号标题 `问题 N/M`，再把题目标题/说明/选项/答案聚合到同一个 `plain_text` 正文块，避免动态文本重新回流到 markdown
-- 当前题会展示 `状态：已回答/待回答`
+- 当前题会展示 `状态：已回答/已跳过/待回答`
 - 对于非私密题，已暂存答案会显示为 `当前答案：...`
 - 对 direct-options 题，若已有已答值，已选项保持 `primary`，其他选项降为 `default`，用于降低误触成本
-- 底部当前固定保留 `上一题 / 下一题` 导航行与独立最终提交按钮
-- 对需要手填的题，表单区当前只渲染当前题，并通过“保存本题”同卡推进；对 direct-options 题，点击选项会直接把当前题答案写回草稿
-- `step_previous` / `step_next`、局部保存、进入确认态、退出确认态当前都只会 inline replace 同一张 request 卡，不再 append 新 request 卡或额外 `request_saved` notice
-- 顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 当前都复用这一套卡片、草稿暂存与提交/确认状态机
+- 对 direct-options 题，当前改成**纵向按钮**；点击选项会直接把当前题答案写回草稿并自动推进到下一题
+- 对需要手填的题，表单区当前只渲染当前题，并收敛成“左侧输入、右侧 `提交` 按钮”的单行紧凑表单；提交后同样自动推进
+- optional 题若当前未回答，会在正文下方额外显示 `跳过` 按钮
+- 底部当前只保留 `取消` footer，不再渲染 `上一题 / 下一题 / 保存本题 / 提交答案`
+- 当前题答完后若已经凑齐整套答案，卡片会先 inline replace 成 sealed waiting 态，再下发真正的 request response
+- 若 dispatch 失败或 wrapper 显式 reject，会清掉 pending-dispatch 标记、递增 `request_revision`、刷新一张新的可编辑 request 卡并附带失败 notice；当所有题其实都已完成但 request 又重新进入交互态时，卡片会额外显示一个恢复用 `重新提交` 按钮
+- 顶层 `tool/requestUserInput` 与 `item/tool/requestUserInput` 当前都复用这一套卡片、草稿暂存与自动推进状态机
 - 真正发起 request 提交后，pending request 不会立刻从 orchestrator 状态里删除；会先记录 `PendingDispatchCommandID`
   - 成功路径仍由上游 `request_resolved` 事件最终清掉 pending request
   - 若 daemon dispatch 失败或 wrapper 显式 reject，会清掉 pending-dispatch 标记、递增 `request_revision`、刷新一张新 request 卡并附带失败 notice
   - 在 pending-dispatch 期间，同一 request 的重复点击会收到“已提交，等待处理”提示，不会重复下发命令
+  - `取消` 当前会先把卡片 seal 成“已放弃答题，并向当前 turn 发送停止请求”，再派发 `turn.interrupt`
 
 通用 approval request 卡片当前新增的可视语义：
 
@@ -294,9 +297,11 @@ MCP request 卡片当前新增的可视语义：
   - `mode=form`
     - 与 `request_user_input` 一样，当前只显示一题，并使用“固定题号标题 + plain_text 正文”显示字段说明与动态内容
     - 会优先把 top-level flat object schema 投影成字段列表
-    - 简单枚举字段可直接用按钮回填局部草稿
-    - 需要手填的字段走 form submit，并使用“保存本题”按钮
-    - 底部同样保留 `上一题 / 下一题` 与独立“提交并继续”按钮；只有显式最终提交才会真正把结果回写给 MCP server
+    - 简单枚举字段会直接渲染成纵向按钮，点击后回填局部草稿并自动推进
+    - 需要手填的字段走单行 form submit，按钮文案统一为 `提交`
+    - optional 字段可通过 `request_control(skip_optional)` 显式跳过
+    - 底部只保留 `取消`，不再渲染 `上一题 / 下一题 / 提交并继续`
+    - 当前题提交后若已凑齐完整内容，会先把当前卡 seal 成等待态，再真正把结果回写给 MCP server
     - 若 schema 超过当前平铺能力，会回退成单字段 JSON 输入，而不是直接 unsupported
 - 这两类 MCP request 与 `request_user_input` 一样，都会继续携带 `request_revision`，用于阻止同 daemon 生命周期里的旧卡继续改写当前 request 草稿
 
@@ -386,12 +391,12 @@ MCP request 卡片当前新增的可视语义：
   - daemon freshness：`daemon_lifecycle`
   - view/session 策略：`surface_state_rederived`
   - 不要求额外 view token
-- `ActionRespondRequest` 当前也纳入这条 transport 级 inline-replace allow-list，但只有 request handler 显式返回 `InlineReplaceCurrentCard=true` 时才会真的 replace：
-  - `request_user_input` / form 模式 `mcp_server_elicitation` 的 `step_previous` / `step_next`
-  - 局部保存当前题后的下一步刷新
-  - `request_user_input` 显式提交后进入“确认留空提交”状态
-  - `request_user_input` 的 `cancel_submit_with_unanswered` 返回继续补答
-  - 纯 notice 的无效/过期点击，以及真正触发最终 request dispatch 的提交，当前都不会 replace 当前卡
+- `ActionRespondRequest` 与 `ActionControlRequest` 当前也纳入这条 transport 级 inline-replace allow-list，但只有 request handler 显式返回 `InlineReplaceCurrentCard=true` 时才会真的 replace：
+  - `request_user_input` / form 模式 `mcp_server_elicitation` 的局部保存后自动跳到下一题
+  - optional 题的 `skip_optional`
+  - 最后一题答完后切到 sealed waiting 态
+  - `request_user_input` 的 `cancel_turn` 与 form 模式 `mcp_server_elicitation` 的 `cancel_request`
+  - 纯 notice 的无效/过期点击不会 replace 当前卡
 - 这意味着同 daemon 生命周期里的旧卡/并发点击，如果仍属于 pure navigation，不会因为“旧 view”被拒绝；它们会基于**当前** surface state 重新生成卡片。
 - 本次新增的 target picker 下拉刷新也沿用这条 replace 边界：
   - normal `/workspace list` 的工作区切换
@@ -589,7 +594,7 @@ MCP request 卡片当前新增的可视语义：
   - 即：只要 callback 仍在当前 daemon 生命周期内，就直接用**当前** surface state 重建卡片，而不是尝试恢复点击时那一版旧 view
   - request prompt 当前是这个规则的例外
     - request 卡不是 replaceable pure navigation
-    - `request_user_input` 与 form 模式 `mcp_server_elicitation` 的草稿/确认态都属于可变产品状态，所以同 daemon 生命周期内额外要求 `request_revision` 匹配
+    - `request_user_input` 与 form 模式 `mcp_server_elicitation` 的草稿、跳过态、sealed waiting 态都属于可变产品状态，所以同 daemon 生命周期内额外要求 `request_revision` 匹配
     - 这条规则只用于防止旧 request 卡继续改写当前 request 草稿，不扩展到 `/menu` / selection / path picker / target picker
   - path picker 当前在这条规则上额外有一个 coarse-grained `picker_id`
     - 它不是每一步导航都变化的 per-view token

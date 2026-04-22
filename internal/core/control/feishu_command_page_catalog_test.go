@@ -74,3 +74,16 @@ func TestNormalizeFeishuPageViewKeepsMenuHomeAtRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeFeishuPageViewSuppressesDefaultRelatedButtons(t *testing.T) {
+	view := FeishuPageView{
+		CommandID:                     FeishuCommandPlan,
+		Title:                         "提案计划",
+		SuppressDefaultRelatedButtons: true,
+	}
+
+	catalog := NormalizeFeishuPageView(view)
+	if len(catalog.RelatedButtons) != 0 {
+		t.Fatalf("expected suppressed page catalog to omit default related buttons, got %#v", catalog.RelatedButtons)
+	}
+}

@@ -890,15 +890,19 @@ func TestRespondRequestUserInputOptionDispatchesAnswersAndKeepsPendingStateUntil
 			"model": []string{"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one agent command event, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed inline replacement plus one agent command event, got %#v", events)
 	}
-	answers, _ := events[0].Command.Request.Response["answers"].(map[string]any)
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed {
+		t.Fatalf("expected completed request to render sealed prompt, got %#v", prompt)
+	}
+	answers, _ := events[1].Command.Request.Response["answers"].(map[string]any)
 	if _, ok := answers["model"]; !ok {
-		t.Fatalf("unexpected request user input response payload: %#v", events[0].Command.Request.Response)
+		t.Fatalf("unexpected request user input response payload: %#v", events[1].Command.Request.Response)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if record == nil || record.PendingDispatchCommandID == "" || record.PendingDispatchCommandID != events[0].Command.CommandID {
+	if record == nil || record.PendingDispatchCommandID == "" || record.PendingDispatchCommandID != events[1].Command.CommandID {
 		t.Fatalf("expected request state to remain pending dispatch until resolved, got %#v", record)
 	}
 }
@@ -1018,8 +1022,8 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 	if pending.CardRevision != 2 {
 		t.Fatalf("expected partial answer save to bump record revision, got %#v", pending)
 	}
-	if pending.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected partial answer save to keep request in answering state, got %#v", pending)
+	if pending.PendingDispatchCommandID != "" {
+		t.Fatalf("expected partial answer save to keep request editable, got %#v", pending)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
@@ -1030,15 +1034,19 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 			"effort": {"high"},
 		},
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected final answer to dispatch command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected final answer to seal current card and dispatch command, got %#v", events)
 	}
-	answers, _ := events[0].Command.Request.Response["answers"].(map[string]any)
+	prompt = requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed {
+		t.Fatalf("expected final answer to render sealed prompt, got %#v", prompt)
+	}
+	answers, _ := events[1].Command.Request.Response["answers"].(map[string]any)
 	if _, ok := answers["model"]; !ok {
-		t.Fatalf("expected merged model answer in response payload, got %#v", events[0].Command.Request.Response)
+		t.Fatalf("expected merged model answer in response payload, got %#v", events[1].Command.Request.Response)
 	}
 	if _, ok := answers["effort"]; !ok {
-		t.Fatalf("expected merged effort answer in response payload, got %#v", events[0].Command.Request.Response)
+		t.Fatalf("expected merged effort answer in response payload, got %#v", events[1].Command.Request.Response)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
 	if record == nil || record.PendingDispatchCommandID == "" {
@@ -1106,19 +1114,23 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 			"notes": {"请用中文回复"},
 		},
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected merged submit to dispatch command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected merged submit to seal current card and dispatch command, got %#v", events)
 	}
-	answers, _ := events[0].Command.Request.Response["answers"].(map[string]any)
+	prompt = requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed {
+		t.Fatalf("expected merged submit to render sealed prompt, got %#v", prompt)
+	}
+	answers, _ := events[1].Command.Request.Response["answers"].(map[string]any)
 	if _, ok := answers["model"]; !ok {
-		t.Fatalf("expected saved model answer in merged response payload, got %#v", events[0].Command.Request.Response)
+		t.Fatalf("expected saved model answer in merged response payload, got %#v", events[1].Command.Request.Response)
 	}
 	if _, ok := answers["notes"]; !ok {
-		t.Fatalf("expected notes answer in merged response payload, got %#v", events[0].Command.Request.Response)
+		t.Fatalf("expected notes answer in merged response payload, got %#v", events[1].Command.Request.Response)
 	}
 }
 
-func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testing.T) {
+func TestRespondRequestUserInputSkipOptionalDispatchesStoredAnswers(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -1149,7 +1161,7 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 			"requestType": "request_user_input",
 			"questions": []map[string]any{
 				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}, {"label": "gpt-5.3"}}},
-				{"id": "effort", "header": "推理强度", "question": "请选择推理强度", "options": []map[string]any{{"label": "high"}, {"label": "medium"}}},
+				{"id": "notes", "header": "备注", "question": "补充说明", "optional": true, "isOther": true},
 			},
 		},
 	})
@@ -1163,50 +1175,43 @@ func TestRespondRequestUserInputAllowsSubmitWithUnansweredAfterConfirm(t *testin
 		},
 	})
 	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected first step to save partial answer inline, got %#v", events)
+		t.Fatalf("expected first answer to refresh current card inline, got %#v", events)
 	}
 	prompt := requestPromptFromEvent(t, events[0])
 	if prompt.CurrentQuestionIndex != 1 {
-		t.Fatalf("expected first step save to advance to unanswered question, got %#v", prompt)
+		t.Fatalf("expected first answer to advance to optional question, got %#v", prompt)
 	}
 
 	events = svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
+		Kind:             control.ActionControlRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "submit",
+		RequestControl: &control.ActionRequestControl{
+			RequestID:       "req-ui-1",
+			RequestType:     "request_user_input",
+			Control:         "skip_optional",
+			QuestionID:      "notes",
+			RequestRevision: 2,
+		},
 	})
-	if len(events) != 1 {
-		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected skipping optional question to seal card and dispatch response, got %#v", events)
 	}
 	prompt = requestPromptFromEvent(t, events[0])
-	if !prompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected explicit submit to enter confirm state, got %#v", events)
+	if !prompt.Sealed {
+		t.Fatalf("expected skip completion to render sealed prompt, got %#v", prompt)
 	}
-
-	events = svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
-		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "confirm_submit_with_unanswered",
-	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected submit_with_unanswered to dispatch response, got %#v", events)
-	}
-	answers, _ := events[0].Command.Request.Response["answers"].(map[string]any)
+	answers, _ := events[1].Command.Request.Response["answers"].(map[string]any)
 	model, _ := answers["model"].(map[string]any)
 	modelList, _ := model["answers"].([]string)
 	if len(modelList) != 1 || modelList[0] != "gpt-5.4" {
 		t.Fatalf("expected answered question to keep selected answer, got %#v", answers["model"])
 	}
-	effort, _ := answers["effort"].(map[string]any)
-	effortList, _ := effort["answers"].([]string)
-	if len(effortList) != 0 {
-		t.Fatalf("expected unanswered question to submit empty answers, got %#v", answers["effort"])
+	if _, ok := answers["notes"]; ok {
+		t.Fatalf("expected skipped optional question to stay absent from response, got %#v", answers)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if record == nil || record.PendingDispatchCommandID == "" {
-		t.Fatalf("expected pending request to remain until unanswered submit resolves, got %#v", record)
+	if record == nil || record.PendingDispatchCommandID == "" || !record.SkippedQuestionIDs["notes"] {
+		t.Fatalf("expected pending request to remain sealed until resolve, got %#v", record)
 	}
 }
 
@@ -1254,19 +1259,19 @@ func TestRespondRequestUserInputDispatchFailureRestoresPendingRequest(t *testing
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected submit to dispatch a command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected submit to seal current card and dispatch a command, got %#v", events)
 	}
-	restore := svc.HandleCommandDispatchFailure("surface-1", events[0].Command.CommandID, errors.New("relay unavailable"))
+	restore := svc.HandleCommandDispatchFailure("surface-1", events[1].Command.CommandID, errors.New("relay unavailable"))
 	if len(restore) != 2 || restore[1].Notice == nil {
 		t.Fatalf("expected prompt refresh and notice after dispatch failure, got %#v", restore)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if record == nil || record.PendingDispatchCommandID != "" || record.CardRevision != 2 {
+	if record == nil || record.PendingDispatchCommandID != "" || record.CardRevision != 3 {
 		t.Fatalf("expected request to be restored with bumped revision, got %#v", record)
 	}
 	prompt := requestPromptFromEvent(t, restore[0])
-	if prompt.RequestRevision != 2 {
+	if prompt.RequestRevision != 3 {
 		t.Fatalf("expected refreshed prompt revision, got %#v", prompt)
 	}
 	if restore[1].Notice.Code != "dispatch_failed" {
@@ -1310,7 +1315,7 @@ func TestRespondRequestUserInputRejectsStaleRequestRevision(t *testing.T) {
 		},
 	})
 
-	svc.ApplySurfaceAction(control.Action{
+	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		RequestID:        "req-ui-1",
@@ -1319,16 +1324,12 @@ func TestRespondRequestUserInputRejectsStaleRequestRevision(t *testing.T) {
 			"model": {"gpt-5.4"},
 		},
 	})
-	svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
-		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestRevision:  2,
-		RequestOptionID:  "submit",
-	})
+	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
+		t.Fatalf("expected first answer to refresh current card inline, got %#v", events)
+	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if record == nil || record.CardRevision != 3 {
-		t.Fatalf("expected explicit submit to enter confirm state with bumped revision, got %#v", record)
+	if record == nil || record.CardRevision != 2 || record.CurrentQuestionIndex != 1 {
+		t.Fatalf("expected first answer to advance request revision and current question, got %#v", record)
 	}
 	stale := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
@@ -1388,11 +1389,11 @@ func TestRespondRequestUserInputCommandRejectedRestoresPendingRequest(t *testing
 			"model": {"gpt-5.4"},
 		},
 	})
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected submit to dispatch a command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected submit to seal current card and dispatch a command, got %#v", events)
 	}
 	restore := svc.HandleCommandRejected("inst-1", agentproto.CommandAck{
-		CommandID: events[0].Command.CommandID,
+		CommandID: events[1].Command.CommandID,
 		Accepted:  false,
 		Error:     "translator failed",
 	})
@@ -1400,7 +1401,7 @@ func TestRespondRequestUserInputCommandRejectedRestoresPendingRequest(t *testing
 		t.Fatalf("expected prompt refresh and notice after command reject, got %#v", restore)
 	}
 	record := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if record == nil || record.PendingDispatchCommandID != "" || record.CardRevision != 2 {
+	if record == nil || record.PendingDispatchCommandID != "" || record.CardRevision != 3 {
 		t.Fatalf("expected request to be restored after command reject, got %#v", record)
 	}
 	if restore[1].Notice.Code != "command_rejected" {
@@ -1408,7 +1409,7 @@ func TestRespondRequestUserInputCommandRejectedRestoresPendingRequest(t *testing
 	}
 }
 
-func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *testing.T) {
+func TestRespondRequestUserInputCancelTurnClearsRequestAndInterruptsTurn(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -1439,51 +1440,36 @@ func TestRespondRequestUserInputCancelSubmitWithUnansweredReturnsToAnswering(t *
 			"requestType": "request_user_input",
 			"questions": []map[string]any{
 				{"id": "model", "header": "模型", "question": "请选择模型", "options": []map[string]any{{"label": "gpt-5.4"}, {"label": "gpt-5.3"}}},
-				{"id": "effort", "header": "推理强度", "question": "请选择推理强度", "options": []map[string]any{{"label": "high"}, {"label": "medium"}}},
+				{"id": "notes", "header": "备注", "question": "补充说明", "optional": true, "isOther": true},
 			},
 		},
 	})
-	svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
-		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestAnswers: map[string][]string{
-			"model": {"gpt-5.4"},
-		},
-	})
-	svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
-		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "submit",
-	})
 
 	events := svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
+		Kind:             control.ActionControlRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "cancel_submit_with_unanswered",
+		RequestControl: &control.ActionRequestControl{
+			RequestID:   "req-ui-1",
+			RequestType: "request_user_input",
+			Control:     "cancel_turn",
+		},
 	})
-	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
-		t.Fatalf("expected cancel_submit_with_unanswered to refresh current card inline, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected cancel_turn to replace current card and send interrupt, got %#v", events)
 	}
 	prompt := requestPromptFromEvent(t, events[0])
-	if prompt.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected cancel_submit_with_unanswered to clear confirm state, got %#v", prompt)
+	if !prompt.Sealed || !strings.Contains(prompt.StatusText, "发送停止请求") {
+		t.Fatalf("expected cancel_turn to render sealed terminal prompt, got %#v", prompt)
 	}
-	if prompt.CurrentQuestionIndex != 1 {
-		t.Fatalf("expected cancel_submit_with_unanswered to jump back to first unanswered question, got %#v", prompt)
+	if events[1].Command.Kind != agentproto.CommandTurnInterrupt {
+		t.Fatalf("expected cancel_turn to send interrupt command, got %#v", events[1].Command)
 	}
-	pending := svc.root.Surfaces["surface-1"].PendingRequests["req-ui-1"]
-	if pending == nil || pending.SubmitWithUnansweredConfirmPending {
-		t.Fatalf("expected pending request confirm state to clear, got %#v", pending)
-	}
-	if pending.CurrentQuestionIndex != 1 {
-		t.Fatalf("expected pending request to point at first unanswered question, got %#v", pending)
+	if len(svc.root.Surfaces["surface-1"].PendingRequests) != 0 {
+		t.Fatalf("expected cancel_turn to clear pending request state, got %#v", svc.root.Surfaces["surface-1"].PendingRequests)
 	}
 }
 
-func TestRespondRequestUserInputRejectsStaleConfirmSubmit(t *testing.T) {
+func TestRespondRequestUserInputRejectsSkipOnRequiredQuestion(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -1520,17 +1506,21 @@ func TestRespondRequestUserInputRejectsStaleConfirmSubmit(t *testing.T) {
 	})
 
 	events := svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
+		Kind:             control.ActionControlRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "confirm_submit_with_unanswered",
+		RequestControl: &control.ActionRequestControl{
+			RequestID:   "req-ui-1",
+			RequestType: "request_user_input",
+			Control:     "skip_optional",
+			QuestionID:  "model",
+		},
 	})
 	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
-		t.Fatalf("expected stale confirm submit to be rejected, got %#v", events)
+		t.Fatalf("expected skipping required question to be rejected, got %#v", events)
 	}
 }
 
-func TestRespondRequestUserInputRejectsStaleCancelSubmit(t *testing.T) {
+func TestRespondRequestUserInputRejectsStaleRequestControl(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -1567,13 +1557,17 @@ func TestRespondRequestUserInputRejectsStaleCancelSubmit(t *testing.T) {
 	})
 
 	events := svc.ApplySurfaceAction(control.Action{
-		Kind:             control.ActionRespondRequest,
+		Kind:             control.ActionControlRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestOptionID:  "cancel_submit_with_unanswered",
+		RequestControl: &control.ActionRequestControl{
+			RequestID:       "req-ui-1",
+			RequestType:     "request_user_input",
+			Control:         "cancel_turn",
+			RequestRevision: 99,
+		},
 	})
-	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_invalid" {
-		t.Fatalf("expected stale cancel submit to be rejected, got %#v", events)
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "request_card_expired" {
+		t.Fatalf("expected stale request control to be rejected, got %#v", events)
 	}
 }
 
@@ -1596,7 +1590,7 @@ func TestRequestPromptQuestionsToControlHidesSecretDefaultWhileKeepingAnsweredSt
 		"token": "secret-token",
 	}
 
-	got := requestPromptQuestionsToControl(questions, drafts)
+	got := requestPromptQuestionsToControl(questions, drafts, nil)
 	if len(got) != 2 {
 		t.Fatalf("expected 2 converted questions, got %#v", got)
 	}

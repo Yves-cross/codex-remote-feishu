@@ -234,6 +234,28 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			},
 			Inbound: meta,
 		}, true
+	case cardActionKindRequestControl:
+		requestID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestID))
+		requestControl := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestControl))
+		if requestID == "" || requestControl == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionControlRequest,
+			GatewayID:        g.config.GatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			RequestControl: &control.ActionRequestControl{
+				RequestID:       requestID,
+				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
+				Control:         requestControl,
+				QuestionID:      strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyQuestionID)),
+				RequestRevision: intMapValue(value, cardActionPayloadKeyRequestRevision),
+			},
+			Inbound: meta,
+		}, true
 	case cardActionKindPageAction:
 		actionKind := control.ActionKind(strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyActionKind)))
 		if actionKind == "" {
@@ -337,7 +359,6 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 		if requestID == "" {
 			return control.Action{}, false
 		}
-		requestOptionID := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestOptionID))
 		requestAnswers := requestAnswersFromFormValue(event.Event.Action.FormValue)
 		if len(requestAnswers) == 0 && strings.TrimSpace(event.Event.Action.InputValue) != "" {
 			fieldName := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyFieldName))
@@ -358,7 +379,7 @@ func (g *LiveGateway) parseCardActionTriggerEvent(event *larkcallback.CardAction
 			Request: &control.ActionRequestResponse{
 				RequestID:       requestID,
 				RequestType:     strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestType)),
-				RequestOptionID: requestOptionID,
+				RequestOptionID: strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyRequestOptionID)),
 				Answers:         requestAnswers,
 				RequestRevision: intMapValue(value, cardActionPayloadKeyRequestRevision),
 			},

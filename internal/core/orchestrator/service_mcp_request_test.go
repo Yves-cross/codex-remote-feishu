@@ -127,17 +127,20 @@ func TestRespondMCPElicitationFormBuildsStructuredResponse(t *testing.T) {
 		MessageID:        "om-card-2",
 		RequestID:        "req-mcp-form-1",
 		RequestType:      "mcp_server_elicitation",
-		RequestOptionID:  "submit",
 		RequestAnswers: map[string][]string{
 			"token":    []string{"secret-token"},
 			"remember": []string{"true"},
 		},
 	})
 
-	if len(events) != 1 || events[0].Command == nil {
-		t.Fatalf("expected one mcp request respond command, got %#v", events)
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
+		t.Fatalf("expected sealed inline replacement plus one mcp request respond command, got %#v", events)
 	}
-	response := events[0].Command.Request.Response
+	prompt := requestPromptFromEvent(t, events[0])
+	if !prompt.Sealed {
+		t.Fatalf("expected completed mcp form to render sealed prompt, got %#v", prompt)
+	}
+	response := events[1].Command.Request.Response
 	if response["action"] != "accept" {
 		t.Fatalf("expected accept action, got %#v", response)
 	}

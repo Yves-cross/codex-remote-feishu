@@ -12,6 +12,16 @@ type ActionRequestResponse struct {
 	RequestRevision int
 }
 
+// ActionRequestControl carries request-card local control semantics such as
+// canceling the current turn or skipping an optional prompt question.
+type ActionRequestControl struct {
+	RequestID       string
+	RequestType     string
+	Control         string
+	QuestionID      string
+	RequestRevision int
+}
+
 // ActionOwnerCardFlow carries owner-card follow-up actions such as upgrade and
 // VS Code migration confirmation flows.
 type ActionOwnerCardFlow struct {
