@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 )
 
 const attentionRequestDedupTTL = 24 * time.Hour
@@ -155,7 +156,7 @@ func (a *App) attentionPingReplyTarget(event control.UIEvent) string {
 	if chatID == "" {
 		return ""
 	}
-	for _, operation := range a.projector.Project(chatID, event) {
+	for _, operation := range a.projector.ProjectEvent(chatID, eventcontractcompat.FromLegacyUIEvent(event)) {
 		switch operation.Kind {
 		case feishu.OperationSendText, feishu.OperationSendCard, feishu.OperationSendImage:
 			return strings.TrimSpace(operation.ReplyToMessageID)

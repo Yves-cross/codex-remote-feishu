@@ -8,6 +8,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
@@ -122,16 +123,18 @@ func (a *App) runSecondChanceFinalPatch(job secondChanceFinalPatchJob) {
 		return
 	}
 
-	ops := projector.Project(job.ChatID, control.UIEvent{
-		Kind:                 control.UIEventBlockCommitted,
-		GatewayID:            job.GatewayID,
-		SurfaceSessionID:     job.SurfaceSessionID,
-		SourceMessageID:      job.SourceMessageID,
-		SourceMessagePreview: job.SourceMessagePreview,
-		Block:                &result.Block,
-		FileChangeSummary:    job.FileChangeSummary,
-		TurnDiffSnapshot:     job.TurnDiffSnapshot,
-		FinalTurnSummary:     job.FinalTurnSummary,
+	ops := projector.ProjectEvent(job.ChatID, eventcontract.Event{
+		Meta: eventcontract.EventMeta{
+			Target:               eventcontract.ExplicitTarget(job.GatewayID, job.SurfaceSessionID),
+			SourceMessageID:      job.SourceMessageID,
+			SourceMessagePreview: job.SourceMessagePreview,
+		},
+		Payload: eventcontract.BlockCommittedPayload{
+			Block:             result.Block,
+			FileChangeSummary: job.FileChangeSummary,
+			TurnDiffSnapshot:  job.TurnDiffSnapshot,
+			FinalTurnSummary:  job.FinalTurnSummary,
+		},
 	})
 	primary := firstFinalSendCard(ops)
 	if primary == nil {
