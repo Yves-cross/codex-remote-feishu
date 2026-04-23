@@ -11,14 +11,22 @@ import (
 
 func TestProjectSelectionPromptAsCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.ProjectEvent("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
-		Kind:         control.SelectionPromptAttachInstance,
+	ops := projector.ProjectEvent("chat-1", selectionEvent(control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptAttachInstance,
+		Instance: &control.FeishuInstanceSelectionView{
+			Current: &control.FeishuInstanceSelectionCurrent{
+				ContextText: "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list",
+			},
+			Entries: []control.FeishuInstanceSelectionEntry{
+				{InstanceID: "inst-2", Label: "web", MetaText: "2分前 · 当前焦点可跟随", ButtonLabel: "切换"},
+				{InstanceID: "inst-3", Label: "ops", MetaText: "1小时前 · 当前被其他飞书会话接管", Disabled: true},
+			},
+		},
+	}, &control.FeishuUISelectionContext{
+		DTOOwner:     control.FeishuUIDTOwnerSelection,
+		PromptKind:   control.SelectionPromptAttachInstance,
 		ContextTitle: "当前实例",
 		ContextText:  "droid · 当前跟随中\n焦点切换仍会自动跟随，换实例才用 /list",
-		Options: []control.SelectionOption{
-			{Index: 1, OptionID: "inst-2", Label: "web", MetaText: "2分前 · 当前焦点可跟随", ButtonLabel: "切换"},
-			{Index: 2, OptionID: "inst-3", Label: "ops", MetaText: "1小时前 · 当前被其他飞书会话接管", Disabled: true},
-		},
 	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -222,19 +230,20 @@ func TestProjectSessionSelectionPromptUsesButtonFirstLayout(t *testing.T) {
 
 func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.ProjectEvent("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
-		Kind:  control.SelectionPromptAttachWorkspace,
-		Title: "工作区列表",
-		Options: []control.SelectionOption{
-			{
-				Index:       1,
-				OptionID:    "/data/dl/picdetect",
-				Label:       "picdetect",
-				ButtonLabel: "恢复",
-				MetaText:    "3分前 · 后台可恢复",
-				ActionKind:  "show_workspace_threads",
-			},
+	ops := projector.ProjectEvent("chat-1", selectionEvent(control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptAttachWorkspace,
+		Workspace: &control.FeishuWorkspaceSelectionView{
+			Entries: []control.FeishuWorkspaceSelectionEntry{{
+				WorkspaceKey:    "/data/dl/picdetect",
+				WorkspaceLabel:  "picdetect",
+				AgeText:         "3分前",
+				RecoverableOnly: true,
+			}},
 		},
+	}, &control.FeishuUISelectionContext{
+		DTOOwner:   control.FeishuUIDTOwnerSelection,
+		PromptKind: control.SelectionPromptAttachWorkspace,
+		Title:      "工作区列表",
 	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -259,11 +268,18 @@ func TestProjectWorkspaceSelectionPromptPreservesShowWorkspaceThreadsAction(t *t
 
 func TestProjectSelectionPromptStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := selectionPromptEvent(control.FeishuDirectSelectionPrompt{
-		Kind: control.SelectionPromptUseThread,
-		Options: []control.SelectionOption{
-			{Index: 1, OptionID: "thread-1", Label: "修复登录流程", ButtonLabel: "修复登录流程"},
+	event := selectionEvent(control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptUseThread,
+		Thread: &control.FeishuThreadSelectionView{
+			Mode: control.FeishuThreadSelectionNormalScopedRecent,
+			Entries: []control.FeishuThreadSelectionEntry{{
+				ThreadID: "thread-1",
+				Summary:  "修复登录流程",
+			}},
 		},
+	}, &control.FeishuUISelectionContext{
+		DTOOwner:   control.FeishuUIDTOwnerSelection,
+		PromptKind: control.SelectionPromptUseThread,
 	})
 	event.DaemonLifecycleID = "life-1"
 	ops := projector.ProjectEvent("chat-1", event)
@@ -387,38 +403,44 @@ func TestProjectUseAllSelectionViewGroupsByWorkspace(t *testing.T) {
 
 func TestProjectUseAllSelectionPromptLimitsWorkspaceToFiveAndAddsExpandButtons(t *testing.T) {
 	projector := NewProjector()
-	options := []control.SelectionOption{
-		{
-			Index:       1,
-			OptionID:    "thread-current",
-			Label:       "当前会话",
-			ButtonLabel: "当前会话",
-			GroupKey:    "/data/dl/droid",
-			GroupLabel:  "droid",
-			MetaText:    "已接管",
-			IsCurrent:   true,
-		},
-	}
+	entries := []control.FeishuThreadSelectionEntry{{
+		ThreadID:       "thread-current",
+		Summary:        "当前会话",
+		WorkspaceKey:   "/data/dl/droid",
+		WorkspaceLabel: "droid",
+		Status:         "已接管",
+		Current:        true,
+	}}
 	for i := 1; i <= 6; i++ {
-		options = append(options, control.SelectionOption{
-			Index:       i + 1,
-			OptionID:    fmt.Sprintf("thread-%d", i),
-			Label:       fmt.Sprintf("web-%d", i),
-			ButtonLabel: fmt.Sprintf("web-%d", i),
-			GroupKey:    "/data/dl/web",
-			GroupLabel:  "web",
-			AgeText:     "2分前",
-			MetaText:    fmt.Sprintf("%d分前", i),
+		entries = append(entries, control.FeishuThreadSelectionEntry{
+			ThreadID:       fmt.Sprintf("thread-%d", i),
+			Summary:        fmt.Sprintf("web-%d", i),
+			WorkspaceKey:   "/data/dl/web",
+			WorkspaceLabel: "web",
+			AgeText:        "2分前",
 		})
 	}
-	ops := projector.ProjectEvent("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+	ops := projector.ProjectEvent("chat-1", selectionEvent(control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptUseThread,
+		Thread: &control.FeishuThreadSelectionView{
+			Mode:        control.FeishuThreadSelectionNormalGlobalAll,
+			RecentLimit: 5,
+			CurrentWorkspace: &control.FeishuThreadSelectionWorkspaceContext{
+				WorkspaceKey:   "/data/dl/droid",
+				WorkspaceLabel: "droid",
+				AgeText:        "5分前",
+			},
+			Entries: entries,
+		},
+	}, &control.FeishuUISelectionContext{
+		DTOOwner:     control.FeishuUIDTOwnerSelection,
+		PromptKind:   control.SelectionPromptUseThread,
 		Layout:       "workspace_grouped_useall",
-		Kind:         control.SelectionPromptUseThread,
 		Title:        "全部会话",
 		ContextTitle: "当前工作区",
 		ContextText:  "droid · 5分前\n同工作区内切换请直接用 /use",
 		ContextKey:   "/data/dl/droid",
-		Options:      options,
+		ViewMode:     string(control.FeishuThreadSelectionNormalGlobalAll),
 	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
@@ -1252,12 +1274,18 @@ func TestProjectRequestUserInputPromptShowsQuestionProgressAndAnswerStatus(t *te
 
 func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.ProjectEvent("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
-		Kind: control.SelectionPromptKickThread,
-		Options: []control.SelectionOption{
-			{Index: 1, OptionID: "cancel", Label: "保留当前状态，不执行强踢。", ButtonLabel: "取消"},
-			{Index: 2, OptionID: "thread-1", Label: "droid · 修复登录流程", Subtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢", ButtonLabel: "强踢并占用"},
+	ops := projector.ProjectEvent("chat-1", selectionEvent(control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptKickThread,
+		KickThread: &control.FeishuKickThreadSelectionView{
+			ThreadID:       "thread-1",
+			ThreadLabel:    "droid · 修复登录流程",
+			ThreadSubtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢",
+			CancelLabel:    "取消",
+			ConfirmLabel:   "强踢并占用",
 		},
+	}, &control.FeishuUISelectionContext{
+		DTOOwner:   control.FeishuUIDTOwnerSelection,
+		PromptKind: control.SelectionPromptKickThread,
 	}))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)

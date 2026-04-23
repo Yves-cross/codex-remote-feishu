@@ -160,26 +160,6 @@ type SelectionOption struct {
 	AllowCrossWorkspace bool
 }
 
-// FeishuDirectSelectionPrompt is a retained adapter-facing card DTO used by the
-// final Feishu renderer after selection views are projected.
-type FeishuDirectSelectionPrompt struct {
-	PromptID     string
-	Kind         SelectionPromptKind
-	Layout       string
-	ViewMode     string
-	CreatedAt    time.Time
-	ExpiresAt    time.Time
-	Title        string
-	Hint         string
-	ContextTitle string
-	ContextText  string
-	ContextKey   string
-	Page         int
-	TotalPages   int
-	ReturnPage   int
-	Options      []SelectionOption
-}
-
 type Snapshot struct {
 	SurfaceSessionID string
 	ActorUserID      string

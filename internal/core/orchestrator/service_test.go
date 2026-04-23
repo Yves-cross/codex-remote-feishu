@@ -1396,8 +1396,9 @@ func TestUseBusyIdleThreadShowsKickPromptAndConfirmTransfersClaim(t *testing.T) 
 	if len(promptEvents) != 1 {
 		t.Fatalf("expected kick confirmation prompt, got %#v", promptEvents)
 	}
-	if prompt := selectionPromptFromEvent(t, promptEvents[0]); prompt.Kind != control.SelectionPromptKickThread {
-		t.Fatalf("expected kick confirmation prompt, got %#v", promptEvents)
+	view := selectionViewFromEvent(t, promptEvents[0])
+	if view.PromptKind != control.SelectionPromptKickThread || view.KickThread == nil {
+		t.Fatalf("expected kick confirmation selection view, got %#v", promptEvents)
 	}
 
 	confirm := svc.ApplySurfaceAction(control.Action{

@@ -1130,23 +1130,27 @@ func TestShowThreadsAttachedVSCodeFiltersToCurrentInstance(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected vscode prompt scoped to current instance, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Layout != "vscode_instance_threads" || prompt.ContextTitle != "当前实例" || !strings.Contains(prompt.ContextText, "droid · 当前跟随中") {
-		t.Fatalf("expected vscode /use prompt to expose current instance summary, got %#v", prompt)
+	view := selectionViewFromEvent(t, events[0])
+	ctx := selectionContextFromEvent(t, events[0])
+	if view.Thread == nil || ctx.Layout != "vscode_instance_threads" || ctx.ContextTitle != "当前实例" || !strings.Contains(ctx.ContextText, "droid · 当前跟随中") {
+		t.Fatalf("expected vscode /use prompt to expose current instance summary, got view=%#v ctx=%#v", view, ctx)
 	}
-	if len(prompt.Options) != 2 {
-		t.Fatalf("expected only current instance threads, got %#v", prompt.Options)
+	if view.Thread.CurrentInstance == nil || view.Thread.CurrentInstance.Label != "droid" || view.Thread.CurrentInstance.Status != "当前跟随中" {
+		t.Fatalf("expected current instance summary in structured view, got %#v", view.Thread.CurrentInstance)
 	}
-	for _, option := range prompt.Options {
-		if option.OptionID == "thread-3" {
-			t.Fatalf("expected other instance thread to be filtered out, got %#v", prompt.Options)
+	if len(view.Thread.Entries) != 2 {
+		t.Fatalf("expected only current instance threads, got %#v", view.Thread.Entries)
+	}
+	for _, entry := range view.Thread.Entries {
+		if entry.ThreadID == "thread-3" {
+			t.Fatalf("expected other instance thread to be filtered out, got %#v", view.Thread.Entries)
 		}
 	}
-	if prompt.Options[0].OptionID != "thread-2" || prompt.Options[0].Label != "当前实例旧会话" || prompt.Options[0].MetaText != "VS Code 当前焦点 · 2分前" {
-		t.Fatalf("expected non-current focus thread first with focus hint, got %#v", prompt.Options[0])
+	if view.Thread.Entries[0].ThreadID != "thread-2" || view.Thread.Entries[0].Summary != "droid · 当前实例旧会话" || !view.Thread.Entries[0].VSCodeFocused || view.Thread.Entries[0].AgeText != "2分前" {
+		t.Fatalf("expected non-current focus thread first with focus hint, got %#v", view.Thread.Entries[0])
 	}
-	if prompt.Options[1].OptionID != "thread-1" || prompt.Options[1].Label != "当前实例会话" || prompt.Options[1].MetaText != "当前跟随中 · 3分前" {
-		t.Fatalf("expected current vscode thread to keep instance-scoped summary/meta, got %#v", prompt.Options[1])
+	if view.Thread.Entries[1].ThreadID != "thread-1" || view.Thread.Entries[1].Summary != "droid · 当前实例会话" || !view.Thread.Entries[1].Current || view.Thread.Entries[1].AgeText != "3分前" {
+		t.Fatalf("expected current vscode thread to keep instance-scoped summary/meta, got %#v", view.Thread.Entries[1])
 	}
 }
 
@@ -1194,24 +1198,28 @@ func TestShowAllThreadsAttachedVSCodeShowsCurrentInstanceAllSessions(t *testing.
 	if len(events) != 1 {
 		t.Fatalf("expected selection prompt, got %#v", events)
 	}
-	prompt := selectionPromptFromEvent(t, events[0])
-	if prompt.Title != "当前实例全部会话" || prompt.Layout != "vscode_instance_threads" {
-		t.Fatalf("expected instance-scoped vscode /useall prompt, got %#v", prompt)
+	view := selectionViewFromEvent(t, events[0])
+	ctx := selectionContextFromEvent(t, events[0])
+	if view.Thread == nil || view.Thread.Mode != control.FeishuThreadSelectionVSCodeAll || ctx.Title != "当前实例全部会话" || ctx.Layout != "vscode_instance_threads" {
+		t.Fatalf("expected instance-scoped vscode /useall selection view, got view=%#v ctx=%#v", view, ctx)
 	}
-	if prompt.ContextTitle != "当前实例" || prompt.ContextText != "droid · 当前跟随中" {
-		t.Fatalf("expected current instance summary, got %#v", prompt)
+	if ctx.ContextTitle != "当前实例" || ctx.ContextText != "droid · 当前跟随中" {
+		t.Fatalf("expected current instance summary, got ctx=%#v", ctx)
 	}
-	if len(prompt.Options) != 2 || prompt.Options[0].OptionID != "thread-2" || prompt.Options[1].OptionID != "thread-1" {
-		t.Fatalf("expected only current instance sessions in recency order, got %#v", prompt.Options)
+	if view.Thread.CurrentInstance == nil || view.Thread.CurrentInstance.Label != "droid" || view.Thread.CurrentInstance.Status != "当前跟随中" {
+		t.Fatalf("expected current instance summary in structured view, got %#v", view.Thread.CurrentInstance)
 	}
-	if prompt.Options[0].Label != "整理日志" || prompt.Options[0].MetaText != "VS Code 当前焦点 · 1分前" {
-		t.Fatalf("expected focused non-current thread metadata, got %#v", prompt.Options[0])
+	if len(view.Thread.Entries) != 2 || view.Thread.Entries[0].ThreadID != "thread-2" || view.Thread.Entries[1].ThreadID != "thread-1" {
+		t.Fatalf("expected only current instance sessions in recency order, got %#v", view.Thread.Entries)
 	}
-	if prompt.Options[1].Label != "当前实例会话" || prompt.Options[1].MetaText != "当前跟随中 · 3分前" {
-		t.Fatalf("expected current thread metadata, got %#v", prompt.Options[1])
+	if view.Thread.Entries[0].Summary != "droid · 整理日志" || !view.Thread.Entries[0].VSCodeFocused || view.Thread.Entries[0].AgeText != "1分前" {
+		t.Fatalf("expected focused non-current thread metadata, got %#v", view.Thread.Entries[0])
 	}
-	if prompt.Page != 1 || prompt.TotalPages != 1 || prompt.ViewMode != string(control.FeishuThreadSelectionVSCodeAll) {
-		t.Fatalf("expected paged vscode all-thread metadata, got %#v", prompt)
+	if view.Thread.Entries[1].Summary != "droid · 当前实例会话" || !view.Thread.Entries[1].Current || view.Thread.Entries[1].AgeText != "3分前" {
+		t.Fatalf("expected current thread metadata, got %#v", view.Thread.Entries[1])
+	}
+	if view.Thread.Page != 1 || view.Thread.TotalPages != 1 {
+		t.Fatalf("expected paged vscode all-thread metadata, got %#v", view.Thread)
 	}
 }
 
