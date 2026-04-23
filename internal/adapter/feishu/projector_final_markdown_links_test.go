@@ -99,7 +99,7 @@ func TestProjectFinalAssistantBlockSkipsCodeWhenNormalizingLocalLinks(t *testing
 
 func renderedMarkdownElementContents(t *testing.T, operation Operation) []string {
 	t.Helper()
-	payload := renderOperationCard(operation, operation.ordinaryCardEnvelope())
+	payload := renderOperationCard(operation, operation.effectiveCardEnvelope())
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)

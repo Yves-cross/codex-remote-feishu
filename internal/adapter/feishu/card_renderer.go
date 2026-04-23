@@ -5,7 +5,7 @@ import "strings"
 type cardEnvelopeVersion string
 
 const (
-	cardEnvelopeLegacy cardEnvelopeVersion = "legacy"
+	cardEnvelopeCompat cardEnvelopeVersion = "compat"
 	cardEnvelopeV2     cardEnvelopeVersion = "v2"
 )
 
@@ -24,7 +24,7 @@ type cardMarkdownComponent struct {
 }
 
 type cardRawComponent struct {
-	legacy map[string]any
+	compat map[string]any
 	v2     map[string]any
 }
 
@@ -54,13 +54,9 @@ func rawCardDocument(title, body, themeKey string, extraElements []map[string]an
 	return newCardDocument(title, themeKey, components...)
 }
 
-func legacyCardDocument(title, body, themeKey string, extraElements []map[string]any) *cardDocument {
-	return rawCardDocument(title, body, themeKey, extraElements)
-}
-
 func newRawCardComponent(data map[string]any) cardComponent {
 	return cardRawComponent{
-		legacy: cloneCardMap(data),
+		compat: cloneCardMap(data),
 		v2:     cloneCardMap(data),
 	}
 }
@@ -79,7 +75,7 @@ func (c cardRawComponent) renderCardComponent(version cardEnvelopeVersion) map[s
 	if version == cardEnvelopeV2 && len(c.v2) != 0 {
 		return cloneCardMap(c.v2)
 	}
-	return cloneCardMap(c.legacy)
+	return cloneCardMap(c.compat)
 }
 
 func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[string]any {
@@ -93,9 +89,9 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 	return renderCardDocument(doc, version, operation.CardUpdateMulti)
 }
 
-func (operation Operation) ordinaryCardEnvelope() cardEnvelopeVersion {
-	if operation.cardEnvelope == cardEnvelopeLegacy {
-		return cardEnvelopeLegacy
+func (operation Operation) effectiveCardEnvelope() cardEnvelopeVersion {
+	if operation.cardEnvelope == cardEnvelopeCompat {
+		return cardEnvelopeCompat
 	}
 	return cardEnvelopeV2
 }

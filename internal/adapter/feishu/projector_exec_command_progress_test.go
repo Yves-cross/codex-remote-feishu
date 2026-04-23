@@ -50,7 +50,7 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	if strings.Contains(op.CardBody, "bash -lc") {
 		t.Fatalf("expected command list body to strip shell wrapper, got %#v", op)
 	}
-	payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+	payload := renderOperationCard(op, op.effectiveCardEnvelope())
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
@@ -472,7 +472,7 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparatePlainTextElement(t *
 	if len(ops) != 1 {
 		t.Fatalf("expected one operation, got %#v", ops)
 	}
-	payload := renderOperationCard(ops[0], ops[0].ordinaryCardEnvelope())
+	payload := renderOperationCard(ops[0], ops[0].effectiveCardEnvelope())
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	body, _ := payload["body"].(map[string]any)
 	elements, ok := cardPayloadElementsSlice(body["elements"])
@@ -529,7 +529,7 @@ func TestProjectExecCommandProgressKeepsDynamicTextOutOfMarkdownElements(t *test
 	) {
 		t.Fatalf("expected shared progress body to preserve raw dynamic text, got %#v", ops[0])
 	}
-	payload := renderOperationCard(ops[0], ops[0].ordinaryCardEnvelope())
+	payload := renderOperationCard(ops[0], ops[0].effectiveCardEnvelope())
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	rendered := renderedV2BodyElements(t, ops[0])
 	if !containsRenderedTag(rendered, "markdown") {
@@ -580,7 +580,7 @@ func TestProjectExecCommandProgressDropsOldLinesWhenOversized(t *testing.T) {
 	if op.ProgressCardStartSeq <= 1 {
 		t.Fatalf("expected oversized shared progress to advance visible window start, got %#v", op)
 	}
-	payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+	payload := renderOperationCard(op, op.effectiveCardEnvelope())
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 	size, err := jsonSize(payload)
 	if err != nil {

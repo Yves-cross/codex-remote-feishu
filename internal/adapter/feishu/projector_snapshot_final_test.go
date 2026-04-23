@@ -337,7 +337,7 @@ func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testi
 				t.Fatalf("expected overflow chunk %d to stay body-only, got %#v", i, op.CardElements)
 			}
 		}
-		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		payload := renderOperationCard(op, op.effectiveCardEnvelope())
 		assertRenderedCardPayloadBasicInvariants(t, payload)
 		size, err := jsonSize(payload)
 		if err != nil {
@@ -377,7 +377,7 @@ func TestProjectFinalAssistantCodeBlockSplitsOversizedFenceSafely(t *testing.T) 
 		if !strings.Contains(op.CardBody, "```text\n") || !strings.Contains(op.CardBody, "\n```") {
 			t.Fatalf("expected split code chunk %d to remain fenced, got %#v", i, op.CardBody)
 		}
-		payload := renderOperationCard(op, op.ordinaryCardEnvelope())
+		payload := renderOperationCard(op, op.effectiveCardEnvelope())
 		assertRenderedCardPayloadBasicInvariants(t, payload)
 		size, err := jsonSize(payload)
 		if err != nil {

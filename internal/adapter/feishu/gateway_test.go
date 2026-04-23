@@ -196,7 +196,7 @@ func TestApplySendCardFallsBackToCreateWithV2EnvelopeByDefault(t *testing.T) {
 	}
 }
 
-func TestApplySendCardCanStillForceLegacyEnvelope(t *testing.T) {
+func TestApplySendCardCanStillForceCompatEnvelope(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	var createContent string
 	gateway.createMessageFn = func(_ context.Context, receiveIDType, receiveID, msgType, content string) (*larkim.CreateMessageResp, error) {
@@ -228,8 +228,8 @@ func TestApplySendCardCanStillForceLegacyEnvelope(t *testing.T) {
 		CardTitle:        "系统提示",
 		CardBody:         "已完成切换。",
 		CardThemeKey:     cardThemeInfo,
-		cardEnvelope:     cardEnvelopeLegacy,
-		card:             legacyCardDocument("系统提示", "已完成切换。", cardThemeInfo, nil),
+		cardEnvelope:     cardEnvelopeCompat,
+		card:             rawCardDocument("系统提示", "已完成切换。", cardThemeInfo, nil),
 	}})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -239,11 +239,11 @@ func TestApplySendCardCanStillForceLegacyEnvelope(t *testing.T) {
 		t.Fatalf("create content is not valid json: %v", err)
 	}
 	if _, ok := payload["schema"]; ok {
-		t.Fatalf("expected explicit legacy override to keep legacy envelope, got %#v", payload)
+		t.Fatalf("expected explicit compat override to keep non-v2 envelope, got %#v", payload)
 	}
 	elements, _ := payload["elements"].([]interface{})
 	if len(elements) != 1 {
-		t.Fatalf("expected one markdown element in legacy body, got %#v", payload)
+		t.Fatalf("expected one markdown element in compat body, got %#v", payload)
 	}
 }
 

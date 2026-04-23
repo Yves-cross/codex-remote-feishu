@@ -209,7 +209,7 @@ func (g *LiveGateway) deliverAsyncInboundFailure(ctx context.Context, surfaceID,
 		CardBody:         body,
 		CardThemeKey:     cardThemeError,
 		cardEnvelope:     cardEnvelopeV2,
-		card:             legacyCardDocument("消息未处理", body, cardThemeError, nil),
+		card:             rawCardDocument("消息未处理", body, cardThemeError, nil),
 	}
 	applyCtx, cancel := newFeishuTimeoutContext(ctx, asyncInboundFailureNoticeTimeout)
 	defer cancel()

@@ -405,7 +405,7 @@ func renderedV2BodyElements(t *testing.T, operation Operation) []map[string]any 
 	if operation.cardEnvelope != cardEnvelopeV2 || operation.card == nil {
 		t.Fatalf("expected structured V2 operation, got %#v", operation)
 	}
-	payload := renderOperationCard(operation, operation.ordinaryCardEnvelope())
+	payload := renderOperationCard(operation, operation.effectiveCardEnvelope())
 	if payload["schema"] != "2.0" {
 		t.Fatalf("expected V2 schema, got %#v", payload)
 	}

@@ -184,7 +184,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		}
 		return nil
 	case OperationSendCard:
-		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(*operation, operation.ordinaryCardEnvelope()), maxFeishuCardBytes))
+		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(*operation, operation.effectiveCardEnvelope()), maxFeishuCardBytes))
 		if err != nil {
 			return err
 		}
@@ -237,7 +237,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			messageID,
 			strings.TrimSpace(operation.CardTitle),
 		)
-		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(*operation, operation.ordinaryCardEnvelope()), maxFeishuCardBytes))
+		card, err := json.Marshal(trimCardPayloadToFit(renderOperationCard(*operation, operation.effectiveCardEnvelope()), maxFeishuCardBytes))
 		if err != nil {
 			return err
 		}

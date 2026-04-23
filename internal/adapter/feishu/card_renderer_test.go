@@ -6,7 +6,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
-func TestRenderOperationCardLegacyEnvelopeFromOperationFields(t *testing.T) {
+func TestRenderOperationCardCompatEnvelopeFromOperationFields(t *testing.T) {
 	payload := renderOperationCard(Operation{
 		Kind:         OperationSendCard,
 		CardTitle:    "当前状态",
@@ -16,16 +16,16 @@ func TestRenderOperationCardLegacyEnvelopeFromOperationFields(t *testing.T) {
 			"tag":     "markdown",
 			"content": "**附加内容**",
 		}},
-	}, cardEnvelopeLegacy)
+	}, cardEnvelopeCompat)
 	assertRenderedCardPayloadBasicInvariants(t, payload)
 
 	if payload["schema"] != nil {
-		t.Fatalf("expected legacy envelope without schema, got %#v", payload)
+		t.Fatalf("expected compat envelope without schema, got %#v", payload)
 	}
 	header, _ := payload["header"].(map[string]any)
 	title, _ := header["title"].(map[string]any)
 	if title["content"] != "当前状态" {
-		t.Fatalf("unexpected legacy header: %#v", payload)
+		t.Fatalf("unexpected compat header: %#v", payload)
 	}
 	elements, _ := payload["elements"].([]map[string]any)
 	if len(elements) != 2 {
