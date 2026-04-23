@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	upgraderuntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/upgraderuntime"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
@@ -177,7 +178,7 @@ func TestUpgradeOwnerFlowBlocksOrdinaryTextInput(t *testing.T) {
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
 
 	app.mu.Lock()
-	app.newUpgradeOwnerFlowLocked("surface-1", "user-1", "om-card-1", upgradeOwnerFlowStageRunning)
+	app.newUpgradeOwnerFlowLocked("surface-1", "user-1", "om-card-1", upgraderuntime.OwnerFlowStageRunning)
 	app.mu.Unlock()
 
 	app.HandleAction(context.Background(), control.Action{
@@ -206,7 +207,7 @@ func TestUpgradeOwnerFlowBlocksOrdinaryTextInput(t *testing.T) {
 }
 
 func TestUpgradeOwnerConfirmEventUsesBodyAndNoticeSections(t *testing.T) {
-	flow := &upgradeOwnerCardFlowRecord{
+	flow := &upgraderuntime.OwnerCardFlowRecord{
 		FlowID:         "upgrade-owner-1",
 		CurrentVersion: "v1.0.0",
 		TargetVersion:  "v1.1.0",
@@ -230,7 +231,7 @@ func TestUpgradeOwnerConfirmEventUsesBodyAndNoticeSections(t *testing.T) {
 }
 
 func TestUpgradeOwnerTerminalEventSealsPageContract(t *testing.T) {
-	flow := &upgradeOwnerCardFlowRecord{
+	flow := &upgraderuntime.OwnerCardFlowRecord{
 		FlowID:         "upgrade-owner-2",
 		CurrentVersion: "v1.0.0",
 		TargetVersion:  "v1.1.0",

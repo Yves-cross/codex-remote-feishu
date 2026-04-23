@@ -14,6 +14,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	previewpkg "github.com/kxn/codex-remote-feishu/internal/adapter/feishu/preview"
+	toolruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/toolruntime"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/codexstate"
 	"github.com/kxn/codex-remote-feishu/internal/config"
@@ -97,7 +98,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 		Paths:      paths,
 		MinIdle:    1,
 	})
-	app.SetToolRuntime(ToolRuntimeConfig{
+	app.SetToolRuntime(toolruntime.Config{
 		ListenAddr: net.JoinHostPort(loadedConfig.Config.Tool.ListenHost, strconv.Itoa(loadedConfig.Config.Tool.ListenPort)),
 		StateFile:  paths.ToolServiceFile,
 	})

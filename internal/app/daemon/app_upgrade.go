@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	upgraderuntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/upgraderuntime"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
@@ -405,7 +406,7 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 		pending.RequestedAt = &promptedAt
 	}
 	if pending.Source == install.UpgradeSourceRelease {
-		flow := a.newUpgradeOwnerFlowLocked(surface.SurfaceSessionID, surface.ActorUserID, "", upgradeOwnerFlowStageConfirm)
+		flow := a.newUpgradeOwnerFlowLocked(surface.SurfaceSessionID, surface.ActorUserID, "", upgraderuntime.OwnerFlowStageConfirm)
 		flow.Source = pending.Source
 		flow.Track = stateValue.CurrentTrack
 		flow.CurrentVersion = strings.TrimSpace(stateValue.CurrentVersion)

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -165,14 +166,14 @@ func TestAdminInstancesSnapshotFiltersManagedHeadlessButKeepsVSCode(t *testing.T
 		Threads:       map[string]*state.ThreadRecord{},
 	})
 	now := time.Now().UTC()
-	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &managedHeadlessProcess{
+	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &headlessruntime.Process{
 		InstanceID:    "inst-headless-1",
 		PID:           4321,
 		RequestedAt:   now,
 		StartedAt:     now,
 		WorkspaceRoot: headlessRoot,
 		DisplayName:   "headless",
-		Status:        managedHeadlessStatusIdle,
+		Status:        headlessruntime.StatusIdle,
 	}
 
 	app.service.ApplySurfaceAction(control.Action{

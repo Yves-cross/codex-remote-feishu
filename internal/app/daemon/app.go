@@ -15,6 +15,9 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/app/adminauth"
 	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
+	toolruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/toolruntime"
+	upgraderuntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/upgraderuntime"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
@@ -86,7 +89,7 @@ type App struct {
 	relayServer *http.Server
 	apiServer   *http.Server
 	pprofServer *http.Server
-	toolRuntime toolRuntimeState
+	toolRuntime toolruntime.State
 
 	daemonStartedAt   time.Time
 	daemonLifecycleID string
@@ -108,7 +111,7 @@ type App struct {
 	vscodeDetect                func() (vscodeDetectResponse, error)
 	detectPlatformDefaults      func() (install.PlatformDefaults, error)
 	vscodeCompatibility         vscodeCompatibilityCacheState
-	managedHeadlessRuntime      managedHeadlessRuntimeState
+	managedHeadlessRuntime      headlessruntime.State
 	pendingThreadHistoryReads   map[string]pendingThreadHistoryRead
 	gitWorkspaceImports         map[string]*gitWorkspaceImportRuntime
 	startHeadless               func(relayruntime.HeadlessLaunchOptions) (int, error)
@@ -131,7 +134,7 @@ type App struct {
 	externalAccessShutdownWait chan struct{}
 	webPreviewGrants           map[string]*previewGrantRecord
 	surfaceResumeRuntime       surfaceResumeRuntimeState
-	upgradeRuntime             upgradeRuntimeState
+	upgradeRuntime             upgraderuntime.State
 
 	relayListener          net.Listener
 	apiListener            net.Listener
@@ -171,9 +174,9 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		daemonLifecycleID:           daemonLifecycleID(serverIdentity, daemonStartedAt),
 		pendingGlobalRuntimeNotices: map[string][]eventcontract.Event{},
 		recentGlobalRuntimeNotices:  map[string]map[string]time.Time{},
-		managedHeadlessRuntime:      newManagedHeadlessRuntimeState(),
+		managedHeadlessRuntime:      headlessruntime.NewState(),
 		surfaceResumeRuntime:        newSurfaceResumeRuntimeState(),
-		upgradeRuntime:              newUpgradeRuntimeState(),
+		upgradeRuntime:              upgraderuntime.NewState(),
 		cronRuntime:                 newCronRuntimeState(),
 		feishuRuntime:               newFeishuRuntimeState(),
 		pendingThreadHistoryReads:   map[string]pendingThreadHistoryRead{},
@@ -272,6 +275,10 @@ func (a *App) SetHeadlessRuntime(cfg HeadlessRuntimeConfig) {
 	a.syncSurfaceResumeStateLocked(nil)
 }
 
+func (a *App) SetToolRuntime(cfg toolruntime.Config) {
+	a.toolRuntime.Configure(cfg, a.newToolRuntimeHandler())
+}
+
 func (a *App) SetFinalBlockPreviewer(previewer previewpkg.FinalBlockPreviewService) {
 	a.finalBlockPreviewer = previewer
 	if configurable, ok := previewer.(previewpkg.WebPreviewConfigurable); ok {
@@ -324,7 +331,7 @@ func (a *App) Bind() error {
 		a.apiListener = apiListener
 	}
 
-	if err := a.bindToolListenerLocked(); err != nil {
+	if err := a.toolRuntime.BindLocked(); err != nil {
 		if createdRelay {
 			_ = a.relayListener.Close()
 			a.relayListener = nil

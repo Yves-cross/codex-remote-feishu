@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
@@ -83,8 +84,8 @@ func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
 		}
 		if inst.Online {
 			summary.Status = "online"
-			if isManagedHeadlessInstance(inst) {
-				summary.Status = managedHeadlessStatusBusy
+			if headlessruntime.IsManagedInstance(inst) {
+				summary.Status = headlessruntime.StatusBusy
 			}
 		}
 		if managed := a.managedHeadlessRuntime.Processes[inst.InstanceID]; managed != nil {
@@ -135,14 +136,14 @@ func (a *App) createManagedHeadlessInstance(workspaceRoot, displayName string) (
 
 	requestedAt := time.Now().UTC()
 	a.mu.Lock()
-	a.managedHeadlessRuntime.Processes[instanceID] = &managedHeadlessProcess{
+	a.managedHeadlessRuntime.Processes[instanceID] = &headlessruntime.Process{
 		InstanceID:    instanceID,
 		PID:           pid,
 		RequestedAt:   requestedAt,
 		StartedAt:     requestedAt,
 		WorkspaceRoot: normalizedRoot,
 		DisplayName:   displayName,
-		Status:        managedHeadlessStatusStarting,
+		Status:        headlessruntime.StatusStarting,
 	}
 	a.mu.Unlock()
 	return adminInstanceSummary{
@@ -152,7 +153,7 @@ func (a *App) createManagedHeadlessInstance(workspaceRoot, displayName string) (
 		Source:        "headless",
 		Managed:       true,
 		PID:           pid,
-		Status:        managedHeadlessStatusStarting,
+		Status:        headlessruntime.StatusStarting,
 		RequestedAt:   &requestedAt,
 		StartedAt:     &requestedAt,
 	}, nil
@@ -206,7 +207,7 @@ func controlToHeadlessLaunch(cfg HeadlessRuntimeConfig, env []string, workDir, i
 	}
 }
 
-func overlayManagedSummary(summary *adminInstanceSummary, managed *managedHeadlessProcess) {
+func overlayManagedSummary(summary *adminInstanceSummary, managed *headlessruntime.Process) {
 	if summary == nil || managed == nil {
 		return
 	}
@@ -250,10 +251,10 @@ func overlayManagedSummary(summary *adminInstanceSummary, managed *managedHeadle
 	if strings.TrimSpace(managed.LastError) != "" {
 		summary.LastError = managed.LastError
 	}
-	if summary.Status == managedHeadlessStatusBusy || summary.Status == managedHeadlessStatusIdle {
+	if summary.Status == headlessruntime.StatusBusy || summary.Status == headlessruntime.StatusIdle {
 		summary.Online = true
 	}
-	if summary.Status == managedHeadlessStatusOffline || summary.Status == managedHeadlessStatusStarting || summary.Status == managedHeadlessStatusStopping || summary.Status == "stopped" || summary.Status == "deleted" {
+	if summary.Status == headlessruntime.StatusOffline || summary.Status == headlessruntime.StatusStarting || summary.Status == headlessruntime.StatusStopping || summary.Status == "stopped" || summary.Status == "deleted" {
 		summary.Online = false
 	}
 }
@@ -274,8 +275,8 @@ func (a *App) adminManagedInstanceSummaryLocked(instanceID string) (adminInstanc
 		}
 		if inst.Online {
 			summary.Status = "online"
-			if isManagedHeadlessInstance(inst) {
-				summary.Status = managedHeadlessStatusBusy
+			if headlessruntime.IsManagedInstance(inst) {
+				summary.Status = headlessruntime.StatusBusy
 			}
 		}
 		if managed := a.managedHeadlessRuntime.Processes[instanceID]; managed != nil {
@@ -291,7 +292,7 @@ func (a *App) adminManagedInstanceSummaryLocked(instanceID string) (adminInstanc
 			Source:        "headless",
 			Managed:       true,
 			PID:           managed.PID,
-			Status:        firstNonEmpty(strings.TrimSpace(managed.Status), managedHeadlessStatusStarting),
+			Status:        firstNonEmpty(strings.TrimSpace(managed.Status), headlessruntime.StatusStarting),
 		}
 		overlayManagedSummary(&summary, managed)
 		return summary, true
@@ -311,7 +312,7 @@ func (a *App) managedInstancePIDLocked(instanceID string) int {
 
 func (a *App) noteManagedHeadlessDisconnectedLocked(instanceID string) {
 	if managed := a.managedHeadlessRuntime.Processes[instanceID]; managed != nil {
-		managed.Status = managedHeadlessStatusOffline
+		managed.Status = headlessruntime.StatusOffline
 		managed.RefreshInFlight = false
 		managed.RefreshCommandID = ""
 	}
@@ -319,17 +320,17 @@ func (a *App) noteManagedHeadlessDisconnectedLocked(instanceID string) {
 
 func adminInstanceStatusRank(status string) int {
 	switch strings.TrimSpace(status) {
-	case managedHeadlessStatusBusy:
+	case headlessruntime.StatusBusy:
 		return 0
 	case "online":
 		return 1
-	case managedHeadlessStatusIdle:
+	case headlessruntime.StatusIdle:
 		return 2
-	case managedHeadlessStatusStopping:
+	case headlessruntime.StatusStopping:
 		return 3
-	case managedHeadlessStatusStarting:
+	case headlessruntime.StatusStarting:
 		return 4
-	case managedHeadlessStatusOffline:
+	case headlessruntime.StatusOffline:
 		return 5
 	default:
 		return 6

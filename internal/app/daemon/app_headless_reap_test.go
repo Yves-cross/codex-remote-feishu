@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -24,12 +25,12 @@ func TestDaemonIdleHeadlessCleanupStopsOutsideAppLockAndKeepsStoppingState(t *te
 		Online:        true,
 		Threads:       map[string]*state.ThreadRecord{},
 	})
-	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &managedHeadlessProcess{
+	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &headlessruntime.Process{
 		InstanceID:       "inst-headless-2",
 		PID:              2468,
 		WorkspaceRoot:    "/data/dl/droid",
 		DisplayName:      "headless",
-		Status:           managedHeadlessStatusIdle,
+		Status:           headlessruntime.StatusIdle,
 		IdleSince:        base,
 		RefreshInFlight:  true,
 		RefreshCommandID: "cmd-refresh-1",
@@ -60,21 +61,21 @@ func TestDaemonIdleHeadlessCleanupStopsOutsideAppLockAndKeepsStoppingState(t *te
 	if managed == nil {
 		t.Fatalf("expected managed headless to remain tracked while stop is in flight")
 	}
-	if managed.Status != managedHeadlessStatusStopping {
-		t.Fatalf("managed status = %q, want %q", managed.Status, managedHeadlessStatusStopping)
+	if managed.Status != headlessruntime.StatusStopping {
+		t.Fatalf("managed status = %q, want %q", managed.Status, headlessruntime.StatusStopping)
 	}
 	if managed.RefreshInFlight || managed.RefreshCommandID != "" {
 		t.Fatalf("expected refresh tracking to be cleared while stopping, got %#v", managed)
 	}
 	app.syncManagedHeadlessLocked(base.Add(2 * time.Minute))
-	if managed := app.managedHeadlessRuntime.Processes["inst-headless-2"]; managed == nil || managed.Status != managedHeadlessStatusStopping {
+	if managed := app.managedHeadlessRuntime.Processes["inst-headless-2"]; managed == nil || managed.Status != headlessruntime.StatusStopping {
 		t.Fatalf("sync must preserve stopping state, got %#v", managed)
 	}
 	summary, ok := app.adminManagedInstanceSummaryLocked("inst-headless-2")
 	if !ok {
 		t.Fatalf("expected admin summary while stop is in flight")
 	}
-	if summary.Status != managedHeadlessStatusStopping || summary.Online {
+	if summary.Status != headlessruntime.StatusStopping || summary.Online {
 		t.Fatalf("unexpected in-flight admin summary: %#v", summary)
 	}
 	if app.service.Instance("inst-headless-2") == nil {
@@ -108,12 +109,12 @@ func TestDaemonIdleHeadlessCleanupRetriesImmediatelyAfterStopFailure(t *testing.
 		Online:        true,
 		Threads:       map[string]*state.ThreadRecord{},
 	})
-	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &managedHeadlessProcess{
+	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &headlessruntime.Process{
 		InstanceID:    "inst-headless-2",
 		PID:           2468,
 		WorkspaceRoot: "/data/dl/droid",
 		DisplayName:   "headless",
-		Status:        managedHeadlessStatusIdle,
+		Status:        headlessruntime.StatusIdle,
 		IdleSince:     base,
 	}
 
@@ -135,7 +136,7 @@ func TestDaemonIdleHeadlessCleanupRetriesImmediatelyAfterStopFailure(t *testing.
 	if attempts != 1 {
 		t.Fatalf("attempts after first reap = %d, want 1", attempts)
 	}
-	if managed == nil || managed.Status != managedHeadlessStatusIdle {
+	if managed == nil || managed.Status != headlessruntime.StatusIdle {
 		t.Fatalf("expected managed headless to return to idle after stop failure, got %#v", managed)
 	}
 	if managed.LastError == "" {

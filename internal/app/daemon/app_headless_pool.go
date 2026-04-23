@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 )
 
@@ -38,23 +39,23 @@ func (a *App) syncManagedHeadlessLocked(now time.Time) {
 			}
 		}
 		switch {
-		case strings.TrimSpace(managed.Status) == managedHeadlessStatusStopping:
+		case strings.TrimSpace(managed.Status) == headlessruntime.StatusStopping:
 			managed.RefreshInFlight = false
 			managed.RefreshCommandID = ""
-		case isManagedHeadlessInstance(inst) && inst.Online:
+		case headlessruntime.IsManagedInstance(inst) && inst.Online:
 			if attached[instanceID] || strings.TrimSpace(inst.ActiveTurnID) != "" {
-				managed.Status = managedHeadlessStatusBusy
+				managed.Status = headlessruntime.StatusBusy
 				managed.IdleSince = time.Time{}
 			} else {
 				if managed.IdleSince.IsZero() {
 					managed.IdleSince = now
 				}
-				managed.Status = managedHeadlessStatusIdle
+				managed.Status = headlessruntime.StatusIdle
 			}
-		case strings.TrimSpace(managed.Status) == managedHeadlessStatusStarting && (managed.StartedAt.IsZero() || now.Sub(managed.StartedAt) < a.headlessRuntime.StartTTL):
+		case strings.TrimSpace(managed.Status) == headlessruntime.StatusStarting && (managed.StartedAt.IsZero() || now.Sub(managed.StartedAt) < a.headlessRuntime.StartTTL):
 			managed.IdleSince = time.Time{}
 		default:
-			managed.Status = managedHeadlessStatusOffline
+			managed.Status = headlessruntime.StatusOffline
 			managed.IdleSince = time.Time{}
 			if managed.RefreshInFlight {
 				managed.RefreshInFlight = false
@@ -83,10 +84,10 @@ func (a *App) maybeRefreshIdleManagedHeadlessLocked(now time.Time) {
 			}
 			continue
 		}
-		if strings.TrimSpace(managed.Status) != managedHeadlessStatusIdle {
+		if strings.TrimSpace(managed.Status) != headlessruntime.StatusIdle {
 			continue
 		}
-		lastAttempt := managedHeadlessLastRefreshActivity(managed)
+		lastAttempt := headlessruntime.LastRefreshActivity(managed)
 		if !lastAttempt.IsZero() && now.Sub(lastAttempt) < a.headlessRuntime.IdleRefreshInterval {
 			continue
 		}
@@ -173,12 +174,12 @@ func (a *App) ensureMinIdleManagedHeadlessLocked(now time.Time) {
 	}
 }
 
-func (a *App) reserveMinIdleManagedHeadlessLocked(now time.Time) []managedHeadlessPrewarmLaunch {
+func (a *App) reserveMinIdleManagedHeadlessLocked(now time.Time) []headlessruntime.PrewarmLaunch {
 	missing := a.headlessRuntime.MinIdle - a.countWarmManagedHeadlessLocked(now)
 	if missing <= 0 {
 		return nil
 	}
-	launches := make([]managedHeadlessPrewarmLaunch, 0, missing)
+	launches := make([]headlessruntime.PrewarmLaunch, 0, missing)
 	for i := 0; i < missing; i++ {
 		launches = append(launches, a.reservePoolManagedHeadlessLaunchLocked(now, i+1))
 	}
@@ -192,9 +193,9 @@ func (a *App) countWarmManagedHeadlessLocked(now time.Time) int {
 			continue
 		}
 		switch strings.TrimSpace(managed.Status) {
-		case managedHeadlessStatusIdle:
+		case headlessruntime.StatusIdle:
 			count++
-		case managedHeadlessStatusStarting:
+		case headlessruntime.StatusStarting:
 			if managed.StartedAt.IsZero() || now.Sub(managed.StartedAt) < a.headlessRuntime.StartTTL {
 				count++
 			}
@@ -203,7 +204,7 @@ func (a *App) countWarmManagedHeadlessLocked(now time.Time) int {
 	return count
 }
 
-func (a *App) reservePoolManagedHeadlessLaunchLocked(now time.Time, seq int) managedHeadlessPrewarmLaunch {
+func (a *App) reservePoolManagedHeadlessLaunchLocked(now time.Time, seq int) headlessruntime.PrewarmLaunch {
 	cfg := a.headlessRuntime
 	workDir := strings.TrimSpace(cfg.Paths.StateDir)
 	if workDir == "" {
@@ -218,22 +219,22 @@ func (a *App) reservePoolManagedHeadlessLaunchLocked(now time.Time, seq int) man
 		"CODEX_REMOTE_LIFETIME=daemon-owned",
 		"CODEX_REMOTE_INSTANCE_DISPLAY_NAME=headless",
 	)
-	a.managedHeadlessRuntime.Processes[instanceID] = &managedHeadlessProcess{
+	a.managedHeadlessRuntime.Processes[instanceID] = &headlessruntime.Process{
 		InstanceID:    instanceID,
 		RequestedAt:   now,
 		StartedAt:     now,
 		ThreadCWD:     workDir,
 		WorkspaceRoot: workDir,
 		DisplayName:   "headless",
-		Status:        managedHeadlessStatusStarting,
+		Status:        headlessruntime.StatusStarting,
 	}
-	return managedHeadlessPrewarmLaunch{
+	return headlessruntime.PrewarmLaunch{
 		InstanceID: instanceID,
 		Options:    controlToHeadlessLaunch(cfg, env, workDir, instanceID),
 	}
 }
 
-func (a *App) startReservedPoolManagedHeadlessLocked(launch managedHeadlessPrewarmLaunch) error {
+func (a *App) startReservedPoolManagedHeadlessLocked(launch headlessruntime.PrewarmLaunch) error {
 	a.mu.Unlock()
 	pid, err := a.startHeadless(launch.Options)
 	a.mu.Lock()

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
@@ -116,7 +117,7 @@ func (a *App) startManagedHeadless(command control.DaemonCommand) []eventcontrac
 		return a.service.HandleHeadlessLaunchFailed(command.SurfaceSessionID, command.InstanceID, err)
 	}
 
-	a.managedHeadlessRuntime.Processes[command.InstanceID] = &managedHeadlessProcess{
+	a.managedHeadlessRuntime.Processes[command.InstanceID] = &headlessruntime.Process{
 		InstanceID:    command.InstanceID,
 		PID:           pid,
 		RequestedAt:   now,
@@ -125,7 +126,7 @@ func (a *App) startManagedHeadless(command control.DaemonCommand) []eventcontrac
 		ThreadCWD:     workDir,
 		WorkspaceRoot: workDir,
 		DisplayName:   "headless",
-		Status:        managedHeadlessStatusStarting,
+		Status:        headlessruntime.StatusStarting,
 	}
 	log.Printf(
 		"headless start requested: surface=%s instance=%s pid=%d thread=%s cwd=%s",
@@ -198,7 +199,7 @@ func (a *App) observeManagedHeadless(inst *state.InstanceRecord) {
 	now := time.Now().UTC()
 	managed := a.managedHeadlessRuntime.Processes[inst.InstanceID]
 	if managed == nil {
-		managed = &managedHeadlessProcess{
+		managed = &headlessruntime.Process{
 			InstanceID:  inst.InstanceID,
 			RequestedAt: now,
 			StartedAt:   now,
@@ -280,7 +281,7 @@ func (a *App) collectManagedHeadlessShutdownTargetsLocked() []managedHeadlessShu
 		}
 		pid := managed.PID
 		if pid == 0 {
-			if inst := a.service.Instance(instanceID); isManagedHeadlessInstance(inst) {
+			if inst := a.service.Instance(instanceID); headlessruntime.IsManagedInstance(inst) {
 				pid = inst.PID
 			}
 		}
@@ -288,7 +289,7 @@ func (a *App) collectManagedHeadlessShutdownTargetsLocked() []managedHeadlessShu
 	}
 
 	for _, inst := range a.service.Instances() {
-		if !isManagedHeadlessInstance(inst) {
+		if !headlessruntime.IsManagedInstance(inst) {
 			continue
 		}
 		appendTarget(inst.InstanceID, inst.PID)

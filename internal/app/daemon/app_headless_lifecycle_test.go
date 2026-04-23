@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -110,7 +111,7 @@ func TestDaemonKillInstanceStopsManagedHeadlessProcess(t *testing.T) {
 			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid"},
 		},
 	})
-	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &managedHeadlessProcess{InstanceID: "inst-headless-1", PID: 4321, StartedAt: time.Now()}
+	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &headlessruntime.Process{InstanceID: "inst-headless-1", PID: 4321, StartedAt: time.Now()}
 	app.service.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-headless-1"})
 
 	app.HandleAction(context.Background(), control.Action{
@@ -226,7 +227,7 @@ func TestDaemonIdleManagedHeadlessRefreshesOnInterval(t *testing.T) {
 	if len(commands) != 2 || commands[1].Kind != agentproto.CommandThreadsRefresh {
 		t.Fatalf("expected scheduled idle refresh after interval, got %#v", commands)
 	}
-	if managed := app.managedHeadlessRuntime.Processes["inst-headless-2"]; managed == nil || managed.Status != managedHeadlessStatusIdle || !managed.RefreshInFlight {
+	if managed := app.managedHeadlessRuntime.Processes["inst-headless-2"]; managed == nil || managed.Status != headlessruntime.StatusIdle || !managed.RefreshInFlight {
 		t.Fatalf("expected idle managed headless to track in-flight refresh, got %#v", managed)
 	}
 }
@@ -253,12 +254,12 @@ func TestDaemonShutdownStopsManagedHeadlessAndRemovesRuntimeState(t *testing.T) 
 		Online:        true,
 		Threads:       map[string]*state.ThreadRecord{},
 	})
-	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &managedHeadlessProcess{
+	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &headlessruntime.Process{
 		InstanceID:    "inst-headless-1",
 		PID:           4321,
 		WorkspaceRoot: "/data/dl/droid",
 		DisplayName:   "headless",
-		Status:        managedHeadlessStatusBusy,
+		Status:        headlessruntime.StatusBusy,
 	}
 
 	if err := app.Shutdown(context.Background()); err != nil {
@@ -292,10 +293,10 @@ func TestDaemonShutdownRequestsConnectedWrapperExitAndSkipsSecondKill(t *testing
 		Online:        true,
 		Threads:       map[string]*state.ThreadRecord{},
 	})
-	app.managedHeadlessRuntime.Processes["inst-headless-live"] = &managedHeadlessProcess{
+	app.managedHeadlessRuntime.Processes["inst-headless-live"] = &headlessruntime.Process{
 		InstanceID: "inst-headless-live",
 		PID:        3456,
-		Status:     managedHeadlessStatusBusy,
+		Status:     headlessruntime.StatusBusy,
 	}
 	app.rememberRelayConnectionWithPID("inst-headless-live", 7, 3456)
 
@@ -446,8 +447,8 @@ func TestDaemonShutdownContinuesManagedHeadlessCleanupAfterStopError(t *testing.
 	} {
 		app.service.UpsertInstance(inst)
 	}
-	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &managedHeadlessProcess{InstanceID: "inst-headless-1", PID: 1111}
-	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &managedHeadlessProcess{InstanceID: "inst-headless-2", PID: 2222}
+	app.managedHeadlessRuntime.Processes["inst-headless-1"] = &headlessruntime.Process{InstanceID: "inst-headless-1", PID: 1111}
+	app.managedHeadlessRuntime.Processes["inst-headless-2"] = &headlessruntime.Process{InstanceID: "inst-headless-2", PID: 2222}
 
 	err := app.Shutdown(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "inst-headless-1") {
@@ -500,7 +501,7 @@ func TestDaemonPrewarmsManagedHeadlessToMinIdle(t *testing.T) {
 		t.Fatalf("expected one managed headless record, got %#v", app.managedHeadlessRuntime.Processes)
 	}
 	for _, managed := range app.managedHeadlessRuntime.Processes {
-		if managed.Status != managedHeadlessStatusStarting || managed.WorkspaceRoot != stateDir || managed.DisplayName != "headless" {
+		if managed.Status != headlessruntime.StatusStarting || managed.WorkspaceRoot != stateDir || managed.DisplayName != "headless" {
 			t.Fatalf("unexpected prewarmed managed headless record: %#v", managed)
 		}
 	}
@@ -553,7 +554,7 @@ func TestDaemonPrewarmsReplacementWhenOfflineManagedHeadlessDoesNotCount(t *test
 	if len(app.managedHeadlessRuntime.Processes) != 2 {
 		t.Fatalf("expected offline member to remain visible alongside replacement, got %#v", app.managedHeadlessRuntime.Processes)
 	}
-	if app.managedHeadlessRuntime.Processes["inst-headless-old"] == nil || app.managedHeadlessRuntime.Processes["inst-headless-old"].Status != managedHeadlessStatusOffline {
+	if app.managedHeadlessRuntime.Processes["inst-headless-old"] == nil || app.managedHeadlessRuntime.Processes["inst-headless-old"].Status != headlessruntime.StatusOffline {
 		t.Fatalf("expected original member to stay offline, got %#v", app.managedHeadlessRuntime.Processes["inst-headless-old"])
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 )
 
 type managedHeadlessIdleStopTarget struct {
@@ -48,7 +50,7 @@ func (a *App) collectIdleHeadlessStopTargetsLocked(now time.Time) []managedHeadl
 			delete(a.managedHeadlessRuntime.Processes, instanceID)
 			continue
 		}
-		if managed.Status != managedHeadlessStatusIdle || managed.IdleSince.IsZero() {
+		if managed.Status != headlessruntime.StatusIdle || managed.IdleSince.IsZero() {
 			continue
 		}
 		if now.Sub(managed.IdleSince) < a.headlessRuntime.IdleTTL {
@@ -61,7 +63,7 @@ func (a *App) collectIdleHeadlessStopTargetsLocked(now time.Time) []managedHeadl
 			log.Printf("headless idle cleanup skipped: instance=%s err=missing pid", instanceID)
 			continue
 		}
-		managed.Status = managedHeadlessStatusStopping
+		managed.Status = headlessruntime.StatusStopping
 		managed.LastError = ""
 		managed.RefreshInFlight = false
 		managed.RefreshCommandID = ""
@@ -96,12 +98,12 @@ func (a *App) restoreIdleHeadlessStopFailureLocked(now time.Time, result managed
 		return
 	}
 	managed.LastError = fmt.Sprintf("后台 idle cleanup stop 失败：%v", result.Err)
-	if managed.Status == managedHeadlessStatusStopping {
-		managed.Status = managedHeadlessStatusOffline
+	if managed.Status == headlessruntime.StatusStopping {
+		managed.Status = headlessruntime.StatusOffline
 	}
 	a.syncManagedHeadlessLocked(now)
 	managed = a.managedHeadlessRuntime.Processes[result.Target.InstanceID]
-	if managed != nil && managed.Status == managedHeadlessStatusIdle && !result.Target.IdleSince.IsZero() {
+	if managed != nil && managed.Status == headlessruntime.StatusIdle && !result.Target.IdleSince.IsZero() {
 		managed.IdleSince = result.Target.IdleSince
 	}
 }

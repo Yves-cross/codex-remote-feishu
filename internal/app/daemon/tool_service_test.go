@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	toolruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/toolruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -83,7 +84,7 @@ func newToolServiceTestApp(t *testing.T, gateway feishu.Gateway) (*App, relayrun
 	paths := relayruntime.Paths{StateDir: stateDir, ToolServiceFile: filepath.Join(stateDir, "tool-service.json")}
 	app := New("127.0.0.1:0", "127.0.0.1:0", gateway, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
 	app.SetHeadlessRuntime(HeadlessRuntimeConfig{Paths: paths})
-	app.SetToolRuntime(ToolRuntimeConfig{ListenAddr: "127.0.0.1:0", StateFile: paths.ToolServiceFile})
+	app.SetToolRuntime(toolruntime.Config{ListenAddr: "127.0.0.1:0", StateFile: paths.ToolServiceFile})
 	return app, paths
 }
 
@@ -119,7 +120,7 @@ func TestToolRuntimeRequiresBearerAndPublishesMCPState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read tool service file: %v", err)
 	}
-	var info toolServiceInfo
+	var info toolruntime.ServiceInfo
 	if err := json.Unmarshal(infoRaw, &info); err != nil {
 		t.Fatalf("unmarshal tool service file: %v", err)
 	}

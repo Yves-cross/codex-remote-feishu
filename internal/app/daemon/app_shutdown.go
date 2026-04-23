@@ -346,7 +346,7 @@ func (a *App) stopIngressAndServers() {
 		_ = a.pprofServer.Close()
 	}
 	a.mu.Lock()
-	a.removeToolServiceStateLocked()
+	a.toolRuntime.RemoveStateLocked()
 	a.clearWorkspaceSurfaceContextFilesLocked()
 	a.shutdownExternalAccessLocked("daemon_shutdown")
 	a.mu.Unlock()
