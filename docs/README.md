@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-22`
-> Summary: 整合 Claude 相关设计为单一实施文档，并将旧文档移入 obsoleted 索引。
+> Updated: `2026-04-23`
+> Summary: 更新文档索引并纳入 web preview renderer 架构重构草案。
 
 ## 1. 适用范围
 
@@ -174,6 +174,7 @@
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
 - [web-preview-snapshot-design.md](./draft/web-preview-snapshot-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
+- [web-preview-renderer-architecture-redesign.md](./draft/web-preview-renderer-architecture-redesign.md)
 - [web-onboarding-admin-workflow-prd.md](./draft/web-onboarding-admin-workflow-prd.md)
 - [web-onboarding-admin-user-mock.html](./draft/web-onboarding-admin-user-mock.html)
 - [web-onboarding-admin-user-view.md](./draft/web-onboarding-admin-user-view.md)
