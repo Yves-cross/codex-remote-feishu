@@ -23,6 +23,7 @@ func (a *App) handleUIEventsLocked(ctx context.Context, events []eventcontract.E
 	_ = ctx
 	turnAttentionPings := a.planTurnAttentionPingsLocked(events)
 	for index, event := range events {
+		event = event.Normalized()
 		if event.DaemonCommand != nil {
 			a.mu.Unlock()
 			followup := a.handleDaemonCommand(*event.DaemonCommand)
@@ -170,6 +171,7 @@ func (a *App) deliverUIEventWithContext(ctx context.Context, event eventcontract
 }
 
 func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcontract.Event, appLocked bool) error {
+	event = event.Normalized()
 	chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 	actorUserID := a.service.SurfaceActorUserID(event.SurfaceSessionID)
 	gatewayID := firstNonEmpty(event.GatewayID, a.service.SurfaceGatewayID(event.SurfaceSessionID))
@@ -225,7 +227,11 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 	if event.Snapshot != nil {
 		a.populateSnapshotFeishuPermissionGaps(event.Snapshot, event.SurfaceSessionID)
 	}
-	operations := a.projector.ProjectEvent(chatID, event.Normalized())
+	// Root fields may be enriched or rewritten above. Rebuild canonical payload from
+	// the updated root state so payload-first projection stays aligned.
+	event.Payload = nil
+	event = event.Normalized()
+	operations := a.projector.ProjectEvent(chatID, event)
 	for i := range operations {
 		if operations[i].GatewayID == "" {
 			operations[i].GatewayID = gatewayID
@@ -266,7 +272,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 }
 
 func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feishu.Operation) {
-	if event.Kind == eventcontract.KindBlockCommitted && event.Block != nil && event.Block.Final {
+	if blockPayload, ok := blockPayloadFromEvent(event); event.Kind == eventcontract.KindBlockCommitted && ok && blockPayload.Block.Final {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -276,7 +282,7 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			}
 			a.service.RecordFinalCardMessage(
 				event.SurfaceSessionID,
-				*event.Block,
+				blockPayload.Block,
 				event.SourceMessageID,
 				operation.MessageID,
 				event.DaemonLifecycleID,
@@ -284,7 +290,7 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			break
 		}
 	}
-	if event.ThreadHistoryView != nil {
+	if payload, ok := threadHistoryPayloadFromEvent(event); ok {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -294,13 +300,13 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			}
 			a.service.RecordThreadHistoryMessage(
 				event.SurfaceSessionID,
-				event.ThreadHistoryView.PickerID,
+				payload.View.PickerID,
 				operation.MessageID,
 			)
 			break
 		}
 	}
-	if event.TargetPickerView != nil {
+	if payload, ok := targetPickerPayloadFromEvent(event); ok {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -310,13 +316,13 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			}
 			a.service.RecordTargetPickerMessage(
 				event.SurfaceSessionID,
-				event.TargetPickerView.PickerID,
+				payload.View.PickerID,
 				operation.MessageID,
 			)
 			break
 		}
 	}
-	if event.PathPickerView != nil {
+	if payload, ok := pathPickerPayloadFromEvent(event); ok {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -326,13 +332,13 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			}
 			a.service.RecordPathPickerMessage(
 				event.SurfaceSessionID,
-				event.PathPickerView.PickerID,
+				payload.View.PickerID,
 				operation.MessageID,
 			)
 			break
 		}
 	}
-	if event.PageView != nil && strings.TrimSpace(event.PageView.TrackingKey) != "" {
+	if payload, ok := pagePayloadFromEvent(event); ok && strings.TrimSpace(payload.View.TrackingKey) != "" {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -342,18 +348,19 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			}
 			a.service.RecordOwnerCardFlowMessage(
 				event.SurfaceSessionID,
-				event.PageView.TrackingKey,
+				payload.View.TrackingKey,
 				operation.MessageID,
 			)
 			a.recordUpgradeOwnerCardMessageLocked(
-				event.PageView.TrackingKey,
+				payload.View.TrackingKey,
 				operation.MessageID,
 			)
-			a.recordVSCodeMigrationFlowMessageLocked(event.PageView.TrackingKey, operation.MessageID)
+			a.recordVSCodeMigrationFlowMessageLocked(payload.View.TrackingKey, operation.MessageID)
 			break
 		}
 	}
-	if event.ExecCommandProgress == nil {
+	progressPayload, ok := execCommandProgressPayloadFromEvent(event)
+	if !ok {
 		return
 	}
 	for _, operation := range operations {
@@ -365,9 +372,9 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 		}
 		a.service.RecordExecCommandProgressMessageStartSeq(
 			event.SurfaceSessionID,
-			event.ExecCommandProgress.ThreadID,
-			event.ExecCommandProgress.TurnID,
-			event.ExecCommandProgress.ItemID,
+			progressPayload.Progress.ThreadID,
+			progressPayload.Progress.TurnID,
+			progressPayload.Progress.ItemID,
 			operation.MessageID,
 			operation.ProgressCardStartSeq,
 		)

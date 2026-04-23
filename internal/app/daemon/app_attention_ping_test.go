@@ -54,6 +54,37 @@ func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) 
 	}
 }
 
+func TestHandleUIEventsAddsAttentionPingForPayloadFirstRequest(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, serverIdentityForTest())
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
+
+	requestEvent := eventcontract.Event{
+		SurfaceSessionID: "surface-1",
+		Payload: eventcontract.RequestPayload{
+			View: control.FeishuRequestView{
+				RequestID:       "req-payload-1",
+				RequestType:     "approval",
+				RequestRevision: 1,
+				Title:           "需要确认",
+				Options: []control.RequestPromptOption{{
+					OptionID: "accept",
+					Label:    "允许执行",
+				}},
+			},
+		},
+	}
+
+	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
+
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected payload-first request card + ping, got %#v", gateway.operations)
+	}
+	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：请确认这条请求。" {
+		t.Fatalf("unexpected payload-first request attention ping: %#v", gateway.operations[1])
+	}
+}
+
 func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *testing.T) {
 	gateway := &flakyGateway{failures: 1}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
@@ -151,6 +182,44 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 	}
 	if gateway.operations[2].Text != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
 		t.Fatalf("unexpected plan attention ping text: %#v", gateway.operations[2])
+	}
+}
+
+func TestHandleUIEventsRecognizesPayloadFirstPlanProposal(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, serverIdentityForTest())
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
+
+	app.handleUIEvents(context.Background(), []eventcontract.Event{
+		{
+			SurfaceSessionID: "surface-1",
+			Payload: eventcontract.BlockCommittedPayload{
+				Block: render.Block{
+					Kind:        render.BlockAssistantMarkdown,
+					Text:        "已完成修改。",
+					ThreadID:    "thread-1",
+					ThreadTitle: "droid · 修复登录流程",
+					ThemeKey:    "thread-1",
+					Final:       true,
+				},
+			},
+		},
+		{
+			SurfaceSessionID: "surface-1",
+			Payload: eventcontract.PagePayload{
+				View: control.FeishuPageView{
+					CommandID: control.FeishuCommandPlan,
+					Title:     "提案计划",
+				},
+			},
+		},
+	})
+
+	if len(gateway.operations) != 3 {
+		t.Fatalf("expected payload-first final + plan + ping, got %#v", gateway.operations)
+	}
+	if gateway.operations[2].Kind != feishu.OperationSendText || gateway.operations[2].Text != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
+		t.Fatalf("unexpected payload-first plan attention ping: %#v", gateway.operations[2])
 	}
 }
 
