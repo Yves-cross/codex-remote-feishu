@@ -1742,6 +1742,16 @@
       "recordedAt": "2026-04-13T17:14:26Z"
     },
     {
+      "number": 198,
+      "title": "Unify duplicated workspace selection prompt text rules",
+      "updatedAt": "2026-04-23T06:14:15Z",
+      "closedAt": "2026-04-23T06:14:15Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/198",
+      "recordedAt": "2026-04-23T19:05:19Z"
+    },
+    {
       "number": 200,
       "title": "design: request_user_input 飞书交互效果对齐 Codex client（第二轮）",
       "updatedAt": "2026-04-17T06:26:45Z",
@@ -3158,12 +3168,12 @@
     {
       "number": 347,
       "title": "[Research] 跨层耦合连带破坏风险治理：从补丁修复转向通用机制",
-      "updatedAt": "2026-04-22T16:40:39Z",
+      "updatedAt": "2026-04-22T23:19:02Z",
       "closedAt": "2026-04-22T16:40:35Z",
       "decision": "skip",
-      "reason": "durable result already covered by existing docs and recent synced commits; no additional lifecycle doc delta needed",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/347",
-      "recordedAt": "2026-04-22T19:04:21Z"
+      "recordedAt": "2026-04-23T19:02:42Z"
     },
     {
       "number": 348,
@@ -3424,6 +3434,366 @@
       "reason": "durable result already covered by existing docs and recent synced commits; no additional lifecycle doc delta needed",
       "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/376",
       "recordedAt": "2026-04-22T19:04:11Z"
+    },
+    {
+      "number": 377,
+      "title": "[Track] 激进终态收口：彻底移除 control.UIEvent / eventcontractcompat 生产链路",
+      "updatedAt": "2026-04-23T00:18:17Z",
+      "closedAt": "2026-04-23T00:18:13Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/377",
+      "recordedAt": "2026-04-23T19:03:40Z"
+    },
+    {
+      "number": 378,
+      "title": "[Work] Orchestrator 深迁移：内部事件全面改为 eventcontract.Event，仅保留临时 legacy 包装",
+      "updatedAt": "2026-04-23T00:15:36Z",
+      "closedAt": "2026-04-23T00:15:36Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/378",
+      "recordedAt": "2026-04-23T19:02:51Z"
+    },
+    {
+      "number": 379,
+      "title": "[Work] Daemon 与 CronRuntime 深迁移：改为直接消费/产出 eventcontract.Event",
+      "updatedAt": "2026-04-23T00:16:21Z",
+      "closedAt": "2026-04-23T00:16:18Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/379",
+      "recordedAt": "2026-04-23T19:03:01Z"
+    },
+    {
+      "number": 380,
+      "title": "[Work] Feishu Adapter 深迁移：删除 projector legacy 入口并迁移全部测试基座",
+      "updatedAt": "2026-04-23T00:16:45Z",
+      "closedAt": "2026-04-23T00:16:42Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/380",
+      "recordedAt": "2026-04-23T19:03:12Z"
+    },
+    {
+      "number": 381,
+      "title": "[Work] 物理删除 legacy 契约：移除 control.UIEvent/UIEventKind 与 eventcontractcompat",
+      "updatedAt": "2026-04-23T00:17:08Z",
+      "closedAt": "2026-04-23T00:17:05Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/381",
+      "recordedAt": "2026-04-23T19:03:21Z"
+    },
+    {
+      "number": 382,
+      "title": "[Work] 终局收尾：升级红线守卫、矩阵验证、文档回写与独立 verifier close gate",
+      "updatedAt": "2026-04-23T00:17:34Z",
+      "closedAt": "2026-04-23T00:17:31Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/382",
+      "recordedAt": "2026-04-23T19:03:31Z"
+    },
+    {
+      "number": 383,
+      "title": "[Track] 重构残留双轨路径收口（1/2/3/4/7/8）",
+      "updatedAt": "2026-04-23T02:33:04Z",
+      "closedAt": "2026-04-23T02:33:04Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/383",
+      "recordedAt": "2026-04-23T19:04:49Z"
+    },
+    {
+      "number": 384,
+      "title": "[Work] 收口 Event 双载体：删除 legacy Feishu* root fields",
+      "updatedAt": "2026-04-23T01:12:53Z",
+      "closedAt": "2026-04-23T01:12:50Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/384",
+      "recordedAt": "2026-04-23T19:03:50Z"
+    },
+    {
+      "number": 385,
+      "title": "[Work] canonical 语义收口：去 legacy 推断与 EventFeishu* alias",
+      "updatedAt": "2026-04-23T01:24:14Z",
+      "closedAt": "2026-04-23T01:24:11Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/385",
+      "recordedAt": "2026-04-23T19:04:00Z"
+    },
+    {
+      "number": 386,
+      "title": "[Work] 事件生产路径单一路径化：移除 legacy producer 与 direct legacy 构造",
+      "updatedAt": "2026-04-23T01:36:04Z",
+      "closedAt": "2026-04-23T01:36:01Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/386",
+      "recordedAt": "2026-04-23T19:04:10Z"
+    },
+    {
+      "number": 387,
+      "title": "[Work] 消费侧 normalized/payload-first：移除 direct Feishu* 读取",
+      "updatedAt": "2026-04-23T01:51:43Z",
+      "closedAt": "2026-04-23T01:51:43Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/387",
+      "recordedAt": "2026-04-23T19:04:20Z"
+    },
+    {
+      "number": 388,
+      "title": "[Small] 清理 gateway compat 文本 fallback 与重复实现",
+      "updatedAt": "2026-04-23T02:00:24Z",
+      "closedAt": "2026-04-23T02:00:24Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/388",
+      "recordedAt": "2026-04-23T19:04:29Z"
+    },
+    {
+      "number": 389,
+      "title": "[Work] 移除 control.Action 兼容根字段回退路径",
+      "updatedAt": "2026-04-23T02:28:21Z",
+      "closedAt": "2026-04-23T02:28:18Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/389",
+      "recordedAt": "2026-04-23T19:04:39Z"
+    },
+    {
+      "number": 390,
+      "title": "[Refactor] Web preview renderer 架构重构：统一 source-like 行号契约并解耦渲染策略",
+      "updatedAt": "2026-04-23T03:12:27Z",
+      "closedAt": "2026-04-23T03:12:24Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/390",
+      "recordedAt": "2026-04-23T19:04:59Z"
+    },
+    {
+      "number": 391,
+      "title": "[Track] 审计补单：收口重构后遗留的 facade / compat / 重复协议路径",
+      "updatedAt": "2026-04-23T14:38:10Z",
+      "closedAt": "2026-04-23T14:38:10Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/391",
+      "recordedAt": "2026-04-23T19:07:34Z"
+    },
+    {
+      "number": 392,
+      "title": "[Work] 收口 Feishu callback payload schema：移除三份重复定义与漂移",
+      "updatedAt": "2026-04-23T04:24:11Z",
+      "closedAt": "2026-04-23T04:24:11Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/392",
+      "recordedAt": "2026-04-23T19:05:08Z"
+    },
+    {
+      "number": 393,
+      "title": "[Work] Selection 单轨收口：删除 retained prompt DTO live path",
+      "updatedAt": "2026-04-23T10:28:56Z",
+      "closedAt": "2026-04-23T10:28:56Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/393",
+      "recordedAt": "2026-04-23T19:05:49Z"
+    },
+    {
+      "number": 394,
+      "title": "[Work] 收口 selection 语义 owner：标题 / layout / context 只保留单一派生源",
+      "updatedAt": "2026-04-23T10:26:56Z",
+      "closedAt": "2026-04-23T10:26:56Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/394",
+      "recordedAt": "2026-04-23T19:05:29Z"
+    },
+    {
+      "number": 395,
+      "title": "[Research] 收口 internal/adapter/feishu 根包 facade：退出 gateway / projector / preview 兼容壳",
+      "updatedAt": "2026-04-23T12:25:36Z",
+      "closedAt": "2026-04-23T12:25:36Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/395",
+      "recordedAt": "2026-04-23T19:06:37Z"
+    },
+    {
+      "number": 396,
+      "title": "[Research] 退场 daemon / orchestrator compat bridge：收口 headless / resume / cron / execprogress 旧名字桥",
+      "updatedAt": "2026-04-23T14:38:06Z",
+      "closedAt": "2026-04-23T14:38:06Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/396",
+      "recordedAt": "2026-04-23T19:07:25Z"
+    },
+    {
+      "number": 397,
+      "title": "[Small] 清理 card renderer legacy 命名残留与迷惑性 live path",
+      "updatedAt": "2026-04-23T11:08:14Z",
+      "closedAt": "2026-04-23T11:08:11Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/397",
+      "recordedAt": "2026-04-23T19:06:08Z"
+    },
+    {
+      "number": 398,
+      "title": "[Small] 收口 request-control 协议常量：删除 projector / orchestrator 重复定义",
+      "updatedAt": "2026-04-23T10:53:48Z",
+      "closedAt": "2026-04-23T10:53:48Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/398",
+      "recordedAt": "2026-04-23T19:05:58Z"
+    },
+    {
+      "number": 399,
+      "title": "[Work] target picker 支持锁定当前工作区的会话选择",
+      "updatedAt": "2026-04-23T10:26:59Z",
+      "closedAt": "2026-04-23T10:26:56Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/399",
+      "recordedAt": "2026-04-23T19:05:39Z"
+    },
+    {
+      "number": 400,
+      "title": "[Work] 删除 feishu root 包内部 projector / gateway compat forwarding",
+      "updatedAt": "2026-04-23T11:52:02Z",
+      "closedAt": "2026-04-23T11:51:59Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/400",
+      "recordedAt": "2026-04-23T19:06:17Z"
+    },
+    {
+      "number": 401,
+      "title": "[Work] 迁出 daemon 对 feishu preview alias 的依赖并删除 preview_alias.go",
+      "updatedAt": "2026-04-23T12:19:28Z",
+      "closedAt": "2026-04-23T12:19:25Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/401",
+      "recordedAt": "2026-04-23T19:06:27Z"
+    },
+    {
+      "number": 402,
+      "title": "[Work] 删除 daemon headless / upgrade / tool runtime compat bridge",
+      "updatedAt": "2026-04-23T13:19:02Z",
+      "closedAt": "2026-04-23T13:19:02Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/402",
+      "recordedAt": "2026-04-23T19:06:46Z"
+    },
+    {
+      "number": 403,
+      "title": "[Work] 迁出 daemon 对 surfaceresume compat bridge 的依赖并删除 surface_resume_compat.go",
+      "updatedAt": "2026-04-23T13:31:18Z",
+      "closedAt": "2026-04-23T13:31:14Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/403",
+      "recordedAt": "2026-04-23T19:06:56Z"
+    },
+    {
+      "number": 404,
+      "title": "[Work] 收口 daemon cron_aliases.go 到 cronruntime 真实 owner",
+      "updatedAt": "2026-04-23T14:38:00Z",
+      "closedAt": "2026-04-23T14:38:00Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/404",
+      "recordedAt": "2026-04-23T19:07:15Z"
+    },
+    {
+      "number": 405,
+      "title": "[Work] 收口 execprogress compat 路径并删除 service_exec_command_progress_compat.go",
+      "updatedAt": "2026-04-23T13:44:50Z",
+      "closedAt": "2026-04-23T13:44:47Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/405",
+      "recordedAt": "2026-04-23T19:07:05Z"
+    },
+    {
+      "number": 406,
+      "title": "审计收尾：清理重构残留死代码与未收口兼容桥",
+      "updatedAt": "2026-04-23T16:17:09Z",
+      "closedAt": "2026-04-23T16:17:09Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/406",
+      "recordedAt": "2026-04-23T19:08:43Z"
+    },
+    {
+      "number": 407,
+      "title": "收口 Feishu card compat envelope 残留",
+      "updatedAt": "2026-04-23T15:21:20Z",
+      "closedAt": "2026-04-23T15:21:20Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/407",
+      "recordedAt": "2026-04-23T19:07:45Z"
+    },
+    {
+      "number": 408,
+      "title": "删除 FeishuDirectSelectionPrompt 测试残留 DTO",
+      "updatedAt": "2026-04-23T16:06:25Z",
+      "closedAt": "2026-04-23T16:06:21Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/408",
+      "recordedAt": "2026-04-23T19:08:14Z"
+    },
+    {
+      "number": 409,
+      "title": "删除 HeadlessLaunchPurposeLegacy 死符号",
+      "updatedAt": "2026-04-23T15:26:49Z",
+      "closedAt": "2026-04-23T15:26:45Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/409",
+      "recordedAt": "2026-04-23T19:07:54Z"
+    },
+    {
+      "number": 410,
+      "title": "收口 cron_aliases.go，daemon 直接依赖 cronruntime",
+      "updatedAt": "2026-04-23T16:08:39Z",
+      "closedAt": "2026-04-23T16:08:34Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/410",
+      "recordedAt": "2026-04-23T19:08:23Z"
+    },
+    {
+      "number": 411,
+      "title": "收口 thread runtime legacy State/Status 双轨",
+      "updatedAt": "2026-04-23T16:16:10Z",
+      "closedAt": "2026-04-23T16:16:06Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/411",
+      "recordedAt": "2026-04-23T19:08:33Z"
+    },
+    {
+      "number": 412,
+      "title": "删除 execprogress / feishu gateway 一层 pass-through wrapper",
+      "updatedAt": "2026-04-23T15:47:20Z",
+      "closedAt": "2026-04-23T15:47:16Z",
+      "decision": "skip",
+      "reason": "当前文档已覆盖对应闭包结论，无需新增或合并文档。",
+      "sourceUrl": "https://github.com/kxn/codex-remote-feishu/issues/412",
+      "recordedAt": "2026-04-23T19:08:04Z"
     }
   ]
 }
