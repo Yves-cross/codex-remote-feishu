@@ -2,7 +2,9 @@ package feishu
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -688,6 +690,65 @@ func TestParseMessageEventQuotesFetchedMergeForwardMessageWithSpeakerLabels(t *t
 	}
 	if action.Inputs[1].Type != agentproto.InputText || action.Inputs[1].Text != "照这个排查" {
 		t.Fatalf("unexpected current text input: %#v", action.Inputs[1])
+	}
+}
+
+func TestParseMessageEventQuotesInteractiveFinalMessage(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	payload := renderOperationCard(Operation{
+		Kind:         OperationSendCard,
+		CardTitle:    "✅ 最后答复：先看日志",
+		CardBody:     "第一段说明\n\n第二段说明",
+		CardThemeKey: cardThemeFinal,
+		CardElements: []map[string]any{cardPlainTextBlockElement("补充说明：继续看 trace")},
+		cardEnvelope: cardEnvelopeV2,
+		card:         finalReplyCardDocument("✅ 最后答复：先看日志", "第一段说明\n\n第二段说明", cardThemeFinal, []map[string]any{cardPlainTextBlockElement("补充说明：继续看 trace")}),
+	}, cardEnvelopeV2)
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal interactive payload: %v", err)
+	}
+	gateway.fetchMessageFn = func(_ context.Context, messageID string) (*gatewayMessage, error) {
+		if messageID != "om-final-card-1" {
+			t.Fatalf("unexpected final card lookup: %s", messageID)
+		}
+		return &gatewayMessage{
+			MessageID:   "om-final-card-1",
+			MessageType: "interactive",
+			Content:     string(rawPayload),
+		}, nil
+	}
+	event := &larkim.P2MessageReceiveV1{
+		Event: &larkim.P2MessageReceiveV1Data{
+			Sender: &larkim.EventSender{
+				SenderId: &larkim.UserId{OpenId: stringRef("ou_user")},
+			},
+			Message: &larkim.EventMessage{
+				MessageId:   stringRef("om-reply-final-1"),
+				ChatId:      stringRef("oc_chat"),
+				ChatType:    stringRef("group"),
+				MessageType: stringRef("text"),
+				ParentId:    stringRef("om-final-card-1"),
+				Content:     stringRef(`{"text":"请继续展开这条最终答复"}`),
+			},
+		},
+	}
+
+	action, ok, err := gateway.parseMessageEvent(t.Context(), event)
+	if err != nil {
+		t.Fatalf("parseMessageEvent returned error: %v", err)
+	}
+	if !ok || action.Kind != control.ActionTextMessage {
+		t.Fatalf("expected interactive reply to be handled, got ok=%v action=%#v", ok, action)
+	}
+	if len(action.Inputs) != 2 {
+		t.Fatalf("expected quoted final card + current text, got %#v", action.Inputs)
+	}
+	if action.Inputs[0].Type != agentproto.InputText || !strings.Contains(action.Inputs[0].Text, "✅ 最后答复：先看日志") || !strings.Contains(action.Inputs[0].Text, "第一段说明") || !strings.Contains(action.Inputs[0].Text, "补充说明：继续看 trace") {
+		t.Fatalf("unexpected quoted final card input: %#v", action.Inputs[0])
+	}
+	if action.Inputs[1].Type != agentproto.InputText || action.Inputs[1].Text != "请继续展开这条最终答复" {
+		t.Fatalf("unexpected current reply input: %#v", action.Inputs[1])
 	}
 }
 

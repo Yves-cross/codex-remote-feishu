@@ -89,6 +89,16 @@ func (g *LiveGateway) inputsFromReferencedMessage(ctx context.Context, reference
 			return payload.Inputs
 		}
 		return nil
+	case "interactive":
+		text, err := quotedInteractiveCardText(referenced.Content)
+		if err != nil {
+			log.Printf("feishu quote interactive parse ignored: message=%s err=%v", referenced.MessageID, err)
+			return nil
+		}
+		if wrapped := quotedTextInput(text); wrapped.Text != "" {
+			return []agentproto.Input{wrapped}
+		}
+		return nil
 	default:
 		return nil
 	}
@@ -114,6 +124,98 @@ func quotedTextInput(text string) agentproto.Input {
 		Type: agentproto.InputText,
 		Text: "<被引用内容>\n" + text + "\n</被引用内容>",
 	}
+}
+
+func quotedInteractiveCardText(rawContent string) (string, error) {
+	rawContent = strings.TrimSpace(rawContent)
+	if rawContent == "" {
+		return "", nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rawContent), &payload); err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, 8)
+	if title := quotedCardPayloadTitleText(payload); title != "" {
+		parts = append(parts, title)
+	}
+	if elements, _, ok := extractCardPayloadElements(payload); ok {
+		parts = append(parts, quotedCardPayloadTextLines(elements)...)
+	}
+	return strings.Join(compactQuotedCardPayloadLines(parts), "\n\n"), nil
+}
+
+func quotedCardPayloadTitleText(payload map[string]any) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	if header, _ := payload["header"].(map[string]any); len(header) != 0 {
+		if title, _ := header["title"].(map[string]any); len(title) != 0 {
+			if text := strings.TrimSpace(cardStringValue(title["content"])); text != "" {
+				return text
+			}
+		}
+	}
+	if title, _ := payload["title"].(map[string]any); len(title) != 0 {
+		if text := strings.TrimSpace(cardStringValue(title["content"])); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func quotedCardPayloadTextLines(elements []map[string]any) []string {
+	lines := make([]string, 0, len(elements))
+	for _, element := range elements {
+		lines = append(lines, quotedCardPayloadTextFromElement(element)...)
+	}
+	return lines
+}
+
+func quotedCardPayloadTextFromElement(element map[string]any) []string {
+	if len(element) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, 4)
+	if text := quotedCardPayloadInlineText(element); text != "" {
+		lines = append(lines, text)
+	}
+	for _, key := range []string{"elements", "columns", "fields"} {
+		if nested, ok := cardPayloadElementsSlice(element[key]); ok {
+			lines = append(lines, quotedCardPayloadTextLines(nested)...)
+		}
+	}
+	return lines
+}
+
+func quotedCardPayloadInlineText(element map[string]any) string {
+	switch strings.ToLower(strings.TrimSpace(cardStringValue(element["tag"]))) {
+	case "markdown":
+		return strings.TrimSpace(cardStringValue(element["content"]))
+	case "div":
+		text, _ := element["text"].(map[string]any)
+		if len(text) == 0 {
+			return ""
+		}
+		if tag := strings.ToLower(strings.TrimSpace(cardStringValue(text["tag"]))); tag != "plain_text" {
+			return ""
+		}
+		return strings.TrimSpace(cardStringValue(text["content"]))
+	default:
+		return ""
+	}
+}
+
+func compactQuotedCardPayloadLines(lines []string) []string {
+	compact := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		compact = append(compact, line)
+	}
+	return compact
 }
 
 func (g *LiveGateway) parsePostInputs(ctx context.Context, messageID, rawContent string) ([]agentproto.Input, string, error) {
