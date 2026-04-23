@@ -7,8 +7,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
-const requestControlCancelRequest = "cancel_request"
-
 func permissionsRequestPromptElements(prompt control.FeishuRequestView, daemonLifecycleID string) []map[string]any {
 	prompt = control.NormalizeFeishuRequestView(prompt)
 	options := prompt.Options
@@ -125,7 +123,7 @@ func mcpElicitationCancelFooterElements(prompt control.FeishuRequestView, daemon
 	}
 	return []map[string]any{
 		cardDividerElement(),
-		cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+		cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, frontstagecontract.RequestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
 	}
 }
 

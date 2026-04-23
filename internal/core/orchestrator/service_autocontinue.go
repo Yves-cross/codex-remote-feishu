@@ -8,6 +8,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -100,7 +101,7 @@ func (s *Service) noteAutoContinueAction(surface *state.SurfaceConsoleRecord, ac
 		}
 	case control.ActionControlRequest:
 		s.resetAutoContinueProgress(surface)
-		if action.RequestControl != nil && normalizedRequestControl(action.RequestControl.Control) == normalizedRequestControl(requestControlCancelTurn) {
+		if action.RequestControl != nil && normalizedRequestControl(action.RequestControl.Control) == normalizedRequestControl(frontstagecontract.RequestControlCancelTurn) {
 			inst := s.root.Instances[surface.AttachedInstanceID]
 			if (inst != nil && inst.ActiveTurnID != "") || surface.ActiveQueueItemID != "" {
 				surface.AutoContinue.SuppressOnce = true

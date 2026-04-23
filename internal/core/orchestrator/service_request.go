@@ -14,14 +14,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-const (
-	requestControlCancelTurn          = "cancel_turn"
-	requestControlCancelRequest       = "cancel_request"
-	requestControlSkipOptional        = "skip_optional"
-	requestPromptStepPreviousOptionID = "step_previous"
-	requestPromptStepNextOptionID     = "step_next"
-)
-
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	requestAction := requestActionFromAction(action)
 	if surface == nil || requestAction == nil || strings.TrimSpace(requestAction.RequestID) == "" {
@@ -79,14 +71,14 @@ func (s *Service) controlRequest(surface *state.SurfaceConsoleRecord, action con
 		return notice(surface, "request_card_expired", "这张请求卡片已经过期，请使用最新卡片继续操作。")
 	}
 	switch normalizedRequestControl(requestControl.Control) {
-	case normalizedRequestControl(requestControlSkipOptional):
+	case normalizedRequestControl(frontstagecontract.RequestControlSkipOptional):
 		return s.skipOptionalRequestQuestion(surface, request, action, requestControl)
-	case normalizedRequestControl(requestControlCancelTurn):
+	case normalizedRequestControl(frontstagecontract.RequestControlCancelTurn):
 		if normalizeRequestType(firstNonEmpty(requestControl.RequestType, request.RequestType)) != "request_user_input" {
 			return notice(surface, "request_invalid", "当前请求不支持中断 turn。")
 		}
 		return s.cancelRequestUserInputTurn(surface, request, action)
-	case normalizedRequestControl(requestControlCancelRequest):
+	case normalizedRequestControl(frontstagecontract.RequestControlCancelRequest):
 		requestType := normalizeRequestType(firstNonEmpty(requestControl.RequestType, request.RequestType))
 		if requestType != "mcp_server_elicitation" || len(request.Questions) == 0 {
 			return notice(surface, "request_invalid", "当前请求不支持直接取消。")
@@ -419,19 +411,15 @@ func buildRequestUserInputResponse(request *state.RequestPromptRecord, rawAnswer
 }
 
 func requestPromptStepPrevious(optionID string) bool {
-	return normalizedRequestControl(optionID) == normalizedRequestControl(requestPromptStepPreviousOptionID)
+	return normalizedRequestControl(optionID) == normalizedRequestControl(frontstagecontract.RequestPromptOptionStepPrevious)
 }
 
 func requestPromptStepNext(optionID string) bool {
-	return normalizedRequestControl(optionID) == normalizedRequestControl(requestPromptStepNextOptionID)
+	return normalizedRequestControl(optionID) == normalizedRequestControl(frontstagecontract.RequestPromptOptionStepNext)
 }
 
 func normalizedRequestControl(optionID string) string {
-	normalized := strings.ToLower(strings.TrimSpace(optionID))
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	return normalized
+	return frontstagecontract.NormalizeRequestControlToken(optionID)
 }
 
 func bumpRequestCardRevision(request *state.RequestPromptRecord) {

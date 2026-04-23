@@ -8,13 +8,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
-const (
-	requestControlCancelTurn          = "cancel_turn"
-	requestControlSkipOption          = "skip_optional"
-	requestPromptStepPreviousOptionID = "step_previous"
-	requestPromptStepNextOptionID     = "step_next"
-)
-
 func requestPromptSections(prompt control.FeishuRequestView) []control.FeishuCardTextSection {
 	sections := make([]control.FeishuCardTextSection, 0, len(prompt.Sections)+1)
 	if threadTitle := strings.TrimSpace(prompt.ThreadTitle); threadTitle != "" {
@@ -348,7 +341,7 @@ func requestPromptSkipOptionalElement(prompt control.FeishuRequestView, daemonLi
 	if !ok || !frontstagecontract.AllowsPrimaryInput(prompt.ActionPolicy) || !question.Optional || question.Answered || question.Skipped {
 		return nil
 	}
-	return cardCallbackButtonElement("跳过", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlSkipOption, question.ID, prompt.RequestRevision), daemonLifecycleID), false, "fill")
+	return cardCallbackButtonElement("跳过", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, frontstagecontract.RequestControlSkipOptional, question.ID, prompt.RequestRevision), daemonLifecycleID), false, "fill")
 }
 
 func requestPromptStatusMarkdown(prompt control.FeishuRequestView) string {
@@ -367,13 +360,13 @@ func requestPromptCancelFooterElements(prompt control.FeishuRequestView, daemonL
 	case "request_user_input":
 		return []map[string]any{
 			cardDividerElement(),
-			cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelTurn, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+			cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, frontstagecontract.RequestControlCancelTurn, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
 		}
 	case "mcp_server_elicitation":
 		if prompt.ActionPolicy == frontstagecontract.ActionPolicyCancelOnly {
 			return []map[string]any{
 				cardDividerElement(),
-				cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, requestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
+				cardCallbackButtonElement("取消", "default", stampActionValue(actionPayloadRequestControl(prompt.RequestID, prompt.RequestType, frontstagecontract.RequestControlCancelRequest, "", prompt.RequestRevision), daemonLifecycleID), false, "fill"),
 			}
 		}
 	}

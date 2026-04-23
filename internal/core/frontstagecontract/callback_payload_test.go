@@ -35,7 +35,7 @@ func TestActionPayloadPageSubmitDefaultsFieldName(t *testing.T) {
 }
 
 func TestActionPayloadRequestControlOmitsEmptyOptionalFields(t *testing.T) {
-	payload := ActionPayloadRequestControl("req-1", "request_user_input", "cancel_turn", "", 0)
+	payload := ActionPayloadRequestControl("req-1", "request_user_input", RequestControlCancelTurn, "", 0)
 	if payload[CardActionPayloadKeyKind] != CardActionKindRequestControl {
 		t.Fatalf("unexpected request control kind: %#v", payload)
 	}
