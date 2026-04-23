@@ -2,7 +2,7 @@
 
 > Type: `draft`
 > Updated: `2026-04-23`
-> Summary: 提出 web preview 渲染链路的可扩展重构方案：用 renderer registry + planning pipeline 替代单函数分支耦合，并统一 source-like 预览为“默认带行号高亮，loc 仅做定位增强”。
+> Summary: 提出 web preview 渲染链路的可扩展重构方案：用 renderer registry + planning pipeline 替代单函数分支耦合，并统一 `text/html_source/svg_source` 为“默认带行号高亮，loc 仅做定位增强”；Markdown 继续保持文档阅读类型，只有定位或回退时进入源码视图。
 
 ## 1. 背景
 
@@ -48,8 +48,8 @@
 ## 3. 设计目标
 
 1. 把“策略决策”和“具体渲染”解耦。
-2. source-like 预览统一为默认带行号和语法高亮（可回退纯文本行号视图）。
-3. `loc` 统一为可选增强参数：负责跳转/目标行列高亮，不再决定是否进入另一套 renderer 路径。
+2. `text/html_source/svg_source` 预览统一为默认带行号和语法高亮（可回退纯文本行号视图）。
+3. `loc` 对 source-like 统一为可选增强参数：负责跳转/目标行列高亮，不再决定是否进入另一套 renderer 路径。
 4. 保留当前需求能力：大文件 diff-first、summary fallback、HTML/SVG 安全语义、图片/PDF inline 预览。
 5. 后续新增 renderer 类型时，不需要改动中心大 switch。
 
@@ -87,7 +87,12 @@
 
 ### 4.3 统一 Source-Like 展示契约
 
-`source-like` 包括：`text`, `html_source`, `svg_source`, `markdown` 的源码视图。
+当前默认 `source-like` 包括：`text`, `html_source`, `svg_source`。
+
+Markdown 的源码视图仍然存在，但只在两类场景进入：
+
+- 请求带 `loc`，需要稳定行号映射
+- prose renderer 失败，退回源码视图
 
 统一契约：
 
@@ -100,12 +105,15 @@
 
 ### 4.4 Markdown 的双视图策略（保留扩展点）
 
-为兼容“可读 prose”与“源码定位”两种诉求，规划层显式支持：
+当前产品决策是：Markdown 继续作为“文档阅读类型”，而不是默认 source-like。
 
-- `ViewPreference=source`（默认）
-- `ViewPreference=prose`（后续可由 query 参数或入口策略控制）
+规划层显式支持两种视图：
 
-本次推荐默认使用 `source`，保证行为一致性和定位稳定性；`prose` 作为可选模式保留在架构里，而不是写死分支。
+- 默认：`no loc => prose`
+- 定位模式：`with loc => numbered source`
+- prose renderer 失败时：回退到 numbered source，并给出回退提示
+
+后续如果需要显式“查看 Markdown 源码”的独立入口，可以在规划层增添显式 view 参数，但不应该再复用 `loc` 或混入其他 renderer kind 的默认语义。
 
 ### 4.5 安全提示与提示文案标准化
 
@@ -154,34 +162,35 @@ type WebPreviewRenderer interface {
 2. `loc` 仅作为 target 高亮增强。
 3. 增补无 `loc` 场景的行号锚点测试。
 
-### 阶段 C：Markdown 默认视图切换（可独立开关）
+### 阶段 C：Markdown 双视图显式建模
 
-1. 默认改为 source 视图。
-2. 若需要保留 prose，提供明确模式入口，而不是由 `loc` 隐式切换。
-3. 同步更新文档与交互说明。
+1. 明确固定 `no loc => prose`、`with loc => source` 的规划规则。
+2. prose renderer 失败时显式回退 numbered source。
+3. 若未来需要显式源码视图入口，单独立项，不在本次 issue 内改变默认视图。
 
 ## 7. 测试与验收
 
 至少覆盖：
 
-1. source-like 文件在有/无 `loc` 时都带行号锚点。
+1. `text/html_source/svg_source` 在有/无 `loc` 时都带行号锚点。
 2. 有 `loc` 时 target line/column 高亮生效；无 `loc` 时无 target 标记。
 3. 高亮失败回退纯文本 numbered source，不丢行号。
 4. HTML/SVG 始终 source-only 且保留安全提示。
 5. 大文件 diff-first / summary fallback 在新架构下语义不变。
 6. registry 中每个 renderer key 都可被独立单测调用。
+7. Markdown 无 `loc` 继续走 prose；Markdown 有 `loc` 时切换到 numbered source。
 
 ## 8. 风险与取舍
 
 ### 8.1 视觉变化风险
 
-统一带行号会改变部分用户习惯（尤其当前 markdown prose 默认阅读场景）。
+统一带行号会改变部分 source-like 文件的默认视觉。
 
 应对：
 
 - 分阶段切换
 - 在 issue 中明确“行为变化清单”
-- 为 markdown 预留 `prose` 可选模式
+- 保持 Markdown 默认 prose，不把阅读型内容强行改成源码视图
 
 ### 8.2 重构范围风险
 
@@ -196,8 +205,9 @@ type WebPreviewRenderer interface {
 
 本方案直接回应当前需求：
 
-- 预览不再区分“带行号路径”和“不带行号路径”
+- `text/html_source/svg_source` 不再区分“带行号路径”和“不带行号路径”
 - 统一为带行号 + 高亮的 source-like 展示
 - 指定行列仅增加跳转和目标高亮能力
+- Markdown 继续保持文档阅读类型，但带 `loc` 时会切到源码视图以保证定位稳定
 
 同时把这次调整沉淀为可扩展架构，避免后续继续在单点分支里“补丁式叠加”。

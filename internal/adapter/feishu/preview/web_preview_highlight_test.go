@@ -21,11 +21,11 @@ func TestDriveMarkdownPreviewerHighlightsSupportedSourcePreview(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `class="preview-syntax preview-syntax--source"`) {
-		t.Fatalf("expected highlighted source wrapper, got %q", body)
+	if !strings.Contains(body, `source-block--numbered`) || !strings.Contains(body, `preview-syntax--source`) {
+		t.Fatalf("expected numbered highlighted source wrapper, got %q", body)
 	}
-	if !strings.Contains(body, `class="pv-chroma"`) || !strings.Contains(body, "pv-") {
-		t.Fatalf("expected chroma-highlighted source preview, got %q", body)
+	if !strings.Contains(body, `class="pv-kn"`) || !strings.Contains(body, `class="pv-kd"`) || !strings.Contains(body, `class="pv-nf"`) {
+		t.Fatalf("expected token-level highlighted source preview, got %q", body)
 	}
 }
 
@@ -41,10 +41,12 @@ func TestDriveMarkdownPreviewerKeepsPlainTextPreviewUnhighlighted(t *testing.T) 
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `<pre class="source-block">alpha`) {
-		t.Fatalf("expected plain source preview, got %q", body)
+	if !strings.Contains(body, `class="source-block source-block--numbered"`) ||
+		!strings.Contains(body, `id="L1"`) ||
+		!strings.Contains(body, `href="#L2"`) {
+		t.Fatalf("expected numbered plain source preview, got %q", body)
 	}
-	if strings.Contains(body, `class="preview-syntax preview-syntax--source"`) || strings.Contains(body, `class="pv-chroma"`) {
+	if strings.Contains(body, `preview-syntax--source`) || strings.Contains(body, `class="pv-chroma"`) {
 		t.Fatalf("expected txt preview to stay unhighlighted, got %q", body)
 	}
 }

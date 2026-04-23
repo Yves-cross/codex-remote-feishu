@@ -111,23 +111,7 @@ func previewSourceLexer(sourcePath string) chroma.Lexer {
 	return chroma.Coalesce(lexer)
 }
 
-func renderHighlightedSourcePreviewHTML(sourcePath string, content []byte) (string, error) {
-	lexer := previewSourceLexer(sourcePath)
-	if lexer == nil {
-		return "", nil
-	}
-	iterator, err := lexer.Tokenise(nil, string(content))
-	if err != nil {
-		return "", err
-	}
-	var buf bytes.Buffer
-	if err := previewSourceHighlighterFormatter.Format(&buf, previewSourceHighlighterStyle, iterator); err != nil {
-		return "", err
-	}
-	return `<div class="preview-syntax preview-syntax--source">` + buf.String() + `</div>`, nil
-}
-
-func renderLineAddressedHighlightedSourcePreviewHTML(sourcePath string, content []byte, location PreviewLocation) (string, error) {
+func renderNumberedHighlightedSourcePreviewHTML(sourcePath string, content []byte, location PreviewLocation) (string, error) {
 	lexer := previewSourceLexer(sourcePath)
 	if lexer == nil {
 		return "", nil
