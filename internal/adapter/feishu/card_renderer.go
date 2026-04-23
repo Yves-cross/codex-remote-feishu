@@ -5,7 +5,7 @@ import "strings"
 type cardEnvelopeVersion string
 
 const (
-	cardEnvelopeV2     cardEnvelopeVersion = "v2"
+	cardEnvelopeV2 cardEnvelopeVersion = "v2"
 )
 
 type cardDocument struct {
