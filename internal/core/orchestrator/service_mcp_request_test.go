@@ -127,7 +127,7 @@ func TestRespondMCPElicitationFormBuildsStructuredResponse(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-2",
-		Request:          testRequestAction("req-mcp-form-1", "mcp_server_elicitation", "", map[string][]string{
+		Request: testRequestAction("req-mcp-form-1", "mcp_server_elicitation", "", map[string][]string{
 			"token":    {"secret-token"},
 			"remember": {"true"},
 		}, 0),
@@ -190,7 +190,7 @@ func TestRespondMCPElicitationFormPartialSaveRefreshesCurrentStepInline(t *testi
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		Request:          testRequestAction("req-mcp-form-step-1", "mcp_server_elicitation", "", map[string][]string{
+		Request: testRequestAction("req-mcp-form-step-1", "mcp_server_elicitation", "", map[string][]string{
 			"mode": {"auto"},
 		}, 0),
 		RequestAnswers: map[string][]string{

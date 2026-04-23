@@ -100,16 +100,16 @@ type ActionInboundMeta struct {
 }
 
 type Action struct {
-	Kind             ActionKind
-	GatewayID        string
-	SurfaceSessionID string
-	ChatID           string
-	ActorUserID      string
-	MessageID        string
-	Text             string
-	Inputs           []agentproto.Input
-	SteerInputs      []agentproto.Input
-	RequestAnswers   map[string][]string
+	Kind                ActionKind
+	GatewayID           string
+	SurfaceSessionID    string
+	ChatID              string
+	ActorUserID         string
+	MessageID           string
+	Text                string
+	Inputs              []agentproto.Input
+	SteerInputs         []agentproto.Input
+	RequestAnswers      map[string][]string
 	OptionID            string
 	Request             *ActionRequestResponse
 	RequestControl      *ActionRequestControl

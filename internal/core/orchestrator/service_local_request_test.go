@@ -890,7 +890,7 @@ func TestRespondRequestUserInputOptionDispatchesAnswersAndKeepsPendingStateUntil
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
 			"model": {"gpt-5.4"},
 		}, 0),
 		RequestAnswers: map[string][]string{
@@ -952,7 +952,7 @@ func TestRespondRequestUserInputRejectsInvalidOptionAnswer(t *testing.T) {
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
 			"model": {"not-valid"},
 		}, 0),
 		RequestAnswers: map[string][]string{
@@ -1006,7 +1006,7 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
 			"model": {"gpt-5.4"},
 		}, 0),
 		RequestAnswers: map[string][]string{
@@ -1040,7 +1040,7 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 	events = svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
 			"effort": {"high"},
 		}, 0),
 		RequestAnswers: map[string][]string{
