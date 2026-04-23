@@ -196,57 +196,6 @@ func TestApplySendCardFallsBackToCreateWithV2EnvelopeByDefault(t *testing.T) {
 	}
 }
 
-func TestApplySendCardCanStillForceCompatEnvelope(t *testing.T) {
-	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
-	var createContent string
-	gateway.createMessageFn = func(_ context.Context, receiveIDType, receiveID, msgType, content string) (*larkim.CreateMessageResp, error) {
-		if receiveIDType != "chat_id" || receiveID != "oc_1" {
-			t.Fatalf("unexpected receive target: type=%q id=%q", receiveIDType, receiveID)
-		}
-		if msgType != "interactive" {
-			t.Fatalf("unexpected message type: %q", msgType)
-		}
-		createContent = content
-		return &larkim.CreateMessageResp{
-			ApiResp: &larkcore.ApiResp{},
-			CodeError: larkcore.CodeError{
-				Code: 0,
-				Msg:  "ok",
-			},
-			Data: &larkim.CreateMessageRespData{
-				MessageId: stringRef("om-v2-1"),
-			},
-		}, nil
-	}
-
-	err := gateway.Apply(t.Context(), []Operation{{
-		Kind:             OperationSendCard,
-		SurfaceSessionID: "surface-1",
-		ChatID:           "oc_1",
-		ReceiveID:        "oc_1",
-		ReceiveIDType:    "chat_id",
-		CardTitle:        "系统提示",
-		CardBody:         "已完成切换。",
-		CardThemeKey:     cardThemeInfo,
-		cardEnvelope:     cardEnvelopeCompat,
-		card:             rawCardDocument("系统提示", "已完成切换。", cardThemeInfo, nil),
-	}})
-	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(createContent), &payload); err != nil {
-		t.Fatalf("create content is not valid json: %v", err)
-	}
-	if _, ok := payload["schema"]; ok {
-		t.Fatalf("expected explicit compat override to keep non-v2 envelope, got %#v", payload)
-	}
-	elements, _ := payload["elements"].([]interface{})
-	if len(elements) != 1 {
-		t.Fatalf("expected one markdown element in compat body, got %#v", payload)
-	}
-}
-
 func TestApplyUpdateCardPatchesInteractiveMessage(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	var (

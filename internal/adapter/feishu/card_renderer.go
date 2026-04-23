@@ -5,7 +5,6 @@ import "strings"
 type cardEnvelopeVersion string
 
 const (
-	cardEnvelopeCompat cardEnvelopeVersion = "compat"
 	cardEnvelopeV2     cardEnvelopeVersion = "v2"
 )
 
@@ -24,8 +23,7 @@ type cardMarkdownComponent struct {
 }
 
 type cardRawComponent struct {
-	compat map[string]any
-	v2     map[string]any
+	data map[string]any
 }
 
 func newCardDocument(title, themeKey string, components ...cardComponent) *cardDocument {
@@ -56,8 +54,7 @@ func rawCardDocument(title, body, themeKey string, extraElements []map[string]an
 
 func newRawCardComponent(data map[string]any) cardComponent {
 	return cardRawComponent{
-		compat: cloneCardMap(data),
-		v2:     cloneCardMap(data),
+		data: cloneCardMap(data),
 	}
 }
 
@@ -71,11 +68,8 @@ func (c cardMarkdownComponent) renderCardComponent(_ cardEnvelopeVersion) map[st
 	}
 }
 
-func (c cardRawComponent) renderCardComponent(version cardEnvelopeVersion) map[string]any {
-	if version == cardEnvelopeV2 && len(c.v2) != 0 {
-		return cloneCardMap(c.v2)
-	}
-	return cloneCardMap(c.compat)
+func (c cardRawComponent) renderCardComponent(_ cardEnvelopeVersion) map[string]any {
+	return cloneCardMap(c.data)
 }
 
 func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[string]any {
@@ -90,9 +84,6 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 }
 
 func (operation Operation) effectiveCardEnvelope() cardEnvelopeVersion {
-	if operation.cardEnvelope == cardEnvelopeCompat {
-		return cardEnvelopeCompat
-	}
 	return cardEnvelopeV2
 }
 
@@ -118,36 +109,21 @@ func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion, updateMu
 			"content": doc.Title,
 		},
 	}
-	switch version {
-	case cardEnvelopeV2:
-		config := map[string]any{
-			"width_mode":     "fill",
-			"enable_forward": true,
-		}
-		if updateMulti {
-			config["update_multi"] = true
-		}
-		return map[string]any{
-			"schema": "2.0",
-			"config": config,
-			"header": header,
-			"body": map[string]any{
-				"elements": elements,
-			},
-		}
-	default:
-		config := map[string]any{
-			"wide_screen_mode": true,
-			"enable_forward":   true,
-		}
-		if updateMulti {
-			config["update_multi"] = true
-		}
-		return map[string]any{
-			"config":   config,
-			"header":   header,
+	_ = version
+	config := map[string]any{
+		"width_mode":     "fill",
+		"enable_forward": true,
+	}
+	if updateMulti {
+		config["update_multi"] = true
+	}
+	return map[string]any{
+		"schema": "2.0",
+		"config": config,
+		"header": header,
+		"body": map[string]any{
 			"elements": elements,
-		}
+		},
 	}
 }
 
