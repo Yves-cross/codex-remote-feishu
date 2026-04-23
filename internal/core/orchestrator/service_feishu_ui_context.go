@@ -226,11 +226,11 @@ func (s *Service) buildFeishuThreadHistoryContextFromView(surface *state.Surface
 	}
 }
 
-func (s *Service) feishuDirectSelectionPromptEvent(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt) control.UIEvent {
+func (s *Service) feishuDirectSelectionPromptEvent(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt) eventcontract.Event {
 	return s.feishuDirectSelectionPromptEventWithInline(surface, prompt, false)
 }
 
-func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt, inline bool) control.UIEvent {
+func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.SurfaceConsoleRecord, prompt control.FeishuDirectSelectionPrompt, inline bool) eventcontract.Event {
 	promptView := prompt
 	view := control.FeishuSelectionView{
 		PromptKind: prompt.Kind,
@@ -249,7 +249,7 @@ func (s *Service) feishuDirectSelectionPromptEventWithInline(surface *state.Surf
 	)
 }
 
-func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuSelectionView) control.UIEvent {
+func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuSelectionView) eventcontract.Event {
 	return legacyUIEventFromContract(
 		surface,
 		eventcontract.SelectionPayload{
@@ -263,7 +263,7 @@ func (s *Service) selectionViewEvent(surface *state.SurfaceConsoleRecord, view c
 	)
 }
 
-func (s *Service) requestViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuRequestView) control.UIEvent {
+func (s *Service) requestViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuRequestView) eventcontract.Event {
 	return legacyUIEventFromContract(
 		surface,
 		eventcontract.RequestPayload{
@@ -277,7 +277,7 @@ func (s *Service) requestViewEvent(surface *state.SurfaceConsoleRecord, view con
 	)
 }
 
-func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPathPickerView, inline bool) control.UIEvent {
+func (s *Service) pathPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPathPickerView, inline bool) eventcontract.Event {
 	if !inline {
 		if messageID := s.pathPickerMessageID(surface, view.PickerID); messageID != "" {
 			view.MessageID = messageID
@@ -306,7 +306,7 @@ func (s *Service) pathPickerMessageID(surface *state.SurfaceConsoleRecord, picke
 	return s.pathPickerOwnerCardMessageID(surface, pickerID)
 }
 
-func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView, inline bool) control.UIEvent {
+func (s *Service) targetPickerViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuTargetPickerView, inline bool) eventcontract.Event {
 	if !inline {
 		if flow := s.activeOwnerCardFlow(surface); flow != nil && flow.Kind == ownerCardFlowKindTargetPicker && strings.TrimSpace(flow.FlowID) == strings.TrimSpace(view.PickerID) {
 			view.MessageID = strings.TrimSpace(flow.MessageID)
@@ -343,7 +343,7 @@ func (s *Service) pathPickerOwnerCardMessageID(surface *state.SurfaceConsoleReco
 	return strings.TrimSpace(flow.MessageID)
 }
 
-func (s *Service) threadHistoryViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuThreadHistoryView, inline bool, sourceMessageID string) control.UIEvent {
+func (s *Service) threadHistoryViewEvent(surface *state.SurfaceConsoleRecord, view control.FeishuThreadHistoryView, inline bool, sourceMessageID string) eventcontract.Event {
 	return legacyUIEventFromContract(
 		surface,
 		eventcontract.ThreadHistoryPayload{

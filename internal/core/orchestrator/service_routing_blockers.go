@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) blockThreadSwitch(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockThreadSwitch(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -34,7 +35,7 @@ func (s *Service) blockThreadSwitch(surface *state.SurfaceConsoleRecord) []contr
 	return nil
 }
 
-func (s *Service) blockFreshThreadAttach(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockFreshThreadAttach(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return nil
 	}
@@ -62,7 +63,7 @@ func (s *Service) surfaceHasRouteMutationRequestState(surface *state.SurfaceCons
 	return surface.ActiveRequestCapture != nil || activePendingRequest(surface) != nil || s.activePathPicker(surface) != nil
 }
 
-func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -79,7 +80,7 @@ func (s *Service) blockRouteMutationForRequestState(surface *state.SurfaceConsol
 	return nil
 }
 
-func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil || s.activePathPicker(surface) == nil {
 		return nil
 	}
@@ -101,7 +102,7 @@ func (s *Service) blockActionForActivePathPicker(surface *state.SurfaceConsoleRe
 	}
 }
 
-func (s *Service) blockActionForActiveTargetPicker(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) blockActionForActiveTargetPicker(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil || !s.targetPickerHasBlockingProcessing(surface) {
 		return nil
 	}
@@ -116,7 +117,7 @@ func (s *Service) blockActionForActiveTargetPicker(surface *state.SurfaceConsole
 	}
 }
 
-func (s *Service) blockNewThreadPreparation(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockNewThreadPreparation(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -147,7 +148,7 @@ func (s *Service) blockNewThreadPreparation(surface *state.SurfaceConsoleRecord)
 	return nil
 }
 
-func (s *Service) blockPreparedNewThreadRouteExit(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockPreparedNewThreadRouteExit(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady {
 		return nil
 	}
@@ -162,7 +163,7 @@ func (s *Service) blockPreparedNewThreadRouteExit(surface *state.SurfaceConsoleR
 	return nil
 }
 
-func (s *Service) blockPreparedNewThreadReprepare(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) blockPreparedNewThreadReprepare(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil || surface.RouteMode != state.RouteModeNewThreadReady {
 		return nil
 	}
@@ -220,7 +221,7 @@ func (s *Service) clearPreparedNewThread(surface *state.SurfaceConsoleRecord) {
 	surface.PreparedAt = time.Time{}
 }
 
-func (s *Service) unboundInputBlocked(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) unboundInputBlocked(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return nil
 	}
@@ -246,7 +247,7 @@ func (s *Service) unboundInputBlocked(surface *state.SurfaceConsoleRecord) []con
 	}
 }
 
-func (s *Service) autoPromptUseThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []control.UIEvent {
+func (s *Service) autoPromptUseThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []eventcontract.Event {
 	if surface == nil || inst == nil || len(visibleThreads(inst)) == 0 {
 		return nil
 	}

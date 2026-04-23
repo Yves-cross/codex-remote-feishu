@@ -5,7 +5,6 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -19,11 +18,11 @@ const (
 	surfaceVisibilityUINavigation  surfaceVisibilityClass = "ui_navigation"
 )
 
-func (s *Service) filterEventsForSurfaceVisibility(events []control.UIEvent) []control.UIEvent {
+func (s *Service) filterEventsForSurfaceVisibility(events []eventcontract.Event) []eventcontract.Event {
 	if len(events) == 0 {
 		return nil
 	}
-	filtered := make([]control.UIEvent, 0, len(events))
+	filtered := make([]eventcontract.Event, 0, len(events))
 	for _, event := range events {
 		if s.allowSurfaceVisibleEvent(event) {
 			filtered = append(filtered, event)
@@ -32,7 +31,7 @@ func (s *Service) filterEventsForSurfaceVisibility(events []control.UIEvent) []c
 	return filtered
 }
 
-func (s *Service) allowSurfaceVisibleEvent(event control.UIEvent) bool {
+func (s *Service) allowSurfaceVisibleEvent(event eventcontract.Event) bool {
 	if event.Command != nil || event.DaemonCommand != nil {
 		return true
 	}
@@ -61,8 +60,8 @@ func (s *Service) allowSurfaceVisibleEvent(event control.UIEvent) bool {
 	}
 }
 
-func classifySurfaceVisibleEvent(event control.UIEvent) surfaceVisibilityClass {
-	switch eventcontractcompat.FromLegacyUIEvent(event).Meta.Semantics.VisibilityClass {
+func classifySurfaceVisibleEvent(event eventcontract.Event) surfaceVisibilityClass {
+	switch event.CanonicalSemantics().VisibilityClass {
 	case eventcontract.VisibilityClassPlan:
 		return surfaceVisibilityPlan
 	case eventcontract.VisibilityClassProgressText:

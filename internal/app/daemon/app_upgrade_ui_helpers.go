@@ -3,13 +3,14 @@ package daemon
 import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func debugUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+func debugUsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
 	return commandPageEvents(surfaceID, buildDebugRootPageView(install.InstallState{}, false, formDefault, "error", message))
 }
 
-func upgradeUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+func upgradeUsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
 	return commandPageEvents(surfaceID, buildUpgradeRootPageView(install.InstallState{}, formDefault, "error", message))
 }
 
@@ -23,9 +24,9 @@ func runCommandButton(label, commandText, style string, disabled bool) control.C
 	}
 }
 
-func debugNoticeEvent(surfaceID, code, text string) control.UIEvent {
-	return control.UIEvent{
-		Kind:             control.UIEventNotice,
+func debugNoticeEvent(surfaceID, code, text string) eventcontract.Event {
+	return eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,
@@ -35,9 +36,9 @@ func debugNoticeEvent(surfaceID, code, text string) control.UIEvent {
 	}
 }
 
-func upgradeNoticeEvent(surfaceID, code, text string) control.UIEvent {
-	return control.UIEvent{
-		Kind:             control.UIEventNotice,
+func upgradeNoticeEvent(surfaceID, code, text string) eventcontract.Event {
+	return eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -16,7 +17,7 @@ const (
 	inboundWorkspaceFileSource   = "feishu-files"
 )
 
-func (a *App) applyIngressActionLocked(action control.Action) []control.UIEvent {
+func (a *App) applyIngressActionLocked(action control.Action) []eventcontract.Event {
 	if action.Kind != control.ActionFileMessage {
 		return a.service.ApplySurfaceAction(action)
 	}
@@ -24,8 +25,8 @@ func (a *App) applyIngressActionLocked(action control.Action) []control.UIEvent 
 	prepared, err := a.prepareInboundFileActionLocked(action)
 	if err != nil {
 		a.ensureSurfaceRouteForNotice(action)
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			GatewayID:        action.GatewayID,
 			SurfaceSessionID: action.SurfaceSessionID,
 			Notice: &control.Notice{

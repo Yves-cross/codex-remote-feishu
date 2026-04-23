@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) presentInstanceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentInstanceSelection(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.presentInstanceSelectionWithInline(surface, false)
 }
 
-func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConsoleRecord, inline bool) []control.UIEvent {
+func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConsoleRecord, inline bool) []eventcontract.Event {
 	_ = inline
 	instances := make([]*state.InstanceRecord, 0, len(s.root.Instances))
 	for _, inst := range s.root.Instances {
@@ -85,7 +86,7 @@ func (s *Service) presentInstanceSelectionWithInline(surface *state.SurfaceConso
 	appendEntries(available)
 	appendEntries(unavailable)
 
-	return []control.UIEvent{s.selectionViewEvent(surface, control.FeishuSelectionView{
+	return []eventcontract.Event{s.selectionViewEvent(surface, control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptAttachInstance,
 		Instance: &control.FeishuInstanceSelectionView{
 			Current: current,
@@ -183,17 +184,17 @@ func (s *Service) instanceSelectionContextText(surface *state.SurfaceConsoleReco
 	}, "\n")
 }
 
-func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentWorkspaceSelection(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.presentWorkspaceSelectionPage(surface, 1)
 }
 
-func (s *Service) presentAllWorkspaceSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentAllWorkspaceSelection(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.presentWorkspaceSelectionPage(surface, 1)
 }
 
 const workspaceSelectionPageSize = 8
 
-func (s *Service) presentWorkspaceSelectionPage(surface *state.SurfaceConsoleRecord, page int) []control.UIEvent {
+func (s *Service) presentWorkspaceSelectionPage(surface *state.SurfaceConsoleRecord, page int) []eventcontract.Event {
 	model, events := s.buildWorkspaceSelectionModel(surface, page)
 	if len(events) != 0 {
 		return events
@@ -201,13 +202,13 @@ func (s *Service) presentWorkspaceSelectionPage(surface *state.SurfaceConsoleRec
 	if model == nil {
 		return nil
 	}
-	return []control.UIEvent{s.selectionViewEvent(surface, control.FeishuSelectionView{
+	return []eventcontract.Event{s.selectionViewEvent(surface, control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptAttachWorkspace,
 		Workspace:  model,
 	})}
 }
 
-func (s *Service) buildWorkspaceSelectionModel(surface *state.SurfaceConsoleRecord, page int) (*control.FeishuWorkspaceSelectionView, []control.UIEvent) {
+func (s *Service) buildWorkspaceSelectionModel(surface *state.SurfaceConsoleRecord, page int) (*control.FeishuWorkspaceSelectionView, []eventcontract.Event) {
 	grouped := map[string][]*state.InstanceRecord{}
 	for _, inst := range s.root.Instances {
 		if inst == nil || !inst.Online {

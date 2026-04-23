@@ -9,11 +9,12 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
-func (a *App) handleDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleDaemonCommand(command control.DaemonCommand) []eventcontract.Event {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.shuttingDown {
@@ -22,7 +23,7 @@ func (a *App) handleDaemonCommand(command control.DaemonCommand) []control.UIEve
 	return a.handleDaemonCommandLocked(command)
 }
 
-func (a *App) handleDaemonCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleDaemonCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	switch command.Kind {
 	case control.DaemonCommandStartHeadless:
 		return a.startManagedHeadless(command)
@@ -53,7 +54,7 @@ func (a *App) handleDaemonCommandLocked(command control.DaemonCommand) []control
 	}
 }
 
-func (a *App) startManagedHeadless(command control.DaemonCommand) []control.UIEvent {
+func (a *App) startManagedHeadless(command control.DaemonCommand) []eventcontract.Event {
 	cfg := a.headlessRuntime
 	now := time.Now().UTC()
 	if strings.TrimSpace(cfg.BinaryPath) == "" {
@@ -137,7 +138,7 @@ func (a *App) startManagedHeadless(command control.DaemonCommand) []control.UIEv
 	return a.service.HandleHeadlessLaunchStarted(command.SurfaceSessionID, command.InstanceID, pid)
 }
 
-func (a *App) killManagedHeadless(command control.DaemonCommand) []control.UIEvent {
+func (a *App) killManagedHeadless(command control.DaemonCommand) []eventcontract.Event {
 	pid := 0
 	if managed := a.managedHeadlessRuntime.Processes[command.InstanceID]; managed != nil {
 		pid = managed.PID

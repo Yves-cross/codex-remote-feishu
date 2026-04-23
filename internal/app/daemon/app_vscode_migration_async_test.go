@@ -10,6 +10,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestDaemonTickRunsVSCodeCompatibilityDetectInBackgroundAndAvoidsDuplicateLaunch(t *testing.T) {
@@ -141,8 +142,8 @@ func TestDaemonTickVSCodeFollowupGuidancePatchesAsyncCompatibilityCard(t *testin
 	app.onTick(context.Background(), time.Now().UTC())
 	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入迁移失败")
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	app.handleUIEvents(context.Background(), []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:  "surface_resume_open_vscode",

@@ -3,13 +3,15 @@ package orchestrator
 import (
 	"fmt"
 
-	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const (
@@ -20,7 +22,7 @@ const (
 	requestPromptStepNextOptionID     = "step_next"
 )
 
-func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	requestAction := requestActionFromCompatibilityFields(action)
 	if surface == nil || requestAction == nil || strings.TrimSpace(requestAction.RequestID) == "" {
 		return nil
@@ -58,7 +60,7 @@ func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action con
 	return s.dispatchRequestResponse(surface, request, action, response, "")
 }
 
-func (s *Service) controlRequest(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) controlRequest(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	requestControl := requestControlFromAction(action)
 	if surface == nil || requestControl == nil || strings.TrimSpace(requestControl.RequestID) == "" {
 		return nil
@@ -101,7 +103,7 @@ func (s *Service) controlRequest(surface *state.SurfaceConsoleRecord, action con
 	}
 }
 
-func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if event.RequestID == "" {
 		return nil
 	}
@@ -189,10 +191,10 @@ func (s *Service) presentRequestPrompt(instanceID string, event agentproto.Event
 	if !requestPromptRenderable(requestType) {
 		return notice(surface, "request_unsupported", fmt.Sprintf("收到 %s 请求，当前飞书端还不能直接处理，已保持为待处理状态。", requestType))
 	}
-	return []control.UIEvent{s.requestPromptEvent(surface, record, threadTitle)}
+	return []eventcontract.Event{s.requestPromptEvent(surface, record, threadTitle)}
 }
 
-func (s *Service) resolveRequestPrompt(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) resolveRequestPrompt(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if event.RequestID != "" {
 		for _, surface := range s.findAttachedSurfaces(instanceID) {
 			if surface.PendingRequests == nil {
@@ -207,7 +209,7 @@ func (s *Service) resolveRequestPrompt(instanceID string, event agentproto.Event
 	return nil
 }
 
-func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRecord, action control.Action, text string) []control.UIEvent {
+func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRecord, action control.Action, text string) []eventcontract.Event {
 	capture := surface.ActiveRequestCapture
 	if requestCaptureExpired(s.now(), capture) {
 		clearSurfaceRequestCapture(surface)
@@ -241,8 +243,8 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 	}
 
 	clearSurfaceRequestCapture(surface)
-	events := []control.UIEvent{{
-		Kind:             control.UIEventAgentCommand,
+	events := []eventcontract.Event{{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandRequestRespond,
@@ -271,7 +273,7 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 	return events
 }
 
-func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []control.UIEvent) {
+func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []eventcontract.Event) {
 	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个请求动作缺少有效的请求上下文。")
@@ -312,12 +314,12 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 		if requestPromptStepPrevious(requestAction.RequestOptionID) {
 			moveRequestPromptCurrentQuestion(request, -1)
 			bumpRequestCardRevision(request)
-			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+			return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		if requestPromptStepNext(requestAction.RequestOptionID) {
 			moveRequestPromptCurrentQuestion(request, 1)
 			bumpRequestCardRevision(request)
-			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+			return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		response, complete, errText := buildRequestUserInputResponse(request, requestAnswers)
 		if errText != "" {
@@ -329,7 +331,7 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 			}
 			bumpRequestCardRevision(request)
 			setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
-			return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+			return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 		}
 		return response, true, nil
 	case "permissions_request_approval":
@@ -622,22 +624,22 @@ func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTit
 	return control.NormalizeFeishuRequestView(view)
 }
 
-func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) eventcontract.Event {
 	event := s.requestViewEvent(surface, s.requestPromptView(record, threadTitleHint))
 	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
 	return event
 }
 
-func (s *Service) requestPromptInlineEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) control.UIEvent {
+func (s *Service) requestPromptInlineEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) eventcontract.Event {
 	event := s.requestPromptEvent(surface, record, threadTitleHint)
 	event.InlineReplaceCurrentCard = true
 	return event
 }
 
-func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, code, text string) []control.UIEvent {
-	events := []control.UIEvent{s.requestPromptEvent(surface, record, "")}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, code, text string) []eventcontract.Event {
+	events := []eventcontract.Event{s.requestPromptEvent(surface, record, "")}
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  strings.TrimSpace(record.SourceMessageID),
 		Notice: &control.Notice{
@@ -648,7 +650,7 @@ func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRe
 	return events
 }
 
-func (s *Service) requestPromptInlinePhaseEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string, phase frontstagecontract.Phase, statusText string) control.UIEvent {
+func (s *Service) requestPromptInlinePhaseEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string, phase frontstagecontract.Phase, statusText string) eventcontract.Event {
 	view := s.requestPromptView(record, threadTitleHint)
 	view.Phase = phase
 	view.StatusText = strings.TrimSpace(statusText)
@@ -658,19 +660,19 @@ func (s *Service) requestPromptInlinePhaseEvent(surface *state.SurfaceConsoleRec
 	return event
 }
 
-func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, response map[string]any, statusText string) []control.UIEvent {
+func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, response map[string]any, statusText string) []eventcontract.Event {
 	if surface == nil || request == nil || response == nil {
 		return nil
 	}
 	request.PendingDispatchCommandID = s.nextRequestDispatchCommandID()
 	request.Phase = frontstagecontract.PhaseWaitingDispatch
 	bumpRequestCardRevision(request)
-	events := make([]control.UIEvent, 0, 2)
+	events := make([]eventcontract.Event, 0, 2)
 	if requestPromptRenderable(request.RequestType) {
 		events = append(events, s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseWaitingDispatch, firstNonEmpty(strings.TrimSpace(statusText), requestPromptPendingDispatchStatusText(request))))
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventAgentCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			CommandID: request.PendingDispatchCommandID,
@@ -695,7 +697,7 @@ func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, r
 	return events
 }
 
-func (s *Service) skipOptionalRequestQuestion(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestControl *control.ActionRequestControl) []control.UIEvent {
+func (s *Service) skipOptionalRequestQuestion(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestControl *control.ActionRequestControl) []eventcontract.Event {
 	if request == nil || requestControl == nil {
 		return nil
 	}
@@ -733,15 +735,15 @@ func (s *Service) skipOptionalRequestQuestion(surface *state.SurfaceConsoleRecor
 	}
 	bumpRequestCardRevision(request)
 	setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
-	return []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+	return []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 }
 
-func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) []control.UIEvent {
+func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) []eventcontract.Event {
 	if surface == nil || request == nil {
 		return nil
 	}
 	request.Phase = frontstagecontract.PhaseCancelled
-	events := []control.UIEvent{s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseCancelled, "已放弃答题，并向当前 turn 发送停止请求。")}
+	events := []eventcontract.Event{s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseCancelled, "已放弃答题，并向当前 turn 发送停止请求。")}
 	if strings.TrimSpace(request.RequestID) != "" && surface.PendingRequests != nil {
 		delete(surface.PendingRequests, request.RequestID)
 	}
@@ -750,8 +752,8 @@ func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord
 		events[0] = s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseCancelled, "已放弃答题。当前 turn 已不在可中断状态。")
 		return events
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventAgentCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnInterrupt,

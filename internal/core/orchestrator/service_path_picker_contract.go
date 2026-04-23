@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -64,7 +65,7 @@ func pathPickerStatusNoticeSections(title, text string, sections []control.Feish
 	return cloneFeishuCardSections(result)
 }
 
-func (s *Service) pathPickerNotice(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, code, title, text string, inline bool) []control.UIEvent {
+func (s *Service) pathPickerNotice(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, code, title, text string, inline bool) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return notice(surface, code, text)
 	}
@@ -73,10 +74,10 @@ func (s *Service) pathPickerNotice(surface *state.SurfaceConsoleRecord, record *
 	if err != nil {
 		return notice(surface, code, text)
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, inline)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, inline)}
 }
 
-func (s *Service) pathPickerInlineNotice(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, code, title, text string) []control.UIEvent {
+func (s *Service) pathPickerInlineNotice(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, code, title, text string) []eventcontract.Event {
 	return s.pathPickerNotice(surface, record, code, title, text, true)
 }
 
@@ -88,10 +89,10 @@ func (s *Service) finishPathPickerWithStatus(
 	sections []control.FeishuCardTextSection,
 	footer string,
 	inline bool,
-	appendEvents []control.UIEvent,
-) []control.UIEvent {
+	appendEvents []eventcontract.Event,
+) []eventcontract.Event {
 	if record == nil {
-		return append([]control.UIEvent(nil), appendEvents...)
+		return append([]eventcontract.Event(nil), appendEvents...)
 	}
 	setPathPickerStatus(record, title, text, sections, footer)
 	view, err := s.buildPathPickerView(surface, record)
@@ -106,14 +107,14 @@ func (s *Service) finishPathPickerWithStatus(
 	view = control.NormalizeFeishuPathPickerView(view)
 	event := s.pathPickerViewEvent(surface, view, inline)
 	s.clearSurfacePathPicker(surface)
-	return append([]control.UIEvent{event}, appendEvents...)
+	return append([]eventcontract.Event{event}, appendEvents...)
 }
 
-func pathPickerFilteredFollowupEvents(events []control.UIEvent) []control.UIEvent {
+func pathPickerFilteredFollowupEvents(events []eventcontract.Event) []eventcontract.Event {
 	return filterFollowupEventsByPolicy(events, dropNoticeFollowupPolicy)
 }
 
-func pathPickerFirstNoticeText(events []control.UIEvent) string {
+func pathPickerFirstNoticeText(events []eventcontract.Event) string {
 	for _, event := range events {
 		if event.Notice == nil {
 			continue

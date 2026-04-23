@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -63,7 +63,7 @@ func (a *App) shouldDeferHeadlessRestoreUntilInitialRefreshLocked(entry SurfaceR
 	return strings.TrimSpace(inst.Source) != "headless"
 }
 
-func (a *App) maybeRecoverHeadlessSurfacesLocked(now time.Time) []control.UIEvent {
+func (a *App) maybeRecoverHeadlessSurfacesLocked(now time.Time) []eventcontract.Event {
 	if len(a.surfaceResumeRuntime.headlessRestore) == 0 {
 		return nil
 	}
@@ -73,7 +73,7 @@ func (a *App) maybeRecoverHeadlessSurfacesLocked(now time.Time) []control.UIEven
 	}
 	sort.Strings(surfaceIDs)
 	allowMissingThreadFailure := a.initialThreadsRefreshRoundCompleteLocked()
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		state := a.surfaceResumeRuntime.headlessRestore[surfaceID]
@@ -130,7 +130,7 @@ func (a *App) setHeadlessRestoreBackoffLocked(surfaceID, code string, now time.T
 	state.LastFailureCode = strings.TrimSpace(code)
 }
 
-func (a *App) recordHeadlessRestoreOutcomeEventsLocked(events []control.UIEvent, now time.Time) {
+func (a *App) recordHeadlessRestoreOutcomeEventsLocked(events []eventcontract.Event, now time.Time) {
 	for _, event := range events {
 		if event.Notice == nil {
 			continue

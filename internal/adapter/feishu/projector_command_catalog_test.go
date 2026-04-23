@@ -9,7 +9,7 @@ import (
 
 func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuPageView{
+	ops := projector.ProjectEvent("chat-1", commandCatalogEvent(control.FeishuPageView{
 		Title:           "使用模型",
 		SummarySections: summarySections("直接在卡片里输入模型名。"),
 		Interactive:     true,
@@ -97,7 +97,7 @@ func TestProjectInteractiveCommandCatalogRendersBreadcrumbsAndCommandForm(t *tes
 
 func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuPageView{
+	ops := projector.ProjectEvent("chat-1", commandCatalogEvent(control.FeishuPageView{
 		Title:       "使用模型",
 		Interactive: true,
 		Sections: []control.CommandCatalogSection{{
@@ -157,7 +157,7 @@ func TestProjectInteractiveCommandCatalogRendersSelectStaticCommandForm(t *testi
 func TestProjectMenuHomeRendersRootBreadcrumbAndNamedGroupButtons(t *testing.T) {
 	projector := NewProjector()
 	view := control.BuildFeishuCommandMenuHomePageView()
-	ops := projector.Project("chat-1", commandCatalogEvent(view))
+	ops := projector.ProjectEvent("chat-1", commandCatalogEvent(view))
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
@@ -187,7 +187,7 @@ func TestProjectMenuHomeRendersRootBreadcrumbAndNamedGroupButtons(t *testing.T) 
 
 func TestProjectCommandCatalogRendersNoticeAreaBetweenBusinessAndFooter(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", commandCatalogEvent(control.FeishuPageView{
+	ops := projector.ProjectEvent("chat-1", commandCatalogEvent(control.FeishuPageView{
 		Title: "上下文已压缩",
 		BodySections: []control.FeishuCardTextSection{{
 			Label: "当前会话",

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -66,7 +67,7 @@ func TestTurnDiffUpdatedLatestSnapshotEmbedsIntoFinalAssistantBlock(t *testing.T
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		if finished[i].Block != nil && finished[i].Block.Final && finished[i].Block.Text == "已完成修改。" {
 			finalBlockEvent = &finished[i]
@@ -140,7 +141,7 @@ func TestTurnDiffUpdatedEmbedsIntoSyntheticFinalBlockWithFileSummary(t *testing.
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		if finished[i].Block != nil && finished[i].Block.Final {
 			finalBlockEvent = &finished[i]

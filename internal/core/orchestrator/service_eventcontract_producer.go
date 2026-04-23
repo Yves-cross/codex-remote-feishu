@@ -5,7 +5,6 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -16,7 +15,7 @@ func legacyUIEventFromContract(
 	inlineReplaceCurrentCard bool,
 	sourceMessageID string,
 	sourceMessagePreview string,
-) control.UIEvent {
+) eventcontract.Event {
 	target := eventcontract.TargetRef{
 		GatewayID:        strings.TrimSpace(firstNonEmpty(surfaceGatewayID(surface))),
 		SurfaceSessionID: strings.TrimSpace(firstNonEmpty(surfaceSessionID(surface))),
@@ -31,7 +30,7 @@ func legacyUIEventFromContract(
 		},
 		Payload: payload,
 	}
-	return eventcontractcompat.ToLegacyUIEvent(event)
+	return event.Normalized()
 }
 
 func inlineReplaceMode(inline bool) eventcontract.InlineReplaceMode {

@@ -1,8 +1,10 @@
 package control
 
-import "time"
+import (
+	"time"
 
-import "github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
+)
 
 type TargetPickerRequestSource string
 

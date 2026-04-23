@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestRemoteRequestPromptCarriesTurnReplyAnchor(t *testing.T) {
@@ -53,7 +53,7 @@ func TestReplayFinalUsesStoredReplyAnchor(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatalf("expected replay events, got %#v", events)
 	}
-	var finalEvent *control.UIEvent
+	var finalEvent *eventcontract.Event
 	for i := range events {
 		if events[i].Block != nil && events[i].Block.Final {
 			finalEvent = &events[i]

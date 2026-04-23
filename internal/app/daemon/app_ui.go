@@ -8,19 +8,18 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
-func (a *App) handleUIEvents(ctx context.Context, events []control.UIEvent) {
+func (a *App) handleUIEvents(ctx context.Context, events []eventcontract.Event) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.handleUIEventsLocked(ctx, events)
 }
 
-func (a *App) handleUIEventsLocked(ctx context.Context, events []control.UIEvent) {
+func (a *App) handleUIEventsLocked(ctx context.Context, events []eventcontract.Event) {
 	_ = ctx
 	turnAttentionPings := a.planTurnAttentionPingsLocked(events)
 	for index, event := range events {
@@ -142,7 +141,7 @@ func (a *App) handleUIEventsLocked(ctx context.Context, events []control.UIEvent
 	}
 }
 
-func (a *App) deliverAttentionFollowupLocked(anchorEvent, followup control.UIEvent) bool {
+func (a *App) deliverAttentionFollowupLocked(anchorEvent, followup eventcontract.Event) bool {
 	if err := a.deliverUIEventLocked(context.Background(), followup); err != nil {
 		log.Printf(
 			"attention follow-up dropped after delivered anchor: surface=%s anchor=%s followup=%s err=%v",
@@ -156,21 +155,21 @@ func (a *App) deliverAttentionFollowupLocked(anchorEvent, followup control.UIEve
 	return true
 }
 
-func (a *App) deliverUIEvent(event control.UIEvent) error {
+func (a *App) deliverUIEvent(event eventcontract.Event) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.deliverUIEventLocked(context.Background(), event)
 }
 
-func (a *App) deliverUIEventLocked(ctx context.Context, event control.UIEvent) error {
+func (a *App) deliverUIEventLocked(ctx context.Context, event eventcontract.Event) error {
 	return a.deliverUIEventWithContextMode(ctx, event, true)
 }
 
-func (a *App) deliverUIEventWithContext(ctx context.Context, event control.UIEvent) error {
+func (a *App) deliverUIEventWithContext(ctx context.Context, event eventcontract.Event) error {
 	return a.deliverUIEventWithContextMode(ctx, event, false)
 }
 
-func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.UIEvent, appLocked bool) error {
+func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcontract.Event, appLocked bool) error {
 	chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 	actorUserID := a.service.SurfaceActorUserID(event.SurfaceSessionID)
 	gatewayID := firstNonEmpty(event.GatewayID, a.service.SurfaceGatewayID(event.SurfaceSessionID))
@@ -184,7 +183,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 		previewErr error
 		didPreview bool
 	)
-	if a.finalBlockPreviewer != nil && event.Kind == control.UIEventBlockCommitted && event.Block != nil {
+	if a.finalBlockPreviewer != nil && event.Kind == eventcontract.EventBlockCommitted && event.Block != nil {
 		previewCtx, previewCancel := a.newTimeoutContext(ctx, a.finalPreviewTimeout)
 		previewReq = feishu.FinalBlockPreviewRequest{
 			GatewayID:        gatewayID,
@@ -226,7 +225,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 	if event.Snapshot != nil {
 		a.populateSnapshotFeishuPermissionGaps(event.Snapshot, event.SurfaceSessionID)
 	}
-	operations := a.projector.ProjectEvent(chatID, eventcontractcompat.FromLegacyUIEvent(event))
+	operations := a.projector.ProjectEvent(chatID, event.Normalized())
 	for i := range operations {
 		if operations[i].GatewayID == "" {
 			operations[i].GatewayID = gatewayID
@@ -266,8 +265,8 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event control.U
 	return nil
 }
 
-func (a *App) recordUIEventDelivery(event control.UIEvent, operations []feishu.Operation) {
-	if event.Kind == control.UIEventBlockCommitted && event.Block != nil && event.Block.Final {
+func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feishu.Operation) {
+	if event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -386,7 +385,7 @@ func (a *App) newTimeoutContext(parent context.Context, timeout time.Duration) (
 	return context.WithTimeout(base, timeout)
 }
 
-func (a *App) queueGatewayFailureNotice(event control.UIEvent, err error) {
+func (a *App) queueGatewayFailureNotice(event eventcontract.Event, err error) {
 	if strings.TrimSpace(event.SurfaceSessionID) == "" {
 		return
 	}
@@ -402,8 +401,8 @@ func (a *App) queueGatewayFailureNotice(event control.UIEvent, err error) {
 		SurfaceSessionID: event.SurfaceSessionID,
 		Retryable:        true,
 	}))
-	a.queueGlobalRuntimeNoticeLocked(control.UIEvent{
-		Kind:             control.UIEventNotice,
+	a.queueGlobalRuntimeNoticeLocked(eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: event.SurfaceSessionID,
 		Notice:           &notice,
 	})

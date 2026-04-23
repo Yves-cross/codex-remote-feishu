@@ -11,6 +11,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -23,9 +24,9 @@ type upgradeStartRequest struct {
 	Context          context.Context
 }
 
-func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	if stateValue.PendingUpgrade == nil || strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion) == "" {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_missing_candidate", "当前没有可继续的升级候选，请先发送 /upgrade latest 检查最新版本。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_missing_candidate", "当前没有可继续的升级候选，请先发送 /upgrade latest 检查最新版本。")}
 	}
 	now := time.Now().UTC()
 	stateValue.PendingUpgrade.GatewayID = firstNonEmpty(strings.TrimSpace(command.GatewayID), a.service.SurfaceGatewayID(command.SurfaceSessionID))
@@ -37,7 +38,7 @@ func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValu
 		stateValue.PendingUpgrade.RequestedAt = &now
 	}
 	if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级事务失败：%v", err))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级事务失败：%v", err))}
 	}
 	a.upgradeRuntime.StartInFlight = true
 	go a.runPendingUpgradeStart(upgradeStartRequest{
@@ -46,7 +47,7 @@ func (a *App) beginPendingUpgradeLocked(command control.DaemonCommand, stateValu
 		SurfaceSessionID: stateValue.PendingUpgrade.SurfaceSessionID,
 		SourceMessageID:  stateValue.PendingUpgrade.SourceMessageID,
 	})
-	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_started", fmt.Sprintf("正在准备升级到 %s，服务会短暂重启。", firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))))}
+	return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_started", fmt.Sprintf("正在准备升级到 %s，服务会短暂重启。", firstNonEmpty(strings.TrimSpace(stateValue.PendingUpgrade.TargetSlot), strings.TrimSpace(stateValue.PendingUpgrade.TargetVersion))))}
 }
 
 func (a *App) runPendingUpgradeStart(request upgradeStartRequest) {
@@ -193,7 +194,7 @@ func (a *App) finishUpgradeStartFailure(request upgradeStartRequest, err error) 
 		return
 	}
 	if request.SurfaceSessionID != "" {
-		a.handleUIEventsLocked(context.Background(), []control.UIEvent{
+		a.handleUIEventsLocked(context.Background(), []eventcontract.Event{
 			upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", err.Error()),
 		})
 	}
@@ -214,7 +215,7 @@ func (a *App) upgradeHelperLogPathLocked() string {
 	return paths.DaemonLogFile
 }
 
-func (a *App) maybeFlushUpgradeResultLocked(now time.Time) []control.UIEvent {
+func (a *App) maybeFlushUpgradeResultLocked(now time.Time) []eventcontract.Event {
 	if a.upgradeRuntime.ResultScanEvery <= 0 {
 		return nil
 	}
@@ -237,7 +238,7 @@ func (a *App) maybeFlushUpgradeResultLocked(now time.Time) []control.UIEvent {
 		return nil
 	}
 	a.service.MaterializeSurface(pending.SurfaceSessionID, pending.GatewayID, pending.ChatID, pending.ActorUserID)
-	events := []control.UIEvent{upgradeNoticeEvent(pending.SurfaceSessionID, "upgrade_result", buildUpgradeResultText(stateValue))}
+	events := []eventcontract.Event{upgradeNoticeEvent(pending.SurfaceSessionID, "upgrade_result", buildUpgradeResultText(stateValue))}
 	stateValue.PendingUpgrade = nil
 	if err := a.writeUpgradeStateLocked(stateValue); err != nil {
 		return nil

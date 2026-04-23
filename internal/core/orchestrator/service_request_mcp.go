@@ -9,6 +9,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -56,7 +57,7 @@ func buildPermissionsRequestOptions() []state.RequestPromptOptionRecord {
 	}
 }
 
-func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
+func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []eventcontract.Event) {
 	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, nil
@@ -153,7 +154,7 @@ func buildMCPElicitationOptions(prompt *agentproto.RequestPrompt, metadata map[s
 	}
 }
 
-func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []control.UIEvent) {
+func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []eventcontract.Event) {
 	requestAction := requestActionFromCompatibilityFields(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个 MCP 请求动作缺少有效的请求上下文。")
@@ -163,12 +164,12 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 	if requestPromptStepPrevious(optionID) {
 		moveRequestPromptCurrentQuestion(request, -1)
 		bumpRequestCardRevision(request)
-		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+		return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 	}
 	if requestPromptStepNext(optionID) {
 		moveRequestPromptCurrentQuestion(request, 1)
 		bumpRequestCardRevision(request)
-		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+		return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 	}
 	switch optionID {
 	case "decline", "cancel":
@@ -193,7 +194,7 @@ func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecor
 		}
 		bumpRequestCardRevision(request)
 		setRequestPromptCurrentQuestionIndex(request, firstIncompleteRequestQuestionIndex(request))
-		return nil, false, []control.UIEvent{s.requestPromptInlineEvent(surface, request, "")}
+		return nil, false, []eventcontract.Event{s.requestPromptInlineEvent(surface, request, "")}
 	}
 	return buildMCPElicitationPayload("accept", content, promptMCPElicitationMeta(request.Prompt, nil)), true, nil
 }

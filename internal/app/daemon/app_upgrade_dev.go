@@ -9,6 +9,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 type devUpgradeCheckRequest struct {
@@ -25,26 +26,26 @@ func (a *App) defaultDevManifestLookup(ctx context.Context) (install.DevManifest
 	})
 }
 
-func (a *App) handleUpgradeDevCommand(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) handleUpgradeDevCommand(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	if a.upgradeRuntime.CheckInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
 	}
 	if a.upgradeRuntime.StartInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
 	}
 	if clearStalePendingCandidateOnLiveVersion(&stateValue, a.currentBinaryVersion()) {
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-			return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理陈旧升级候选失败：%v", err))}
+			return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理陈旧升级候选失败：%v", err))}
 		}
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceDev) {
 		return a.beginPendingUpgradeLocked(command, stateValue)
 	}
 	if pendingUpgradeBusy(stateValue.PendingUpgrade) {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceRelease) {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 release 升级候选，请先完成 `/upgrade latest`，或重新检查当前来源。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 release 升级候选，请先完成 `/upgrade latest`，或重新检查当前来源。")}
 	}
 
 	a.upgradeRuntime.CheckInFlight = true
@@ -54,7 +55,7 @@ func (a *App) handleUpgradeDevCommand(command control.DaemonCommand, stateValue 
 		SurfaceSessionID: command.SurfaceSessionID,
 		SourceMessageID:  command.SourceMessageID,
 	})
-	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_dev_check_started", "正在检查最新 dev 构建。")}
+	return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_dev_check_started", "正在检查最新 dev 构建。")}
 }
 
 func (a *App) runDevUpgradeCheck(request devUpgradeCheckRequest) {
@@ -80,11 +81,11 @@ func (a *App) runDevUpgradeCheck(request devUpgradeCheckRequest) {
 	}
 }
 
-func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, manifest install.DevManifest, _ install.DevManifestAsset, lookupErr error, completedAt time.Time) []control.UIEvent {
+func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, manifest install.DevManifest, _ install.DevManifestAsset, lookupErr error, completedAt time.Time) []eventcontract.Event {
 	stateValue, _, err := a.loadUpgradeStateLocked(true)
 	if err != nil {
 		if request.Manual {
-			return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
+			return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
 		}
 		return nil
 	}
@@ -95,7 +96,7 @@ func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, m
 			return nil
 		}
 		if request.Manual {
-			return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_check_failed", fmt.Sprintf("检查 dev 构建失败：%v", lookupErr))}
+			return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_check_failed", fmt.Sprintf("检查 dev 构建失败：%v", lookupErr))}
 		}
 		return nil
 	}
@@ -111,7 +112,7 @@ func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, m
 			return nil
 		}
 		if request.Manual {
-			return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_latest", fmt.Sprintf("当前已经是最新 dev 构建 %s。", latestVersion))}
+			return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_latest", fmt.Sprintf("当前已经是最新 dev 构建 %s。", latestVersion))}
 		}
 		return nil
 	}
@@ -137,12 +138,12 @@ func (a *App) applyDevUpgradeCheckResultLocked(request devUpgradeCheckRequest, m
 	if a.surfaceAllowsManualUpgradePromptLocked(request.SurfaceSessionID) {
 		events := a.promptPendingUpgradeOnSurfaceLocked(request.SurfaceSessionID, stateValue, completedAt)
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-			return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级状态失败：%v", err))}
+			return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级状态失败：%v", err))}
 		}
 		return events
 	}
 	if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级状态失败：%v", err))}
+		return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("写入升级状态失败：%v", err))}
 	}
-	return []control.UIEvent{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_candidate_pending", fmt.Sprintf("发现新的 dev 构建 %s，但当前窗口不空闲，已记录候选升级。等当前窗口空闲后，再次发送 /upgrade dev 继续升级。", latestVersion))}
+	return []eventcontract.Event{upgradeNoticeEvent(request.SurfaceSessionID, "upgrade_dev_candidate_pending", fmt.Sprintf("发现新的 dev 构建 %s，但当前窗口不空闲，已记录候选升级。等当前窗口空闲后，再次发送 /upgrade dev 继续升级。", latestVersion))}
 }

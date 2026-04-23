@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -15,9 +16,9 @@ const (
 	commandLauncherPhaseTerminal        = "terminal"
 )
 
-func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) control.UIEvent {
-	return control.UIEvent{
-		Kind:                     control.UIEventFeishuPageView,
+func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) eventcontract.Event {
+	return eventcontract.Event{
+		Kind:                     eventcontract.EventFeishuPageView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,
@@ -26,12 +27,12 @@ func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.Fe
 	}
 }
 
-func (s *Service) pageEventFromCatalogView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) control.UIEvent {
+func (s *Service) pageEventFromCatalogView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) eventcontract.Event {
 	page := s.commandPageFromView(surface, view)
 	return s.pageEvent(surface, control.FeishuPageViewFromCommandPageView(page))
 }
 
-func (s *Service) menuPageEvent(surface *state.SurfaceConsoleRecord, raw string) control.UIEvent {
+func (s *Service) menuPageEvent(surface *state.SurfaceConsoleRecord, raw string) eventcontract.Event {
 	groupID := parseCommandMenuView(raw)
 	if groupID == control.FeishuCommandGroupSwitchTarget && s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
 		return s.workspacePageEvent(surface, control.FeishuCommandWorkspace, true)
@@ -48,7 +49,7 @@ func (s *Service) menuPageEvent(surface *state.SurfaceConsoleRecord, raw string)
 	return s.pageEvent(surface, page)
 }
 
-func (s *Service) configPageEventFromCatalogView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) control.UIEvent {
+func (s *Service) configPageEventFromCatalogView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) eventcontract.Event {
 	page := control.FeishuPageViewFromCommandPageView(s.commandPageFromView(surface, view))
 	flow := s.activeCommandLauncherFlow(surface)
 	if flow != nil && flow.Role == frontstageFlowRoleLauncher {
@@ -65,7 +66,7 @@ func (s *Service) configPageEventFromCatalogView(surface *state.SurfaceConsoleRe
 	return s.pageEvent(surface, page)
 }
 
-func (s *Service) helpTerminalPageEvent(surface *state.SurfaceConsoleRecord) control.UIEvent {
+func (s *Service) helpTerminalPageEvent(surface *state.SurfaceConsoleRecord) eventcontract.Event {
 	view := s.buildCommandHelpView(surface)
 	page := control.FeishuPageViewFromCommandPageView(s.commandPageFromView(surface, view))
 	page.Sealed = true

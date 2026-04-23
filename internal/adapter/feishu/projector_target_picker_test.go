@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := control.UIEvent{
-		Kind:              control.UIEventFeishuTargetPicker,
+	event := eventcontract.Event{
+		Kind:              eventcontract.EventFeishuTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		FeishuTargetPickerView: &control.FeishuTargetPickerView{
@@ -31,7 +32,7 @@ func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 			},
 		},
 	}
-	ops := projector.Project("chat-1", event)
+	ops := projector.ProjectEvent("chat-1", event)
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("expected one card op, got %#v", ops)
 	}
@@ -49,8 +50,8 @@ func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectTargetPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuTargetPicker,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:              eventcontract.EventFeishuTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		FeishuTargetPickerView: &control.FeishuTargetPickerView{
@@ -478,8 +479,8 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 
 func TestProjectTargetPickerGitFormRendersFlatV2FormForInlineReplacement(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuTargetPicker,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:              eventcontract.EventFeishuTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-5",
 		FeishuTargetPickerView: &control.FeishuTargetPickerView{

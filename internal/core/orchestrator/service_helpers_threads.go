@@ -13,7 +13,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage string) control.UIEvent {
+func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage string) eventcontract.Event {
 	selection := &control.ThreadSelectionChanged{
 		ThreadID:             threadID,
 		RouteMode:            routeMode,
@@ -91,7 +91,7 @@ func (s *Service) touchThread(thread *state.ThreadRecord) {
 	thread.LastUsedAt = s.now()
 }
 
-func (s *Service) pendingInputEvents(surface *state.SurfaceConsoleRecord, pending control.PendingInputState, sourceMessageIDs []string) []control.UIEvent {
+func (s *Service) pendingInputEvents(surface *state.SurfaceConsoleRecord, pending control.PendingInputState, sourceMessageIDs []string) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -102,12 +102,12 @@ func (s *Service) pendingInputEvents(surface *state.SurfaceConsoleRecord, pendin
 	if len(messageIDs) == 0 {
 		return nil
 	}
-	events := make([]control.UIEvent, 0, len(messageIDs))
+	events := make([]eventcontract.Event, 0, len(messageIDs))
 	for _, messageID := range messageIDs {
 		pendingCopy := pending
 		pendingCopy.SourceMessageID = messageID
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventPendingInput,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventPendingInput,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			PendingInput:     &pendingCopy,
@@ -116,7 +116,7 @@ func (s *Service) pendingInputEvents(surface *state.SurfaceConsoleRecord, pendin
 	return events
 }
 
-func appendPendingInputTyping(events []control.UIEvent, primaryMessageID string, typingOn bool) []control.UIEvent {
+func appendPendingInputTyping(events []eventcontract.Event, primaryMessageID string, typingOn bool) []eventcontract.Event {
 	if primaryMessageID == "" {
 		return events
 	}
@@ -447,7 +447,7 @@ func threadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) str
 	return workspace + " · " + source
 }
 
-func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []control.UIEvent {
+func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {
 	if surface == nil || inst == nil || surface.AttachedInstanceID != inst.InstanceID {
 		return nil
 	}
@@ -455,8 +455,8 @@ func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord,
 		return nil
 	}
 	s.threadRefreshes[inst.InstanceID] = true
-	return []control.UIEvent{{
-		Kind:             control.UIEventAgentCommand,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandThreadsRefresh,

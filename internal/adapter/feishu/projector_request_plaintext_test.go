@@ -9,7 +9,7 @@ import (
 
 func TestProjectRequestPromptKeepsDynamicSectionsOutOfMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
+	ops := projector.ProjectEvent("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-unsafe",
 		RequestType: "approval",
 		ThreadTitle: "# 修复 `登录`",
@@ -41,7 +41,7 @@ func TestProjectRequestPromptKeepsDynamicSectionsOutOfMarkdown(t *testing.T) {
 
 func TestProjectRequestUserInputPromptKeepsMarkdownMetacharactersInsidePlainTextQuestionBlock(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
+	ops := projector.ProjectEvent("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-ui-unsafe",
 		RequestType: "request_user_input",
 		Questions: []control.RequestPromptQuestion{

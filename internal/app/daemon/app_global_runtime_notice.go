@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func normalizeGlobalRuntimeNoticeEvent(event control.UIEvent) (control.UIEvent, bool) {
-	if event.Kind != control.UIEventNotice || event.Notice == nil || !event.Notice.IsGlobalRuntime() {
+func normalizeGlobalRuntimeNoticeEvent(event eventcontract.Event) (eventcontract.Event, bool) {
+	if event.Kind != eventcontract.EventNotice || event.Notice == nil || !event.Notice.IsGlobalRuntime() {
 		return event, false
 	}
 	event.SourceMessageID = ""
@@ -17,7 +18,7 @@ func normalizeGlobalRuntimeNoticeEvent(event control.UIEvent) (control.UIEvent, 
 	return event, true
 }
 
-func globalRuntimeNoticeIdentity(event control.UIEvent) (surfaceID, dedupKey string, ok bool) {
+func globalRuntimeNoticeIdentity(event eventcontract.Event) (surfaceID, dedupKey string, ok bool) {
 	event, ok = normalizeGlobalRuntimeNoticeEvent(event)
 	if !ok {
 		return "", "", false
@@ -34,7 +35,7 @@ func globalRuntimeNoticeIdentity(event control.UIEvent) (surfaceID, dedupKey str
 	return surfaceID, dedupKey, true
 }
 
-func globalRuntimeNoticeThrottleWindow(event control.UIEvent) time.Duration {
+func globalRuntimeNoticeThrottleWindow(event eventcontract.Event) time.Duration {
 	if event.Notice == nil {
 		return 0
 	}
@@ -53,7 +54,7 @@ func globalRuntimeNoticeThrottleWindow(event control.UIEvent) time.Duration {
 	}
 }
 
-func (a *App) shouldSuppressGlobalRuntimeNoticeLocked(event control.UIEvent, now time.Time) bool {
+func (a *App) shouldSuppressGlobalRuntimeNoticeLocked(event eventcontract.Event, now time.Time) bool {
 	surfaceID, dedupKey, ok := globalRuntimeNoticeIdentity(event)
 	if !ok {
 		return false
@@ -70,7 +71,7 @@ func (a *App) shouldSuppressGlobalRuntimeNoticeLocked(event control.UIEvent, now
 	return !last.IsZero() && now.Sub(last) < window
 }
 
-func (a *App) recordGlobalRuntimeNoticeLocked(event control.UIEvent, now time.Time) {
+func (a *App) recordGlobalRuntimeNoticeLocked(event eventcontract.Event, now time.Time) {
 	surfaceID, dedupKey, ok := globalRuntimeNoticeIdentity(event)
 	if !ok {
 		return
@@ -117,7 +118,7 @@ func (a *App) flushPendingGlobalRuntimeNoticesLocked(surfaceID string) {
 	delete(a.pendingGlobalRuntimeNotices, surfaceID)
 }
 
-func (a *App) queueGlobalRuntimeNoticeLocked(event control.UIEvent) {
+func (a *App) queueGlobalRuntimeNoticeLocked(event eventcontract.Event) {
 	event, ok := normalizeGlobalRuntimeNoticeEvent(event)
 	if !ok {
 		return

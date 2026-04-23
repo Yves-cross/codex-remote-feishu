@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func parseDebugCommandText(text string) (parsedDebugCommand, error) {
@@ -260,22 +261,22 @@ func firstNonEmptyTrack(values ...install.ReleaseTrack) install.ReleaseTrack {
 	return ""
 }
 
-func trackSummaryEvents(surfaceID string, stateValue install.InstallState) []control.UIEvent {
+func trackSummaryEvents(surfaceID string, stateValue install.InstallState) []eventcontract.Event {
 	return commandPageEvents(surfaceID, buildUpgradeTrackPageView(stateValue))
 }
 
-func (a *App) setTrackEvents(surfaceID string, stateValue install.InstallState, nextTrack install.ReleaseTrack) []control.UIEvent {
+func (a *App) setTrackEvents(surfaceID string, stateValue install.InstallState, nextTrack install.ReleaseTrack) []eventcontract.Event {
 	if !install.CurrentBuildAllowsReleaseTrack(nextTrack) {
-		return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_unsupported", unsupportedTrackMessage(nextTrack))}
+		return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_unsupported", unsupportedTrackMessage(nextTrack))}
 	}
 	if a.upgradeRuntime.CheckInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_busy", "当前正在检查升级，暂时不能切换 track。")}
+		return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_busy", "当前正在检查升级，暂时不能切换 track。")}
 	}
 	if pendingUpgradeBusy(stateValue.PendingUpgrade) {
-		return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_busy", "当前已有升级事务进行中，暂时不能切换 track。")}
+		return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_busy", "当前已有升级事务进行中，暂时不能切换 track。")}
 	}
 	if stateValue.CurrentTrack == nextTrack {
-		return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_unchanged", fmt.Sprintf("当前 track 已经是 %s。", nextTrack))}
+		return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_unchanged", fmt.Sprintf("当前 track 已经是 %s。", nextTrack))}
 	}
 	stateValue.CurrentTrack = nextTrack
 	stateValue.LastKnownLatestVersion = ""
@@ -285,9 +286,9 @@ func (a *App) setTrackEvents(surfaceID string, stateValue install.InstallState, 
 	now := time.Now().UTC()
 	a.upgradeRuntime.NextCheckAt = now.Add(a.upgradeRuntime.CheckInterval)
 	if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_write_failed", fmt.Sprintf("切换 track 失败：%v", err))}
+		return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_write_failed", fmt.Sprintf("切换 track 失败：%v", err))}
 	}
-	return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_track_updated", fmt.Sprintf("当前 track 已切到 %s。需要立即检查时，请发送 /upgrade latest。", nextTrack))}
+	return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_track_updated", fmt.Sprintf("当前 track 已切到 %s。需要立即检查时，请发送 /upgrade latest。", nextTrack))}
 }
 
 func defaultUpgradeTrackForState(stateValue install.InstallState) install.ReleaseTrack {

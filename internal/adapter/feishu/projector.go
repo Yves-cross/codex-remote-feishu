@@ -8,7 +8,6 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
@@ -90,18 +89,15 @@ func (p *Projector) SetSnapshotBinary(value string) {
 	p.snapshotBinary = strings.TrimSpace(value)
 }
 
-func (p *Projector) Project(chatID string, event control.UIEvent) []Operation {
-	return p.ProjectEvent(chatID, eventcontractcompat.FromLegacyUIEvent(event))
-}
-
 func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Operation {
-	switch payload := event.Payload.(type) {
+	event = event.Normalized()
+	switch payload := event.CanonicalPayload().(type) {
 	case eventcontract.SnapshotPayload:
 		elements := p.projectSnapshotElements(payload.Snapshot)
 		return []Operation{{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        "当前状态",
 			CardBody:         "",
@@ -119,8 +115,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		theme := noticeThemeKey(payload.Notice)
 		return []Operation{{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         body,
@@ -134,8 +130,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		elements := planUpdateElements(payload.PlanUpdate)
 		return []Operation{{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
@@ -145,14 +141,14 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 			card:             rawCardDocument(title, "", cardThemePlan, elements),
 		}}
 	case eventcontract.SelectionPayload:
-		title, elements, ok := selectionViewStructuredProjection(payload.View, payload.Context, event.Meta.DaemonLifecycleID)
+		title, elements, ok := selectionViewStructuredProjection(payload.View, payload.Context, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		if !ok {
 			return nil
 		}
 		return []Operation{{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
@@ -168,12 +164,12 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 			title = "页面"
 		}
 		body := pageBody(pageView)
-		elements := pageElements(pageView, event.Meta.DaemonLifecycleID)
+		elements := pageElements(pageView, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		theme := firstNonEmpty(strings.TrimSpace(pageView.ThemeKey), cardThemeInfo)
 		operation := Operation{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			MessageID:        strings.TrimSpace(pageView.MessageID),
 			CardTitle:        title,
@@ -193,11 +189,11 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if title == "" {
 			title = "需要确认"
 		}
-		elements := requestPromptElements(payload.View, event.Meta.DaemonLifecycleID)
+		elements := requestPromptElements(payload.View, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		return []Operation{{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
@@ -211,11 +207,11 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if text == "" {
 			return nil
 		}
-		replyToMessageID := strings.TrimSpace(firstNonEmpty(payload.TimelineText.ReplyToMessageID, event.Meta.SourceMessageID))
+		replyToMessageID := strings.TrimSpace(firstNonEmpty(payload.TimelineText.ReplyToMessageID, event.SourceMessageID, event.Meta.SourceMessageID))
 		return []Operation{{
 			Kind:             OperationSendText,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			ReplyToMessageID: replyToMessageID,
 			Text:             text,
@@ -227,11 +223,11 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if title == "" {
 			title = "选择路径"
 		}
-		elements := pathPickerElements(view, event.Meta.DaemonLifecycleID)
+		elements := pathPickerElements(view, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		operation := Operation{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
@@ -253,12 +249,12 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if title == "" {
 			title = "选择工作区与会话"
 		}
-		elements := targetPickerElements(view, event.Meta.DaemonLifecycleID)
+		elements := targetPickerElements(view, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		theme := targetPickerTheme(view)
 		operation := Operation{
 			Kind:             OperationSendCard,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			CardTitle:        title,
 			CardBody:         "",
@@ -281,8 +277,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.QueueOn {
 			ops = append(ops, Operation{
 				Kind:             OperationAddReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiQueuePending,
@@ -291,8 +287,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.QueueOff {
 			ops = append(ops, Operation{
 				Kind:             OperationRemoveReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiQueuePending,
@@ -301,8 +297,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.TypingOn {
 			ops = append(ops, Operation{
 				Kind:             OperationAddReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiThinking,
@@ -311,8 +307,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.TypingOff {
 			ops = append(ops, Operation{
 				Kind:             OperationRemoveReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiThinking,
@@ -321,8 +317,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.ThumbsUp {
 			ops = append(ops, Operation{
 				Kind:             OperationAddReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiSteered,
@@ -331,8 +327,8 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		if payload.State.ThumbsDown {
 			ops = append(ops, Operation{
 				Kind:             OperationAddReaction,
-				GatewayID:        event.GatewayID(),
-				SurfaceSessionID: event.SurfaceSessionID(),
+				GatewayID:        event.GatewayID,
+				SurfaceSessionID: event.SurfaceSessionID,
 				ChatID:           chatID,
 				MessageID:        payload.State.SourceMessageID,
 				EmojiType:        emojiDiscarded,
@@ -340,15 +336,15 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		}
 		return ops
 	case eventcontract.BlockCommittedPayload:
-		return p.projectBlock(event.GatewayID(), event.SurfaceSessionID(), chatID, event.Meta.SourceMessageID, event.Meta.SourceMessagePreview, payload.Block, payload.FileChangeSummary, payload.FinalTurnSummary)
+		return p.projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID), firstNonEmpty(event.SourceMessagePreview, event.Meta.SourceMessagePreview), payload.Block, payload.FileChangeSummary, payload.FinalTurnSummary)
 	case eventcontract.ImageOutputPayload:
 		if strings.TrimSpace(payload.ImageOutput.SavedPath) == "" && strings.TrimSpace(payload.ImageOutput.ImageBase64) == "" {
 			return nil
 		}
 		return []Operation{{
 			Kind:             OperationSendImage,
-			GatewayID:        event.GatewayID(),
-			SurfaceSessionID: event.SurfaceSessionID(),
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			ImagePath:        strings.TrimSpace(payload.ImageOutput.SavedPath),
 			ImageBase64:      strings.TrimSpace(payload.ImageOutput.ImageBase64),

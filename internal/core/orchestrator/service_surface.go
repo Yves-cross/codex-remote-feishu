@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -128,7 +129,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 	return surface
 }
 
-func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil || surface.PendingHeadless == nil {
 		return nil
 	}
@@ -153,17 +154,17 @@ func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleReco
 	}
 }
 
-func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pending *state.HeadlessLaunchRecord) []control.UIEvent {
+func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pending *state.HeadlessLaunchRecord) []eventcontract.Event {
 	if surface == nil || pending == nil {
 		return nil
 	}
 	surface.PendingHeadless = nil
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID == pending.InstanceID {
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventDaemonCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,
@@ -174,8 +175,8 @@ func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pen
 			ThreadCWD:        pending.ThreadCWD,
 		},
 	})
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           pendingHeadlessTimeoutNotice(pending),
 	})

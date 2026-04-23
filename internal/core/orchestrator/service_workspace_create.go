@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -14,7 +15,7 @@ const targetPickerWorkspaceCreatePathPickerConsumerKind = "target_picker_workspa
 
 type targetPickerWorkspaceCreatePathPickerConsumer struct{}
 
-func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	if s == nil || surface == nil {
 		return nil
 	}
@@ -32,15 +33,15 @@ func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerConfirmed(s *Serv
 	return events
 }
 
-func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerCancelled(_ *Service, surface *state.SurfaceConsoleRecord, _ control.PathPickerResult) []control.UIEvent {
+func (targetPickerWorkspaceCreatePathPickerConsumer) PathPickerCancelled(_ *Service, surface *state.SurfaceConsoleRecord, _ control.PathPickerResult) []eventcontract.Event {
 	return notice(surface, "workspace_create_cancelled", "已取消添加工作区。当前工作目标保持不变。")
 }
 
-func (s *Service) openTargetPickerWorkspaceCreatePicker(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) openTargetPickerWorkspaceCreatePicker(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.openWorkspaceCreatePicker(surface, targetPickerWorkspaceCreatePathPickerConsumerKind, "接入并准备新会话", "未确认前不会切换当前工作目标。")
 }
 
-func (s *Service) openWorkspaceCreatePicker(surface *state.SurfaceConsoleRecord, consumerKind, confirmLabel, hint string) []control.UIEvent {
+func (s *Service) openWorkspaceCreatePicker(surface *state.SurfaceConsoleRecord, consumerKind, confirmLabel, hint string) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -114,11 +115,11 @@ func windowsVolumeRoot(path string) string {
 	return path[:2] + "/"
 }
 
-func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+func (s *Service) startFreshWorkspaceHeadless(surface *state.SurfaceConsoleRecord, workspaceKey string) []eventcontract.Event {
 	return s.startFreshWorkspaceHeadlessWithOptions(surface, workspaceKey, false)
 }
 
-func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceConsoleRecord, workspaceKey string, prepareNewThread bool) []control.UIEvent {
+func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceConsoleRecord, workspaceKey string, prepareNewThread bool) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -135,7 +136,7 @@ func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceC
 
 	s.nextHeadlessID++
 	instanceID := fmt.Sprintf("inst-headless-workspace-%d-%d", s.now().UnixNano(), s.nextHeadlessID)
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID != "" {
 		events = append(events, s.discardDrafts(surface)...)
 		events = append(events, s.finalizeDetachedSurface(surface)...)
@@ -170,8 +171,8 @@ func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceC
 		noticeText = fmt.Sprintf("正在把 `%s` 接入为可用工作区，完成后会直接进入新会话待命。", workspaceKey)
 	}
 	events = append(events,
-		control.UIEvent{
-			Kind:             control.UIEventNotice,
+		eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "workspace_create_starting",
@@ -179,8 +180,8 @@ func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceC
 				Text:  noticeText,
 			},
 		},
-		control.UIEvent{
-			Kind:             control.UIEventDaemonCommand,
+		eventcontract.Event{
+			Kind:             eventcontract.EventDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandStartHeadless,

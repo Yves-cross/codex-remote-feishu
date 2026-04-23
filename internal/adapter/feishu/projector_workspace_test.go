@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectWorkspaceSelectionViewDoesNotAddLegacyCreateWorkspaceEntry(t *testing.T) {
@@ -25,8 +26,8 @@ func TestProjectWorkspaceSelectionViewDoesNotAddLegacyCreateWorkspaceEntry(t *te
 			},
 		},
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                control.UIEventFeishuSelectionView,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                eventcontract.EventFeishuSelectionView,
 		FeishuSelectionView: &view,
 		FeishuSelectionContext: &control.FeishuUISelectionContext{
 			DTOOwner:   control.FeishuUIDTOwnerSelection,

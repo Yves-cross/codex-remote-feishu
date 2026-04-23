@@ -5,10 +5,11 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) presentThreadSelection(surface *state.SurfaceConsoleRecord, showAll bool) []control.UIEvent {
+func (s *Service) presentThreadSelection(surface *state.SurfaceConsoleRecord, showAll bool) []eventcontract.Event {
 	mode := threadSelectionDisplayRecent
 	if showAll {
 		mode = threadSelectionDisplayAll
@@ -16,19 +17,19 @@ func (s *Service) presentThreadSelection(surface *state.SurfaceConsoleRecord, sh
 	return s.presentThreadSelectionMode(surface, mode, 1)
 }
 
-func (s *Service) presentAllThreadWorkspaces(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentAllThreadWorkspaces(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.presentThreadSelectionMode(surface, threadSelectionDisplayAllExpanded, 1)
 }
 
-func (s *Service) presentScopedThreadSelection(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentScopedThreadSelection(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.presentThreadSelectionMode(surface, threadSelectionDisplayScopedAll, 1)
 }
 
-func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleRecord, workspaceKey string) []eventcontract.Event {
 	return s.presentWorkspaceThreadSelectionPage(surface, workspaceKey, 1, 1)
 }
 
-func (s *Service) presentWorkspaceThreadSelectionPage(surface *state.SurfaceConsoleRecord, workspaceKey string, page, returnPage int) []control.UIEvent {
+func (s *Service) presentWorkspaceThreadSelectionPage(surface *state.SurfaceConsoleRecord, workspaceKey string, page, returnPage int) []eventcontract.Event {
 	model, events := s.buildWorkspaceThreadSelectionModel(surface, workspaceKey, page, returnPage)
 	if len(events) != 0 {
 		return events
@@ -36,7 +37,7 @@ func (s *Service) presentWorkspaceThreadSelectionPage(surface *state.SurfaceCons
 	if model == nil {
 		return nil
 	}
-	return []control.UIEvent{s.selectionViewEvent(surface, control.FeishuSelectionView{
+	return []eventcontract.Event{s.selectionViewEvent(surface, control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptUseThread,
 		Thread:     model,
 	})}
@@ -49,7 +50,7 @@ const (
 	vscodeRecentThreadSelectionLimit = 5
 )
 
-func (s *Service) buildWorkspaceThreadSelectionModel(surface *state.SurfaceConsoleRecord, workspaceKey string, page, returnPage int) (*control.FeishuThreadSelectionView, []control.UIEvent) {
+func (s *Service) buildWorkspaceThreadSelectionModel(surface *state.SurfaceConsoleRecord, workspaceKey string, page, returnPage int) (*control.FeishuThreadSelectionView, []eventcontract.Event) {
 	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
 	if workspaceKey == "" {
 		return nil, notice(surface, "workspace_not_found", "目标工作区不存在。请重新发送 /useall。")
@@ -85,7 +86,7 @@ func (s *Service) buildWorkspaceThreadSelectionModel(surface *state.SurfaceConso
 	return model, nil
 }
 
-func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) []control.UIEvent {
+func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) []eventcontract.Event {
 	model, events := s.buildThreadSelectionModel(surface, mode, page)
 	if len(events) != 0 {
 		return events
@@ -93,13 +94,13 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 	if model == nil {
 		return nil
 	}
-	return []control.UIEvent{s.selectionViewEvent(surface, control.FeishuSelectionView{
+	return []eventcontract.Event{s.selectionViewEvent(surface, control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptUseThread,
 		Thread:     model,
 	})}
 }
 
-func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) (*control.FeishuThreadSelectionView, []control.UIEvent) {
+func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) (*control.FeishuThreadSelectionView, []eventcontract.Event) {
 	if surface != nil && s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode && strings.TrimSpace(surface.AttachedInstanceID) == "" {
 		return nil, notice(surface, "not_attached_vscode", "vscode 模式下请先 /list 选择一个 VS Code 实例，再使用 /use 或 /useall。")
 	}
@@ -394,7 +395,7 @@ func (s *Service) vscodeThreadSelectionContextText(surface *state.SurfaceConsole
 	return label + " · " + status
 }
 
-func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessRestoreAttempt, allowMissingThreadFailure bool) ([]control.UIEvent, HeadlessRestoreResult) {
+func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessRestoreAttempt, allowMissingThreadFailure bool) ([]eventcontract.Event, HeadlessRestoreResult) {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return nil, HeadlessRestoreResult{Status: HeadlessRestoreStatusSkipped}
@@ -410,8 +411,8 @@ func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessResto
 		if !allowMissingThreadFailure {
 			return nil, HeadlessRestoreResult{Status: HeadlessRestoreStatusWaiting}
 		}
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_not_found"),
 		}}, HeadlessRestoreResult{Status: HeadlessRestoreStatusFailed, FailureCode: "thread_not_found"}
@@ -427,8 +428,8 @@ func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessResto
 			return nil, HeadlessRestoreResult{Status: HeadlessRestoreStatusWaiting}
 		}
 		failureCode := firstNonEmpty(strings.TrimSpace(target.NoticeCode), "thread_not_found")
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice(failureCode),
 		}}, HeadlessRestoreResult{Status: HeadlessRestoreStatusFailed, FailureCode: failureCode}
@@ -437,7 +438,7 @@ func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessResto
 	}
 }
 
-func (s *Service) TryAutoResumeNormalSurface(surfaceID string, attempt SurfaceResumeAttempt, allowMissingTargetFailure bool) ([]control.UIEvent, SurfaceResumeResult) {
+func (s *Service) TryAutoResumeNormalSurface(surfaceID string, attempt SurfaceResumeAttempt, allowMissingTargetFailure bool) ([]eventcontract.Event, SurfaceResumeResult) {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return nil, SurfaceResumeResult{Status: SurfaceResumeStatusSkipped}
@@ -489,7 +490,7 @@ func (s *Service) TryAutoResumeNormalSurface(surfaceID string, attempt SurfaceRe
 	return nil, SurfaceResumeResult{Status: SurfaceResumeStatusFailed, FailureCode: failureCode}
 }
 
-func (s *Service) TryAutoResumeVSCodeSurface(surfaceID, instanceID string) ([]control.UIEvent, SurfaceResumeResult) {
+func (s *Service) TryAutoResumeVSCodeSurface(surfaceID, instanceID string) ([]eventcontract.Event, SurfaceResumeResult) {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return nil, SurfaceResumeResult{Status: SurfaceResumeStatusSkipped}

@@ -16,7 +16,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
@@ -101,7 +101,7 @@ type App struct {
 	relayConnMu      sync.Mutex
 	upgradeStateIOMu sync.Mutex
 
-	pendingGlobalRuntimeNotices map[string][]control.UIEvent
+	pendingGlobalRuntimeNotices map[string][]eventcontract.Event
 	recentGlobalRuntimeNotices  map[string]map[string]time.Time
 	headlessRuntime             HeadlessRuntimeConfig
 	vscodeDetect                func() (vscodeDetectResponse, error)
@@ -168,7 +168,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		serverIdentity:              serverIdentity,
 		daemonStartedAt:             daemonStartedAt,
 		daemonLifecycleID:           daemonLifecycleID(serverIdentity, daemonStartedAt),
-		pendingGlobalRuntimeNotices: map[string][]control.UIEvent{},
+		pendingGlobalRuntimeNotices: map[string][]eventcontract.Event{},
 		recentGlobalRuntimeNotices:  map[string]map[string]time.Time{},
 		managedHeadlessRuntime:      newManagedHeadlessRuntimeState(),
 		surfaceResumeRuntime:        newSurfaceResumeRuntimeState(),

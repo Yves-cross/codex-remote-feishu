@@ -6,10 +6,11 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 		return notice(surface, "new_thread_disabled_vscode", "当前处于 vscode 模式，`/new` 只在 normal 模式可用。请先 `/mode normal`，或继续通过 follow / `/use` 使用当前 VS Code 会话。")
 	}
@@ -108,22 +109,22 @@ func (s *Service) prepareNewThreadBase(surface *state.SurfaceConsoleRecord, inst
 	return cwd, threadID, true
 }
 
-func (s *Service) maybePrepareImplicitNewThreadFromUnboundText(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, text string) []control.UIEvent {
+func (s *Service) maybePrepareImplicitNewThreadFromUnboundText(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, text string) []eventcontract.Event {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
 	return s.maybePrepareImplicitNewThreadFromUnbound(surface, inst)
 }
 
-func (s *Service) maybePrepareImplicitNewThreadFromUnboundImage(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []control.UIEvent {
+func (s *Service) maybePrepareImplicitNewThreadFromUnboundImage(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []eventcontract.Event {
 	return s.maybePrepareImplicitNewThreadFromUnbound(surface, inst)
 }
 
-func (s *Service) maybePrepareImplicitNewThreadFromUnboundFile(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []control.UIEvent {
+func (s *Service) maybePrepareImplicitNewThreadFromUnboundFile(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []eventcontract.Event {
 	return s.maybePrepareImplicitNewThreadFromUnbound(surface, inst)
 }
 
-func (s *Service) maybePrepareImplicitNewThreadFromUnbound(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []control.UIEvent {
+func (s *Service) maybePrepareImplicitNewThreadFromUnbound(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord) []eventcontract.Event {
 	if surface == nil || inst == nil || s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 		return nil
 	}
@@ -154,7 +155,7 @@ func preparedNewThreadSelectionTitle() string {
 	return "新建会话（等待首条消息）"
 }
 
-func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	text := strings.TrimSpace(action.Text)
 	if text == "" && len(action.Inputs) == 0 {
 		return nil
@@ -209,7 +210,7 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	return append(events, s.enqueueQueueItem(surface, action.MessageID, action.Text, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)...)
 }
 
-func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
@@ -244,8 +245,8 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	}
 	surface.StagedImages[image.ImageID] = image
 	events := s.maybeSealPlanProposalForInput(surface)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventPendingInput,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
 			QueueItemID:     image.ImageID,
@@ -257,7 +258,7 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	return events
 }
 
-func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
@@ -292,8 +293,8 @@ func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.
 	}
 	surface.StagedFiles[file.FileID] = file
 	events := s.maybeSealPlanProposalForInput(surface)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventPendingInput,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
 			QueueItemID:     file.FileID,
@@ -305,7 +306,7 @@ func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.
 	return events
 }
 
-func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil || !isThumbsUpReaction(action.ReactionType) {
 		return nil
 	}
@@ -326,7 +327,7 @@ func (s *Service) handleReactionCreated(surface *state.SurfaceConsoleRecord, act
 	return nil
 }
 
-func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	ownerCardMessageID := ""
 	if commandCardOwnsInlineResult(action) {
 		ownerCardMessageID = strings.TrimSpace(action.MessageID)
@@ -334,20 +335,20 @@ func (s *Service) handleSteerAllCommand(surface *state.SurfaceConsoleRecord, act
 	inst, activeThreadID, activeTurnID, ok := s.activeSteerTarget(surface)
 	if !ok {
 		if ownerCardMessageID != "" {
-			return []control.UIEvent{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
+			return []eventcontract.Event{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
 		}
 		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
 	}
 	candidates := s.steerCandidates(surface, activeThreadID)
 	if len(candidates) == 0 {
 		if ownerCardMessageID != "" {
-			return []control.UIEvent{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
+			return []eventcontract.Event{steerAllNoopOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID)}
 		}
 		return notice(surface, "steer_all_noop", "当前没有可并入本轮执行的排队消息。")
 	}
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	if ownerCardMessageID != "" {
-		events = []control.UIEvent{steerAllRequestedOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID, len(candidates))}
+		events = []eventcontract.Event{steerAllRequestedOwnerCardEvent(surface.SurfaceSessionID, ownerCardMessageID, len(candidates))}
 	} else {
 		events = notice(surface, "steer_all_requested", fmt.Sprintf("正在把 %d 条排队输入并入当前执行。", len(candidates)))
 	}
@@ -407,7 +408,7 @@ func (s *Service) dispatchSteerCandidates(
 	candidates []steerCandidate,
 	explicitSourceMessageID string,
 	ownerCardMessageID string,
-) []control.UIEvent {
+) []eventcontract.Event {
 	if surface == nil || inst == nil || strings.TrimSpace(activeThreadID) == "" || strings.TrimSpace(activeTurnID) == "" || len(candidates) == 0 {
 		return nil
 	}
@@ -445,8 +446,8 @@ func (s *Service) dispatchSteerCandidates(
 		TurnID:             activeTurnID,
 		QueueIndex:         queueIndices[primaryQueueItemID],
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventAgentCommand,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnSteer,
@@ -467,7 +468,7 @@ func (s *Service) dispatchSteerCandidates(
 	}}
 }
 
-func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, targetMessageID string) []control.UIEvent {
+func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, targetMessageID string) []eventcontract.Event {
 	targetMessageID = strings.TrimSpace(targetMessageID)
 	if surface == nil || targetMessageID == "" {
 		return nil
@@ -476,8 +477,8 @@ func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, tar
 		if item := surface.QueueItems[activeID]; item != nil && queueItemHasSourceMessage(item, targetMessageID) {
 			switch item.Status {
 			case state.QueueItemDispatching, state.QueueItemRunning:
-				return []control.UIEvent{{
-					Kind:             control.UIEventNotice,
+				return []eventcontract.Event{{
+					Kind:             eventcontract.EventNotice,
 					SurfaceSessionID: surface.SurfaceSessionID,
 					Notice: &control.Notice{
 						Code:     "message_recall_too_late",
@@ -537,8 +538,8 @@ func isThumbsUpReaction(value string) bool {
 	return normalized == "thumbsup"
 }
 
-func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIEvent {
-	var events []control.UIEvent
+func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
+	var events []eventcontract.Event
 	discarded := countPendingDrafts(surface)
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	notice := control.Notice{
@@ -550,8 +551,8 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	if inst != nil && !inst.Online && surface.ActiveQueueItemID != "" {
 		notice = s.stopOfflineNotice(surface)
 	} else if threadID, turnID, ok := s.interruptibleSurfaceTurn(surface); ok {
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventAgentCommand,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventAgentCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Command: &agentproto.Command{
 				Kind: agentproto.CommandTurnInterrupt,
@@ -595,23 +596,23 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []control.UIE
 	if discarded > 0 {
 		notice.Text += fmt.Sprintf(" 已清空 %d 条排队或暂存输入。", discarded)
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &notice,
 	})
 	return events
 }
 
-func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecord, notice *control.Notice) []control.UIEvent {
+func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecord, notice *control.Notice) []eventcontract.Event {
 	if surface == nil || surface.PendingHeadless == nil {
 		return nil
 	}
 	pending := surface.PendingHeadless
 	events := s.discardDrafts(surface)
 	events = append(events, s.finalizeDetachedSurface(surface)...)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventDaemonCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,
@@ -623,8 +624,8 @@ func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecor
 		},
 	})
 	if notice != nil {
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -636,7 +637,7 @@ func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecor
 	return s.maybeFinalizePendingTargetPicker(surface, events, fallback)
 }
 
-func (s *Service) detach(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) detach(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface.PendingHeadless != nil {
 		return s.cancelPendingHeadlessLaunch(surface, &control.Notice{
 			Code:  "detached",
@@ -659,8 +660,8 @@ func (s *Service) detach(surface *state.SurfaceConsoleRecord) []control.UIEvent 
 		surface.Abandoning = true
 		s.abandoningUntil[surface.SurfaceSessionID] = s.now().Add(s.config.DetachAbandonWait)
 		if binding := s.remoteBindingForSurface(surface); binding != nil && binding.TurnID != "" {
-			events = append(events, control.UIEvent{
-				Kind:             control.UIEventAgentCommand,
+			events = append(events, eventcontract.Event{
+				Kind:             eventcontract.EventAgentCommand,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Command: &agentproto.Command{
 					Kind: agentproto.CommandTurnInterrupt,

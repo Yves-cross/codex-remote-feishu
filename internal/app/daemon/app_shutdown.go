@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
 )
@@ -94,13 +94,13 @@ func (a *App) stopGatewayRuntime(wait bool) {
 	}
 }
 
-func (a *App) beginShutdownNotices() []control.UIEvent {
+func (a *App) beginShutdownNotices() []eventcontract.Event {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	a.shuttingDown = true
 	surfaces := a.service.Surfaces()
-	events := make([]control.UIEvent, 0, len(surfaces))
+	events := make([]eventcontract.Event, 0, len(surfaces))
 	seen := make(map[string]struct{}, len(surfaces))
 	for _, surface := range surfaces {
 		if surface == nil {
@@ -115,8 +115,8 @@ func (a *App) beginShutdownNotices() []control.UIEvent {
 		}
 		seen[surfaceID] = struct{}{}
 		notice := orchestrator.GlobalRuntimeShutdownNotice(daemonShutdownNoticeText)
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surfaceID,
 			Notice:           &notice,
 		})
@@ -124,7 +124,7 @@ func (a *App) beginShutdownNotices() []control.UIEvent {
 	return events
 }
 
-func (a *App) deliverShutdownNotices(events []control.UIEvent) {
+func (a *App) deliverShutdownNotices(events []eventcontract.Event) {
 	if len(events) == 0 {
 		return
 	}

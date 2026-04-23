@@ -4,10 +4,10 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func (s *Service) applyTurnModelReroute(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) applyTurnModelReroute(instanceID string, event agentproto.Event) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return nil

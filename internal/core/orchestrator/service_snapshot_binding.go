@@ -9,9 +9,9 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) threadFocusEvents(instanceID, threadID string) []control.UIEvent {
+func (s *Service) threadFocusEvents(instanceID, threadID string) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		events = append(events, s.maybeRequestThreadRefresh(surface, inst, threadID)...)
 	}
@@ -19,11 +19,11 @@ func (s *Service) threadFocusEvents(instanceID, threadID string) []control.UIEve
 	return events
 }
 
-func (s *Service) bindSurfaceToThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []control.UIEvent {
+func (s *Service) bindSurfaceToThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {
 	return s.bindSurfaceToThreadMode(surface, inst, threadID, state.RouteModePinned)
 }
 
-func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, routeMode state.RouteMode) []control.UIEvent {
+func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, routeMode state.RouteMode) []eventcontract.Event {
 	if surface == nil || inst == nil || threadID == "" {
 		return nil
 	}
@@ -52,7 +52,7 @@ func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, i
 	return events
 }
 
-func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) []control.UIEvent {
+func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) []eventcontract.Event {
 	firstUserMessage := ""
 	lastUserMessage := ""
 	lastAssistantMessage := ""
@@ -78,12 +78,12 @@ func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, thr
 		Title:     title,
 		Preview:   preview,
 	}
-	return []control.UIEvent{threadSelectionEvent(surface, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage)}
+	return []eventcontract.Event{threadSelectionEvent(surface, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage)}
 }
 
-func notice(surface *state.SurfaceConsoleRecord, code, text string) []control.UIEvent {
+func notice(surface *state.SurfaceConsoleRecord, code, text string) []eventcontract.Event {
 	notice := control.Notice{Code: code, Text: text}
-	return []control.UIEvent{legacyUIEventFromContract(
+	return []eventcontract.Event{legacyUIEventFromContract(
 		surface,
 		eventcontract.NoticePayload{Notice: notice},
 		noticeDeliverySemantics(notice, false),
@@ -93,11 +93,11 @@ func notice(surface *state.SurfaceConsoleRecord, code, text string) []control.UI
 	)}
 }
 
-func (s *Service) HandleProblem(instanceID string, problem agentproto.ErrorInfo) []control.UIEvent {
+func (s *Service) HandleProblem(instanceID string, problem agentproto.ErrorInfo) []eventcontract.Event {
 	return s.handleProblem(instanceID, problem)
 }
 
-func (s *Service) handleProblem(instanceID string, problem agentproto.ErrorInfo) []control.UIEvent {
+func (s *Service) handleProblem(instanceID string, problem agentproto.ErrorInfo) []eventcontract.Event {
 	problem = problem.Normalize()
 	notice := NoticeForProblem(problem)
 	surfaces := s.problemTargets(instanceID, problem)
@@ -110,14 +110,14 @@ func (s *Service) handleProblem(instanceID string, problem agentproto.ErrorInfo)
 	if inst := s.root.Instances[instanceID]; inst != nil && strings.TrimSpace(problem.ThreadID) != "" {
 		s.clearThreadReplay(inst, problem.ThreadID)
 	}
-	events := make([]control.UIEvent, 0, len(surfaces))
+	events := make([]eventcontract.Event, 0, len(surfaces))
 	for _, surface := range surfaces {
 		if surface == nil {
 			continue
 		}
 		noticeCopy := notice
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &noticeCopy,

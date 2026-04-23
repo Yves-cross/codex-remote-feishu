@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 func TestTextLaneMatrix_NonFinalAssistantBlockUsesDirectTextLane(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-1",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -31,7 +32,7 @@ func TestTextLaneMatrix_RequestPromptUsesStructuredCardLane(t *testing.T) {
 	projector := NewProjector()
 	threadTitle := "# 修复 `登录`"
 	question := "请原样保留：\n- 列表项\n[链接](local.md)\n```go\nfmt.Println(1)\n```"
-	ops := projector.Project("chat-1", requestPromptEvent(control.FeishuRequestView{
+	ops := projector.ProjectEvent("chat-1", requestPromptEvent(control.FeishuRequestView{
 		RequestID:   "req-matrix",
 		RequestType: "request_user_input",
 		ThreadTitle: threadTitle,
@@ -63,8 +64,8 @@ func TestTextLaneMatrix_RequestPromptUsesStructuredCardLane(t *testing.T) {
 
 func TestTextLaneMatrix_FixedCopyNoticeKeepsMarkdownBodyLane(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventNotice,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "当前只支持 `/mode codex` 和 `/mode claude`。",
@@ -85,8 +86,8 @@ func TestTextLaneMatrix_FixedCopyNoticeKeepsMarkdownBodyLane(t *testing.T) {
 func TestTextLaneMatrix_FinalReplyUsesFinalMarkdownLane(t *testing.T) {
 	projector := NewProjector()
 	raw := "先看 [Guide](./docs/guide.md:12)，再看 [RFC](https://example.com/rfc)。"
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-final",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,

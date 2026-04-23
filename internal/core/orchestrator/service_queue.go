@@ -2,13 +2,15 @@ package orchestrator
 
 import (
 	"fmt"
-	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
-	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func (s *Service) replyAnchorForTurn(instanceID, threadID, turnID string) (string, string) {
@@ -23,7 +25,7 @@ func (s *Service) replyAnchorForTurn(instanceID, threadID, turnID string) (strin
 		strings.TrimSpace(firstNonEmpty(binding.ReplyToMessagePreview, binding.SourceMessagePreview))
 }
 
-func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	item := &state.QueueItemRecord{
 		SurfaceSessionID:      surface.SurfaceSessionID,
@@ -47,7 +49,7 @@ func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMe
 	return s.enqueuePreparedQueueItem(surface, item, front)
 }
 
-func (s *Service) enqueueAutoContinueQueueItem(surface *state.SurfaceConsoleRecord, replyToMessageID, replyToMessagePreview string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []control.UIEvent {
+func (s *Service) enqueueAutoContinueQueueItem(surface *state.SurfaceConsoleRecord, replyToMessageID, replyToMessagePreview string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	item := &state.QueueItemRecord{
 		SurfaceSessionID:      surface.SurfaceSessionID,
@@ -65,7 +67,7 @@ func (s *Service) enqueueAutoContinueQueueItem(surface *state.SurfaceConsoleReco
 	return s.enqueuePreparedQueueItem(surface, item, front)
 }
 
-func (s *Service) enqueuePreparedQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, front bool) []control.UIEvent {
+func (s *Service) enqueuePreparedQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, front bool) []eventcontract.Event {
 	if item == nil || surface == nil {
 		return nil
 	}
@@ -91,7 +93,7 @@ func (s *Service) enqueuePreparedQueueItem(surface *state.SurfaceConsoleRecord, 
 	if front {
 		position = 1
 	}
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	events = append(events, s.pendingInputEvents(surface, control.PendingInputState{
 		QueueItemID:   item.ID,
 		Status:        string(item.Status),
@@ -180,7 +182,7 @@ func freezeRoute(inst *state.InstanceRecord, surface *state.SurfaceConsoleRecord
 	return "", inst.WorkspaceRoot, surface.RouteMode, false
 }
 
-func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface.DispatchMode != state.DispatchModeNormal || surface.ActiveQueueItemID != "" || len(surface.QueuedQueueItemIDs) == 0 {
 		return nil
 	}
@@ -243,15 +245,15 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []control.UI
 		Status:      string(item.Status),
 		QueueOff:    true,
 	}, queueItemSourceMessageIDs(item)), item.SourceMessageID, true)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventAgentCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command:          command,
 	})
 	return events
 }
 
-func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.Initiator, threadID, turnID string) []control.UIEvent {
+func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.Initiator, threadID, turnID string) []eventcontract.Event {
 	binding := s.promotePendingRemote(instanceID, initiator, threadID, turnID)
 	if binding == nil {
 		return nil
@@ -293,7 +295,7 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	return events
 }
 
-func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {
+func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []eventcontract.Event {
 	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
 	if binding == nil {
 		return nil
@@ -332,8 +334,8 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 			problemNotice.Code = "turn_failed"
 			notice = &problemNotice
 		}
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -345,11 +347,11 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 	return events
 }
 
-func (s *Service) renderTextItem(instanceID, threadID, turnID, itemID, text string, final bool) []control.UIEvent {
+func (s *Service) renderTextItem(instanceID, threadID, turnID, itemID, text string, final bool) []eventcontract.Event {
 	return s.renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text, final, nil, nil, nil)
 }
 
-func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	thread := (*state.ThreadRecord)(nil)
 	if inst != nil && strings.TrimSpace(event.ThreadID) != "" {
@@ -384,7 +386,7 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []c
 		return nil
 	}
 	problem.SurfaceSessionID = surface.SurfaceSessionID
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.ActiveTurnOrigin != agentproto.InitiatorLocalUI {
 		routeMode := surface.RouteMode
 		if routeMode != state.RouteModeFollowLocal {
@@ -396,16 +398,16 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []c
 	}
 	if savedPath == "" && imageBase64 == "" {
 		notice := NoticeForProblem(problem)
-		return append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		return append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &notice,
 		})
 	}
 
 	replySourceMessageID, replySourceMessagePreview := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
-	return append(events, control.UIEvent{
-		Kind:                 control.UIEventImageOutput,
+	return append(events, eventcontract.Event{
+		Kind:                 eventcontract.EventImageOutput,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		SourceMessageID:      replySourceMessageID,
 		SourceMessagePreview: replySourceMessagePreview,
@@ -420,7 +422,7 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []c
 	})
 }
 
-func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []control.UIEvent {
+func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	surface := s.turnSurface(instanceID, threadID, turnID)
 	if surface == nil {
@@ -435,11 +437,11 @@ func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID
 	return s.renderTextToSurface(surface, inst, threadID, turnID, itemID, text, final, summary, turnDiff, finalSummary)
 }
 
-func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []control.UIEvent {
+func (s *Service) renderTextToSurface(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []eventcontract.Event {
 	return s.renderTextToSurfaceWithSource(surface, inst, threadID, turnID, itemID, text, final, summary, turnDiff, finalSummary, "", "")
 }
 
-func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary, sourceMessageID, sourceMessagePreview string) []control.UIEvent {
+func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary, sourceMessageID, sourceMessagePreview string) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -448,7 +450,7 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 	if replySourceMessageID == "" && inst != nil {
 		replySourceMessageID, replySourceMessagePreview = s.replyAnchorForTurn(inst.InstanceID, threadID, turnID)
 	}
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.ActiveTurnOrigin != agentproto.InitiatorLocalUI {
 		routeMode := surface.RouteMode
 		if routeMode != state.RouteModeFollowLocal {
@@ -497,8 +499,8 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 		block.ThreadTitle = title
 		block.ThemeKey = themeKey
 		block.Final = final
-		event := control.UIEvent{
-			Kind:                 control.UIEventBlockCommitted,
+		event := eventcontract.Event{
+			Kind:                 eventcontract.EventBlockCommitted,
 			SurfaceSessionID:     surface.SurfaceSessionID,
 			SourceMessageID:      replySourceMessageID,
 			SourceMessagePreview: replySourceMessagePreview,
@@ -566,7 +568,7 @@ func (s *Service) trackItemDelta(instanceID string, event agentproto.Event) {
 	buf.appendText(event.Delta)
 }
 
-func (s *Service) completeItem(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) completeItem(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if event.ItemID == "" {
 		return nil
 	}
@@ -618,7 +620,7 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []cont
 	return s.renderTextItem(instanceID, event.ThreadID, event.TurnID, event.ItemID, bufferText, false)
 }
 
-func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, itemKind, text string) []control.UIEvent {
+func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, itemKind, text string) []eventcontract.Event {
 	key := turnRenderKey(instanceID, threadID, turnID)
 	previous := s.progress.pendingTurnText[key]
 	s.progress.pendingTurnText[key] = &completedTextItem{
@@ -635,11 +637,11 @@ func (s *Service) storePendingTurnText(instanceID, threadID, turnID, itemID, ite
 	return s.renderTextItem(previous.InstanceID, previous.ThreadID, previous.TurnID, previous.ItemID, previous.Text, false)
 }
 
-func (s *Service) flushPendingTurnText(instanceID, threadID, turnID string, final bool) []control.UIEvent {
+func (s *Service) flushPendingTurnText(instanceID, threadID, turnID string, final bool) []eventcontract.Event {
 	return s.flushPendingTurnTextWithSummary(instanceID, threadID, turnID, final, nil, nil, nil)
 }
 
-func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []control.UIEvent {
+func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []eventcontract.Event {
 	key := turnRenderKey(instanceID, threadID, turnID)
 	pending := s.progress.pendingTurnText[key]
 	if pending == nil {
@@ -652,7 +654,7 @@ func (s *Service) flushPendingTurnTextWithSummary(instanceID, threadID, turnID s
 	return s.renderTextItemWithSummary(pending.InstanceID, pending.ThreadID, pending.TurnID, pending.ItemID, pending.Text, final, summary, turnDiff, finalSummary)
 }
 
-func (s *Service) flushPendingTurnTextIfTurnContinues(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) flushPendingTurnTextIfTurnContinues(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if event.ThreadID == "" || event.TurnID == "" {
 		return nil
 	}

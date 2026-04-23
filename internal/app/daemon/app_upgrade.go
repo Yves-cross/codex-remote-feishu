@@ -11,6 +11,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -59,7 +60,7 @@ func (a *App) defaultReleaseLookup(ctx context.Context, track install.ReleaseTra
 	})
 }
 
-func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []eventcontract.Event {
 	parsed, err := parseDebugCommandText(command.Text)
 	if err != nil {
 		return debugUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
@@ -74,10 +75,10 @@ func (a *App) handleDebugDaemonCommand(command control.DaemonCommand) []control.
 	}
 }
 
-func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []eventcontract.Event {
 	service, localURL, err := a.ensureExternalAccessIssueTargetLocked()
 	if err != nil {
-		return []control.UIEvent{debugNoticeEvent(command.SurfaceSessionID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err))}
+		return []eventcontract.Event{debugNoticeEvent(command.SurfaceSessionID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err))}
 	}
 	adminURL := a.admin.adminURL
 	req := debugAdminIssueRequest(adminURL)
@@ -94,7 +95,7 @@ func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []control.U
 			return
 		}
 		if err != nil {
-			a.handleUIEventsLocked(context.Background(), []control.UIEvent{
+			a.handleUIEventsLocked(context.Background(), []eventcontract.Event{
 				debugNoticeEvent(surfaceID, "debug_admin_issue_failed", fmt.Sprintf("生成管理页外链失败：%v", err)),
 			})
 			return
@@ -105,16 +106,16 @@ func (a *App) handleDebugAdminCommand(command control.DaemonCommand) []control.U
 			issued.ExternalURL,
 			issued.ExpiresAt.UTC().Format(time.RFC3339),
 		)
-		a.handleUIEventsLocked(context.Background(), []control.UIEvent{
+		a.handleUIEventsLocked(context.Background(), []eventcontract.Event{
 			debugNoticeEvent(surfaceID, "debug_admin_link_ready", text),
 		})
 	}()
-	return []control.UIEvent{
+	return []eventcontract.Event{
 		debugNoticeEvent(command.SurfaceSessionID, "debug_admin_prepare_started", "正在准备临时管理页外链。首次启动 tunnel 或重新拉起 external access 时，可能需要几十秒，请稍候。"),
 	}
 }
 
-func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []eventcontract.Event {
 	parsed, err := parseUpgradeCommandText(command.Text)
 	if err != nil {
 		return upgradeUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
@@ -122,7 +123,7 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []contro
 
 	stateValue, _, err := a.loadUpgradeStateLocked(true)
 	if err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
 	}
 
 	switch parsed.Mode {
@@ -143,52 +144,52 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []contro
 	}
 }
 
-func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	if a.upgradeRuntime.CheckInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
 	}
 	if a.upgradeRuntime.StartInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前升级准备已经开始，服务会短暂重启，请稍后查看结果。")}
 	}
 	if clearStalePendingCandidateOnLiveVersion(&stateValue, a.currentBinaryVersion()) {
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
-			return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理陈旧升级候选失败：%v", err))}
+			return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理陈旧升级候选失败：%v", err))}
 		}
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceRelease) {
 		return a.openUpgradeLatestOwnerConfirmLocked(command, stateValue)
 	}
 	if pendingUpgradeBusy(stateValue.PendingUpgrade) {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceDev) {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 dev 构建升级候选，请改用 `/upgrade dev` 继续，或重新检查当前来源。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 dev 构建升级候选，请改用 `/upgrade dev` 继续，或重新检查当前来源。")}
 	}
 	return a.startUpgradeLatestOwnerCheckLocked(command, stateValue)
 }
 
-func (a *App) handleUpgradeLocalCommand(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) handleUpgradeLocalCommand(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	if !install.CurrentBuildAllowsLocalUpgrade() {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_unsupported", "当前构建不支持 `/upgrade local`。如需本地升级，请使用 dev flavor 的源码构建。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_unsupported", "当前构建不支持 `/upgrade local`。如需本地升级，请使用 dev flavor 的源码构建。")}
 	}
 	if a.upgradeRuntime.CheckInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已有 release 检查在进行中，请稍后再试本地升级。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已有 release 检查在进行中，请稍后再试本地升级。")}
 	}
 	if a.upgradeRuntime.StartInFlight || pendingUpgradeBusy(stateValue.PendingUpgrade) {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前已有升级事务在进行中，请稍后再试。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", "当前已有升级事务在进行中，请稍后再试。")}
 	}
 	artifactPath := install.LocalUpgradeArtifactPath(stateValue)
 	if _, err := os.Stat(artifactPath); err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_artifact_missing", fmt.Sprintf("本地升级产物不存在：%s\n请先把新编译的 binary 放到这个固定路径，再发送 /upgrade local。", artifactPath))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_artifact_missing", fmt.Sprintf("本地升级产物不存在：%s\n请先把新编译的 binary 放到这个固定路径，再发送 /upgrade local。", artifactPath))}
 	}
 	slot, err := install.RunLocalBinaryUpgradeWithStatePath(install.LocalBinaryUpgradeOptions{
 		StatePath:    stateValue.StatePath,
 		SourceBinary: artifactPath,
 	})
 	if err != nil {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_failed", fmt.Sprintf("准备本地升级失败：%v", err))}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_failed", fmt.Sprintf("准备本地升级失败：%v", err))}
 	}
-	return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_started", fmt.Sprintf("正在准备本地升级，目标 slot：%s。服务会短暂重启。", slot))}
+	return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_local_prepare_started", fmt.Sprintf("正在准备本地升级，目标 slot：%s。服务会短暂重启。", slot))}
 }
 
 func (a *App) runUpgradeCheck(request upgradeCheckRequest) {
@@ -214,11 +215,11 @@ func (a *App) runUpgradeCheck(request upgradeCheckRequest) {
 	}
 }
 
-func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release install.ReleaseInfo, lookupErr error, completedAt time.Time) []control.UIEvent {
+func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release install.ReleaseInfo, lookupErr error, completedAt time.Time) []eventcontract.Event {
 	stateValue, _, err := a.loadUpgradeStateLocked(true)
 	if err != nil {
 		if request.Manual {
-			return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
+			return []eventcontract.Event{debugNoticeEvent(request.SurfaceSessionID, "debug_state_load_failed", fmt.Sprintf("读取升级状态失败：%v", err))}
 		}
 		log.Printf("upgrade check load state failed: %v", err)
 		return nil
@@ -233,7 +234,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 			return a.finishUpgradeOwnerFlowFailureLocked(request.SurfaceSessionID, request.FlowID, fmt.Sprintf("检查更新失败：%v", lookupErr))
 		}
 		if request.Manual {
-			return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_check_failed", fmt.Sprintf("检查更新失败：%v", lookupErr))}
+			return []eventcontract.Event{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_check_failed", fmt.Sprintf("检查更新失败：%v", lookupErr))}
 		}
 		log.Printf("upgrade check failed: track=%s err=%v", request.Track, lookupErr)
 		return nil
@@ -257,7 +258,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 			return a.finishUpgradeOwnerFlowLatestLocked(request.SurfaceSessionID, request.FlowID, stateValue, latestVersion)
 		}
 		if request.Manual {
-			return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_latest", fmt.Sprintf("当前已经是 %s track 的最新版本 %s。", stateValue.CurrentTrack, latestVersion))}
+			return []eventcontract.Event{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_latest", fmt.Sprintf("当前已经是 %s track 的最新版本 %s。", stateValue.CurrentTrack, latestVersion))}
 		}
 		return nil
 	}
@@ -303,7 +304,7 @@ func (a *App) applyUpgradeCheckResultLocked(request upgradeCheckRequest, release
 		if err := a.writeUpgradeStateLocked(stateValue); err != nil {
 			log.Printf("upgrade check write state failed: %v", err)
 		}
-		return []control.UIEvent{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_candidate_pending", fmt.Sprintf("发现新版本 %s，但当前窗口不空闲，已记录候选升级。等当前窗口空闲后，再次发送 /upgrade latest 继续升级。", latestVersion))}
+		return []eventcontract.Event{debugNoticeEvent(request.SurfaceSessionID, "debug_upgrade_candidate_pending", fmt.Sprintf("发现新版本 %s，但当前窗口不空闲，已记录候选升级。等当前窗口空闲后，再次发送 /upgrade latest 继续升级。", latestVersion))}
 	}
 
 	events := a.promptPendingUpgradeOnBestSurfaceLocked(stateValue, completedAt)
@@ -354,7 +355,7 @@ func (a *App) maybeStartAutoUpgradeCheckLocked(now time.Time) {
 	go a.runUpgradeCheck(upgradeCheckRequest{Track: stateValue.CurrentTrack})
 }
 
-func (a *App) maybePromptPendingUpgradeLocked(now time.Time) []control.UIEvent {
+func (a *App) maybePromptPendingUpgradeLocked(now time.Time) []eventcontract.Event {
 	if a.upgradeRuntime.PromptScanEvery <= 0 {
 		return nil
 	}
@@ -377,7 +378,7 @@ func (a *App) maybePromptPendingUpgradeLocked(now time.Time) []control.UIEvent {
 	return a.promptPendingUpgradeOnBestSurfaceLocked(stateValue, now)
 }
 
-func (a *App) promptPendingUpgradeOnBestSurfaceLocked(stateValue install.InstallState, now time.Time) []control.UIEvent {
+func (a *App) promptPendingUpgradeOnBestSurfaceLocked(stateValue install.InstallState, now time.Time) []eventcontract.Event {
 	surface := a.selectIdleSurfaceLocked("")
 	if surface == nil {
 		return nil
@@ -385,7 +386,7 @@ func (a *App) promptPendingUpgradeOnBestSurfaceLocked(stateValue install.Install
 	return a.promptPendingUpgradeOnSurfaceLocked(surface.SurfaceSessionID, stateValue, now)
 }
 
-func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue install.InstallState, now time.Time) []control.UIEvent {
+func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue install.InstallState, now time.Time) []eventcontract.Event {
 	pending := stateValue.PendingUpgrade
 	if pending == nil {
 		return nil
@@ -409,12 +410,12 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 		flow.Track = stateValue.CurrentTrack
 		flow.CurrentVersion = strings.TrimSpace(stateValue.CurrentVersion)
 		flow.TargetVersion = pendingTargetVersion(pending)
-		return []control.UIEvent{upgradeOwnerConfirmEvent(surface.SurfaceSessionID, flow, stateValue)}
+		return []eventcontract.Event{upgradeOwnerConfirmEvent(surface.SurfaceSessionID, flow, stateValue)}
 	}
 	page := buildUpgradePromptPageView(stateValue)
 	pageView := control.FeishuPageViewFromCommandPageView(page)
-	return []control.UIEvent{{
-		Kind:             control.UIEventFeishuPageView,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventFeishuPageView,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		FeishuPageView:   &pageView,

@@ -1,8 +1,9 @@
 package cronruntime
 
 import (
-	larkbitable "github.com/larksuite/oapi-sdk-go/v3/service/bitable/v1"
 	"strings"
+
+	larkbitable "github.com/larksuite/oapi-sdk-go/v3/service/bitable/v1"
 )
 
 type FieldSpec struct {

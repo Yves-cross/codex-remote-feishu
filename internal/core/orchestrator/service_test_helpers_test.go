@@ -8,6 +8,7 @@ import (
 	feishuadapter "github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -43,7 +44,7 @@ func firstButtonLabels(entries []control.CommandCatalogEntry) []string {
 	return labels
 }
 
-func eventSelectionPrompt(event control.UIEvent) (*control.FeishuDirectSelectionPrompt, bool) {
+func eventSelectionPrompt(event eventcontract.Event) (*control.FeishuDirectSelectionPrompt, bool) {
 	if event.FeishuSelectionView != nil {
 		prompt, ok := feishuadapter.FeishuDirectSelectionPromptFromView(*event.FeishuSelectionView, event.FeishuSelectionContext)
 		if !ok {
@@ -54,7 +55,7 @@ func eventSelectionPrompt(event control.UIEvent) (*control.FeishuDirectSelection
 	return nil, false
 }
 
-func selectionPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuDirectSelectionPrompt {
+func selectionPromptFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuDirectSelectionPrompt {
 	t.Helper()
 	prompt, ok := eventSelectionPrompt(event)
 	if !ok {
@@ -63,7 +64,7 @@ func selectionPromptFromEvent(t *testing.T, event control.UIEvent) *control.Feis
 	return prompt
 }
 
-func targetPickerFromEvent(t *testing.T, event control.UIEvent) *control.FeishuTargetPickerView {
+func targetPickerFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuTargetPickerView {
 	t.Helper()
 	if event.FeishuTargetPickerView == nil {
 		t.Fatalf("expected target picker view, got %#v", event)
@@ -71,7 +72,7 @@ func targetPickerFromEvent(t *testing.T, event control.UIEvent) *control.FeishuT
 	return event.FeishuTargetPickerView
 }
 
-func selectionViewFromEvent(t *testing.T, event control.UIEvent) *control.FeishuSelectionView {
+func selectionViewFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuSelectionView {
 	t.Helper()
 	if event.FeishuSelectionView == nil {
 		t.Fatalf("expected selection view, got %#v", event)
@@ -79,7 +80,7 @@ func selectionViewFromEvent(t *testing.T, event control.UIEvent) *control.Feishu
 	return event.FeishuSelectionView
 }
 
-func singleTargetPickerEvent(t *testing.T, events []control.UIEvent) *control.FeishuTargetPickerView {
+func singleTargetPickerEvent(t *testing.T, events []eventcontract.Event) *control.FeishuTargetPickerView {
 	t.Helper()
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one event, got %#v", events)
@@ -135,7 +136,7 @@ func targetPickerSourceOption(view *control.FeishuTargetPickerView, value contro
 	return control.FeishuTargetPickerSourceOption{}, false
 }
 
-func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.FeishuRequestView {
+func requestPromptFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuRequestView {
 	t.Helper()
 	if event.FeishuRequestView == nil {
 		t.Fatalf("expected request prompt event, got %#v", event)
@@ -143,7 +144,7 @@ func requestPromptFromEvent(t *testing.T, event control.UIEvent) *control.Feishu
 	return event.FeishuRequestView
 }
 
-func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.FeishuRequestView {
+func singleRequestPromptEvent(t *testing.T, events []eventcontract.Event) *control.FeishuRequestView {
 	t.Helper()
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one event, got %#v", events)
@@ -151,7 +152,7 @@ func singleRequestPromptEvent(t *testing.T, events []control.UIEvent) *control.F
 	return requestPromptFromEvent(t, events[0])
 }
 
-func eventCommandCatalog(event control.UIEvent) (*control.FeishuPageView, bool) {
+func eventCommandCatalog(event eventcontract.Event) (*control.FeishuPageView, bool) {
 	if event.FeishuPageView != nil {
 		page := control.NormalizeFeishuPageView(*event.FeishuPageView)
 		catalog := control.NormalizeFeishuPageView(control.FeishuPageView{
@@ -179,7 +180,7 @@ func eventCommandCatalog(event control.UIEvent) (*control.FeishuPageView, bool) 
 	return nil, false
 }
 
-func commandCatalogFromEvent(t *testing.T, event control.UIEvent) *control.FeishuPageView {
+func commandCatalogFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuPageView {
 	t.Helper()
 	catalog, ok := eventCommandCatalog(event)
 	if !ok {
@@ -212,7 +213,7 @@ func commandCatalogSummaryText(catalog *control.FeishuPageView) string {
 	return strings.Join(parts, "\n")
 }
 
-func singleSelectionPromptEvent(t *testing.T, events []control.UIEvent) *control.FeishuDirectSelectionPrompt {
+func singleSelectionPromptEvent(t *testing.T, events []eventcontract.Event) *control.FeishuDirectSelectionPrompt {
 	t.Helper()
 	if len(events) != 1 {
 		t.Fatalf("expected exactly one event, got %#v", events)
@@ -220,7 +221,7 @@ func singleSelectionPromptEvent(t *testing.T, events []control.UIEvent) *control
 	return selectionPromptFromEvent(t, events[0])
 }
 
-func findSelectionPromptByKind(t *testing.T, events []control.UIEvent, kind control.SelectionPromptKind) *control.FeishuDirectSelectionPrompt {
+func findSelectionPromptByKind(t *testing.T, events []eventcontract.Event, kind control.SelectionPromptKind) *control.FeishuDirectSelectionPrompt {
 	t.Helper()
 	for _, event := range events {
 		prompt, ok := eventSelectionPrompt(event)
@@ -285,7 +286,7 @@ func (f *fakePersistedThreadCatalog) ThreadByID(threadID string) (*state.ThreadR
 	return &threadCopy, nil
 }
 
-func recordLocalFinalText(t *testing.T, svc *Service, instanceID, threadID, turnID, itemID, text string) []control.UIEvent {
+func recordLocalFinalText(t *testing.T, svc *Service, instanceID, threadID, turnID, itemID, text string) []eventcontract.Event {
 	t.Helper()
 	if events := svc.ApplyAgentEvent(instanceID, agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
@@ -363,7 +364,7 @@ func startRemoteTurnForAutoContinueTest(t *testing.T, svc *Service, messageID, t
 	})
 }
 
-func completeRemoteTurnWithFinalText(t *testing.T, svc *Service, turnID, status, errorMessage, finalText string, problem *agentproto.ErrorInfo) []control.UIEvent {
+func completeRemoteTurnWithFinalText(t *testing.T, svc *Service, turnID, status, errorMessage, finalText string, problem *agentproto.ErrorInfo) []eventcontract.Event {
 	t.Helper()
 	if strings.TrimSpace(finalText) != "" {
 		if events := svc.ApplyAgentEvent("inst-1", agentproto.Event{

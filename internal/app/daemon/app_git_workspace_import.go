@@ -10,6 +10,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/gitworkspace"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/workspaceimport"
 )
 
@@ -17,7 +18,7 @@ const gitWorkspaceImportCommandTimeout = 10 * time.Minute
 
 var runGitWorkspaceImport = gitworkspace.Import
 
-func (a *App) handleGitWorkspaceImportCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleGitWorkspaceImportCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	request := gitworkspace.ImportRequest{
 		RepoURL:       strings.TrimSpace(command.RepoURL),
 		RefName:       strings.TrimSpace(command.RefName),
@@ -71,12 +72,12 @@ func (a *App) handleGitWorkspaceImportCommandLocked(command control.DaemonComman
 	return gitWorkspaceImportNotice(command.SurfaceSessionID, "git_import_completed", fmt.Sprintf("仓库已拉取到 `%s`。", result.WorkspacePath))
 }
 
-func (a *App) handleGitWorkspaceImportCancelCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleGitWorkspaceImportCancelCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	a.cancelGitWorkspaceImportRuntimeLocked(command.SurfaceSessionID, command.PickerID)
 	return nil
 }
 
-func gitWorkspaceImportNotice(surfaceID, code, text string) []control.UIEvent {
+func gitWorkspaceImportNotice(surfaceID, code, text string) []eventcontract.Event {
 	title := "Git 仓库导入失败"
 	switch code {
 	case "git_import_starting":
@@ -84,8 +85,8 @@ func gitWorkspaceImportNotice(surfaceID, code, text string) []control.UIEvent {
 	case "git_import_completed":
 		title = "Git 工作区已导入"
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

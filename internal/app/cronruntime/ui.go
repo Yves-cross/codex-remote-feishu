@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 const (
@@ -136,14 +137,14 @@ func parseCronClockText(value string) (int, int, bool) {
 	return hour, minute, true
 }
 
-func UsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+func UsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
 	page := control.FeishuPageViewFromCommandPageView(
 		control.NormalizeFeishuPageView(
 			BuildRootPageView(nil, OwnerView{}, "", false, formDefault, "error", message),
 		),
 	)
-	return []control.UIEvent{{
-		Kind:             control.UIEventFeishuPageView,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &page,
 	}}
@@ -402,9 +403,9 @@ func RunCommandText(jobRecordID string) string {
 	return "/cron run " + jobRecordID
 }
 
-func NoticeEvent(surfaceID, code, text string) control.UIEvent {
-	return control.UIEvent{
-		Kind:             control.UIEventNotice,
+func NoticeEvent(surfaceID, code, text string) eventcontract.Event {
+	return eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

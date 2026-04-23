@@ -2,7 +2,7 @@ package orchestrator
 
 import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 var dropNoticeFollowupPolicy = control.FeishuFollowupPolicy{
@@ -12,6 +12,6 @@ var dropNoticeFollowupPolicy = control.FeishuFollowupPolicy{
 	},
 }
 
-func filterFollowupEventsByPolicy(events []control.UIEvent, policy control.FeishuFollowupPolicy) []control.UIEvent {
-	return eventcontractcompat.FilterLegacyUIEventsByFollowupPolicy(events, policy)
+func filterFollowupEventsByPolicy(events []eventcontract.Event, policy control.FeishuFollowupPolicy) []eventcontract.Event {
+	return eventcontract.FilterEventsByFollowupPolicy(events, policy)
 }

@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
-	event := control.UIEvent{
-		Kind:              control.UIEventFeishuPathPicker,
+	event := eventcontract.Event{
+		Kind:              eventcontract.EventFeishuPathPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		FeishuPathPickerView: &control.FeishuPathPickerView{
@@ -28,7 +29,7 @@ func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 			},
 		},
 	}
-	ops := projector.Project("chat-1", event)
+	ops := projector.ProjectEvent("chat-1", event)
 	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("expected one card op, got %#v", ops)
 	}
@@ -46,8 +47,8 @@ func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 
 func TestProjectPathPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:              control.UIEventFeishuPathPicker,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:              eventcontract.EventFeishuPathPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		FeishuPathPickerView: &control.FeishuPathPickerView{

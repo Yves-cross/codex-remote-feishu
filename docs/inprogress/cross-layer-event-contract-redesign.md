@@ -1,8 +1,8 @@
 # 跨层事件契约激进重构方案
 
 > Type: `inprogress`
-> Updated: `2026-04-22`
-> Summary: 基于主干 `1511f9b` 重新确认跨层漂移根因，改为激进方案：引入稳定事件契约层、统一 gateway target resolution，并把 followup 抑制改为显式语义。
+> Updated: `2026-04-23`
+> Summary: 激进迁移已完成终态收口：生产链路移除 `control.UIEvent` 与 `eventcontractcompat`，统一以 `eventcontract.Event` 贯通 orchestrator/daemon/adapter，并固化终局 guard。
 
 ## 背景
 
@@ -20,6 +20,17 @@
 - 路由语义不稳定
 - handoff 语义不稳定
 - 下游消费者直接绑定这些不稳定细节
+
+## 最终收口状态（2026-04-23）
+
+本方案已按激进终态完成收口，核心结果如下：
+
+1. `internal/**` 非测试代码中的 `control.UIEvent` 引用为 `0`。
+2. `internal/**` 非测试代码中的 `eventcontractcompat` 引用为 `0`，并已删除 `internal/core/eventcontractcompat/**`。
+3. `internal/adapter/feishu/projector.go` 已删除 legacy `Project(...)`，仅保留 `ProjectEvent(...)`。
+4. orchestrator -> daemon -> adapter 主链路已统一使用 `eventcontract.Event`。
+5. `scripts/check/eventcontract-legacy-guards.sh` 已升级终局红线并接入 pre-commit。
+6. 验证通过：`go test ./... -count=1` 与 `bash scripts/check/go-file-length.sh`。
 
 如果继续按折中方案只修局部 contract，能止血，但不能真正拔掉“跨层连带破坏”的根。
 

@@ -3,14 +3,14 @@ package feishu
 import (
 	"testing"
 
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 func TestProjectFinalAssistantBlockPreservesExplicitRemoteMarkdownLinks(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-remote-link",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -36,8 +36,8 @@ func TestProjectFinalAssistantBlockPreservesExplicitRemoteMarkdownLinks(t *testi
 
 func TestProjectFinalAssistantBlockNeutralizesUnsupportedLocalMarkdownLinks(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-local-link",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -66,8 +66,8 @@ func TestProjectFinalAssistantBlockNeutralizesUnsupportedLocalMarkdownLinks(t *t
 
 func TestProjectFinalAssistantBlockSkipsCodeWhenNormalizingLocalLinks(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-code-link",
 		Block: &render.Block{
 			Kind: render.BlockAssistantMarkdown,

@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const defaultPathPickerTTL = 10 * time.Minute
 
-func (s *Service) OpenPathPicker(action control.Action, req control.PathPickerRequest) []control.UIEvent {
+func (s *Service) OpenPathPicker(action control.Action, req control.PathPickerRequest) []eventcontract.Event {
 	surface := s.ensureSurface(action)
 	return s.openPathPicker(surface, action.ActorUserID, req)
 }
@@ -35,11 +36,11 @@ func (s *Service) RegisterPathPickerEntryFilter(kind string, filter PathPickerEn
 	s.pickers.registerPathPickerEntryFilter(kind, filter)
 }
 
-func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) []control.UIEvent {
+func (s *Service) openPathPicker(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) []eventcontract.Event {
 	return s.openPathPickerWithInline(surface, ownerUserID, req, false)
 }
 
-func (s *Service) openPathPickerWithInline(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest, inline bool) []control.UIEvent {
+func (s *Service) openPathPickerWithInline(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest, inline bool) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -53,7 +54,7 @@ func (s *Service) openPathPickerWithInline(surface *state.SurfaceConsoleRecord, 
 		s.clearSurfacePathPicker(surface)
 		return notice(surface, "path_picker_invalid", err.Error())
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, inline)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, inline)}
 }
 
 func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, ownerUserID string, req control.PathPickerRequest) (*activePathPickerRecord, error) {
@@ -97,7 +98,7 @@ func (s *Service) newPathPickerRecord(surface *state.SurfaceConsoleRecord, owner
 	}, nil
 }
 
-func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pickerID, entryName, actorUserID string) []control.UIEvent {
+func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pickerID, entryName, actorUserID string) []eventcontract.Event {
 	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -119,7 +120,7 @@ func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pic
 		if err != nil {
 			return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 		}
-		return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+		return []eventcontract.Event{s.pathPickerViewEvent(surface, view, true)}
 	}
 	record.CurrentPath = resolved.path
 	record.SelectedPath = defaultSelectedPathForMode(record.Mode, record.CurrentPath, "")
@@ -128,10 +129,10 @@ func (s *Service) handlePathPickerEnter(surface *state.SurfaceConsoleRecord, pic
 	if err != nil {
 		return notice(surface, "path_picker_invalid_entry", fmt.Sprintf("目录刷新失败：%v", err))
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, true)}
 }
 
-func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []control.UIEvent {
+func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []eventcontract.Event {
 	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -142,7 +143,7 @@ func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, picker
 		if err != nil {
 			return s.pathPickerInlineNotice(surface, record, "path_picker_invalid_entry", "目录刷新失败", fmt.Sprintf("目录刷新失败：%v", err))
 		}
-		return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+		return []eventcontract.Event{s.pathPickerViewEvent(surface, view, true)}
 	}
 	parent := filepath.Dir(record.CurrentPath)
 	resolved, err := resolvePathPickerExistingTarget(record.RootPath, parent)
@@ -159,10 +160,10 @@ func (s *Service) handlePathPickerUp(surface *state.SurfaceConsoleRecord, picker
 	if err != nil {
 		return s.pathPickerInlineNotice(surface, record, "path_picker_invalid_entry", "目录刷新失败", fmt.Sprintf("目录刷新失败：%v", err))
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, true)}
 }
 
-func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pickerID, entryName, actorUserID string) []control.UIEvent {
+func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pickerID, entryName, actorUserID string) []eventcontract.Event {
 	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -191,10 +192,10 @@ func (s *Service) handlePathPickerSelect(surface *state.SurfaceConsoleRecord, pi
 	if err != nil {
 		return s.pathPickerInlineNotice(surface, record, "path_picker_invalid_entry", "目录刷新失败", fmt.Sprintf("目录刷新失败：%v", err))
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, true)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, true)}
 }
 
-func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []control.UIEvent {
+func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []eventcontract.Event {
 	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -220,7 +221,7 @@ func (s *Service) handlePathPickerConfirm(surface *state.SurfaceConsoleRecord, p
 	return s.dispatchPathPickerConfirmed(surface, record, result)
 }
 
-func (s *Service) handlePathPickerCancel(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []control.UIEvent {
+func (s *Service) handlePathPickerCancel(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) []eventcontract.Event {
 	record, blocked := s.requireActivePathPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -229,7 +230,7 @@ func (s *Service) handlePathPickerCancel(surface *state.SurfaceConsoleRecord, pi
 	return s.dispatchPathPickerCancelled(surface, record, result)
 }
 
-func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activePathPickerRecord, []control.UIEvent) {
+func (s *Service) requireActivePathPicker(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activePathPickerRecord, []eventcontract.Event) {
 	if surface == nil || s.activePathPicker(surface) == nil {
 		return nil, notice(surface, "path_picker_expired", "这个路径选择器已失效，请重新发起。")
 	}
@@ -478,7 +479,7 @@ func pathPickerResultFromRecord(record *activePathPickerRecord, selectedPath str
 	}
 }
 
-func (s *Service) dispatchPathPickerConfirmed(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, result control.PathPickerResult) []control.UIEvent {
+func (s *Service) dispatchPathPickerConfirmed(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, result control.PathPickerResult) []eventcontract.Event {
 	consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind)
 	if ok {
 		if events := consumer.PathPickerConfirmed(s, surface, result); len(events) != 0 {
@@ -496,7 +497,7 @@ func (s *Service) dispatchPathPickerConfirmed(surface *state.SurfaceConsoleRecor
 	return s.finishPathPickerWithStatus(surface, record, frontstagecontract.PhaseSucceeded, "已确认路径", fmt.Sprintf("已确认路径：`%s`。", result.SelectedPath), nil, "", false, nil)
 }
 
-func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, result control.PathPickerResult) []control.UIEvent {
+func (s *Service) dispatchPathPickerCancelled(surface *state.SurfaceConsoleRecord, record *activePathPickerRecord, result control.PathPickerResult) []eventcontract.Event {
 	consumer, ok := s.lookupPathPickerConsumer(result.ConsumerKind)
 	if ok {
 		if events := consumer.PathPickerCancelled(s, surface, result); len(events) != 0 {

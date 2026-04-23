@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectInstanceSelectionViewUsesStructuredButtons(t *testing.T) {
@@ -33,8 +34,8 @@ func TestProjectInstanceSelectionViewUsesStructuredButtons(t *testing.T) {
 			},
 		},
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                control.UIEventFeishuSelectionView,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                eventcontract.EventFeishuSelectionView,
 		DaemonLifecycleID:   "life-1",
 		FeishuSelectionView: &view,
 		FeishuSelectionContext: &control.FeishuUISelectionContext{
@@ -101,8 +102,8 @@ func TestProjectVSCodeThreadSelectionViewUsesDropdown(t *testing.T) {
 			},
 		},
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                control.UIEventFeishuSelectionView,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                eventcontract.EventFeishuSelectionView,
 		DaemonLifecycleID:   "life-2",
 		FeishuSelectionView: &view,
 		FeishuSelectionContext: &control.FeishuUISelectionContext{

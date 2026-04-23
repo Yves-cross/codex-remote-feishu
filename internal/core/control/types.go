@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
 type ActionKind string
@@ -582,27 +581,6 @@ type ExecCommandProgress struct {
 	Final        bool
 }
 
-type UIEventKind string
-
-const (
-	UIEventSnapshot            UIEventKind = "snapshot.updated"
-	UIEventFeishuSelectionView UIEventKind = "selection.prompt"
-	UIEventFeishuPageView      UIEventKind = "page.view"
-	UIEventFeishuRequestView   UIEventKind = "request.prompt"
-	UIEventFeishuPathPicker    UIEventKind = "path.picker"
-	UIEventFeishuTargetPicker  UIEventKind = "target.picker"
-	UIEventFeishuThreadHistory UIEventKind = "thread.history"
-	UIEventPendingInput        UIEventKind = "pending.input.state"
-	UIEventNotice              UIEventKind = "notice"
-	UIEventPlanUpdated         UIEventKind = "plan.updated"
-	UIEventBlockCommitted      UIEventKind = "block.committed"
-	UIEventTimelineText        UIEventKind = "timeline.text"
-	UIEventImageOutput         UIEventKind = "image.output"
-	UIEventExecCommandProgress UIEventKind = "exec_command.progress"
-	UIEventAgentCommand        UIEventKind = "agent.command"
-	UIEventDaemonCommand       UIEventKind = "daemon.command"
-)
-
 type DaemonCommandKind string
 
 const (
@@ -638,40 +616,4 @@ type DaemonCommand struct {
 	RepoURL          string
 	RefName          string
 	DirectoryName    string
-}
-
-type UIEvent struct {
-	Kind                       UIEventKind
-	GatewayID                  string
-	SurfaceSessionID           string
-	DaemonLifecycleID          string
-	SourceMessageID            string
-	SourceMessagePreview       string
-	InlineReplaceCurrentCard   bool
-	Snapshot                   *Snapshot
-	FeishuSelectionView        *FeishuSelectionView
-	FeishuSelectionContext     *FeishuUISelectionContext
-	FeishuPageView             *FeishuPageView
-	FeishuPageContext          *FeishuUIPageContext
-	FeishuRequestView          *FeishuRequestView
-	FeishuRequestContext       *FeishuUIRequestContext
-	FeishuPathPickerView       *FeishuPathPickerView
-	FeishuPathPickerContext    *FeishuUIPathPickerContext
-	FeishuTargetPickerView     *FeishuTargetPickerView
-	FeishuTargetPickerContext  *FeishuUITargetPickerContext
-	FeishuThreadHistoryView    *FeishuThreadHistoryView
-	FeishuThreadHistoryContext *FeishuUIThreadHistoryContext
-	PendingInput               *PendingInputState
-	Notice                     *Notice
-	PlanUpdate                 *PlanUpdate
-	ThreadSelection            *ThreadSelectionChanged
-	Block                      *render.Block
-	TimelineText               *TimelineText
-	ImageOutput                *ImageOutput
-	ExecCommandProgress        *ExecCommandProgress
-	FileChangeSummary          *FileChangeSummary
-	TurnDiffSnapshot           *TurnDiffSnapshot
-	FinalTurnSummary           *FinalTurnSummary
-	Command                    *agentproto.Command
-	DaemonCommand              *DaemonCommand
 }

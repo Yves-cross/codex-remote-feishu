@@ -7,6 +7,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/conversationtrace"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
@@ -73,8 +74,8 @@ func (a *App) traceSteerCommand(surfaceID, instanceID string, command agentproto
 	})
 }
 
-func (a *App) traceAssistantBlock(event control.UIEvent) {
-	if event.Kind != control.UIEventBlockCommitted || event.Block == nil {
+func (a *App) traceAssistantBlock(event eventcontract.Event) {
+	if event.Kind != eventcontract.EventBlockCommitted || event.Block == nil {
 		return
 	}
 	if event.Block.Kind != render.BlockAssistantMarkdown && event.Block.Kind != render.BlockAssistantCode {

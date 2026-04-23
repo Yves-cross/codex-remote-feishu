@@ -10,6 +10,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -114,8 +115,8 @@ func TestHandleUIEventsReleasesAppLockDuringFinalPreviewRewrite(t *testing.T) {
 	go func() {
 		app.mu.Lock()
 		defer app.mu.Unlock()
-		app.handleUIEventsLocked(context.Background(), []control.UIEvent{{
-			Kind:             control.UIEventBlockCommitted,
+		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
+			Kind:             eventcontract.EventBlockCommitted,
 			SurfaceSessionID: "feishu:app-1:chat:1",
 			SourceMessageID:  "msg-1",
 			Block: &render.Block{
@@ -155,8 +156,8 @@ func TestHandleUIEventsReleasesAppLockDuringGatewayApply(t *testing.T) {
 	go func() {
 		app.mu.Lock()
 		defer app.mu.Unlock()
-		app.handleUIEventsLocked(context.Background(), []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: "feishu:app-1:chat:1",
 			Notice: &control.Notice{
 				Code:  "gateway_notice",
@@ -223,8 +224,8 @@ func TestHandleUIEventsReleasesAppLockDuringRelaySend(t *testing.T) {
 	go func() {
 		app.mu.Lock()
 		defer app.mu.Unlock()
-		app.handleUIEventsLocked(context.Background(), []control.UIEvent{{
-			Kind:             control.UIEventAgentCommand,
+		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
+			Kind:             eventcontract.EventAgentCommand,
 			SurfaceSessionID: "surface-1",
 			Command: &agentproto.Command{
 				Kind: agentproto.CommandPromptSend,

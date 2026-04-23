@@ -9,6 +9,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 const (
@@ -83,17 +84,17 @@ func (a *App) recordUpgradeOwnerCardMessageLocked(trackingKey, messageID string)
 	flow.MessageID = strings.TrimSpace(messageID)
 }
 
-func (a *App) requireUpgradeOwnerFlowLocked(surfaceID, flowID, actorUserID string) (*upgradeOwnerCardFlowRecord, []control.UIEvent) {
+func (a *App) requireUpgradeOwnerFlowLocked(surfaceID, flowID, actorUserID string) (*upgradeOwnerCardFlowRecord, []eventcontract.Event) {
 	flow := a.activeUpgradeOwnerFlowLocked()
 	if flow == nil || strings.TrimSpace(flow.FlowID) != strings.TrimSpace(flowID) {
-		return nil, []control.UIEvent{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_expired", "这张升级卡片已失效，请重新发送 `/upgrade latest`。")}
+		return nil, []eventcontract.Event{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_expired", "这张升级卡片已失效，请重新发送 `/upgrade latest`。")}
 	}
 	if strings.TrimSpace(flow.SurfaceSessionID) != "" && strings.TrimSpace(flow.SurfaceSessionID) != strings.TrimSpace(surfaceID) {
-		return nil, []control.UIEvent{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_expired", "这张升级卡片已失效，请重新发送 `/upgrade latest`。")}
+		return nil, []eventcontract.Event{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_expired", "这张升级卡片已失效，请重新发送 `/upgrade latest`。")}
 	}
 	actorUserID = strings.TrimSpace(firstNonEmpty(actorUserID, a.service.SurfaceActorUserID(surfaceID)))
 	if owner := strings.TrimSpace(flow.OwnerUserID); owner != "" && actorUserID != "" && owner != actorUserID {
-		return nil, []control.UIEvent{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_unauthorized", "这张升级卡片只允许发起者本人操作。")}
+		return nil, []eventcontract.Event{upgradeNoticeEvent(strings.TrimSpace(surfaceID), "upgrade_owner_unauthorized", "这张升级卡片只允许发起者本人操作。")}
 	}
 	return flow, nil
 }
@@ -125,8 +126,8 @@ func upgradeOwnerFlowAllowsAction(action control.Action) bool {
 	}
 }
 
-func upgradeOwnerFlowBlockedEvents(surfaceID string) []control.UIEvent {
-	return []control.UIEvent{upgradeNoticeEvent(surfaceID, "upgrade_running_blocked", "当前正在准备升级。普通输入和其他操作已暂停，请等待完成，或在升级卡片里取消。")}
+func upgradeOwnerFlowBlockedEvents(surfaceID string) []eventcontract.Event {
+	return []eventcontract.Event{upgradeNoticeEvent(surfaceID, "upgrade_running_blocked", "当前正在准备升级。普通输入和其他操作已暂停，请等待完成，或在升级卡片里取消。")}
 }
 
 func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) control.CommandCatalogButton {
@@ -143,7 +144,7 @@ func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) co
 	}
 }
 
-func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection, buttons []control.CommandCatalogButton, sealed bool) control.UIEvent {
+func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection, buttons []control.CommandCatalogButton, sealed bool) eventcontract.Event {
 	interactive := len(buttons) > 0 && !sealed
 	view := control.NormalizeFeishuPageView(control.FeishuPageView{
 		Title:          strings.TrimSpace(title),
@@ -157,8 +158,8 @@ func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, t
 		Sealed:         sealed,
 		RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
 	})
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &view,
 	}
@@ -199,7 +200,7 @@ func flowTrackingKey(flow *upgradeOwnerCardFlowRecord) string {
 	return strings.TrimSpace(flow.FlowID)
 }
 
-func upgradeOwnerCheckingEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) control.UIEvent {
+func upgradeOwnerCheckingEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) eventcontract.Event {
 	track := firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown")
 	bodySections := upgradeOwnerContextSections(
 		firstNonEmpty(strings.TrimSpace(stateValue.CurrentVersion), "unknown"),
@@ -210,7 +211,7 @@ func upgradeOwnerCheckingEvent(surfaceID string, flow *upgradeOwnerCardFlowRecor
 	return upgradeOwnerCardEvent(surfaceID, flow, "正在检查升级", "progress", bodySections, noticeSections, nil, false)
 }
 
-func upgradeOwnerConfirmEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) control.UIEvent {
+func upgradeOwnerConfirmEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, stateValue install.InstallState) eventcontract.Event {
 	targetVersion := firstNonEmpty(strings.TrimSpace(flow.TargetVersion), pendingTargetVersion(stateValue.PendingUpgrade), strings.TrimSpace(stateValue.LastKnownLatestVersion), "unknown")
 	currentVersion := firstNonEmpty(strings.TrimSpace(flow.CurrentVersion), strings.TrimSpace(stateValue.CurrentVersion), "unknown")
 	track := firstNonEmpty(strings.TrimSpace(string(flow.Track)), strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown")
@@ -222,7 +223,7 @@ func upgradeOwnerConfirmEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord
 	}, false)
 }
 
-func upgradeOwnerRunningEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, detail string, canCancel bool) control.UIEvent {
+func upgradeOwnerRunningEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, detail string, canCancel bool) eventcontract.Event {
 	targetVersion := firstNonEmpty(strings.TrimSpace(flow.TargetVersion), "unknown")
 	bodySections := upgradeOwnerContextSections(strings.TrimSpace(flow.CurrentVersion), targetVersion, strings.TrimSpace(string(flow.Track)))
 	noticeSections := upgradeOwnerNoticeSections(strings.TrimSpace(detail), "普通输入已暂停，请等待完成。")
@@ -235,7 +236,7 @@ func upgradeOwnerRunningEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord
 	return upgradeOwnerCardEvent(surfaceID, flow, title, "progress", bodySections, noticeSections, buttons, false)
 }
 
-func upgradeOwnerTerminalEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection) control.UIEvent {
+func upgradeOwnerTerminalEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, title, theme string, bodySections, noticeSections []control.FeishuCardTextSection) eventcontract.Event {
 	return upgradeOwnerCardEvent(surfaceID, flow, title, theme, bodySections, noticeSections, nil, true)
 }
 
@@ -257,7 +258,7 @@ func (a *App) activeUpgradeOwnerFlowMatchesPendingLocked(pending *install.Pendin
 	return firstNonEmpty(strings.TrimSpace(flow.TargetVersion), "") == pendingTargetVersion(pending)
 }
 
-func (a *App) startUpgradeLatestOwnerCheckLocked(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) startUpgradeLatestOwnerCheckLocked(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	track := stateValue.CurrentTrack
 	if track == "" {
 		track = defaultUpgradeTrackForState(stateValue)
@@ -270,10 +271,10 @@ func (a *App) startUpgradeLatestOwnerCheckLocked(command control.DaemonCommand, 
 	flow.Source = install.UpgradeSourceRelease
 	flow.Track = track
 	flow.CurrentVersion = strings.TrimSpace(stateValue.CurrentVersion)
-	events := []control.UIEvent{
+	events := []eventcontract.Event{
 		upgradeOwnerCheckingEvent(command.SurfaceSessionID, flow, stateValue),
 		{
-			Kind:             control.UIEventDaemonCommand,
+			Kind:             eventcontract.EventDaemonCommand,
 			GatewayID:        command.GatewayID,
 			SurfaceSessionID: command.SurfaceSessionID,
 			SourceMessageID:  command.SourceMessageID,
@@ -290,7 +291,7 @@ func (a *App) startUpgradeLatestOwnerCheckLocked(command control.DaemonCommand, 
 	return events
 }
 
-func (a *App) openUpgradeLatestOwnerConfirmLocked(command control.DaemonCommand, stateValue install.InstallState) []control.UIEvent {
+func (a *App) openUpgradeLatestOwnerConfirmLocked(command control.DaemonCommand, stateValue install.InstallState) []eventcontract.Event {
 	messageID := ""
 	if command.FromCardAction {
 		messageID = command.SourceMessageID
@@ -300,10 +301,10 @@ func (a *App) openUpgradeLatestOwnerConfirmLocked(command control.DaemonCommand,
 	flow.Track = stateValue.CurrentTrack
 	flow.CurrentVersion = strings.TrimSpace(stateValue.CurrentVersion)
 	flow.TargetVersion = pendingTargetVersion(stateValue.PendingUpgrade)
-	return []control.UIEvent{upgradeOwnerConfirmEvent(command.SurfaceSessionID, flow, stateValue)}
+	return []eventcontract.Event{upgradeOwnerConfirmEvent(command.SurfaceSessionID, flow, stateValue)}
 }
 
-func (a *App) handleUpgradeOwnerFlowCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleUpgradeOwnerFlowCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	switch strings.TrimSpace(command.OptionID) {
 	case upgradeOwnerActionCheck:
 		return a.startUpgradeOwnerCheckLocked(command)
@@ -316,7 +317,7 @@ func (a *App) handleUpgradeOwnerFlowCommandLocked(command control.DaemonCommand)
 	}
 }
 
-func (a *App) startUpgradeOwnerCheckLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) startUpgradeOwnerCheckLocked(command control.DaemonCommand) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(command.SurfaceSessionID, command.PickerID, a.service.SurfaceActorUserID(command.SurfaceSessionID))
 	if blocked != nil {
 		return blocked
@@ -330,7 +331,7 @@ func (a *App) startUpgradeOwnerCheckLocked(command control.DaemonCommand) []cont
 		return a.finishUpgradeOwnerFlowFailureLocked(command.SurfaceSessionID, flow.FlowID, fmt.Sprintf("读取升级状态失败：%v", err))
 	}
 	if a.upgradeRuntime.CheckInFlight {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_check_busy", "当前已经有一个升级检查在进行中，请稍后再试。")}
 	}
 	track := stateValue.CurrentTrack
 	if track == "" {
@@ -350,13 +351,13 @@ func (a *App) startUpgradeOwnerCheckLocked(command control.DaemonCommand) []cont
 	return nil
 }
 
-func (a *App) confirmUpgradeOwnerFlowLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) confirmUpgradeOwnerFlowLocked(command control.DaemonCommand) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(command.SurfaceSessionID, command.PickerID, a.service.SurfaceActorUserID(command.SurfaceSessionID))
 	if blocked != nil {
 		return blocked
 	}
 	if flow.Stage != upgradeOwnerFlowStageConfirm {
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_owner_invalid_stage", "当前升级卡片已经不在可确认状态，请重新发送 `/upgrade latest`。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_owner_invalid_stage", "当前升级卡片已经不在可确认状态，请重新发送 `/upgrade latest`。")}
 	}
 	stateValue, _, err := a.loadUpgradeStateLocked(true)
 	if err != nil {
@@ -391,12 +392,12 @@ func (a *App) confirmUpgradeOwnerFlowLocked(command control.DaemonCommand) []con
 		FlowID:           flow.FlowID,
 		Context:          startCtx,
 	})
-	return []control.UIEvent{
+	return []eventcontract.Event{
 		upgradeOwnerRunningEvent(command.SurfaceSessionID, flow, "正在下载目标版本", "正在下载升级所需的目标版本并准备切换。", true),
 	}
 }
 
-func (a *App) cancelUpgradeOwnerFlowLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) cancelUpgradeOwnerFlowLocked(command control.DaemonCommand) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(command.SurfaceSessionID, command.PickerID, a.service.SurfaceActorUserID(command.SurfaceSessionID))
 	if blocked != nil {
 		return blocked
@@ -417,7 +418,7 @@ func (a *App) cancelUpgradeOwnerFlowLocked(command control.DaemonCommand) []cont
 			upgradeOwnerNoticeSections("已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。"),
 		)
 		a.clearUpgradeOwnerFlowLocked()
-		return []control.UIEvent{event}
+		return []eventcontract.Event{event}
 	case upgradeOwnerFlowStageRunning:
 		flow.CancelRequested = true
 		a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageCancelling)
@@ -426,17 +427,17 @@ func (a *App) cancelUpgradeOwnerFlowLocked(command control.DaemonCommand) []cont
 			a.upgradeRuntime.StartCancel = nil
 			cancel()
 		}
-		return []control.UIEvent{
+		return []eventcontract.Event{
 			upgradeOwnerRunningEvent(command.SurfaceSessionID, flow, "正在取消升级", "正在停止当前升级准备流程，请稍候。", false),
 		}
 	case upgradeOwnerFlowStageCancelling:
 		return nil
 	default:
-		return []control.UIEvent{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_cancel_unavailable", "当前升级流程已经无法取消，请等待完成或重新发送 `/upgrade latest`。")}
+		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_cancel_unavailable", "当前升级流程已经无法取消，请等待完成或重新发送 `/upgrade latest`。")}
 	}
 }
 
-func (a *App) finishUpgradeOwnerFlowConfirmLocked(surfaceID, flowID string, stateValue install.InstallState) []control.UIEvent {
+func (a *App) finishUpgradeOwnerFlowConfirmLocked(surfaceID, flowID string, stateValue install.InstallState) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
@@ -446,10 +447,10 @@ func (a *App) finishUpgradeOwnerFlowConfirmLocked(surfaceID, flowID string, stat
 	flow.CurrentVersion = strings.TrimSpace(stateValue.CurrentVersion)
 	flow.TargetVersion = pendingTargetVersion(stateValue.PendingUpgrade)
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageConfirm)
-	return []control.UIEvent{upgradeOwnerConfirmEvent(surfaceID, flow, stateValue)}
+	return []eventcontract.Event{upgradeOwnerConfirmEvent(surfaceID, flow, stateValue)}
 }
 
-func (a *App) finishUpgradeOwnerFlowLatestLocked(surfaceID, flowID string, stateValue install.InstallState, latestVersion string) []control.UIEvent {
+func (a *App) finishUpgradeOwnerFlowLatestLocked(surfaceID, flowID string, stateValue install.InstallState, latestVersion string) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
@@ -459,10 +460,10 @@ func (a *App) finishUpgradeOwnerFlowLatestLocked(surfaceID, flowID string, state
 	noticeSections := upgradeOwnerNoticeSections(fmt.Sprintf("当前已经是 %s track 的最新版本 %s。", firstNonEmpty(strings.TrimSpace(string(stateValue.CurrentTrack)), "unknown"), firstNonEmpty(strings.TrimSpace(latestVersion), "unknown")))
 	event := upgradeOwnerTerminalEvent(surfaceID, flow, "已是最新版本", "success", bodySections, noticeSections)
 	a.clearUpgradeOwnerFlowLocked()
-	return []control.UIEvent{event}
+	return []eventcontract.Event{event}
 }
 
-func (a *App) finishUpgradeOwnerFlowFailureLocked(surfaceID, flowID, text string) []control.UIEvent {
+func (a *App) finishUpgradeOwnerFlowFailureLocked(surfaceID, flowID, text string) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
@@ -477,10 +478,10 @@ func (a *App) finishUpgradeOwnerFlowFailureLocked(surfaceID, flowID, text string
 		upgradeOwnerNoticeSections(strings.TrimSpace(text)),
 	)
 	a.clearUpgradeOwnerFlowLocked()
-	return []control.UIEvent{event}
+	return []eventcontract.Event{event}
 }
 
-func (a *App) finishUpgradeOwnerFlowCancelledLocked(surfaceID, flowID string) []control.UIEvent {
+func (a *App) finishUpgradeOwnerFlowCancelledLocked(surfaceID, flowID string) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
@@ -495,25 +496,25 @@ func (a *App) finishUpgradeOwnerFlowCancelledLocked(surfaceID, flowID string) []
 		upgradeOwnerNoticeSections("已取消这次 release 升级。需要时可重新发送 `/upgrade latest`。"),
 	)
 	a.clearUpgradeOwnerFlowLocked()
-	return []control.UIEvent{event}
+	return []eventcontract.Event{event}
 }
 
-func (a *App) updateUpgradeOwnerFlowRunningLocked(surfaceID, flowID string, stage upgradeOwnerCardFlowStage, title, detail string, canCancel bool) []control.UIEvent {
+func (a *App) updateUpgradeOwnerFlowRunningLocked(surfaceID, flowID string, stage upgradeOwnerCardFlowStage, title, detail string, canCancel bool) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, stage)
-	return []control.UIEvent{upgradeOwnerRunningEvent(surfaceID, flow, title, detail, canCancel)}
+	return []eventcontract.Event{upgradeOwnerRunningEvent(surfaceID, flow, title, detail, canCancel)}
 }
 
-func (a *App) sealUpgradeOwnerFlowRestartingLocked(surfaceID, flowID string) []control.UIEvent {
+func (a *App) sealUpgradeOwnerFlowRestartingLocked(surfaceID, flowID string) []eventcontract.Event {
 	flow, blocked := a.requireUpgradeOwnerFlowLocked(surfaceID, flowID, a.service.SurfaceActorUserID(surfaceID))
 	if blocked != nil {
 		return nil
 	}
 	a.refreshUpgradeOwnerFlowLocked(flow, upgradeOwnerFlowStageRestarting)
-	return []control.UIEvent{
+	return []eventcontract.Event{
 		upgradeOwnerTerminalEvent(
 			surfaceID,
 			flow,
@@ -525,7 +526,7 @@ func (a *App) sealUpgradeOwnerFlowRestartingLocked(surfaceID, flowID string) []c
 	}
 }
 
-func (a *App) finishUpgradeOwnerStartErrorLocked(request upgradeStartRequest, err error) []control.UIEvent {
+func (a *App) finishUpgradeOwnerStartErrorLocked(request upgradeStartRequest, err error) []eventcontract.Event {
 	if request.FlowID == "" {
 		return nil
 	}

@@ -5,10 +5,11 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -67,8 +68,8 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, acti
 	}
 	s.turns.compactTurns[inst.InstanceID] = binding
 	events := s.emitCompactOwnerDispatching(surface, binding)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventAgentCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandThreadCompactStart,
@@ -86,7 +87,7 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, acti
 	return events
 }
 
-func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
@@ -110,7 +111,7 @@ func (s *Service) promoteCompactTurn(instanceID string, event agentproto.Event) 
 	return s.emitCompactOwnerRunning(surface, binding)
 }
 
-func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(event.TurnID) == "" {
 		return nil
 	}
@@ -126,7 +127,7 @@ func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event)
 	if surface == nil {
 		return nil
 	}
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if !binding.CompletionSeen {
 		if shouldFinalizeTurnOutput(event) {
 			events = append(events, s.emitCompactOwnerCompleted(surface, binding)...)
@@ -145,7 +146,7 @@ func (s *Service) completeCompactTurn(instanceID string, event agentproto.Event)
 	return append(events, s.finishSurfaceAfterWork(surface)...)
 }
 
-func (s *Service) failCompactTurn(instanceID string, fallback string, problem *agentproto.ErrorInfo, resumeSurface bool) []control.UIEvent {
+func (s *Service) failCompactTurn(instanceID string, fallback string, problem *agentproto.ErrorInfo, resumeSurface bool) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
@@ -173,7 +174,7 @@ func (s *Service) failCompactTurn(instanceID string, fallback string, problem *a
 	return events
 }
 
-func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode string, err error) []control.UIEvent {
+func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode string, err error) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceID]
 	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
@@ -195,7 +196,7 @@ func (s *Service) restorePendingCompactDispatch(surfaceID, commandID, noticeCode
 	return s.failCompactTurn(surface.AttachedInstanceID, "上下文整理请求未成功发送到本地 Codex。", &problem, true)
 }
 
-func (s *Service) restorePendingCompactCommand(instanceID, commandID string, problem agentproto.ErrorInfo) []control.UIEvent {
+func (s *Service) restorePendingCompactCommand(instanceID, commandID string, problem agentproto.ErrorInfo) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
@@ -216,7 +217,7 @@ func (s *Service) restorePendingCompactCommand(instanceID, commandID string, pro
 	return s.failCompactTurn(instanceID, "本地 Codex 拒绝了这次上下文整理请求。", &problem, true)
 }
 
-func (s *Service) handleCompactProblem(instanceID string, problem agentproto.ErrorInfo) []control.UIEvent {
+func (s *Service) handleCompactProblem(instanceID string, problem agentproto.ErrorInfo) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" || strings.TrimSpace(problem.Operation) != "thread.compact.start" {
 		return nil
 	}

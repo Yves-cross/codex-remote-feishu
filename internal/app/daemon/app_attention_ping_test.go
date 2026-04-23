@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
@@ -14,8 +15,8 @@ func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) 
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
-	requestEvent := control.UIEvent{
-		Kind:             control.UIEventFeishuRequestView,
+	requestEvent := eventcontract.Event{
+		Kind:             eventcontract.EventFeishuRequestView,
 		SurfaceSessionID: "surface-1",
 		FeishuRequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",
@@ -33,8 +34,8 @@ func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) 
 		},
 	}
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{requestEvent})
-	app.handleUIEvents(context.Background(), []control.UIEvent{requestEvent})
+	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
+	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
 	if len(gateway.operations) != 3 {
 		t.Fatalf("expected request card + ping + request card, got %#v", gateway.operations)
@@ -58,8 +59,8 @@ func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
-	requestEvent := control.UIEvent{
-		Kind:             control.UIEventFeishuRequestView,
+	requestEvent := eventcontract.Event{
+		Kind:             eventcontract.EventFeishuRequestView,
 		SurfaceSessionID: "surface-1",
 		FeishuRequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",
@@ -73,7 +74,7 @@ func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *
 		},
 	}
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{requestEvent})
+	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
 	if len(gateway.operations) != 0 {
 		t.Fatalf("expected failed request delivery not to emit orphan attention ping, got %#v", gateway.operations)
@@ -83,7 +84,7 @@ func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *
 	}
 
 	delete(app.pendingGlobalRuntimeNotices, "surface-1")
-	app.handleUIEvents(context.Background(), []control.UIEvent{requestEvent})
+	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
 	if len(gateway.operations) != 2 {
 		t.Fatalf("expected successful retry to deliver request card and ping, got %#v", gateway.operations)
@@ -104,9 +105,9 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{
+	app.handleUIEvents(context.Background(), []eventcontract.Event{
 		{
-			Kind:             control.UIEventBlockCommitted,
+			Kind:             eventcontract.EventBlockCommitted,
 			SurfaceSessionID: "surface-1",
 			SourceMessageID:  "om-source-1",
 			Block: &render.Block{
@@ -119,7 +120,7 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 			},
 		},
 		{
-			Kind:             control.UIEventFeishuPageView,
+			Kind:             eventcontract.EventFeishuPageView,
 			SurfaceSessionID: "surface-1",
 			FeishuPageView: &control.FeishuPageView{
 				CommandID: control.FeishuCommandPlan,
@@ -158,9 +159,9 @@ func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{
+	app.handleUIEvents(context.Background(), []eventcontract.Event{
 		{
-			Kind:             control.UIEventBlockCommitted,
+			Kind:             eventcontract.EventBlockCommitted,
 			SurfaceSessionID: "surface-1",
 			SourceMessageID:  "om-source-1",
 			Block: &render.Block{
@@ -173,7 +174,7 @@ func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
 			},
 		},
 		{
-			Kind:             control.UIEventNotice,
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: "surface-1",
 			Notice: &control.Notice{
 				Code: "turn_failed",
@@ -198,8 +199,8 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	app.handleUIEvents(context.Background(), []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "attached_instance_transport_degraded",
@@ -219,8 +220,8 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 	gateway = &recordingGateway{}
 	app = New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
-	runtimeNotice := control.UIEvent{
-		Kind:             control.UIEventNotice,
+	runtimeNotice := eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "attached_instance_transport_degraded",
@@ -230,7 +231,7 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 			DeliveryDedupKey: "attached_instance_transport_degraded",
 		},
 	}
-	app.handleUIEvents(context.Background(), []control.UIEvent{runtimeNotice, runtimeNotice})
+	app.handleUIEvents(context.Background(), []eventcontract.Event{runtimeNotice, runtimeNotice})
 	if len(gateway.operations) != 2 {
 		t.Fatalf("expected suppressed same-batch runtime notice not to emit extra ping, got %#v", gateway.operations)
 	}
@@ -242,8 +243,8 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 	}
 
 	gateway.operations = nil
-	app.handleUIEvents(context.Background(), []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	app.handleUIEvents(context.Background(), []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "surface_resume_failed",
@@ -263,8 +264,8 @@ func TestHandleUIEventsSkipsAttentionPingWithoutActorIdentity(t *testing.T) {
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "")
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{{
-		Kind:             control.UIEventFeishuRequestView,
+	app.handleUIEvents(context.Background(), []eventcontract.Event{{
+		Kind:             eventcontract.EventFeishuRequestView,
 		SurfaceSessionID: "surface-1",
 		FeishuRequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",

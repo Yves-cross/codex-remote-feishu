@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -18,7 +19,7 @@ type sendFilePathPickerConsumer struct{}
 
 func (sendFilePathPickerConsumer) PathPickerOwnsConfirmLifecycle() bool { return true }
 
-func (sendFilePathPickerConsumer) PathPickerConfirmed(_ *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (sendFilePathPickerConsumer) PathPickerConfirmed(_ *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -26,8 +27,8 @@ func (sendFilePathPickerConsumer) PathPickerConfirmed(_ *Service, surface *state
 	if selectedPath == "" {
 		return notice(surface, "send_file_invalid", "未选中文件，请重新选择。")
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventDaemonCommand,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventDaemonCommand,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
@@ -40,11 +41,11 @@ func (sendFilePathPickerConsumer) PathPickerConfirmed(_ *Service, surface *state
 	}}
 }
 
-func (sendFilePathPickerConsumer) PathPickerCancelled(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (sendFilePathPickerConsumer) PathPickerCancelled(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	return s.sendFileCancelledTerminalEvents(surface, result)
 }
 
-func (s *Service) openSendFilePicker(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) openSendFilePicker(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return s.openSendFilePickerWithInline(surface, "", false)
 }
 
@@ -61,7 +62,7 @@ func sendFileReplacementSummarySections(lines ...string) []control.FeishuCardTex
 	return []control.FeishuCardTextSection{{Lines: bodyLines}}
 }
 
-func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID, title, theme string, lines ...string) control.UIEvent {
+func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID, title, theme string, lines ...string) eventcontract.Event {
 	_ = messageID
 	view := control.NormalizeFeishuPageView(control.FeishuPageView{
 		Title:           strings.TrimSpace(title),
@@ -69,8 +70,8 @@ func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID,
 		Interactive:     false,
 		SummarySections: sendFileReplacementSummarySections(lines...),
 	})
-	return control.UIEvent{
-		Kind:                     control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:                     eventcontract.EventFeishuPageView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,
@@ -78,18 +79,18 @@ func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID,
 	}
 }
 
-func sendFileUnavailableEvents(surface *state.SurfaceConsoleRecord, code, sourceMessageID, text string, inline bool) []control.UIEvent {
+func sendFileUnavailableEvents(surface *state.SurfaceConsoleRecord, code, sourceMessageID, text string, inline bool) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
 	text = strings.TrimSpace(text)
 	if inline && strings.TrimSpace(sourceMessageID) != "" {
-		return []control.UIEvent{sendFileInlineTerminalEvent(surface, sourceMessageID, "当前不能发送文件", "error", text)}
+		return []eventcontract.Event{sendFileInlineTerminalEvent(surface, sourceMessageID, "当前不能发送文件", "error", text)}
 	}
 	return notice(surface, code, text)
 }
 
-func (s *Service) sendFileCancelledTerminalEvents(surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (s *Service) sendFileCancelledTerminalEvents(surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -113,10 +114,10 @@ func (s *Service) sendFileCancelledTerminalEvents(surface *state.SurfaceConsoleR
 		StatusTitle:    "已取消发送文件",
 		StatusSections: statusSections,
 	})
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, false)}
 }
 
-func (s *Service) openSendFilePickerWithInline(surface *state.SurfaceConsoleRecord, sourceMessageID string, inline bool) []control.UIEvent {
+func (s *Service) openSendFilePickerWithInline(surface *state.SurfaceConsoleRecord, sourceMessageID string, inline bool) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -147,11 +148,11 @@ func (s *Service) openSendFilePickerWithInline(surface *state.SurfaceConsoleReco
 	}, inline)
 }
 
-func (s *Service) HandleSendFilePreflightFailure(surfaceID, pickerID, text string) []control.UIEvent {
+func (s *Service) HandleSendFilePreflightFailure(surfaceID, pickerID, text string) []eventcontract.Event {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: strings.TrimSpace(surfaceID),
 			Notice: &control.Notice{
 				Code:  "send_file_failed",
@@ -172,10 +173,10 @@ func (s *Service) HandleSendFilePreflightFailure(surfaceID, pickerID, text strin
 	if err != nil {
 		return notice(surface, "send_file_failed", strings.TrimSpace(text))
 	}
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, false)}
 }
 
-func (s *Service) HandleSendFileStarted(surfaceID, pickerID, selectedPath string, sizeBytes int64) ([]control.UIEvent, bool) {
+func (s *Service) HandleSendFileStarted(surfaceID, pickerID, selectedPath string, sizeBytes int64) ([]eventcontract.Event, bool) {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return nil, false
@@ -198,7 +199,7 @@ func (s *Service) HandleSendFileStarted(surfaceID, pickerID, selectedPath string
 		StatusSections: sendFileStartedStatusSections(selectedPath, sizeBytes),
 	})
 	s.clearSurfacePathPicker(surface)
-	return []control.UIEvent{s.pathPickerViewEvent(surface, view, false)}, true
+	return []eventcontract.Event{s.pathPickerViewEvent(surface, view, false)}, true
 }
 
 func sendFileStartedStatusSections(selectedPath string, sizeBytes int64) []control.FeishuCardTextSection {

@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const execCommandProgressMinInterval = 300 * time.Millisecond
 
-func (s *Service) handleProcessProgressItemStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleProcessProgressItemStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	switch strings.TrimSpace(event.ItemKind) {
 	case "agent_message":
 		return s.handleAssistantMessageProgressStart(instanceID, event)
@@ -30,7 +30,7 @@ func (s *Service) handleProcessProgressItemStarted(instanceID string, event agen
 	}
 }
 
-func (s *Service) handleProcessProgressItemDelta(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleProcessProgressItemDelta(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if strings.TrimSpace(event.Delta) == "" {
 		return nil
 	}
@@ -46,7 +46,7 @@ func (s *Service) handleProcessProgressItemDelta(instanceID string, event agentp
 	}
 }
 
-func (s *Service) tickExecCommandProgressAnimations(surface *state.SurfaceConsoleRecord, now time.Time) []control.UIEvent {
+func (s *Service) tickExecCommandProgressAnimations(surface *state.SurfaceConsoleRecord, now time.Time) []eventcontract.Event {
 	if surface == nil || surface.ActiveExecProgress == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (s *Service) tickExecCommandProgressAnimations(surface *state.SurfaceConsol
 	return s.emitExecCommandProgress(surface, progress, progress.ThreadID, progress.TurnID, false)
 }
 
-func (s *Service) handleProcessProgressItemCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleProcessProgressItemCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	switch strings.TrimSpace(event.ItemKind) {
 	case "agent_message":
 		events := s.clearExecCommandProgressReasoning(instanceID, event.ThreadID, event.TurnID)
@@ -98,7 +98,7 @@ func (s *Service) handleProcessProgressItemCompleted(instanceID string, event ag
 	}
 }
 
-func (s *Service) handleCommandExecutionProgressStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleCommandExecutionProgressStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
@@ -135,7 +135,7 @@ func (s *Service) handleCommandExecutionProgressStarted(instanceID string, event
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) handleWebSearchProgressStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleWebSearchProgressStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
@@ -152,7 +152,7 @@ func (s *Service) handleWebSearchProgressStarted(instanceID string, event agentp
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) handleCommandExecutionProgressCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleCommandExecutionProgressCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil {
 		return nil
@@ -192,7 +192,7 @@ func (s *Service) handleCommandExecutionProgressCompleted(instanceID string, eve
 	return nil
 }
 
-func (s *Service) handleWebSearchProgressCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleWebSearchProgressCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil {
 		return nil
@@ -213,7 +213,7 @@ func (s *Service) handleWebSearchProgressCompleted(instanceID string, event agen
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) handleDynamicToolCallProgressStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleDynamicToolCallProgressStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
@@ -235,7 +235,7 @@ func (s *Service) handleDynamicToolCallProgressStarted(instanceID string, event 
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) handleDynamicToolCallProgressCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleDynamicToolCallProgressCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
@@ -260,7 +260,7 @@ func (s *Service) handleDynamicToolCallProgressCompleted(instanceID string, even
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) finalizeExecCommandProgressForTurn(instanceID, threadID, turnID, turnStatus, finalText string) []control.UIEvent {
+func (s *Service) finalizeExecCommandProgressForTurn(instanceID, threadID, turnID, turnStatus, finalText string) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, threadID, turnID)
 	if surface == nil || surface.ActiveExecProgress == nil {
 		return nil
@@ -303,7 +303,7 @@ func (s *Service) RecordExecCommandProgressMessageStartSeq(surfaceID, threadID, 
 	}
 }
 
-func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, progress *state.ExecCommandProgressRecord, threadID, turnID string, final bool) []control.UIEvent {
+func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, progress *state.ExecCommandProgressRecord, threadID, turnID string, final bool) []eventcontract.Event {
 	if surface == nil || progress == nil {
 		return nil
 	}
@@ -315,8 +315,8 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 		return nil
 	}
 	snapshot.Final = final
-	return []control.UIEvent{{
-		Kind:                control.UIEventExecCommandProgress,
+	return []eventcontract.Event{{
+		Kind:                eventcontract.EventExecCommandProgress,
 		SurfaceSessionID:    surface.SurfaceSessionID,
 		SourceMessageID:     sourceMessageID,
 		ExecCommandProgress: snapshot,

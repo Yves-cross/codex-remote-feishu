@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
-	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -63,15 +63,15 @@ func equalMCPToolCallProgressRecord(left, right *mcpToolCallProgressRecord) bool
 		left.DurationMS == right.DurationMS
 }
 
-func (s *Service) handleMCPToolCallItemStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleMCPToolCallItemStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	return s.handleMCPToolCallItemProgress(instanceID, event, false)
 }
 
-func (s *Service) handleMCPToolCallItemCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleMCPToolCallItemCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	return s.handleMCPToolCallItemProgress(instanceID, event, true)
 }
 
-func (s *Service) handleMCPToolCallItemProgress(instanceID string, event agentproto.Event, final bool) []control.UIEvent {
+func (s *Service) handleMCPToolCallItemProgress(instanceID string, event agentproto.Event, final bool) []eventcontract.Event {
 	if strings.TrimSpace(event.ItemKind) != "mcp_tool_call" || strings.TrimSpace(event.ItemID) == "" {
 		return nil
 	}

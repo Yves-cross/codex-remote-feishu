@@ -7,6 +7,7 @@ import (
 
 	cronrt "github.com/kxn/codex-remote-feishu/internal/app/cronruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 const (
@@ -191,7 +192,7 @@ func cronDailyTimeFromFields(fields map[string]any) (int, int, bool) {
 	return cronrt.DailyTimeFromFields(fields)
 }
 
-func cronUsageEvents(surfaceID, formDefault, message string) []control.UIEvent {
+func cronUsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
 	return cronrt.UsageEvents(surfaceID, formDefault, message)
 }
 
@@ -275,7 +276,7 @@ func cronRunCommandText(jobRecordID string) string {
 	return cronrt.RunCommandText(jobRecordID)
 }
 
-func cronNoticeEvent(surfaceID, code, text string) control.UIEvent {
+func cronNoticeEvent(surfaceID, code, text string) eventcontract.Event {
 	return cronrt.NoticeEvent(surfaceID, code, text)
 }
 

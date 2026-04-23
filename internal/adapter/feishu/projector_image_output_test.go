@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectImageOutputAsImageMessage(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventImageOutput,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventImageOutput,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ImageOutput: &control.ImageOutput{

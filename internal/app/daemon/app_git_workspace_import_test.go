@@ -7,6 +7,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/gitworkspace"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -113,7 +114,7 @@ func TestHandleGitWorkspaceImportCancelCommandLockedSuppressesCancelledFollowup(
 	defer func() { runGitWorkspaceImport = original }()
 
 	started := make(chan struct{})
-	done := make(chan []control.UIEvent, 1)
+	done := make(chan []eventcontract.Event, 1)
 	runGitWorkspaceImport = func(ctx context.Context, _ gitworkspace.ImportRequest) (gitworkspace.ImportResult, error) {
 		close(started)
 		<-ctx.Done()

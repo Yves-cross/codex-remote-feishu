@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestFilterFollowupEventsByPolicy(t *testing.T) {
-	events := []control.UIEvent{
+	events := []eventcontract.Event{
 		{
-			Kind: control.UIEventNotice,
+			Kind: eventcontract.EventNotice,
 			Notice: &control.Notice{
 				Code: "thread_selection_changed",
 			},
@@ -18,13 +19,13 @@ func TestFilterFollowupEventsByPolicy(t *testing.T) {
 			},
 		},
 		{
-			Kind: control.UIEventNotice,
+			Kind: eventcontract.EventNotice,
 			Notice: &control.Notice{
 				Code: "generic_notice",
 			},
 		},
 		{
-			Kind:                control.UIEventFeishuSelectionView,
+			Kind:                eventcontract.EventFeishuSelectionView,
 			FeishuSelectionView: &control.FeishuSelectionView{},
 		},
 	}
@@ -42,22 +43,22 @@ func TestFilterFollowupEventsByPolicy(t *testing.T) {
 }
 
 func TestPathPickerFilteredFollowupEventsDropsNoticeClasses(t *testing.T) {
-	events := []control.UIEvent{
+	events := []eventcontract.Event{
 		{
-			Kind: control.UIEventNotice,
+			Kind: eventcontract.EventNotice,
 			Notice: &control.Notice{
 				Code: "generic_notice",
 			},
 		},
 		{
-			Kind: control.UIEventFeishuPathPicker,
+			Kind: eventcontract.EventFeishuPathPicker,
 			FeishuPathPickerView: &control.FeishuPathPickerView{
 				PickerID: "picker-1",
 			},
 		},
 	}
 	filtered := pathPickerFilteredFollowupEvents(events)
-	if len(filtered) != 1 || filtered[0].Kind != control.UIEventFeishuPathPicker {
+	if len(filtered) != 1 || filtered[0].Kind != eventcontract.EventFeishuPathPicker {
 		t.Fatalf("unexpected path picker filtered followups: %#v", filtered)
 	}
 }

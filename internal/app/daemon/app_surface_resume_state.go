@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -376,7 +377,7 @@ func surfaceResumeEntryNeedsRecovery(entry SurfaceResumeEntry) bool {
 	}
 }
 
-func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent {
+func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []eventcontract.Event {
 	if len(a.surfaceResumeRuntime.recovery) == 0 {
 		return nil
 	}
@@ -386,7 +387,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 	}
 	sort.Strings(surfaceIDs)
 	allowMissingTargetFailure := a.initialThreadsRefreshRoundCompleteLocked()
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		recovery := a.surfaceResumeRuntime.recovery[surfaceID]
@@ -417,8 +418,8 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 			}
 			notice := orchestrator.NoticeForSurfaceResumeFailure(result.FailureCode)
 			if notice != nil {
-				events = append(events, control.UIEvent{
-					Kind:             control.UIEventNotice,
+				events = append(events, eventcontract.Event{
+					Kind:             eventcontract.EventNotice,
 					SurfaceSessionID: surfaceID,
 					Notice:           notice,
 				})
@@ -429,7 +430,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []control.UIEvent 
 	return events
 }
 
-func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent {
+func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []eventcontract.Event {
 	if len(a.surfaceResumeRuntime.recovery) == 0 {
 		return nil
 	}
@@ -438,7 +439,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 		surfaceIDs = append(surfaceIDs, surfaceID)
 	}
 	sort.Strings(surfaceIDs)
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	updatedSurfaceIDs := make([]string, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		recovery := a.surfaceResumeRuntime.recovery[surfaceID]
@@ -458,8 +459,8 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 			a.setSurfaceResumeBackoffLocked(surfaceID, result.FailureCode, now)
 			notice := orchestrator.NoticeForVSCodeSurfaceResumeFailure(result.FailureCode)
 			if notice != nil {
-				events = append(events, control.UIEvent{
-					Kind:             control.UIEventNotice,
+				events = append(events, eventcontract.Event{
+					Kind:             eventcontract.EventNotice,
 					SurfaceSessionID: surfaceID,
 					Notice:           notice,
 				})
@@ -470,7 +471,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []control.UIEvent 
 	return events
 }
 
-func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []control.UIEvent {
+func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []eventcontract.Event {
 	if a.surfaceResumeRuntime.store == nil {
 		return nil
 	}
@@ -483,7 +484,7 @@ func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []control.UIEvent {
 		surfaceIDs = append(surfaceIDs, surfaceID)
 	}
 	sort.Strings(surfaceIDs)
-	events := make([]control.UIEvent, 0, len(surfaceIDs))
+	events := make([]eventcontract.Event, 0, len(surfaceIDs))
 	for _, surfaceID := range surfaceIDs {
 		entry := entries[surfaceID]
 		if state.NormalizeProductMode(state.ProductMode(entry.ProductMode)) != state.ProductModeVSCode {
@@ -503,8 +504,8 @@ func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []control.UIEvent {
 			continue
 		}
 		a.surfaceResumeRuntime.vscodeResumeNotices[strings.TrimSpace(surfaceID)] = true
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surfaceID,
 			Notice:           orchestrator.NoticeForVSCodeOpenPrompt(strings.TrimSpace(entry.ResumeInstanceID) != ""),
 		})

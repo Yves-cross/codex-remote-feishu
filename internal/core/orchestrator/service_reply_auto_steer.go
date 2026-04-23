@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -19,7 +20,7 @@ func queueItemSteerInputs(item *state.QueueItemRecord) []agentproto.Input {
 	return append([]agentproto.Input(nil), item.Inputs...)
 }
 
-func (s *Service) maybeAutoSteerReply(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) maybeAutoSteerReply(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -84,8 +85,8 @@ func (s *Service) maybeAutoSteerReply(surface *state.SurfaceConsoleRecord, actio
 		Status:      string(item.Status),
 		QueueOn:     true,
 	}, []string{sourceMessageID})
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventAgentCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnSteer,

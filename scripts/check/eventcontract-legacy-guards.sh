@@ -6,10 +6,17 @@ cd "${ROOT_DIR}"
 
 failed=0
 
-legacy_kind_switch_matches="$(rg -n 'case[[:space:]]+control\.UIEvent' internal --glob '!internal/core/eventcontractcompat/**' --glob '!**/*_test.go' || true)"
-if [[ -n "${legacy_kind_switch_matches}" ]]; then
-  echo "Forbidden legacy UIEventKind switch cases outside eventcontractcompat:" >&2
-  printf '%s\n' "${legacy_kind_switch_matches}" >&2
+legacy_uievent_refs="$(rg -n '\bcontrol\.UIEvent\b' internal --glob '!**/*_test.go' || true)"
+if [[ -n "${legacy_uievent_refs}" ]]; then
+  echo "Forbidden control.UIEvent references in production code:" >&2
+  printf '%s\n' "${legacy_uievent_refs}" >&2
+  failed=1
+fi
+
+legacy_compat_refs="$(rg -n 'eventcontractcompat' internal --glob '!**/*_test.go' || true)"
+if [[ -n "${legacy_compat_refs}" ]]; then
+  echo "Forbidden eventcontractcompat references in production code:" >&2
+  printf '%s\n' "${legacy_compat_refs}" >&2
   failed=1
 fi
 

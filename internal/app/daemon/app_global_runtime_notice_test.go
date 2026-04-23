@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestGlobalRuntimeNoticeSuppressionForTransportDegraded(t *testing.T) {
 	app := New(":0", ":0", nil, serverIdentityForTest())
-	event := control.UIEvent{
-		Kind:             control.UIEventNotice,
+	event := eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "msg-1",
 		Notice: &control.Notice{
@@ -45,8 +46,8 @@ func TestGlobalRuntimeNoticeSuppressionForTransportDegraded(t *testing.T) {
 
 func TestQueueGlobalRuntimeNoticeDedupesPendingEvents(t *testing.T) {
 	app := New(":0", ":0", nil, serverIdentityForTest())
-	event := control.UIEvent{
-		Kind:             control.UIEventNotice,
+	event := eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "gateway_apply_failed",

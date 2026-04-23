@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -29,7 +30,7 @@ func TestExecCommandProgressVerboseEmitsStartAndTracksCommandHistory(t *testing.
 			"cwd":     "/data/dl/droid",
 		},
 	})
-	if len(started) != 1 || started[0].Kind != control.UIEventExecCommandProgress || started[0].ExecCommandProgress == nil {
+	if len(started) != 1 || started[0].Kind != eventcontract.EventExecCommandProgress || started[0].ExecCommandProgress == nil {
 		t.Fatalf("expected exec progress start event, got %#v", started)
 	}
 	if started[0].SourceMessageID != "msg-1" {
@@ -59,7 +60,7 @@ func TestExecCommandProgressVerboseEmitsStartAndTracksCommandHistory(t *testing.
 			"command": "go test ./...",
 		},
 	})
-	if len(secondStarted) != 1 || secondStarted[0].Kind != control.UIEventExecCommandProgress || secondStarted[0].ExecCommandProgress == nil {
+	if len(secondStarted) != 1 || secondStarted[0].Kind != eventcontract.EventExecCommandProgress || secondStarted[0].ExecCommandProgress == nil {
 		t.Fatalf("expected second exec progress update, got %#v", secondStarted)
 	}
 	progress = secondStarted[0].ExecCommandProgress
@@ -214,7 +215,7 @@ func TestFileChangeProgressNormalVerbosityShowsSharedProgressCard(t *testing.T) 
 			},
 		},
 	})
-	if len(started) != 1 || started[0].Kind != control.UIEventExecCommandProgress || started[0].ExecCommandProgress == nil {
+	if len(started) != 1 || started[0].Kind != eventcontract.EventExecCommandProgress || started[0].ExecCommandProgress == nil {
 		t.Fatalf("expected file_change to emit shared progress in normal verbosity, got %#v", started)
 	}
 	progress := started[0].ExecCommandProgress
@@ -439,7 +440,7 @@ func TestDynamicToolCallProgressVerboseMergesSameToolRows(t *testing.T) {
 			},
 		},
 	})
-	if len(first) != 1 || first[0].Kind != control.UIEventExecCommandProgress || first[0].ExecCommandProgress == nil {
+	if len(first) != 1 || first[0].Kind != eventcontract.EventExecCommandProgress || first[0].ExecCommandProgress == nil {
 		t.Fatalf("expected dynamic tool progress start, got %#v", first)
 	}
 	progress := first[0].ExecCommandProgress
@@ -465,7 +466,7 @@ func TestDynamicToolCallProgressVerboseMergesSameToolRows(t *testing.T) {
 			},
 		},
 	})
-	if len(second) != 1 || second[0].Kind != control.UIEventExecCommandProgress || second[0].ExecCommandProgress == nil {
+	if len(second) != 1 || second[0].Kind != eventcontract.EventExecCommandProgress || second[0].ExecCommandProgress == nil {
 		t.Fatalf("expected dynamic tool merged update, got %#v", second)
 	}
 	progress = second[0].ExecCommandProgress
@@ -1054,7 +1055,7 @@ func TestExecCommandProgressFinalizesOnTurnCompletionWithoutAssistantText(t *tes
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 	for _, event := range finished {
-		if event.Kind == control.UIEventExecCommandProgress {
+		if event.Kind == eventcontract.EventExecCommandProgress {
 			t.Fatalf("expected turn completion not to refresh exec progress card, got %#v", finished)
 		}
 	}
@@ -1082,7 +1083,7 @@ func TestReasoningSummaryProgressVerboseEmitsEnglishTimelineEntry(t *testing.T) 
 			"summaryIndex": 1,
 		},
 	})
-	if len(events) != 1 || events[0].Kind != control.UIEventExecCommandProgress || events[0].ExecCommandProgress == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.EventExecCommandProgress || events[0].ExecCommandProgress == nil {
 		t.Fatalf("expected one reasoning progress event, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress
@@ -1252,7 +1253,7 @@ func TestReasoningSummaryProgressClearsBeforeAssistantTextStartsNewCard(t *testi
 		ItemID:   "msg-1",
 		ItemKind: "agent_message",
 	})
-	if len(cleared) != 1 || cleared[0].Kind != control.UIEventExecCommandProgress || cleared[0].ExecCommandProgress == nil {
+	if len(cleared) != 1 || cleared[0].Kind != eventcontract.EventExecCommandProgress || cleared[0].ExecCommandProgress == nil {
 		t.Fatalf("expected reasoning clear event before assistant text card, got %#v", cleared)
 	}
 	progress := cleared[0].ExecCommandProgress
@@ -1316,7 +1317,7 @@ func TestReasoningSummaryProgressClearsOnTurnCompletion(t *testing.T) {
 	})
 	var progressEvent *control.ExecCommandProgress
 	for _, event := range finished {
-		if event.Kind == control.UIEventExecCommandProgress {
+		if event.Kind == eventcontract.EventExecCommandProgress {
 			progressEvent = event.ExecCommandProgress
 			break
 		}

@@ -5,15 +5,16 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) reconcileInstanceSurfaceThreads(instanceID string) []control.UIEvent {
+func (s *Service) reconcileInstanceSurfaceThreads(instanceID string) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return nil
 	}
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		threadID := strings.TrimSpace(surface.SelectedThreadID)
 		if threadID == "" {
@@ -35,8 +36,8 @@ func (s *Service) reconcileInstanceSurfaceThreads(instanceID string) []control.U
 			surface.RouteMode = state.RouteModeUnbound
 			events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeUnbound)...)
 			events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeUnbound), "未绑定会话", "")...)
-			events = append(events, control.UIEvent{
-				Kind:             control.UIEventNotice,
+			events = append(events, eventcontract.Event{
+				Kind:             eventcontract.EventNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice: &control.Notice{
 					Code: "selected_thread_lost",
@@ -146,8 +147,8 @@ func (s *Service) surfaceForInitiator(instanceID string, event agentproto.Event)
 	return s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 }
 
-func (s *Service) pauseForLocal(instanceID string) []control.UIEvent {
-	var events []control.UIEvent
+func (s *Service) pauseForLocal(instanceID string) []eventcontract.Event {
+	var events []eventcontract.Event
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		s.pausedUntil[surface.SurfaceSessionID] = s.now().Add(s.config.LocalPauseMaxWait)
 		if surface.DispatchMode == state.DispatchModePausedForLocal {
@@ -159,8 +160,8 @@ func (s *Service) pauseForLocal(instanceID string) []control.UIEvent {
 	return events
 }
 
-func (s *Service) enterHandoff(instanceID string) []control.UIEvent {
-	var events []control.UIEvent
+func (s *Service) enterHandoff(instanceID string) []eventcontract.Event {
+	var events []eventcontract.Event
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		if surface.DispatchMode != state.DispatchModePausedForLocal {
 			continue

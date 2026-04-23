@@ -5,11 +5,12 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	execprogress "github.com/kxn/codex-remote-feishu/internal/core/orchestrator/execprogress"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) handleFileChangeProgressStarted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleFileChangeProgressStarted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil
@@ -23,7 +24,7 @@ func (s *Service) handleFileChangeProgressStarted(instanceID string, event agent
 	return s.emitExecCommandProgress(surface, progress, event.ThreadID, event.TurnID, false)
 }
 
-func (s *Service) handleFileChangeProgressCompleted(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) handleFileChangeProgressCompleted(instanceID string, event agentproto.Event) []eventcontract.Event {
 	surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID)
 	if surface == nil || !s.surfaceAllowsProcessProgress(surface, event.ItemKind) {
 		return nil

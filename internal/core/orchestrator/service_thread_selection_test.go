@@ -10,6 +10,7 @@ import (
 	feishuadapter "github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -604,7 +605,7 @@ func TestNewLocalThreadSequenceAnnouncesSelectionOnlyOnce(t *testing.T) {
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionFollowLocal, SurfaceSessionID: "surface-1"})
 
-	var selectionEvents []control.UIEvent
+	var selectionEvents []eventcontract.Event
 	selectionEvents = append(selectionEvents, svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventThreadDiscovered,
 		ThreadID: "thread-2",
@@ -1042,7 +1043,7 @@ func TestTurnCompletedEmbedsFileChangeSummaryIntoFinalAssistantBlock(t *testing.
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		event := finished[i]
 		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成修改。" {
@@ -1114,7 +1115,7 @@ func TestTurnCompletedEmbedsElapsedIntoFinalAssistantBlock(t *testing.T) {
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		event := finished[i]
 		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成。" {
@@ -1276,7 +1277,7 @@ func TestTurnCompletedSynthesizesFinalBlockWhenOnlyFileSummaryExists(t *testing.
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		if finished[i].Block != nil && finished[i].Block.Final {
 			finalBlockEvent = &finished[i]
@@ -1331,7 +1332,7 @@ func TestTurnCompletedSynthesizesFinalBlockWhenOnlyElapsedExists(t *testing.T) {
 		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorUnknown},
 	})
 
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		if finished[i].Block != nil && finished[i].Block.Final {
 			finalBlockEvent = &finished[i]

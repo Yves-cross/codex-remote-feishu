@@ -11,6 +11,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -133,7 +134,7 @@ func TestThreadTokenUsageUpdatePopulatesThreadStateAndFinalTurnSummary(t *testin
 
 	now = now.Add(3400 * time.Millisecond)
 	finished := completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "已完成。", nil)
-	var finalBlockEvent *control.UIEvent
+	var finalBlockEvent *eventcontract.Event
 	for i := range finished {
 		event := finished[i]
 		if event.Block != nil && event.Block.Final && event.Block.Text == "已完成。" {
@@ -429,10 +430,10 @@ func TestQuietVerbosityHidesPlanButKeepsFinal(t *testing.T) {
 	finished := completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "最终结果", nil)
 	foundFinal := false
 	for _, event := range finished {
-		if event.Kind == control.UIEventBlockCommitted && event.Block != nil && event.Block.Final && event.Block.Text == "最终结果" {
+		if event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final && event.Block.Text == "最终结果" {
 			foundFinal = true
 		}
-		if event.Kind == control.UIEventPlanUpdated {
+		if event.Kind == eventcontract.EventPlanUpdated {
 			t.Fatalf("did not expect quiet verbosity to leak plan event in final sequence: %#v", finished)
 		}
 	}
@@ -460,7 +461,7 @@ func TestNormalVerbosityKeepsPlanUpdates(t *testing.T) {
 			},
 		},
 	})
-	if len(planEvents) != 1 || planEvents[0].Kind != control.UIEventPlanUpdated {
+	if len(planEvents) != 1 || planEvents[0].Kind != eventcontract.EventPlanUpdated {
 		t.Fatalf("expected normal verbosity to keep plan event, got %#v", planEvents)
 	}
 	if planEvents[0].SourceMessageID != "msg-1" {
@@ -474,14 +475,14 @@ func TestVerbosityFilterNeverDropsDaemonOrAgentCommands(t *testing.T) {
 	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
 	svc.root.Surfaces["surface-1"].Verbosity = state.SurfaceVerbosityQuiet
 
-	events := svc.filterEventsForSurfaceVisibility([]control.UIEvent{
+	events := svc.filterEventsForSurfaceVisibility([]eventcontract.Event{
 		{
-			Kind:             control.UIEventAgentCommand,
+			Kind:             eventcontract.EventAgentCommand,
 			SurfaceSessionID: "surface-1",
 			Command:          &agentproto.Command{Kind: agentproto.CommandPromptSend},
 		},
 		{
-			Kind:             control.UIEventDaemonCommand,
+			Kind:             eventcontract.EventDaemonCommand,
 			SurfaceSessionID: "surface-1",
 			DaemonCommand:    &control.DaemonCommand{Kind: control.DaemonCommandDebug},
 		},

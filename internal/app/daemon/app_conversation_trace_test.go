@@ -7,6 +7,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/conversationtrace"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -155,8 +156,8 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 		InstanceID:       "inst-1",
 	})
 
-	if err := app.deliverUIEventWithContext(context.Background(), control.UIEvent{
-		Kind:             control.UIEventBlockCommitted,
+	if err := app.deliverUIEventWithContext(context.Background(), eventcontract.Event{
+		Kind:             eventcontract.EventBlockCommitted,
 		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
@@ -169,8 +170,8 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("deliver non-final block: %v", err)
 	}
-	if err := app.deliverUIEventWithContext(context.Background(), control.UIEvent{
-		Kind:             control.UIEventBlockCommitted,
+	if err := app.deliverUIEventWithContext(context.Background(), eventcontract.Event{
+		Kind:             eventcontract.EventBlockCommitted,
 		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{

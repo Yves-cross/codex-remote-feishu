@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -100,16 +101,16 @@ func (a *App) recordVSCodeMigrationFlowMessageLocked(trackingKey, messageID stri
 	}
 }
 
-func (a *App) requireVSCodeMigrationFlowLocked(surfaceID, flowID, actorUserID string) (*vscodeMigrationFlowRecord, []control.UIEvent) {
+func (a *App) requireVSCodeMigrationFlowLocked(surfaceID, flowID, actorUserID string) (*vscodeMigrationFlowRecord, []eventcontract.Event) {
 	surfaceID = strings.TrimSpace(surfaceID)
 	flowID = strings.TrimSpace(flowID)
 	flow := a.activeVSCodeMigrationFlowLocked(surfaceID)
 	if flow == nil || strings.TrimSpace(flow.FlowID) != flowID {
-		return nil, []control.UIEvent{vscodeMigrationStandaloneEvent(surfaceID, true, "迁移卡片已失效", []string{"这张 VS Code 迁移卡片已失效，请重新发送 `/vscode-migrate`。"}, "", "error", nil)}
+		return nil, []eventcontract.Event{vscodeMigrationStandaloneEvent(surfaceID, true, "迁移卡片已失效", []string{"这张 VS Code 迁移卡片已失效，请重新发送 `/vscode-migrate`。"}, "", "error", nil)}
 	}
 	actorUserID = strings.TrimSpace(firstNonEmpty(actorUserID, a.service.SurfaceActorUserID(surfaceID)))
 	if owner := strings.TrimSpace(flow.OwnerUserID); owner != "" && actorUserID != "" && owner != actorUserID {
-		return nil, []control.UIEvent{vscodeMigrationStandaloneEvent(surfaceID, true, "无法执行迁移", []string{"这张 VS Code 迁移卡片只允许发起者本人操作。"}, "", "error", nil)}
+		return nil, []eventcontract.Event{vscodeMigrationStandaloneEvent(surfaceID, true, "无法执行迁移", []string{"这张 VS Code 迁移卡片只允许发起者本人操作。"}, "", "error", nil)}
 	}
 	return flow, nil
 }
@@ -256,21 +257,21 @@ func statusKindFromThemeKey(theme string) string {
 	}
 }
 
-func vscodeMigrationPageEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, title string, summary []string, statusText, theme string, buttons []control.CommandCatalogButton) control.UIEvent {
+func vscodeMigrationPageEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, title string, summary []string, statusText, theme string, buttons []control.CommandCatalogButton) eventcontract.Event {
 	page := buildVSCodeMigrationPageView(flow, inlineReplace, title, summary, statusText, theme, buttons)
 	view := control.FeishuPageViewFromCommandPageView(page)
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &view,
 	}
 }
 
-func vscodeMigrationStandaloneEvent(surfaceID string, inlineReplace bool, title string, summary []string, statusText, theme string, buttons []control.CommandCatalogButton) control.UIEvent {
+func vscodeMigrationStandaloneEvent(surfaceID string, inlineReplace bool, title string, summary []string, statusText, theme string, buttons []control.CommandCatalogButton) eventcontract.Event {
 	return vscodeMigrationPageEvent(surfaceID, nil, inlineReplace, title, summary, statusText, theme, buttons)
 }
 
-func vscodeMigrationPromptEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, issue vscodeCompatibilityIssue) control.UIEvent {
+func vscodeMigrationPromptEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, issue vscodeCompatibilityIssue) eventcontract.Event {
 	var buttons []control.CommandCatalogButton
 	if flow != nil && strings.TrimSpace(issue.ButtonLabel) != "" {
 		buttons = []control.CommandCatalogButton{vscodeMigrationOwnerButton(issue.ButtonLabel, flow.FlowID)}
@@ -287,7 +288,7 @@ func vscodeMigrationPromptEvent(surfaceID string, flow *vscodeMigrationFlowRecor
 	)
 }
 
-func vscodeMigrationNoticeEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, notice *control.Notice) control.UIEvent {
+func vscodeMigrationNoticeEvent(surfaceID string, flow *vscodeMigrationFlowRecord, inlineReplace bool, notice *control.Notice) eventcontract.Event {
 	if notice == nil {
 		return vscodeMigrationStandaloneEvent(surfaceID, inlineReplace, "VS Code 迁移", nil, "", "info", nil)
 	}
@@ -303,7 +304,7 @@ func vscodeMigrationNoticeEvent(surfaceID string, flow *vscodeMigrationFlowRecor
 	)
 }
 
-func (a *App) routeVSCodeMigrationFlowNoticeLocked(event control.UIEvent) control.UIEvent {
+func (a *App) routeVSCodeMigrationFlowNoticeLocked(event eventcontract.Event) eventcontract.Event {
 	if !isVSCodeMigrationFlowNotice(event.Notice) {
 		return event
 	}

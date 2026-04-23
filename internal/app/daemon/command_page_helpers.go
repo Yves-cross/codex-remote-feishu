@@ -4,19 +4,20 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func commandPageEvent(surfaceID string, view control.FeishuPageView) control.UIEvent {
+func commandPageEvent(surfaceID string, view control.FeishuPageView) eventcontract.Event {
 	page := control.FeishuPageViewFromCommandPageView(control.NormalizeFeishuPageView(view))
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &page,
 	}
 }
 
-func commandPageEvents(surfaceID string, view control.FeishuPageView) []control.UIEvent {
-	return []control.UIEvent{commandPageEvent(surfaceID, view)}
+func commandPageEvents(surfaceID string, view control.FeishuPageView) []eventcontract.Event {
+	return []eventcontract.Event{commandPageEvent(surfaceID, view)}
 }
 
 func commandArgumentText(text string) string {

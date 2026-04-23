@@ -7,6 +7,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -31,7 +32,7 @@ func TestRecordUIEventDeliveryTracksExecProgressPatchedWindowStart(t *testing.T)
 		LastEmittedAt: time.Date(2026, 4, 19, 10, 1, 0, 0, time.UTC),
 	}
 
-	app.recordUIEventDelivery(control.UIEvent{
+	app.recordUIEventDelivery(eventcontract.Event{
 		SurfaceSessionID: "surface-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
 			ThreadID: "thread-1",

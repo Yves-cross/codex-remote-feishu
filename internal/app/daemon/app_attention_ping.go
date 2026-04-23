@@ -7,20 +7,20 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 const attentionRequestDedupTTL = 24 * time.Hour
 
 type attentionTurnBatchCandidate struct {
-	anchorEvent     control.UIEvent
+	anchorEvent     eventcontract.Event
 	anchorIndex     int
 	hasFailure      bool
 	hasFinal        bool
 	hasPlanProposal bool
 }
 
-func (a *App) planTurnAttentionPingsLocked(events []control.UIEvent) map[int][]control.UIEvent {
+func (a *App) planTurnAttentionPingsLocked(events []eventcontract.Event) map[int][]eventcontract.Event {
 	if len(events) == 0 {
 		return nil
 	}
@@ -28,7 +28,7 @@ func (a *App) planTurnAttentionPingsLocked(events []control.UIEvent) map[int][]c
 	for index, event := range events {
 		a.recordTurnAttentionCandidateLocked(turns, index, event)
 	}
-	followups := map[int][]control.UIEvent{}
+	followups := map[int][]eventcontract.Event{}
 	for _, candidate := range turns {
 		if ping := a.turnAttentionPingLocked(candidate); ping != nil {
 			followups[candidate.anchorIndex] = append(followups[candidate.anchorIndex], *ping)
@@ -37,8 +37,8 @@ func (a *App) planTurnAttentionPingsLocked(events []control.UIEvent) map[int][]c
 	return followups
 }
 
-func (a *App) requestAttentionPingCandidateLocked(event control.UIEvent, now time.Time) (*control.UIEvent, string) {
-	if event.Kind != control.UIEventFeishuRequestView || event.FeishuRequestView == nil || event.InlineReplaceCurrentCard {
+func (a *App) requestAttentionPingCandidateLocked(event eventcontract.Event, now time.Time) (*eventcontract.Event, string) {
+	if event.Kind != eventcontract.EventFeishuRequestView || event.FeishuRequestView == nil || event.InlineReplaceCurrentCard {
 		return nil, ""
 	}
 	request := event.FeishuRequestView
@@ -62,7 +62,7 @@ func (a *App) requestAttentionPingCandidateLocked(event control.UIEvent, now tim
 	return a.newAttentionPingEvent(surfaceID, mentionUserID, a.attentionPingReplyTarget(event), text), key
 }
 
-func (a *App) globalRuntimeAttentionPingForEventLocked(event control.UIEvent, now time.Time, honorSuppression bool) *control.UIEvent {
+func (a *App) globalRuntimeAttentionPingForEventLocked(event eventcontract.Event, now time.Time, honorSuppression bool) *eventcontract.Event {
 	normalized, ok := normalizeGlobalRuntimeNoticeEvent(event)
 	if !ok || normalized.Notice == nil {
 		return nil
@@ -90,7 +90,7 @@ func (a *App) recordRequestAttentionPingLocked(key string, now time.Time) {
 	a.pruneAttentionRequestsLocked(now.Add(-attentionRequestDedupTTL))
 }
 
-func (a *App) recordTurnAttentionCandidateLocked(candidates map[string]*attentionTurnBatchCandidate, index int, event control.UIEvent) {
+func (a *App) recordTurnAttentionCandidateLocked(candidates map[string]*attentionTurnBatchCandidate, index int, event eventcontract.Event) {
 	surfaceID := strings.TrimSpace(event.SurfaceSessionID)
 	if surfaceID == "" {
 		return
@@ -120,7 +120,7 @@ func (a *App) recordTurnAttentionCandidateLocked(candidates map[string]*attentio
 	}
 }
 
-func (a *App) turnAttentionPingLocked(candidate *attentionTurnBatchCandidate) *control.UIEvent {
+func (a *App) turnAttentionPingLocked(candidate *attentionTurnBatchCandidate) *eventcontract.Event {
 	if candidate == nil {
 		return nil
 	}
@@ -151,12 +151,12 @@ func (a *App) attentionPingMentionTarget(surfaceID string) (string, bool) {
 	return mentionUserID, mentionUserID != ""
 }
 
-func (a *App) attentionPingReplyTarget(event control.UIEvent) string {
+func (a *App) attentionPingReplyTarget(event eventcontract.Event) string {
 	chatID := strings.TrimSpace(a.service.SurfaceChatID(event.SurfaceSessionID))
 	if chatID == "" {
 		return ""
 	}
-	for _, operation := range a.projector.ProjectEvent(chatID, eventcontractcompat.FromLegacyUIEvent(event)) {
+	for _, operation := range a.projector.ProjectEvent(chatID, event.Normalized()) {
 		switch operation.Kind {
 		case feishu.OperationSendText, feishu.OperationSendCard, feishu.OperationSendImage:
 			return strings.TrimSpace(operation.ReplyToMessageID)
@@ -165,7 +165,7 @@ func (a *App) attentionPingReplyTarget(event control.UIEvent) string {
 	return ""
 }
 
-func (a *App) newAttentionPingEvent(surfaceID, mentionUserID, replyToMessageID, text string) *control.UIEvent {
+func (a *App) newAttentionPingEvent(surfaceID, mentionUserID, replyToMessageID, text string) *eventcontract.Event {
 	text = strings.TrimSpace(text)
 	mentionUserID = strings.TrimSpace(mentionUserID)
 	surfaceID = strings.TrimSpace(surfaceID)
@@ -173,8 +173,8 @@ func (a *App) newAttentionPingEvent(surfaceID, mentionUserID, replyToMessageID, 
 		return nil
 	}
 	replyToMessageID = strings.TrimSpace(replyToMessageID)
-	return &control.UIEvent{
-		Kind:             control.UIEventTimelineText,
+	return &eventcontract.Event{
+		Kind:             eventcontract.EventTimelineText,
 		SurfaceSessionID: surfaceID,
 		SourceMessageID:  replyToMessageID,
 		TimelineText: &control.TimelineText{
@@ -222,16 +222,16 @@ func attentionGlobalRuntimePingText(family control.NoticeDeliveryFamily) (string
 	}
 }
 
-func isFinalResultAttentionEvent(event control.UIEvent) bool {
-	return event.Kind == control.UIEventBlockCommitted && event.Block != nil && event.Block.Final
+func isFinalResultAttentionEvent(event eventcontract.Event) bool {
+	return event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final
 }
 
-func isTurnFailureAttentionEvent(event control.UIEvent) bool {
-	return event.Kind == control.UIEventNotice && event.Notice != nil && strings.TrimSpace(event.Notice.Code) == "turn_failed"
+func isTurnFailureAttentionEvent(event eventcontract.Event) bool {
+	return event.Kind == eventcontract.EventNotice && event.Notice != nil && strings.TrimSpace(event.Notice.Code) == "turn_failed"
 }
 
-func isPlanProposalAttentionEvent(event control.UIEvent) bool {
-	return event.Kind == control.UIEventFeishuPageView &&
+func isPlanProposalAttentionEvent(event eventcontract.Event) bool {
+	return event.Kind == eventcontract.EventFeishuPageView &&
 		event.FeishuPageView != nil &&
 		strings.TrimSpace(event.FeishuPageView.CommandID) == control.FeishuCommandPlan &&
 		strings.TrimSpace(event.FeishuPageView.Title) == "提案计划"

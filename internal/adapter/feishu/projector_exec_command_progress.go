@@ -23,8 +23,8 @@ func (p *Projector) projectExecCommandProgress(chatID string, event eventcontrac
 	lines := execProgressRenderedContent(window.Lines)
 	elements := execCommandProgressElements(lines)
 	op := Operation{
-		GatewayID:            event.GatewayID(),
-		SurfaceSessionID:     event.SurfaceSessionID(),
+		GatewayID:            event.GatewayID,
+		SurfaceSessionID:     event.SurfaceSessionID,
 		ChatID:               chatID,
 		CardTitle:            "工作中",
 		CardBody:             strings.Join(lines, "\n"),

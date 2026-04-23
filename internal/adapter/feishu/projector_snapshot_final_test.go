@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -16,8 +17,8 @@ func intPtr(value int) *int {
 
 func TestProjectTurnFailedNoticeUsesErrorTheme(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventNotice,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventNotice,
 		Notice: &control.Notice{
 			Code:  "turn_failed",
 			Title: "链路错误 · codex.runtime_error",
@@ -34,8 +35,8 @@ func TestProjectTurnFailedNoticeUsesErrorTheme(t *testing.T) {
 
 func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:  "inst-1",
@@ -71,8 +72,8 @@ func TestProjectSnapshotShowsFollowWaitingAndAbandoning(t *testing.T) {
 
 func TestProjectSnapshotShowsNewThreadReadyTarget(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:  "inst-1",
@@ -103,8 +104,8 @@ func TestProjectSnapshotShowsNewThreadReadyTarget(t *testing.T) {
 
 func TestProjectSnapshotShowsGateAndRetainedOfflineAttachment(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-1",
@@ -148,8 +149,8 @@ func TestProjectSnapshotShowsGateAndRetainedOfflineAttachment(t *testing.T) {
 
 func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                 control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                 eventcontract.EventBlockCommitted,
 		SourceMessageID:      "msg-1",
 		SourceMessagePreview: "请帮我处理这个问题",
 		Block: &render.Block{
@@ -183,8 +184,8 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 
 func TestProjectFinalAssistantBlockPreservesInlineMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-inline",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -206,8 +207,8 @@ func TestProjectFinalAssistantBlockPreservesInlineMarkdown(t *testing.T) {
 
 func TestProjectFinalAssistantBlockKeepsMixedInlineAndFencedMarkdown(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-mixed",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -229,8 +230,8 @@ func TestProjectFinalAssistantBlockKeepsMixedInlineAndFencedMarkdown(t *testing.
 
 func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-2",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -288,8 +289,8 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testing.T) {
 	projector := NewProjector()
 	longBody := strings.Repeat("第一段说明包含较长的描述，以及 [设计文档](./docs/design.md)。\n第二行继续补充上下文。\n\n", 500)
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-long",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -359,8 +360,8 @@ func TestProjectFinalAssistantCodeBlockSplitsOversizedFenceSafely(t *testing.T) 
 		code.WriteString(strings.Repeat("x", 20))
 		code.WriteString("\n")
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-code",
 		Block: &render.Block{
 			Kind:     render.BlockAssistantCode,
@@ -390,8 +391,8 @@ func TestProjectFinalAssistantCodeBlockSplitsOversizedFenceSafely(t *testing.T) 
 
 func TestProjectFinalAssistantBlockAppendsElapsedAfterFileChangeSummary(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-2",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -429,8 +430,8 @@ func TestProjectFinalAssistantBlockAppendsElapsedAfterFileChangeSummary(t *testi
 
 func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-2",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -458,8 +459,8 @@ func TestProjectFinalAssistantBlockShowsElapsedWithoutFileSummary(t *testing.T) 
 func TestProjectFinalAssistantBlockShowsTurnUsageFooter(t *testing.T) {
 	projector := NewProjector()
 	contextWindow := 1000
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-usage",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -500,8 +501,8 @@ func TestProjectFinalAssistantBlockShowsTurnUsageFooter(t *testing.T) {
 func TestProjectFinalAssistantBlockCompactsThreadUsageFooter(t *testing.T) {
 	projector := NewProjector()
 	contextWindow := 1000000000
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-usage-compact",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -539,8 +540,8 @@ func TestProjectFinalAssistantBlockCompactsThreadUsageFooter(t *testing.T) {
 
 func TestProjectFinalAssistantBlockShowsZeroInputWithoutCacheRatio(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-zero-usage",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -573,8 +574,8 @@ func TestProjectFinalAssistantBlockAppendsCleanWorktreeSummary(t *testing.T) {
 		}
 		return &gitWorktreeSummary{}
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-3",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -612,8 +613,8 @@ func TestProjectFinalAssistantBlockAppendsDirtyWorktreeSummary(t *testing.T) {
 			},
 		}
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-4",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -639,8 +640,8 @@ func TestProjectFinalAssistantBlockAppendsDirtyWorktreeSummary(t *testing.T) {
 func TestProjectFinalAssistantBlockSkipsWorktreeSummaryOutsideGitRepo(t *testing.T) {
 	projector := NewProjector()
 	projector.readGitWorktree = func(string) *gitWorktreeSummary { return nil }
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "msg-5",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -734,8 +735,8 @@ func TestFormatElapsedDurationUsesHumanReadableUnits(t *testing.T) {
 
 func TestProjectFinalAssistantBlockTruncatesChineseTitlePreview(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                 control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                 eventcontract.EventBlockCommitted,
 		SourceMessageID:      "msg-3",
 		SourceMessagePreview: "一二三四五六七八九十十一十二",
 		Block: &render.Block{
@@ -754,8 +755,8 @@ func TestProjectFinalAssistantBlockTruncatesChineseTitlePreview(t *testing.T) {
 
 func TestProjectFinalAssistantBlockTruncatesEnglishTitlePreview(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:                 control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                 eventcontract.EventBlockCommitted,
 		SourceMessageID:      "msg-4",
 		SourceMessagePreview: "please help me align the return format for this API response payload",
 		Block: &render.Block{
@@ -774,8 +775,8 @@ func TestProjectFinalAssistantBlockTruncatesEnglishTitlePreview(t *testing.T) {
 
 func TestProjectProcessAssistantBlockAsPlainText(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventBlockCommitted,
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
 			Text:        "我先看一下目录结构。",
@@ -795,8 +796,8 @@ func TestProjectProcessAssistantBlockAsPlainText(t *testing.T) {
 
 func TestProjectProcessAssistantBlockRepliesToTurnAnchor(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventBlockCommitted,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventBlockCommitted,
 		SourceMessageID: "om-source-1",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -817,8 +818,8 @@ func TestProjectProcessAssistantBlockRepliesToTurnAnchor(t *testing.T) {
 
 func TestProjectTimelineTextRepliesToTurnAnchor(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:            control.UIEventTimelineText,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.EventTimelineText,
 		SourceMessageID: "om-source-1",
 		TimelineText: &control.TimelineText{
 			ThreadID:              "thread-1",
@@ -839,8 +840,8 @@ func TestProjectTimelineTextRepliesToTurnAnchor(t *testing.T) {
 
 func TestProjectAttentionPingUsesMentionCarrier(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventTimelineText,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventTimelineText,
 		TimelineText: &control.TimelineText{
 			Type:          control.TimelineTextAttentionPing,
 			Text:          "需要你回来处理：本轮执行已结束。",
@@ -860,8 +861,8 @@ func TestProjectAttentionPingUsesMentionCarrier(t *testing.T) {
 
 func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode: "vscode",
 			Attachment: control.AttachmentSummary{
@@ -914,8 +915,8 @@ func TestProjectSnapshotIncludesEffectivePromptConfig(t *testing.T) {
 
 func TestProjectSnapshotShowsNormalModeWhenDetached(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode: "normal",
 		},
@@ -935,8 +936,8 @@ func TestProjectSnapshotShowsNormalModeWhenDetached(t *testing.T) {
 
 func TestProjectSnapshotShowsClaimedWorkspace(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode:  "normal",
 			WorkspaceKey: "/data/dl/droid",
@@ -957,8 +958,8 @@ func TestProjectSnapshotShowsClaimedWorkspace(t *testing.T) {
 
 func TestProjectSnapshotShowsAttachedWorkspaceWithoutThread(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode:  "normal",
 			WorkspaceKey: "/data/dl/droid",
@@ -998,8 +999,8 @@ func TestProjectSnapshotShowsAttachedWorkspaceWithoutThread(t *testing.T) {
 func TestProjectSnapshotDisplaysAutoContinueSummary(t *testing.T) {
 	projector := NewProjector()
 	dueAt := time.Date(2026, 4, 9, 12, 0, 30, 0, time.FixedZone("CST", 8*3600))
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			AutoContinue: control.AutoContinueSummary{
 				Enabled:          true,
@@ -1024,8 +1025,8 @@ func TestProjectSnapshotDisplaysAutoContinueSummary(t *testing.T) {
 func TestProjectSnapshotDisplaysBinaryIdentityLine(t *testing.T) {
 	projector := NewProjector()
 	projector.SetSnapshotBinary("release/1.5 / v1.2.3 / abcdef1234")
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode: "normal",
 		},
@@ -1048,8 +1049,8 @@ func TestProjectSnapshotDisplaysCurrentDirectoryWithGitBranch(t *testing.T) {
 		}
 		return &gitWorktreeSummary{Branch: "master"}
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			ProductMode:  "normal",
 			WorkspaceKey: cwd,
@@ -1076,8 +1077,8 @@ func TestProjectSnapshotDisplaysGitBranchAndCleanWorktree(t *testing.T) {
 		}
 		return &gitWorktreeSummary{Branch: "feature/status-git"}
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			WorkspaceKey: cwd,
 			NextPrompt: control.PromptRouteSummary{
@@ -1111,8 +1112,8 @@ func TestProjectSnapshotDisplaysDirtyGitWorktreeSummary(t *testing.T) {
 			UntrackedCount: 1,
 		}
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			WorkspaceKey: testutil.WorkspacePath("data", "dl", "ignored"),
 			NextPrompt: control.PromptRouteSummary{
@@ -1135,8 +1136,8 @@ func TestProjectSnapshotDisplaysDirtyGitWorktreeSummary(t *testing.T) {
 func TestProjectSnapshotSkipsGitSummaryOutsideGitRepo(t *testing.T) {
 	projector := NewProjector()
 	projector.readGitWorktree = func(string) *gitWorktreeSummary { return nil }
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			WorkspaceKey: "/tmp/not-a-repo",
 			NextPrompt: control.PromptRouteSummary{
@@ -1155,8 +1156,8 @@ func TestProjectSnapshotSkipsGitSummaryOutsideGitRepo(t *testing.T) {
 
 func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-1",
@@ -1189,8 +1190,8 @@ func TestProjectSnapshotDisplaysFullAccessWithCompactToken(t *testing.T) {
 
 func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-1",
@@ -1227,8 +1228,8 @@ func TestProjectSnapshotDisplaysSurfaceDefaultModel(t *testing.T) {
 
 func TestProjectSnapshotDisplaysUnknownEffectivePromptValues(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:  "inst-1",
@@ -1249,8 +1250,8 @@ func TestProjectSnapshotDisplaysUnknownEffectivePromptValues(t *testing.T) {
 
 func TestProjectSnapshotIncludesBackgroundRestoreAttachmentAndPendingLaunch(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-headless-1",
@@ -1307,8 +1308,8 @@ func TestProjectSnapshotIncludesBackgroundRestoreAttachmentAndPendingLaunch(t *t
 
 func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:            "inst-1",
@@ -1345,8 +1346,8 @@ func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 
 func TestProjectSnapshotNeutralizesDynamicThreadText(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:                         "inst-1",
@@ -1380,8 +1381,8 @@ func TestProjectSnapshotNeutralizesDynamicThreadText(t *testing.T) {
 
 func TestProjectSnapshotNeutralizesPendingHeadlessThreadTitle(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind: control.UIEventSnapshot,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.EventSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
 				InstanceID:          "inst-1",

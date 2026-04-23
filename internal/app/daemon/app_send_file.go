@@ -10,6 +10,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 )
 
@@ -22,7 +23,7 @@ type preparedSendIMFile struct {
 	fileSize int64
 }
 
-func (a *App) handleSendIMFileCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleSendIMFileCommand(command control.DaemonCommand) []eventcontract.Event {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.shuttingDown {
@@ -31,7 +32,7 @@ func (a *App) handleSendIMFileCommand(command control.DaemonCommand) []control.U
 	return a.handleSendIMFileCommandLocked(command)
 }
 
-func (a *App) handleSendIMFileCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleSendIMFileCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	prepared, failEvents, ok := a.prepareSendIMFileLocked(command)
 	if !ok {
 		return failEvents
@@ -52,7 +53,7 @@ func (a *App) handleSendIMFileCommandLocked(command control.DaemonCommand) []con
 	return a.runPreparedSendIMFileLocked(command, prepared)
 }
 
-func (a *App) prepareSendIMFileLocked(command control.DaemonCommand) (preparedSendIMFile, []control.UIEvent, bool) {
+func (a *App) prepareSendIMFileLocked(command control.DaemonCommand) (preparedSendIMFile, []eventcontract.Event, bool) {
 	path := strings.TrimSpace(command.LocalPath)
 	if path == "" {
 		return preparedSendIMFile{}, a.sendFilePreflightFailureLocked(command, "send_file_invalid", "文件路径无效，请重新选择后再试。"), false
@@ -90,7 +91,7 @@ func (a *App) prepareSendIMFileLocked(command control.DaemonCommand) (preparedSe
 	}, nil, true
 }
 
-func (a *App) runPreparedSendIMFileLocked(command control.DaemonCommand, prepared preparedSendIMFile) []control.UIEvent {
+func (a *App) runPreparedSendIMFileLocked(command control.DaemonCommand, prepared preparedSendIMFile) []eventcontract.Event {
 	a.mu.Unlock()
 	result, err := a.sendPreparedIMFile(prepared)
 	a.mu.Lock()
@@ -102,8 +103,8 @@ func (a *App) runPreparedSendIMFileLocked(command control.DaemonCommand, prepare
 	if fileName == "" {
 		fileName = strings.TrimSpace(prepared.fileName)
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "send_file_sent",
@@ -144,7 +145,7 @@ func (a *App) sendPreparedIMFile(prepared preparedSendIMFile) (feishu.IMFileSend
 	return result, nil
 }
 
-func (a *App) sendFilePreflightFailureLocked(command control.DaemonCommand, code, text string) []control.UIEvent {
+func (a *App) sendFilePreflightFailureLocked(command control.DaemonCommand, code, text string) []eventcontract.Event {
 	if strings.TrimSpace(command.PickerID) != "" {
 		if events := a.service.HandleSendFilePreflightFailure(command.SurfaceSessionID, command.PickerID, text); len(events) != 0 {
 			return events
@@ -153,7 +154,7 @@ func (a *App) sendFilePreflightFailureLocked(command control.DaemonCommand, code
 	return sendFileNotice(command.SurfaceSessionID, code, text)
 }
 
-func sendFileFailureEvents(surfaceID string, err error) []control.UIEvent {
+func sendFileFailureEvents(surfaceID string, err error) []eventcontract.Event {
 	var sendErr *feishu.IMFileSendError
 	if errors.As(err, &sendErr) {
 		switch sendErr.Code {
@@ -185,13 +186,13 @@ func sendFileToolErrorText(err *toolError) string {
 	}
 }
 
-func sendFileNotice(surfaceID, code, text string) []control.UIEvent {
+func sendFileNotice(surfaceID, code, text string) []eventcontract.Event {
 	title := "发送文件失败"
 	if code == "send_file_sent" {
 		title = "文件已发送"
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

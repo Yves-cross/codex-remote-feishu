@@ -12,6 +12,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -148,7 +149,7 @@ func TestThreadHistoryDaemonCommandLockedReleasesAppLockDuringRelaySend(t *testi
 	app.sendAgentCommand = sender.send
 
 	done := make(chan struct{})
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	go func() {
 		app.mu.Lock()
 		defer app.mu.Unlock()
@@ -233,7 +234,7 @@ func TestHandleSendIMFileCommandLockedReleasesAppLockDuringSend(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	go func() {
 		app.mu.Lock()
 		defer app.mu.Unlock()

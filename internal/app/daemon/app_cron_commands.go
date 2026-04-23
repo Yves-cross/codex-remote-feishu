@@ -8,9 +8,10 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []eventcontract.Event {
 	parsed, err := parseCronCommandText(command.Text)
 	if err != nil {
 		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
@@ -25,14 +26,14 @@ func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.U
 		}
 		catalog, err := a.prepareCronCatalog(command, parsed.Mode)
 		if err != nil {
-			return append([]control.UIEvent{
+			return append([]eventcontract.Event{
 				cronNoticeEvent(command.SurfaceSessionID, "cron_catalog_failed", fmt.Sprintf("Cron 信息读取失败：%v", err)),
 			}, cronUsageEvents(command.SurfaceSessionID, "", "")...)
 		}
 		if catalog == nil {
 			return cronUsageEvents(command.SurfaceSessionID, "", "")
 		}
-		return []control.UIEvent{*catalog}
+		return []eventcontract.Event{*catalog}
 	default:
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -43,7 +44,7 @@ func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []control.U
 	}
 }
 
-func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []eventcontract.Event {
 	parsed, err := parseCronCommandText(command.Text)
 	if err != nil {
 		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
@@ -54,41 +55,41 @@ func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []con
 		defer a.mu.Lock()
 		catalog, err := a.prepareCronCatalog(command, parsed.Mode)
 		if err != nil {
-			return append([]control.UIEvent{
+			return append([]eventcontract.Event{
 				cronNoticeEvent(command.SurfaceSessionID, "cron_catalog_failed", fmt.Sprintf("Cron 信息读取失败：%v", err)),
 			}, cronUsageEvents(command.SurfaceSessionID, "", "")...)
 		}
 		if catalog == nil {
 			return cronUsageEvents(command.SurfaceSessionID, "", "")
 		}
-		return []control.UIEvent{*catalog}
+		return []eventcontract.Event{*catalog}
 	default:
 		return a.handleCronMutatingDaemonCommandLocked(command, parsed)
 	}
 }
 
-func (a *App) handleCronMutatingDaemonCommandLocked(command control.DaemonCommand, parsed parsedCronCommand) []control.UIEvent {
+func (a *App) handleCronMutatingDaemonCommandLocked(command control.DaemonCommand, parsed parsedCronCommand) []eventcontract.Event {
 	switch parsed.Mode {
 	case cronCommandRepair:
 		if a.cronRuntime.syncInFlight {
-			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
+			return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
 		a.cronRuntime.syncInFlight = true
 		go a.runCronRepairCommand(command)
-		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_repair_started", "正在修复 Cron 配置表；如果检测到绑定失效，将自动由当前 bot 接管 Cron 配置，请稍候。")}
+		return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_repair_started", "正在修复 Cron 配置表；如果检测到绑定失效，将自动由当前 bot 接管 Cron 配置，请稍候。")}
 	case cronCommandReload:
 		if a.cronRuntime.syncInFlight {
-			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
+			return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
 		a.cronRuntime.syncInFlight = true
 		go a.runCronReloadCommand(command)
-		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_reload_started", "正在重新加载 Cron 任务配置，并校验表格内容。")}
+		return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_reload_started", "正在重新加载 Cron 任务配置，并校验表格内容。")}
 	case cronCommandRun:
 		if a.cronRuntime.syncInFlight {
-			return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
+			return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_busy", "当前已有一个 Cron 配置同步在进行中，请稍后再试。")}
 		}
 		go a.runCronTriggerCommand(command, parsed.JobRecordID)
-		return []control.UIEvent{cronNoticeEvent(command.SurfaceSessionID, "cron_run_started", "正在立即触发所选 Cron 任务。")}
+		return []eventcontract.Event{cronNoticeEvent(command.SurfaceSessionID, "cron_run_started", "正在立即触发所选 Cron 任务。")}
 	default:
 		return cronUsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), "不支持的 /cron 子命令。")
 	}
@@ -109,35 +110,35 @@ func (a *App) runCronTriggerCommand(command control.DaemonCommand, jobRecordID s
 	a.finishCronAsyncCommand(command.SurfaceSessionID, notice, err)
 }
 
-func (a *App) finishCronBackgroundCommand(surfaceID string, event *control.UIEvent, err error) {
+func (a *App) finishCronBackgroundCommand(surfaceID string, event *eventcontract.Event, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cronRuntime.syncInFlight = false
 	a.finishCronAsyncCommandLocked(surfaceID, event, err)
 }
 
-func (a *App) finishCronAsyncCommand(surfaceID string, event *control.UIEvent, err error) {
+func (a *App) finishCronAsyncCommand(surfaceID string, event *eventcontract.Event, err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.finishCronAsyncCommandLocked(surfaceID, event, err)
 }
 
-func (a *App) finishCronAsyncCommandLocked(surfaceID string, event *control.UIEvent, err error) {
+func (a *App) finishCronAsyncCommandLocked(surfaceID string, event *eventcontract.Event, err error) {
 	if a.shuttingDown {
 		return
 	}
 	if err != nil {
-		a.handleUIEventsLocked(context.Background(), []control.UIEvent{
+		a.handleUIEventsLocked(context.Background(), []eventcontract.Event{
 			cronNoticeEvent(surfaceID, "cron_command_failed", fmt.Sprintf("Cron 操作失败：%v", err)),
 		})
 		return
 	}
 	if event != nil {
-		a.handleUIEventsLocked(context.Background(), []control.UIEvent{*event})
+		a.handleUIEventsLocked(context.Background(), []eventcontract.Event{*event})
 	}
 }
 
-func (a *App) triggerCronJob(command control.DaemonCommand, jobRecordID string) (*control.UIEvent, error) {
+func (a *App) triggerCronJob(command control.DaemonCommand, jobRecordID string) (*eventcontract.Event, error) {
 	jobRecordID = strings.TrimSpace(jobRecordID)
 	if jobRecordID == "" {
 		return nil, fmt.Errorf("缺少要立即触发的 Cron 任务记录 ID")
@@ -177,8 +178,8 @@ func (a *App) triggerCronJob(command control.DaemonCommand, jobRecordID string) 
 		a.recordCronImmediateResultWithTargetLocked(request.WritebackTarget, request.Job, request.TriggeredAt, "failed", err.Error())
 		return nil, err
 	}
-	return &control.UIEvent{
-		Kind:             control.UIEventNotice,
+	return &eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_run_ready",
@@ -212,7 +213,7 @@ func (a *App) cronBitableAPI(gatewayID string) (feishu.BitableAPI, error) {
 	return factory(strings.TrimSpace(gatewayID))
 }
 
-func (a *App) prepareCronCatalog(command control.DaemonCommand, mode cronCommandMode) (*control.UIEvent, error) {
+func (a *App) prepareCronCatalog(command control.DaemonCommand, mode cronCommandMode) (*eventcontract.Event, error) {
 	stateValue, ownerView, extraSummary, configReady, err := a.prepareCronCatalogState(command, mode)
 	if err != nil {
 		return nil, err
@@ -320,13 +321,13 @@ func (a *App) syncCronWorkspacesBeforeCatalog(command control.DaemonCommand, sna
 	return snapshot, ownerView, "", true
 }
 
-func (a *App) repairCronBitable(command control.DaemonCommand) (*control.UIEvent, error) {
+func (a *App) repairCronBitable(command control.DaemonCommand) (*eventcontract.Event, error) {
 	summary, err := a.repairCronBitableNow(command)
 	if err != nil {
 		return nil, err
 	}
-	return &control.UIEvent{
-		Kind:             control.UIEventNotice,
+	return &eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_repair_ready",
@@ -336,13 +337,13 @@ func (a *App) repairCronBitable(command control.DaemonCommand) (*control.UIEvent
 	}, nil
 }
 
-func (a *App) reloadCronJobs(command control.DaemonCommand) (*control.UIEvent, error) {
+func (a *App) reloadCronJobs(command control.DaemonCommand) (*eventcontract.Event, error) {
 	result, err := a.reloadCronJobsResultNow(command)
 	if err != nil {
 		return nil, err
 	}
-	return &control.UIEvent{
-		Kind:             control.UIEventNotice,
+	return &eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_reload_ready",

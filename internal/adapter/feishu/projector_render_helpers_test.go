@@ -5,24 +5,25 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) control.UIEvent {
+func selectionPromptEvent(prompt control.FeishuDirectSelectionPrompt) eventcontract.Event {
 	view := control.FeishuSelectionView{
 		PromptKind: prompt.Kind,
 	}
 	promptView := prompt
 	view.Prompt = &promptView
-	return control.UIEvent{
-		Kind:                control.UIEventFeishuSelectionView,
+	return eventcontract.Event{
+		Kind:                eventcontract.EventFeishuSelectionView,
 		FeishuSelectionView: &view,
 	}
 }
 
-func commandCatalogEvent(catalog control.FeishuPageView) control.UIEvent {
+func commandCatalogEvent(catalog control.FeishuPageView) eventcontract.Event {
 	page := control.NormalizeFeishuPageView(catalog)
-	return control.UIEvent{
-		Kind:           control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:           eventcontract.EventFeishuPageView,
 		FeishuPageView: &page,
 	}
 }
@@ -42,9 +43,9 @@ func summarySections(summary string) []control.FeishuCardTextSection {
 	return []control.FeishuCardTextSection{{Lines: lines}}
 }
 
-func requestPromptEvent(prompt control.FeishuRequestView) control.UIEvent {
-	return control.UIEvent{
-		Kind:              control.UIEventFeishuRequestView,
+func requestPromptEvent(prompt control.FeishuRequestView) eventcontract.Event {
+	return eventcontract.Event{
+		Kind:              eventcontract.EventFeishuRequestView,
 		FeishuRequestView: &prompt,
 	}
 }

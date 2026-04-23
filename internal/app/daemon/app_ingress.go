@@ -11,7 +11,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -223,8 +223,8 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	)
 	if notice := rejectedInboundNotice(action); notice != nil {
 		a.ensureSurfaceRouteForNotice(action)
-		a.handleUIEventsLocked(ctx, []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		a.handleUIEventsLocked(ctx, []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			GatewayID:        action.GatewayID,
 			SurfaceSessionID: action.SurfaceSessionID,
 			Notice:           notice,
@@ -285,7 +285,7 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	return inlineResult
 }
 
-func (a *App) synchronousCurrentCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+func (a *App) synchronousCurrentCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []eventcontract.Event) (*feishu.ActionResult, []eventcontract.Event) {
 	if !control.SupportsFeishuSynchronousCurrentCardReplacement(action) || len(events) == 0 {
 		return nil, events
 	}
@@ -306,7 +306,7 @@ func (a *App) synchronousCurrentCardActionResultLocked(action control.Action, co
 	}
 }
 
-func inlineFallbackReplacementBlockedByActivePicker(events []control.UIEvent) bool {
+func inlineFallbackReplacementBlockedByActivePicker(events []eventcontract.Event) bool {
 	if len(events) != 1 || events[0].Notice == nil {
 		return false
 	}
@@ -318,7 +318,7 @@ func inlineFallbackReplacementBlockedByActivePicker(events []control.UIEvent) bo
 	}
 }
 
-func (a *App) inlineViewCurrentCardActionResultLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+func (a *App) inlineViewCurrentCardActionResultLocked(action control.Action, events []eventcontract.Event) (*feishu.ActionResult, []eventcontract.Event) {
 	if len(events) == 0 {
 		return nil, events
 	}
@@ -327,27 +327,27 @@ func (a *App) inlineViewCurrentCardActionResultLocked(action control.Action, eve
 		return nil, events
 	}
 	event.DaemonLifecycleID = a.daemonLifecycleID
-	ops := a.projector.ProjectEvent(a.service.SurfaceChatID(event.SurfaceSessionID), eventcontractcompat.FromLegacyUIEvent(event))
+	ops := a.projector.ProjectEvent(a.service.SurfaceChatID(event.SurfaceSessionID), event.Normalized())
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
 		return nil, events
 	}
 	return &feishu.ActionResult{ReplaceCurrentCard: &ops[0]}, events[1:]
 }
 
-func removeUIEventAt(events []control.UIEvent, idx int) []control.UIEvent {
+func removeUIEventAt(events []eventcontract.Event, idx int) []eventcontract.Event {
 	if idx < 0 || idx >= len(events) {
-		return append([]control.UIEvent(nil), events...)
+		return append([]eventcontract.Event(nil), events...)
 	}
-	out := make([]control.UIEvent, 0, len(events)-1)
+	out := make([]eventcontract.Event, 0, len(events)-1)
 	out = append(out, events[:idx]...)
 	return append(out, events[idx+1:]...)
 }
 
-func filterUIEventsByFollowupPolicy(events []control.UIEvent, policy control.FeishuFollowupPolicy) []control.UIEvent {
-	return eventcontractcompat.FilterLegacyUIEventsByFollowupPolicy(events, policy)
+func filterUIEventsByFollowupPolicy(events []eventcontract.Event, policy control.FeishuFollowupPolicy) []eventcontract.Event {
+	return eventcontract.FilterEventsByFollowupPolicy(events, policy)
 }
 
-func (a *App) firstResultCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+func (a *App) firstResultCardActionResultLocked(action control.Action, contract control.FeishuFrontstageActionContract, events []eventcontract.Event) (*feishu.ActionResult, []eventcontract.Event) {
 	if len(events) == 0 {
 		return nil, events
 	}
@@ -374,7 +374,7 @@ func (a *App) firstResultCardActionResultLocked(action control.Action, contract 
 	return replace, appendEvents
 }
 
-func (a *App) firstProjectableCardReplacementLocked(action control.Action, events []control.UIEvent) (*feishu.ActionResult, []control.UIEvent) {
+func (a *App) firstProjectableCardReplacementLocked(action control.Action, events []eventcontract.Event) (*feishu.ActionResult, []eventcontract.Event) {
 	for i, event := range events {
 		replace := a.projectFirstCardAsReplacementLocked(action, event)
 		if replace == nil {
@@ -385,7 +385,7 @@ func (a *App) firstProjectableCardReplacementLocked(action control.Action, event
 	return nil, events
 }
 
-func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event control.UIEvent) *feishu.ActionResult {
+func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event eventcontract.Event) *feishu.ActionResult {
 	if event.Command != nil || event.DaemonCommand != nil {
 		return nil
 	}
@@ -396,7 +396,7 @@ func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event c
 		event.SurfaceSessionID = action.SurfaceSessionID
 	}
 	event.DaemonLifecycleID = a.daemonLifecycleID
-	ops := a.projector.ProjectEvent(a.service.SurfaceChatID(event.SurfaceSessionID), eventcontractcompat.FromLegacyUIEvent(event))
+	ops := a.projector.ProjectEvent(a.service.SurfaceChatID(event.SurfaceSessionID), event.Normalized())
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
 		return nil
 	}
@@ -500,7 +500,7 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	}
 	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)
-	vscodeRecoveryEvents := []control.UIEvent{}
+	vscodeRecoveryEvents := []eventcontract.Event{}
 	if !vscodeBlocked {
 		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
 		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
@@ -580,7 +580,7 @@ func (a *App) onEvents(ctx context.Context, instanceID string, events []agentpro
 	}
 }
 
-func (a *App) logThreadRefreshCommand(instanceID string, event agentproto.Event, uiEvents []control.UIEvent) {
+func (a *App) logThreadRefreshCommand(instanceID string, event agentproto.Event, uiEvents []eventcontract.Event) {
 	inst := a.service.Instance(instanceID)
 	activeTurnID := ""
 	if inst != nil {
@@ -706,7 +706,7 @@ func (a *App) onDisconnect(ctx context.Context, instanceID string) {
 	}
 	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)
-	vscodeRecoveryEvents := []control.UIEvent{}
+	vscodeRecoveryEvents := []eventcontract.Event{}
 	if !vscodeBlocked {
 		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
 		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)
@@ -739,7 +739,7 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	a.surfaceResumeRuntime.vscodeStartupCheckDue = false
 	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)
-	vscodeRecoveryEvents := []control.UIEvent{}
+	vscodeRecoveryEvents := []eventcontract.Event{}
 	if !vscodeBlocked {
 		vscodeRecoveryEvents = a.maybeRecoverVSCodeSurfacesLocked(now)
 		vscodeRecoveryEvents = append(vscodeRecoveryEvents, a.maybePromptDetachedVSCodeSurfacesLocked()...)

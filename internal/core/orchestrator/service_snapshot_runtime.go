@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
@@ -134,7 +135,7 @@ func (s *Service) BindPendingRemoteCommand(surfaceID, commandID string) {
 	}
 }
 
-func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, notice *control.Notice, tryDispatchNext bool) []control.UIEvent {
+func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, notice *control.Notice, tryDispatchNext bool) []eventcontract.Event {
 	if surface == nil || item == nil {
 		return nil
 	}
@@ -153,8 +154,8 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 		TypingOff:   true,
 	}, queueItemSourceMessageIDs(item))
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -166,7 +167,7 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 	return events
 }
 
-func (s *Service) HandleCommandDispatchFailure(surfaceID, commandID string, err error) []control.UIEvent {
+func (s *Service) HandleCommandDispatchFailure(surfaceID, commandID string, err error) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceID]
 	if events := s.restorePendingCompactDispatch(surfaceID, commandID, "dispatch_failed", err); len(events) != 0 {
 		return events
@@ -199,7 +200,7 @@ func (s *Service) HandleCommandDispatchFailure(surfaceID, commandID string, err 
 	return s.failSurfaceActiveQueueItem(surface, item, &notice, true)
 }
 
-func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
+func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.CommandAck) []eventcontract.Event {
 	if ack.CommandID == "" {
 		return nil
 	}
@@ -213,7 +214,7 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 		return nil
 	}
 	delete(s.turns.pendingSteers, key)
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if strings.TrimSpace(binding.OwnerCardMessageID) != "" {
 		events = append(events, steerAllCompletedOwnerCardEvent(surface.SurfaceSessionID, binding.OwnerCardMessageID, len(pendingSteerQueueItemIDs(binding))))
 	}
@@ -236,7 +237,7 @@ func (s *Service) HandleCommandAccepted(instanceID string, ack agentproto.Comman
 	return events
 }
 
-func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.CommandAck) []control.UIEvent {
+func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.CommandAck) []eventcontract.Event {
 	if ack.CommandID == "" {
 		return nil
 	}
@@ -271,7 +272,7 @@ func (s *Service) HandleCommandRejected(instanceID string, ack agentproto.Comman
 	return s.failSurfaceActiveQueueItem(surface, item, &notice, true)
 }
 
-func (s *Service) restorePendingRequestDispatch(surface *state.SurfaceConsoleRecord, commandID, noticeCode string) []control.UIEvent {
+func (s *Service) restorePendingRequestDispatch(surface *state.SurfaceConsoleRecord, commandID, noticeCode string) []eventcontract.Event {
 	if surface == nil || strings.TrimSpace(commandID) == "" {
 		return nil
 	}
@@ -310,7 +311,7 @@ func (s *Service) pendingSteerForCommand(instanceID, commandID string) (string, 
 	return "", nil
 }
 
-func (s *Service) restorePendingSteer(key string, notice *control.Notice) []control.UIEvent {
+func (s *Service) restorePendingSteer(key string, notice *control.Notice) []eventcontract.Event {
 	binding := s.turns.pendingSteers[key]
 	if binding == nil {
 		return nil
@@ -355,7 +356,7 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 	for _, restore := range restoreOrder {
 		surface.QueuedQueueItemIDs = insertString(surface.QueuedQueueItemIDs, restore.queueIndex, restore.queueItemID)
 	}
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	if strings.TrimSpace(binding.OwnerCardMessageID) != "" {
 		text := ""
 		if notice != nil {
@@ -367,8 +368,8 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 		events = append(events, steerAllFailedOwnerCardEvent(surface.SurfaceSessionID, binding.OwnerCardMessageID, appendSteerRestoreHint(text)))
 	}
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -378,8 +379,8 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []cont
 	return events
 }
 
-func (s *Service) restorePendingSteersForInstance(instanceID string) []control.UIEvent {
-	var events []control.UIEvent
+func (s *Service) restorePendingSteersForInstance(instanceID string) []eventcontract.Event {
+	var events []eventcontract.Event
 	keys := make([]string, 0, len(s.turns.pendingSteers))
 	for key, binding := range s.turns.pendingSteers {
 		if binding == nil || binding.InstanceID != instanceID {
@@ -455,7 +456,7 @@ func (s *Service) restorePendingSteerAsStagedImage(surface *state.SurfaceConsole
 	return true
 }
 
-func (s *Service) HandleHeadlessLaunchStarted(surfaceID, instanceID string, pid int) []control.UIEvent {
+func (s *Service) HandleHeadlessLaunchStarted(surfaceID, instanceID string, pid int) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceID]
 	if surface == nil || surface.PendingHeadless == nil || surface.PendingHeadless.InstanceID != instanceID {
 		return nil
@@ -464,7 +465,7 @@ func (s *Service) HandleHeadlessLaunchStarted(surfaceID, instanceID string, pid 
 	return nil
 }
 
-func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err error) []control.UIEvent {
+func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err error) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceID]
 	if surface == nil || surface.PendingHeadless == nil || surface.PendingHeadless.InstanceID != instanceID {
 		return nil
@@ -472,8 +473,8 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	pending := surface.PendingHeadless
 	surface.PendingHeadless = nil
 	if pending.AutoRestore {
-		events := []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		events := []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_restore_start_failed",
@@ -495,8 +496,8 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 		}))
 		notice.Code = "workspace_create_start_failed"
 		notice.Title = "工作区准备失败"
-		events := []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		events := []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &notice,
 		}}
@@ -515,22 +516,22 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	notice := NoticeForProblem(problem)
 	notice.Code = "headless_start_failed"
 	notice.Title = "恢复准备失败"
-	events := []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	events := []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &notice,
 	}}
 	return s.maybeFinalizePendingTargetPicker(surface, events, notice.Text)
 }
 
-func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
+func (s *Service) ApplyInstanceConnected(instanceID string) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return nil
 	}
 	inst.Online = true
 
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	events = append(events, s.restorePendingSteersForInstance(instanceID)...)
 	for _, surface := range s.root.Surfaces {
 		pending := surface.PendingHeadless
@@ -547,7 +548,7 @@ func (s *Service) ApplyInstanceConnected(instanceID string) []control.UIEvent {
 	return events
 }
 
-func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent {
+func (s *Service) ApplyInstanceDisconnected(instanceID string) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return nil
@@ -593,8 +594,8 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 		}
 
 		events = append(events, s.finalizeDetachedSurface(surface)...)
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "attached_instance_offline",
@@ -608,7 +609,7 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []control.UIEvent
 	return events
 }
 
-func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice bool) []control.UIEvent {
+func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice bool) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return nil
@@ -648,8 +649,8 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 				}, queueItemSourceMessageIDs(item)), item.SourceMessageID, false)...)
 				if emitNotice {
 					notice := globalRuntimeNotice(control.NoticeDeliveryFamilyTransportDegraded, "attached_instance_transport_degraded", "", noticeText)
-					events = append(events, control.UIEvent{
-						Kind:             control.UIEventNotice,
+					events = append(events, eventcontract.Event{
+						Kind:             eventcontract.EventNotice,
 						SurfaceSessionID: surface.SurfaceSessionID,
 						Notice:           &notice,
 					})
@@ -680,8 +681,8 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 		events = append(events, s.finishSurfaceAfterWork(surface)...)
 		if emitNotice {
 			notice := globalRuntimeNotice(control.NoticeDeliveryFamilyTransportDegraded, "attached_instance_transport_degraded", "", noticeText)
-			events = append(events, control.UIEvent{
-				Kind:             control.UIEventNotice,
+			events = append(events, eventcontract.Event{
+				Kind:             eventcontract.EventNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           &notice,
 			})

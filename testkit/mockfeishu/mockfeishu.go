@@ -4,7 +4,6 @@ import (
 	feishuadapter "github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
@@ -23,12 +22,13 @@ func NewRecorder() *Recorder {
 	return &Recorder{}
 }
 
-func (r *Recorder) Apply(events []control.UIEvent) {
-	r.ApplyEvents(eventcontractcompat.FromLegacyUIEvents(events))
+func (r *Recorder) Apply(events []eventcontract.Event) {
+	r.ApplyEvents(events)
 }
 
 func (r *Recorder) ApplyEvents(events []eventcontract.Event) {
 	for _, event := range events {
+		event = event.Normalized()
 		r.Events = append(r.Events, event)
 		switch payload := event.Payload.(type) {
 		case eventcontract.NoticePayload:

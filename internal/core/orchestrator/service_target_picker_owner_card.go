@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -38,7 +39,7 @@ func (s *Service) RecordTargetPickerMessage(surfaceID, pickerID, messageID strin
 	s.RecordOwnerCardFlowMessage(surfaceID, pickerID, messageID)
 }
 
-func (s *Service) requireActiveTargetPickerFlow(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeOwnerCardFlowRecord, *activeTargetPickerRecord, []control.UIEvent) {
+func (s *Service) requireActiveTargetPickerFlow(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeOwnerCardFlowRecord, *activeTargetPickerRecord, []eventcontract.Event) {
 	flow, blocked := s.requireActiveOwnerCardFlow(
 		surface,
 		ownerCardFlowKindTargetPicker,
@@ -98,7 +99,7 @@ func (s *Service) startTargetPickerProcessing(
 	record *activeTargetPickerRecord,
 	pendingKind targetPickerPendingKind,
 	workspaceKey, threadID, title, text string,
-) []control.UIEvent {
+) []eventcontract.Event {
 	return s.startTargetPickerProcessingWithSections(surface, flow, record, pendingKind, workspaceKey, threadID, title, text, nil, "")
 }
 
@@ -110,7 +111,7 @@ func (s *Service) startTargetPickerProcessingWithSections(
 	workspaceKey, threadID, title, text string,
 	sections []control.FeishuCardTextSection,
 	footer string,
-) []control.UIEvent {
+) []eventcontract.Event {
 	if flow == nil || record == nil {
 		return nil
 	}
@@ -128,7 +129,7 @@ func (s *Service) startTargetPickerProcessingWithSections(
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
+	return []eventcontract.Event{s.targetPickerViewEvent(surface, view, false)}
 }
 
 func (s *Service) finishTargetPickerWithStage(
@@ -138,8 +139,8 @@ func (s *Service) finishTargetPickerWithStage(
 	stage control.FeishuTargetPickerStage,
 	title, text string,
 	inline bool,
-	appendEvents []control.UIEvent,
-) []control.UIEvent {
+	appendEvents []eventcontract.Event,
+) []eventcontract.Event {
 	return s.finishTargetPickerWithStageAndSections(surface, flow, record, stage, title, text, nil, "", inline, appendEvents)
 }
 
@@ -152,10 +153,10 @@ func (s *Service) finishTargetPickerWithStageAndSections(
 	sections []control.FeishuCardTextSection,
 	footer string,
 	inline bool,
-	appendEvents []control.UIEvent,
-) []control.UIEvent {
+	appendEvents []eventcontract.Event,
+) []eventcontract.Event {
 	if record == nil {
-		return append([]control.UIEvent(nil), appendEvents...)
+		return append([]eventcontract.Event(nil), appendEvents...)
 	}
 	record.Stage = stage
 	record.StatusTitle = strings.TrimSpace(title)
@@ -188,14 +189,14 @@ func (s *Service) finishTargetPickerWithStageAndSections(
 	}
 	event := s.targetPickerViewEvent(surface, view, inline)
 	s.clearTargetPickerRuntime(surface)
-	return append([]control.UIEvent{event}, appendEvents...)
+	return append([]eventcontract.Event{event}, appendEvents...)
 }
 
-func targetPickerFilteredFollowupEvents(events []control.UIEvent) []control.UIEvent {
+func targetPickerFilteredFollowupEvents(events []eventcontract.Event) []eventcontract.Event {
 	return filterFollowupEventsByPolicy(events, dropNoticeFollowupPolicy)
 }
 
-func targetPickerFirstNoticeText(events []control.UIEvent) string {
+func targetPickerFirstNoticeText(events []eventcontract.Event) string {
 	for _, event := range events {
 		if event.Notice == nil {
 			continue
@@ -267,7 +268,7 @@ func (s *Service) targetPickerHasBlockingProcessing(surface *state.SurfaceConsol
 	return record.PendingKind == targetPickerPendingGitImport
 }
 
-func (s *Service) maybeFinalizePendingTargetPicker(surface *state.SurfaceConsoleRecord, events []control.UIEvent, fallbackFailureText string) []control.UIEvent {
+func (s *Service) maybeFinalizePendingTargetPicker(surface *state.SurfaceConsoleRecord, events []eventcontract.Event, fallbackFailureText string) []eventcontract.Event {
 	if surface == nil {
 		return events
 	}

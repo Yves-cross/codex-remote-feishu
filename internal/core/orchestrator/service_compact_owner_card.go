@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -18,7 +19,7 @@ func compactOwnerFlowTrackingKey(flow *activeOwnerCardFlowRecord) string {
 	return strings.TrimSpace(flow.FlowID)
 }
 
-func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, title, theme string, sections []control.FeishuCardTextSection) control.UIEvent {
+func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, title, theme string, sections []control.FeishuCardTextSection) eventcontract.Event {
 	bodySections, noticeSections := compactOwnerCardSplitSections(sections)
 	sealed := flow != nil && (flow.Phase == ownerCardFlowPhaseCompleted || flow.Phase == ownerCardFlowPhaseCancelled || flow.Phase == ownerCardFlowPhaseError)
 	view := control.NormalizeFeishuPageView(control.FeishuPageView{
@@ -31,8 +32,8 @@ func compactOwnerCardEvent(surfaceID string, flow *activeOwnerCardFlowRecord, ti
 		NoticeSections: noticeSections,
 		Sealed:         sealed,
 	})
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &view,
 	}
@@ -120,7 +121,7 @@ func (s *Service) compactThreadForBinding(binding *compactTurnBinding) *state.Th
 	return inst.Threads[strings.TrimSpace(binding.ThreadID)]
 }
 
-func (s *Service) emitCompactOwnerDispatching(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []control.UIEvent {
+func (s *Service) emitCompactOwnerDispatching(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []eventcontract.Event {
 	flow := s.compactFlowForBinding(surface, binding)
 	if flow == nil {
 		return nil
@@ -131,10 +132,10 @@ func (s *Service) emitCompactOwnerDispatching(surface *state.SurfaceConsoleRecor
 		s.compactThreadForBinding(binding),
 		"正在向本地 Codex 发起上下文压缩请求。",
 	)
-	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
+	return []eventcontract.Event{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
 }
 
-func (s *Service) emitCompactOwnerRunning(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []control.UIEvent {
+func (s *Service) emitCompactOwnerRunning(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []eventcontract.Event {
 	flow := s.compactFlowForBinding(surface, binding)
 	if flow == nil {
 		return nil
@@ -145,10 +146,10 @@ func (s *Service) emitCompactOwnerRunning(surface *state.SurfaceConsoleRecord, b
 		s.compactThreadForBinding(binding),
 		"正在压缩当前会话的上下文。",
 	)
-	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
+	return []eventcontract.Event{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "正在压缩上下文", "progress", sections)}
 }
 
-func (s *Service) emitCompactOwnerCompleted(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []control.UIEvent {
+func (s *Service) emitCompactOwnerCompleted(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding) []eventcontract.Event {
 	flow := s.compactFlowForBinding(surface, binding)
 	if flow == nil {
 		return nil
@@ -159,7 +160,7 @@ func (s *Service) emitCompactOwnerCompleted(surface *state.SurfaceConsoleRecord,
 		s.compactThreadForBinding(binding),
 		"当前会话的上下文已压缩完成。",
 	)
-	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "上下文已压缩", "success", sections)}
+	return []eventcontract.Event{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "上下文已压缩", "success", sections)}
 }
 
 func compactFailureText(problem agentproto.ErrorInfo, fallback string) string {
@@ -169,7 +170,7 @@ func compactFailureText(problem agentproto.ErrorInfo, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
-func (s *Service) emitCompactOwnerFailed(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding, detail string) []control.UIEvent {
+func (s *Service) emitCompactOwnerFailed(surface *state.SurfaceConsoleRecord, binding *compactTurnBinding, detail string) []eventcontract.Event {
 	flow := s.compactFlowForBinding(surface, binding)
 	if flow == nil {
 		return nil
@@ -181,5 +182,5 @@ func (s *Service) emitCompactOwnerFailed(surface *state.SurfaceConsoleRecord, bi
 		detail,
 		"现在可以重新发送 /compact，或继续普通输入。",
 	)
-	return []control.UIEvent{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "上下文压缩失败", "error", sections)}
+	return []eventcontract.Event{compactOwnerCardEvent(surface.SurfaceSessionID, flow, "上下文压缩失败", "error", sections)}
 }

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -144,7 +145,7 @@ func (s *Service) adoptThreadReplay(inst *state.InstanceRecord, threadID string)
 	}
 }
 
-func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []control.UIEvent {
+func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {
 	if surface == nil || inst == nil || strings.TrimSpace(threadID) == "" || !s.surfaceOwnsThread(surface, threadID) {
 		return nil
 	}
@@ -171,8 +172,8 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 				},
 			}
 			progress.Timeline = control.BuildExecCommandProgressTimeline(*progress)
-			return []control.UIEvent{{
-				Kind:                control.UIEventExecCommandProgress,
+			return []eventcontract.Event{{
+				Kind:                eventcontract.EventExecCommandProgress,
 				GatewayID:           surface.GatewayID,
 				SurfaceSessionID:    surface.SurfaceSessionID,
 				SourceMessageID:     replay.SourceMessageID,
@@ -185,8 +186,8 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 			Text:     replay.NoticeText,
 			ThemeKey: replay.NoticeThemeKey,
 		}
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  replay.SourceMessageID,

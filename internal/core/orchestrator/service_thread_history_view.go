@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -27,7 +28,7 @@ type threadHistoryTurnSummary struct {
 	UpdatedAt    time.Time
 }
 
-func (s *Service) openThreadHistory(surface *state.SurfaceConsoleRecord, sourceMessageID string, inline bool) []control.UIEvent {
+func (s *Service) openThreadHistory(surface *state.SurfaceConsoleRecord, sourceMessageID string, inline bool) []eventcontract.Event {
 	inst, threadID, noticeCode, noticeText := s.currentThreadHistoryTarget(surface)
 	if inst == nil || strings.TrimSpace(threadID) == "" {
 		return notice(surface, noticeCode, noticeText)
@@ -48,7 +49,7 @@ func (s *Service) openThreadHistory(surface *state.SurfaceConsoleRecord, sourceM
 	return s.startThreadHistoryQuery(surface, inst, flow, record, sourceMessageID, inline)
 }
 
-func (s *Service) handleThreadHistoryPage(surface *state.SurfaceConsoleRecord, pickerID string, page int, actorUserID, sourceMessageID string, inline bool) []control.UIEvent {
+func (s *Service) handleThreadHistoryPage(surface *state.SurfaceConsoleRecord, pickerID string, page int, actorUserID, sourceMessageID string, inline bool) []eventcontract.Event {
 	flow, record, blocked := s.requireActiveThreadHistory(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -71,7 +72,7 @@ func (s *Service) handleThreadHistoryPage(surface *state.SurfaceConsoleRecord, p
 	return s.startThreadHistoryQuery(surface, inst, flow, record, sourceMessageID, inline)
 }
 
-func (s *Service) handleThreadHistoryDetail(surface *state.SurfaceConsoleRecord, pickerID, turnID, actorUserID, sourceMessageID string, inline bool) []control.UIEvent {
+func (s *Service) handleThreadHistoryDetail(surface *state.SurfaceConsoleRecord, pickerID, turnID, actorUserID, sourceMessageID string, inline bool) []eventcontract.Event {
 	flow, record, blocked := s.requireActiveThreadHistory(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -94,7 +95,7 @@ func (s *Service) handleThreadHistoryDetail(surface *state.SurfaceConsoleRecord,
 	return s.startThreadHistoryQuery(surface, inst, flow, record, sourceMessageID, inline)
 }
 
-func (s *Service) startThreadHistoryQuery(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, flow *activeOwnerCardFlowRecord, record *activeThreadHistoryRecord, sourceMessageID string, inline bool) []control.UIEvent {
+func (s *Service) startThreadHistoryQuery(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, flow *activeOwnerCardFlowRecord, record *activeThreadHistoryRecord, sourceMessageID string, inline bool) []eventcontract.Event {
 	if surface == nil || inst == nil || flow == nil || record == nil {
 		return nil
 	}
@@ -105,9 +106,9 @@ func (s *Service) startThreadHistoryQuery(surface *state.SurfaceConsoleRecord, i
 			flow.MessageID = sourceMessageID
 		}
 	}
-	events := []control.UIEvent{s.threadHistoryViewEvent(surface, view, inline, sourceMessageID)}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventDaemonCommand,
+	events := []eventcontract.Event{s.threadHistoryViewEvent(surface, view, inline, sourceMessageID)}
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventDaemonCommand,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  sourceMessageID,
@@ -153,7 +154,7 @@ func (s *Service) currentThreadHistoryTarget(surface *state.SurfaceConsoleRecord
 	return inst, threadID, "", ""
 }
 
-func (s *Service) requireActiveThreadHistory(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeOwnerCardFlowRecord, *activeThreadHistoryRecord, []control.UIEvent) {
+func (s *Service) requireActiveThreadHistory(surface *state.SurfaceConsoleRecord, pickerID, actorUserID string) (*activeOwnerCardFlowRecord, *activeThreadHistoryRecord, []eventcontract.Event) {
 	flow, blocked := s.requireActiveOwnerCardFlow(surface, ownerCardFlowKindThreadHistory, pickerID, actorUserID, "这张历史卡片已失效，请重新发送 /history。", "这张历史卡片只允许发起者本人操作。")
 	if blocked != nil {
 		return nil, nil, blocked
@@ -170,7 +171,7 @@ func (s *Service) RecordThreadHistoryMessage(surfaceID, pickerID, messageID stri
 	s.RecordOwnerCardFlowMessage(surfaceID, pickerID, messageID)
 }
 
-func (s *Service) HandleSurfaceThreadHistoryLoaded(surfaceID string) []control.UIEvent {
+func (s *Service) HandleSurfaceThreadHistoryLoaded(surfaceID string) []eventcontract.Event {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	flow := s.activeOwnerCardFlow(surface)
 	record := s.activeThreadHistory(surface)
@@ -181,19 +182,19 @@ func (s *Service) HandleSurfaceThreadHistoryLoaded(surfaceID string) []control.U
 	if inst == nil || threadID == "" || threadID != record.ThreadID {
 		view := s.buildThreadHistoryErrorView(surface, nil, flow, record, firstNonEmpty(noticeCode, "history_expired"), firstNonEmpty(noticeText, "这张历史卡片已经失效，请重新发送 /history。"))
 		s.clearThreadHistoryRuntime(surface)
-		return []control.UIEvent{s.threadHistoryViewEvent(surface, view, false, "")}
+		return []eventcontract.Event{s.threadHistoryViewEvent(surface, view, false, "")}
 	}
 	flow.Phase = ownerCardFlowPhaseResolved
 	bumpOwnerCardFlowRevision(flow)
 	view := s.buildThreadHistoryResolvedView(surface, inst, flow, record)
-	return []control.UIEvent{s.threadHistoryViewEvent(surface, view, false, "")}
+	return []eventcontract.Event{s.threadHistoryViewEvent(surface, view, false, "")}
 }
 
-func (s *Service) HandleSurfaceThreadHistoryFailure(surfaceID, code, text string) []control.UIEvent {
+func (s *Service) HandleSurfaceThreadHistoryFailure(surfaceID, code, text string) []eventcontract.Event {
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: strings.TrimSpace(surfaceID),
 			Notice: &control.Notice{
 				Code: code,
@@ -209,7 +210,7 @@ func (s *Service) HandleSurfaceThreadHistoryFailure(surfaceID, code, text string
 	flow.Phase = ownerCardFlowPhaseError
 	bumpOwnerCardFlowRevision(flow)
 	view := s.buildThreadHistoryErrorView(surface, nil, flow, record, code, text)
-	return []control.UIEvent{s.threadHistoryViewEvent(surface, view, false, "")}
+	return []eventcontract.Event{s.threadHistoryViewEvent(surface, view, false, "")}
 }
 
 func (s *Service) buildThreadHistoryLoadingView(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, flow *activeOwnerCardFlowRecord, record *activeThreadHistoryRecord) control.FeishuThreadHistoryView {

@@ -5,9 +5,10 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
-func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, sealed bool, lines ...string) control.UIEvent {
+func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, sealed bool, lines ...string) eventcontract.Event {
 	noticeSections := make([]control.FeishuCardTextSection, 0, 1)
 	bodyLines := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -26,18 +27,18 @@ func steerAllOwnerCardEvent(surfaceID, messageID, title, theme string, sealed bo
 		NoticeSections: noticeSections,
 		Sealed:         sealed,
 	})
-	return control.UIEvent{
-		Kind:             control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:             eventcontract.EventFeishuPageView,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		FeishuPageView:   &view,
 	}
 }
 
-func steerAllNoopOwnerCardEvent(surfaceID, messageID string) control.UIEvent {
+func steerAllNoopOwnerCardEvent(surfaceID, messageID string) eventcontract.Event {
 	return steerAllOwnerCardEvent(surfaceID, messageID, "没有可并入的排队输入", "system", true, "当前没有可并入本轮执行的排队消息。")
 }
 
-func steerAllRequestedOwnerCardEvent(surfaceID, messageID string, count int) control.UIEvent {
+func steerAllRequestedOwnerCardEvent(surfaceID, messageID string, count int) eventcontract.Event {
 	return steerAllOwnerCardEvent(
 		surfaceID,
 		messageID,
@@ -48,7 +49,7 @@ func steerAllRequestedOwnerCardEvent(surfaceID, messageID string, count int) con
 	)
 }
 
-func steerAllCompletedOwnerCardEvent(surfaceID, messageID string, count int) control.UIEvent {
+func steerAllCompletedOwnerCardEvent(surfaceID, messageID string, count int) eventcontract.Event {
 	return steerAllOwnerCardEvent(
 		surfaceID,
 		messageID,
@@ -59,7 +60,7 @@ func steerAllCompletedOwnerCardEvent(surfaceID, messageID string, count int) con
 	)
 }
 
-func steerAllFailedOwnerCardEvent(surfaceID, messageID, text string) control.UIEvent {
+func steerAllFailedOwnerCardEvent(surfaceID, messageID, text string) eventcontract.Event {
 	if strings.TrimSpace(text) == "" {
 		text = "追加输入失败，已恢复原排队位置。"
 	}

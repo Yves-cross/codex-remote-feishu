@@ -15,6 +15,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -446,8 +447,8 @@ func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
 		t.Fatalf("expected stamped migrate callback to replace current card, got %#v", result)
 	}
 
-	app.handleUIEvents(context.Background(), []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	app.handleUIEvents(context.Background(), []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:  "not_attached_vscode",

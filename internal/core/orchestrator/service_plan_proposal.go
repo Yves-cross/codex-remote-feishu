@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -125,10 +126,10 @@ func buildPlanProposalPageView(flow *activeOwnerCardFlowRecord, proposal *active
 	return control.FeishuPageViewFromCommandPageView(view)
 }
 
-func planProposalEvent(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool, inlineReplace bool) control.UIEvent {
+func planProposalEvent(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool, inlineReplace bool) eventcontract.Event {
 	view := buildPlanProposalPageView(flow, proposal, inlineMessageID, statusText, theme, buttons, sealed)
-	return control.UIEvent{
-		Kind:                     control.UIEventFeishuPageView,
+	return eventcontract.Event{
+		Kind:                     eventcontract.EventFeishuPageView,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: inlineReplace,
@@ -143,7 +144,7 @@ func (s *Service) clearPlanProposalRuntime(surface *state.SurfaceConsoleRecord) 
 	s.clearSurfacePlanProposal(surface)
 }
 
-func (s *Service) requireActivePlanProposal(surface *state.SurfaceConsoleRecord, proposalID, actorUserID string) (*activeOwnerCardFlowRecord, *activePlanProposalRecord, []control.UIEvent) {
+func (s *Service) requireActivePlanProposal(surface *state.SurfaceConsoleRecord, proposalID, actorUserID string) (*activeOwnerCardFlowRecord, *activePlanProposalRecord, []eventcontract.Event) {
 	flow, blocked := s.requireActiveOwnerCardFlow(
 		surface,
 		ownerCardFlowKindPlanProposal,
@@ -171,7 +172,7 @@ func (s *Service) requireActivePlanProposal(surface *state.SurfaceConsoleRecord,
 	return flow, record, nil
 }
 
-func (s *Service) sealPlanProposal(surface *state.SurfaceConsoleRecord, inlineMessageID, text, theme string, inlineReplace bool) []control.UIEvent {
+func (s *Service) sealPlanProposal(surface *state.SurfaceConsoleRecord, inlineMessageID, text, theme string, inlineReplace bool) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -183,10 +184,10 @@ func (s *Service) sealPlanProposal(surface *state.SurfaceConsoleRecord, inlineMe
 	}
 	event := planProposalEvent(surface, flow, record, inlineMessageID, text, theme, nil, true, inlineReplace)
 	s.clearPlanProposalRuntime(surface)
-	return []control.UIEvent{event}
+	return []eventcontract.Event{event}
 }
 
-func (s *Service) maybeSealPlanProposalForInput(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) maybeSealPlanProposalForInput(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	record := s.activePlanProposal(surface)
 	if record == nil {
 		return nil
@@ -194,7 +195,7 @@ func (s *Service) maybeSealPlanProposalForInput(surface *state.SurfaceConsoleRec
 	return s.sealPlanProposal(surface, "", "检测到新的输入，当前提案计划已失效。", "info", false)
 }
 
-func (s *Service) maybeSealPlanProposalForRouteChange(surface *state.SurfaceConsoleRecord, reason string) []control.UIEvent {
+func (s *Service) maybeSealPlanProposalForRouteChange(surface *state.SurfaceConsoleRecord, reason string) []eventcontract.Event {
 	record := s.activePlanProposal(surface)
 	if record == nil {
 		return nil
@@ -202,7 +203,7 @@ func (s *Service) maybeSealPlanProposalForRouteChange(surface *state.SurfaceCons
 	return s.sealPlanProposal(surface, "", firstNonEmpty(strings.TrimSpace(reason), "当前工作目标已变化，当前提案计划已失效。"), "info", false)
 }
 
-func (s *Service) maybeSealPlanProposalForTurnStart(instanceID, threadID, turnID string) []control.UIEvent {
+func (s *Service) maybeSealPlanProposalForTurnStart(instanceID, threadID, turnID string) []eventcontract.Event {
 	if strings.TrimSpace(threadID) == "" || strings.TrimSpace(turnID) == "" {
 		return nil
 	}
@@ -220,7 +221,7 @@ func (s *Service) maybeSealPlanProposalForTurnStart(instanceID, threadID, turnID
 	return s.sealPlanProposal(surface, "", "当前会话已开始新的执行，之前的提案计划已失效。", "info", false)
 }
 
-func (s *Service) storePendingPlanProposal(instanceID, threadID, turnID, itemID, itemKind, text string) []control.UIEvent {
+func (s *Service) storePendingPlanProposal(instanceID, threadID, turnID, itemID, itemKind, text string) []eventcontract.Event {
 	key := turnRenderKey(instanceID, threadID, turnID)
 	s.progress.pendingPlanProposal[key] = &completedTextItem{
 		InstanceID: instanceID,
@@ -264,7 +265,7 @@ func (s *Service) shouldSuppressPlanProposal(surface *state.SurfaceConsoleRecord
 	}
 }
 
-func (s *Service) maybePresentCompletedPlanProposal(instanceID, threadID, turnID string) []control.UIEvent {
+func (s *Service) maybePresentCompletedPlanProposal(instanceID, threadID, turnID string) []eventcontract.Event {
 	pending := s.takePendingPlanProposal(instanceID, threadID, turnID)
 	if pending == nil || strings.TrimSpace(pending.Text) == "" {
 		return nil
@@ -313,7 +314,7 @@ func planProposalActionPreview(optionID string) string {
 	}
 }
 
-func (s *Service) handlePlanProposalDecision(surface *state.SurfaceConsoleRecord, action control.Action) []control.UIEvent {
+func (s *Service) handlePlanProposalDecision(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	_, proposal, blocked := s.requireActivePlanProposal(surface, action.PickerID, action.ActorUserID)
 	if blocked != nil {
 		return blocked

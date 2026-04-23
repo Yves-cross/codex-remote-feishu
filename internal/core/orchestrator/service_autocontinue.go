@@ -7,18 +7,19 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const autoContinuePromptText = "你看还有没有别的任务需要完成，有就继续做，没有就说\"老板不要再打我了，真的没有事情干了\""
 const autoContinueStopPhrase = "老板不要再打我了，真的没有事情干了"
 
-func autoContinueNotice(surface *state.SurfaceConsoleRecord, code, title, text string) []control.UIEvent {
+func autoContinueNotice(surface *state.SurfaceConsoleRecord, code, title, text string) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
-	return []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
@@ -45,7 +46,7 @@ func formatAutoContinueDelay(value time.Duration) string {
 	return fmt.Sprintf("%d分%d秒", minutes, seconds)
 }
 
-func autoContinueRetryScheduledNotice(surface *state.SurfaceConsoleRecord, count, max int, delay time.Duration) []control.UIEvent {
+func autoContinueRetryScheduledNotice(surface *state.SurfaceConsoleRecord, count, max int, delay time.Duration) []eventcontract.Event {
 	return autoContinueNotice(
 		surface,
 		"auto_continue_retry_scheduled",
@@ -54,7 +55,7 @@ func autoContinueRetryScheduledNotice(surface *state.SurfaceConsoleRecord, count
 	)
 }
 
-func autoContinueWhipStartedNotice(surface *state.SurfaceConsoleRecord, count int) []control.UIEvent {
+func autoContinueWhipStartedNotice(surface *state.SurfaceConsoleRecord, count int) []eventcontract.Event {
 	return autoContinueNotice(
 		surface,
 		"auto_continue_whip_started",
@@ -63,7 +64,7 @@ func autoContinueWhipStartedNotice(surface *state.SurfaceConsoleRecord, count in
 	)
 }
 
-func autoContinueCompletedNotice(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func autoContinueCompletedNotice(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	return autoContinueNotice(
 		surface,
 		"auto_continue_completed",
@@ -177,7 +178,7 @@ func (s *Service) nextAutoContinueAttempt(surface *state.SurfaceConsoleRecord, r
 	return count, delay, max, ok
 }
 
-func (s *Service) scheduleAutoContinue(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID string, reason state.AutoContinueReason) []control.UIEvent {
+func (s *Service) scheduleAutoContinue(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID string, reason state.AutoContinueReason) []eventcontract.Event {
 	if surface == nil || item == nil {
 		return nil
 	}
@@ -227,7 +228,7 @@ func (s *Service) autoContinueSurfaceReady(surface *state.SurfaceConsoleRecord) 
 	return true
 }
 
-func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID, status string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []control.UIEvent {
+func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID, status string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []eventcontract.Event {
 	if surface == nil || item == nil || !surface.AutoContinue.Enabled {
 		return nil
 	}
@@ -250,7 +251,7 @@ func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.Surfac
 	return autoContinueCompletedNotice(surface)
 }
 
-func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsoleRecord, now time.Time) []control.UIEvent {
+func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsoleRecord, now time.Time) []eventcontract.Event {
 	if surface == nil || !surface.AutoContinue.Enabled || surface.AutoContinue.PendingReason == "" || surface.AutoContinue.PendingDueAt.IsZero() {
 		return nil
 	}
@@ -277,7 +278,7 @@ func (s *Service) maybeDispatchPendingAutoContinue(surface *state.SurfaceConsole
 	reason := surface.AutoContinue.PendingReason
 	count := surface.AutoContinue.ConsecutiveCount
 	s.clearAutoContinuePending(surface)
-	events := make([]control.UIEvent, 0, 2)
+	events := make([]eventcontract.Event, 0, 2)
 	if reason == state.AutoContinueReasonIncompleteStop {
 		events = append(events, autoContinueWhipStartedNotice(surface, count)...)
 	}

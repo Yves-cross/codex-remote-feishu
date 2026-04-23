@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func catalogSummaryText(catalog *control.FeishuPageView) string {
@@ -32,7 +33,7 @@ func catalogSummaryText(catalog *control.FeishuPageView) string {
 	return strings.Join(parts, "\n")
 }
 
-func catalogFromUIEvent(t *testing.T, event control.UIEvent) *control.FeishuPageView {
+func catalogFromUIEvent(t *testing.T, event eventcontract.Event) *control.FeishuPageView {
 	t.Helper()
 	if event.FeishuPageView != nil {
 		page := control.NormalizeFeishuPageView(*event.FeishuPageView)

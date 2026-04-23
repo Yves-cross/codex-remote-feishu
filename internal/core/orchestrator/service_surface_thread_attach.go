@@ -6,16 +6,17 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string, allowCrossWorkspace bool) []control.UIEvent {
+func (s *Service) useThread(surface *state.SurfaceConsoleRecord, threadID string, allowCrossWorkspace bool) []eventcontract.Event {
 	threadID = strings.TrimSpace(threadID)
 	target := s.resolveThreadTargetWithScope(surface, threadID, allowCrossWorkspace)
 	return s.executeResolvedThreadTarget(surface, threadID, target)
 }
 
-func (s *Service) executeResolvedThreadTarget(surface *state.SurfaceConsoleRecord, threadID string, target resolvedThreadTarget) []control.UIEvent {
+func (s *Service) executeResolvedThreadTarget(surface *state.SurfaceConsoleRecord, threadID string, target resolvedThreadTarget) []eventcontract.Event {
 	switch target.Mode {
 	case threadAttachCurrentVisible:
 		return s.useAttachedVisibleThread(surface, threadID)
@@ -36,11 +37,11 @@ func (s *Service) executeResolvedThreadTarget(surface *state.SurfaceConsoleRecor
 	}
 }
 
-func (s *Service) useAttachedVisibleThread(surface *state.SurfaceConsoleRecord, threadID string) []control.UIEvent {
+func (s *Service) useAttachedVisibleThread(surface *state.SurfaceConsoleRecord, threadID string) []eventcontract.Event {
 	return s.useAttachedVisibleThreadMode(surface, threadID, s.surfaceThreadPickRouteMode(surface))
 }
 
-func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleRecord, threadID string, routeMode state.RouteMode) []control.UIEvent {
+func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleRecord, threadID string, routeMode state.RouteMode) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
@@ -50,7 +51,7 @@ func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleReco
 			return blocked
 		}
 	}
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.RouteMode == state.RouteModeNewThreadReady {
 		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
 			return blocked
@@ -109,7 +110,7 @@ func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleReco
 	return notice(surface, "selection_unchanged", fmt.Sprintf("当前输入目标保持为：%s", title))
 }
 
-func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, view *mergedThreadView, mode attachSurfaceToKnownThreadMode) []control.UIEvent {
+func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, view *mergedThreadView, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if surface == nil || inst == nil || view == nil || strings.TrimSpace(view.ThreadID) == "" {
 		return nil
 	}
@@ -124,7 +125,7 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 		return attachSurfaceToKnownThreadInstanceBusyNotice(surface, inst, mode)
 	}
 
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID != "" {
 		events = append(events, s.discardDrafts(surface)...)
 		events = append(events, s.finalizeDetachedSurface(surface)...)
@@ -219,8 +220,8 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 			Title:     title,
 			Preview:   preview,
 		}
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_restore_attached",
@@ -236,8 +237,8 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 			Title:     title,
 			Preview:   preview,
 		}
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "surface_resume_attached",
@@ -247,8 +248,8 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 		})
 	} else {
 		attachLead := s.attachedLeadText(surface, inst)
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "attached",
@@ -262,21 +263,21 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 	return events
 }
 
-func (s *Service) startHeadlessForResolvedThread(surface *state.SurfaceConsoleRecord, view *mergedThreadView) []control.UIEvent {
+func (s *Service) startHeadlessForResolvedThread(surface *state.SurfaceConsoleRecord, view *mergedThreadView) []eventcontract.Event {
 	return s.startHeadlessForResolvedThreadWithMode(surface, view, startHeadlessModeDefault)
 }
 
-func attachSurfaceToKnownThreadInstanceBusyNotice(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, mode attachSurfaceToKnownThreadMode) []control.UIEvent {
+func attachSurfaceToKnownThreadInstanceBusyNotice(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("workspace_instance_busy"),
 		}}
@@ -287,17 +288,17 @@ func attachSurfaceToKnownThreadInstanceBusyNotice(surface *state.SurfaceConsoleR
 	return notice(surface, "instance_busy", fmt.Sprintf("%s 当前已被其他飞书会话接管，请等待对方 /detach。", inst.DisplayName))
 }
 
-func attachSurfaceToKnownThreadThreadBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []control.UIEvent {
+func attachSurfaceToKnownThreadThreadBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("thread_busy"),
 		}}
@@ -305,17 +306,17 @@ func attachSurfaceToKnownThreadThreadBusyNotice(surface *state.SurfaceConsoleRec
 	return notice(surface, "thread_busy", "目标会话当前已被其他飞书会话占用。")
 }
 
-func attachSurfaceToKnownThreadWorkspaceBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []control.UIEvent {
+func attachSurfaceToKnownThreadWorkspaceBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("workspace_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
-		return []control.UIEvent{{
-			Kind:             control.UIEventNotice,
+		return []eventcontract.Event{{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("workspace_busy"),
 		}}
@@ -323,15 +324,15 @@ func attachSurfaceToKnownThreadWorkspaceBusyNotice(surface *state.SurfaceConsole
 	return notice(surface, "workspace_busy", "目标 workspace 当前已被其他飞书会话接管。")
 }
 
-func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceConsoleRecord, view *mergedThreadView, mode startHeadlessMode) []control.UIEvent {
+func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceConsoleRecord, view *mergedThreadView, mode startHeadlessMode) []eventcontract.Event {
 	if surface == nil || view == nil {
 		return nil
 	}
 	cwd := strings.TrimSpace(threadCWD(view))
 	if cwd == "" {
 		if mode == startHeadlessModeHeadlessRestore {
-			return []control.UIEvent{{
-				Kind:             control.UIEventNotice,
+			return []eventcontract.Event{{
+				Kind:             eventcontract.EventNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           headlessRestoreFailureNotice("thread_cwd_missing"),
 			}}
@@ -340,8 +341,8 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 	}
 	if owner := s.workspaceBusyOwnerForSurface(surface, cwd); owner != nil {
 		if mode == startHeadlessModeHeadlessRestore {
-			return []control.UIEvent{{
-				Kind:             control.UIEventNotice,
+			return []eventcontract.Event{{
+				Kind:             eventcontract.EventNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           headlessRestoreFailureNotice("workspace_busy"),
 			}}
@@ -362,7 +363,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 		sourceInstanceID = view.Inst.InstanceID
 	}
 
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID != "" {
 		events = append(events, s.discardDrafts(surface)...)
 		events = append(events, s.finalizeDetachedSurface(surface)...)
@@ -376,8 +377,8 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 	if !s.claimWorkspace(surface, cwd) {
 		if s.surfaceUsesWorkspaceClaims(surface) {
 			if mode == startHeadlessModeHeadlessRestore {
-				return append(events, control.UIEvent{
-					Kind:             control.UIEventNotice,
+				return append(events, eventcontract.Event{
+					Kind:             eventcontract.EventNotice,
 					SurfaceSessionID: surface.SurfaceSessionID,
 					Notice:           headlessRestoreFailureNotice("workspace_busy"),
 				})
@@ -401,8 +402,8 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 		AutoRestore:      mode == startHeadlessModeHeadlessRestore,
 	}
 	if mode == startHeadlessModeDefault {
-		events = append(events, control.UIEvent{
-			Kind:             control.UIEventNotice,
+		events = append(events, eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_starting",
@@ -411,8 +412,8 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 			},
 		})
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventDaemonCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandStartHeadless,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -415,7 +416,7 @@ func refreshOwnerCardFlow(flow *activeOwnerCardFlowRecord, phase ownerCardFlowPh
 	bumpOwnerCardFlowRevision(flow)
 }
 
-func (s *Service) requireActiveOwnerCardFlow(surface *state.SurfaceConsoleRecord, kind ownerCardFlowKind, flowID, actorUserID, expiredText, unauthorizedText string) (*activeOwnerCardFlowRecord, []control.UIEvent) {
+func (s *Service) requireActiveOwnerCardFlow(surface *state.SurfaceConsoleRecord, kind ownerCardFlowKind, flowID, actorUserID, expiredText, unauthorizedText string) (*activeOwnerCardFlowRecord, []eventcontract.Event) {
 	if surface == nil || s.activeOwnerCardFlow(surface) == nil {
 		return nil, notice(surface, "owner_card_expired", strings.TrimSpace(expiredText))
 	}

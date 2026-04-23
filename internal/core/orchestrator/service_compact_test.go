@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -512,7 +513,7 @@ func TestCompactTurnCompletedWithoutCompactionItemFallsBackToTerminalOwnerCard(t
 	}
 }
 
-func requireCompactStartEvents(t *testing.T, events []control.UIEvent) (*control.FeishuPageView, *agentproto.Command) {
+func requireCompactStartEvents(t *testing.T, events []eventcontract.Event) (*control.FeishuPageView, *agentproto.Command) {
 	t.Helper()
 	if len(events) != 2 {
 		t.Fatalf("expected compact owner card plus agent command, got %#v", events)

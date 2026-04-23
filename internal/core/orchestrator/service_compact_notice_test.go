@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -41,7 +42,7 @@ func TestContextCompactionRendersSingleNoticeOnAttachedSurface(t *testing.T) {
 		ItemKind: "context_compaction",
 	})
 
-	if len(events) != 1 || events[0].Kind != control.UIEventExecCommandProgress || events[0].ExecCommandProgress == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.EventExecCommandProgress || events[0].ExecCommandProgress == nil {
 		t.Fatalf("expected compact progress event, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress
@@ -87,7 +88,7 @@ func TestContextCompactionNormalVerbosityShowsAttachedSurfaceCard(t *testing.T) 
 		ItemID:   "compact-1",
 		ItemKind: "context_compaction",
 	})
-	if len(events) != 1 || events[0].Kind != control.UIEventExecCommandProgress || events[0].ExecCommandProgress == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.EventExecCommandProgress || events[0].ExecCommandProgress == nil {
 		t.Fatalf("expected normal verbosity to show compact card, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress

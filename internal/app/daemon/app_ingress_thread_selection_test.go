@@ -4,12 +4,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestFilterUIEventsByFollowupPolicyDropsThreadSelectionOnly(t *testing.T) {
-	events := []control.UIEvent{
+	events := []eventcontract.Event{
 		{
-			Kind: control.UIEventNotice,
+			Kind: eventcontract.EventNotice,
 			Notice: &control.Notice{
 				Code: "thread_selection_changed",
 			},
@@ -18,7 +19,7 @@ func TestFilterUIEventsByFollowupPolicyDropsThreadSelectionOnly(t *testing.T) {
 			},
 		},
 		{
-			Kind: control.UIEventNotice,
+			Kind: eventcontract.EventNotice,
 			Notice: &control.Notice{
 				Code: "some_other_notice",
 			},

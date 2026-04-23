@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -25,7 +26,7 @@ func TestHelpActionBuildsPageCatalogEvent(t *testing.T) {
 		t.Fatalf("expected page catalog event, got %#v", events)
 	}
 	catalog := commandCatalogFromEvent(t, events[0])
-	if events[0].Kind != control.UIEventFeishuPageView {
+	if events[0].Kind != eventcontract.EventFeishuPageView {
 		t.Fatalf("unexpected event kind: %#v", events[0])
 	}
 	if catalog.Interactive {

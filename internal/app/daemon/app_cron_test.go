@@ -17,6 +17,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -601,7 +602,7 @@ func TestCronShowReturnsCatalogWithoutEnteringMutatingGate(t *testing.T) {
 		GatewayID:        "gateway-2",
 		SurfaceSessionID: "surface-2",
 	})
-	if len(events) != 1 || events[0].Kind != control.UIEventFeishuPageView {
+	if len(events) != 1 || events[0].Kind != eventcontract.EventFeishuPageView {
 		t.Fatalf("events = %#v, want one direct page card", events)
 	}
 	if !app.cronRuntime.syncInFlight {

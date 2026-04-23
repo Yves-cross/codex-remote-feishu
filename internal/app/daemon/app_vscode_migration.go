@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -90,15 +91,15 @@ func (a *App) surfaceRunsVSCodeModeLocked(surfaceID string) bool {
 	return state.NormalizeProductMode(state.ProductMode(snapshot.ProductMode)) == state.ProductModeVSCode
 }
 
-func (a *App) maybePromptVSCodeCompatibilityLocked(surfaceFilter string) ([]control.UIEvent, bool) {
+func (a *App) maybePromptVSCodeCompatibilityLocked(surfaceFilter string) ([]eventcontract.Event, bool) {
 	return a.promptVSCodeCompatibilityAtLocked(surfaceFilter, time.Now().UTC(), false, "")
 }
 
-func (a *App) maybePromptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.Time) ([]control.UIEvent, bool) {
+func (a *App) maybePromptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.Time) ([]eventcontract.Event, bool) {
 	return a.promptVSCodeCompatibilityAtLocked(surfaceFilter, now, false, "")
 }
 
-func (a *App) promptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.Time, forceSync bool, inlineSourceMessageID string) ([]control.UIEvent, bool) {
+func (a *App) promptVSCodeCompatibilityAtLocked(surfaceFilter string, now time.Time, forceSync bool, inlineSourceMessageID string) ([]eventcontract.Event, bool) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -155,8 +156,8 @@ func (a *App) setCachedVSCodeCompatibilityIssueLocked(issue *vscodeCompatibility
 	a.vscodeCompatibility.NextRetryAt = time.Time{}
 }
 
-func (a *App) vscodeCompatibilityPromptEventsLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string, issue vscodeCompatibilityIssue) []control.UIEvent {
-	events := make([]control.UIEvent, 0, len(targets))
+func (a *App) vscodeCompatibilityPromptEventsLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string, issue vscodeCompatibilityIssue) []eventcontract.Event {
+	events := make([]eventcontract.Event, 0, len(targets))
 	for _, target := range targets {
 		inlineReplace := strings.TrimSpace(surfaceFilter) != "" &&
 			strings.TrimSpace(target.SurfaceSessionID) == strings.TrimSpace(surfaceFilter) &&
@@ -184,7 +185,7 @@ func (a *App) vscodeCompatibilityPromptEventsLocked(targets []vscodeCompatibilit
 	return events
 }
 
-func (a *App) handleSilentVSCodeAutoMigrationLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string) ([]control.UIEvent, bool) {
+func (a *App) handleSilentVSCodeAutoMigrationLocked(targets []vscodeCompatibilityPromptTarget, surfaceFilter, inlineSourceMessageID string) ([]eventcontract.Event, bool) {
 	a.mu.Unlock()
 	err := a.applyVSCodeIntegration(vscodeApplyRequest{Mode: "managed_shim"})
 	a.mu.Lock()
@@ -366,9 +367,9 @@ func (a *App) detachedVSCodeCompatibilityTargetsLocked(surfaceFilter string) []v
 	return targets
 }
 
-func (a *App) handleVSCodeMigrateCommandPage(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleVSCodeMigrateCommandPage(command control.DaemonCommand) []eventcontract.Event {
 	if !a.surfaceRunsVSCodeModeLocked(command.SurfaceSessionID) {
-		return []control.UIEvent{vscodeMigrationStandaloneEvent(
+		return []eventcontract.Event{vscodeMigrationStandaloneEvent(
 			command.SurfaceSessionID,
 			command.FromCardAction && strings.TrimSpace(command.SourceMessageID) != "",
 			"仅 VS Code 模式可用",
@@ -394,7 +395,7 @@ func (a *App) handleVSCodeMigrateCommandPage(command control.DaemonCommand) []co
 	issue, err := a.currentVSCodeCompatibilityIssue()
 	a.mu.Lock()
 	if err != nil {
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_check_failed",
 			Title: "VS Code 迁移检查失败",
 			Text:  fmt.Sprintf("无法检查当前 VS Code 接入状态：%v", err),
@@ -402,7 +403,7 @@ func (a *App) handleVSCodeMigrateCommandPage(command control.DaemonCommand) []co
 	}
 	if issue == nil {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_not_needed",
 			Title: "无需迁移",
 			Text:  "当前 VS Code 接入已经是最新状态，无需再次迁移。",
@@ -411,10 +412,10 @@ func (a *App) handleVSCodeMigrateCommandPage(command control.DaemonCommand) []co
 	a.refreshVSCodeMigrationFlowLocked(flow, issue.Key)
 	event := vscodeMigrationPromptEvent(command.SurfaceSessionID, flow, inlineReplace, *issue)
 	event.GatewayID = command.GatewayID
-	return []control.UIEvent{event}
+	return []eventcontract.Event{event}
 }
 
-func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []control.UIEvent {
+func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []eventcontract.Event {
 	flow, blocked := a.requireVSCodeMigrationFlowLocked(
 		command.SurfaceSessionID,
 		command.PickerID,
@@ -429,7 +430,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	}
 	if strings.TrimSpace(command.OptionID) != "" && strings.TrimSpace(command.OptionID) != vscodeMigrationOwnerActionRun {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_failed",
 			Title: "无法执行迁移",
 			Text:  "不支持的 VS Code 迁移动作，请重新发送 `/vscode-migrate`。",
@@ -440,7 +441,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	a.mu.Lock()
 	if err != nil {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_check_failed",
 			Title: "VS Code 迁移检查失败",
 			Text:  fmt.Sprintf("无法检查当前 VS Code 接入状态：%v", err),
@@ -449,7 +450,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	issue := classifyVSCodeCompatibilityIssue(detect)
 	if issue == nil {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_not_needed",
 			Title: "无需迁移",
 			Text:  "当前 VS Code 接入已经是最新状态，无需再次迁移。",
@@ -462,7 +463,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	if err != nil {
 		log.Printf("apply vscode migration failed: surface=%s err=%v", command.SurfaceSessionID, err)
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_failed",
 			Title: "迁移失败",
 			Text:  fmt.Sprintf("迁移扩展入口失败：%v。请确认 VS Code 已关闭，并且这台机器上的 Codex 扩展已经安装后再重试。", err),
@@ -475,7 +476,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	a.mu.Lock()
 	if err != nil {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_applied_detect_failed",
 			Title: "迁移已执行",
 			Text:  fmt.Sprintf("扩展入口已经更新，但后续状态检查失败：%v。请重新打开 VS Code 后再试。", err),
@@ -483,7 +484,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 	}
 	if remaining != nil {
 		a.refreshVSCodeMigrationFlowLocked(flow, "")
-		return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+		return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 			Code:  "vscode_migration_incomplete",
 			Title: "迁移未完成",
 			Text:  remaining.Summary,
@@ -492,7 +493,7 @@ func (a *App) handleVSCodeMigrateCommand(command control.DaemonCommand) []contro
 
 	a.refreshVSCodeMigrationFlowLocked(flow, "")
 	a.surfaceResumeRuntime.vscodeResumeNotices[strings.TrimSpace(command.SurfaceSessionID)] = true
-	return []control.UIEvent{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
+	return []eventcontract.Event{vscodeMigrationNoticeEvent(command.SurfaceSessionID, flow, inlineReplace, &control.Notice{
 		Code:  "vscode_migration_applied",
 		Title: issue.Title,
 		Text:  issue.SuccessText,

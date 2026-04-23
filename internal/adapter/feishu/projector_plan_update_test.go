@@ -6,12 +6,13 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectPlanUpdateCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventPlanUpdated,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventPlanUpdated,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om_1",
@@ -59,8 +60,8 @@ func TestProjectPlanUpdateCard(t *testing.T) {
 
 func TestProjectPlanUpdateWithoutStepsShowsFallback(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventPlanUpdated,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventPlanUpdated,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
 		PlanUpdate:       &control.PlanUpdate{},

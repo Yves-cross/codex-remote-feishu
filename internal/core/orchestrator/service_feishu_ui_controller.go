@@ -2,26 +2,27 @@ package orchestrator
 
 import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) ApplyFeishuUIIntent(action control.Action, intent control.FeishuUIIntent) []control.UIEvent {
+func (s *Service) ApplyFeishuUIIntent(action control.Action, intent control.FeishuUIIntent) []eventcontract.Event {
 	surface := s.ensureSurface(action)
 	return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, intent))
 }
 
-func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, intent control.FeishuUIIntent) []control.UIEvent {
+func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, intent control.FeishuUIIntent) []eventcontract.Event {
 	switch intent.Kind {
 	case control.FeishuUIIntentShowWorkspaceRoot:
 		if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 			return notice(surface, "workspace_normal_only", "当前处于 vscode 模式，请先 `/mode normal`。")
 		}
-		return []control.UIEvent{s.workspacePageEvent(surface, control.FeishuCommandWorkspace, s.workspacePageTriggeredFromMenu(surface, intent.SourceMessageID))}
+		return []eventcontract.Event{s.workspacePageEvent(surface, control.FeishuCommandWorkspace, s.workspacePageTriggeredFromMenu(surface, intent.SourceMessageID))}
 	case control.FeishuUIIntentShowWorkspaceNew:
 		if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 			return notice(surface, "workspace_normal_only", "当前处于 vscode 模式，请先 `/mode normal`。")
 		}
-		return []control.UIEvent{s.workspacePageEvent(surface, control.FeishuCommandWorkspaceNew, s.workspacePageTriggeredFromMenu(surface, intent.SourceMessageID))}
+		return []eventcontract.Event{s.workspacePageEvent(surface, control.FeishuCommandWorkspaceNew, s.workspacePageTriggeredFromMenu(surface, intent.SourceMessageID))}
 	case control.FeishuUIIntentShowWorkspaceList:
 		if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
 			return notice(surface, "workspace_normal_only", "当前处于 vscode 模式，请先 `/mode normal`。")
@@ -38,23 +39,23 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		}
 		return s.openTargetPicker(surface, control.TargetPickerRequestSourceGit, "", s.workspacePageParentCommand(surface, intent.SourceMessageID), intent.SourceMessageID, true)
 	case control.FeishuUIIntentShowCommandMenu:
-		return []control.UIEvent{s.menuPageEvent(surface, intent.RawText)}
+		return []eventcontract.Event{s.menuPageEvent(surface, intent.RawText)}
 	case control.FeishuUIIntentShowHistory:
 		return s.openThreadHistory(surface, intent.SourceMessageID, intent.Inline)
 	case control.FeishuUIIntentShowModeCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildModeCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModeCommandView(surface))}
 	case control.FeishuUIIntentShowAutoContinueCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildAutoContinueCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoContinueCommandView(surface))}
 	case control.FeishuUIIntentShowReasoningCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildReasoningCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildReasoningCommandView(surface))}
 	case control.FeishuUIIntentShowAccessCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildAccessCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAccessCommandView(surface))}
 	case control.FeishuUIIntentShowPlanCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildPlanCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildPlanCommandView(surface))}
 	case control.FeishuUIIntentShowModelCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildModelCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModelCommandView(surface))}
 	case control.FeishuUIIntentShowVerboseCatalog:
-		return []control.UIEvent{s.configPageEventFromCatalogView(surface, s.buildVerboseCommandView(surface))}
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildVerboseCommandView(surface))}
 	case control.FeishuUIIntentShowList:
 		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
 			return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, "", "", intent.SourceMessageID, true)

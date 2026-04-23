@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -208,7 +209,7 @@ func TestRenderProcessAssistantTextUsesTurnReplyAnchor(t *testing.T) {
 	startReplyAutoSteerTurn(svc)
 
 	events := svc.renderTextItemWithSummary("inst-1", "thread-1", "turn-1", "item-1", "我先看一下目录结构。", false, nil, nil, nil)
-	if len(events) != 1 || events[0].Kind != control.UIEventBlockCommitted || events[0].Block == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.EventBlockCommitted || events[0].Block == nil {
 		t.Fatalf("expected one process block event, got %#v", events)
 	}
 	if events[0].SourceMessageID != "msg-active" {

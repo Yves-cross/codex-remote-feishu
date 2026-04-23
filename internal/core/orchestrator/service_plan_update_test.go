@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -78,7 +79,7 @@ func TestTurnPlanUpdateEmitsNeutralEventAndDedupesPerSurface(t *testing.T) {
 			},
 		},
 	})
-	if len(first) != 1 || first[0].Kind != control.UIEventPlanUpdated || first[0].PlanUpdate == nil {
+	if len(first) != 1 || first[0].Kind != eventcontract.EventPlanUpdated || first[0].PlanUpdate == nil {
 		t.Fatalf("expected one neutral plan update event, got %#v", first)
 	}
 	if first[0].PlanUpdate.Explanation != "先打通协议。" || len(first[0].PlanUpdate.Steps) != 2 {
@@ -121,7 +122,7 @@ func TestTurnPlanUpdateEmitsNeutralEventAndDedupesPerSurface(t *testing.T) {
 			},
 		},
 	})
-	if len(changed) != 1 || changed[0].Kind != control.UIEventPlanUpdated || changed[0].PlanUpdate == nil {
+	if len(changed) != 1 || changed[0].Kind != eventcontract.EventPlanUpdated || changed[0].PlanUpdate == nil {
 		t.Fatalf("expected changed snapshot to emit a new plan event, got %#v", changed)
 	}
 	if changed[0].PlanUpdate.Steps[1].Status != agentproto.TurnPlanStepStatusCompleted {
@@ -169,10 +170,10 @@ func TestTurnPlanUpdateFlushesPendingTextBeforePlanEvent(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("expected pending text flush plus plan event, got %#v", events)
 	}
-	if events[0].Kind != control.UIEventBlockCommitted || events[0].Block == nil || events[0].Block.Text != "我先把协议接通。" {
+	if events[0].Kind != eventcontract.EventBlockCommitted || events[0].Block == nil || events[0].Block.Text != "我先把协议接通。" {
 		t.Fatalf("expected first event to flush pending assistant text, got %#v", events)
 	}
-	if events[1].Kind != control.UIEventPlanUpdated || events[1].PlanUpdate == nil {
+	if events[1].Kind != eventcontract.EventPlanUpdated || events[1].PlanUpdate == nil {
 		t.Fatalf("expected second event to be neutral plan update, got %#v", events)
 	}
 }

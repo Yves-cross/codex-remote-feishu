@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func TestProjectThreadHistoryLoadingCreatesPatchableDirectCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventFeishuThreadHistory,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventFeishuThreadHistory,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		FeishuThreadHistoryView: &control.FeishuThreadHistoryView{
@@ -32,8 +33,8 @@ func TestProjectThreadHistoryLoadingCreatesPatchableDirectCard(t *testing.T) {
 
 func TestProjectThreadHistoryUpdatesExistingCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventFeishuThreadHistory,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventFeishuThreadHistory,
 		SurfaceSessionID: "surface-1",
 		FeishuThreadHistoryView: &control.FeishuThreadHistoryView{
 			PickerID:    "history-1",

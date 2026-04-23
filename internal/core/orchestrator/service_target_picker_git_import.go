@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/core/workspaceimport"
 )
@@ -16,11 +17,11 @@ type feishuCardStatusPayload struct {
 	Footer   string
 }
 
-func (s *Service) respondLocalRequest(surface *state.SurfaceConsoleRecord, _ *state.RequestPromptRecord, _ control.Action) []control.UIEvent {
+func (s *Service) respondLocalRequest(surface *state.SurfaceConsoleRecord, _ *state.RequestPromptRecord, _ control.Action) []eventcontract.Event {
 	return notice(surface, "request_unsupported", "这张本地交互卡片已经失效，请重新发送最新命令。")
 }
 
-func (s *Service) CompleteTargetPickerGitImport(surfaceSessionID, pickerID, workspaceKey string) []control.UIEvent {
+func (s *Service) CompleteTargetPickerGitImport(surfaceSessionID, pickerID, workspaceKey string) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceSessionID]
 	if surface == nil {
 		return nil
@@ -52,7 +53,7 @@ func (s *Service) CompleteTargetPickerGitImport(surfaceSessionID, pickerID, work
 	return s.finishTargetPickerWithStageAndSections(surface, flow, record, control.FeishuTargetPickerStageFailed, "导入失败", "", status.Sections, status.Footer, false, filtered)
 }
 
-func (s *Service) FailTargetPickerGitImport(surfaceSessionID, pickerID string, importErr *workspaceimport.ImportError) []control.UIEvent {
+func (s *Service) FailTargetPickerGitImport(surfaceSessionID, pickerID string, importErr *workspaceimport.ImportError) []eventcontract.Event {
 	surface := s.root.Surfaces[surfaceSessionID]
 	if surface == nil {
 		return nil
@@ -72,12 +73,12 @@ func (s *Service) FailTargetPickerGitImport(surfaceSessionID, pickerID string, i
 	return s.finishTargetPickerWithStageAndSections(surface, flow, record, control.FeishuTargetPickerStageFailed, "导入失败", "", status.Sections, status.Footer, false, nil)
 }
 
-func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) []control.UIEvent {
+func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return nil
 	}
-	events := []control.UIEvent{{
-		Kind:             control.UIEventDaemonCommand,
+	events := []eventcontract.Event{{
+		Kind:             eventcontract.EventDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandGitWorkspaceImportCancel,
@@ -91,8 +92,8 @@ func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecor
 	}
 	surface.PendingHeadless = nil
 	events = append(events, s.finalizeDetachedSurface(surface)...)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventDaemonCommand,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,
@@ -106,7 +107,7 @@ func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecor
 	return events
 }
 
-func targetPickerGitImportFlowStale(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+func targetPickerGitImportFlowStale(surface *state.SurfaceConsoleRecord, workspaceKey string) []eventcontract.Event {
 	return notice(surface, "git_import_flow_stale", fmt.Sprintf("仓库已拉取到 `%s`，但原始选择流程已经失效。目录会保留，你可以稍后通过“添加工作区 / 本地目录”继续接入。", workspaceKey))
 }
 

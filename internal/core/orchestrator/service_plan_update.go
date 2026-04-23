@@ -5,6 +5,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func turnPlanSnapshotKey(surfaceID, instanceID, threadID, turnID string) string {
@@ -71,7 +72,7 @@ func planUpdateFromSnapshot(threadID, turnID string, snapshot *agentproto.TurnPl
 	return update
 }
 
-func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event) []control.UIEvent {
+func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event) []eventcontract.Event {
 	if event.PlanSnapshot == nil || strings.TrimSpace(event.ThreadID) == "" || strings.TrimSpace(event.TurnID) == "" {
 		return nil
 	}
@@ -95,8 +96,8 @@ func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event)
 		return nil
 	}
 	sourceMessageID, _ := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
-	return []control.UIEvent{{
-		Kind:             control.UIEventPlanUpdated,
+	return []eventcontract.Event{{
+		Kind:             eventcontract.EventPlanUpdated,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  sourceMessageID,

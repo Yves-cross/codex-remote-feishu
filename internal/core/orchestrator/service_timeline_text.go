@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -26,7 +27,7 @@ type forwardedChatNode struct {
 	Items       []forwardedChatNode `json:"items,omitempty"`
 }
 
-func (s *Service) steerUserSupplementEvent(surface *state.SurfaceConsoleRecord, binding *pendingSteerBinding) *control.UIEvent {
+func (s *Service) steerUserSupplementEvent(surface *state.SurfaceConsoleRecord, binding *pendingSteerBinding) *eventcontract.Event {
 	if surface == nil || binding == nil {
 		return nil
 	}
@@ -39,8 +40,8 @@ func (s *Service) steerUserSupplementEvent(surface *state.SurfaceConsoleRecord, 
 	if text == "" {
 		return nil
 	}
-	return &control.UIEvent{
-		Kind:                 control.UIEventTimelineText,
+	return &eventcontract.Event{
+		Kind:                 eventcontract.EventTimelineText,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		SourceMessageID:      replyToMessageID,
 		SourceMessagePreview: replyToMessagePreview,

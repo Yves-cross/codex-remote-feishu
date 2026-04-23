@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/core/workspaceimport"
 )
@@ -57,7 +58,7 @@ func targetPickerAnswerValue(answers map[string][]string, key string) (string, b
 	return strings.TrimSpace(values[0]), true
 }
 
-func (s *Service) handleTargetPickerOpenPathPicker(surface *state.SurfaceConsoleRecord, pickerID, fieldKind, actorUserID string, answers map[string][]string) []control.UIEvent {
+func (s *Service) handleTargetPickerOpenPathPicker(surface *state.SurfaceConsoleRecord, pickerID, fieldKind, actorUserID string, answers map[string][]string) []eventcontract.Event {
 	record, blocked := s.requireActiveTargetPicker(surface, pickerID, actorUserID)
 	if blocked != nil {
 		return blocked
@@ -72,7 +73,7 @@ func (s *Service) handleTargetPickerOpenPathPicker(surface *state.SurfaceConsole
 	return s.openTargetPickerAddWorkspacePathPicker(surface, record, fieldKind)
 }
 
-func (s *Service) openTargetPickerAddWorkspacePathPicker(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, fieldKind string) []control.UIEvent {
+func (s *Service) openTargetPickerAddWorkspacePathPicker(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, fieldKind string) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return nil
 	}
@@ -138,7 +139,7 @@ func (targetPickerBusyWorkspacePathPickerEntryFilter) PathPickerFilterEntry(s *S
 	return item, true
 }
 
-func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	if s == nil || surface == nil {
 		return nil
 	}
@@ -164,7 +165,7 @@ func (targetPickerAddWorkspacePathPickerConsumer) PathPickerConfirmed(s *Service
 	return s.restoreTargetPickerAfterPathReturn(surface, record, "", "")
 }
 
-func (targetPickerAddWorkspacePathPickerConsumer) PathPickerCancelled(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (targetPickerAddWorkspacePathPickerConsumer) PathPickerCancelled(s *Service, surface *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	if s == nil || surface == nil {
 		return nil
 	}
@@ -192,7 +193,7 @@ func (s *Service) targetPickerRecordForPathReturn(surface *state.SurfaceConsoleR
 	return record, true
 }
 
-func (s *Service) restoreTargetPickerAfterPathReturn(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, noticeCode, noticeText string) []control.UIEvent {
+func (s *Service) restoreTargetPickerAfterPathReturn(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord, noticeCode, noticeText string) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return nil
 	}
@@ -214,7 +215,7 @@ func (s *Service) restoreTargetPickerAfterPathReturn(surface *state.SurfaceConso
 	}
 	// Path picker confirm/cancel callbacks are acknowledged asynchronously, so
 	// this return step must patch the existing owner card by message id.
-	return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
+	return []eventcontract.Event{s.targetPickerViewEvent(surface, view, false)}
 }
 
 func (s *Service) buildTargetPickerLocalDirectoryState(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) targetPickerLocalDirectoryState {
@@ -381,7 +382,7 @@ func errorAsImport(err error, target **workspaceimport.ImportError) bool {
 	return errors.As(err, target)
 }
 
-func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []control.UIEvent {
+func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return nil
 	}
@@ -399,7 +400,7 @@ func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsol
 		if err != nil {
 			return notice(surface, "target_picker_unavailable", err.Error())
 		}
-		return []control.UIEvent{s.targetPickerViewEvent(surface, updatedView, false)}
+		return []eventcontract.Event{s.targetPickerViewEvent(surface, updatedView, false)}
 	}
 	events := s.enterTargetPickerNewThread(surface, localState.ResolvedPath)
 	filtered := targetPickerFilteredFollowupEvents(events)
@@ -427,7 +428,7 @@ func (s *Service) confirmTargetPickerLocalDirectory(surface *state.SurfaceConsol
 	return s.finishTargetPickerWithStage(surface, flow, record, control.FeishuTargetPickerStageFailed, "接入失败", failureText, false, filtered)
 }
 
-func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []control.UIEvent {
+func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, record *activeTargetPickerRecord, view control.FeishuTargetPickerView) []eventcontract.Event {
 	if surface == nil || record == nil {
 		return nil
 	}
@@ -440,7 +441,7 @@ func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleReco
 				Text:  message,
 			}}, view.SourceMessages...)
 		}
-		return []control.UIEvent{s.targetPickerViewEvent(surface, view, false)}
+		return []eventcontract.Event{s.targetPickerViewEvent(surface, view, false)}
 	}
 	finalPath := strings.TrimSpace(firstNonEmpty(gitState.FinalPath, gitState.ParentDir))
 	record.GitFinalPath = finalPath
@@ -458,8 +459,8 @@ func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleReco
 		status.Footer,
 	)
 	return append(processing,
-		control.UIEvent{
-			Kind:             control.UIEventDaemonCommand,
+		eventcontract.Event{
+			Kind:             eventcontract.EventDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandGitWorkspaceImport,

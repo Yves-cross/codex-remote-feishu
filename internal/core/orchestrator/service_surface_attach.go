@@ -5,14 +5,15 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) attachWorkspace(surface *state.SurfaceConsoleRecord, workspaceKey string) []control.UIEvent {
+func (s *Service) attachWorkspace(surface *state.SurfaceConsoleRecord, workspaceKey string) []eventcontract.Event {
 	return s.attachWorkspaceWithMode(surface, workspaceKey, attachWorkspaceModeDefault)
 }
 
-func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, workspaceKey string, mode attachWorkspaceMode) []control.UIEvent {
+func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, workspaceKey string, mode attachWorkspaceMode) []eventcontract.Event {
 	workspaceKey = normalizeWorkspaceClaimKey(workspaceKey)
 	if workspaceKey == "" {
 		return notice(surface, "workspace_not_found", "目标工作区不存在。请重新发送 /list。")
@@ -38,7 +39,7 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 		return notice(surface, "workspace_instance_busy", "目标工作区当前暂时不可接管，请稍后重试。")
 	}
 
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID != "" {
 		events = append(events, s.discardDrafts(surface)...)
 		events = append(events, s.finalizeDetachedSurface(surface)...)
@@ -106,8 +107,8 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 	} else if visibleThreadCount == 0 {
 		noticeText = fmt.Sprintf("已接管工作区 %s。当前还没有可见会话；你可以直接发送文本开启新会话（或 /new 先进入待命），也可稍后发送 /use。", workspaceKey)
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: noticeCode,
@@ -120,11 +121,11 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 	return events
 }
 
-func (s *Service) attachInstance(surface *state.SurfaceConsoleRecord, instanceID string) []control.UIEvent {
+func (s *Service) attachInstance(surface *state.SurfaceConsoleRecord, instanceID string) []eventcontract.Event {
 	return s.attachInstanceWithMode(surface, instanceID, attachInstanceModeDefault)
 }
 
-func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, instanceID string, mode attachInstanceMode) []control.UIEvent {
+func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, instanceID string, mode attachInstanceMode) []eventcontract.Event {
 	inst := s.root.Instances[instanceID]
 	if inst == nil {
 		return notice(surface, "instance_not_found", "实例不存在。")
@@ -226,8 +227,8 @@ func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, in
 			text = fmt.Sprintf("%s 当前工作区还没有可用会话；你可以稍后再 /use，或直接发送文本开启新会话（也可 /new 先进入待命）。", text)
 		}
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "attached",
@@ -244,7 +245,7 @@ func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, in
 	return events
 }
 
-func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, switched bool, mode attachInstanceMode) []control.UIEvent {
+func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, switched bool, mode attachInstanceMode) []eventcontract.Event {
 	if surface == nil || inst == nil {
 		return nil
 	}
@@ -284,8 +285,8 @@ func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst
 		}
 	}
 
-	result := []control.UIEvent{{
-		Kind:             control.UIEventNotice,
+	result := []eventcontract.Event{{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: noticeCode,
@@ -300,7 +301,7 @@ func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst
 	return result
 }
 
-func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, pending *state.HeadlessLaunchRecord) []control.UIEvent {
+func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, pending *state.HeadlessLaunchRecord) []eventcontract.Event {
 	if surface == nil || inst == nil || pending == nil {
 		return nil
 	}
@@ -337,13 +338,13 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 		return s.attachSurfaceToKnownThread(surface, inst, view, mode)
 	}
 	surface.PendingHeadless = nil
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.AttachedInstanceID == pending.InstanceID {
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 	}
 	events = append(events,
-		control.UIEvent{
-			Kind:             control.UIEventDaemonCommand,
+		eventcontract.Event{
+			Kind:             eventcontract.EventDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandKillHeadless,
@@ -351,8 +352,8 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 				InstanceID:       pending.InstanceID,
 			},
 		},
-		control.UIEvent{
-			Kind:             control.UIEventNotice,
+		eventcontract.Event{
+			Kind:             eventcontract.EventNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "legacy_headless_restore_cancelled",

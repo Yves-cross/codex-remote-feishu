@@ -6,10 +6,11 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (r *serviceProgressRuntime) applyThreadTokenUsageUpdate(instanceID string, event agentproto.Event) []control.UIEvent {
+func (r *serviceProgressRuntime) applyThreadTokenUsageUpdate(instanceID string, event agentproto.Event) []eventcontract.Event {
 	inst := r.service.root.Instances[instanceID]
 	if inst == nil || strings.TrimSpace(event.ThreadID) == "" || event.TokenUsage == nil {
 		return nil

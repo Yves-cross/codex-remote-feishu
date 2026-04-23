@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
 
 func progressWithTimeline(progress control.ExecCommandProgress) *control.ExecCommandProgress {
@@ -17,8 +18,8 @@ func progressWithTimeline(progress control.ExecCommandProgress) *control.ExecCom
 
 func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -69,8 +70,8 @@ func TestProjectExecCommandProgressCreatesDirectCard(t *testing.T) {
 
 func TestProjectExecCommandProgressUpdatesExistingCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -97,8 +98,8 @@ func TestProjectExecCommandProgressUpdatesExistingCard(t *testing.T) {
 
 func TestProjectExecCommandProgressRendersReasoningSummaryInsideTimeline(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -127,8 +128,8 @@ func TestProjectExecCommandProgressRendersReasoningSummaryInsideTimeline(t *test
 
 func TestProjectExecCommandProgressUsesCanonicalTimelineOnly(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
@@ -167,8 +168,8 @@ func TestProjectExecCommandProgressUsesCanonicalTimelineOnly(t *testing.T) {
 
 func TestProjectExecCommandProgressDoesNotRenderFallbackCommandsAlongsideExplorationBlocks(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -204,8 +205,8 @@ func TestProjectExecCommandProgressDoesNotRenderFallbackCommandsAlongsideExplora
 
 func TestProjectExecCommandProgressKeepsRealEntriesOnSameTimelineAsExplorationRows(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -247,8 +248,8 @@ func TestProjectExecCommandProgressKeepsRealEntriesOnSameTimelineAsExplorationRo
 
 func TestProjectExecCommandProgressDoesNotRetractEmptyTransientCard(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -265,8 +266,8 @@ func TestProjectExecCommandProgressDoesNotRetractEmptyTransientCard(t *testing.T
 
 func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -310,8 +311,8 @@ func TestProjectExecCommandProgressRendersSharedWebSearchEntries(t *testing.T) {
 
 func TestProjectExecCommandProgressKeepsWebSearchStatusPlainText(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -334,8 +335,8 @@ func TestProjectExecCommandProgressKeepsWebSearchStatusPlainText(t *testing.T) {
 
 func TestProjectExecCommandProgressRendersFileChangeSummaryInNormal(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -375,8 +376,8 @@ func TestProjectExecCommandProgressRendersFileChangeSummaryInNormal(t *testing.T
 
 func TestProjectExecCommandProgressRendersFileChangeDiffInVerbose(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -415,8 +416,8 @@ func TestProjectExecCommandProgressRendersFileChangeDiffInVerbose(t *testing.T) 
 
 func TestProjectExecCommandProgressInterleavesExplorationRowsAndEntriesByVisibleSeq(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -454,8 +455,8 @@ func TestProjectExecCommandProgressInterleavesExplorationRowsAndEntriesByVisible
 
 func TestProjectExecCommandProgressRendersEachLineAsSeparatePlainTextElement(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -493,8 +494,8 @@ func TestProjectExecCommandProgressRendersEachLineAsSeparatePlainTextElement(t *
 
 func TestProjectExecCommandProgressKeepsDynamicTextOutOfMarkdownElements(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -557,8 +558,8 @@ func TestProjectExecCommandProgressDropsOldLinesWhenOversized(t *testing.T) {
 			LastSeq: i,
 		})
 	}
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
 			ThreadID:     "thread-1",
@@ -604,8 +605,8 @@ func TestProjectExecCommandProgressDropsOldLinesWhenOversized(t *testing.T) {
 
 func TestProjectExecCommandProgressUsesStoredWindowStartSeq(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
 			ThreadID:     "thread-1",
@@ -641,8 +642,8 @@ func TestProjectExecCommandProgressUsesStoredWindowStartSeq(t *testing.T) {
 
 func TestProjectExecCommandProgressFallsBackWhenStoredWindowIsStale(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		ExecCommandProgress: &control.ExecCommandProgress{
 			ThreadID:     "thread-1",
@@ -672,8 +673,8 @@ func TestProjectExecCommandProgressFallsBackWhenStoredWindowIsStale(t *testing.T
 
 func TestProjectExecCommandProgressTruncatesLongReasoningSummaryWithoutOverflowWindowRotation(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
 			ThreadID:     "thread-1",
@@ -696,8 +697,8 @@ func TestProjectExecCommandProgressTruncatesLongReasoningSummaryWithoutOverflowW
 
 func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -730,8 +731,8 @@ func TestProjectExecCommandProgressRendersExplorationBlockStatuses(t *testing.T)
 
 func TestProjectExecCommandProgressRendersExploredHeaderForFailedExploration(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -759,8 +760,8 @@ func TestProjectExecCommandProgressRendersExploredHeaderForFailedExploration(t *
 
 func TestProjectExecCommandProgressKeepsMergedReadFilenamesVisible(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{
@@ -794,8 +795,8 @@ func TestProjectExecCommandProgressKeepsMergedReadFilenamesVisible(t *testing.T)
 
 func TestProjectExecCommandProgressTruncatesLongCommandSummary(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", control.UIEvent{
-		Kind:             control.UIEventExecCommandProgress,
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:             eventcontract.EventExecCommandProgress,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ExecCommandProgress: progressWithTimeline(control.ExecCommandProgress{

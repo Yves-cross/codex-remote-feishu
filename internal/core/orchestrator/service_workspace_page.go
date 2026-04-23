@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -55,7 +56,7 @@ func (s *Service) workspacePageTriggeredFromMenu(surface *state.SurfaceConsoleRe
 	return s.activeCommandLauncherMessageID(surface) == sourceMessageID
 }
 
-func (s *Service) workspacePageEvent(surface *state.SurfaceConsoleRecord, commandID string, fromMenu bool) control.UIEvent {
+func (s *Service) workspacePageEvent(surface *state.SurfaceConsoleRecord, commandID string, fromMenu bool) eventcontract.Event {
 	if surface != nil {
 		s.clearThreadHistoryRuntime(surface)
 		s.clearTargetPickerRuntime(surface)

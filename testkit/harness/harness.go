@@ -7,7 +7,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
-	"github.com/kxn/codex-remote-feishu/internal/core/eventcontractcompat"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -84,8 +83,15 @@ func (h *Harness) LocalClient(raw []byte) error {
 	return nil
 }
 
-func (h *Harness) consumeUIEvents(events []control.UIEvent) error {
-	return h.consumeEvents(eventcontractcompat.FromLegacyUIEvents(events))
+func (h *Harness) consumeUIEvents(events []eventcontract.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	normalized := make([]eventcontract.Event, 0, len(events))
+	for _, event := range events {
+		normalized = append(normalized, event.Normalized())
+	}
+	return h.consumeEvents(normalized)
 }
 
 func (h *Harness) consumeEvents(events []eventcontract.Event) error {

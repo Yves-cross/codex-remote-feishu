@@ -8,7 +8,7 @@ import (
 
 func TestProjectSelectionPromptKeepsMarkdownMetacharactersInsidePlainTextDetailBlock(t *testing.T) {
 	projector := NewProjector()
-	ops := projector.Project("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
+	ops := projector.ProjectEvent("chat-1", selectionPromptEvent(control.FeishuDirectSelectionPrompt{
 		Kind:  control.SelectionPromptUseThread,
 		Title: "最近会话",
 		Options: []control.SelectionOption{{

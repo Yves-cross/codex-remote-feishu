@@ -4,10 +4,11 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -43,7 +44,7 @@ func (s *Service) finalizeDetachedSurface(surface *state.SurfaceConsoleRecord) [
 	return append(events, s.reevaluateFollowSurfaces(instanceID)...)
 }
 
-func (s *Service) finishSurfaceAfterWork(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) finishSurfaceAfterWork(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -58,7 +59,7 @@ func (s *Service) finishSurfaceAfterWork(surface *state.SurfaceConsoleRecord) []
 	return nil
 }
 
-func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
 		if strings.TrimSpace(surface.AttachedInstanceID) == "" {
 			return notice(surface, "follow_deprecated_normal", "normal 模式不再支持 /follow。请先 /list 选择工作区，再 /use 或 /new；如需跟随 VS Code，请先 /mode vscode。")
@@ -75,7 +76,7 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []control.UIE
 			return blocked
 		}
 	}
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	events = append(events, s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已切换到 follow 模式，之前的提案计划已失效。")...)
 	if surface.RouteMode == state.RouteModeNewThreadReady {
 		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
@@ -128,18 +129,18 @@ func (s *Service) followLocalWouldRetarget(surface *state.SurfaceConsoleRecord, 
 	return surface.SelectedThreadID != targetThreadID || !s.surfaceOwnsThread(surface, targetThreadID)
 }
 
-func (s *Service) reevaluateFollowSurfaces(instanceID string) []control.UIEvent {
+func (s *Service) reevaluateFollowSurfaces(instanceID string) []eventcontract.Event {
 	if strings.TrimSpace(instanceID) == "" {
 		return nil
 	}
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	for _, surface := range s.findAttachedSurfaces(instanceID) {
 		events = append(events, s.reevaluateFollowSurface(surface)...)
 	}
 	return events
 }
 
-func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface == nil || surface.Abandoning || surface.AttachedInstanceID == "" || surface.RouteMode != state.RouteModeFollowLocal {
 		return nil
 	}
@@ -185,7 +186,7 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 	return s.bindSurfaceToThreadMode(surface, inst, targetThreadID, state.RouteModeFollowLocal)
 }
 
-func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, owner *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, owner *state.SurfaceConsoleRecord) []eventcontract.Event {
 	thread := inst.Threads[threadID]
 	title := displayThreadTitle(inst, thread, threadID)
 	lines := []string{}
@@ -202,7 +203,7 @@ func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, i
 	if subtitle == "" {
 		subtitle = s.threadSelectionSubtitle(surface, inst, thread)
 	}
-	return []control.UIEvent{s.feishuDirectSelectionPromptEvent(surface, control.FeishuDirectSelectionPrompt{
+	return []eventcontract.Event{s.feishuDirectSelectionPromptEvent(surface, control.FeishuDirectSelectionPrompt{
 		Kind:  control.SelectionPromptKickThread,
 		Title: "强踢当前会话？",
 		Hint:  "只有对方当前空闲时才能强踢；确认前会再次校验状态。",
@@ -224,12 +225,12 @@ func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, i
 	})}
 }
 
-func (s *Service) confirmKickThread(surface *state.SurfaceConsoleRecord, threadID string) []control.UIEvent {
+func (s *Service) confirmKickThread(surface *state.SurfaceConsoleRecord, threadID string) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
-	events := []control.UIEvent{}
+	events := []eventcontract.Event{}
 	if surface.RouteMode == state.RouteModeNewThreadReady {
 		if blocked := s.blockPreparedNewThreadRouteExit(surface); blocked != nil {
 			return blocked
@@ -261,14 +262,14 @@ func (s *Service) confirmKickThread(surface *state.SurfaceConsoleRecord, threadI
 	}
 }
 
-func (s *Service) kickThreadOwner(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, victim *state.SurfaceConsoleRecord) []control.UIEvent {
+func (s *Service) kickThreadOwner(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, victim *state.SurfaceConsoleRecord) []eventcontract.Event {
 	events := s.releaseVictimThread(victim, inst, threadID)
 	events = append(events, s.bindSurfaceToThreadMode(surface, inst, threadID, s.surfaceThreadPickRouteMode(surface))...)
 	events = append(events, notice(surface, "thread_kicked", "已接管目标会话。原拥有者已退回未绑定状态。")...)
 	return events
 }
 
-func (s *Service) releaseVictimThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []control.UIEvent {
+func (s *Service) releaseVictimThread(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -286,8 +287,8 @@ func (s *Service) releaseVictimThread(surface *state.SurfaceConsoleRecord, inst 
 	}
 	surface.RouteMode = routeMode
 	events = append(events, s.threadSelectionEvents(surface, "", string(routeMode), title, "")...)
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "thread_claim_lost",

@@ -28,11 +28,11 @@ type secondChanceFinalPatchJob struct {
 	PreviewRequest       feishu.FinalBlockPreviewRequest
 }
 
-func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string, event control.UIEvent, operations []feishu.Operation, previewReq feishu.FinalBlockPreviewRequest, rewriteErr error) {
+func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string, event eventcontract.Event, operations []feishu.Operation, previewReq feishu.FinalBlockPreviewRequest, rewriteErr error) {
 	if a == nil || a.finalBlockPreviewer == nil || rewriteErr == nil || a.shuttingDown {
 		return
 	}
-	if event.Kind != control.UIEventBlockCommitted || event.Block == nil || !event.Block.Final {
+	if event.Kind != eventcontract.EventBlockCommitted || event.Block == nil || !event.Block.Final {
 		return
 	}
 	if previewReq.Block.Kind != render.BlockAssistantMarkdown || strings.TrimSpace(previewReq.Block.Text) == "" {

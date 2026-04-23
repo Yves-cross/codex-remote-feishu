@@ -8,6 +8,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -476,7 +477,7 @@ func TestRemoteTurnImageGenerationProducesImmediateImageEventAndFinalText(t *tes
 			"revisedPrompt": "一只猫，水彩风格",
 		},
 	})
-	var imageEvent *control.UIEvent
+	var imageEvent *eventcontract.Event
 	for i := range imageEvents {
 		if imageEvents[i].ImageOutput != nil {
 			imageEvent = &imageEvents[i]

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -94,8 +95,8 @@ func (s *Service) updateInstanceCWDDefaults(inst *state.InstanceRecord, cwd stri
 	inst.CWDDefaults[cwd] = current
 }
 
-func (s *Service) discardDrafts(surface *state.SurfaceConsoleRecord) []control.UIEvent {
-	var events []control.UIEvent
+func (s *Service) discardDrafts(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
+	var events []eventcontract.Event
 	for _, image := range surface.StagedImages {
 		if image.State != state.ImageStaged {
 			continue
@@ -141,7 +142,7 @@ func (s *Service) discardDrafts(surface *state.SurfaceConsoleRecord) []control.U
 	return events
 }
 
-func (s *Service) discardStagedInputsForRouteChange(surface *state.SurfaceConsoleRecord, prevThreadID string, prevRouteMode state.RouteMode, nextThreadID string, nextRouteMode state.RouteMode) []control.UIEvent {
+func (s *Service) discardStagedInputsForRouteChange(surface *state.SurfaceConsoleRecord, prevThreadID string, prevRouteMode state.RouteMode, nextThreadID string, nextRouteMode state.RouteMode) []eventcontract.Event {
 	if surface == nil {
 		return nil
 	}
@@ -151,7 +152,7 @@ func (s *Service) discardStagedInputsForRouteChange(surface *state.SurfaceConsol
 		return nil
 	}
 	discarded := 0
-	var events []control.UIEvent
+	var events []eventcontract.Event
 	for imageID, image := range surface.StagedImages {
 		if image == nil || image.State != state.ImageStaged {
 			continue
@@ -183,8 +184,8 @@ func (s *Service) discardStagedInputsForRouteChange(surface *state.SurfaceConsol
 	if discarded == 0 {
 		return nil
 	}
-	events = append(events, control.UIEvent{
-		Kind:             control.UIEventNotice,
+	events = append(events, eventcontract.Event{
+		Kind:             eventcontract.EventNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "staged_inputs_discarded_on_route_change",

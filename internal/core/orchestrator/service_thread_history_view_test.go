@@ -7,6 +7,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -37,7 +38,7 @@ func TestApplySurfaceActionHistoryStartsQueryForCurrentThread(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("expected loading view + daemon command, got %#v", events)
 	}
-	if events[0].Kind != control.UIEventFeishuThreadHistory || events[0].FeishuThreadHistoryView == nil || !events[0].FeishuThreadHistoryView.Loading {
+	if events[0].Kind != eventcontract.EventFeishuThreadHistory || events[0].FeishuThreadHistoryView == nil || !events[0].FeishuThreadHistoryView.Loading {
 		t.Fatalf("expected loading history view, got %#v", events[0])
 	}
 	if len(events[0].FeishuThreadHistoryView.NoticeSections) != 1 {

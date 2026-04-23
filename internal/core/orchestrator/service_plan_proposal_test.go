@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -248,7 +249,7 @@ func TestPlanProposalExecuteEnqueuesContinuationAndDisablesPlanMode(t *testing.T
 		if catalog, ok := eventCommandCatalog(event); ok && catalog.Sealed {
 			foundSeal = true
 		}
-		if event.Kind == control.UIEventAgentCommand && event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+		if event.Kind == eventcontract.EventAgentCommand && event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
 			foundDispatch = true
 		}
 	}

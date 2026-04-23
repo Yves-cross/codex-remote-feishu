@@ -5,6 +5,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -40,7 +41,7 @@ func compactCompletionProgressEntry(itemID string) control.ExecCommandProgressEn
 	}
 }
 
-func (r *serviceProgressRuntime) renderCompactNotice(instanceID string, event agentproto.Event) []control.UIEvent {
+func (r *serviceProgressRuntime) renderCompactNotice(instanceID string, event agentproto.Event) []eventcontract.Event {
 	inst := r.service.root.Instances[instanceID]
 	if binding := r.service.turns.compactTurns[instanceID]; binding != nil && strings.TrimSpace(binding.TurnID) != "" && binding.TurnID == strings.TrimSpace(event.TurnID) {
 		if binding.ThreadID == "" || strings.TrimSpace(event.ThreadID) == "" || binding.ThreadID == event.ThreadID {

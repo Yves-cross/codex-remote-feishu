@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -21,14 +22,14 @@ type fakePathPickerEntryFilter struct {
 	hidden map[string]bool
 }
 
-func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	f.confirmed = append(f.confirmed, result)
-	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
+	return []eventcontract.Event{{Kind: eventcontract.EventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
 }
 
-func (f *fakePathPickerConsumer) PathPickerCancelled(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []control.UIEvent {
+func (f *fakePathPickerConsumer) PathPickerCancelled(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	f.cancelled = append(f.cancelled, result)
-	return []control.UIEvent{{Kind: control.UIEventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
+	return []eventcontract.Event{{Kind: eventcontract.EventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
 }
 
 func (f *fakePathPickerEntryFilter) PathPickerFilterEntry(_ *Service, _ *state.SurfaceConsoleRecord, _ *activePathPickerRecord, item control.FeishuPathPickerEntry, _ string) (control.FeishuPathPickerEntry, bool) {
@@ -39,15 +40,15 @@ func (f *fakePathPickerEntryFilter) PathPickerFilterEntry(_ *Service, _ *state.S
 	return item, false
 }
 
-func pathPickerViewFromEvent(t *testing.T, event control.UIEvent) *control.FeishuPathPickerView {
+func pathPickerViewFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuPathPickerView {
 	t.Helper()
-	if event.Kind != control.UIEventFeishuPathPicker || event.FeishuPathPickerView == nil {
+	if event.Kind != eventcontract.EventFeishuPathPicker || event.FeishuPathPickerView == nil {
 		t.Fatalf("expected path picker event, got %#v", event)
 	}
 	return event.FeishuPathPickerView
 }
 
-func singlePathPickerEvent(t *testing.T, events []control.UIEvent) *control.FeishuPathPickerView {
+func singlePathPickerEvent(t *testing.T, events []eventcontract.Event) *control.FeishuPathPickerView {
 	t.Helper()
 	if len(events) != 1 {
 		t.Fatalf("expected one event, got %#v", events)
