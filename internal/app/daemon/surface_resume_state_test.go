@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -22,14 +23,14 @@ func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	path := surfaceResumeStatePath(stateDir)
-	store, err := loadSurfaceResumeStore(path)
+	path := surfaceresume.StatePath(stateDir)
+	store, err := surfaceresume.LoadStore(path)
 	if err != nil {
 		t.Fatalf("load empty store: %v", err)
 	}
 
 	updatedAt := time.Date(2026, 4, 9, 11, 0, 0, 0, time.UTC)
-	if err := store.Put(SurfaceResumeEntry{
+	if err := store.Put(surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -48,7 +49,7 @@ func TestSurfaceResumeStoreRoundTrip(t *testing.T) {
 		t.Fatalf("put surface resume entry: %v", err)
 	}
 
-	reloaded, err := loadSurfaceResumeStore(path)
+	reloaded, err := surfaceresume.LoadStore(path)
 	if err != nil {
 		t.Fatalf("reload store: %v", err)
 	}
@@ -77,14 +78,14 @@ func TestSurfaceResumeStoreDedupesSplitFeishuP2PSurfacesOnPut(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	path := surfaceResumeStatePath(stateDir)
-	store, err := loadSurfaceResumeStore(path)
+	path := surfaceresume.StatePath(stateDir)
+	store, err := surfaceresume.LoadStore(path)
 	if err != nil {
 		t.Fatalf("load empty store: %v", err)
 	}
 
 	shadowUpdatedAt := time.Date(2026, 4, 11, 2, 47, 45, 0, time.UTC)
-	if err := store.Put(SurfaceResumeEntry{
+	if err := store.Put(surfaceresume.Entry{
 		SurfaceSessionID:   "feishu:Codex-5:user:a756fefe",
 		GatewayID:          "Codex-5",
 		ChatID:             "oc_099318e4d660955369af84e8c8aea268",
@@ -100,7 +101,7 @@ func TestSurfaceResumeStoreDedupesSplitFeishuP2PSurfacesOnPut(t *testing.T) {
 	}
 
 	canonicalUpdatedAt := time.Date(2026, 4, 14, 4, 10, 35, 0, time.UTC)
-	if err := store.Put(SurfaceResumeEntry{
+	if err := store.Put(surfaceresume.Entry{
 		SurfaceSessionID:   "feishu:Codex-5:user:ou_7588194bf7ffe98ef2845026aa398169",
 		GatewayID:          "Codex-5",
 		ChatID:             "oc_099318e4d660955369af84e8c8aea268",
@@ -118,7 +119,7 @@ func TestSurfaceResumeStoreDedupesSplitFeishuP2PSurfacesOnPut(t *testing.T) {
 		t.Fatalf("put canonical feishu surface: %v", err)
 	}
 
-	reloaded, err := loadSurfaceResumeStore(path)
+	reloaded, err := surfaceresume.LoadStore(path)
 	if err != nil {
 		t.Fatalf("reload store: %v", err)
 	}
@@ -152,9 +153,9 @@ func TestDaemonStartupCanonicalizesLegacySplitFeishuP2PSurfaceResumeState(t *tes
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	writeSurfaceResumeStateForTest(t, stateDir, surfaceResumeState{
-		Version: surfaceResumeStateVersion,
-		Entries: map[string]SurfaceResumeEntry{
+	writeSurfaceResumeStateForTest(t, stateDir, surfaceresume.StateFile{
+		Version: surfaceresume.StateVersion,
+		Entries: map[string]surfaceresume.Entry{
 			"feishu:Codex-5:user:a756fefe": {
 				SurfaceSessionID:   "feishu:Codex-5:user:a756fefe",
 				GatewayID:          "Codex-5",
@@ -213,13 +214,13 @@ func TestSurfaceResumeStoreDefaultsLegacyMissingVerbosityToNormal(t *testing.T) 
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	path := surfaceResumeStatePath(stateDir)
+	path := surfaceresume.StatePath(stateDir)
 	raw := []byte("{\n  \"version\": 1,\n  \"entries\": {\n    \"surface-1\": {\n      \"surfaceSessionID\": \"surface-1\",\n      \"productMode\": \"normal\"\n    }\n  }\n}\n")
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatalf("write legacy surface resume state: %v", err)
 	}
 
-	store, err := loadSurfaceResumeStore(path)
+	store, err := surfaceresume.LoadStore(path)
 	if err != nil {
 		t.Fatalf("load legacy store: %v", err)
 	}
@@ -355,7 +356,7 @@ func TestDaemonMaterializesLatentSurfaceFromSurfaceResumeStateOnRestart(t *testi
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -367,7 +368,7 @@ func TestDaemonMaterializesLatentSurfaceFromSurfaceResumeStateOnRestart(t *testi
 		ResumeWorkspaceKey: "/data/dl/droid",
 		ResumeRouteMode:    "pinned",
 	})
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -469,7 +470,7 @@ func TestDaemonAttachedVSCodeSurfacePersistsResumeTargetAndRecoversOnReconnect(t
 		t.Fatalf("expected detached vscode snapshot after restart, got %#v", snapshot)
 	}
 	reloaded := restarted.SurfaceResumeState("surface-1")
-	if reloaded == nil || !sameSurfaceResumeEntryContent(*entry, *reloaded) {
+	if reloaded == nil || !surfaceresume.SameEntryContent(*entry, *reloaded) {
 		t.Fatalf("expected restart to preserve stored resume target: want=%#v got=%#v", entry, reloaded)
 	}
 
@@ -509,7 +510,7 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -520,7 +521,7 @@ func TestDaemonVSCodeResumeWaitsForExactInstanceAndNeverUsesHeadless(t *testing.
 		ResumeWorkspaceKey: "/data/dl/droid",
 		ResumeRouteMode:    "follow_local",
 	})
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -584,7 +585,7 @@ func TestDaemonDetachedVSCodeModePromptsOpenVSCodeAfterRestart(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -623,7 +624,7 @@ func TestDaemonVSCodeResumeOpenPromptPatchesIntoSameCardOnExactReconnect(t *test
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -682,7 +683,7 @@ func TestDaemonTickDoesNotRewriteSurfaceResumeStateWithoutStateChange(t *testing
 		ActorUserID:      "user-1",
 	})
 
-	path := surfaceResumeStatePath(stateDir)
+	path := surfaceresume.StatePath(stateDir)
 	base := time.Date(2026, 4, 11, 1, 0, 0, 0, time.UTC)
 	if err := os.Chtimes(path, base, base); err != nil {
 		t.Fatalf("Chtimes(surface resume state): %v", err)
@@ -703,7 +704,7 @@ func TestDaemonHeadlessRecoveryTickPersistsUpdatedResumeStateForRecoveredSurface
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -755,7 +756,7 @@ func TestDaemonNormalResumePrefersVisibleThreadOverHeadlessFallback(t *testing.T
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -766,7 +767,7 @@ func TestDaemonNormalResumePrefersVisibleThreadOverHeadlessFallback(t *testing.T
 		ResumeWorkspaceKey: "/data/dl/droid",
 		ResumeRouteMode:    "pinned",
 	})
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -825,7 +826,7 @@ func TestDaemonNormalResumeFallsBackToWorkspace(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -888,7 +889,7 @@ func TestDaemonNormalResumeHeadlessTargetSkipsWorkspaceFallback(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -957,7 +958,7 @@ func TestDaemonNormalResumeFailureEmitsNoticeAfterFirstRefresh(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -1028,9 +1029,9 @@ func seedVSCodeResumeInstance(app *App, instanceID, threadID string) {
 	})
 }
 
-func putSurfaceResumeStateForTest(t *testing.T, stateDir string, entry SurfaceResumeEntry) {
+func putSurfaceResumeStateForTest(t *testing.T, stateDir string, entry surfaceresume.Entry) {
 	t.Helper()
-	store, err := loadSurfaceResumeStore(surfaceResumeStatePath(stateDir))
+	store, err := surfaceresume.LoadStore(surfaceresume.StatePath(stateDir))
 	if err != nil {
 		t.Fatalf("load surface resume store: %v", err)
 	}
@@ -1039,9 +1040,9 @@ func putSurfaceResumeStateForTest(t *testing.T, stateDir string, entry SurfaceRe
 	}
 }
 
-func writeSurfaceResumeStateForTest(t *testing.T, stateDir string, persisted surfaceResumeState) {
+func writeSurfaceResumeStateForTest(t *testing.T, stateDir string, persisted surfaceresume.StateFile) {
 	t.Helper()
-	path := surfaceResumeStatePath(stateDir)
+	path := surfaceresume.StatePath(stateDir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir state dir: %v", err)
 	}

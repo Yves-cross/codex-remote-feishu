@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -16,7 +17,7 @@ func (a *App) syncHeadlessRestoreStateLocked() {
 	if a.surfaceResumeRuntime.headlessRestore == nil {
 		a.surfaceResumeRuntime.headlessRestore = map[string]*headlessRestoreRecoveryState{}
 	}
-	entries := map[string]SurfaceResumeEntry{}
+	entries := map[string]surfaceresume.Entry{}
 	if a.surfaceResumeRuntime.store != nil {
 		entries = a.surfaceResumeRuntime.store.Entries()
 	}
@@ -27,7 +28,7 @@ func (a *App) syncHeadlessRestoreStateLocked() {
 		}
 		a.service.MaterializeSurface(surfaceID, entry.GatewayID, entry.ChatID, entry.ActorUserID)
 		current := a.surfaceResumeRuntime.headlessRestore[surfaceID]
-		if current == nil || !sameSurfaceResumeEntryContent(current.Entry, entry) {
+		if current == nil || !surfaceresume.SameEntryContent(current.Entry, entry) {
 			a.surfaceResumeRuntime.headlessRestore[surfaceID] = &headlessRestoreRecoveryState{Entry: entry}
 			continue
 		}
@@ -40,13 +41,13 @@ func (a *App) syncHeadlessRestoreStateLocked() {
 	}
 }
 
-func surfaceResumeEntrySupportsHeadlessRestore(entry SurfaceResumeEntry) bool {
+func surfaceResumeEntrySupportsHeadlessRestore(entry surfaceresume.Entry) bool {
 	return state.NormalizeProductMode(state.ProductMode(entry.ProductMode)) == state.ProductModeNormal &&
 		entry.ResumeHeadless &&
 		strings.TrimSpace(entry.ResumeThreadID) != ""
 }
 
-func (a *App) shouldDeferHeadlessRestoreUntilInitialRefreshLocked(entry SurfaceResumeEntry, allowMissingThreadFailure bool) bool {
+func (a *App) shouldDeferHeadlessRestoreUntilInitialRefreshLocked(entry surfaceresume.Entry, allowMissingThreadFailure bool) bool {
 	if allowMissingThreadFailure {
 		return false
 	}

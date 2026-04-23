@@ -12,6 +12,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -173,7 +174,7 @@ func TestDaemonVSCodeCompatibilityBlocksAutoResumeUntilMigrationApplied(t *testi
 
 	entrypointV1 := testVSCodeBundleEntrypoint(home, ".vscode-server", "1")
 	writeExecutableFile(t, entrypointV1, "orig-v1")
-	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -512,7 +513,7 @@ func TestDaemonTickChecksVSCodeCompatibilityOnlyOnceForRestoredVSCodeSurface(t *
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",

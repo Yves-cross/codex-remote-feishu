@@ -3,6 +3,7 @@ package daemon
 import (
 	"testing"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
@@ -61,8 +62,8 @@ func TestNormalizeResumeThreadTitle(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := normalizeResumeThreadTitle(tc.title, tc.threadID, tc.threadCWD, tc.workspaceKey); got != tc.want {
-				t.Fatalf("normalizeResumeThreadTitle() = %q, want %q", got, tc.want)
+			if got := surfaceresume.NormalizeThreadTitle(tc.title, tc.threadID, tc.threadCWD, tc.workspaceKey); got != tc.want {
+				t.Fatalf("surfaceresume.NormalizeThreadTitle() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -72,14 +73,14 @@ func TestSurfaceResumeStoreNormalizesLegacyDisplayThreadTitle(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	store, err := loadSurfaceResumeStore(surfaceResumeStatePath(stateDir))
+	store, err := surfaceresume.LoadStore(surfaceresume.StatePath(stateDir))
 	if err != nil {
 		t.Fatalf("load surface resume store: %v", err)
 	}
 
 	threadID := "019d56f0-de5e-7943-bc9a-18c42ef11acb"
 	shortID := control.ShortenThreadID(threadID)
-	if err := store.Put(SurfaceResumeEntry{
+	if err := store.Put(surfaceresume.Entry{
 		SurfaceSessionID:  "surface-1",
 		ProductMode:       "normal",
 		ResumeThreadID:    threadID,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
@@ -20,7 +21,7 @@ func TestDaemonTickRunsVSCodeCompatibilityDetectInBackgroundAndAvoidsDuplicateLa
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -72,7 +73,7 @@ func TestDaemonTickRetriesVSCodeCompatibilityDetectAfterBackoff(t *testing.T) {
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -122,7 +123,7 @@ func TestDaemonTickVSCodeFollowupGuidancePatchesAsyncCompatibilityCard(t *testin
 	binaryPath := filepath.Join(home, "bin", "codex-remote")
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
 
-	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, filepath.Join(home, ".local", "state", "codex-remote"), surfaceresume.Entry{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",

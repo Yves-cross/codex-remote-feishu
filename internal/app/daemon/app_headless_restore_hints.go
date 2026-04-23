@@ -3,10 +3,11 @@ package daemon
 import (
 	"strings"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func (a *App) HeadlessRestoreHint(surfaceID string) *HeadlessRestoreHint {
+func (a *App) HeadlessRestoreHint(surfaceID string) *surfaceresume.HeadlessRestoreHint {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.surfaceResumeRuntime.store == nil {
@@ -24,7 +25,7 @@ func (a *App) HeadlessRestoreHint(surfaceID string) *HeadlessRestoreHint {
 	return &copy
 }
 
-func sameHeadlessRestoreHintContent(left, right HeadlessRestoreHint) bool {
+func sameHeadlessRestoreHintContent(left, right surfaceresume.HeadlessRestoreHint) bool {
 	return strings.TrimSpace(left.SurfaceSessionID) == strings.TrimSpace(right.SurfaceSessionID) &&
 		strings.TrimSpace(left.GatewayID) == strings.TrimSpace(right.GatewayID) &&
 		strings.TrimSpace(left.ChatID) == strings.TrimSpace(right.ChatID) &&
@@ -34,11 +35,11 @@ func sameHeadlessRestoreHintContent(left, right HeadlessRestoreHint) bool {
 		strings.TrimSpace(left.ThreadCWD) == strings.TrimSpace(right.ThreadCWD)
 }
 
-func headlessRestoreHintFromSurfaceResumeEntry(entry SurfaceResumeEntry) (HeadlessRestoreHint, bool) {
+func headlessRestoreHintFromSurfaceResumeEntry(entry surfaceresume.Entry) (surfaceresume.HeadlessRestoreHint, bool) {
 	if !entry.ResumeHeadless {
-		return HeadlessRestoreHint{}, false
+		return surfaceresume.HeadlessRestoreHint{}, false
 	}
-	hint := HeadlessRestoreHint{
+	hint := surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: strings.TrimSpace(entry.SurfaceSessionID),
 		GatewayID:        strings.TrimSpace(entry.GatewayID),
 		ChatID:           strings.TrimSpace(entry.ChatID),
@@ -47,5 +48,5 @@ func headlessRestoreHintFromSurfaceResumeEntry(entry SurfaceResumeEntry) (Headle
 		ThreadTitle:      firstNonEmpty(strings.TrimSpace(entry.ResumeThreadTitle), strings.TrimSpace(entry.ResumeThreadID)),
 		ThreadCWD:        state.NormalizeWorkspaceKey(entry.ResumeThreadCWD),
 	}
-	return normalizeHeadlessRestoreHint(hint)
+	return surfaceresume.NormalizeHeadlessRestoreHint(hint)
 }

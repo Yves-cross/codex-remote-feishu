@@ -6,17 +6,18 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 )
 
 type headlessRestoreRecoveryState struct {
-	Entry           SurfaceResumeEntry
+	Entry           surfaceresume.Entry
 	NextAttemptAt   time.Time
 	LastAttemptAt   time.Time
 	LastFailureCode string
 }
 
 type surfaceResumeRecoveryState struct {
-	Entry           SurfaceResumeEntry
+	Entry           surfaceresume.Entry
 	NextAttemptAt   time.Time
 	LastAttemptAt   time.Time
 	LastFailureCode string
@@ -34,7 +35,7 @@ type vscodeMigrationFlowRecord struct {
 }
 
 type surfaceResumeRuntimeState struct {
-	store                  *surfaceResumeStore
+	store                  *surfaceresume.Store
 	recovery               map[string]*surfaceResumeRecoveryState
 	vscodeMigrationFlows   map[string]*vscodeMigrationFlowRecord
 	vscodeMigrationNextSeq int64

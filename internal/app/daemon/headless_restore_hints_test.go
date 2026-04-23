@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -54,7 +55,7 @@ func TestDaemonDerivesHeadlessRestoreHintFromSurfaceResumeState(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putSurfaceResumeStateForTest(t, stateDir, SurfaceResumeEntry{
+	putSurfaceResumeStateForTest(t, stateDir, surfaceresume.Entry{
 		SurfaceSessionID:   "surface-1",
 		GatewayID:          "app-1",
 		ChatID:             "chat-1",
@@ -204,7 +205,7 @@ func TestDaemonModeSwitchToVSCodeStaysDetachedAfterNormalAutoRestore(t *testing.
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -425,7 +426,7 @@ func TestDaemonAutoRestoreWaitsForFirstRefreshBeforeMissingNotice(t *testing.T) 
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -489,7 +490,7 @@ func TestDaemonAutoRestoreLaunchFailureUsesBackoff(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	putRestoreHintForTest(t, stateDir, HeadlessRestoreHint{
+	putRestoreHintForTest(t, stateDir, surfaceresume.HeadlessRestoreHint{
 		SurfaceSessionID: "surface-1",
 		GatewayID:        "app-1",
 		ChatID:           "chat-1",
@@ -553,20 +554,20 @@ func seedHeadlessInstance(app *App, instanceID, threadID string) {
 	})
 }
 
-func putRestoreHintForTest(t *testing.T, stateDir string, hint HeadlessRestoreHint) {
+func putRestoreHintForTest(t *testing.T, stateDir string, hint surfaceresume.HeadlessRestoreHint) {
 	t.Helper()
-	hint, ok := normalizeHeadlessRestoreHint(hint)
+	hint, ok := surfaceresume.NormalizeHeadlessRestoreHint(hint)
 	if !ok {
 		t.Fatalf("normalize restore hint: %#v", hint)
 	}
-	store, err := loadSurfaceResumeStore(surfaceResumeStatePath(stateDir))
+	store, err := surfaceresume.LoadStore(surfaceresume.StatePath(stateDir))
 	if err != nil {
 		t.Fatalf("load surface resume store: %v", err)
 	}
 
 	entry, exists := store.Get(hint.SurfaceSessionID)
 	if !exists {
-		entry = SurfaceResumeEntry{
+		entry = surfaceresume.Entry{
 			SurfaceSessionID: hint.SurfaceSessionID,
 			GatewayID:        hint.GatewayID,
 			ChatID:           hint.ChatID,
