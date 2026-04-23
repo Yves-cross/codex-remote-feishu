@@ -7,6 +7,19 @@ import (
 )
 
 func (event Event) CanonicalKind() Kind {
+	if kind := PayloadKind(event.Payload); kind != KindUnknown {
+		return kind
+	}
+	if kind := canonicalRootKind(event); kind != KindUnknown {
+		return kind
+	}
+	if IsKnownKind(event.Kind) {
+		return event.Kind
+	}
+	return KindUnknown
+}
+
+func canonicalRootKind(event Event) Kind {
 	switch {
 	case event.Command != nil:
 		return KindAgentCommand
@@ -40,28 +53,6 @@ func (event Event) CanonicalKind() Kind {
 		return KindSelection
 	case event.Snapshot != nil:
 		return KindSnapshot
-	}
-	if kind := PayloadKind(event.Payload); kind != KindUnknown {
-		return kind
-	}
-	switch event.Kind {
-	case KindSnapshot,
-		KindSelection,
-		KindPage,
-		KindRequest,
-		KindPathPicker,
-		KindTargetPicker,
-		KindThreadHistory,
-		KindPendingInput,
-		KindNotice,
-		KindPlanUpdate,
-		KindBlockCommitted,
-		KindTimelineText,
-		KindImageOutput,
-		KindExecCommandProgress,
-		KindAgentCommand,
-		KindDaemonCommand:
-		return event.Kind
 	default:
 		return KindUnknown
 	}
@@ -71,18 +62,6 @@ func (event Event) CanonicalPayload() Payload {
 	if event.Payload != nil {
 		return event.Payload
 	}
-	selectionView := event.SelectionView
-	selectionContext := event.SelectionContext
-	pageView := event.PageView
-	pageContext := event.PageContext
-	requestView := event.RequestView
-	requestContext := event.RequestContext
-	pathPickerView := event.PathPickerView
-	pathPickerContext := event.PathPickerContext
-	targetPickerView := event.TargetPickerView
-	targetPickerContext := event.TargetPickerContext
-	threadHistoryView := event.ThreadHistoryView
-	threadHistoryContext := event.ThreadHistoryContext
 	switch event.CanonicalKind() {
 	case KindSnapshot:
 		if event.Snapshot != nil {
@@ -90,53 +69,53 @@ func (event Event) CanonicalPayload() Payload {
 		}
 		return SnapshotPayload{}
 	case KindSelection:
-		if selectionView != nil {
+		if event.SelectionView != nil {
 			return SelectionPayload{
-				View:    *selectionView,
-				Context: cloneSelectionContext(selectionContext),
+				View:    *event.SelectionView,
+				Context: cloneSelectionContext(event.SelectionContext),
 			}
 		}
-		return SelectionPayload{Context: cloneSelectionContext(selectionContext)}
+		return SelectionPayload{Context: cloneSelectionContext(event.SelectionContext)}
 	case KindPage:
-		if pageView != nil {
+		if event.PageView != nil {
 			return PagePayload{
-				View:    *pageView,
-				Context: clonePageContext(pageContext),
+				View:    *event.PageView,
+				Context: clonePageContext(event.PageContext),
 			}
 		}
-		return PagePayload{Context: clonePageContext(pageContext)}
+		return PagePayload{Context: clonePageContext(event.PageContext)}
 	case KindRequest:
-		if requestView != nil {
+		if event.RequestView != nil {
 			return RequestPayload{
-				View:    *requestView,
-				Context: cloneRequestContext(requestContext),
+				View:    *event.RequestView,
+				Context: cloneRequestContext(event.RequestContext),
 			}
 		}
-		return RequestPayload{Context: cloneRequestContext(requestContext)}
+		return RequestPayload{Context: cloneRequestContext(event.RequestContext)}
 	case KindPathPicker:
-		if pathPickerView != nil {
+		if event.PathPickerView != nil {
 			return PathPickerPayload{
-				View:    *pathPickerView,
-				Context: clonePathPickerContext(pathPickerContext),
+				View:    *event.PathPickerView,
+				Context: clonePathPickerContext(event.PathPickerContext),
 			}
 		}
-		return PathPickerPayload{Context: clonePathPickerContext(pathPickerContext)}
+		return PathPickerPayload{Context: clonePathPickerContext(event.PathPickerContext)}
 	case KindTargetPicker:
-		if targetPickerView != nil {
+		if event.TargetPickerView != nil {
 			return TargetPickerPayload{
-				View:    *targetPickerView,
-				Context: cloneTargetPickerContext(targetPickerContext),
+				View:    *event.TargetPickerView,
+				Context: cloneTargetPickerContext(event.TargetPickerContext),
 			}
 		}
-		return TargetPickerPayload{Context: cloneTargetPickerContext(targetPickerContext)}
+		return TargetPickerPayload{Context: cloneTargetPickerContext(event.TargetPickerContext)}
 	case KindThreadHistory:
-		if threadHistoryView != nil {
+		if event.ThreadHistoryView != nil {
 			return ThreadHistoryPayload{
-				View:    *threadHistoryView,
-				Context: cloneThreadHistoryContext(threadHistoryContext),
+				View:    *event.ThreadHistoryView,
+				Context: cloneThreadHistoryContext(event.ThreadHistoryContext),
 			}
 		}
-		return ThreadHistoryPayload{Context: cloneThreadHistoryContext(threadHistoryContext)}
+		return ThreadHistoryPayload{Context: cloneThreadHistoryContext(event.ThreadHistoryContext)}
 	case KindPendingInput:
 		if event.PendingInput != nil {
 			return PendingInputPayload{State: *event.PendingInput}
@@ -201,9 +180,10 @@ func (event Event) CanonicalSemantics() DeliverySemantics {
 		return semantics
 	}
 	kind := event.CanonicalKind()
+	payload := event.CanonicalPayload()
 	semantics = DeliverySemantics{
-		VisibilityClass:        legacyVisibilityClass(event, kind),
-		HandoffClass:           legacyHandoffClass(event, kind),
+		VisibilityClass:        canonicalVisibilityClass(kind, payload),
+		HandoffClass:           canonicalHandoffClass(kind, payload),
 		FirstResultDisposition: FirstResultDispositionKeep,
 		OwnerCardDisposition:   OwnerCardDispositionKeep,
 	}
@@ -233,21 +213,21 @@ func FilterEventsByFollowupPolicy(events []Event, policy control.FeishuFollowupP
 	return filtered
 }
 
-func legacyVisibilityClass(event Event, kind Kind) VisibilityClass {
+func canonicalVisibilityClass(kind Kind, payload Payload) VisibilityClass {
 	switch kind {
 	case KindPlanUpdate:
 		return VisibilityClassPlan
 	case KindExecCommandProgress:
 		return VisibilityClassProgressText
 	case KindBlockCommitted:
-		if event.Block != nil && event.Block.Final {
+		if committed, ok := payload.(BlockCommittedPayload); ok && committed.Block.Final {
 			return VisibilityClassAlwaysVisible
 		}
 		return VisibilityClassProgressText
 	case KindTimelineText, KindRequest, KindImageOutput:
 		return VisibilityClassAlwaysVisible
 	case KindNotice:
-		if event.Notice != nil && noticeIsAlwaysVisible(*event.Notice) {
+		if noticePayload, ok := payload.(NoticePayload); ok && noticeIsAlwaysVisible(noticePayload.Notice) {
 			return VisibilityClassAlwaysVisible
 		}
 		return VisibilityClassUINavigation
@@ -264,10 +244,10 @@ func legacyVisibilityClass(event Event, kind Kind) VisibilityClass {
 	}
 }
 
-func legacyHandoffClass(event Event, kind Kind) HandoffClass {
+func canonicalHandoffClass(kind Kind, payload Payload) HandoffClass {
 	switch kind {
 	case KindNotice:
-		if event.ThreadSelection != nil {
+		if noticePayload, ok := payload.(NoticePayload); ok && noticePayload.ThreadSelection != nil {
 			return HandoffClassThreadSelection
 		}
 		return HandoffClassNotice
@@ -282,10 +262,10 @@ func legacyHandoffClass(event Event, kind Kind) HandoffClass {
 	case KindExecCommandProgress, KindPlanUpdate:
 		return HandoffClassProcessDetail
 	case KindBlockCommitted:
-		if event.Block != nil && !event.Block.Final {
-			return HandoffClassProcessDetail
+		if committed, ok := payload.(BlockCommittedPayload); ok && committed.Block.Final {
+			return HandoffClassTerminalContent
 		}
-		return HandoffClassTerminalContent
+		return HandoffClassProcessDetail
 	case KindTimelineText, KindRequest, KindImageOutput:
 		return HandoffClassTerminalContent
 	default:

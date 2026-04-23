@@ -10,7 +10,7 @@ import (
 func TestProjectFinalAssistantBlockPreservesExplicitRemoteMarkdownLinks(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-remote-link",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -37,7 +37,7 @@ func TestProjectFinalAssistantBlockPreservesExplicitRemoteMarkdownLinks(t *testi
 func TestProjectFinalAssistantBlockNeutralizesUnsupportedLocalMarkdownLinks(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-local-link",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,
@@ -67,7 +67,7 @@ func TestProjectFinalAssistantBlockNeutralizesUnsupportedLocalMarkdownLinks(t *t
 func TestProjectFinalAssistantBlockSkipsCodeWhenNormalizingLocalLinks(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-code-link",
 		Block: &render.Block{
 			Kind: render.BlockAssistantMarkdown,

@@ -10,7 +10,7 @@ import (
 func TestFilterFollowupEventsByPolicy(t *testing.T) {
 	events := []eventcontract.Event{
 		{
-			Kind: eventcontract.EventNotice,
+			Kind: eventcontract.KindNotice,
 			Notice: &control.Notice{
 				Code: "thread_selection_changed",
 			},
@@ -19,13 +19,13 @@ func TestFilterFollowupEventsByPolicy(t *testing.T) {
 			},
 		},
 		{
-			Kind: eventcontract.EventNotice,
+			Kind: eventcontract.KindNotice,
 			Notice: &control.Notice{
 				Code: "generic_notice",
 			},
 		},
 		{
-			Kind:          eventcontract.EventFeishuSelectionView,
+			Kind:          eventcontract.KindSelection,
 			SelectionView: &control.FeishuSelectionView{},
 		},
 	}
@@ -45,20 +45,20 @@ func TestFilterFollowupEventsByPolicy(t *testing.T) {
 func TestPathPickerFilteredFollowupEventsDropsNoticeClasses(t *testing.T) {
 	events := []eventcontract.Event{
 		{
-			Kind: eventcontract.EventNotice,
+			Kind: eventcontract.KindNotice,
 			Notice: &control.Notice{
 				Code: "generic_notice",
 			},
 		},
 		{
-			Kind: eventcontract.EventFeishuPathPicker,
+			Kind: eventcontract.KindPathPicker,
 			PathPickerView: &control.FeishuPathPickerView{
 				PickerID: "picker-1",
 			},
 		},
 	}
 	filtered := pathPickerFilteredFollowupEvents(events)
-	if len(filtered) != 1 || filtered[0].Kind != eventcontract.EventFeishuPathPicker {
+	if len(filtered) != 1 || filtered[0].Kind != eventcontract.KindPathPicker {
 		t.Fatalf("unexpected path picker filtered followups: %#v", filtered)
 	}
 }

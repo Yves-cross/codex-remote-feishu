@@ -11,7 +11,7 @@ import (
 func TestProjectStructuredDebugErrorNoticeUsesPlainTextSections(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "debug_error",
 			Text: "位置：`gateway_apply`\n错误码：`send_card_failed`\n\n调试信息：\n```text\nraw `payload`\n```",
@@ -46,7 +46,7 @@ func TestProjectStructuredDebugErrorNoticeUsesPlainTextSections(t *testing.T) {
 func TestProjectGlobalRuntimeNoticeIgnoresReplyAnchor(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventNotice,
+		Kind:            eventcontract.KindNotice,
 		SourceMessageID: "msg-1",
 		Notice: &control.Notice{
 			Code:             "daemon_shutting_down",

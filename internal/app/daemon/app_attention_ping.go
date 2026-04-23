@@ -38,7 +38,7 @@ func (a *App) planTurnAttentionPingsLocked(events []eventcontract.Event) map[int
 }
 
 func (a *App) requestAttentionPingCandidateLocked(event eventcontract.Event, now time.Time) (*eventcontract.Event, string) {
-	if event.Kind != eventcontract.EventFeishuRequestView || event.RequestView == nil || event.InlineReplaceCurrentCard {
+	if event.Kind != eventcontract.KindRequest || event.RequestView == nil || event.InlineReplaceCurrentCard {
 		return nil, ""
 	}
 	request := event.RequestView
@@ -174,7 +174,7 @@ func (a *App) newAttentionPingEvent(surfaceID, mentionUserID, replyToMessageID, 
 	}
 	replyToMessageID = strings.TrimSpace(replyToMessageID)
 	return &eventcontract.Event{
-		Kind:             eventcontract.EventTimelineText,
+		Kind:             eventcontract.KindTimelineText,
 		SurfaceSessionID: surfaceID,
 		SourceMessageID:  replyToMessageID,
 		TimelineText: &control.TimelineText{
@@ -223,15 +223,15 @@ func attentionGlobalRuntimePingText(family control.NoticeDeliveryFamily) (string
 }
 
 func isFinalResultAttentionEvent(event eventcontract.Event) bool {
-	return event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final
+	return event.Kind == eventcontract.KindBlockCommitted && event.Block != nil && event.Block.Final
 }
 
 func isTurnFailureAttentionEvent(event eventcontract.Event) bool {
-	return event.Kind == eventcontract.EventNotice && event.Notice != nil && strings.TrimSpace(event.Notice.Code) == "turn_failed"
+	return event.Kind == eventcontract.KindNotice && event.Notice != nil && strings.TrimSpace(event.Notice.Code) == "turn_failed"
 }
 
 func isPlanProposalAttentionEvent(event eventcontract.Event) bool {
-	return event.Kind == eventcontract.EventFeishuPageView &&
+	return event.Kind == eventcontract.KindPage &&
 		event.PageView != nil &&
 		strings.TrimSpace(event.PageView.CommandID) == control.FeishuCommandPlan &&
 		strings.TrimSpace(event.PageView.Title) == "提案计划"

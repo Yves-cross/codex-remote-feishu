@@ -78,7 +78,7 @@ func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecor
 		return nil
 	}
 	events := []eventcontract.Event{{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandGitWorkspaceImportCancel,
@@ -93,7 +93,7 @@ func (s *Service) cancelTargetPickerGitImport(surface *state.SurfaceConsoleRecor
 	surface.PendingHeadless = nil
 	events = append(events, s.finalizeDetachedSurface(surface)...)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,

@@ -142,7 +142,7 @@ func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action 
 	events = append(events, s.finalizeDetachedSurface(surface)...)
 	if pending != nil {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandKillHeadless,

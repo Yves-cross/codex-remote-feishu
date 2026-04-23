@@ -26,7 +26,7 @@ func (a *App) applyIngressActionLocked(action control.Action) []eventcontract.Ev
 	if err != nil {
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			GatewayID:        action.GatewayID,
 			SurfaceSessionID: action.SurfaceSessionID,
 			Notice: &control.Notice{

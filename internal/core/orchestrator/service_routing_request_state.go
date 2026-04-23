@@ -37,7 +37,7 @@ func (s *Service) reconcileInstanceSurfaceThreads(instanceID string) []eventcont
 			events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeUnbound)...)
 			events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeUnbound), "未绑定会话", "")...)
 			events = append(events, eventcontract.Event{
-				Kind:             eventcontract.EventNotice,
+				Kind:             eventcontract.KindNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice: &control.Notice{
 					Code: "selected_thread_lost",

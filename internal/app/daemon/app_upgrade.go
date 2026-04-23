@@ -415,7 +415,7 @@ func (a *App) promptPendingUpgradeOnSurfaceLocked(surfaceID string, stateValue i
 	page := buildUpgradePromptPageView(stateValue)
 	pageView := control.FeishuPageViewFromCommandPageView(page)
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventFeishuPageView,
+		Kind:             eventcontract.KindPage,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PageView:         &pageView,

@@ -288,7 +288,7 @@ func (s *Service) releaseVictimThread(surface *state.SurfaceConsoleRecord, inst 
 	surface.RouteMode = routeMode
 	events = append(events, s.threadSelectionEvents(surface, "", string(routeMode), title, "")...)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "thread_claim_lost",

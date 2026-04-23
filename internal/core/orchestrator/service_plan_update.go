@@ -97,7 +97,7 @@ func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event)
 	}
 	sourceMessageID, _ := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventPlanUpdated,
+		Kind:             eventcontract.KindPlanUpdate,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  sourceMessageID,

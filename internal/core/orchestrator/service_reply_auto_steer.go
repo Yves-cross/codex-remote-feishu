@@ -86,7 +86,7 @@ func (s *Service) maybeAutoSteerReply(surface *state.SurfaceConsoleRecord, actio
 		QueueOn:     true,
 	}, []string{sourceMessageID})
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnSteer,

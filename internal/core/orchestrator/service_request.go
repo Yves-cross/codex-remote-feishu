@@ -244,7 +244,7 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 
 	clearSurfaceRequestCapture(surface)
 	events := []eventcontract.Event{{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandRequestRespond,
@@ -639,7 +639,7 @@ func (s *Service) requestPromptInlineEvent(surface *state.SurfaceConsoleRecord, 
 func (s *Service) requestPromptRefreshWithNotice(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, code, text string) []eventcontract.Event {
 	events := []eventcontract.Event{s.requestPromptEvent(surface, record, "")}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  strings.TrimSpace(record.SourceMessageID),
 		Notice: &control.Notice{
@@ -672,7 +672,7 @@ func (s *Service) dispatchRequestResponse(surface *state.SurfaceConsoleRecord, r
 		events = append(events, s.requestPromptInlinePhaseEvent(surface, request, "", frontstagecontract.PhaseWaitingDispatch, firstNonEmpty(strings.TrimSpace(statusText), requestPromptPendingDispatchStatusText(request))))
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			CommandID: request.PendingDispatchCommandID,
@@ -753,7 +753,7 @@ func (s *Service) cancelRequestUserInputTurn(surface *state.SurfaceConsoleRecord
 		return events
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnInterrupt,

@@ -45,7 +45,7 @@ func TestThreadSelectionEventsEmitNoticeFamilyEvent(t *testing.T) {
 		t.Fatalf("expected one selection event, got %#v", events)
 	}
 	event := events[0]
-	if event.Kind != eventcontract.EventNotice {
+	if event.Kind != eventcontract.KindNotice {
 		t.Fatalf("expected notice-family event, got %#v", event)
 	}
 	if event.ThreadSelection == nil || event.ThreadSelection.ThreadID != "thread-1" {
@@ -79,7 +79,7 @@ func TestThreadSelectionEventsEmitNewThreadReadyNoticeFamilyEvent(t *testing.T) 
 		t.Fatalf("expected one selection event, got %#v", events)
 	}
 	event := events[0]
-	if event.Kind != eventcontract.EventNotice {
+	if event.Kind != eventcontract.KindNotice {
 		t.Fatalf("expected notice-family event, got %#v", event)
 	}
 	if event.Notice == nil || event.Notice.Code != "thread_selection_changed" {

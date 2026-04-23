@@ -157,7 +157,7 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 	})
 
 	if err := app.deliverUIEventWithContext(context.Background(), eventcontract.Event{
-		Kind:             eventcontract.EventBlockCommitted,
+		Kind:             eventcontract.KindBlockCommitted,
 		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{
@@ -171,7 +171,7 @@ func TestConversationTraceRecordsAssistantTextForFinalAndNonFinal(t *testing.T) 
 		t.Fatalf("deliver non-final block: %v", err)
 	}
 	if err := app.deliverUIEventWithContext(context.Background(), eventcontract.Event{
-		Kind:             eventcontract.EventBlockCommitted,
+		Kind:             eventcontract.KindBlockCommitted,
 		SurfaceSessionID: "feishu:app-1:chat:1",
 		SourceMessageID:  "msg-1",
 		Block: &render.Block{

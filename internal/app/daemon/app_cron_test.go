@@ -602,7 +602,7 @@ func TestCronShowReturnsCatalogWithoutEnteringMutatingGate(t *testing.T) {
 		GatewayID:        "gateway-2",
 		SurfaceSessionID: "surface-2",
 	})
-	if len(events) != 1 || events[0].Kind != eventcontract.EventFeishuPageView {
+	if len(events) != 1 || events[0].Kind != eventcontract.KindPage {
 		t.Fatalf("events = %#v, want one direct page card", events)
 	}
 	if !app.cronRuntime.syncInFlight {

@@ -11,7 +11,7 @@ import (
 func TestProjectThreadHistoryLoadingCreatesPatchableDirectCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:             eventcontract.EventFeishuThreadHistory,
+		Kind:             eventcontract.KindThreadHistory,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ThreadHistoryView: &control.FeishuThreadHistoryView{
@@ -34,7 +34,7 @@ func TestProjectThreadHistoryLoadingCreatesPatchableDirectCard(t *testing.T) {
 func TestProjectThreadHistoryUpdatesExistingCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:             eventcontract.EventFeishuThreadHistory,
+		Kind:             eventcontract.KindThreadHistory,
 		SurfaceSessionID: "surface-1",
 		ThreadHistoryView: &control.FeishuThreadHistoryView{
 			PickerID:    "history-1",

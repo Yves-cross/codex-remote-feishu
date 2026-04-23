@@ -185,7 +185,7 @@ func (s *Service) discardStagedInputsForRouteChange(surface *state.SurfaceConsol
 		return nil
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "staged_inputs_discarded_on_route_change",

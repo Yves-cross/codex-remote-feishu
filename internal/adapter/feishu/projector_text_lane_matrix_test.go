@@ -12,7 +12,7 @@ import (
 func TestTextLaneMatrix_NonFinalAssistantBlockUsesDirectTextLane(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-1",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,
@@ -65,7 +65,7 @@ func TestTextLaneMatrix_RequestPromptUsesStructuredCardLane(t *testing.T) {
 func TestTextLaneMatrix_FixedCopyNoticeKeepsMarkdownBodyLane(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "当前只支持 `/mode codex` 和 `/mode claude`。",
@@ -87,7 +87,7 @@ func TestTextLaneMatrix_FinalReplyUsesFinalMarkdownLane(t *testing.T) {
 	projector := NewProjector()
 	raw := "先看 [Guide](./docs/guide.md:12)，再看 [RFC](https://example.com/rfc)。"
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-final",
 		Block: &render.Block{
 			Kind:  render.BlockAssistantMarkdown,

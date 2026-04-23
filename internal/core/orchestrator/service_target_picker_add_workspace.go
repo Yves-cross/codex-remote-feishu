@@ -460,7 +460,7 @@ func (s *Service) confirmTargetPickerGitImport(surface *state.SurfaceConsoleReco
 	)
 	return append(processing,
 		eventcontract.Event{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandGitWorkspaceImport,

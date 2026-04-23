@@ -24,12 +24,12 @@ type fakePathPickerEntryFilter struct {
 
 func (f *fakePathPickerConsumer) PathPickerConfirmed(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	f.confirmed = append(f.confirmed, result)
-	return []eventcontract.Event{{Kind: eventcontract.EventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
+	return []eventcontract.Event{{Kind: eventcontract.KindNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_confirmed", Text: result.SelectedPath}}}
 }
 
 func (f *fakePathPickerConsumer) PathPickerCancelled(_ *Service, _ *state.SurfaceConsoleRecord, result control.PathPickerResult) []eventcontract.Event {
 	f.cancelled = append(f.cancelled, result)
-	return []eventcontract.Event{{Kind: eventcontract.EventNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
+	return []eventcontract.Event{{Kind: eventcontract.KindNotice, SurfaceSessionID: "surface-1", Notice: &control.Notice{Code: "consumer_cancelled", Text: result.RootPath}}}
 }
 
 func (f *fakePathPickerEntryFilter) PathPickerFilterEntry(_ *Service, _ *state.SurfaceConsoleRecord, _ *activePathPickerRecord, item control.FeishuPathPickerEntry, _ string) (control.FeishuPathPickerEntry, bool) {
@@ -42,7 +42,7 @@ func (f *fakePathPickerEntryFilter) PathPickerFilterEntry(_ *Service, _ *state.S
 
 func pathPickerViewFromEvent(t *testing.T, event eventcontract.Event) *control.FeishuPathPickerView {
 	t.Helper()
-	if event.Kind != eventcontract.EventFeishuPathPicker || event.PathPickerView == nil {
+	if event.Kind != eventcontract.KindPathPicker || event.PathPickerView == nil {
 		t.Fatalf("expected path picker event, got %#v", event)
 	}
 	return event.PathPickerView

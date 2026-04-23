@@ -249,7 +249,7 @@ func TestPlanProposalExecuteEnqueuesContinuationAndDisablesPlanMode(t *testing.T
 		if catalog, ok := eventCommandCatalog(event); ok && catalog.Sealed {
 			foundSeal = true
 		}
-		if event.Kind == eventcontract.EventAgentCommand && event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
+		if event.Kind == eventcontract.KindAgentCommand && event.Command != nil && event.Command.Kind == agentproto.CommandPromptSend {
 			foundDispatch = true
 		}
 	}

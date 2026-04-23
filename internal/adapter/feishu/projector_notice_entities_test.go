@@ -12,7 +12,7 @@ import (
 func TestProjectUsageNoticePreservesQuotesInInlineTags(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "请求层把 `\"/api/admin/*\"` 和 `\"/api/setup/*\"` 统一转成本地路径。",
@@ -35,7 +35,7 @@ func TestProjectUsageNoticePreservesQuotesInInlineTags(t *testing.T) {
 func TestProjectUsageNoticePreservesAmpersandsInInlineTags(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "请先跑 `go test ./internal/app/daemon ./internal/core/orchestrator`，再执行 `cd web && npm test -- --run src/lib/api.test.ts`。",
@@ -58,7 +58,7 @@ func TestProjectUsageNoticePreservesAmpersandsInInlineTags(t *testing.T) {
 func TestProjectUsageNoticeKeepsLiteralEntitiesEscapedInInlineTags(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "如果你就是要展示实体字面量，请写成 `&lt;text_tag&gt;`，不要把它当成真实标签。",
@@ -75,7 +75,7 @@ func TestProjectUsageNoticeKeepsLiteralEntitiesEscapedInInlineTags(t *testing.T)
 func TestProjectFinalAssistantBlockPreservesAngleBracketsInInlineCode(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventBlockCommitted,
+		Kind:            eventcontract.KindBlockCommitted,
 		SourceMessageID: "msg-inline-angle",
 		Block: &render.Block{
 			Kind:        render.BlockAssistantMarkdown,

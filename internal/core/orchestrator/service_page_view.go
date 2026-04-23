@@ -18,7 +18,7 @@ const (
 
 func (s *Service) pageEvent(surface *state.SurfaceConsoleRecord, view control.FeishuPageView) eventcontract.Event {
 	return eventcontract.Event{
-		Kind:                     eventcontract.EventFeishuPageView,
+		Kind:                     eventcontract.KindPage,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,

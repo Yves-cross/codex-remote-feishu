@@ -164,7 +164,7 @@ func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pen
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,
@@ -176,7 +176,7 @@ func (s *Service) expirePendingHeadless(surface *state.SurfaceConsoleRecord, pen
 		},
 	})
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           pendingHeadlessTimeoutNotice(pending),
 	})

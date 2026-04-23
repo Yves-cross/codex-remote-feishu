@@ -447,7 +447,7 @@ func TestProjectUseAllSelectionViewGroupsByWorkspace(t *testing.T) {
 		},
 	}
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:          eventcontract.EventFeishuSelectionView,
+		Kind:          eventcontract.KindSelection,
 		SelectionView: &view,
 		SelectionContext: &control.FeishuUISelectionContext{
 			DTOOwner:   control.FeishuUIDTOwnerSelection,
@@ -1728,7 +1728,7 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 func TestProjectQueueTypingAndThumbsDownReactions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventPendingInput,
+		Kind: eventcontract.KindPendingInput,
 		PendingInput: &control.PendingInputState{
 			SourceMessageID: "msg-1",
 			QueueOn:         true,
@@ -1749,7 +1749,7 @@ func TestProjectQueueTypingAndThumbsDownReactions(t *testing.T) {
 func TestProjectThumbsUpReaction(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventPendingInput,
+		Kind: eventcontract.KindPendingInput,
 		PendingInput: &control.PendingInputState{
 			SourceMessageID: "msg-1",
 			QueueOff:        true,
@@ -1770,7 +1770,7 @@ func TestProjectThumbsUpReaction(t *testing.T) {
 func TestProjectNoticeAsSystemCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "attached",
 			Text: "已接管 droid。当前输入目标：droid · 修复登录流程",
@@ -1793,7 +1793,7 @@ func TestProjectNoticeAsSystemCard(t *testing.T) {
 func TestProjectTurnOwnedNoticeStaysTopLevel(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:            eventcontract.EventNotice,
+		Kind:            eventcontract.KindNotice,
 		SourceMessageID: "om-source-1",
 		Notice: &control.Notice{
 			Code: "request_refresh",
@@ -1811,7 +1811,7 @@ func TestProjectTurnOwnedNoticeStaysTopLevel(t *testing.T) {
 func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code:     "debug_error",
 			Title:    "链路错误 · wrapper.observe_codex_stdout",
@@ -1830,7 +1830,7 @@ func TestProjectNoticeUsesCustomTitleAndTheme(t *testing.T) {
 func TestProjectDebugErrorNoticeRendersInlineTagsAndPreservesFence(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "debug_error",
 			Text: "位置：`gateway_apply`\n错误码：`send_card_failed`\n\n调试信息：\n```text\nraw `payload`\n```",
@@ -1851,7 +1851,7 @@ func TestProjectDebugErrorNoticeRendersInlineTagsAndPreservesFence(t *testing.T)
 func TestProjectUsageNoticeRendersInlineTags(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "用法：`/model` 查看当前配置；`/model <模型>`；`/model <模型> <推理强度>`；`/model clear`。",
@@ -1872,7 +1872,7 @@ func TestProjectUsageNoticeRendersInlineTags(t *testing.T) {
 func TestProjectUsageNoticePreservesAngleBracketsInInlineTags(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.EventNotice,
+		Kind: eventcontract.KindNotice,
 		Notice: &control.Notice{
 			Code: "surface_override_usage",
 			Text: "核心证据很简单：`section -> entry -> button`，占位符：`/model <模型> <推理强度>`，比较：`a < b > c`。",

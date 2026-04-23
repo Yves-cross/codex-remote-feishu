@@ -430,10 +430,10 @@ func TestQuietVerbosityHidesPlanButKeepsFinal(t *testing.T) {
 	finished := completeRemoteTurnWithFinalText(t, svc, "turn-1", "completed", "", "最终结果", nil)
 	foundFinal := false
 	for _, event := range finished {
-		if event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final && event.Block.Text == "最终结果" {
+		if event.Kind == eventcontract.KindBlockCommitted && event.Block != nil && event.Block.Final && event.Block.Text == "最终结果" {
 			foundFinal = true
 		}
-		if event.Kind == eventcontract.EventPlanUpdated {
+		if event.Kind == eventcontract.KindPlanUpdate {
 			t.Fatalf("did not expect quiet verbosity to leak plan event in final sequence: %#v", finished)
 		}
 	}
@@ -461,7 +461,7 @@ func TestNormalVerbosityKeepsPlanUpdates(t *testing.T) {
 			},
 		},
 	})
-	if len(planEvents) != 1 || planEvents[0].Kind != eventcontract.EventPlanUpdated {
+	if len(planEvents) != 1 || planEvents[0].Kind != eventcontract.KindPlanUpdate {
 		t.Fatalf("expected normal verbosity to keep plan event, got %#v", planEvents)
 	}
 	if planEvents[0].SourceMessageID != "msg-1" {
@@ -477,12 +477,12 @@ func TestVerbosityFilterNeverDropsDaemonOrAgentCommands(t *testing.T) {
 
 	events := svc.filterEventsForSurfaceVisibility([]eventcontract.Event{
 		{
-			Kind:             eventcontract.EventAgentCommand,
+			Kind:             eventcontract.KindAgentCommand,
 			SurfaceSessionID: "surface-1",
 			Command:          &agentproto.Command{Kind: agentproto.CommandPromptSend},
 		},
 		{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			SurfaceSessionID: "surface-1",
 			DaemonCommand:    &control.DaemonCommand{Kind: control.DaemonCommandDebug},
 		},

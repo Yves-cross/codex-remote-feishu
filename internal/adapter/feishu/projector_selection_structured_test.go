@@ -35,7 +35,7 @@ func TestProjectInstanceSelectionViewUsesStructuredButtons(t *testing.T) {
 		},
 	}
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:              eventcontract.EventFeishuSelectionView,
+		Kind:              eventcontract.KindSelection,
 		DaemonLifecycleID: "life-1",
 		SelectionView:     &view,
 		SelectionContext: &control.FeishuUISelectionContext{
@@ -103,7 +103,7 @@ func TestProjectVSCodeThreadSelectionViewUsesDropdown(t *testing.T) {
 		},
 	}
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:              eventcontract.EventFeishuSelectionView,
+		Kind:              eventcontract.KindSelection,
 		DaemonLifecycleID: "life-2",
 		SelectionView:     &view,
 		SelectionContext: &control.FeishuUISelectionContext{

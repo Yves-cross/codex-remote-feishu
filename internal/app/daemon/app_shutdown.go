@@ -116,7 +116,7 @@ func (a *App) beginShutdownNotices() []eventcontract.Event {
 		seen[surfaceID] = struct{}{}
 		notice := orchestrator.GlobalRuntimeShutdownNotice(daemonShutdownNoticeText)
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surfaceID,
 			Notice:           &notice,
 		})

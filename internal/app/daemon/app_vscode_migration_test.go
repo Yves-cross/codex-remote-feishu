@@ -448,7 +448,7 @@ func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
 	}
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:  "not_attached_vscode",

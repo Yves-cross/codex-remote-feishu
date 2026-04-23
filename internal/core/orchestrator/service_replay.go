@@ -173,7 +173,7 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 			}
 			progress.Timeline = control.BuildExecCommandProgressTimeline(*progress)
 			return []eventcontract.Event{{
-				Kind:                eventcontract.EventExecCommandProgress,
+				Kind:                eventcontract.KindExecCommandProgress,
 				GatewayID:           surface.GatewayID,
 				SurfaceSessionID:    surface.SurfaceSessionID,
 				SourceMessageID:     replay.SourceMessageID,
@@ -187,7 +187,7 @@ func (s *Service) replayThreadUpdate(surface *state.SurfaceConsoleRecord, inst *
 			ThemeKey: replay.NoticeThemeKey,
 		}
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  replay.SourceMessageID,

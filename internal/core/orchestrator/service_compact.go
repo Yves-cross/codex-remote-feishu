@@ -69,7 +69,7 @@ func (s *Service) handleCompactCommand(surface *state.SurfaceConsoleRecord, acti
 	s.turns.compactTurns[inst.InstanceID] = binding
 	events := s.emitCompactOwnerDispatching(surface, binding)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandThreadCompactStart,

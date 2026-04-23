@@ -221,7 +221,7 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 			Preview:   preview,
 		}
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_restore_attached",
@@ -238,7 +238,7 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 			Preview:   preview,
 		}
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "surface_resume_attached",
@@ -249,7 +249,7 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 	} else {
 		attachLead := s.attachedLeadText(surface, inst)
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "attached",
@@ -270,14 +270,14 @@ func (s *Service) startHeadlessForResolvedThread(surface *state.SurfaceConsoleRe
 func attachSurfaceToKnownThreadInstanceBusyNotice(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("workspace_instance_busy"),
 		}}
@@ -291,14 +291,14 @@ func attachSurfaceToKnownThreadInstanceBusyNotice(surface *state.SurfaceConsoleR
 func attachSurfaceToKnownThreadThreadBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("thread_busy"),
 		}}
@@ -309,14 +309,14 @@ func attachSurfaceToKnownThreadThreadBusyNotice(surface *state.SurfaceConsoleRec
 func attachSurfaceToKnownThreadWorkspaceBusyNotice(surface *state.SurfaceConsoleRecord, mode attachSurfaceToKnownThreadMode) []eventcontract.Event {
 	if mode == attachSurfaceToKnownThreadHeadlessRestore {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("workspace_busy"),
 		}}
 	}
 	if mode == attachSurfaceToKnownThreadSurfaceResume {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           surfaceResumeFailureNotice("workspace_busy"),
 		}}
@@ -332,7 +332,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 	if cwd == "" {
 		if mode == startHeadlessModeHeadlessRestore {
 			return []eventcontract.Event{{
-				Kind:             eventcontract.EventNotice,
+				Kind:             eventcontract.KindNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           headlessRestoreFailureNotice("thread_cwd_missing"),
 			}}
@@ -342,7 +342,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 	if owner := s.workspaceBusyOwnerForSurface(surface, cwd); owner != nil {
 		if mode == startHeadlessModeHeadlessRestore {
 			return []eventcontract.Event{{
-				Kind:             eventcontract.EventNotice,
+				Kind:             eventcontract.KindNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           headlessRestoreFailureNotice("workspace_busy"),
 			}}
@@ -378,7 +378,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 		if s.surfaceUsesWorkspaceClaims(surface) {
 			if mode == startHeadlessModeHeadlessRestore {
 				return append(events, eventcontract.Event{
-					Kind:             eventcontract.EventNotice,
+					Kind:             eventcontract.KindNotice,
 					SurfaceSessionID: surface.SurfaceSessionID,
 					Notice:           headlessRestoreFailureNotice("workspace_busy"),
 				})
@@ -403,7 +403,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 	}
 	if mode == startHeadlessModeDefault {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_starting",
@@ -413,7 +413,7 @@ func (s *Service) startHeadlessForResolvedThreadWithMode(surface *state.SurfaceC
 		})
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandStartHeadless,

@@ -10,7 +10,7 @@ import (
 func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
 	event := eventcontract.Event{
-		Kind:              eventcontract.EventFeishuPathPicker,
+		Kind:              eventcontract.KindPathPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		PathPickerView: &control.FeishuPathPickerView{
@@ -48,7 +48,7 @@ func TestProjectPathPickerStampsDaemonLifecycleID(t *testing.T) {
 func TestProjectPathPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:              eventcontract.EventFeishuPathPicker,
+		Kind:              eventcontract.KindPathPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		PathPickerView: &control.FeishuPathPickerView{

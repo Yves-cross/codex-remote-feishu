@@ -28,7 +28,7 @@ func (sendFilePathPickerConsumer) PathPickerConfirmed(_ *Service, surface *state
 		return notice(surface, "send_file_invalid", "未选中文件，请重新选择。")
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
@@ -71,7 +71,7 @@ func sendFileInlineTerminalEvent(surface *state.SurfaceConsoleRecord, messageID,
 		SummarySections: sendFileReplacementSummarySections(lines...),
 	})
 	return eventcontract.Event{
-		Kind:                     eventcontract.EventFeishuPageView,
+		Kind:                     eventcontract.KindPage,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: true,
@@ -152,7 +152,7 @@ func (s *Service) HandleSendFilePreflightFailure(surfaceID, pickerID, text strin
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: strings.TrimSpace(surfaceID),
 			Notice: &control.Notice{
 				Code:  "send_file_failed",

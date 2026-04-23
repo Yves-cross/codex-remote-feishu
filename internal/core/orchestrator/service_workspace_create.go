@@ -172,7 +172,7 @@ func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceC
 	}
 	events = append(events,
 		eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "workspace_create_starting",
@@ -181,7 +181,7 @@ func (s *Service) startFreshWorkspaceHeadlessWithOptions(surface *state.SurfaceC
 			},
 		},
 		eventcontract.Event{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandStartHeadless,

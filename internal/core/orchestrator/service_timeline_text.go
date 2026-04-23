@@ -41,7 +41,7 @@ func (s *Service) steerUserSupplementEvent(surface *state.SurfaceConsoleRecord, 
 		return nil
 	}
 	return &eventcontract.Event{
-		Kind:                 eventcontract.EventTimelineText,
+		Kind:                 eventcontract.KindTimelineText,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		SourceMessageID:      replyToMessageID,
 		SourceMessagePreview: replyToMessagePreview,

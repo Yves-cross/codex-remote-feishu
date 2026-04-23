@@ -159,7 +159,7 @@ func upgradeOwnerCardEvent(surfaceID string, flow *upgradeOwnerCardFlowRecord, t
 		RelatedButtons: append([]control.CommandCatalogButton(nil), buttons...),
 	})
 	return eventcontract.Event{
-		Kind:             eventcontract.EventFeishuPageView,
+		Kind:             eventcontract.KindPage,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		PageView:         &view,
 	}
@@ -274,7 +274,7 @@ func (a *App) startUpgradeLatestOwnerCheckLocked(command control.DaemonCommand, 
 	events := []eventcontract.Event{
 		upgradeOwnerCheckingEvent(command.SurfaceSessionID, flow, stateValue),
 		{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        command.GatewayID,
 			SurfaceSessionID: command.SurfaceSessionID,
 			SourceMessageID:  command.SourceMessageID,

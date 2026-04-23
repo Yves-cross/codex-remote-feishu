@@ -32,7 +32,7 @@ func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string
 	if a == nil || a.finalBlockPreviewer == nil || rewriteErr == nil || a.shuttingDown {
 		return
 	}
-	if event.Kind != eventcontract.EventBlockCommitted || event.Block == nil || !event.Block.Final {
+	if event.Kind != eventcontract.KindBlockCommitted || event.Block == nil || !event.Block.Final {
 		return
 	}
 	if previewReq.Block.Kind != render.BlockAssistantMarkdown || strings.TrimSpace(previewReq.Block.Text) == "" {

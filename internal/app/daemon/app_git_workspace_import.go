@@ -86,7 +86,7 @@ func gitWorkspaceImportNotice(surfaceID, code, text string) []eventcontract.Even
 		title = "Git 工作区已导入"
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

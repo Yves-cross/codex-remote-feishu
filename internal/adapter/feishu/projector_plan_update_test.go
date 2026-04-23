@@ -12,7 +12,7 @@ import (
 func TestProjectPlanUpdateCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:             eventcontract.EventPlanUpdated,
+		Kind:             eventcontract.KindPlanUpdate,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om_1",
@@ -61,7 +61,7 @@ func TestProjectPlanUpdateCard(t *testing.T) {
 func TestProjectPlanUpdateWithoutStepsShowsFallback(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:             eventcontract.EventPlanUpdated,
+		Kind:             eventcontract.KindPlanUpdate,
 		GatewayID:        "app-1",
 		SurfaceSessionID: "surface-1",
 		PlanUpdate:       &control.PlanUpdate{},

@@ -10,7 +10,7 @@ import (
 func commandPageEvent(surfaceID string, view control.FeishuPageView) eventcontract.Event {
 	page := control.FeishuPageViewFromCommandPageView(control.NormalizeFeishuPageView(view))
 	return eventcontract.Event{
-		Kind:             eventcontract.EventFeishuPageView,
+		Kind:             eventcontract.KindPage,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		PageView:         &page,
 	}

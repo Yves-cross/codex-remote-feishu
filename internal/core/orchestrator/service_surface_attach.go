@@ -108,7 +108,7 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 		noticeText = fmt.Sprintf("已接管工作区 %s。当前还没有可见会话；你可以直接发送文本开启新会话（或 /new 先进入待命），也可稍后发送 /use。", workspaceKey)
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: noticeCode,
@@ -228,7 +228,7 @@ func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, in
 		}
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "attached",
@@ -286,7 +286,7 @@ func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst
 	}
 
 	result := []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: noticeCode,
@@ -344,7 +344,7 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 	}
 	events = append(events,
 		eventcontract.Event{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			DaemonCommand: &control.DaemonCommand{
 				Kind:             control.DaemonCommandKillHeadless,
@@ -353,7 +353,7 @@ func (s *Service) attachHeadlessInstance(surface *state.SurfaceConsoleRecord, in
 			},
 		},
 		eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "legacy_headless_restore_cancelled",

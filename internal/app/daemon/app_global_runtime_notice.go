@@ -10,7 +10,7 @@ import (
 )
 
 func normalizeGlobalRuntimeNoticeEvent(event eventcontract.Event) (eventcontract.Event, bool) {
-	if event.Kind != eventcontract.EventNotice || event.Notice == nil || !event.Notice.IsGlobalRuntime() {
+	if event.Kind != eventcontract.KindNotice || event.Notice == nil || !event.Notice.IsGlobalRuntime() {
 		return event, false
 	}
 	event.SourceMessageID = ""

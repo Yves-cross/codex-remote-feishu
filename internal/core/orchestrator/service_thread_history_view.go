@@ -108,7 +108,7 @@ func (s *Service) startThreadHistoryQuery(surface *state.SurfaceConsoleRecord, i
 	}
 	events := []eventcontract.Event{s.threadHistoryViewEvent(surface, view, inline, sourceMessageID)}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  sourceMessageID,
@@ -194,7 +194,7 @@ func (s *Service) HandleSurfaceThreadHistoryFailure(surfaceID, code, text string
 	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
 	if surface == nil {
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: strings.TrimSpace(surfaceID),
 			Notice: &control.Notice{
 				Code: code,

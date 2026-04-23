@@ -42,7 +42,7 @@ func TestContextCompactionRendersSingleNoticeOnAttachedSurface(t *testing.T) {
 		ItemKind: "context_compaction",
 	})
 
-	if len(events) != 1 || events[0].Kind != eventcontract.EventExecCommandProgress || events[0].ExecCommandProgress == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.KindExecCommandProgress || events[0].ExecCommandProgress == nil {
 		t.Fatalf("expected compact progress event, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress
@@ -88,7 +88,7 @@ func TestContextCompactionNormalVerbosityShowsAttachedSurfaceCard(t *testing.T) 
 		ItemID:   "compact-1",
 		ItemKind: "context_compaction",
 	})
-	if len(events) != 1 || events[0].Kind != eventcontract.EventExecCommandProgress || events[0].ExecCommandProgress == nil {
+	if len(events) != 1 || events[0].Kind != eventcontract.KindExecCommandProgress || events[0].ExecCommandProgress == nil {
 		t.Fatalf("expected normal verbosity to show compact card, got %#v", events)
 	}
 	progress := events[0].ExecCommandProgress

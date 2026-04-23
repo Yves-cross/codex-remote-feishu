@@ -246,7 +246,7 @@ func (s *Service) stageImage(surface *state.SurfaceConsoleRecord, action control
 	surface.StagedImages[image.ImageID] = image
 	events := s.maybeSealPlanProposalForInput(surface)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventPendingInput,
+		Kind:             eventcontract.KindPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
 			QueueItemID:     image.ImageID,
@@ -294,7 +294,7 @@ func (s *Service) stageFile(surface *state.SurfaceConsoleRecord, action control.
 	surface.StagedFiles[file.FileID] = file
 	events := s.maybeSealPlanProposalForInput(surface)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventPendingInput,
+		Kind:             eventcontract.KindPendingInput,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		PendingInput: &control.PendingInputState{
 			QueueItemID:     file.FileID,
@@ -447,7 +447,7 @@ func (s *Service) dispatchSteerCandidates(
 		QueueIndex:         queueIndices[primaryQueueItemID],
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandTurnSteer,
@@ -478,7 +478,7 @@ func (s *Service) handleMessageRecalled(surface *state.SurfaceConsoleRecord, tar
 			switch item.Status {
 			case state.QueueItemDispatching, state.QueueItemRunning:
 				return []eventcontract.Event{{
-					Kind:             eventcontract.EventNotice,
+					Kind:             eventcontract.KindNotice,
 					SurfaceSessionID: surface.SurfaceSessionID,
 					Notice: &control.Notice{
 						Code:     "message_recall_too_late",
@@ -552,7 +552,7 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []eventcontra
 		notice = s.stopOfflineNotice(surface)
 	} else if threadID, turnID, ok := s.interruptibleSurfaceTurn(surface); ok {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventAgentCommand,
+			Kind:             eventcontract.KindAgentCommand,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Command: &agentproto.Command{
 				Kind: agentproto.CommandTurnInterrupt,
@@ -597,7 +597,7 @@ func (s *Service) stopSurface(surface *state.SurfaceConsoleRecord) []eventcontra
 		notice.Text += fmt.Sprintf(" 已清空 %d 条排队或暂存输入。", discarded)
 	}
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &notice,
 	})
@@ -612,7 +612,7 @@ func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecor
 	events := s.discardDrafts(surface)
 	events = append(events, s.finalizeDetachedSurface(surface)...)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventDaemonCommand,
+		Kind:             eventcontract.KindDaemonCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		DaemonCommand: &control.DaemonCommand{
 			Kind:             control.DaemonCommandKillHeadless,
@@ -625,7 +625,7 @@ func (s *Service) cancelPendingHeadlessLaunch(surface *state.SurfaceConsoleRecor
 	})
 	if notice != nil {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -661,7 +661,7 @@ func (s *Service) detach(surface *state.SurfaceConsoleRecord) []eventcontract.Ev
 		s.abandoningUntil[surface.SurfaceSessionID] = s.now().Add(s.config.DetachAbandonWait)
 		if binding := s.remoteBindingForSurface(surface); binding != nil && binding.TurnID != "" {
 			events = append(events, eventcontract.Event{
-				Kind:             eventcontract.EventAgentCommand,
+				Kind:             eventcontract.KindAgentCommand,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Command: &agentproto.Command{
 					Kind: agentproto.CommandTurnInterrupt,

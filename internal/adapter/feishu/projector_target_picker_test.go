@@ -11,7 +11,7 @@ import (
 func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 	projector := NewProjector()
 	event := eventcontract.Event{
-		Kind:              eventcontract.EventFeishuTargetPicker,
+		Kind:              eventcontract.KindTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		TargetPickerView: &control.FeishuTargetPickerView{
@@ -51,7 +51,7 @@ func TestProjectTargetPickerStampsDaemonLifecycleID(t *testing.T) {
 func TestProjectTargetPickerUsesUpdateCardWhenMessageIDPresent(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:              eventcontract.EventFeishuTargetPicker,
+		Kind:              eventcontract.KindTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-1",
 		TargetPickerView: &control.FeishuTargetPickerView{
@@ -480,7 +480,7 @@ func TestTargetPickerElementsRenderGitFormWithOpenPathAndSubmit(t *testing.T) {
 func TestProjectTargetPickerGitFormRendersFlatV2FormForInlineReplacement(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:              eventcontract.EventFeishuTargetPicker,
+		Kind:              eventcontract.KindTargetPicker,
 		SurfaceSessionID:  "surface-1",
 		DaemonLifecycleID: "life-5",
 		TargetPickerView: &control.FeishuTargetPickerView{

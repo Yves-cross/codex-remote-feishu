@@ -117,7 +117,7 @@ func (s *Service) handleProblem(instanceID string, problem agentproto.ErrorInfo)
 		}
 		noticeCopy := notice
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &noticeCopy,

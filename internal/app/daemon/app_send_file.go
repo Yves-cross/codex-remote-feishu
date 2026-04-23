@@ -104,7 +104,7 @@ func (a *App) runPreparedSendIMFileLocked(command control.DaemonCommand, prepare
 		fileName = strings.TrimSpace(prepared.fileName)
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "send_file_sent",
@@ -192,7 +192,7 @@ func sendFileNotice(surfaceID, code, text string) []eventcontract.Event {
 		title = "文件已发送"
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

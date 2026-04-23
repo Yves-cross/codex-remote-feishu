@@ -183,7 +183,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 		previewErr error
 		didPreview bool
 	)
-	if a.finalBlockPreviewer != nil && event.Kind == eventcontract.EventBlockCommitted && event.Block != nil {
+	if a.finalBlockPreviewer != nil && event.Kind == eventcontract.KindBlockCommitted && event.Block != nil {
 		previewCtx, previewCancel := a.newTimeoutContext(ctx, a.finalPreviewTimeout)
 		previewReq = feishu.FinalBlockPreviewRequest{
 			GatewayID:        gatewayID,
@@ -266,7 +266,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 }
 
 func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feishu.Operation) {
-	if event.Kind == eventcontract.EventBlockCommitted && event.Block != nil && event.Block.Final {
+	if event.Kind == eventcontract.KindBlockCommitted && event.Block != nil && event.Block.Final {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
 				continue
@@ -402,7 +402,7 @@ func (a *App) queueGatewayFailureNotice(event eventcontract.Event, err error) {
 		Retryable:        true,
 	}))
 	a.queueGlobalRuntimeNoticeLocked(eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: event.SurfaceSessionID,
 		Notice:           &notice,
 	})

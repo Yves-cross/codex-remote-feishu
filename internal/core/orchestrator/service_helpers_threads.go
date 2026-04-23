@@ -107,7 +107,7 @@ func (s *Service) pendingInputEvents(surface *state.SurfaceConsoleRecord, pendin
 		pendingCopy := pending
 		pendingCopy.SourceMessageID = messageID
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventPendingInput,
+			Kind:             eventcontract.KindPendingInput,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			PendingInput:     &pendingCopy,
@@ -456,7 +456,7 @@ func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord,
 	}
 	s.threadRefreshes[inst.InstanceID] = true
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command: &agentproto.Command{
 			Kind: agentproto.CommandThreadsRefresh,

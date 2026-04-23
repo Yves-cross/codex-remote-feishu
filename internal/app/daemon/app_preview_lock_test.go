@@ -116,7 +116,7 @@ func TestHandleUIEventsReleasesAppLockDuringFinalPreviewRewrite(t *testing.T) {
 		app.mu.Lock()
 		defer app.mu.Unlock()
 		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
-			Kind:             eventcontract.EventBlockCommitted,
+			Kind:             eventcontract.KindBlockCommitted,
 			SurfaceSessionID: "feishu:app-1:chat:1",
 			SourceMessageID:  "msg-1",
 			Block: &render.Block{
@@ -157,7 +157,7 @@ func TestHandleUIEventsReleasesAppLockDuringGatewayApply(t *testing.T) {
 		app.mu.Lock()
 		defer app.mu.Unlock()
 		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: "feishu:app-1:chat:1",
 			Notice: &control.Notice{
 				Code:  "gateway_notice",
@@ -225,7 +225,7 @@ func TestHandleUIEventsReleasesAppLockDuringRelaySend(t *testing.T) {
 		app.mu.Lock()
 		defer app.mu.Unlock()
 		app.handleUIEventsLocked(context.Background(), []eventcontract.Event{{
-			Kind:             eventcontract.EventAgentCommand,
+			Kind:             eventcontract.KindAgentCommand,
 			SurfaceSessionID: "surface-1",
 			Command: &agentproto.Command{
 				Kind: agentproto.CommandPromptSend,

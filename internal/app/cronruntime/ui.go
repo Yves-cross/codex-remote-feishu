@@ -144,7 +144,7 @@ func UsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
 		),
 	)
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventFeishuPageView,
+		Kind:             eventcontract.KindPage,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		PageView:         &page,
 	}}
@@ -405,7 +405,7 @@ func RunCommandText(jobRecordID string) string {
 
 func NoticeEvent(surfaceID, code, text string) eventcontract.Event {
 	return eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

@@ -419,7 +419,7 @@ func (a *App) maybeRecoverNormalSurfacesLocked(now time.Time) []eventcontract.Ev
 			notice := orchestrator.NoticeForSurfaceResumeFailure(result.FailureCode)
 			if notice != nil {
 				events = append(events, eventcontract.Event{
-					Kind:             eventcontract.EventNotice,
+					Kind:             eventcontract.KindNotice,
 					SurfaceSessionID: surfaceID,
 					Notice:           notice,
 				})
@@ -460,7 +460,7 @@ func (a *App) maybeRecoverVSCodeSurfacesLocked(now time.Time) []eventcontract.Ev
 			notice := orchestrator.NoticeForVSCodeSurfaceResumeFailure(result.FailureCode)
 			if notice != nil {
 				events = append(events, eventcontract.Event{
-					Kind:             eventcontract.EventNotice,
+					Kind:             eventcontract.KindNotice,
 					SurfaceSessionID: surfaceID,
 					Notice:           notice,
 				})
@@ -505,7 +505,7 @@ func (a *App) maybePromptDetachedVSCodeSurfacesLocked() []eventcontract.Event {
 		}
 		a.surfaceResumeRuntime.vscodeResumeNotices[strings.TrimSpace(surfaceID)] = true
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surfaceID,
 			Notice:           orchestrator.NoticeForVSCodeOpenPrompt(strings.TrimSpace(entry.ResumeInstanceID) != ""),
 		})

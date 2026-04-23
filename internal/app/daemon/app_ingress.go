@@ -224,7 +224,7 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	if notice := rejectedInboundNotice(action); notice != nil {
 		a.ensureSurfaceRouteForNotice(action)
 		a.handleUIEventsLocked(ctx, []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			GatewayID:        action.GatewayID,
 			SurfaceSessionID: action.SurfaceSessionID,
 			Notice:           notice,

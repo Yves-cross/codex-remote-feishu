@@ -2,10 +2,6 @@ package eventcontract
 
 type Kind string
 
-// EventKind is a compatibility alias for the previous UI event naming.
-// New code should prefer Kind directly.
-type EventKind = Kind
-
 const (
 	KindUnknown             Kind = ""
 	KindSnapshot            Kind = "snapshot.updated"
@@ -24,27 +20,6 @@ const (
 	KindExecCommandProgress Kind = "exec_command.progress"
 	KindAgentCommand        Kind = "agent.command"
 	KindDaemonCommand       Kind = "daemon.command"
-)
-
-// Legacy UIEvent* aliases kept in eventcontract so cross-layer migrations can
-// switch from eventcontract.Event* to eventcontract.Event* mechanically.
-const (
-	EventSnapshot            EventKind = KindSnapshot
-	EventFeishuSelectionView EventKind = KindSelection
-	EventFeishuPageView      EventKind = KindPage
-	EventFeishuRequestView   EventKind = KindRequest
-	EventFeishuPathPicker    EventKind = KindPathPicker
-	EventFeishuTargetPicker  EventKind = KindTargetPicker
-	EventFeishuThreadHistory EventKind = KindThreadHistory
-	EventPendingInput        EventKind = KindPendingInput
-	EventNotice              EventKind = KindNotice
-	EventPlanUpdated         EventKind = KindPlanUpdate
-	EventBlockCommitted      EventKind = KindBlockCommitted
-	EventTimelineText        EventKind = KindTimelineText
-	EventImageOutput         EventKind = KindImageOutput
-	EventExecCommandProgress EventKind = KindExecCommandProgress
-	EventAgentCommand        EventKind = KindAgentCommand
-	EventDaemonCommand       EventKind = KindDaemonCommand
 )
 
 var allKinds = []Kind{

@@ -316,7 +316,7 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 	}
 	snapshot.Final = final
 	return []eventcontract.Event{{
-		Kind:                eventcontract.EventExecCommandProgress,
+		Kind:                eventcontract.KindExecCommandProgress,
 		SurfaceSessionID:    surface.SurfaceSessionID,
 		SourceMessageID:     sourceMessageID,
 		ExecCommandProgress: snapshot,

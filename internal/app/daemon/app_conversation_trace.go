@@ -75,7 +75,7 @@ func (a *App) traceSteerCommand(surfaceID, instanceID string, command agentproto
 }
 
 func (a *App) traceAssistantBlock(event eventcontract.Event) {
-	if event.Kind != eventcontract.EventBlockCommitted || event.Block == nil {
+	if event.Kind != eventcontract.KindBlockCommitted || event.Block == nil {
 		return
 	}
 	if event.Block.Kind != render.BlockAssistantMarkdown && event.Block.Kind != render.BlockAssistantCode {

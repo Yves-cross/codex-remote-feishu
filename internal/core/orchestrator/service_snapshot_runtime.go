@@ -155,7 +155,7 @@ func (s *Service) failSurfaceActiveQueueItem(surface *state.SurfaceConsoleRecord
 	}, queueItemSourceMessageIDs(item))
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -369,7 +369,7 @@ func (s *Service) restorePendingSteer(key string, notice *control.Notice) []even
 	}
 	if notice != nil && (strings.TrimSpace(notice.Code) != "" || strings.TrimSpace(notice.Title) != "" || strings.TrimSpace(notice.Text) != "") {
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -474,7 +474,7 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	surface.PendingHeadless = nil
 	if pending.AutoRestore {
 		events := []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code:  "headless_restore_start_failed",
@@ -497,7 +497,7 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 		notice.Code = "workspace_create_start_failed"
 		notice.Title = "工作区准备失败"
 		events := []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &notice,
 		}}
@@ -517,7 +517,7 @@ func (s *Service) HandleHeadlessLaunchFailed(surfaceID, instanceID string, err e
 	notice.Code = "headless_start_failed"
 	notice.Title = "恢复准备失败"
 	events := []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice:           &notice,
 	}}
@@ -595,7 +595,7 @@ func (s *Service) ApplyInstanceDisconnected(instanceID string) []eventcontract.E
 
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "attached_instance_offline",
@@ -650,7 +650,7 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 				if emitNotice {
 					notice := globalRuntimeNotice(control.NoticeDeliveryFamilyTransportDegraded, "attached_instance_transport_degraded", "", noticeText)
 					events = append(events, eventcontract.Event{
-						Kind:             eventcontract.EventNotice,
+						Kind:             eventcontract.KindNotice,
 						SurfaceSessionID: surface.SurfaceSessionID,
 						Notice:           &notice,
 					})
@@ -682,7 +682,7 @@ func (s *Service) ApplyInstanceTransportDegraded(instanceID string, emitNotice b
 		if emitNotice {
 			notice := globalRuntimeNotice(control.NoticeDeliveryFamilyTransportDegraded, "attached_instance_transport_degraded", "", noticeText)
 			events = append(events, eventcontract.Event{
-				Kind:             eventcontract.EventNotice,
+				Kind:             eventcontract.KindNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice:           &notice,
 			})

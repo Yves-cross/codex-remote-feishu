@@ -10,7 +10,7 @@ import (
 func TestProjectImageOutputAsImageMessage(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind:             eventcontract.EventImageOutput,
+		Kind:             eventcontract.KindImageOutput,
 		SurfaceSessionID: "surface-1",
 		SourceMessageID:  "om-source-1",
 		ImageOutput: &control.ImageOutput{

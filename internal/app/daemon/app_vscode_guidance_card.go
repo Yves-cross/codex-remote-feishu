@@ -261,7 +261,7 @@ func vscodeMigrationPageEvent(surfaceID string, flow *vscodeMigrationFlowRecord,
 	page := buildVSCodeMigrationPageView(flow, inlineReplace, title, summary, statusText, theme, buttons)
 	view := control.FeishuPageViewFromCommandPageView(page)
 	return eventcontract.Event{
-		Kind:             eventcontract.EventFeishuPageView,
+		Kind:             eventcontract.KindPage,
 		SurfaceSessionID: strings.TrimSpace(surfaceID),
 		PageView:         &view,
 	}

@@ -16,7 +16,7 @@ func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) 
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
 	requestEvent := eventcontract.Event{
-		Kind:             eventcontract.EventFeishuRequestView,
+		Kind:             eventcontract.KindRequest,
 		SurfaceSessionID: "surface-1",
 		RequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",
@@ -60,7 +60,7 @@ func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
 	requestEvent := eventcontract.Event{
-		Kind:             eventcontract.EventFeishuRequestView,
+		Kind:             eventcontract.KindRequest,
 		SurfaceSessionID: "surface-1",
 		RequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",
@@ -107,7 +107,7 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{
 		{
-			Kind:             eventcontract.EventBlockCommitted,
+			Kind:             eventcontract.KindBlockCommitted,
 			SurfaceSessionID: "surface-1",
 			SourceMessageID:  "om-source-1",
 			Block: &render.Block{
@@ -120,7 +120,7 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 			},
 		},
 		{
-			Kind:             eventcontract.EventFeishuPageView,
+			Kind:             eventcontract.KindPage,
 			SurfaceSessionID: "surface-1",
 			PageView: &control.FeishuPageView{
 				CommandID: control.FeishuCommandPlan,
@@ -161,7 +161,7 @@ func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{
 		{
-			Kind:             eventcontract.EventBlockCommitted,
+			Kind:             eventcontract.KindBlockCommitted,
 			SurfaceSessionID: "surface-1",
 			SourceMessageID:  "om-source-1",
 			Block: &render.Block{
@@ -174,7 +174,7 @@ func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
 			},
 		},
 		{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: "surface-1",
 			Notice: &control.Notice{
 				Code: "turn_failed",
@@ -200,7 +200,7 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "attached_instance_transport_degraded",
@@ -221,7 +221,7 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 	app = New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
 	runtimeNotice := eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "attached_instance_transport_degraded",
@@ -244,7 +244,7 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 
 	gateway.operations = nil
 	app.handleUIEvents(context.Background(), []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:             "surface_resume_failed",
@@ -265,7 +265,7 @@ func TestHandleUIEventsSkipsAttentionPingWithoutActorIdentity(t *testing.T) {
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "")
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{{
-		Kind:             eventcontract.EventFeishuRequestView,
+		Kind:             eventcontract.KindRequest,
 		SurfaceSessionID: "surface-1",
 		RequestView: &control.FeishuRequestView{
 			RequestID:       "req-1",

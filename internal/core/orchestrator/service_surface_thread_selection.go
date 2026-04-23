@@ -412,7 +412,7 @@ func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessResto
 			return nil, HeadlessRestoreResult{Status: HeadlessRestoreStatusWaiting}
 		}
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice("thread_not_found"),
 		}}, HeadlessRestoreResult{Status: HeadlessRestoreStatusFailed, FailureCode: "thread_not_found"}
@@ -429,7 +429,7 @@ func (s *Service) TryAutoRestoreHeadless(surfaceID string, attempt HeadlessResto
 		}
 		failureCode := firstNonEmpty(strings.TrimSpace(target.NoticeCode), "thread_not_found")
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           headlessRestoreFailureNotice(failureCode),
 		}}, HeadlessRestoreResult{Status: HeadlessRestoreStatusFailed, FailureCode: failureCode}

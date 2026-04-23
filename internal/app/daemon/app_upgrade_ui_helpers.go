@@ -26,7 +26,7 @@ func runCommandButton(label, commandText, style string, disabled bool) control.C
 
 func debugNoticeEvent(surfaceID, code, text string) eventcontract.Event {
 	return eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,
@@ -38,7 +38,7 @@ func debugNoticeEvent(surfaceID, code, text string) eventcontract.Event {
 
 func upgradeNoticeEvent(surfaceID, code, text string) eventcontract.Event {
 	return eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surfaceID,
 		Notice: &control.Notice{
 			Code:  code,

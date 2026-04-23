@@ -28,7 +28,7 @@ func TestMCPToolCallProgressUsesSharedProcessCard(t *testing.T) {
 			"tool":   "lookup",
 		},
 	})
-	if len(started) != 1 || started[0].Kind != eventcontract.EventExecCommandProgress || started[0].ExecCommandProgress == nil {
+	if len(started) != 1 || started[0].Kind != eventcontract.KindExecCommandProgress || started[0].ExecCommandProgress == nil {
 		t.Fatalf("expected one shared progress start event, got %#v", started)
 	}
 	if started[0].SourceMessageID != "msg-1" {
@@ -78,7 +78,7 @@ func TestMCPToolCallProgressUsesSharedProcessCard(t *testing.T) {
 			"durationMs":   12,
 		},
 	})
-	if len(failed) != 1 || failed[0].Kind != eventcontract.EventExecCommandProgress || failed[0].ExecCommandProgress == nil {
+	if len(failed) != 1 || failed[0].Kind != eventcontract.KindExecCommandProgress || failed[0].ExecCommandProgress == nil {
 		t.Fatalf("expected one shared progress failure event, got %#v", failed)
 	}
 	progress = failed[0].ExecCommandProgress
@@ -169,7 +169,7 @@ func TestMCPToolCallProgressNormalVerbosityShowsSharedProcessCard(t *testing.T) 
 			"tool":   "lookup",
 		},
 	})
-	if len(started) != 1 || started[0].Kind != eventcontract.EventExecCommandProgress || started[0].ExecCommandProgress == nil {
+	if len(started) != 1 || started[0].Kind != eventcontract.KindExecCommandProgress || started[0].ExecCommandProgress == nil {
 		t.Fatalf("expected normal verbosity to show mcp progress, got %#v", started)
 	}
 	progress := started[0].ExecCommandProgress

@@ -143,7 +143,7 @@ func TestDaemonTickVSCodeFollowupGuidancePatchesAsyncCompatibilityCard(t *testin
 	card := waitForLifecycleOperationTitle(t, gateway, "VS Code 接入迁移失败")
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: "surface-1",
 		Notice: &control.Notice{
 			Code:  "surface_resume_open_vscode",

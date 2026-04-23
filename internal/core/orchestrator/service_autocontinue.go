@@ -19,7 +19,7 @@ func autoContinueNotice(surface *state.SurfaceConsoleRecord, code, title, text s
 		return nil
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Notice: &control.Notice{

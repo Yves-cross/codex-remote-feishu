@@ -179,7 +179,7 @@ func (a *App) triggerCronJob(command control.DaemonCommand, jobRecordID string) 
 		return nil, err
 	}
 	return &eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_run_ready",
@@ -327,7 +327,7 @@ func (a *App) repairCronBitable(command control.DaemonCommand) (*eventcontract.E
 		return nil, err
 	}
 	return &eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_repair_ready",
@@ -343,7 +343,7 @@ func (a *App) reloadCronJobs(command control.DaemonCommand) (*eventcontract.Even
 		return nil, err
 	}
 	return &eventcontract.Event{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: command.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code:  "cron_reload_ready",

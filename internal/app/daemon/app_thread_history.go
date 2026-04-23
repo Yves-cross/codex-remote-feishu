@@ -26,7 +26,7 @@ func (a *App) handleThreadHistoryDaemonCommandLocked(command control.DaemonComma
 			return events
 		}
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surfaceID,
 			Notice: &control.Notice{
 				Code: "history_query_invalid",
@@ -56,7 +56,7 @@ func (a *App) handleThreadHistoryDaemonCommandLocked(command control.DaemonComma
 			return events
 		}
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surfaceID,
 			Notice: &control.Notice{
 				Code: "history_query_dispatch_failed",
@@ -86,7 +86,7 @@ func (a *App) handleThreadHistoryCommandAckLocked(instanceID string, ack agentpr
 		return events, true
 	}
 	return []eventcontract.Event{{
-		Kind:             eventcontract.EventNotice,
+		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: pending.SurfaceSessionID,
 		Notice: &control.Notice{
 			Code: "history_query_rejected",
@@ -112,7 +112,7 @@ func (a *App) handleThreadHistoryEventLocked(instanceID string, event agentproto
 			return events, true
 		}
 		return []eventcontract.Event{{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: pending.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "history_query_stale",

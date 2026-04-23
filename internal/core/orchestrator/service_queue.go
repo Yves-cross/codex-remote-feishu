@@ -246,7 +246,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []eventcontr
 		QueueOff:    true,
 	}, queueItemSourceMessageIDs(item)), item.SourceMessageID, true)
 	events = append(events, eventcontract.Event{
-		Kind:             eventcontract.EventAgentCommand,
+		Kind:             eventcontract.KindAgentCommand,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		Command:          command,
 	})
@@ -335,7 +335,7 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 			notice = &problemNotice
 		}
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           notice,
 		})
@@ -399,7 +399,7 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []e
 	if savedPath == "" && imageBase64 == "" {
 		notice := NoticeForProblem(problem)
 		return append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice:           &notice,
 		})
@@ -407,7 +407,7 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []e
 
 	replySourceMessageID, replySourceMessagePreview := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
 	return append(events, eventcontract.Event{
-		Kind:                 eventcontract.EventImageOutput,
+		Kind:                 eventcontract.KindImageOutput,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		SourceMessageID:      replySourceMessageID,
 		SourceMessagePreview: replySourceMessagePreview,
@@ -500,7 +500,7 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 		block.ThemeKey = themeKey
 		block.Final = final
 		event := eventcontract.Event{
-			Kind:                 eventcontract.EventBlockCommitted,
+			Kind:                 eventcontract.KindBlockCommitted,
 			SurfaceSessionID:     surface.SurfaceSessionID,
 			SourceMessageID:      replySourceMessageID,
 			SourceMessagePreview: replySourceMessagePreview,

@@ -129,7 +129,7 @@ func buildPlanProposalPageView(flow *activeOwnerCardFlowRecord, proposal *active
 func planProposalEvent(surface *state.SurfaceConsoleRecord, flow *activeOwnerCardFlowRecord, proposal *activePlanProposalRecord, inlineMessageID, statusText, theme string, buttons []control.CommandCatalogButton, sealed bool, inlineReplace bool) eventcontract.Event {
 	view := buildPlanProposalPageView(flow, proposal, inlineMessageID, statusText, theme, buttons, sealed)
 	return eventcontract.Event{
-		Kind:                     eventcontract.EventFeishuPageView,
+		Kind:                     eventcontract.KindPage,
 		GatewayID:                surface.GatewayID,
 		SurfaceSessionID:         surface.SurfaceSessionID,
 		InlineReplaceCurrentCard: inlineReplace,

@@ -343,7 +343,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 	if surface.Abandoning {
 		switch action.Kind {
 		case control.ActionStatus:
-			return s.filterEventsForSurfaceVisibility([]eventcontract.Event{{Kind: eventcontract.EventSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}})
+			return s.filterEventsForSurfaceVisibility([]eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}})
 		case control.ActionAutoContinueCommand:
 			return s.filterEventsForSurfaceVisibility(s.handleAutoContinueCommand(surface, action))
 		case control.ActionDetach:
@@ -399,7 +399,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.openThreadHistory(surface, action.MessageID, action.IsCardAction())
 	case control.ActionDebugCommand:
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -413,7 +413,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		}}
 	case control.ActionCronCommand:
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -427,7 +427,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		}}
 	case control.ActionUpgradeCommand:
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -442,7 +442,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		}}
 	case control.ActionVSCodeMigrateCommand:
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -464,7 +464,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 			return notice(surface, "owner_flow_invalid", "当前升级确认动作缺少有效的 owner-flow 上下文。")
 		}
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -515,7 +515,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 			return notice(surface, "owner_flow_invalid", "当前 VS Code 迁移动作缺少有效的 owner-flow 上下文。")
 		}
 		events = []eventcontract.Event{{
-			Kind:             eventcontract.EventDaemonCommand,
+			Kind:             eventcontract.KindDaemonCommand,
 			GatewayID:        surface.GatewayID,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			SourceMessageID:  action.MessageID,
@@ -543,7 +543,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.stopSurface(surface)
 	case control.ActionStatus:
 		s.markCommandLauncherTerminal(surface)
-		events = []eventcontract.Event{{Kind: eventcontract.EventSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
+		events = []eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}}
 	case control.ActionDetach:
 		events = s.detach(surface)
 	default:
@@ -850,7 +850,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 			continue
 		}
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "remote_queue_resumed",
@@ -873,7 +873,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 			continue
 		}
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "local_activity_watchdog_resumed",
@@ -893,7 +893,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 		}
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.EventNotice,
+			Kind:             eventcontract.KindNotice,
 			SurfaceSessionID: surface.SurfaceSessionID,
 			Notice: &control.Notice{
 				Code: "detach_timeout_forced",
@@ -908,7 +908,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 		if requestCaptureExpired(now, surface.ActiveRequestCapture) {
 			clearSurfaceRequestCapture(surface)
 			events = append(events, eventcontract.Event{
-				Kind:             eventcontract.EventNotice,
+				Kind:             eventcontract.KindNotice,
 				SurfaceSessionID: surface.SurfaceSessionID,
 				Notice: &control.Notice{
 					Code: "request_capture_expired",
