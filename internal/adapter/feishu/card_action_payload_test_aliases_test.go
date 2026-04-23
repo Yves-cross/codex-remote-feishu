@@ -1,4 +1,4 @@
-package gateway
+package feishu
 
 import frontstagecontract "github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 
@@ -77,6 +77,27 @@ const (
 	cardActionKindHistoryDetail               = frontstagecontract.CardActionKindHistoryDetail
 )
 
-func actionPayloadKind(value map[string]any) string {
-	return frontstagecontract.ActionPayloadKind(value)
-}
+var (
+	actionPayloadKind                   = frontstagecontract.ActionPayloadKind
+	actionPayloadWithLifecycle          = frontstagecontract.ActionPayloadWithLifecycle
+	actionPayloadNavigation             = frontstagecontract.ActionPayloadNavigation
+	actionPayloadNavigationPage         = frontstagecontract.ActionPayloadNavigationPage
+	actionPayloadThreadNavigation       = frontstagecontract.ActionPayloadThreadNavigation
+	actionPayloadWorkspaceThreads       = frontstagecontract.ActionPayloadWorkspaceThreads
+	actionPayloadAttachInstance         = frontstagecontract.ActionPayloadAttachInstance
+	actionPayloadAttachWorkspace        = frontstagecontract.ActionPayloadAttachWorkspace
+	actionPayloadUseThread              = frontstagecontract.ActionPayloadUseThread
+	actionPayloadUseThreadField         = frontstagecontract.ActionPayloadUseThreadField
+	actionPayloadKickThreadConfirm      = frontstagecontract.ActionPayloadKickThreadConfirm
+	actionPayloadPageAction             = frontstagecontract.ActionPayloadPageAction
+	actionPayloadUpgradeOwnerFlow       = frontstagecontract.ActionPayloadUpgradeOwnerFlow
+	actionPayloadVSCodeMigrateOwnerFlow = frontstagecontract.ActionPayloadVSCodeMigrateOwnerFlow
+	actionPayloadPageSubmit             = frontstagecontract.ActionPayloadPageSubmit
+	actionPayloadRequestRespond         = frontstagecontract.ActionPayloadRequestRespond
+	actionPayloadRequestControl         = frontstagecontract.ActionPayloadRequestControl
+	actionPayloadSubmitRequestForm      = frontstagecontract.ActionPayloadSubmitRequestForm
+	actionPayloadPathPicker             = frontstagecontract.ActionPayloadPathPicker
+	actionPayloadTargetPicker           = frontstagecontract.ActionPayloadTargetPicker
+	actionPayloadTargetPickerValue      = frontstagecontract.ActionPayloadTargetPickerValue
+	actionPayloadThreadHistory          = frontstagecontract.ActionPayloadThreadHistory
+)

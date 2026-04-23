@@ -65,7 +65,7 @@ func workspaceSelectionPromptFromView(view control.FeishuWorkspaceSelectionView,
 			}
 		case entry.RecoverableOnly:
 			buttonLabel = "恢复"
-			actionKind = "show_workspace_threads"
+			actionKind = cardActionKindShowWorkspaceThreads
 		default:
 			disabled = true
 		}

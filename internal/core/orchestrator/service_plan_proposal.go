@@ -7,12 +7,12 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const (
 	defaultPlanProposalTTL       = 30 * time.Minute
-	planProposalPayloadKind      = "plan_proposal"
 	planProposalActionExecute    = "execute"
 	planProposalActionExecuteNew = "execute_new"
 	planProposalActionCancel     = "cancel"
@@ -34,14 +34,10 @@ func newPlanProposalRecord(proposalID, instanceID, threadID, turnID, threadCWD, 
 
 func planProposalButton(label, proposalID, optionID, style string) control.CommandCatalogButton {
 	return control.CommandCatalogButton{
-		Label: label,
-		Kind:  control.CommandCatalogButtonCallbackAction,
-		CallbackValue: map[string]any{
-			"kind":      planProposalPayloadKind,
-			"picker_id": strings.TrimSpace(proposalID),
-			"option_id": strings.TrimSpace(optionID),
-		},
-		Style: strings.TrimSpace(style),
+		Label:         label,
+		Kind:          control.CommandCatalogButtonCallbackAction,
+		CallbackValue: frontstagecontract.ActionPayloadPlanProposal(proposalID, optionID),
+		Style:         strings.TrimSpace(style),
 	}
 }
 

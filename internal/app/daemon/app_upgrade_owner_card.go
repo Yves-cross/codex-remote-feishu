@@ -10,16 +10,14 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 const (
-	upgradeOwnerFlowTTL          = 15 * time.Minute
-	upgradeOwnerActionCheck      = "check"
-	upgradeOwnerActionConfirm    = "confirm"
-	upgradeOwnerActionCancel     = "cancel"
-	upgradeOwnerPayloadKind      = "upgrade_owner_flow"
-	upgradeOwnerPayloadFlowKey   = "picker_id"
-	upgradeOwnerPayloadOptionKey = "option_id"
+	upgradeOwnerFlowTTL       = 15 * time.Minute
+	upgradeOwnerActionCheck   = "check"
+	upgradeOwnerActionConfirm = "confirm"
+	upgradeOwnerActionCancel  = "cancel"
 )
 
 func (a *App) nextUpgradeOwnerFlowIDLocked() string {
@@ -132,15 +130,11 @@ func upgradeOwnerFlowBlockedEvents(surfaceID string) []eventcontract.Event {
 
 func upgradeOwnerButton(label, flowID, optionID, style string, disabled bool) control.CommandCatalogButton {
 	return control.CommandCatalogButton{
-		Label: label,
-		Kind:  control.CommandCatalogButtonCallbackAction,
-		CallbackValue: map[string]any{
-			"kind":                       upgradeOwnerPayloadKind,
-			upgradeOwnerPayloadFlowKey:   strings.TrimSpace(flowID),
-			upgradeOwnerPayloadOptionKey: strings.TrimSpace(optionID),
-		},
-		Style:    style,
-		Disabled: disabled,
+		Label:         label,
+		Kind:          control.CommandCatalogButtonCallbackAction,
+		CallbackValue: frontstagecontract.ActionPayloadUpgradeOwnerFlow(flowID, optionID),
+		Style:         style,
+		Disabled:      disabled,
 	}
 }
 

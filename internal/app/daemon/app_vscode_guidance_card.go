@@ -7,15 +7,13 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 const (
-	vscodeMigrationFlowTTL             = 30 * time.Minute
-	vscodeMigrationOwnerPayloadKind    = "vscode_migrate_owner_flow"
-	vscodeMigrationOwnerPayloadFlowKey = "picker_id"
-	vscodeMigrationOwnerPayloadRunKey  = "option_id"
-	vscodeMigrationOwnerActionRun      = "run"
+	vscodeMigrationFlowTTL        = 30 * time.Minute
+	vscodeMigrationOwnerActionRun = "run"
 )
 
 func (a *App) nextVSCodeMigrationFlowIDLocked() string {
@@ -117,14 +115,10 @@ func (a *App) requireVSCodeMigrationFlowLocked(surfaceID, flowID, actorUserID st
 
 func vscodeMigrationOwnerButton(label, flowID string) control.CommandCatalogButton {
 	return control.CommandCatalogButton{
-		Label: label,
-		Kind:  control.CommandCatalogButtonCallbackAction,
-		CallbackValue: map[string]any{
-			"kind":                             vscodeMigrationOwnerPayloadKind,
-			vscodeMigrationOwnerPayloadFlowKey: strings.TrimSpace(flowID),
-			vscodeMigrationOwnerPayloadRunKey:  vscodeMigrationOwnerActionRun,
-		},
-		Style: "primary",
+		Label:         label,
+		Kind:          control.CommandCatalogButtonCallbackAction,
+		CallbackValue: frontstagecontract.ActionPayloadVSCodeMigrateOwnerFlow(flowID, vscodeMigrationOwnerActionRun),
+		Style:         "primary",
 	}
 }
 
