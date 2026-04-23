@@ -142,8 +142,10 @@ func TestUpgradeOwnerCancelConfirmClearsPendingAndSealsSameCard(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        confirmOp.MessageID,
-		PickerID:         flowID,
-		OptionID:         upgradeOwnerActionCancel,
+		OwnerFlow: &control.ActionOwnerCardFlow{
+			FlowID:   flowID,
+			OptionID: upgradeOwnerActionCancel,
+		},
 	})
 
 	deadline = time.Now().Add(2 * time.Second)

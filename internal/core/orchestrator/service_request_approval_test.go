@@ -97,8 +97,7 @@ func TestRespondRequestCancelDispatchesDecision(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-cmd-1",
-		RequestOptionID:  "cancel",
+		Request:          testRequestAction("req-cmd-1", "", "cancel", nil, 0),
 	})
 	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
 		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)

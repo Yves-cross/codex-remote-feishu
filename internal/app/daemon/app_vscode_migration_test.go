@@ -436,8 +436,10 @@ func TestHandleGatewayActionKeepsLaterVSCodeGuidanceOnSameCard(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 		MessageID:        "om-vscode-migrate-1",
-		PickerID:         flowID,
-		OptionID:         vscodeMigrationOwnerActionRun,
+		OwnerFlow: &control.ActionOwnerCardFlow{
+			FlowID:   flowID,
+			OptionID: vscodeMigrationOwnerActionRun,
+		},
 		Inbound: &control.ActionInboundMeta{
 			CardDaemonLifecycleID: app.daemonLifecycleID,
 		},

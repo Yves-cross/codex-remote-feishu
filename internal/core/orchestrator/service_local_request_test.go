@@ -698,8 +698,7 @@ func TestRespondRequestDispatchesCommandAndClearsOnResolve(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-1",
-		RequestOptionID:  "accept",
+		Request:          testRequestAction("req-1", "", "accept", nil, 0),
 	})
 	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
 		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)
@@ -729,8 +728,7 @@ func TestRespondRequestDispatchesCommandAndClearsOnResolve(t *testing.T) {
 	expired := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-1",
-		RequestOptionID:  "decline",
+		Request:          testRequestAction("req-1", "", "decline", nil, 0),
 	})
 	if len(expired) != 1 || expired[0].Notice == nil || expired[0].Notice.Code != "request_expired" {
 		t.Fatalf("expected expired notice after resolve, got %#v", expired)
@@ -779,8 +777,7 @@ func TestRespondRequestAcceptForSessionDispatchesDecision(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-1",
-		RequestOptionID:  "acceptForSession",
+		Request:          testRequestAction("req-1", "", "acceptForSession", nil, 0),
 	})
 	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
 		t.Fatalf("expected sealed request replacement plus one agent command event, got %#v", events)
@@ -893,7 +890,9 @@ func TestRespondRequestUserInputOptionDispatchesAnswersAndKeepsPendingStateUntil
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-ui-1",
+		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"model": []string{"gpt-5.4"},
 		},
@@ -953,7 +952,9 @@ func TestRespondRequestUserInputRejectsInvalidOptionAnswer(t *testing.T) {
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"not-valid"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"model": []string{"not-valid"},
 		},
@@ -1005,7 +1006,9 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1037,7 +1040,9 @@ func TestRespondRequestUserInputSavesPartialAnswersUntilComplete(t *testing.T) {
 	events = svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request:          testRequestAction("req-ui-1", "", "", map[string][]string{
+			"effort": {"high"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"effort": {"high"},
 		},
@@ -1101,7 +1106,9 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1117,7 +1124,9 @@ func TestRespondRequestUserInputMergesSavedOptionWithFormTextAnswer(t *testing.T
 	events = svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"notes": {"请用中文回复"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"notes": {"请用中文回复"},
 		},
@@ -1177,7 +1186,9 @@ func TestRespondRequestUserInputSkipOptionalDispatchesStoredAnswers(t *testing.T
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1261,8 +1272,9 @@ func TestRespondRequestUserInputDispatchFailureRestoresPendingRequest(t *testing
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestRevision:  1,
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 1),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1326,8 +1338,9 @@ func TestRespondRequestUserInputRejectsStaleRequestRevision(t *testing.T) {
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestRevision:  1,
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 1),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1342,8 +1355,9 @@ func TestRespondRequestUserInputRejectsStaleRequestRevision(t *testing.T) {
 	stale := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestRevision:  1,
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"effort": {"high"},
+		}, 1),
 		RequestAnswers: map[string][]string{
 			"effort": {"high"},
 		},
@@ -1391,8 +1405,9 @@ func TestRespondRequestUserInputCommandRejectedRestoresPendingRequest(t *testing
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-1",
-		RequestRevision:  1,
+		Request: testRequestAction("req-ui-1", "", "", map[string][]string{
+			"model": {"gpt-5.4"},
+		}, 1),
 		RequestAnswers: map[string][]string{
 			"model": {"gpt-5.4"},
 		},
@@ -1692,8 +1707,7 @@ func TestCaptureFeedbackQueuesFollowupAndDeclinesRequest(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-1",
-		RequestOptionID:  "captureFeedback",
+		Request:          testRequestAction("req-1", "", "captureFeedback", nil, 0),
 	})
 	if len(startCapture) != 1 || startCapture[0].Notice == nil || startCapture[0].Notice.Code != "request_capture_started" {
 		t.Fatalf("expected request_capture_started notice, got %#v", startCapture)

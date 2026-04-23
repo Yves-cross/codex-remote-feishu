@@ -110,14 +110,7 @@ type Action struct {
 	Inputs           []agentproto.Input
 	SteerInputs      []agentproto.Input
 	RequestAnswers   map[string][]string
-	// Retained compatibility fields for legacy/test callers. New live paths
-	// should prefer Request and OwnerFlow families instead of extending the
-	// root Action contract.
 	OptionID            string
-	RequestID           string
-	RequestType         string
-	RequestOptionID     string
-	RequestRevision     int
 	Request             *ActionRequestResponse
 	RequestControl      *ActionRequestControl
 	OwnerFlow           *ActionOwnerCardFlow

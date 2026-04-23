@@ -73,9 +73,7 @@ func TestRespondPermissionsRequestBuildsStructuredGrantPayload(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-1",
-		RequestID:        "req-perm-1",
-		RequestType:      "permissions_request_approval",
-		RequestOptionID:  "acceptForSession",
+		Request:          testRequestAction("req-perm-1", "permissions_request_approval", "acceptForSession", nil, 0),
 	})
 
 	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {
@@ -129,8 +127,10 @@ func TestRespondMCPElicitationFormBuildsStructuredResponse(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-2",
-		RequestID:        "req-mcp-form-1",
-		RequestType:      "mcp_server_elicitation",
+		Request:          testRequestAction("req-mcp-form-1", "mcp_server_elicitation", "", map[string][]string{
+			"token":    {"secret-token"},
+			"remember": {"true"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"token":    []string{"secret-token"},
 			"remember": []string{"true"},
@@ -190,8 +190,9 @@ func TestRespondMCPElicitationFormPartialSaveRefreshesCurrentStepInline(t *testi
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-mcp-form-step-1",
-		RequestType:      "mcp_server_elicitation",
+		Request:          testRequestAction("req-mcp-form-step-1", "mcp_server_elicitation", "", map[string][]string{
+			"mode": {"auto"},
+		}, 0),
 		RequestAnswers: map[string][]string{
 			"mode": {"auto"},
 		},
@@ -235,9 +236,7 @@ func TestRespondMCPElicitationURLAcceptBuildsContinuePayload(t *testing.T) {
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
 		MessageID:        "om-card-3",
-		RequestID:        "req-mcp-url-1",
-		RequestType:      "mcp_server_elicitation",
-		RequestOptionID:  "accept",
+		Request:          testRequestAction("req-mcp-url-1", "mcp_server_elicitation", "accept", nil, 0),
 	})
 
 	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].Command == nil {

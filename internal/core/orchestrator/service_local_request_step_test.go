@@ -48,8 +48,7 @@ func TestRespondRequestUserInputStepNavigationRefreshesPromptInline(t *testing.T
 	events := svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-nav-1",
-		RequestOptionID:  "step_next",
+		Request:          testRequestAction("req-ui-nav-1", "", "step_next", nil, 0),
 	})
 	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
 		t.Fatalf("expected next-step action to refresh current card inline, got %#v", events)
@@ -62,8 +61,7 @@ func TestRespondRequestUserInputStepNavigationRefreshesPromptInline(t *testing.T
 	events = svc.ApplySurfaceAction(control.Action{
 		Kind:             control.ActionRespondRequest,
 		SurfaceSessionID: "surface-1",
-		RequestID:        "req-ui-nav-1",
-		RequestOptionID:  "step_previous",
+		Request:          testRequestAction("req-ui-nav-1", "", "step_previous", nil, 0),
 	})
 	if len(events) != 1 || !events[0].InlineReplaceCurrentCard {
 		t.Fatalf("expected previous-step action to refresh current card inline, got %#v", events)

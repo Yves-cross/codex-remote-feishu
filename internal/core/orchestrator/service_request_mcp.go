@@ -58,7 +58,7 @@ func buildPermissionsRequestOptions() []state.RequestPromptOptionRecord {
 }
 
 func buildPermissionsRequestResponse(request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []eventcontract.Event) {
-	requestAction := requestActionFromCompatibilityFields(action)
+	requestAction := requestActionFromAction(action)
 	if requestAction == nil {
 		return nil, false, nil
 	}
@@ -155,7 +155,7 @@ func buildMCPElicitationOptions(prompt *agentproto.RequestPrompt, metadata map[s
 }
 
 func (s *Service) buildMCPElicitationResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action) (map[string]any, bool, []eventcontract.Event) {
-	requestAction := requestActionFromCompatibilityFields(action)
+	requestAction := requestActionFromAction(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个 MCP 请求动作缺少有效的请求上下文。")
 	}

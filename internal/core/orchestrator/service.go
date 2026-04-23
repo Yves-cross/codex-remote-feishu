@@ -457,9 +457,6 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		}}
 	case control.ActionUpgradeOwnerFlow:
 		ownerFlow := action.OwnerFlow
-		if ownerFlow == nil && !action.IsCardAction() && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
-			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
-		}
 		if ownerFlow == nil {
 			return notice(surface, "owner_flow_invalid", "当前升级确认动作缺少有效的 owner-flow 上下文。")
 		}
@@ -508,9 +505,6 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.followLocal(surface)
 	case control.ActionVSCodeMigrate:
 		ownerFlow := action.OwnerFlow
-		if ownerFlow == nil && !action.IsCardAction() && (strings.TrimSpace(action.PickerID) != "" || strings.TrimSpace(action.OptionID) != "") {
-			ownerFlow = &control.ActionOwnerCardFlow{FlowID: action.PickerID, OptionID: action.OptionID}
-		}
 		if ownerFlow == nil {
 			return notice(surface, "owner_flow_invalid", "当前 VS Code 迁移动作缺少有效的 owner-flow 上下文。")
 		}

@@ -1,7 +1,7 @@
 # 飞书卡片交互模型
 
 > Type: `general`
-> Updated: `2026-04-22`
+> Updated: `2026-04-23`
 > Summary: 固化当前产品讨论收敛出的飞书交互模型，补充前台抓注意力状态、前台卡 notice 区、notice 的前后台投递规则，将 thread selection change 收敛进 notice 体系，并明确派生 `@` attention ping 不是新的前台卡模型。
 
 ## 1. 文档定位
@@ -25,6 +25,17 @@
   - `docs/general/feishu-card-ui-state-machine.md`
 - 飞书卡片平台限制：
   - `docs/general/feishu-card-api-constraints.md`
+
+### 1.1 产品层动作载体边界
+
+虽然这份文档不展开 callback 字段细节，但当前产品层有一个已经收敛完成的实现边界：
+
+- request 响应只认 `Action.Request`
+- request 控制动作只认 `Action.RequestControl`
+- owner-flow 动作只认 `Action.OwnerFlow`
+- `control.Action` 的旧 root request 兼容字段不再是 live 合同
+
+也就是说，飞书 callback / 文本入口就算历史上曾经存在 root 字段桥接，当前产品层也应把它们视为已退场的 transport 兼容，而不是继续参与业务语义判定。
 
 ## 2. 核心目标
 

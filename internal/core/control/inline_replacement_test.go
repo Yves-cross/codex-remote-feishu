@@ -153,7 +153,7 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 		},
 		{
 			name:   "request step navigation",
-			action: Action{Kind: ActionRespondRequest, RequestID: "req-1", RequestOptionID: "step_next"},
+			action: Action{Kind: ActionRespondRequest, Request: &ActionRequestResponse{RequestID: "req-1", RequestOptionID: "step_next"}},
 			want:   true,
 		},
 		{
@@ -222,10 +222,9 @@ func TestAllowsInlineCardReplacementForCommandCardApply(t *testing.T) {
 
 func TestAllowsInlineCardReplacementForRequestStepRefresh(t *testing.T) {
 	action := Action{
-		Kind:            ActionRespondRequest,
-		RequestID:       "req-1",
-		RequestOptionID: "step_next",
-		Inbound:         &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+		Kind:    ActionRespondRequest,
+		Request: &ActionRequestResponse{RequestID: "req-1", RequestOptionID: "step_next"},
+		Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
 	}
 	if !AllowsInlineCardReplacement(action) {
 		t.Fatal("expected inline replacement for request step refresh")

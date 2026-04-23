@@ -1244,8 +1244,7 @@ func TestVSCodeMigrateOwnerFlowActionDispatchesDaemonCommand(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		PickerID:         "flow-1",
-		OptionID:         "run",
+		OwnerFlow:        testOwnerFlow("flow-1", "run"),
 	})
 
 	if len(events) != 1 || events[0].DaemonCommand == nil {

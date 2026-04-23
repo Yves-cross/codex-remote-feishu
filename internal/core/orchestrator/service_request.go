@@ -23,7 +23,7 @@ const (
 )
 
 func (s *Service) respondRequest(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
-	requestAction := requestActionFromCompatibilityFields(action)
+	requestAction := requestActionFromAction(action)
 	if surface == nil || requestAction == nil || strings.TrimSpace(requestAction.RequestID) == "" {
 		return nil
 	}
@@ -274,7 +274,7 @@ func (s *Service) consumeCapturedRequestFeedback(surface *state.SurfaceConsoleRe
 }
 
 func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, request *state.RequestPromptRecord, action control.Action, requestType string) (map[string]any, bool, []eventcontract.Event) {
-	requestAction := requestActionFromCompatibilityFields(action)
+	requestAction := requestActionFromAction(action)
 	if requestAction == nil {
 		return nil, false, notice(surface, "request_invalid", "这个请求动作缺少有效的请求上下文。")
 	}
@@ -350,22 +350,8 @@ func (s *Service) buildRequestResponse(surface *state.SurfaceConsoleRecord, requ
 	}
 }
 
-// requestActionFromCompatibilityFields keeps non-card test/local callers working
-// while production card actions are required to use Action.Request.
-func requestActionFromCompatibilityFields(action control.Action) *control.ActionRequestResponse {
-	if action.Request != nil {
-		return action.Request
-	}
-	if action.IsCardAction() || strings.TrimSpace(action.RequestID) == "" {
-		return nil
-	}
-	return &control.ActionRequestResponse{
-		RequestID:       action.RequestID,
-		RequestType:     action.RequestType,
-		RequestOptionID: action.RequestOptionID,
-		Answers:         action.RequestAnswers,
-		RequestRevision: action.RequestRevision,
-	}
+func requestActionFromAction(action control.Action) *control.ActionRequestResponse {
+	return action.Request
 }
 
 func requestControlFromAction(action control.Action) *control.ActionRequestControl {
