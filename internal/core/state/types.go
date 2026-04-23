@@ -333,7 +333,6 @@ const (
 type HeadlessLaunchPurpose string
 
 const (
-	HeadlessLaunchPurposeLegacy         HeadlessLaunchPurpose = ""
 	HeadlessLaunchPurposeThreadRestore  HeadlessLaunchPurpose = "thread_restore"
 	HeadlessLaunchPurposeFreshWorkspace HeadlessLaunchPurpose = "fresh_workspace"
 )
