@@ -38,6 +38,25 @@ func (p *DriveMarkdownPreviewer) ServeWebPreview(w http.ResponseWriter, r *http.
 	current, previous, err := p.loadWebPreviewArtifactsForServe(scopePublicID, previewID)
 	switch {
 	case err == nil:
+		if current != nil && strings.TrimSpace(current.Record.RendererKind) == turnDiffPreviewRendererKind {
+			var serveErr error
+			if download {
+				serveErr = serveTurnDiffPreviewDownloadHTTP(w, current)
+			} else {
+				serveErr = serveTurnDiffPreviewPageHTTP(w, current)
+			}
+			if serveErr == nil {
+				return true
+			}
+			writeWebPreviewPage(w, webPreviewPage{
+				Title:    "预览暂不可用",
+				Notice:   "服务暂时无法读取这份预览快照。",
+				BodyHTML: "<p>你可以稍后重试，或重新生成新的产物链接。</p>",
+				Status:   http.StatusInternalServerError,
+				Layout:   webPreviewLayoutMessage,
+			})
+			return true
+		}
 		if download {
 			serveWebPreviewDownloadHTTP(w, r, current)
 		} else {

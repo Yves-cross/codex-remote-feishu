@@ -362,6 +362,7 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			firstNonEmpty(event.SourceMessagePreview, event.Meta.SourceMessagePreview),
 			payload.Block,
 			payload.FileChangeSummary,
+			payload.TurnDiffPreview,
 			payload.FinalTurnSummary,
 		)
 	case eventcontract.ImageOutputPayload:
@@ -384,7 +385,7 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 	}
 }
 
-func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []Operation {
+func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
 			Kind:             OperationSendText,
@@ -399,7 +400,7 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	if block.Kind == render.BlockAssistantCode {
 		body = fenced(block.Language, block.Text)
 	}
-	elements := p.finalBlockExtraElements(summary, finalSummary)
+	elements := p.finalBlockExtraElements(summary, turnDiffPreview, finalSummary)
 	title := finalCardTitle(sourceMessagePreview)
 	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
 }
@@ -558,16 +559,20 @@ func fenced(language, text string) string {
 	return "```" + language + "\n" + text + "\n```"
 }
 
-func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, finalSummary *control.FinalTurnSummary) []map[string]any {
+func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []map[string]any {
 	var elements []map[string]any
 	if summary != nil && summary.FileCount > 0 && len(summary.Files) > 0 {
+		summaryLine := fmt.Sprintf(
+			"**本次修改** %d 个文件  %s",
+			summary.FileCount,
+			formatFileChangeCountsMarkdown(summary.AddedLines, summary.RemovedLines),
+		)
+		if url := projectorTurnDiffPreviewURL(turnDiffPreview); url != "" {
+			summaryLine += "  [查看](" + url + ")"
+		}
 		elements = append(elements, map[string]any{
-			"tag": "markdown",
-			"content": fmt.Sprintf(
-				"**本次修改** %d 个文件  %s",
-				summary.FileCount,
-				formatFileChangeCountsMarkdown(summary.AddedLines, summary.RemovedLines),
-			),
+			"tag":     "markdown",
+			"content": summaryLine,
 		})
 		labels := fileChangeDisplayLabels(summary.Files)
 		limit := len(summary.Files)
@@ -608,6 +613,13 @@ func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, 
 		return nil
 	}
 	return elements
+}
+
+func projectorTurnDiffPreviewURL(preview *control.TurnDiffPreview) string {
+	if preview == nil {
+		return ""
+	}
+	return strings.TrimSpace(preview.URL)
 }
 
 func formatFinalTurnSummaryLine(summary *control.FinalTurnSummary) string {

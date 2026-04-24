@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
@@ -23,11 +24,13 @@ type FinalBlockPreviewRequest struct {
 	WorkspaceRoot    string
 	ThreadCWD        string
 	PreviewGrantKey  string
+	TurnDiffSnapshot *control.TurnDiffSnapshot
 	Block            render.Block
 }
 
 type FinalBlockPreviewResult struct {
-	Block render.Block
+	Block           render.Block
+	TurnDiffPreview *control.TurnDiffPreview
 }
 
 type PreviewLocation struct {

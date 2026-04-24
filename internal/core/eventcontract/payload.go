@@ -92,6 +92,7 @@ type BlockCommittedPayload struct {
 	Block             render.Block
 	FileChangeSummary *control.FileChangeSummary
 	TurnDiffSnapshot  *control.TurnDiffSnapshot
+	TurnDiffPreview   *control.TurnDiffPreview
 	FinalTurnSummary  *control.FinalTurnSummary
 }
 

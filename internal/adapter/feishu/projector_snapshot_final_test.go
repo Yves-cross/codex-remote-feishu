@@ -286,6 +286,36 @@ func TestProjectFinalAssistantBlockEmbedsFileChangeSummary(t *testing.T) {
 	}
 }
 
+func TestProjectFinalAssistantBlockIncludesTurnDiffViewLink(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.KindBlockCommitted,
+		SourceMessageID: "msg-2",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  "已完成修改。",
+			Final: true,
+		},
+		FileChangeSummary: &control.FileChangeSummary{
+			FileCount:    1,
+			AddedLines:   2,
+			RemovedLines: 1,
+			Files: []control.FileChangeSummaryEntry{
+				{Path: "internal/main.go", AddedLines: 2, RemovedLines: 1},
+			},
+		},
+		TurnDiffPreview: &control.TurnDiffPreview{URL: "https://preview.example/turn-diff"},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	got, _ := ops[0].CardElements[0]["content"].(string)
+	want := "**本次修改** 1 个文件  <font color='green'>+2</font> <font color='red'>-1</font>  [查看](https://preview.example/turn-diff)"
+	if got != want {
+		t.Fatalf("unexpected summary header with preview link: got=%q want=%q", got, want)
+	}
+}
+
 func TestProjectFinalAssistantBlockSplitsOversizedReplyAtProjectorLayer(t *testing.T) {
 	projector := NewProjector()
 	longBody := strings.Repeat("第一段说明包含较长的描述，以及 [设计文档](./docs/design.md)。\n第二行继续补充上下文。\n\n", 500)

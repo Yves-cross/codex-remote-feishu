@@ -23,6 +23,7 @@ type secondChanceFinalPatchJob struct {
 	SourceMessageID      string
 	SourceMessagePreview string
 	SentBlock            render.Block
+	SentTurnDiffPreview  *control.TurnDiffPreview
 	FileChangeSummary    *control.FileChangeSummary
 	TurnDiffSnapshot     *control.TurnDiffSnapshot
 	FinalTurnSummary     *control.FinalTurnSummary
@@ -54,6 +55,7 @@ func (a *App) maybeScheduleSecondChanceFinalPatchLocked(gatewayID, chatID string
 		SourceMessageID:      strings.TrimSpace(event.SourceMessageID),
 		SourceMessagePreview: strings.TrimSpace(event.SourceMessagePreview),
 		SentBlock:            sentBlock,
+		SentTurnDiffPreview:  event.TurnDiffPreview,
 		PreviewRequest:       previewReq,
 	}
 	if event.FileChangeSummary != nil {
@@ -109,7 +111,7 @@ func (a *App) runSecondChanceFinalPatch(job secondChanceFinalPatchJob) {
 		)
 		return
 	}
-	if sameFinalPatchBlock(job.SentBlock, result.Block) {
+	if sameFinalPatchResult(job.SentBlock, job.SentTurnDiffPreview, result) {
 		return
 	}
 
@@ -134,6 +136,7 @@ func (a *App) runSecondChanceFinalPatch(job secondChanceFinalPatchJob) {
 			Block:             result.Block,
 			FileChangeSummary: job.FileChangeSummary,
 			TurnDiffSnapshot:  job.TurnDiffSnapshot,
+			TurnDiffPreview:   result.TurnDiffPreview,
 			FinalTurnSummary:  job.FinalTurnSummary,
 		},
 	})
@@ -191,9 +194,19 @@ func firstFinalSendCard(operations []feishu.Operation) *feishu.Operation {
 	return nil
 }
 
-func sameFinalPatchBlock(left, right render.Block) bool {
-	return left.Kind == right.Kind &&
-		left.Language == right.Language &&
-		left.Final == right.Final &&
-		strings.TrimSpace(left.Text) == strings.TrimSpace(right.Text)
+func sameFinalPatchResult(previousBlock render.Block, previousPreview *control.TurnDiffPreview, next previewpkg.FinalBlockPreviewResult) bool {
+	if previousBlock.Kind != next.Block.Kind ||
+		previousBlock.Language != next.Block.Language ||
+		previousBlock.Final != next.Block.Final ||
+		strings.TrimSpace(previousBlock.Text) != strings.TrimSpace(next.Block.Text) {
+		return false
+	}
+	return strings.TrimSpace(turnDiffPreviewURL(previousPreview)) == strings.TrimSpace(turnDiffPreviewURL(next.TurnDiffPreview))
+}
+
+func turnDiffPreviewURL(preview *control.TurnDiffPreview) string {
+	if preview == nil {
+		return ""
+	}
+	return preview.URL
 }

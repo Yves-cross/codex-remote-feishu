@@ -186,6 +186,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 			WorkspaceRoot:    a.previewWorkspaceRoot(event.SurfaceSessionID, *event.Block),
 			ThreadCWD:        a.previewThreadCWD(event.SurfaceSessionID, *event.Block),
 			PreviewGrantKey:  a.previewGrantKey(gatewayID, event.SurfaceSessionID, *event.Block),
+			TurnDiffSnapshot: event.TurnDiffSnapshot,
 			Block:            *event.Block,
 		}
 		var (
@@ -203,6 +204,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 		previewCancel()
 		previewErr = err
 		event.Block = &previewResult.Block
+		event.TurnDiffPreview = previewResult.TurnDiffPreview
 		if err != nil {
 			log.Printf(
 				"final block preview rewrite failed (continuing without preview rewrite): surface=%s instance=%s thread=%s item=%s err=%v",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -104,6 +105,73 @@ func TestDriveMarkdownPreviewerUsesSameRelativeDownloadLinksUnderInternalPath(t 
 	}
 	if !strings.Contains(rec.Body.String(), `class="preview-download" href="`+previewID+`/download"`) {
 		t.Fatalf("expected topbar download link to stay preview-relative on internal path, got %q", rec.Body.String())
+	}
+}
+
+func TestDriveMarkdownPreviewerServesTurnDiffPreviewWithDedicatedPage(t *testing.T) {
+	root := t.TempDir()
+	previewer := newWebPreviewerForTest(root)
+	previewID := publishTurnDiffWebPreviewArtifactForTest(t, previewer, root, turnDiffPreviewArtifact{
+		SchemaVersion:  turnDiffPreviewSchemaV1,
+		RawUnifiedDiff: "diff --git a/internal/main.go b/internal/main.go\n@@ -15,1 +15,1 @@\n-old\n+new\n",
+		Files: []turnDiffPreviewFile{{
+			Key:  "file-1",
+			Name: "internal/main.go",
+			Stats: turnDiffPreviewStats{
+				Added:   1,
+				Removed: 1,
+			},
+			Lines: []turnDiffPreviewLine{
+				{Kind: "context", Old: "1", Now: "1", Text: "package main"},
+				{Kind: "context", Old: "2", Now: "2", Text: ""},
+				{Kind: "context", Old: "3", Now: "3", Text: "import \"fmt\""},
+				{Kind: "context", Old: "4", Now: "4", Text: ""},
+				{Kind: "context", Old: "5", Now: "5", Text: "func main() {"},
+				{Kind: "context", Old: "6", Now: "6", Text: "\tprepare()"},
+				{Kind: "context", Old: "7", Now: "7", Text: "\trun()"},
+				{Kind: "context", Old: "8", Now: "8", Text: "\tfinish()"},
+				{Kind: "context", Old: "9", Now: "9", Text: "}"},
+				{Kind: "context", Old: "10", Now: "10", Text: ""},
+				{Kind: "context", Old: "11", Now: "11", Text: "func prepare() {}"},
+				{Kind: "context", Old: "12", Now: "12", Text: "func run() {}"},
+				{Kind: "context", Old: "13", Now: "13", Text: "func finish() {}"},
+				{Kind: "context", Old: "14", Now: "14", Text: ""},
+				{Kind: "remove", Old: "15", Now: "", Text: "func oldLine() {}"},
+				{Kind: "add", Old: "", Now: "15", Text: "func newLine() {}"},
+				{Kind: "context", Old: "16", Now: "16", Text: ""},
+				{Kind: "context", Old: "17", Now: "17", Text: "func tail() {}"},
+				{Kind: "context", Old: "18", Now: "18", Text: ""},
+				{Kind: "context", Old: "19", Now: "19", Text: "func end() {}"},
+				{Kind: "context", Old: "20", Now: "20", Text: ""},
+				{Kind: "context", Old: "21", Now: "21", Text: "func done() {}"},
+				{Kind: "context", Old: "22", Now: "22", Text: ""},
+				{Kind: "context", Old: "23", Now: "23", Text: "func final() {}"},
+				{Kind: "context", Old: "24", Now: "24", Text: ""},
+				{Kind: "context", Old: "25", Now: "25", Text: "func cleanup() {}"},
+			},
+			Hunks: []turnDiffPreviewHunk{{
+				Title:    "第 15 行",
+				Subtitle: "+1 / -1",
+				Start:    14,
+				End:      15,
+			}},
+		}},
+	}, time.Date(2026, 4, 24, 8, 0, 0, 0, time.UTC))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/preview/s/"+testPreviewScopePublicID+"/"+previewID, nil)
+	if ok := previewer.ServeWebPreview(rec, req, testPreviewScopePublicID, previewID, false); !ok {
+		t.Fatal("expected turn diff preview to be served")
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="mobile-bar"`) || !strings.Contains(body, `class="file-rail"`) || !strings.Contains(body, `class="diff-scroll"`) {
+		t.Fatalf("expected dedicated turn diff layout, got %q", body)
+	}
+	if !strings.Contains(body, "internal/main.go") || !strings.Contains(body, "const FILES = [{") {
+		t.Fatalf("expected turn diff viewer content, got %q", body)
+	}
+	if strings.Contains(body, `class="preview-topbar"`) || strings.Contains(body, `class="preview-download"`) {
+		t.Fatalf("expected turn diff preview to avoid shared shell chrome, got %q", body)
 	}
 }
 
@@ -294,6 +362,49 @@ func TestDriveMarkdownPreviewerDownloadInlineOnlyForSafeRenderers(t *testing.T) 
 	}
 }
 
+func TestDriveMarkdownPreviewerTurnDiffDownloadReturnsRawUnifiedDiff(t *testing.T) {
+	root := t.TempDir()
+	previewer := newWebPreviewerForTest(root)
+	rawDiff := "diff --git a/internal/main.go b/internal/main.go\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+	previewID := publishTurnDiffWebPreviewArtifactForTest(t, previewer, root, turnDiffPreviewArtifact{
+		SchemaVersion:  turnDiffPreviewSchemaV1,
+		RawUnifiedDiff: rawDiff,
+		Files: []turnDiffPreviewFile{{
+			Key:  "file-1",
+			Name: "internal/main.go",
+			Stats: turnDiffPreviewStats{
+				Added:   1,
+				Removed: 1,
+			},
+			Lines: []turnDiffPreviewLine{
+				{Kind: "remove", Old: "1", Now: "", Text: "old"},
+				{Kind: "add", Old: "", Now: "1", Text: "new"},
+			},
+			Hunks: []turnDiffPreviewHunk{{
+				Title:    "第 1 行",
+				Subtitle: "+1 / -1",
+				Start:    0,
+				End:      1,
+			}},
+		}},
+	}, time.Date(2026, 4, 24, 8, 5, 0, 0, time.UTC))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/preview/s/"+testPreviewScopePublicID+"/"+previewID+"/download", nil)
+	if ok := previewer.ServeWebPreview(rec, req, testPreviewScopePublicID, previewID, true); !ok {
+		t.Fatal("expected turn diff download to be served")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("turn diff download status = %d, want 200 body=%q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != rawDiff {
+		t.Fatalf("expected raw unified diff download, got %q", rec.Body.String())
+	}
+	if !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("expected text/plain content type, got headers=%v", rec.Header())
+	}
+}
+
 const testPreviewScopeKey = "feishu:app-1:user:ou_user"
 
 var testPreviewScopePublicID = previewScopePublicID(testPreviewScopeKey)
@@ -333,6 +444,34 @@ func publishWebPreviewArtifactForTest(t *testing.T, previewer *DriveMarkdownPrev
 		t.Fatalf("publish web preview artifact: %v", err)
 	}
 	return testPreviewScopePublicID, previewRecordID(testPreviewScopeKey, sourcePath, sha256BytesHex(content))
+}
+
+func publishTurnDiffWebPreviewArtifactForTest(t *testing.T, previewer *DriveMarkdownPreviewer, root string, artifact turnDiffPreviewArtifact, now time.Time) string {
+	t.Helper()
+	content, err := json.Marshal(artifact)
+	if err != nil {
+		t.Fatalf("marshal turn diff artifact: %v", err)
+	}
+	sourcePath := filepath.Join(root, "turn-diff", previewItoa(now.Hour())+"-"+previewItoa(now.Minute())+".json")
+	previewer.nowFn = func() time.Time { return now }
+	req := PreviewPublishRequest{
+		ScopeKey: testPreviewScopeKey,
+		Plan: PreviewPlan{
+			Artifact: PreparedPreviewArtifact{
+				SourcePath:   sourcePath,
+				DisplayName:  "变更查看",
+				ContentHash:  sha256BytesHex(content),
+				ArtifactKind: turnDiffPreviewArtifactKind,
+				MIMEType:     "application/json",
+				RendererKind: turnDiffPreviewRendererKind,
+				Bytes:        content,
+			},
+		},
+	}
+	if _, err := previewer.publishWebPreviewArtifact(context.Background(), req); err != nil {
+		t.Fatalf("publish turn diff preview artifact: %v", err)
+	}
+	return previewRecordID(testPreviewScopeKey, sourcePath, sha256BytesHex(content))
 }
 
 func artifactKindForTest(path string) string {

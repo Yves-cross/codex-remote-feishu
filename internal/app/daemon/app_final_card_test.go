@@ -76,6 +76,7 @@ type secondChancePreviewer struct {
 	calls           int
 	secondText      string
 	secondTransform func(string) string
+	secondPreview   *control.TurnDiffPreview
 	secondErr       error
 	secondGate      chan struct{}
 	secondStart     chan struct{}
@@ -91,6 +92,7 @@ func (s *secondChancePreviewer) RewriteFinalBlock(ctx context.Context, req previ
 	secondDone := s.secondDone
 	secondText := s.secondText
 	secondTransform := s.secondTransform
+	secondPreview := s.secondPreview
 	secondErr := s.secondErr
 	s.mu.Unlock()
 
@@ -123,7 +125,7 @@ func (s *secondChancePreviewer) RewriteFinalBlock(ctx context.Context, req previ
 	if secondDone != nil {
 		close(secondDone)
 	}
-	return previewpkg.FinalBlockPreviewResult{Block: block}, secondErr
+	return previewpkg.FinalBlockPreviewResult{Block: block, TurnDiffPreview: secondPreview}, secondErr
 }
 
 func materializeAttachedSurfaceForFinalCardTest(app *App, surfaceID, gatewayID, chatID, actorUserID, instanceID, workspaceKey string) {
@@ -305,6 +307,80 @@ func TestDeliverUIEventSecondChanceFinalPatchSkipsWhenNoImprovement(t *testing.T
 	ops := gateway.snapshotOperations()
 	if len(ops) != 1 {
 		t.Fatalf("expected no patch when second chance result is unchanged, got %#v", ops)
+	}
+}
+
+func TestDeliverUIEventSecondChanceFinalPatchUpdatesSameCardWhenOnlyTurnDiffPreviewChanges(t *testing.T) {
+	gateway := &messageIDAssigningGateway{notify: make(chan struct{}, 8)}
+	previewer := &secondChancePreviewer{
+		secondPreview: &control.TurnDiffPreview{URL: "https://preview.example/turn-diff"},
+		secondDone:    make(chan struct{}),
+	}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.SetFinalBlockPreviewer(previewer)
+	app.finalPreviewTimeout = 10 * time.Millisecond
+	app.service.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-1": {
+				ThreadID: "thread-1",
+				CWD:      "/data/dl/droid",
+				Loaded:   true,
+			},
+		},
+	})
+	materializeAttachedSurfaceForFinalCardTest(app, "feishu:app-1:chat:1", "app-1", "chat-1", "ou_user", "inst-1", "/data/dl/droid")
+
+	event := eventcontract.Event{
+		Kind:             eventcontract.KindBlockCommitted,
+		SurfaceSessionID: "feishu:app-1:chat:1",
+		SourceMessageID:  "msg-1",
+		Block: &render.Block{
+			Kind:       render.BlockAssistantMarkdown,
+			InstanceID: "inst-1",
+			ThreadID:   "thread-1",
+			TurnID:     "turn-1",
+			ItemID:     "item-1",
+			Text:       "已经处理完成。",
+			Final:      true,
+		},
+		FileChangeSummary: &control.FileChangeSummary{
+			FileCount:    1,
+			AddedLines:   2,
+			RemovedLines: 1,
+			Files: []control.FileChangeSummaryEntry{
+				{Path: "internal/main.go", AddedLines: 2, RemovedLines: 1},
+			},
+		},
+	}
+	if err := app.deliverUIEventWithContext(context.Background(), event); err != nil {
+		t.Fatalf("deliver final block: %v", err)
+	}
+	select {
+	case <-previewer.secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for second-chance preview attempt")
+	}
+	ops := gateway.waitForOperationCount(2, 2*time.Second)
+	if len(ops) != 2 {
+		t.Fatalf("expected final send plus async patch, got %#v", ops)
+	}
+	if ops[0].Kind != feishu.OperationSendCard || ops[1].Kind != feishu.OperationUpdateCard {
+		t.Fatalf("unexpected operations: %#v", ops)
+	}
+	if ops[0].CardElements[0]["content"] != "**本次修改** 1 个文件  <font color='green'>+2</font> <font color='red'>-1</font>" {
+		t.Fatalf("unexpected initial summary header: %#v", ops[0].CardElements)
+	}
+	if ops[1].CardElements[0]["content"] != "**本次修改** 1 个文件  <font color='green'>+2</font> <font color='red'>-1</font>  [查看](https://preview.example/turn-diff)" {
+		t.Fatalf("expected async patch to add turn diff link, got %#v", ops[1].CardElements)
+	}
+	if ops[1].MessageID != "om-card-1" {
+		t.Fatalf("expected async patch to target same final card, got %#v", ops[1])
 	}
 }
 

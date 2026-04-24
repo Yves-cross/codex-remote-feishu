@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
@@ -1325,6 +1326,89 @@ func TestDriveMarkdownPreviewerRewritesTextFileToWebPreviewLink(t *testing.T) {
 	}
 	if _, err := os.Stat(previewer.previewBlobPath(record.BlobKey)); err != nil {
 		t.Fatalf("expected preview blob to exist: %v", err)
+	}
+}
+
+func TestDriveMarkdownPreviewerPublishesTurnDiffPreviewArtifact(t *testing.T) {
+	root := t.TempDir()
+	writePreviewFile(t, filepath.Join(root, "docs", "note.txt"), "first\nchanged\nthird\n")
+	previewer := NewDriveMarkdownPreviewer(nil, MarkdownPreviewConfig{
+		ProcessCWD: root,
+		CacheDir:   filepath.Join(root, "preview-cache"),
+	})
+	web := &fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"}
+	previewer.SetWebPreviewPublisher(web)
+
+	diff := strings.Join([]string{
+		"diff --git a/docs/note.txt b/docs/note.txt",
+		"--- a/docs/note.txt",
+		"+++ b/docs/note.txt",
+		"@@ -1,3 +1,3 @@",
+		" first",
+		"-second",
+		"+changed",
+		" third",
+		"",
+	}, "\n")
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		TurnDiffSnapshot: &control.TurnDiffSnapshot{
+			ThreadID: "thread-1",
+			TurnID:   "turn-1",
+			Diff:     diff,
+		},
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "已完成修改。",
+		},
+	})
+	if err != nil {
+		t.Fatalf("RewriteFinalBlock returned error: %v", err)
+	}
+	if result.TurnDiffPreview == nil || !strings.HasPrefix(result.TurnDiffPreview.URL, "https://preview.example/g/shared/") {
+		t.Fatalf("expected turn diff preview url, got %#v", result.TurnDiffPreview)
+	}
+	if len(web.issuedFor) != 1 {
+		t.Fatalf("expected one web preview issuance, got %#v", web.issuedFor)
+	}
+
+	manifest, err := previewer.loadWebPreviewScopeManifest(web.issuedFor[0].ScopePublicID)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	var previewID string
+	for id, record := range manifest.Records {
+		if record != nil && record.RendererKind == turnDiffPreviewRendererKind {
+			previewID = id
+			break
+		}
+	}
+	if previewID == "" {
+		t.Fatalf("expected turn diff preview record, got %#v", manifest.Records)
+	}
+	artifact, err := previewer.loadWebPreviewArtifact(web.issuedFor[0].ScopePublicID, previewID)
+	if err != nil {
+		t.Fatalf("load artifact: %v", err)
+	}
+	var decoded turnDiffPreviewArtifact
+	if err := json.Unmarshal(artifact.Content, &decoded); err != nil {
+		t.Fatalf("decode artifact: %v", err)
+	}
+	if decoded.RawUnifiedDiff != diff {
+		t.Fatalf("unexpected raw unified diff: %q", decoded.RawUnifiedDiff)
+	}
+	if len(decoded.Files) != 1 {
+		t.Fatalf("expected one decoded file, got %#v", decoded.Files)
+	}
+	if decoded.Files[0].AfterText != "first\nchanged\nthird\n" {
+		t.Fatalf("expected frozen after text, got %q", decoded.Files[0].AfterText)
+	}
+	if len(decoded.Files[0].Lines) == 0 || len(decoded.Files[0].Hunks) == 0 {
+		t.Fatalf("expected merged viewer data, got %#v", decoded.Files[0])
 	}
 }
 

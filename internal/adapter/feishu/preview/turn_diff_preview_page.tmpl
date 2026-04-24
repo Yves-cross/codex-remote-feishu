@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>变更查看</title>
+    <style>
+      :root {
+        --shell-bg: #f7f4ee;
+        --line: #e6ded1;
+        --line-strong: #d7ccbc;
+        --text: #1b1812;
+        --muted: #766a59;
+        --surface: rgba(255, 252, 247, 0.95);
+        --surface-soft: rgba(252, 248, 241, 0.96);
+        --surface-rail: linear-gradient(180deg, rgba(252, 249, 243, 0.98), rgba(244, 238, 228, 0.9));
+        --accent: #c06f3a;
+        --accent-soft: #fff4e7;
+        --green-bg: #eaf5ee;
+        --green-text: #28543d;
+        --red-bg: #fff0ed;
+        --red-text: #7b3629;
+        --hunk-bg: linear-gradient(180deg, rgba(255, 246, 220, 0.96), rgba(255, 242, 205, 0.84));
+        --hunk-text: #71571d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, rgba(255, 247, 230, 0.95), transparent 28%),
+          linear-gradient(180deg, #ece4d8 0%, #f4efe8 42%, #e9e0d1 100%);
+        color: var(--text);
+        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      body {
+        padding: 14px;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      .viewer-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        border: 1px solid rgba(211, 201, 185, 0.92);
+        border-radius: 24px;
+        overflow: hidden;
+        background: var(--shell-bg);
+        box-shadow: 0 20px 48px rgba(87, 63, 27, 0.12);
+      }
+
+      .mobile-bar {
+        display: none;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(250, 248, 243, 0.96);
+        flex: 0 0 auto;
+      }
+
+      .mobile-logo {
+        width: 22px;
+        height: 22px;
+        display: block;
+        flex: 0 0 auto;
+      }
+
+      .mobile-file-select {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .mobile-file-select select {
+        width: 100%;
+        min-width: 0;
+        padding: 10px 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: #fffdf8;
+        color: var(--text);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 272px minmax(0, 1fr);
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      .file-rail {
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 12px 14px 14px;
+        border-right: 1px solid var(--line);
+        background: var(--surface-rail);
+        scrollbar-gutter: stable;
+      }
+
+      .file-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .file-pill {
+        width: 100%;
+        display: grid;
+        gap: 6px;
+        padding: 12px;
+        border: 1px solid transparent;
+        border-radius: 16px;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .file-pill:hover {
+        background: rgba(255, 252, 245, 0.82);
+        border-color: rgba(217, 207, 191, 0.7);
+      }
+
+      .file-pill.is-active {
+        background: var(--accent-soft);
+        border-color: #e6d2b6;
+        box-shadow: 0 8px 18px rgba(171, 121, 60, 0.08);
+      }
+
+      .file-pill__name {
+        display: block;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .file-pill__meta {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .file-pill__stats {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+      }
+
+      .file-pill__stat--add {
+        color: var(--green-text);
+      }
+
+      .file-pill__stat--remove {
+        color: var(--red-text);
+      }
+
+      .diff-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .diff-scroll {
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow: auto;
+        padding: 18px;
+        background:
+          linear-gradient(180deg, rgba(247, 244, 238, 0.98), rgba(243, 237, 228, 0.96));
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .diff-stack {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .stack-item {
+        position: relative;
+        margin-top: 12px;
+      }
+
+      .stack-item:first-child {
+        margin-top: 0;
+      }
+
+      .stack-item--merge-prev {
+        margin-top: 0;
+      }
+
+      .stack-item--gap-expanded {
+        margin-top: 0;
+      }
+
+      .hunk-card,
+      .gap-card {
+        overflow: hidden;
+        border: 1px solid rgba(221, 212, 197, 0.92);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: 0 10px 24px rgba(102, 76, 40, 0.06);
+      }
+
+      .stack-item--merge-next .hunk-card {
+        border-bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        box-shadow: none;
+      }
+
+      .stack-item--merge-prev .hunk-card {
+        border-top: 0;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+        box-shadow: none;
+      }
+
+      .stack-item--merge-next .diff-lines {
+        padding-bottom: 0;
+      }
+
+      .stack-item--merge-prev .hunk-header {
+        display: none;
+      }
+
+      .stack-item--merge-prev .diff-lines {
+        padding-top: 0;
+      }
+
+      .stack-item--gap-expanded .gap-card {
+        border-top: 0;
+        border-bottom: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: var(--surface-soft);
+      }
+
+      .stack-item--gap-expanded .diff-lines {
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+
+      .hunk-anchor {
+        position: relative;
+        top: -12px;
+      }
+
+      .hunk-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 14px;
+        border-bottom: 1px solid rgba(231, 213, 161, 0.8);
+        background: var(--hunk-bg);
+        color: var(--hunk-text);
+      }
+
+      .hunk-title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .hunk-range {
+        font-size: 12px;
+        color: rgba(113, 87, 29, 0.84);
+      }
+
+      .diff-lines {
+        padding: 8px 0;
+      }
+
+      .gap-toggle {
+        width: 100%;
+        padding: 14px 16px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .gap-toggle:hover {
+        background: rgba(246, 237, 223, 0.72);
+      }
+
+      .gap-toggle::before {
+        content: "+";
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin-right: 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: #fffdf8;
+        color: var(--accent);
+      }
+
+      .stack-item--gap-expanded .gap-toggle {
+        display: none;
+      }
+
+      .gap-body {
+        display: none;
+        position: relative;
+      }
+
+      .stack-item--gap-expanded .gap-body {
+        display: block;
+      }
+
+      .gap-collapse {
+        position: absolute;
+        top: 7px;
+        left: 12px;
+        z-index: 2;
+        width: 22px;
+        height: 22px;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: rgba(255, 253, 248, 0.95);
+        color: var(--accent);
+        font-size: 15px;
+        line-height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .gap-collapse:hover {
+        background: #fff8ee;
+      }
+
+      .diff-line {
+        display: grid;
+        grid-template-columns: 52px 52px minmax(0, 1fr);
+        align-items: stretch;
+        font-family: "SFMono-Regular", "Cascadia Code", "Consolas", monospace;
+        font-size: 12.5px;
+        line-height: 1.68;
+      }
+
+      .diff-line__old,
+      .diff-line__new {
+        padding: 0 10px 0 8px;
+        color: #8c7d6b;
+        text-align: right;
+        user-select: none;
+        border-right: 1px solid rgba(235, 228, 216, 0.92);
+      }
+
+      .diff-line__code {
+        min-width: 0;
+        padding: 0 14px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #3c332a;
+      }
+
+      .diff-line--add {
+        background: var(--green-bg);
+      }
+
+      .diff-line--add .diff-line__code {
+        color: var(--green-text);
+      }
+
+      .diff-line--remove {
+        background: var(--red-bg);
+      }
+
+      .diff-line--remove .diff-line__code {
+        color: var(--red-text);
+      }
+
+      @media (orientation: landscape) and (max-width: 980px) {
+        body {
+          padding: 0;
+        }
+
+        .viewer-shell {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .workspace {
+          grid-template-columns: 224px minmax(0, 1fr);
+        }
+
+        .file-rail {
+          padding: 12px 10px 12px 12px;
+        }
+
+        .diff-scroll {
+          padding: 14px;
+        }
+
+        .diff-line {
+          grid-template-columns: 44px 44px minmax(0, 1fr);
+          font-size: 12px;
+        }
+
+        .diff-line__code {
+          padding: 0 12px;
+        }
+      }
+
+      @media (orientation: portrait) {
+        body {
+          padding: 0;
+        }
+
+        .viewer-shell {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .mobile-bar {
+          display: flex;
+        }
+
+        .workspace {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .file-rail {
+          display: none;
+        }
+
+        .diff-scroll {
+          padding: 14px;
+        }
+
+        .diff-line {
+          grid-template-columns: 44px 44px minmax(0, 1fr);
+          font-size: 12px;
+        }
+
+        .diff-line__code {
+          padding: 0 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="viewer-shell"></div>
+
+    <script>
+      const CONTEXT_RADIUS = 8;
+      const PREVIEW_LOGO = {{.LogoJSON}};
+      const FILES = {{.FilesJSON}};
+
+      const state = {
+        currentFileKey: FILES.length > 0 ? FILES[0].key : "",
+        scrollByFile: {},
+        expandedGaps: {}
+      };
+
+      function isGapExpanded(fileKey, gapID) {
+        return !!(state.expandedGaps[fileKey] && state.expandedGaps[fileKey][gapID]);
+      }
+
+      function setGapExpanded(fileKey, gapID, expanded) {
+        state.expandedGaps[fileKey] ??= {};
+        state.expandedGaps[fileKey][gapID] = expanded;
+      }
+
+      function rememberCurrentScroll() {
+        const scroller = document.querySelector(".diff-scroll");
+        if (!scroller || !state.currentFileKey) {
+          return;
+        }
+        state.scrollByFile[state.currentFileKey] = scroller.scrollTop;
+      }
+
+      function normalizeHunks(file) {
+        if (Array.isArray(file.hunks) && file.hunks.length > 0) {
+          return file.hunks;
+        }
+        const lines = Array.isArray(file.lines) ? file.lines : [];
+        if (lines.length === 0) {
+          return [];
+        }
+        const stats = file.stats || { added: 0, removed: 0 };
+        return [{
+          title: file.name || "",
+          subtitle: `+${stats.added || 0} / -${stats.removed || 0}`,
+          start: 0,
+          end: lines.length - 1
+        }];
+      }
+
+      function buildSections(file) {
+        const lines = Array.isArray(file.lines) ? file.lines : [];
+        const hunks = normalizeHunks(file);
+        if (lines.length === 0 || hunks.length === 0) {
+          return [];
+        }
+        let cursor = 0;
+        const sections = [];
+        for (const hunk of hunks) {
+          let displayStart = Math.max(0, hunk.start - CONTEXT_RADIUS);
+          const displayEnd = Math.min(lines.length - 1, hunk.end + CONTEXT_RADIUS);
+          if (displayStart - cursor <= 4) {
+            displayStart = cursor;
+          }
+          if (displayStart > cursor) {
+            const gapLines = lines.slice(cursor, displayStart);
+            sections.push({
+              type: "gap",
+              id: `gap-${cursor}-${displayStart - 1}`,
+              lines: gapLines,
+              hiddenCount: gapLines.length
+            });
+          }
+          sections.push({
+            type: "hunk",
+            id: `hunk-${hunk.start}-${hunk.end}`,
+            title: hunk.title || file.name || "",
+            subtitle: hunk.subtitle || "",
+            lines: lines.slice(displayStart, displayEnd + 1)
+          });
+          cursor = displayEnd + 1;
+        }
+        if (cursor < lines.length) {
+          const gapLines = lines.slice(cursor);
+          sections.push({
+            type: "gap",
+            id: `gap-${cursor}-${lines.length - 1}`,
+            lines: gapLines,
+            hiddenCount: gapLines.length
+          });
+        }
+        return sections;
+      }
+
+      function renderApp() {
+        const root = document.getElementById("app");
+        root.innerHTML = `
+          <header class="mobile-bar">
+            <img class="mobile-logo" src="${PREVIEW_LOGO}" alt="" aria-hidden="true" />
+            <div class="mobile-file-select">
+              <label class="sr-only" for="mobile-file-select">选择文件</label>
+              <select id="mobile-file-select"></select>
+            </div>
+          </header>
+          <div class="workspace">
+            <aside class="file-rail">
+              <div class="file-list"></div>
+            </aside>
+            <section class="diff-panel">
+              <div class="diff-scroll">
+                <div class="diff-stack"></div>
+              </div>
+            </section>
+          </div>
+        `;
+
+        if (FILES.length === 0) {
+          return;
+        }
+
+        const fileList = root.querySelector(".file-list");
+        fileList.innerHTML = FILES.map((file) => {
+          const stats = file.stats || { added: 0, removed: 0 };
+          return `
+            <button class="file-pill" data-file-key="${escapeHTML(file.key)}">
+              <span class="file-pill__name">${escapeHTML(file.name)}</span>
+              <span class="file-pill__meta">
+                <span class="file-pill__stats">
+                  <span class="file-pill__stat--add">+${stats.added || 0}</span>
+                  <span class="file-pill__stat--remove">-${stats.removed || 0}</span>
+                </span>
+              </span>
+            </button>
+          `;
+        }).join("");
+        fileList.addEventListener("click", (event) => {
+          const button = event.target.closest(".file-pill");
+          if (!button) {
+            return;
+          }
+          switchFile(button.dataset.fileKey);
+        });
+
+        const select = root.querySelector("#mobile-file-select");
+        select.innerHTML = FILES.map((file) => `
+          <option value="${escapeHTML(file.key)}">${escapeHTML(file.name)}</option>
+        `).join("");
+        select.addEventListener("change", () => switchFile(select.value));
+
+        root.querySelector(".diff-scroll").addEventListener("click", (event) => {
+          const openToggle = event.target.closest(".gap-toggle");
+          if (openToggle) {
+            rememberCurrentScroll();
+            setGapExpanded(state.currentFileKey, openToggle.dataset.gapId, true);
+            renderCurrentFile(false);
+            return;
+          }
+          const collapseToggle = event.target.closest(".gap-collapse");
+          if (collapseToggle) {
+            rememberCurrentScroll();
+            setGapExpanded(state.currentFileKey, collapseToggle.dataset.gapId, false);
+            renderCurrentFile(false);
+          }
+        });
+
+        renderCurrentFile(true);
+      }
+
+      function switchFile(nextKey) {
+        if (!nextKey || nextKey === state.currentFileKey) {
+          return;
+        }
+        const scroller = document.querySelector(".diff-scroll");
+        if (scroller && state.currentFileKey) {
+          state.scrollByFile[state.currentFileKey] = scroller.scrollTop;
+        }
+        state.currentFileKey = nextKey;
+        renderCurrentFile(false);
+      }
+
+      function renderCurrentFile(initialRender) {
+        const file = FILES.find((item) => item.key === state.currentFileKey);
+        if (!file) {
+          return;
+        }
+
+        document.querySelectorAll(".file-pill").forEach((pill) => {
+          pill.classList.toggle("is-active", pill.dataset.fileKey === file.key);
+        });
+
+        const select = document.querySelector("#mobile-file-select");
+        if (select) {
+          select.value = file.key;
+        }
+
+        const sections = buildSections(file);
+        document.querySelector(".diff-stack").innerHTML = sections
+          .map((section, index) => renderSection(file, sections, section, index))
+          .join("");
+
+        const scroller = document.querySelector(".diff-scroll");
+        const restorePosition = state.scrollByFile[file.key];
+        const firstAnchor = document.querySelector(".hunk-anchor");
+        requestAnimationFrame(() => {
+          if (typeof restorePosition === "number") {
+            scroller.scrollTop = restorePosition;
+            return;
+          }
+          if (!firstAnchor) {
+            scroller.scrollTop = 0;
+            return;
+          }
+          if (initialRender || typeof restorePosition !== "number") {
+            scroller.scrollTop = Math.max(firstAnchor.offsetTop - 18, 0);
+          }
+        });
+      }
+
+      function renderSection(file, sections, section, index) {
+        const previous = sections[index - 1] || null;
+        const next = sections[index + 1] || null;
+        const previousExpanded = previous && previous.type === "gap" && isGapExpanded(file.key, previous.id);
+        const nextExpanded = next && next.type === "gap" && isGapExpanded(file.key, next.id);
+        const classes = ["stack-item"];
+        if (previousExpanded) {
+          classes.push("stack-item--merge-prev");
+        }
+        if (nextExpanded) {
+          classes.push("stack-item--merge-next");
+        }
+
+        if (section.type === "gap") {
+          const expanded = isGapExpanded(file.key, section.id);
+          if (expanded) {
+            classes.push("stack-item--gap-expanded");
+          }
+          return `
+            <div class="${classes.join(" ")}">
+              <div class="gap-card">
+                <button class="gap-toggle" type="button" data-gap-id="${escapeHTML(section.id)}">
+                  ${section.hiddenCount} 行未修改内容
+                </button>
+                <div class="gap-body">
+                  <button class="gap-collapse" type="button" data-gap-id="${escapeHTML(section.id)}" aria-label="收起">−</button>
+                  <div class="diff-lines">
+                    ${section.lines.map(renderLine).join("")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="${classes.join(" ")}">
+            <section class="hunk-card">
+              <div class="hunk-anchor"></div>
+              <div class="hunk-header">
+                <span class="hunk-title">${escapeHTML(section.title)}</span>
+                <span class="hunk-range">${escapeHTML(section.subtitle)}</span>
+              </div>
+              <div class="diff-lines">
+                ${section.lines.map(renderLine).join("")}
+              </div>
+            </section>
+          </div>
+        `;
+      }
+
+      function renderLine(line) {
+        return `
+          <div class="diff-line diff-line--${escapeHTML(line.kind)}">
+            <div class="diff-line__old">${line.old === "" ? "" : escapeHTML(line.old)}</div>
+            <div class="diff-line__new">${line.now === "" ? "" : escapeHTML(line.now)}</div>
+            <div class="diff-line__code">${escapeHTML(line.text)}</div>
+          </div>
+        `;
+      }
+
+      function escapeHTML(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll("\"", "&quot;");
+      }
+
+      renderApp();
+    </script>
+  </body>
+</html>

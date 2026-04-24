@@ -457,6 +457,10 @@ type TurnDiffSnapshot struct {
 	Diff     string
 }
 
+type TurnDiffPreview struct {
+	URL string
+}
+
 type FinalTurnUsage struct {
 	InputTokens           int
 	CachedInputTokens     int

@@ -154,7 +154,7 @@
 - [final-message-feidex-audit.md](./inprogress/final-message-feidex-audit.md)
 - [relay-daemon-autostart-design.md](./inprogress/relay-daemon-autostart-design.md)
 - [thread-description-unification-plan.md](./inprogress/thread-description-unification-plan.md)
-- [turn-diff-frozen-preview-design.md](./inprogress/turn-diff-frozen-preview-design.md)
+- [turn-diff-frozen-preview-design.md](./implemented/turn-diff-frozen-preview-design.md)
 - [unified-binary-design.md](./inprogress/unified-binary-design.md)
 
 ### 6.4 `draft`

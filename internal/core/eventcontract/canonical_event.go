@@ -138,6 +138,7 @@ func (event Event) CanonicalPayload() Payload {
 		payload := BlockCommittedPayload{
 			FileChangeSummary: cloneFileChangeSummary(event.FileChangeSummary),
 			TurnDiffSnapshot:  cloneTurnDiffSnapshot(event.TurnDiffSnapshot),
+			TurnDiffPreview:   cloneTurnDiffPreview(event.TurnDiffPreview),
 			FinalTurnSummary:  cloneFinalTurnSummary(event.FinalTurnSummary),
 		}
 		if event.Block != nil {
@@ -396,6 +397,14 @@ func cloneTurnDiffSnapshot(snapshot *control.TurnDiffSnapshot) *control.TurnDiff
 		return nil
 	}
 	cloned := *snapshot
+	return &cloned
+}
+
+func cloneTurnDiffPreview(preview *control.TurnDiffPreview) *control.TurnDiffPreview {
+	if preview == nil {
+		return nil
+	}
+	cloned := *preview
 	return &cloned
 }
 

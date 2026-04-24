@@ -42,7 +42,11 @@ func (p *DriveMarkdownPreviewer) RewriteFinalBlock(ctx context.Context, req Fina
 		}
 		p.stateMu.Unlock()
 	}
-	return result, rewriteErr
+	turnDiffPreview, turnDiffErr := p.maybePublishTurnDiffPreview(ctx, req)
+	if turnDiffPreview != nil {
+		result.TurnDiffPreview = turnDiffPreview
+	}
+	return result, joinPreviewErrors(rewriteErr, turnDiffErr)
 }
 
 func (p *DriveMarkdownPreviewer) rewriteMarkdownLinks(ctx context.Context, req FinalBlockPreviewRequest, principals []previewPrincipal, runtime *previewRewriteRuntime) (string, bool, bool, error) {

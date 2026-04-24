@@ -1,8 +1,8 @@
 # Turn Diff Frozen Preview Design
 
-> Type: `inprogress`
+> Type: `implemented`
 > Updated: `2026-04-24`
-> Summary: 收敛 authoritative turn diff snapshot 的 frozen preview 全流程、final 挂链合同、`/preview` 路由与授权复用、以及 renderer 的降级规则。
+> Summary: 记录已落地的 authoritative turn diff frozen preview：final 摘要挂 `查看`、冻结 artifact、专用 viewer 页面，以及失败时的降级行为。
 
 ## 1. 背景
 
@@ -463,20 +463,16 @@ parser 采用保守策略：
 
 ## 9. renderer 合同
 
-## 9.1 外层壳
+## 9.1 外层页面
 
-外层壳继续跟现有 preview 页面保持风格一致：
+正常 turn diff viewer 使用专用 full-page HTML，不复用当前普通 file preview 的顶部 chrome。
 
-- 基础留白
-- 排版节奏
-- 过期 / unavailable 系统态
+已实现约束：
 
-但正文 renderer 不能复用当前普通 file preview 的正文语义。
-
-本单需要的是：
-
-- preview shell 一致
-- turn diff renderer 专用
+- 正常阅读态不出现共享 preview topbar
+- 正常阅读态不出现下载按钮
+- 视觉基调、留白、配色和异常态仍与现有 preview 体系保持基本一致
+- 只有过期 / unavailable 这类系统态继续落回共享 preview message shell
 
 ## 9.2 初始定位
 
@@ -572,7 +568,7 @@ gap 展开后应达到的视觉结果：
 
 - 复用当前 `/preview` 鉴权入口
 - 读取 turn diff artifact
-- 返回 turn diff viewer 页面
+- 正常情况下返回 turn diff 专用页面
 - 若内部保留附属下载路由，仅作为非用户可见兜底，不进入默认页面交互
 
 ## 11. 失败与降级矩阵
@@ -644,7 +640,8 @@ gap 展开后应达到的视觉结果：
 ### 12.4 web renderer
 
 - 新增 `turn_diff` renderer
-- 复用 preview shell
+- 正常阅读态使用专用 full-page HTML
+- 过期 / unavailable 等系统态继续复用共享 preview shell
 - 正文渲染遵守当前已确认 mock
 
 ## 13. 验证面
@@ -673,16 +670,14 @@ gap 展开后应达到的视觉结果：
 - 解析失败和异常场景有明确降级
 - 外层风格与现有 preview 页面保持基本一致
 
-## 15. 当前结论
+## 15. 已落地结论
 
-到这一步，`#307` 的设计已经不再只停留在页面外观，而是具备直接开工所需的核心合同：
+`#307` 当前已按本文落地完成：
 
-- 什么时候生成
-- 由谁生成
-- 挂在哪里
-- 链接长什么样
-- 复用哪条授权链路
-- 页面读什么数据
-- 异常时如何降级
+- final 文件摘要头行可挂出 `查看`
+- `查看` 指向 frozen turn diff preview，而不是 live workspace
+- viewer 数据在 final 投递期冻结，并复用现有 preview grant / scope / TTL 基座
+- 正常阅读态使用专用页面，不显示共享 topbar 与下载动作
+- second-chance patch 能在正文不变时，把 `查看` 链接补回同一张 final 卡
 
-后续实现应直接以本文和已确认 mock 为准，不再回到“是否先做一个 raw diff 页面”这条临时路线。
+后续若继续扩展 diff viewer，只能在 frozen snapshot 语义和当前 mock 的可见内容合同内演进；不能回退到 append 新消息或在页面中加入 reviewer 语义。

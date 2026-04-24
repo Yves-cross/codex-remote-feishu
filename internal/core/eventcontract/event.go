@@ -66,6 +66,7 @@ type Event struct {
 	ExecCommandProgress      *control.ExecCommandProgress
 	FileChangeSummary        *control.FileChangeSummary
 	TurnDiffSnapshot         *control.TurnDiffSnapshot
+	TurnDiffPreview          *control.TurnDiffPreview
 	FinalTurnSummary         *control.FinalTurnSummary
 	Command                  *agentproto.Command
 	DaemonCommand            *control.DaemonCommand
@@ -202,6 +203,9 @@ func (event Event) Normalized() Event {
 		}
 		if event.TurnDiffSnapshot == nil {
 			event.TurnDiffSnapshot = cloneTurnDiffSnapshot(payload.TurnDiffSnapshot)
+		}
+		if event.TurnDiffPreview == nil {
+			event.TurnDiffPreview = cloneTurnDiffPreview(payload.TurnDiffPreview)
 		}
 		if event.FinalTurnSummary == nil {
 			event.FinalTurnSummary = cloneFinalTurnSummary(payload.FinalTurnSummary)
