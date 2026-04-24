@@ -26,6 +26,7 @@ const (
 	FeishuCommandSteerAll          = "steerall"
 	FeishuCommandMode              = "mode"
 	FeishuCommandAutoContinue      = "autowhip"
+	FeishuCommandRecovery          = "recovery"
 	FeishuCommandModel             = "model"
 	FeishuCommandReasoning         = "reasoning"
 	FeishuCommandAccess            = "access"
@@ -757,6 +758,41 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{prefix: "autowhip-", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
 			{prefix: "autocontinue_", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
 			{prefix: "autocontinue-", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandRecovery,
+			GroupID:          FeishuCommandGroupCommonTools,
+			Title:            "自动恢复",
+			CanonicalSlash:   "/recovery",
+			CanonicalMenuKey: "recovery",
+			ArgumentKind:     FeishuCommandArgumentChoice,
+			ArgumentFormHint: "on",
+			ArgumentFormNote: "输入 on 或 off。",
+			ArgumentSubmit:   "应用",
+			Description:      "查看当前上游失败自动恢复状态；只处理上游可重试失败，不影响 autowhip。",
+			Examples:         []string{"/recovery on", "/recovery off"},
+			Options: []FeishuCommandOption{
+				commandOption("/recovery", "recovery", "on", "on", "开启当前飞书会话的上游失败自动恢复。"),
+				commandOption("/recovery", "recovery", "off", "off", "关闭当前飞书会话的上游失败自动恢复。"),
+			},
+			ShowInHelp: true,
+			ShowInMenu: true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/recovery", kind: ActionRecoveryCommand},
+			{alias: "/autorecovery", kind: ActionRecoveryCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "recovery", action: Action{Kind: ActionRecoveryCommand, Text: "/recovery"}},
+			{alias: "autorecovery", action: Action{Kind: ActionRecoveryCommand, Text: "/recovery"}},
+		},
+		menuDynamic: []feishuCommandDynamicMenuMatch{
+			{prefix: "recovery_", kind: ActionRecoveryCommand, build: buildMenuRecoveryText},
+			{prefix: "recovery-", kind: ActionRecoveryCommand, build: buildMenuRecoveryText},
+			{prefix: "autorecovery_", kind: ActionRecoveryCommand, build: buildMenuRecoveryText},
+			{prefix: "autorecovery-", kind: ActionRecoveryCommand, build: buildMenuRecoveryText},
 		},
 	},
 	{

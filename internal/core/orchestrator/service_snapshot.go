@@ -15,6 +15,7 @@ func (s *Service) buildSnapshot(surface *state.SurfaceConsoleRecord) *control.Sn
 		ProductMode:      string(s.normalizeSurfaceProductMode(surface)),
 		WorkspaceKey:     s.surfaceCurrentWorkspaceKey(surface),
 		AutoContinue:     snapshotAutoContinueSummary(surface),
+		Recovery:         snapshotRecoverySummary(surface),
 	}
 	snapshot.Gate = s.snapshotGateSummary(surface)
 	if pending := surface.PendingHeadless; pending != nil {
@@ -140,6 +141,23 @@ func snapshotAutoContinueSummary(surface *state.SurfaceConsoleRecord) control.Au
 		ConsecutiveCount:    surface.AutoContinue.ConsecutiveCount,
 		LastTriggeredTurnID: surface.AutoContinue.LastTriggeredTurnID,
 	}
+}
+
+func snapshotRecoverySummary(surface *state.SurfaceConsoleRecord) control.RecoverySummary {
+	if surface == nil {
+		return control.RecoverySummary{}
+	}
+	summary := control.RecoverySummary{
+		Enabled: surface.Recovery.Enabled,
+	}
+	if episode := activeRecoveryEpisode(surface); episode != nil {
+		summary.State = string(episode.State)
+		summary.PendingDueAt = episode.PendingDueAt
+		summary.AttemptCount = episode.AttemptCount
+		summary.ConsecutiveDryFailureCount = episode.ConsecutiveDryFailureCount
+		summary.TriggerKind = string(episode.TriggerKind)
+	}
+	return summary
 }
 
 func (s *Service) snapshotGateSummary(surface *state.SurfaceConsoleRecord) control.GateSummary {

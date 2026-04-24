@@ -119,7 +119,7 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 		}
 		body, elements := projectorpkg.ProjectNoticeContent(payload.Notice)
 		theme := noticeThemeKey(payload.Notice)
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
@@ -130,11 +130,12 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, body, theme, elements),
-		}}
+		}
+		return []Operation{applyReplyLaneToNewOperation(event, operation)}
 	case eventcontract.PlanUpdatePayload:
 		title := "当前计划"
 		elements := projectorpkg.PlanUpdateElements(payload.PlanUpdate)
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
@@ -145,13 +146,14 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemePlan, elements),
-		}}
+		}
+		return []Operation{applyReplyLaneToNewOperation(event, operation)}
 	case eventcontract.SelectionPayload:
 		title, elements, ok := projectorpkg.SelectionViewStructuredProjection(payload.View, payload.Context, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
 		if !ok {
 			return nil
 		}
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
@@ -162,7 +164,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemeInfo, elements),
-		}}
+		}
+		return []Operation{applyReplyLaneToNewOperation(event, operation)}
 	case eventcontract.PagePayload:
 		pageView := control.NormalizeFeishuPageView(payload.View)
 		title := strings.TrimSpace(pageView.Title)
@@ -189,6 +192,9 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 		}
 		operation.cardEnvelope = cardEnvelopeV2
 		operation.card = rawCardDocument(title, body, theme, elements)
+		if operation.Kind == OperationSendCard {
+			operation = applyReplyLaneToNewOperation(event, operation)
+		}
 		return []Operation{operation}
 	case eventcontract.RequestPayload:
 		title := strings.TrimSpace(payload.View.Title)
@@ -196,7 +202,7 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			title = "需要确认"
 		}
 		elements := projectorpkg.RequestPromptElements(payload.View, firstNonEmpty(event.DaemonLifecycleID, event.Meta.DaemonLifecycleID))
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendCard,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
@@ -207,7 +213,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			CardElements:     elements,
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument(title, "", cardThemeApproval, elements),
-		}}
+		}
+		return []Operation{applyReplyLaneToNewOperation(event, operation)}
 	case eventcontract.TimelineTextPayload:
 		text := strings.TrimSpace(payload.TimelineText.Text)
 		if text == "" {
@@ -247,6 +254,9 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			operation.MessageID = messageID
 			operation.ReplyToMessageID = ""
 		}
+		if operation.Kind == OperationSendCard {
+			operation = applyReplyLaneToNewOperation(event, operation)
+		}
 		return []Operation{operation}
 	case eventcontract.TargetPickerPayload:
 		view := payload.View
@@ -273,6 +283,9 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			operation.Kind = OperationUpdateCard
 			operation.MessageID = messageID
 			operation.ReplyToMessageID = ""
+		}
+		if operation.Kind == OperationSendCard {
+			operation = applyReplyLaneToNewOperation(event, operation)
 		}
 		return []Operation{operation}
 	case eventcontract.ThreadHistoryPayload:
@@ -355,14 +368,15 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 		if strings.TrimSpace(payload.ImageOutput.SavedPath) == "" && strings.TrimSpace(payload.ImageOutput.ImageBase64) == "" {
 			return nil
 		}
-		return []Operation{{
+		operation := Operation{
 			Kind:             OperationSendImage,
 			GatewayID:        event.GatewayID,
 			SurfaceSessionID: event.SurfaceSessionID,
 			ChatID:           chatID,
 			ImagePath:        strings.TrimSpace(payload.ImageOutput.SavedPath),
 			ImageBase64:      strings.TrimSpace(payload.ImageOutput.ImageBase64),
-		}}
+		}
+		return []Operation{applyReplyLaneToNewOperation(event, operation)}
 	case eventcontract.ExecCommandProgressPayload:
 		return p.projectExecCommandProgress(chatID, event, payload.Progress)
 	default:
@@ -440,6 +454,24 @@ func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID
 		ops = append(ops, op)
 	}
 	return ops
+}
+
+func replyToMessageIDForEvent(event eventcontract.Event) string {
+	return strings.TrimSpace(firstNonEmpty(
+		event.SourceMessageID,
+		event.Meta.SourceMessageID,
+	))
+}
+
+func applyReplyLaneToNewOperation(event eventcontract.Event, operation Operation) Operation {
+	if operation.Kind != OperationSendCard && operation.Kind != OperationSendText && operation.Kind != OperationSendImage {
+		return operation
+	}
+	if event.Meta.MessageDelivery.FirstSendLane != eventcontract.MessageLaneReplyThread {
+		return operation
+	}
+	operation.ReplyToMessageID = replyToMessageIDForEvent(event)
+	return operation
 }
 
 func applyAttentionToOperations(operations []Operation, attention eventcontract.AttentionAnnotation) []Operation {

@@ -74,6 +74,8 @@ func (s *Service) buildCommandConfigViewForAction(surface *state.SurfaceConsoleR
 		return s.buildModeCommandViewState(surface, cardState)
 	case control.ActionAutoContinueCommand:
 		return s.buildAutoContinueCommandViewState(surface, cardState)
+	case control.ActionRecoveryCommand:
+		return s.buildRecoveryCommandViewState(surface, cardState)
 	case control.ActionReasoningCommand:
 		return s.buildReasoningCommandViewState(surface, cardState)
 	case control.ActionAccessCommand:
@@ -215,6 +217,60 @@ func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord,
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
 			StatusKind:       "error",
 			StatusText:       "用法：`/autowhip` 查看当前状态；`/autowhip on`；`/autowhip off`。",
+			FormDefaultValue: actionCommandArgumentText(action),
+		})
+	}
+}
+
+func (s *Service) handleRecoveryCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
+	parts := strings.Fields(strings.TrimSpace(action.Text))
+	if len(parts) <= 1 {
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildRecoveryCommandView(surface))}
+	}
+	if len(parts) != 2 {
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
+			StatusKind:       "error",
+			StatusText:       "用法：`/recovery` 查看当前状态；`/recovery on`；`/recovery off`。",
+			FormDefaultValue: actionCommandArgumentText(action),
+		})
+	}
+
+	switch strings.ToLower(parts[1]) {
+	case "on", "enable", "enabled", "true":
+		if surface.Recovery.Enabled {
+			if commandCardOwnsInlineResult(action) {
+				return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
+					Sealed:     true,
+					StatusKind: "info",
+					StatusText: "当前飞书会话的上游失败自动恢复已开启。",
+				})
+			}
+			return notice(surface, "recovery_enabled", "当前飞书会话的上游失败自动恢复已开启。")
+		}
+		clearRecoveryRuntime(surface)
+		surface.Recovery.Enabled = true
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已开启当前飞书会话的上游失败自动恢复。服务重启后不会恢复之前的自动恢复状态。",
+			})
+		}
+		return notice(surface, "recovery_enabled", "已开启当前飞书会话的上游失败自动恢复。服务重启后不会恢复之前的自动恢复状态。")
+	case "off", "disable", "disabled", "false":
+		surface.Recovery = state.RecoveryRuntimeRecord{}
+		if commandCardOwnsInlineResult(action) {
+			return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
+				Sealed:     true,
+				StatusKind: "success",
+				StatusText: "已关闭当前飞书会话的上游失败自动恢复。",
+			})
+		}
+		return notice(surface, "recovery_disabled", "已关闭当前飞书会话的上游失败自动恢复。")
+	default:
+		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
+			StatusKind:       "error",
+			StatusText:       "用法：`/recovery` 查看当前状态；`/recovery on`；`/recovery off`。",
 			FormDefaultValue: actionCommandArgumentText(action),
 		})
 	}

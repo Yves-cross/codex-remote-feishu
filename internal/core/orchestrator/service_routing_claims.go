@@ -491,6 +491,12 @@ func (s *Service) surfaceHasLiveRemoteWork(surface *state.SurfaceConsoleRecord) 
 	if s.surfaceHasPendingSteer(surface) {
 		return true
 	}
+	if episode := activeRecoveryEpisode(surface); episode != nil {
+		switch episode.State {
+		case state.RecoveryEpisodeScheduled, state.RecoveryEpisodeRunning:
+			return true
+		}
+	}
 	if surface.ActiveQueueItemID != "" {
 		if item := surface.QueueItems[surface.ActiveQueueItemID]; item != nil {
 			switch item.Status {

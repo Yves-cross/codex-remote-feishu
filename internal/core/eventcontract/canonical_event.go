@@ -195,6 +195,38 @@ func (event Event) CanonicalSemantics() DeliverySemantics {
 	return semantics.Normalized()
 }
 
+func (event Event) CanonicalMessageDelivery() MessageDelivery {
+	delivery := event.Meta.MessageDelivery.Normalized()
+	if delivery != (MessageDelivery{}) {
+		return delivery
+	}
+	switch event.CanonicalKind() {
+	case KindBlockCommitted, KindTimelineText:
+		return MessageDelivery{
+			FirstSendLane: MessageLaneReplyThread,
+			Mutation:      MessageMutationAppendOnly,
+		}
+	case KindPage, KindPathPicker, KindTargetPicker, KindThreadHistory, KindExecCommandProgress:
+		return MessageDelivery{
+			FirstSendLane: MessageLaneTopLevel,
+			Mutation:      MessageMutationPatchSameMessage,
+		}
+	case KindSnapshot,
+		KindNotice,
+		KindPlanUpdate,
+		KindSelection,
+		KindRequest,
+		KindPendingInput,
+		KindImageOutput:
+		return MessageDelivery{
+			FirstSendLane: MessageLaneTopLevel,
+			Mutation:      MessageMutationAppendOnly,
+		}
+	default:
+		return MessageDelivery{}
+	}
+}
+
 func FilterEventsByFollowupPolicy(events []Event, policy control.FeishuFollowupPolicy) []Event {
 	if len(events) == 0 {
 		return nil

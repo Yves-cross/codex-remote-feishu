@@ -1051,7 +1051,7 @@ func TestProjectSnapshotDisplaysAutoContinueSummary(t *testing.T) {
 		Snapshot: &control.Snapshot{
 			AutoContinue: control.AutoContinueSummary{
 				Enabled:          true,
-				PendingReason:    "retryable_failure",
+				PendingReason:    "incomplete_stop",
 				PendingDueAt:     dueAt,
 				ConsecutiveCount: 2,
 			},
@@ -1062,7 +1062,34 @@ func TestProjectSnapshotDisplaysAutoContinueSummary(t *testing.T) {
 	}
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
-		"autowhip：开启，连续 2 次，等待重试上游不稳定",
+		"autowhip：开启，连续 2 次，等待继续补打一轮",
+		"计划于 2026-04-09 12:00:30 CST",
+	) {
+		t.Fatalf("unexpected snapshot rendering: %q", rendered)
+	}
+}
+
+func TestProjectSnapshotDisplaysRecoverySummary(t *testing.T) {
+	projector := NewProjector()
+	dueAt := time.Date(2026, 4, 9, 12, 0, 30, 0, time.FixedZone("CST", 8*3600))
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindSnapshot,
+		Snapshot: &control.Snapshot{
+			Recovery: control.RecoverySummary{
+				Enabled:                    true,
+				State:                      "scheduled",
+				PendingDueAt:               dueAt,
+				AttemptCount:               3,
+				ConsecutiveDryFailureCount: 2,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	rendered := renderedV2CardText(t, ops[0])
+	if !containsAll(rendered,
+		"自动恢复：开启，等待第 3 次自动恢复，连续空失败 2 次",
 		"计划于 2026-04-09 12:00:30 CST",
 	) {
 		t.Fatalf("unexpected snapshot rendering: %q", rendered)

@@ -1,8 +1,8 @@
 # Feishu 产品设计
 
 > Type: `general`
-> Updated: `2026-04-22`
-> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步 canonical 命令清单、统一 page 入口、reply auto-steer、manual `/compact`、`/cron` 与共享过程卡的产品语义。
+> Updated: `2026-04-24`
+> Summary: 描述当前 Go 版本的 Feishu surface 行为，并同步 canonical 命令清单、统一 page 入口、reply auto-steer、manual `/compact`、`autowhip`/`recovery`、`/cron` 与共享过程卡的产品语义。
 
 ## 1. 文档定位
 
@@ -74,6 +74,7 @@
 - `/sendfile`
 - `/mode`
 - `/autowhip`
+- `/recovery`
 - `/model`
 - `/reasoning`
 - `/access`
@@ -94,7 +95,7 @@ alias 仍继续兼容，但不再作为主展示入口：
 
 - `/menu` 当前会打开阶段感知的命令首页，而不是静态平铺目录
 - `/menu` 和参数卡当前采用紧凑按钮优先布局，尽量让主操作一屏可见；`/help` 保持文本帮助取向
-- bare `/reasoning`、`/access`、`/mode`、`/autowhip` 会返回当前状态 + 快捷按钮 + 单字段表单
+- bare `/reasoning`、`/access`、`/mode`、`/autowhip`、`/recovery` 会返回当前状态 + 快捷按钮 + 单字段表单
 - bare `/model` 会返回当前状态 + 常见示例 + 手动输入表单
 - bare `/debug`、`/upgrade`、`/cron` 在参数不足时都会先打开统一 page 根页，而不是顺手展开独立状态卡
 - 旧 `/newinstance`、`/killinstance` 当前都已不再解析；恢复/选择统一走 `/use` / `/useall`，取消恢复统一走 `/detach`
@@ -147,6 +148,7 @@ canonical menu key 语法当前固定为：
 - `/access confirm` <-> `access_confirm`
 - `/mode vscode` <-> `mode_vscode`
 - `/autowhip on` <-> `autowhip_on`
+- `/recovery on` <-> `recovery_on`
 - `/model gpt-5.4` <-> `model_gpt-5.4`
 
 旧 menu key alias 仍兼容：
@@ -155,6 +157,7 @@ canonical menu key 语法当前固定为：
 - `approval_confirm` -> `/access confirm`
 - `reason_high` -> `/reasoning high`
 - `autocontinue` / `autocontinue_on` -> `/autowhip`
+- `autorecovery` / `autorecovery_on` -> `/recovery`
 
 ### 3.3 图片消息
 
@@ -465,11 +468,13 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
   - steering 成功后给这条 reply 自己补 `ThumbsUp`
   - steering 失败时恢复回普通语义：文本 / 图文 reply 回到 queue，独立图片 reply 回到 staged image
 
-另外，autowhip 实际补发时也复用同一条 queue，但它和普通用户输入不是同一种来源：
+另外，autowhip 与 recovery 实际补发时也复用同一条 queue，但它们和普通用户输入不是同一种来源：
 
 - 普通用户输入 queue item 记录 `SourceKind=user`
 - autowhip queue item 记录 `SourceKind=auto_continue`
+- recovery queue item 记录 `SourceKind=recovery`
 - autowhip item 仍会保留“最终回复挂回哪条原用户消息”的 reply anchor
+- recovery item 也会保留“最终回复挂回哪条原用户消息”的 root reply anchor
 - 但不会把 queue / typing / reaction 再投影回原用户消息，避免把系统自动续推伪装成新的用户输入状态
 
 ### 5.1.1 manual `/compact`
@@ -509,6 +514,9 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - autowhip queue item 不会给原用户消息加/减 `THINKING`
 - autowhip queue item 失败或完成时，也不会额外给原用户消息补 `ThumbsUp` / `ThumbsDown`
 - 但 autowhip 产出的最终回复卡片，仍会 reply 到最初那条用户消息下面
+- recovery queue item 同样不会给原用户消息加/减 `THINKING`
+- recovery queue item 失败或完成时，也不会额外给原用户消息补 `ThumbsUp` / `ThumbsDown`
+- 但 recovery 链路里的最终回复、request card、plan update、图片输出等 turn-owned 输出，仍会 reply 到最初那条用户消息下面
 
 ### 5.3 本地优先
 
@@ -531,6 +539,7 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 3. 丢弃未绑定到文本的 staged image
 4. 对被丢弃项加 `THUMBSDOWN`
 5. 若当前 surface 已开启 autowhip，且 `/stop` 命中了 live remote work，则本轮 turn 收尾时会 suppress 一次 autowhip，避免“用户刚停下，系统又自己续跑”
+6. 若当前没有 active turn，但存在等待中的 recovery episode，则 `/stop` 会直接取消这次等待中的自动恢复
 
 ### 5.5 `autowhip`
 
@@ -550,15 +559,13 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 
 - `老板不要再打我了，真的没有事情干了`
 
-当前有两条触发通道：
+当前只有一条触发通道：
 
 1. `turn.completed` 后，当前 surface queue 已空，且 final assistant 文本**不包含**收工口令。
-2. `turn.completed` 携带 `problem.Retryable=true`，认为是 retryable upstream / API failure。
 
 当前 backoff：
 
 - `incomplete_stop`: `3s -> 10s -> 30s`，最多 3 次
-- `retryable_failure`: `10s -> 30s -> 90s -> 300s`，最多 4 次
 
 当前调度方式：
 
@@ -567,7 +574,47 @@ approval request 卡片当前按动态 option 渲染，常见选项包括：
 - enqueue 前会再次检查 surface 是否仍可发送：attached、非 abandoning、无 request gate、`DispatchMode=normal`、无 live remote work
 - `incomplete_stop` 不会在 schedule 瞬间回显；真正开始补打时，会发一条短 `AutoWhip` 系统提示：`Codex疑似偷懒,已抽打 N次`
 - 若 final assistant 文本命中收工口令，不会继续 schedule / dispatch，而是立刻发一条短 `AutoWhip` 系统提示：`Codex 已经把活干完了，老板放过他吧`
-- `retryable_failure` 会在记录 backoff 时立刻发一条短 `AutoWhip` 系统提示：`上游不稳定，第 N/M 次，Xs后重试`
+
+### 5.5.1 `recovery`
+
+`/recovery` 当前是 surface 维度、daemon 内存态的开关：
+
+- `/recovery`：查看当前状态
+- `/recovery on`：开启
+- `/recovery off`：关闭
+- 不持久化；daemon 重启后不会恢复之前的 recovery 状态
+- 旧 `/autorecovery` 与 `autorecovery_*` 仅作为兼容 alias 保留，不再是主展示入口
+
+当前只处理一类失败：
+
+1. turn 已真正开始执行
+2. turn 最终没有成功完成
+3. 终态被统一分类为 `upstream_retryable_failure`
+
+它不会误触发的场景：
+
+- 用户主动 `/stop`
+- `turn.start` / `thread.resume` 这类前置阶段失败
+- relay / wrapper / daemon / instance transport 断链
+- 普通 non-retryable failure
+
+当前 backoff：
+
+- 第 1、2 次连续空失败：立即重试
+- 第 3 次：`2s`
+- 第 4 次：`5s`
+- 第 5 次：`10s`
+- 第 6 次连续空失败：停止本轮 recovery
+
+当前调度方式：
+
+- `turn.completed` 命中 `upstream_retryable_failure` 时，直接由 recovery 接管收口，不再落回 `autowhip`
+- recovery 优先级高于普通 queued 消息，但用户新消息和已排队消息仍然保留在队列里
+- recovery status card 会 reply 到原始用户消息；只要它仍是当前时间线尾卡，就继续 patch 同一张卡
+- 一旦后面出现新的消息，旧 recovery status card 就冻结；后续状态改为 append 新卡
+- recovery status card 只承载“正在恢复 / 已失败 / 已停止”这类状态，不会抢走后续业务输出的 reply anchor
+- `/detach`、`/new`、`/use`、`/follow`、thread 丢失或被强踢，都会清掉当前 pending recovery episode，只保留 enable 开关
+- 若某次 recovery attempt 已经产生过任何输出，之后再次失败时会把 dry-failure 计数重置回“第一次立即重试”
 
 ### 5.6 待确认请求优先级
 

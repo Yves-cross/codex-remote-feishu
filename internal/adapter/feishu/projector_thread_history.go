@@ -32,6 +32,9 @@ func (p *Projector) projectThreadHistory(chatID string, event eventcontract.Even
 		operation.MessageID = messageID
 		operation.ReplyToMessageID = ""
 	}
+	if operation.Kind == OperationSendCard {
+		operation = applyReplyLaneToNewOperation(event, operation)
+	}
 	return []Operation{operation}
 }
 

@@ -40,6 +40,7 @@ func (p *Projector) projectExecCommandProgress(chatID string, event eventcontrac
 		op.MessageID = progress.MessageID
 	} else {
 		op.Kind = OperationSendCard
+		op = applyReplyLaneToNewOperation(event, op)
 	}
 	return []Operation{op}
 }

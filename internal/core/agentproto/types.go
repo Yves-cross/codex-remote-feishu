@@ -23,6 +23,15 @@ type Initiator struct {
 	SurfaceSessionID string        `json:"surfaceSessionId,omitempty"`
 }
 
+type TurnCompletionOrigin string
+
+const (
+	TurnCompletionOriginRuntime             TurnCompletionOrigin = "runtime"
+	TurnCompletionOriginTurnStartRejected   TurnCompletionOrigin = "turn_start_rejected"
+	TurnCompletionOriginThreadStartRejected TurnCompletionOrigin = "thread_start_rejected"
+	TurnCompletionOriginThreadResumeRejected TurnCompletionOrigin = "thread_resume_rejected"
+)
+
 type EventKind string
 
 const (
@@ -68,6 +77,7 @@ type Event struct {
 	CommandID       string                 `json:"commandId,omitempty"`
 	ThreadID        string                 `json:"threadId,omitempty"`
 	TurnID          string                 `json:"turnId,omitempty"`
+	TurnCompletionOrigin TurnCompletionOrigin `json:"turnCompletionOrigin,omitempty"`
 	ItemID          string                 `json:"itemId,omitempty"`
 	RequestID       string                 `json:"requestId,omitempty"`
 	Status          string                 `json:"status,omitempty"`

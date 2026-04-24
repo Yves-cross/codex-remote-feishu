@@ -408,7 +408,7 @@ func TestSurfaceSnapshotIncludesAutoContinueSummary(t *testing.T) {
 		PendingRequests:  map[string]*state.RequestPromptRecord{},
 		AutoContinue: state.AutoContinueRuntimeRecord{
 			Enabled:             true,
-			PendingReason:       state.AutoContinueReasonRetryableFailure,
+			PendingReason:       state.AutoContinueReasonIncompleteStop,
 			PendingDueAt:        now.Add(30 * time.Second),
 			ConsecutiveCount:    2,
 			LastTriggeredTurnID: "turn-1",
@@ -420,7 +420,7 @@ func TestSurfaceSnapshotIncludesAutoContinueSummary(t *testing.T) {
 		t.Fatal("expected snapshot")
 	}
 	if !snapshot.AutoContinue.Enabled ||
-		snapshot.AutoContinue.PendingReason != string(state.AutoContinueReasonRetryableFailure) ||
+		snapshot.AutoContinue.PendingReason != string(state.AutoContinueReasonIncompleteStop) ||
 		!snapshot.AutoContinue.PendingDueAt.Equal(now.Add(30*time.Second)) ||
 		snapshot.AutoContinue.ConsecutiveCount != 2 ||
 		snapshot.AutoContinue.LastTriggeredTurnID != "turn-1" {
@@ -469,49 +469,6 @@ func TestAutoContinueStopsWhenFinalTextContainsStopPhrase(t *testing.T) {
 	}
 	if !sawCompletedNotice {
 		t.Fatalf("expected completion notice when autowhip decides there is no more work, got %#v", events)
-	}
-}
-
-func TestAutoContinueSchedulesRetryableFailureBackoff(t *testing.T) {
-	now := time.Date(2026, 4, 9, 12, 5, 0, 0, time.UTC)
-	svc := newServiceForTest(&now)
-	surface := setupAutoContinueSurface(t, svc)
-
-	startRemoteTurnForAutoContinueTest(t, svc, "msg-1", "继续处理", "turn-1")
-	events := completeRemoteTurnWithFinalText(t, svc, "turn-1", "interrupted", "upstream stream closed", "", &agentproto.ErrorInfo{
-		Code:      "responseStreamDisconnected",
-		Layer:     "codex",
-		Stage:     "runtime_error",
-		Message:   "upstream stream closed",
-		ThreadID:  "thread-1",
-		TurnID:    "turn-1",
-		Retryable: true,
-	})
-
-	if surface.AutoContinue.PendingReason != state.AutoContinueReasonRetryableFailure {
-		t.Fatalf("expected retryable-failure schedule, got %#v", surface.AutoContinue)
-	}
-	if !surface.AutoContinue.PendingDueAt.Equal(now.Add(10 * time.Second)) {
-		t.Fatalf("expected first retryable-failure backoff at +10s, got %#v", surface.AutoContinue.PendingDueAt)
-	}
-	if surface.AutoContinue.RetryableFailureCount != 1 || surface.AutoContinue.ConsecutiveCount != 1 {
-		t.Fatalf("expected first retryable-failure counters, got %#v", surface.AutoContinue)
-	}
-	var sawTurnFailedNotice bool
-	var sawRetryScheduledNotice bool
-	for _, event := range events {
-		if event.Notice != nil && event.Notice.Code == "turn_failed" {
-			sawTurnFailedNotice = true
-		}
-		if event.Notice != nil && event.Notice.Code == "auto_continue_retry_scheduled" {
-			sawRetryScheduledNotice = event.Notice.Title == "AutoWhip" && event.Notice.Text == "上游不稳定，第 1/4 次，10秒后重试"
-		}
-	}
-	if !sawTurnFailedNotice {
-		t.Fatalf("expected turn failure notice, got %#v", events)
-	}
-	if !sawRetryScheduledNotice {
-		t.Fatalf("expected retry schedule notice, got %#v", events)
 	}
 }
 

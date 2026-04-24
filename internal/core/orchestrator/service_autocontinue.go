@@ -151,8 +151,6 @@ func autoContinueBackoff(reason state.AutoContinueReason, count int) (time.Durat
 	switch reason {
 	case state.AutoContinueReasonIncompleteStop:
 		delays = []time.Duration{3 * time.Second, 10 * time.Second, 30 * time.Second}
-	case state.AutoContinueReasonRetryableFailure:
-		delays = []time.Duration{10 * time.Second, 30 * time.Second, 90 * time.Second, 300 * time.Second}
 	default:
 		return 0, 0, false
 	}
@@ -170,8 +168,6 @@ func (s *Service) nextAutoContinueAttempt(surface *state.SurfaceConsoleRecord, r
 	switch reason {
 	case state.AutoContinueReasonIncompleteStop:
 		count = surface.AutoContinue.IncompleteStopCount + 1
-	case state.AutoContinueReasonRetryableFailure:
-		count = surface.AutoContinue.RetryableFailureCount + 1
 	default:
 		return 0, 0, 0, false
 	}
@@ -192,8 +188,6 @@ func (s *Service) scheduleAutoContinue(surface *state.SurfaceConsoleRecord, item
 	switch reason {
 	case state.AutoContinueReasonIncompleteStop:
 		surface.AutoContinue.IncompleteStopCount = count
-	case state.AutoContinueReasonRetryableFailure:
-		surface.AutoContinue.RetryableFailureCount = count
 	}
 	surface.AutoContinue.PendingReason = reason
 	surface.AutoContinue.PendingDueAt = s.now().Add(delay)
@@ -203,9 +197,6 @@ func (s *Service) scheduleAutoContinue(surface *state.SurfaceConsoleRecord, item
 	surface.AutoContinue.PendingReplyToMessagePreview = firstNonEmpty(item.ReplyToMessagePreview, item.SourceMessagePreview)
 	if count == max {
 		// The final scheduled retry is still allowed; the next attempt will emit the stop notice.
-	}
-	if reason == state.AutoContinueReasonRetryableFailure {
-		return autoContinueRetryScheduledNotice(surface, count, max, delay)
 	}
 	return nil
 }
@@ -229,7 +220,7 @@ func (s *Service) autoContinueSurfaceReady(surface *state.SurfaceConsoleRecord) 
 	return true
 }
 
-func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID, status string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []eventcontract.Event {
+func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.SurfaceConsoleRecord, item *state.QueueItemRecord, turnID string, cause terminalCause, finalText string, summary *control.FileChangeSummary) []eventcontract.Event {
 	if surface == nil || item == nil || !surface.AutoContinue.Enabled {
 		return nil
 	}
@@ -242,8 +233,9 @@ func (s *Service) maybeScheduleAutoContinueAfterRemoteTurn(surface *state.Surfac
 		s.resetAutoContinueProgress(surface)
 		return nil
 	}
-	if problem != nil && problem.Retryable {
-		return s.scheduleAutoContinue(surface, item, turnID, state.AutoContinueReasonRetryableFailure)
+	if cause != terminalCauseCompleted {
+		s.resetAutoContinueProgress(surface)
+		return nil
 	}
 	if autoContinueShouldWhip(finalText) {
 		return s.scheduleAutoContinue(surface, item, turnID, state.AutoContinueReasonIncompleteStop)

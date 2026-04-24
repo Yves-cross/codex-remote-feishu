@@ -103,6 +103,9 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		if surface.PendingRequests == nil {
 			surface.PendingRequests = map[string]*state.RequestPromptRecord{}
 		}
+		if surface.SurfaceMessages == nil {
+			surface.SurfaceMessages = map[string]*state.SurfaceMessageRecord{}
+		}
 		s.normalizeSurfaceProductMode(surface)
 		s.surfaceCurrentWorkspaceKey(surface)
 		surface.LastInboundAt = s.now()
@@ -124,6 +127,7 @@ func (s *Service) ensureSurface(action control.Action) *state.SurfaceConsoleReco
 		StagedImages:     map[string]*state.StagedImageRecord{},
 		StagedFiles:      map[string]*state.StagedFileRecord{},
 		PendingRequests:  map[string]*state.RequestPromptRecord{},
+		SurfaceMessages:  map[string]*state.SurfaceMessageRecord{},
 	}
 	s.root.Surfaces[action.SurfaceSessionID] = surface
 	return surface
@@ -139,6 +143,7 @@ func (s *Service) pendingHeadlessActionBlocked(surface *state.SurfaceConsoleReco
 	switch action.Kind {
 	case control.ActionStatus,
 		control.ActionAutoContinueCommand,
+		control.ActionRecoveryCommand,
 		control.ActionPlanCommand,
 		control.ActionModeCommand,
 		control.ActionDebugCommand,

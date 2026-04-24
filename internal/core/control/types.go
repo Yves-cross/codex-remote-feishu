@@ -36,6 +36,7 @@ const (
 	ActionPlanProposalDecision        ActionKind = "surface.command.plan_proposal_decision"
 	ActionVerboseCommand              ActionKind = "surface.command.verbose"
 	ActionAutoContinueCommand         ActionKind = "surface.command.auto_continue"
+	ActionRecoveryCommand             ActionKind = "surface.command.recovery"
 	ActionModeCommand                 ActionKind = "surface.command.mode"
 	ActionSendFile                    ActionKind = "surface.command.send_file"
 	ActionRespondRequest              ActionKind = "surface.request.respond"
@@ -171,6 +172,7 @@ type Snapshot struct {
 	Gate             GateSummary
 	Dispatch         DispatchSummary
 	AutoContinue     AutoContinueSummary
+	Recovery         RecoverySummary
 	PermissionGaps   []PermissionGapSummary
 	Instances        []InstanceSummary
 	Threads          []ThreadSummary
@@ -259,6 +261,15 @@ type AutoContinueSummary struct {
 	PendingDueAt        time.Time
 	ConsecutiveCount    int
 	LastTriggeredTurnID string
+}
+
+type RecoverySummary struct {
+	Enabled                    bool
+	State                      string
+	PendingDueAt               time.Time
+	AttemptCount               int
+	ConsecutiveDryFailureCount int
+	TriggerKind                string
 }
 
 type InstanceSummary struct {

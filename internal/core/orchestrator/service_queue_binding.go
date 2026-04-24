@@ -138,6 +138,17 @@ func (s *Service) clearRemoteTurn(instanceID, turnID string) {
 	}
 }
 
+func (s *Service) markRemoteTurnInterruptRequested(instanceID, threadID, turnID string) {
+	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
+	if binding == nil {
+		return
+	}
+	binding.InterruptRequested = true
+	if binding.InterruptRequestedAt.IsZero() {
+		binding.InterruptRequestedAt = s.now().UTC()
+	}
+}
+
 func (s *Service) clearRemoteOwnership(surface *state.SurfaceConsoleRecord) {
 	if surface == nil || surface.AttachedInstanceID == "" {
 		return

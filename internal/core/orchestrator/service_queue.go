@@ -184,7 +184,13 @@ func freezeRoute(inst *state.InstanceRecord, surface *state.SurfaceConsoleRecord
 
 func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
 	if surface.DispatchMode != state.DispatchModeNormal || surface.ActiveQueueItemID != "" || len(surface.QueuedQueueItemIDs) == 0 {
-		return nil
+		if surface.DispatchMode != state.DispatchModeNormal || surface.ActiveQueueItemID != "" {
+			return nil
+		}
+		return s.maybeDispatchPendingRecovery(surface, s.now())
+	}
+	if recovery := s.maybeDispatchPendingRecovery(surface, s.now()); len(recovery) != 0 {
+		return recovery
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil || !inst.Online || inst.ActiveTurnID != "" || s.turns.pendingRemote[inst.InstanceID] != nil {
@@ -295,25 +301,17 @@ func (s *Service) markRemoteTurnRunning(instanceID string, initiator agentproto.
 	return events
 }
 
-func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, errorMessage string, problem *agentproto.ErrorInfo, finalText string, summary *control.FileChangeSummary) []eventcontract.Event {
-	binding := s.lookupRemoteTurn(instanceID, threadID, turnID)
-	if binding == nil {
+func (s *Service) completeRemoteTurn(outcome *remoteTurnOutcome) []eventcontract.Event {
+	if outcome == nil || outcome.Binding == nil || outcome.Surface == nil || outcome.Item == nil {
 		return nil
 	}
-	surface := s.root.Surfaces[binding.SurfaceSessionID]
-	if surface == nil || surface.ActiveQueueItemID == "" {
-		s.clearRemoteTurn(instanceID, turnID)
-		return nil
-	}
-	item := surface.QueueItems[binding.QueueItemID]
-	if item == nil {
-		s.clearRemoteTurn(instanceID, turnID)
-		return nil
-	}
-	if status == "failed" || (status != "completed" && strings.TrimSpace(errorMessage) != "") {
-		item.Status = state.QueueItemFailed
-	} else {
+	item := outcome.Item
+	surface := outcome.Surface
+	switch outcome.Cause {
+	case terminalCauseCompleted, terminalCauseUserInterrupted:
 		item.Status = state.QueueItemCompleted
+	default:
+		item.Status = state.QueueItemFailed
 	}
 	surface.ActiveQueueItemID = ""
 	events := appendPendingInputTyping(s.pendingInputEvents(surface, control.PendingInputState{
@@ -321,29 +319,43 @@ func (s *Service) completeRemoteTurn(instanceID, threadID, turnID, status, error
 		Status:      string(item.Status),
 		QueueOff:    true,
 	}, queueItemSourceMessageIDs(item)), item.SourceMessageID, false)
-	if errorMessage != "" {
-		if inst := s.root.Instances[instanceID]; inst != nil {
-			s.clearThreadReplay(inst, threadID)
+
+	handledByRecoveryCard := false
+	switch {
+	case outcome.Binding.RecoveryEpisodeID != "" && outcome.Cause == terminalCauseUserInterrupted:
+		events = append(events, s.cancelRecoveryEpisode(surface)...)
+		handledByRecoveryCard = true
+	case outcome.Binding.RecoveryEpisodeID != "" && outcome.Cause != terminalCauseCompleted && outcome.Cause != terminalCauseUpstreamRetryableFailure:
+		if episode := activeRecoveryEpisode(surface); episode != nil && strings.TrimSpace(episode.EpisodeID) == strings.TrimSpace(outcome.Binding.RecoveryEpisodeID) {
+			if outcome.AnyOutputSeen {
+				episode.NoticeMessageID = ""
+				episode.NoticeAppendSeq = 0
+			}
+			episode.LastProblem = cloneProblem(outcome.Problem)
+			episode.State = state.RecoveryEpisodeFailed
+			events = append(events, s.recoveryFailureEvent(surface, episode))
+			handledByRecoveryCard = true
 		}
-		notice := &control.Notice{
-			Code: "turn_failed",
-			Text: errorMessage,
-		}
-		if problem != nil {
-			problemNotice := NoticeForProblem(*problem)
-			problemNotice.Code = "turn_failed"
-			notice = &problemNotice
-		}
-		events = append(events, eventcontract.Event{
-			Kind:             eventcontract.KindNotice,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			Notice:           notice,
-		})
+	case outcome.Cause == terminalCauseUpstreamRetryableFailure:
+		recoveryEvents := s.maybeScheduleRecoveryAfterOutcome(outcome)
+		events = append(events, recoveryEvents...)
+		handledByRecoveryCard = len(recoveryEvents) != 0
 	}
-	events = append(events, s.dispatchNext(surface)...)
-	s.clearRemoteTurn(instanceID, turnID)
+
+	if !handledByRecoveryCard && outcome.Cause != terminalCauseCompleted && outcome.Cause != terminalCauseUserInterrupted {
+		if inst := s.root.Instances[outcome.InstanceID]; inst != nil {
+			s.clearThreadReplay(inst, outcome.ThreadID)
+		}
+		events = append(events, s.remoteTurnFailureEvent(outcome))
+	}
+
+	if outcome.Cause == terminalCauseCompleted {
+		s.finishRecoveryEpisode(outcome)
+	}
+	events = append(events, s.maybeScheduleAutoContinueAfterRemoteTurn(surface, item, outcome.TurnID, outcome.Cause, outcome.FinalText, outcome.Summary)...)
+	s.clearRemoteTurn(outcome.InstanceID, outcome.TurnID)
 	events = append(events, s.finishSurfaceAfterWork(surface)...)
-	events = append(events, s.maybeScheduleAutoContinueAfterRemoteTurn(surface, item, turnID, status, problem, finalText, summary)...)
+	events = append(events, s.dispatchNext(surface)...)
 	return events
 }
 
@@ -406,7 +418,7 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []e
 	}
 
 	replySourceMessageID, replySourceMessagePreview := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
-	return append(events, eventcontract.Event{
+	outbound := eventcontract.Event{
 		Kind:                 eventcontract.KindImageOutput,
 		SurfaceSessionID:     surface.SurfaceSessionID,
 		SourceMessageID:      replySourceMessageID,
@@ -419,7 +431,11 @@ func (s *Service) renderImageItem(instanceID string, event agentproto.Event) []e
 			SavedPath:   savedPath,
 			ImageBase64: imageBase64,
 		},
-	})
+	}
+	if strings.TrimSpace(replySourceMessageID) != "" {
+		outbound.Meta.MessageDelivery = replyThreadMessageDelivery()
+	}
+	return append(events, outbound)
 }
 
 func (s *Service) renderTextItemWithSummary(instanceID, threadID, turnID, itemID, text string, final bool, summary *control.FileChangeSummary, turnDiff *control.TurnDiffSnapshot, finalSummary *control.FinalTurnSummary) []eventcontract.Event {

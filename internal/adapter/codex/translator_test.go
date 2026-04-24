@@ -425,6 +425,9 @@ func TestObserveServerThreadResumeErrorEmitsFailedTurnCompleted(t *testing.T) {
 	if result.Events[0].Kind != agentproto.EventTurnCompleted || result.Events[0].Status != "failed" || result.Events[0].ThreadID != "thread-2" {
 		t.Fatalf("unexpected failed event: %#v", result.Events[0])
 	}
+	if result.Events[0].TurnCompletionOrigin != agentproto.TurnCompletionOriginThreadResumeRejected {
+		t.Fatalf("expected thread resume rejection origin, got %#v", result.Events[0])
+	}
 	if !strings.Contains(result.Events[0].ErrorMessage, "resume failed") {
 		t.Fatalf("expected resume error message, got %#v", result.Events[0])
 	}
@@ -468,6 +471,9 @@ func TestObserveServerSuppressedTurnStartErrorEmitsFailedTurnCompleted(t *testin
 	}
 	if failed.Events[0].Kind != agentproto.EventTurnCompleted || failed.Events[0].Status != "failed" || failed.Events[0].ThreadID != "thread-2" {
 		t.Fatalf("unexpected failed event: %#v", failed.Events[0])
+	}
+	if failed.Events[0].TurnCompletionOrigin != agentproto.TurnCompletionOriginTurnStartRejected {
+		t.Fatalf("expected turn start rejection origin, got %#v", failed.Events[0])
 	}
 	if !strings.Contains(failed.Events[0].ErrorMessage, "missing field 'model'") {
 		t.Fatalf("expected turn/start error message, got %#v", failed.Events[0])

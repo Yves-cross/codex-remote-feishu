@@ -94,6 +94,7 @@ type QueueItemSourceKind string
 const (
 	QueueItemSourceUser         QueueItemSourceKind = "user"
 	QueueItemSourceAutoContinue QueueItemSourceKind = "auto_continue"
+	QueueItemSourceRecovery     QueueItemSourceKind = "recovery"
 )
 
 type ImageState string
@@ -117,8 +118,31 @@ const (
 type AutoContinueReason string
 
 const (
-	AutoContinueReasonIncompleteStop   AutoContinueReason = "incomplete_stop"
-	AutoContinueReasonRetryableFailure AutoContinueReason = "retryable_failure"
+	AutoContinueReasonIncompleteStop AutoContinueReason = "incomplete_stop"
+)
+
+type RecoveryEpisodeState string
+
+const (
+	RecoveryEpisodeScheduled RecoveryEpisodeState = "scheduled"
+	RecoveryEpisodeRunning   RecoveryEpisodeState = "running"
+	RecoveryEpisodeCompleted RecoveryEpisodeState = "completed"
+	RecoveryEpisodeFailed    RecoveryEpisodeState = "failed"
+	RecoveryEpisodeCancelled RecoveryEpisodeState = "cancelled"
+)
+
+type RecoveryTriggerKind string
+
+const (
+	RecoveryTriggerKindUpstreamRetryableFailure RecoveryTriggerKind = "upstream_retryable_failure"
+)
+
+type SurfaceMessageKind string
+
+const (
+	SurfaceMessageKindText  SurfaceMessageKind = "text"
+	SurfaceMessageKindCard  SurfaceMessageKind = "card"
+	SurfaceMessageKindImage SurfaceMessageKind = "image"
 )
 
 type Root struct {
@@ -224,9 +248,12 @@ type SurfaceConsoleRecord struct {
 	ActiveRequestCapture *RequestCaptureRecord
 	ActiveExecProgress   *ExecCommandProgressRecord
 	RecentFinalCards     []*FinalCardRecord
+	SurfaceMessageSeq    int
+	SurfaceMessages      map[string]*SurfaceMessageRecord
 	LastThreadHistory    *agentproto.ThreadHistoryRecord
 	LastSelection        *SelectionAnnouncementRecord
 	AutoContinue         AutoContinueRuntimeRecord
+	Recovery             RecoveryRuntimeRecord
 }
 
 type ExecCommandProgressEntryRecord struct {
@@ -320,8 +347,42 @@ type AutoContinueRuntimeRecord struct {
 	PendingReplyToMessageID      string
 	PendingReplyToMessagePreview string
 	IncompleteStopCount          int
-	RetryableFailureCount        int
 	SuppressOnce                 bool
+}
+
+type RecoveryRuntimeRecord struct {
+	Enabled bool
+	Episode *PendingRecoveryEpisodeRecord
+}
+
+type PendingRecoveryEpisodeRecord struct {
+	EpisodeID                string
+	InstanceID               string
+	ThreadID                 string
+	FrozenCWD                string
+	FrozenRouteMode          RouteMode
+	FrozenOverride           ModelConfigRecord
+	FrozenPlanMode           PlanModeSetting
+	RootReplyToMessageID     string
+	RootReplyToMessagePreview string
+	NoticeMessageID          string
+	NoticeAppendSeq          int
+	State                    RecoveryEpisodeState
+	TriggerKind              RecoveryTriggerKind
+	AttemptCount             int
+	ConsecutiveDryFailureCount int
+	PendingDueAt             time.Time
+	LastTurnID               string
+	LastProblem              *agentproto.ErrorInfo
+	CurrentAttemptOutputSeen bool
+}
+
+type SurfaceMessageRecord struct {
+	MessageID        string
+	Kind             SurfaceMessageKind
+	ReplyToMessageID string
+	AppendSeq        int
+	RecordedAt       time.Time
 }
 
 type HeadlessLaunchStatus string
@@ -444,6 +505,7 @@ type QueueItemRecord struct {
 	ID                    string
 	SurfaceSessionID      string
 	SourceKind            QueueItemSourceKind
+	RecoveryEpisodeID     string
 	SourceMessageID       string
 	SourceMessagePreview  string
 	SourceMessageIDs      []string

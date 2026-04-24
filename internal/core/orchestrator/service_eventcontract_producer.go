@@ -39,6 +39,27 @@ func inlineReplaceMode(inline bool) eventcontract.InlineReplaceMode {
 	return eventcontract.InlineReplaceNone
 }
 
+func replyThreadMessageDelivery() eventcontract.MessageDelivery {
+	return eventcontract.MessageDelivery{
+		FirstSendLane: eventcontract.MessageLaneReplyThread,
+		Mutation:      eventcontract.MessageMutationAppendOnly,
+	}
+}
+
+func patchSameMessageMessageDelivery() eventcontract.MessageDelivery {
+	return eventcontract.MessageDelivery{
+		FirstSendLane: eventcontract.MessageLaneTopLevel,
+		Mutation:      eventcontract.MessageMutationPatchSameMessage,
+	}
+}
+
+func patchTailReplyThreadMessageDelivery() eventcontract.MessageDelivery {
+	return eventcontract.MessageDelivery{
+		FirstSendLane: eventcontract.MessageLaneReplyThread,
+		Mutation:      eventcontract.MessageMutationPatchTailIfLatest,
+	}
+}
+
 func surfaceGatewayID(surface *state.SurfaceConsoleRecord) string {
 	if surface == nil {
 		return ""

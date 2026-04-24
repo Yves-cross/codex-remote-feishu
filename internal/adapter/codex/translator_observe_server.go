@@ -24,10 +24,11 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				t.debugf("observe server suppressed response error: request=%s action=%s thread=%s error=%s", requestID, pending.Action, pending.ThreadID, errMsg)
 				if pending.Action == "turn/start" {
 					return Result{Events: []agentproto.Event{{
-						Kind:         agentproto.EventTurnCompleted,
-						ThreadID:     pending.ThreadID,
-						Status:       "failed",
-						ErrorMessage: errMsg,
+						Kind:                 agentproto.EventTurnCompleted,
+						ThreadID:             pending.ThreadID,
+						Status:               "failed",
+						ErrorMessage:         errMsg,
+						TurnCompletionOrigin: agentproto.TurnCompletionOriginTurnStartRejected,
 					}}}, nil
 				}
 				if pending.Action == "thread/compact/start" {
@@ -79,9 +80,10 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				delete(t.pendingInternalThreadSet, requestID)
 				t.debugf("observe server thread/start error: request=%s error=%s", requestID, errMsg)
 				return Result{Events: []agentproto.Event{{
-					Kind:         agentproto.EventTurnCompleted,
-					Status:       "failed",
-					ErrorMessage: errMsg,
+					Kind:                 agentproto.EventTurnCompleted,
+					Status:               "failed",
+					ErrorMessage:         errMsg,
+					TurnCompletionOrigin: agentproto.TurnCompletionOriginThreadStartRejected,
 				}}}, nil
 			}
 			threadID := lookupString(message, "result", "thread", "id")
@@ -136,10 +138,11 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 					})}}, nil
 				}
 				return Result{Events: []agentproto.Event{{
-					Kind:         agentproto.EventTurnCompleted,
-					ThreadID:     pending.ThreadID,
-					Status:       "failed",
-					ErrorMessage: errMsg,
+					Kind:                 agentproto.EventTurnCompleted,
+					ThreadID:             pending.ThreadID,
+					Status:               "failed",
+					ErrorMessage:         errMsg,
+					TurnCompletionOrigin: agentproto.TurnCompletionOriginThreadResumeRejected,
 				}}}, nil
 			}
 			t.currentThreadID = pending.ThreadID

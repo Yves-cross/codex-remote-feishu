@@ -193,6 +193,7 @@ func shouldSealCommandLauncherForAction(kind control.ActionKind) bool {
 		control.ActionShowCommandHelp,
 		control.ActionModeCommand,
 		control.ActionAutoContinueCommand,
+		control.ActionRecoveryCommand,
 		control.ActionReasoningCommand,
 		control.ActionAccessCommand,
 		control.ActionPlanCommand,

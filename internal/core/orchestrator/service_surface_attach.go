@@ -45,6 +45,7 @@ func (s *Service) attachWorkspaceWithMode(surface *state.SurfaceConsoleRecord, w
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 	} else {
 		events = append(events, s.discardDrafts(surface)...)
+		clearRecoveryRuntime(surface)
 		clearSurfaceRequestCapture(surface)
 		clearSurfaceRequests(surface)
 		s.releaseSurfaceThreadClaim(surface)
@@ -159,6 +160,7 @@ func (s *Service) attachInstanceWithMode(surface *state.SurfaceConsoleRecord, in
 	if surface.AttachedInstanceID != "" {
 		events = append(events, s.finalizeDetachedSurface(surface)...)
 	} else {
+		clearRecoveryRuntime(surface)
 		clearSurfaceRequestCapture(surface)
 		clearSurfaceRequests(surface)
 		s.releaseSurfaceThreadClaim(surface)

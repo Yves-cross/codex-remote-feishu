@@ -158,13 +158,14 @@ func (t *Translator) observeTurnCompleted(message map[string]any) Result {
 	delete(t.internalTurnIDs, turnID)
 	t.debugf("observe server turn/completed: thread=%s turn=%s status=%s initiator=%s", threadID, turnID, status, initiator.Kind)
 	event := agentproto.Event{
-		Kind:         agentproto.EventTurnCompleted,
-		ThreadID:     threadID,
-		TurnID:       turnID,
-		Status:       status,
-		ErrorMessage: errMsg,
-		TrafficClass: trafficClass,
-		Initiator:    initiator,
+		Kind:                 agentproto.EventTurnCompleted,
+		ThreadID:             threadID,
+		TurnID:               turnID,
+		Status:               status,
+		ErrorMessage:         errMsg,
+		TurnCompletionOrigin: agentproto.TurnCompletionOriginRuntime,
+		TrafficClass:         trafficClass,
+		Initiator:            initiator,
 	}
 	if hasProblem {
 		problemCopy := problem

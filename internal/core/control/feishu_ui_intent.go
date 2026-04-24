@@ -14,6 +14,7 @@ const (
 	FeishuUIIntentShowHistory                 FeishuUIIntentKind = "show_history"
 	FeishuUIIntentShowModeCatalog             FeishuUIIntentKind = "show_mode_catalog"
 	FeishuUIIntentShowAutoContinueCatalog     FeishuUIIntentKind = "show_auto_continue_catalog"
+	FeishuUIIntentShowRecoveryCatalog         FeishuUIIntentKind = "show_recovery_catalog"
 	FeishuUIIntentShowReasoningCatalog        FeishuUIIntentKind = "show_reasoning_catalog"
 	FeishuUIIntentShowAccessCatalog           FeishuUIIntentKind = "show_access_catalog"
 	FeishuUIIntentShowPlanCatalog             FeishuUIIntentKind = "show_plan_catalog"
@@ -94,6 +95,10 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 	case ActionAutoContinueCommand:
 		if isBareInlineCommand(action.Text, "/autowhip") || isBareInlineCommand(action.Text, "/autocontinue") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowAutoContinueCatalog, RawText: action.Text}, true
+		}
+	case ActionRecoveryCommand:
+		if isBareInlineCommand(action.Text, "/recovery") || isBareInlineCommand(action.Text, "/autorecovery") {
+			return &FeishuUIIntent{Kind: FeishuUIIntentShowRecoveryCatalog, RawText: action.Text}, true
 		}
 	case ActionReasoningCommand:
 		if isBareInlineCommand(action.Text, "/reasoning") {

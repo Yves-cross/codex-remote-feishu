@@ -197,6 +197,7 @@ func ResolveFeishuLauncherDisposition(action Action) FeishuFrontstageLauncherDis
 	case ActionShowCommandMenu,
 		ActionModeCommand,
 		ActionAutoContinueCommand,
+		ActionRecoveryCommand,
 		ActionReasoningCommand,
 		ActionAccessCommand,
 		ActionPlanCommand,
@@ -279,6 +280,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	switch action.Kind {
 	case ActionModeCommand,
 		ActionAutoContinueCommand,
+		ActionRecoveryCommand,
 		ActionReasoningCommand,
 		ActionAccessCommand,
 		ActionPlanCommand,
@@ -306,6 +308,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowHistory,
 		FeishuUIIntentShowModeCatalog,
 		FeishuUIIntentShowAutoContinueCatalog,
+		FeishuUIIntentShowRecoveryCatalog,
 		FeishuUIIntentShowReasoningCatalog,
 		FeishuUIIntentShowAccessCatalog,
 		FeishuUIIntentShowPlanCatalog,

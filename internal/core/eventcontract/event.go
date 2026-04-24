@@ -15,6 +15,7 @@ type EventMeta struct {
 	DaemonLifecycleID    string
 	InlineReplaceMode    InlineReplaceMode
 	Semantics            DeliverySemantics
+	MessageDelivery      MessageDelivery
 	Attention            AttentionAnnotation
 }
 
@@ -29,6 +30,7 @@ func (meta EventMeta) Normalized() EventMeta {
 		meta.InlineReplaceMode = InlineReplaceNone
 	}
 	meta.Semantics = meta.Semantics.Normalized()
+	meta.MessageDelivery = meta.MessageDelivery.Normalized()
 	meta.Attention = meta.Attention.Normalized()
 	return meta
 }
@@ -238,6 +240,10 @@ func (event Event) Normalized() Event {
 	if event.Meta.Semantics == (DeliverySemantics{}) {
 		event.Meta.Semantics = event.CanonicalSemantics()
 	}
+	if event.Meta.MessageDelivery == (MessageDelivery{}) {
+		event.Meta.MessageDelivery = event.CanonicalMessageDelivery()
+	}
 	event.Meta.Semantics = event.Meta.Semantics.Normalized()
+	event.Meta.MessageDelivery = event.Meta.MessageDelivery.Normalized()
 	return event
 }

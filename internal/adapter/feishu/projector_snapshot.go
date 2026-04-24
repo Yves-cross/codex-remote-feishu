@@ -86,6 +86,9 @@ func snapshotSections(snapshot control.Snapshot, daemonBinary, currentDirectory 
 	if autoContinue := snapshotAutoContinueTextPlain(snapshot.AutoContinue); autoContinue != "" {
 		lines = append(lines, snapshotLine("autowhip", autoContinue))
 	}
+	if recovery := snapshotRecoveryTextPlain(snapshot.Recovery); recovery != "" {
+		lines = append(lines, snapshotLine("自动恢复", recovery))
+	}
 
 	sections := []control.FeishuCardTextSection{{Lines: lines}}
 	if permissionGaps := formatSnapshotPermissionGapsPlain(snapshot.PermissionGaps); len(permissionGaps) != 0 {
@@ -287,10 +290,46 @@ func snapshotAutoContinueTextPlain(summary control.AutoContinueSummary) string {
 		switch summary.PendingReason {
 		case "incomplete_stop":
 			label = "等待继续补打一轮"
-		case "retryable_failure":
-			label = "等待重试上游不稳定"
 		}
 		parts = append(parts, label)
+	}
+	if !summary.PendingDueAt.IsZero() {
+		parts = append(parts, "计划于 "+summary.PendingDueAt.Format("2006-01-02 15:04:05 MST"))
+	}
+	return strings.Join(parts, "，")
+}
+
+func snapshotRecoveryTextPlain(summary control.RecoverySummary) string {
+	if !summary.Enabled {
+		return "关闭"
+	}
+	parts := []string{"开启"}
+	switch summary.State {
+	case "":
+		parts = append(parts, "空闲")
+	case "scheduled":
+		if summary.AttemptCount > 0 {
+			parts = append(parts, fmt.Sprintf("等待第 %d 次自动恢复", summary.AttemptCount))
+		} else {
+			parts = append(parts, "等待自动恢复")
+		}
+	case "running":
+		if summary.AttemptCount > 0 {
+			parts = append(parts, fmt.Sprintf("第 %d 次自动恢复进行中", summary.AttemptCount))
+		} else {
+			parts = append(parts, "自动恢复进行中")
+		}
+	case "failed":
+		parts = append(parts, "本轮已停止")
+	case "cancelled":
+		parts = append(parts, "当前已停止")
+	case "completed":
+		parts = append(parts, "本轮已完成")
+	default:
+		parts = append(parts, summary.State)
+	}
+	if summary.ConsecutiveDryFailureCount > 0 {
+		parts = append(parts, fmt.Sprintf("连续空失败 %d 次", summary.ConsecutiveDryFailureCount))
 	}
 	if !summary.PendingDueAt.IsZero() {
 		parts = append(parts, "计划于 "+summary.PendingDueAt.Format("2006-01-02 15:04:05 MST"))

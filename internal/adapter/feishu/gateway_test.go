@@ -279,6 +279,8 @@ func TestMenuActionKindKnownValues(t *testing.T) {
 		"mode":             control.ActionModeCommand,
 		"autowhip":         control.ActionAutoContinueCommand,
 		"autocontinue":     control.ActionAutoContinueCommand,
+		"recovery":         control.ActionRecoveryCommand,
+		"autorecovery":     control.ActionRecoveryCommand,
 		"help":             control.ActionShowCommandHelp,
 		"debug":            control.ActionDebugCommand,
 		"accessfull":       control.ActionAccessCommand,
@@ -391,6 +393,10 @@ func TestParseTextActionRecognizesModelAndReasoningCommands(t *testing.T) {
 		"/autowhip on":     control.ActionAutoContinueCommand,
 		"/autocontinue":    control.ActionAutoContinueCommand,
 		"/autocontinue on": control.ActionAutoContinueCommand,
+		"/recovery":        control.ActionRecoveryCommand,
+		"/recovery on":     control.ActionRecoveryCommand,
+		"/autorecovery":    control.ActionRecoveryCommand,
+		"/autorecovery on": control.ActionRecoveryCommand,
 	}
 	for input, want := range tests {
 		action, handled := parseTextAction(input)

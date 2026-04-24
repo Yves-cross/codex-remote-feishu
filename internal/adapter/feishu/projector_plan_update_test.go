@@ -80,3 +80,26 @@ func TestProjectPlanUpdateWithoutStepsShowsFallback(t *testing.T) {
 		t.Fatalf("unexpected fallback rendering: %q", joined)
 	}
 }
+
+func TestProjectPlanUpdateUsesExplicitReplyLane(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.KindPlanUpdate,
+		SourceMessageID: "msg-plan-1",
+		PlanUpdate: &control.PlanUpdate{
+			Explanation: "继续处理",
+		},
+		Meta: eventcontract.EventMeta{
+			MessageDelivery: eventcontract.MessageDelivery{
+				FirstSendLane: eventcontract.MessageLaneReplyThread,
+				Mutation:      eventcontract.MessageMutationAppendOnly,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("expected one card operation, got %#v", ops)
+	}
+	if ops[0].ReplyToMessageID != "msg-plan-1" {
+		t.Fatalf("expected explicit reply lane to reach projector, got %#v", ops[0])
+	}
+}

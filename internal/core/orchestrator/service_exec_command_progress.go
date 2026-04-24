@@ -316,10 +316,14 @@ func (s *Service) emitExecCommandProgress(surface *state.SurfaceConsoleRecord, p
 		return nil
 	}
 	snapshot.Final = final
-	return []eventcontract.Event{{
+	outbound := eventcontract.Event{
 		Kind:                eventcontract.KindExecCommandProgress,
 		SurfaceSessionID:    surface.SurfaceSessionID,
 		SourceMessageID:     sourceMessageID,
 		ExecCommandProgress: snapshot,
-	}}
+	}
+	if strings.TrimSpace(sourceMessageID) != "" {
+		outbound.Meta.MessageDelivery = replyThreadMessageDelivery()
+	}
+	return []eventcontract.Event{outbound}
 }

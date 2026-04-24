@@ -78,6 +78,29 @@ func TestParseFeishuTextActionRecognizesAutoContinueCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesRecoveryCommand(t *testing.T) {
+	tests := []string{
+		"/recovery",
+		"/recovery on",
+		"/recovery off",
+		"/autorecovery",
+		"/autorecovery on",
+		"/autorecovery off",
+	}
+	for _, input := range tests {
+		action, ok := ParseFeishuTextAction(input)
+		if !ok {
+			t.Fatalf("expected %q to be parsed", input)
+		}
+		if action.Kind != ActionRecoveryCommand {
+			t.Fatalf("input %q => kind %q, want %q", input, action.Kind, ActionRecoveryCommand)
+		}
+		if action.Text != input {
+			t.Fatalf("input %q => text %q, want raw command", input, action.Text)
+		}
+	}
+}
+
 func TestParseFeishuTextActionRecognizesModeCommand(t *testing.T) {
 	tests := []string{
 		"/mode",
@@ -287,6 +310,24 @@ func TestFeishuCommandCatalogsIncludeAutoContinue(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("catalog %#v does not include /autowhip", catalog.Title)
+		}
+	}
+}
+
+func TestFeishuCommandCatalogsIncludeRecovery(t *testing.T) {
+	for _, catalog := range []FeishuPageView{FeishuCommandHelpPageView(), FeishuCommandMenuPageView()} {
+		found := false
+		for _, section := range catalog.Sections {
+			for _, entry := range section.Entries {
+				for _, command := range entry.Commands {
+					if command == "/recovery" {
+						found = true
+					}
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("catalog %#v does not include /recovery", catalog.Title)
 		}
 	}
 }

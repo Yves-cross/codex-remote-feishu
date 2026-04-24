@@ -46,6 +46,8 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModeCommandView(surface))}
 	case control.FeishuUIIntentShowAutoContinueCatalog:
 		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoContinueCommandView(surface))}
+	case control.FeishuUIIntentShowRecoveryCatalog:
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildRecoveryCommandView(surface))}
 	case control.FeishuUIIntentShowReasoningCatalog:
 		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildReasoningCommandView(surface))}
 	case control.FeishuUIIntentShowAccessCatalog:

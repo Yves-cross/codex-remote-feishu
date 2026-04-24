@@ -601,6 +601,9 @@ func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTit
 func (s *Service) requestPromptEvent(surface *state.SurfaceConsoleRecord, record *state.RequestPromptRecord, threadTitleHint string) eventcontract.Event {
 	event := s.requestViewEvent(surface, s.requestPromptView(record, threadTitleHint))
 	event.SourceMessageID = strings.TrimSpace(record.SourceMessageID)
+	if event.SourceMessageID != "" {
+		event.Meta.MessageDelivery = replyThreadMessageDelivery()
+	}
 	return event
 }
 

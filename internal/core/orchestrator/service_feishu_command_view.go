@@ -46,6 +46,23 @@ func (s *Service) buildAutoContinueCommandViewState(surface *state.SurfaceConsol
 	}
 }
 
+func (s *Service) buildRecoveryCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
+	return s.buildRecoveryCommandViewState(surface, control.FeishuCatalogConfigView{})
+}
+
+func (s *Service) buildRecoveryCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
+	current := "off"
+	if surface != nil && surface.Recovery.Enabled {
+		current = "on"
+	}
+	return control.FeishuCatalogView{
+		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
+			CommandID:    control.FeishuCommandRecovery,
+			CurrentValue: current,
+		}, cardState),
+	}
+}
+
 func (s *Service) buildReasoningCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
 	return s.buildReasoningCommandViewState(surface, control.FeishuCatalogConfigView{})
 }

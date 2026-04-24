@@ -31,6 +31,7 @@ type Service struct {
 	nextRequestCommandID int
 	nextLocalRequestID   int
 	nextHeadlessID       int
+	nextRecoveryEpisodeID int
 	handoffUntil         map[string]time.Time
 	pausedUntil          map[string]time.Time
 	abandoningUntil      map[string]time.Time
@@ -68,6 +69,8 @@ type remoteTurnBinding struct {
 	InstanceID            string
 	SurfaceSessionID      string
 	QueueItemID           string
+	RecoveryEpisodeID     string
+	AttemptTriggerKind    string
 	SourceMessageID       string
 	SourceMessagePreview  string
 	ReplyToMessageID      string
@@ -78,6 +81,9 @@ type remoteTurnBinding struct {
 	TurnID                string
 	Status                string
 	StartedAt             time.Time
+	InterruptRequested    bool
+	InterruptRequestedAt  time.Time
+	AnyOutputSeen         bool
 	StartTotalUsage       agentproto.TokenUsageBreakdown
 	HasStartTotalUsage    bool
 	LastUsage             agentproto.TokenUsageBreakdown
@@ -346,6 +352,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 			return s.filterEventsForSurfaceVisibility([]eventcontract.Event{{Kind: eventcontract.KindSnapshot, SurfaceSessionID: surface.SurfaceSessionID, Snapshot: s.buildSnapshot(surface)}})
 		case control.ActionAutoContinueCommand:
 			return s.filterEventsForSurfaceVisibility(s.handleAutoContinueCommand(surface, action))
+		case control.ActionRecoveryCommand:
+			return s.filterEventsForSurfaceVisibility(s.handleRecoveryCommand(surface, action))
 		case control.ActionDetach:
 			return s.filterEventsForSurfaceVisibility(notice(surface, "detach_pending", "当前仍在等待已发出的 turn 收尾，请稍后再试。"))
 		default:
@@ -362,6 +370,14 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		return s.filterEventsForSurfaceVisibility(blocked)
 	}
 	s.noteAutoContinueAction(surface, action)
+	switch action.Kind {
+	case control.ActionTextMessage:
+		s.recordInboundSurfaceMessage(surface, action.MessageID, state.SurfaceMessageKindText)
+	case control.ActionImageMessage:
+		s.recordInboundSurfaceMessage(surface, action.MessageID, state.SurfaceMessageKindImage)
+	case control.ActionFileMessage:
+		s.recordInboundSurfaceMessage(surface, action.MessageID, state.SurfaceMessageKindCard)
+	}
 	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
 		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, *intent))
 	}
@@ -489,6 +505,8 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.handleVerboseCommand(surface, action)
 	case control.ActionAutoContinueCommand:
 		events = s.handleAutoContinueCommand(surface, action)
+	case control.ActionRecoveryCommand:
+		events = s.handleRecoveryCommand(surface, action)
 	case control.ActionModeCommand:
 		events = s.handleModeCommand(surface, action)
 	case control.ActionRespondRequest:
@@ -555,6 +573,7 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 		return nil
 	}
 	preface := s.flushPendingTurnTextIfTurnContinues(instanceID, event)
+	s.observeRemoteTurnActivity(instanceID, event)
 
 	switch event.Kind {
 	case agentproto.EventThreadFocused:
@@ -784,7 +803,8 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 			}
 			return s.filterEventsForSurfaceVisibility(events)
 		}
-		events = append(events, s.completeRemoteTurn(instanceID, event.ThreadID, event.TurnID, event.Status, event.ErrorMessage, event.Problem, finalText, summary)...)
+		outcome := s.deriveRemoteTurnOutcome(instanceID, event, finalText, summary)
+		events = append(events, s.completeRemoteTurn(outcome)...)
 		events = append(events, s.maybePresentCompletedPlanProposal(instanceID, event.ThreadID, event.TurnID)...)
 		events = append(events, compactEvents...)
 		return s.filterEventsForSurfaceVisibility(events)
@@ -910,6 +930,7 @@ func (s *Service) Tick(now time.Time) []eventcontract.Event {
 				},
 			})
 		}
+		events = append(events, s.maybeDispatchPendingRecovery(surface, now)...)
 		events = append(events, s.maybeDispatchPendingAutoContinue(surface, now)...)
 		events = append(events, s.tickExecCommandProgressAnimations(surface, now)...)
 	}

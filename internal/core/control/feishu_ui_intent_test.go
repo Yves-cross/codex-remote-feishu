@@ -42,6 +42,16 @@ func TestFeishuUIIntentFromAction(t *testing.T) {
 			want:   nil,
 		},
 		{
+			name:   "bare recovery",
+			action: Action{Kind: ActionRecoveryCommand, Text: "/recovery"},
+			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowRecoveryCatalog, RawText: "/recovery"},
+		},
+		{
+			name:   "recovery apply stays product owned",
+			action: Action{Kind: ActionRecoveryCommand, Text: "/recovery on"},
+			want:   nil,
+		},
+		{
 			name:   "workspace thread expansion",
 			action: Action{Kind: ActionShowWorkspaceThreads, WorkspaceKey: "/data/dl/web"},
 			want:   &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceThreads, WorkspaceKey: "/data/dl/web"},

@@ -12,6 +12,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func (a *App) handleUIEvents(ctx context.Context, events []eventcontract.Event) {
@@ -262,6 +263,16 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 }
 
 func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feishu.Operation) {
+	for _, operation := range operations {
+		if kind, ok := outboundSurfaceMessageKind(operation.Kind); ok && strings.TrimSpace(operation.MessageID) != "" {
+			a.service.RecordSurfaceOutboundMessage(
+				event.SurfaceSessionID,
+				operation.MessageID,
+				kind,
+				operation.ReplyToMessageID,
+			)
+		}
+	}
 	if blockPayload, ok := blockPayloadFromEvent(event); event.Kind == eventcontract.KindBlockCommitted && ok && blockPayload.Block.Final {
 		for _, operation := range operations {
 			if operation.Kind != feishu.OperationSendCard {
@@ -336,7 +347,7 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			if strings.TrimSpace(operation.MessageID) == "" {
 				continue
 			}
-			a.service.RecordOwnerCardFlowMessage(
+			a.service.RecordPageTrackingMessage(
 				event.SurfaceSessionID,
 				payload.View.TrackingKey,
 				operation.MessageID,
@@ -372,6 +383,19 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 			operation.MessageID,
 			operation.ProgressCardStartSeq,
 		)
+	}
+}
+
+func outboundSurfaceMessageKind(kind feishu.OperationKind) (state.SurfaceMessageKind, bool) {
+	switch kind {
+	case feishu.OperationSendText:
+		return state.SurfaceMessageKindText, true
+	case feishu.OperationSendCard:
+		return state.SurfaceMessageKindCard, true
+	case feishu.OperationSendImage:
+		return state.SurfaceMessageKindImage, true
+	default:
+		return "", false
 	}
 }
 

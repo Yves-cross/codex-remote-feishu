@@ -96,11 +96,15 @@ func (s *Service) applyTurnPlanUpdate(instanceID string, event agentproto.Event)
 		return nil
 	}
 	sourceMessageID, _ := s.replyAnchorForTurn(instanceID, event.ThreadID, event.TurnID)
-	return []eventcontract.Event{{
+	outbound := eventcontract.Event{
 		Kind:             eventcontract.KindPlanUpdate,
 		GatewayID:        surface.GatewayID,
 		SurfaceSessionID: surface.SurfaceSessionID,
 		SourceMessageID:  sourceMessageID,
 		PlanUpdate:       update,
-	}}
+	}
+	if strings.TrimSpace(sourceMessageID) != "" {
+		outbound.Meta.MessageDelivery = replyThreadMessageDelivery()
+	}
+	return []eventcontract.Event{outbound}
 }

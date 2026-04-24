@@ -52,6 +52,11 @@ func commandConfigBaseSummarySections(view FeishuCatalogConfigView) []FeishuCard
 		return []FeishuCardTextSection{singleValueCardSection("当前模式", commandDisplayValue(view.CurrentValue, "未设置"))}
 	case FeishuCommandAutoContinue:
 		return []FeishuCardTextSection{singleValueCardSection("当前", autoContinueDisplayValue(view.CurrentValue))}
+	case FeishuCommandRecovery:
+		return []FeishuCardTextSection{
+			singleValueCardSection("当前", recoveryDisplayValue(view.CurrentValue)),
+			singleValueCardSection("作用范围", "只处理上游可重试失败，不影响 autowhip"),
+		}
 	case FeishuCommandReasoning:
 		return dualValueCardSections(
 			"当前", commandDisplayValue(view.EffectiveValue, "未设置"),
@@ -131,6 +136,13 @@ func commandDisplayValue(value, fallback string) string {
 }
 
 func autoContinueDisplayValue(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "on") {
+		return "开启"
+	}
+	return "关闭"
+}
+
+func recoveryDisplayValue(value string) string {
 	if strings.EqualFold(strings.TrimSpace(value), "on") {
 		return "开启"
 	}
