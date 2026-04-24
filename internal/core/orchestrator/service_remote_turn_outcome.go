@@ -12,12 +12,12 @@ import (
 type terminalCause string
 
 const (
-	terminalCauseCompleted               terminalCause = "completed"
-	terminalCauseUserInterrupted         terminalCause = "user_interrupted"
+	terminalCauseCompleted                terminalCause = "completed"
+	terminalCauseUserInterrupted          terminalCause = "user_interrupted"
 	terminalCauseUpstreamRetryableFailure terminalCause = "upstream_retryable_failure"
-	terminalCauseStartupFailed           terminalCause = "startup_failed"
-	terminalCauseNonRetryableFailure     terminalCause = "nonretryable_failure"
-	terminalCauseTransportLost           terminalCause = "transport_lost"
+	terminalCauseStartupFailed            terminalCause = "startup_failed"
+	terminalCauseNonRetryableFailure      terminalCause = "nonretryable_failure"
+	terminalCauseTransportLost            terminalCause = "transport_lost"
 )
 
 type remoteTurnOutcome struct {

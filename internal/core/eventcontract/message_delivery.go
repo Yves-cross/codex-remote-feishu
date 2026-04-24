@@ -11,10 +11,10 @@ const (
 type MessageMutation string
 
 const (
-	MessageMutationDefault             MessageMutation = ""
-	MessageMutationAppendOnly          MessageMutation = "append_only"
-	MessageMutationPatchSameMessage    MessageMutation = "patch_same_message"
-	MessageMutationPatchTailIfLatest   MessageMutation = "patch_same_message_tail_only"
+	MessageMutationDefault           MessageMutation = ""
+	MessageMutationAppendOnly        MessageMutation = "append_only"
+	MessageMutationPatchSameMessage  MessageMutation = "patch_same_message"
+	MessageMutationPatchTailIfLatest MessageMutation = "patch_same_message_tail_only"
 )
 
 type MessageDelivery struct {

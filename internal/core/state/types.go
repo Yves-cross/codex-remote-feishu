@@ -356,25 +356,25 @@ type RecoveryRuntimeRecord struct {
 }
 
 type PendingRecoveryEpisodeRecord struct {
-	EpisodeID                string
-	InstanceID               string
-	ThreadID                 string
-	FrozenCWD                string
-	FrozenRouteMode          RouteMode
-	FrozenOverride           ModelConfigRecord
-	FrozenPlanMode           PlanModeSetting
-	RootReplyToMessageID     string
-	RootReplyToMessagePreview string
-	NoticeMessageID          string
-	NoticeAppendSeq          int
-	State                    RecoveryEpisodeState
-	TriggerKind              RecoveryTriggerKind
-	AttemptCount             int
+	EpisodeID                  string
+	InstanceID                 string
+	ThreadID                   string
+	FrozenCWD                  string
+	FrozenRouteMode            RouteMode
+	FrozenOverride             ModelConfigRecord
+	FrozenPlanMode             PlanModeSetting
+	RootReplyToMessageID       string
+	RootReplyToMessagePreview  string
+	NoticeMessageID            string
+	NoticeAppendSeq            int
+	State                      RecoveryEpisodeState
+	TriggerKind                RecoveryTriggerKind
+	AttemptCount               int
 	ConsecutiveDryFailureCount int
-	PendingDueAt             time.Time
-	LastTurnID               string
-	LastProblem              *agentproto.ErrorInfo
-	CurrentAttemptOutputSeen bool
+	PendingDueAt               time.Time
+	LastTurnID                 string
+	LastProblem                *agentproto.ErrorInfo
+	CurrentAttemptOutputSeen   bool
 }
 
 type SurfaceMessageRecord struct {

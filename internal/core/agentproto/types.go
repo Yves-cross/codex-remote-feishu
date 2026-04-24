@@ -26,9 +26,9 @@ type Initiator struct {
 type TurnCompletionOrigin string
 
 const (
-	TurnCompletionOriginRuntime             TurnCompletionOrigin = "runtime"
-	TurnCompletionOriginTurnStartRejected   TurnCompletionOrigin = "turn_start_rejected"
-	TurnCompletionOriginThreadStartRejected TurnCompletionOrigin = "thread_start_rejected"
+	TurnCompletionOriginRuntime              TurnCompletionOrigin = "runtime"
+	TurnCompletionOriginTurnStartRejected    TurnCompletionOrigin = "turn_start_rejected"
+	TurnCompletionOriginThreadStartRejected  TurnCompletionOrigin = "thread_start_rejected"
 	TurnCompletionOriginThreadResumeRejected TurnCompletionOrigin = "thread_resume_rejected"
 )
 
@@ -72,45 +72,45 @@ type FileChangeRecord struct {
 }
 
 type Event struct {
-	Seq             uint64                 `json:"seq,omitempty"`
-	Kind            EventKind              `json:"kind"`
-	CommandID       string                 `json:"commandId,omitempty"`
-	ThreadID        string                 `json:"threadId,omitempty"`
-	TurnID          string                 `json:"turnId,omitempty"`
-	TurnCompletionOrigin TurnCompletionOrigin `json:"turnCompletionOrigin,omitempty"`
-	ItemID          string                 `json:"itemId,omitempty"`
-	RequestID       string                 `json:"requestId,omitempty"`
-	Status          string                 `json:"status,omitempty"`
-	ErrorMessage    string                 `json:"errorMessage,omitempty"`
-	CWD             string                 `json:"cwd,omitempty"`
-	FocusSource     string                 `json:"focusSource,omitempty"`
-	Action          string                 `json:"action,omitempty"`
-	ItemKind        string                 `json:"itemKind,omitempty"`
-	Delta           string                 `json:"delta,omitempty"`
-	TurnDiff        string                 `json:"turnDiff,omitempty"`
-	Name            string                 `json:"name,omitempty"`
-	Preview         string                 `json:"preview,omitempty"`
-	Model           string                 `json:"model,omitempty"`
-	ReasoningEffort string                 `json:"reasoningEffort,omitempty"`
-	AccessMode      string                 `json:"accessMode,omitempty"`
-	PlanMode        string                 `json:"planMode,omitempty"`
-	ConfigScope     string                 `json:"configScope,omitempty"`
-	Loaded          bool                   `json:"loaded,omitempty"`
-	Archived        bool                   `json:"archived,omitempty"`
-	TrafficClass    TrafficClass           `json:"trafficClass,omitempty"`
-	Initiator       Initiator              `json:"initiator,omitempty"`
-	Problem         *ErrorInfo             `json:"problem,omitempty"`
-	RequestPrompt   *RequestPrompt         `json:"requestPrompt,omitempty"`
-	MCPToolProgress *MCPToolCallProgress   `json:"mcpToolProgress,omitempty"`
-	ApprovalReview  *AutoApprovalReview    `json:"approvalReview,omitempty"`
-	TokenUsage      *ThreadTokenUsage      `json:"tokenUsage,omitempty"`
-	ModelReroute    *TurnModelReroute      `json:"modelReroute,omitempty"`
-	PlanSnapshot    *TurnPlanSnapshot      `json:"planSnapshot,omitempty"`
-	ThreadHistory   *ThreadHistoryRecord   `json:"threadHistory,omitempty"`
-	RuntimeStatus   *ThreadRuntimeStatus   `json:"runtimeStatus,omitempty"`
-	Metadata        map[string]any         `json:"metadata,omitempty"`
-	Threads         []ThreadSnapshotRecord `json:"threads,omitempty"`
-	FileChanges     []FileChangeRecord     `json:"fileChanges,omitempty"`
+	Seq                  uint64                 `json:"seq,omitempty"`
+	Kind                 EventKind              `json:"kind"`
+	CommandID            string                 `json:"commandId,omitempty"`
+	ThreadID             string                 `json:"threadId,omitempty"`
+	TurnID               string                 `json:"turnId,omitempty"`
+	TurnCompletionOrigin TurnCompletionOrigin   `json:"turnCompletionOrigin,omitempty"`
+	ItemID               string                 `json:"itemId,omitempty"`
+	RequestID            string                 `json:"requestId,omitempty"`
+	Status               string                 `json:"status,omitempty"`
+	ErrorMessage         string                 `json:"errorMessage,omitempty"`
+	CWD                  string                 `json:"cwd,omitempty"`
+	FocusSource          string                 `json:"focusSource,omitempty"`
+	Action               string                 `json:"action,omitempty"`
+	ItemKind             string                 `json:"itemKind,omitempty"`
+	Delta                string                 `json:"delta,omitempty"`
+	TurnDiff             string                 `json:"turnDiff,omitempty"`
+	Name                 string                 `json:"name,omitempty"`
+	Preview              string                 `json:"preview,omitempty"`
+	Model                string                 `json:"model,omitempty"`
+	ReasoningEffort      string                 `json:"reasoningEffort,omitempty"`
+	AccessMode           string                 `json:"accessMode,omitempty"`
+	PlanMode             string                 `json:"planMode,omitempty"`
+	ConfigScope          string                 `json:"configScope,omitempty"`
+	Loaded               bool                   `json:"loaded,omitempty"`
+	Archived             bool                   `json:"archived,omitempty"`
+	TrafficClass         TrafficClass           `json:"trafficClass,omitempty"`
+	Initiator            Initiator              `json:"initiator,omitempty"`
+	Problem              *ErrorInfo             `json:"problem,omitempty"`
+	RequestPrompt        *RequestPrompt         `json:"requestPrompt,omitempty"`
+	MCPToolProgress      *MCPToolCallProgress   `json:"mcpToolProgress,omitempty"`
+	ApprovalReview       *AutoApprovalReview    `json:"approvalReview,omitempty"`
+	TokenUsage           *ThreadTokenUsage      `json:"tokenUsage,omitempty"`
+	ModelReroute         *TurnModelReroute      `json:"modelReroute,omitempty"`
+	PlanSnapshot         *TurnPlanSnapshot      `json:"planSnapshot,omitempty"`
+	ThreadHistory        *ThreadHistoryRecord   `json:"threadHistory,omitempty"`
+	RuntimeStatus        *ThreadRuntimeStatus   `json:"runtimeStatus,omitempty"`
+	Metadata             map[string]any         `json:"metadata,omitempty"`
+	Threads              []ThreadSnapshotRecord `json:"threads,omitempty"`
+	FileChanges          []FileChangeRecord     `json:"fileChanges,omitempty"`
 }
 
 type ThreadSnapshotRecord struct {
