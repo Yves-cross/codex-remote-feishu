@@ -261,12 +261,11 @@ func withAttentionCardDocument(doc *cardDocument, attentionText, mentionUserID s
 }
 
 func renderCardAttentionMarkdown(attentionText, mentionUserID string) string {
-	attentionText = strings.TrimSpace(attentionText)
 	mentionUserID = strings.TrimSpace(mentionUserID)
-	if attentionText == "" || mentionUserID == "" {
+	if mentionUserID == "" {
 		return ""
 	}
-	return "<at id=" + mentionUserID + "></at> " + attentionText
+	return "<at id=" + mentionUserID + "></at>"
 }
 
 func cloneCardMap(value map[string]any) map[string]any {

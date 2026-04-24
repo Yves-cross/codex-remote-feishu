@@ -383,9 +383,8 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 
 func sendTextPayload(operation Operation) (string, string, error) {
 	text := strings.TrimSpace(operation.Text)
-	attentionText := strings.TrimSpace(operation.AttentionText)
 	attentionUserID := strings.TrimSpace(operation.AttentionUserID)
-	if attentionUserID == "" || attentionText == "" {
+	if attentionUserID == "" {
 		if text == "" {
 			return "text", `{"text":""}`, nil
 		}
@@ -399,10 +398,6 @@ func sendTextPayload(operation Operation) (string, string, error) {
 		{
 			Tag:    "at",
 			UserID: attentionUserID,
-		},
-		{
-			Tag:  "text",
-			Text: " " + attentionText,
 		},
 	}
 	if text != "" {

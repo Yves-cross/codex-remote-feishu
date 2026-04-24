@@ -60,7 +60,7 @@ func TestApplySendCardRepliesWithInCardAttention(t *testing.T) {
 		t.Fatalf("expected attention card payload to render body elements, got %#v", payload)
 	}
 	first, _ := elements[0].(map[string]any)
-	if first["tag"] != "markdown" || first["content"] != "<at id=ou-user-1></at> 需要你回来处理：请确认这条请求。" {
+	if first["tag"] != "markdown" || first["content"] != "<at id=ou-user-1></at>" {
 		t.Fatalf("unexpected attention card payload: %#v", payload)
 	}
 }
@@ -133,7 +133,7 @@ func TestApplySendCardAttentionFallsBackToCreate(t *testing.T) {
 		t.Fatalf("expected fallback attention card payload to render body elements, got %#v", payload)
 	}
 	first, _ := elements[0].(map[string]any)
-	if first["tag"] != "markdown" || first["content"] != "<at id=ou-user-1></at> 需要你回来处理：飞书投递失败。" {
+	if first["tag"] != "markdown" || first["content"] != "<at id=ou-user-1></at>" {
 		t.Fatalf("unexpected fallback attention card payload: %#v", payload)
 	}
 }

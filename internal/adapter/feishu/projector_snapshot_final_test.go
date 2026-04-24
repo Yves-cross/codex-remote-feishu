@@ -893,14 +893,14 @@ func TestProjectFinalSplitCarriesAttentionOnlyOnPrimaryCard(t *testing.T) {
 	if ops[0].AttentionUserID != "ou-user-1" || ops[0].AttentionText != "需要你回来处理：本轮执行已结束。" {
 		t.Fatalf("expected primary final card to carry attention, got %#v", ops[0])
 	}
-	if !containsMarkdownExact(renderedV2BodyElements(t, ops[0]), "<at id=ou-user-1></at> 需要你回来处理：本轮执行已结束。") {
+	if !containsMarkdownExact(renderedV2BodyElements(t, ops[0]), "<at id=ou-user-1></at>") {
 		t.Fatalf("expected primary final card payload to render in-card attention, got %#v", renderedV2BodyElements(t, ops[0]))
 	}
 	for i := 1; i < len(ops); i++ {
 		if ops[i].AttentionUserID != "" || ops[i].AttentionText != "" {
 			t.Fatalf("expected overflow final card %d to skip duplicate attention, got %#v", i, ops[i])
 		}
-		if containsMarkdownExact(renderedV2BodyElements(t, ops[i]), "<at id=ou-user-1></at> 需要你回来处理：本轮执行已结束。") {
+		if containsMarkdownExact(renderedV2BodyElements(t, ops[i]), "<at id=ou-user-1></at>") {
 			t.Fatalf("expected overflow final card %d to omit in-card attention, got %#v", i, renderedV2BodyElements(t, ops[i]))
 		}
 	}

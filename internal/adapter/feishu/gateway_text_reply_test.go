@@ -177,14 +177,11 @@ func TestApplySendTextMentionRepliesWithPostPayload(t *testing.T) {
 	if err := json.Unmarshal([]byte(replyContent), &payload); err != nil {
 		t.Fatalf("mention reply content is not valid json: %v", err)
 	}
-	if len(payload.ZhCN.Content) != 1 || len(payload.ZhCN.Content[0]) != 2 {
+	if len(payload.ZhCN.Content) != 1 || len(payload.ZhCN.Content[0]) != 1 {
 		t.Fatalf("unexpected mention reply payload: %#v", payload)
 	}
 	if payload.ZhCN.Content[0][0].Tag != "at" || payload.ZhCN.Content[0][0].UserID != "ou-user-1" {
 		t.Fatalf("unexpected mention target payload: %#v", payload)
-	}
-	if payload.ZhCN.Content[0][1].Tag != "text" || payload.ZhCN.Content[0][1].Text != " 请处理这条请求。" {
-		t.Fatalf("unexpected mention text payload: %#v", payload)
 	}
 }
 
@@ -250,5 +247,8 @@ func TestApplySendTextMentionFallsBackToCreateWhenReplyFails(t *testing.T) {
 	}
 	if payload.ZhCN.Content[0][0].UserID != "ou-user-1" {
 		t.Fatalf("unexpected fallback mention target payload: %#v", payload)
+	}
+	if len(payload.ZhCN.Content[0]) != 1 {
+		t.Fatalf("unexpected fallback mention payload nodes: %#v", payload)
 	}
 }
