@@ -252,8 +252,8 @@ type SurfaceConsoleRecord struct {
 	SurfaceMessages      map[string]*SurfaceMessageRecord
 	LastThreadHistory    *agentproto.ThreadHistoryRecord
 	LastSelection        *SelectionAnnouncementRecord
-	AutoWhip       AutoWhipRuntimeRecord
-	AutoContinue   AutoContinueRuntimeRecord
+	AutoWhip             AutoWhipRuntimeRecord
+	AutoContinue         AutoContinueRuntimeRecord
 }
 
 type ExecCommandProgressEntryRecord struct {
@@ -505,7 +505,7 @@ type QueueItemRecord struct {
 	ID                    string
 	SurfaceSessionID      string
 	SourceKind            QueueItemSourceKind
-	AutoContinueEpisodeID     string
+	AutoContinueEpisodeID string
 	SourceMessageID       string
 	SourceMessagePreview  string
 	SourceMessageIDs      []string

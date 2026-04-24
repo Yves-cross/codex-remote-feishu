@@ -20,31 +20,31 @@ type Config struct {
 }
 
 type Service struct {
-	now                   func() time.Time
-	config                Config
-	root                  *state.Root
-	renderer              *renderer.Planner
-	nextQueueItemID       int
-	nextImageID           int
-	nextFileID            int
-	nextPromptID          int
-	nextRequestCommandID  int
-	nextLocalRequestID    int
-	nextHeadlessID        int
+	now                       func() time.Time
+	config                    Config
+	root                      *state.Root
+	renderer                  *renderer.Planner
+	nextQueueItemID           int
+	nextImageID               int
+	nextFileID                int
+	nextPromptID              int
+	nextRequestCommandID      int
+	nextLocalRequestID        int
+	nextHeadlessID            int
 	nextAutoContinueEpisodeID int
-	handoffUntil          map[string]time.Time
-	pausedUntil           map[string]time.Time
-	abandoningUntil       map[string]time.Time
-	itemBuffers           map[string]*itemBuffer
-	threadRefreshes       map[string]bool
-	instanceClaims        map[string]*instanceClaimRecord
-	workspaceClaims       map[string]*workspaceClaimRecord
-	threadClaims          map[string]*threadClaimRecord
-	surfaceUIRuntime      map[string]*surfaceUIRuntimeRecord
-	turns                 *serviceTurnRuntime
-	pickers               *servicePickerRuntime
-	catalog               *serviceCatalogRuntime
-	progress              *serviceProgressRuntime
+	handoffUntil              map[string]time.Time
+	pausedUntil               map[string]time.Time
+	abandoningUntil           map[string]time.Time
+	itemBuffers               map[string]*itemBuffer
+	threadRefreshes           map[string]bool
+	instanceClaims            map[string]*instanceClaimRecord
+	workspaceClaims           map[string]*workspaceClaimRecord
+	threadClaims              map[string]*threadClaimRecord
+	surfaceUIRuntime          map[string]*surfaceUIRuntimeRecord
+	turns                     *serviceTurnRuntime
+	pickers                   *servicePickerRuntime
+	catalog                   *serviceCatalogRuntime
+	progress                  *serviceProgressRuntime
 }
 
 type itemBuffer struct {
@@ -69,7 +69,7 @@ type remoteTurnBinding struct {
 	InstanceID            string
 	SurfaceSessionID      string
 	QueueItemID           string
-	AutoContinueEpisodeID     string
+	AutoContinueEpisodeID string
 	AttemptTriggerKind    string
 	SourceMessageID       string
 	SourceMessagePreview  string

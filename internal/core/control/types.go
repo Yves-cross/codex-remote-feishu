@@ -35,8 +35,8 @@ const (
 	ActionPlanCommand                 ActionKind = "surface.command.plan"
 	ActionPlanProposalDecision        ActionKind = "surface.command.plan_proposal_decision"
 	ActionVerboseCommand              ActionKind = "surface.command.verbose"
-	ActionAutoWhipCommand         ActionKind = "surface.command.auto_whip"
-	ActionAutoContinueCommand    ActionKind = "surface.command.auto_continue"
+	ActionAutoWhipCommand             ActionKind = "surface.command.auto_whip"
+	ActionAutoContinueCommand         ActionKind = "surface.command.auto_continue"
 	ActionModeCommand                 ActionKind = "surface.command.mode"
 	ActionSendFile                    ActionKind = "surface.command.send_file"
 	ActionRespondRequest              ActionKind = "surface.request.respond"
@@ -171,11 +171,11 @@ type Snapshot struct {
 	NextPrompt       PromptRouteSummary
 	Gate             GateSummary
 	Dispatch         DispatchSummary
-	AutoWhip       AutoWhipSummary
-	AutoContinue   AutoContinueSummary
-	PermissionGaps []PermissionGapSummary
-	Instances      []InstanceSummary
-	Threads        []ThreadSummary
+	AutoWhip         AutoWhipSummary
+	AutoContinue     AutoContinueSummary
+	PermissionGaps   []PermissionGapSummary
+	Instances        []InstanceSummary
+	Threads          []ThreadSummary
 }
 
 type PermissionGapSummary struct {
