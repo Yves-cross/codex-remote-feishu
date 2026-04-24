@@ -533,6 +533,9 @@ func looksLikeStandalonePreviewTarget(text string) bool {
 	if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "#") || strings.ContainsAny(target, " \t\r\n") {
 		return false
 	}
+	if strings.ContainsAny(target, "[]`") {
+		return false
+	}
 	cleanTarget, _ := stripMarkdownLocationSuffix(target)
 	if cleanTarget == "" {
 		return false

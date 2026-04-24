@@ -305,6 +305,43 @@ func TestDriveMarkdownPreviewerRewritesSingleFileHTMLLinksToWebPreview(t *testin
 	}
 }
 
+func TestDriveMarkdownPreviewerKeepsMarkdownHTMLLinkStructureWhenRewritingAbsolutePath(t *testing.T) {
+	root := t.TempDir()
+	htmlPath := writePreviewFile(t, filepath.Join(root, "docs", "mock.html"), "<!doctype html><title>mock</title><h1>Mock</h1>")
+	api := newFakePreviewAPI()
+	previewer := NewDriveMarkdownPreviewer(api, MarkdownPreviewConfig{
+		StatePath:  filepath.Join(root, "state", "preview.json"),
+		ProcessCWD: root,
+		CacheDir:   filepath.Join(root, "preview-cache"),
+	})
+	web := &fakeWebPreviewPublisher{baseURL: "https://preview.example/g/shared/?t=token"}
+	previewer.SetWebPreviewPublisher(web)
+
+	result, err := previewer.RewriteFinalBlock(context.Background(), MarkdownPreviewRequest{
+		SurfaceSessionID: "feishu:app-1:user:ou_user",
+		ActorUserID:      "ou_user",
+		WorkspaceRoot:    root,
+		ThreadCWD:        root,
+		Block: render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Final: true,
+			Text:  "可直接打开这个文件测试：[mock.html](" + htmlPath + ")",
+		},
+	})
+	if err != nil {
+		t.Fatalf("rewrite returned error: %v", err)
+	}
+	if !strings.HasPrefix(result.Block.Text, "可直接打开这个文件测试：[mock.html](https://preview.example/g/shared/") || !strings.Contains(result.Block.Text, "?t=token)") {
+		t.Fatalf("unexpected rewritten text: %q", result.Block.Text)
+	}
+	if strings.Contains(result.Block.Text, "]([") {
+		t.Fatalf("expected markdown link target to stay flat after rewrite, got %q", result.Block.Text)
+	}
+	if len(api.uploadFileCalls) != 0 {
+		t.Fatalf("expected html preview to avoid drive upload, got %#v", api.uploadFileCalls)
+	}
+}
+
 func assertPreviewStateContainsSourcePath(t *testing.T, statePath, wantPath string) {
 	t.Helper()
 	raw, err := os.ReadFile(statePath)
