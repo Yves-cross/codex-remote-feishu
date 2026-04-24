@@ -1,6 +1,6 @@
 ---
 name: build-page-mock
-description: "Use when creating or revising a page mock, browser-runnable prototype, or interactive demo for this repository's web, setup, onboarding, status, or admin pages, and also when implementing a real product page from an approved mock. Ensures the artifact is final-user-facing, hides design-intent text, uses fake data only as interactive coverage, and keeps the final product aligned with the approved mock except for real business data."
+description: "Use when creating or revising a page mock, browser-runnable prototype, or interactive demo for this repository's web, setup, onboarding, status, or admin pages, and also when implementing a real product page from an approved mock. Ensures the artifact is final-user-facing, covers post-action feedback states, and keeps the final product aligned with the approved mock except for real business data and runtime feedback instances inside approved feedback slots."
 ---
 
 # build-page-mock
@@ -42,24 +42,39 @@ Read these docs before editing:
 - Cover every user-editable, user-selectable, filterable, searchable, or navigable data surface that the page exposes.
 - If the user can reach empty / populated / validation / success / failure states, make those states reachable in the mock.
 
-### 4. Every visible interaction must be real
+### 4. Cover the feedback contract, not just the happy path
+
+- For each key user action, make the relevant feedback states reachable in the mock.
+- At minimum, consider the needed subset of:
+  - loading
+  - success
+  - validation error
+  - recoverable business error
+  - transient system error
+  - empty / no permission / expired when applicable
+- The mock does not need every exact backend error string.
+- The mock must define where feedback appears and what the user can do next.
+
+### 5. Every visible interaction must be real
 
 - Buttons, tabs, dialogs, forms, expanders, navigation, search, filters, sort, pagination, and multi-step flows must all change real page state.
 - Do not leave dead controls.
 - If a backend action does not exist yet, simulate it with local state, fake services, or deterministic in-browser behavior instead of a no-op.
 
-### 5. Responsive behavior is part of the deliverable
+### 6. Responsive behavior is part of the deliverable
 
 - Verify desktop and mobile.
 - Verify width changes and portrait/landscape rotation.
 - If layout or navigation should differ by breakpoint or orientation, implement those behaviors in the mock.
 - Do not rely on a single static viewport.
 
-### 6. The approved mock is the user-visible contract for the real product
+### 7. The approved mock is the user-visible contract for the real product
 
-- When implementing the real product from an approved mock, keep user-visible structure, copy, states, interaction paths, and responsive behavior aligned with that mock.
-- The main allowed difference is replacing fake business data and local fake services with real data and real integrations.
+- When implementing the real product from an approved mock, keep user-visible structure, copy, states, interaction paths, feedback slots, and responsive behavior aligned with that mock.
+- The main allowed differences are replacing fake business data and replacing mock feedback examples with real runtime feedback instances inside the approved feedback slots.
 - Do not add extra user-visible copy during implementation just because the backend, validation, or edge cases are more complicated than the mock.
+- Do not invent new user-visible error regions or fallback blocks during implementation.
+- If the backend returns an error that the mock did not enumerate exactly, route it through the page's approved generic fallback slot instead of adding a new presentation surface.
 - If the user-visible contract must change, update the mock or the canonical guideline first, then update the product.
 
 ## Delivery checklist
@@ -70,7 +85,9 @@ Before finishing, verify:
 2. The artifact runs in a browser.
 3. All visible controls and flows work.
 4. Fake data covers the page's full interactive surface.
-5. Desktop, mobile, and orientation changes remain usable.
-6. If implementing from an approved mock, the real product still matches that mock in all user-visible aspects except business data.
+5. Key user actions include reachable feedback states, not only the happy path.
+6. Generic fallback behavior is defined inside approved feedback slots.
+7. Desktop, mobile, and orientation changes remain usable.
+8. If implementing from an approved mock, the real product still matches that mock in all user-visible aspects except business data and runtime feedback instances inside approved slots.
 
 If one of these fails, the mock is not done.
