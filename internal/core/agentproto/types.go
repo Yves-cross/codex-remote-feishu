@@ -146,14 +146,15 @@ type ThreadHistoryItemRecord struct {
 type CommandKind string
 
 const (
-	CommandPromptSend         CommandKind = "prompt.send"
-	CommandThreadCompactStart CommandKind = "thread.compact.start"
-	CommandTurnSteer          CommandKind = "turn.steer"
-	CommandTurnInterrupt      CommandKind = "turn.interrupt"
-	CommandRequestRespond     CommandKind = "request.respond"
-	CommandThreadsRefresh     CommandKind = "threads.refresh"
-	CommandThreadHistoryRead  CommandKind = "thread.history.read"
-	CommandProcessExit        CommandKind = "process.exit"
+	CommandPromptSend          CommandKind = "prompt.send"
+	CommandThreadCompactStart  CommandKind = "thread.compact.start"
+	CommandTurnSteer           CommandKind = "turn.steer"
+	CommandTurnInterrupt       CommandKind = "turn.interrupt"
+	CommandRequestRespond      CommandKind = "request.respond"
+	CommandThreadsRefresh      CommandKind = "threads.refresh"
+	CommandThreadHistoryRead   CommandKind = "thread.history.read"
+	CommandProcessChildRestart CommandKind = "process.child.restart"
+	CommandProcessExit         CommandKind = "process.exit"
 )
 
 type InputKind string

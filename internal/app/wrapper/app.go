@@ -16,7 +16,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/debuglog"
-	"github.com/kxn/codex-remote-feishu/internal/execlaunch"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -27,12 +26,18 @@ type App struct {
 
 const (
 	steerCommandResponseTimeout = 5 * time.Second
+	wrapperChildRestoreTimeout  = 5 * time.Second
 	wrapperChildStopGrace       = 2 * time.Second
 	wrapperChildWaitTimeout     = 5 * time.Second
 )
 
 type shutdownRequest struct {
 	CommandID string
+}
+
+type restartRequest struct {
+	CommandID string
+	ResultCh  chan error
 }
 
 type Config struct {
@@ -201,28 +206,12 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	}
 	a.debugf("runtime ready: relay=%s instance=%s workspace=%s", a.config.RelayServerURL, a.config.InstanceID, a.config.WorkspaceRoot)
 
-	childCtx, childCancel := context.WithCancel(ctx)
-	defer childCancel()
-
-	childArgs, childEnv := a.buildCodexChildLaunch(a.config.Args)
-	cmd := execlaunch.CommandContext(childCtx, a.config.CodexRealBinary, childArgs...)
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.Dir = a.config.WorkspaceRoot
-	cmd.Env = childEnv
-
-	childStdin, childStdout, childStderr, err := startChild(cmd)
-	if err != nil {
-		return 1, err
-	}
-	a.debugf("child started: binary=%s pid=%d cwd=%s", a.config.CodexRealBinary, cmd.Process.Pid, a.config.WorkspaceRoot)
-
 	writeCh := make(chan []byte, 128)
 	errCh := make(chan error, 8)
 	problems := &problemReporter{}
 	commandResponses := newCommandResponseTracker()
 	shutdownCh := make(chan shutdownRequest, 1)
+	restartCh := make(chan restartRequest, 1)
 	hostExitCh := make(chan struct{}, 1)
 
 	if err := startHostLifetimeWatcher(ctx, a.config, func() {
@@ -231,15 +220,6 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		default:
 		}
 	}); err != nil {
-		childCancel()
-		_ = cmd.Wait()
-		return 1, err
-	}
-
-	bootstrappedStdout, err := a.bootstrapHeadlessCodex(childStdin, childStdout, rawLogger, problems.Emit)
-	if err != nil {
-		childCancel()
-		_ = cmd.Wait()
 		return 1, err
 	}
 
@@ -291,6 +271,24 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 				default:
 				}
 				return nil
+			}
+			if command.Kind == agentproto.CommandProcessChildRestart {
+				a.debugf("relay child restart command received: command=%s", command.CommandID)
+				request := restartRequest{
+					CommandID: command.CommandID,
+					ResultCh:  make(chan error, 1),
+				}
+				select {
+				case restartCh <- request:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				select {
+				case err := <-request.ResultCh:
+					return err
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
 			a.debugf(
 				"relay command received: command=%s kind=%s thread=%s turn=%s cwd=%s surface=%s inputs=%d",
@@ -382,66 +380,65 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	problems.SetClient(client)
 	client.SetRawLogger(rawLogger)
 
+	activeChild, err := a.launchChildSession(ctx, rawLogger, problems.Emit)
+	if err != nil {
+		return 1, err
+	}
+	startChildSessionIO(ctx, activeChild, stdout, stderr, writeCh, a.translator, client, commandResponses, errCh, a.debugf, rawLogger, problems.Emit)
+
 	go func() {
 		if err := runRelayClient(ctx, a.config.RelayServerURL, client, manager, func() bool { return connectedOnce }); err != nil && err != context.Canceled {
 			errCh <- err
 		}
 	}()
 
-	go writeLoop(ctx, childStdin, writeCh, errCh, a.debugf, rawLogger, problems.Emit)
 	go stdinLoop(ctx, stdin, writeCh, a.translator, client, errCh, a.debugf, rawLogger, problems.Emit)
-	go stdoutLoop(ctx, bootstrappedStdout, stdout, writeCh, a.translator, client, commandResponses, errCh, a.debugf, rawLogger, problems.Emit)
-	go streamCopy(childStderr, stderr, errCh)
 
-	waitErr := make(chan error, 1)
-	go func() {
-		waitErr <- cmd.Wait()
-	}()
-
-	stopChild := func() {
-		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			if err := relayruntime.TerminateProcess(cmd.Process.Pid, wrapperChildStopGrace); err != nil {
-				a.debugf("child stop failed: pid=%d err=%v", cmd.Process.Pid, err)
-			}
+	for {
+		var waitErrCh <-chan error
+		if activeChild != nil {
+			waitErrCh = activeChild.waitErr
 		}
-		childCancel()
 		select {
-		case <-waitErr:
-		case <-time.After(wrapperChildWaitTimeout):
-		}
-	}
-
-	select {
-	case err := <-waitErr:
-		client.Close()
-		if err == nil {
+		case err := <-waitErrCh:
+			client.Close()
+			if err == nil {
+				return 0, nil
+			}
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				return exitErr.ExitCode(), nil
+			}
+			return 1, err
+		case err := <-errCh:
+			client.Close()
+			stopChildSession(activeChild, a.debugf)
+			if err == nil || err == context.Canceled {
+				return 0, nil
+			}
+			return 1, err
+		case request := <-shutdownCh:
+			a.debugf("wrapper shutdown requested by daemon: command=%s", request.CommandID)
+			stopChildSession(activeChild, a.debugf)
+			client.Close()
 			return 0, nil
-		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return exitErr.ExitCode(), nil
-		}
-		return 1, err
-	case err := <-errCh:
-		client.Close()
-		stopChild()
-		if err == nil || err == context.Canceled {
+		case request := <-restartCh:
+			a.debugf("wrapper child restart requested by daemon: command=%s", request.CommandID)
+			nextChild, err := a.restartChildSession(ctx, activeChild, stdout, stderr, writeCh, client, commandResponses, errCh, rawLogger, problems.Emit)
+			if nextChild != nil {
+				activeChild = nextChild
+			}
+			request.ResultCh <- err
+			close(request.ResultCh)
+		case <-hostExitCh:
+			a.debugf("wrapper shutdown requested by host exit: lifetime=%s parentPid=%d", a.config.Lifetime, a.config.ParentPID)
+			stopChildSession(activeChild, a.debugf)
+			client.Close()
 			return 0, nil
+		case <-ctx.Done():
+			client.Close()
+			stopChildSession(activeChild, a.debugf)
+			return 0, ctx.Err()
 		}
-		return 1, err
-	case request := <-shutdownCh:
-		a.debugf("wrapper shutdown requested by daemon: command=%s", request.CommandID)
-		stopChild()
-		client.Close()
-		return 0, nil
-	case <-hostExitCh:
-		a.debugf("wrapper shutdown requested by host exit: lifetime=%s parentPid=%d", a.config.Lifetime, a.config.ParentPID)
-		stopChild()
-		client.Close()
-		return 0, nil
-	case <-ctx.Done():
-		client.Close()
-		stopChild()
-		return 0, ctx.Err()
 	}
 }
 

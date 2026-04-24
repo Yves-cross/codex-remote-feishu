@@ -15,6 +15,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/relayws"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/debuglog"
 	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
@@ -633,6 +634,137 @@ func TestWrapperExitsWhenDaemonRequestsProcessExit(t *testing.T) {
 	}
 }
 
+func TestWrapperRestartsChildWithoutExitingAndRestoresFocusedThread(t *testing.T) {
+	repoRoot, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", "..", ".."))
+
+	helloCh := make(chan agentproto.Hello, 1)
+	ackCh := make(chan agentproto.CommandAck, 8)
+	eventsCh := make(chan []agentproto.Event, 8)
+	server := relayws.NewServer(relayws.ServerCallbacks{
+		OnHello: func(_ context.Context, _ relayws.ConnectionMeta, hello agentproto.Hello) {
+			helloCh <- hello
+		},
+		OnCommandAck: func(_ context.Context, _ relayws.ConnectionMeta, _ string, ack agentproto.CommandAck) {
+			ackCh <- ack
+		},
+		OnEvents: func(_ context.Context, _ relayws.ConnectionMeta, _ string, events []agentproto.Event) {
+			eventsCh <- events
+		},
+	})
+	server.SetServerIdentity(agentproto.ServerIdentity{
+		BinaryIdentity: agentproto.BinaryIdentity{
+			Product:          "codex-remote",
+			Version:          "test",
+			BuildFingerprint: "fp-test",
+			BinaryPath:       "/test/codex-remote",
+		},
+		PID: 1,
+	})
+	defer server.Close()
+
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r)
+	}))
+	defer httpServer.Close()
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http")
+
+	stdinReader, stdinWriter := io.Pipe()
+	defer stdinWriter.Close()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	rawPath := filepath.Join(t.TempDir(), "wrapper-restart.raw.ndjson")
+
+	cfg := Config{
+		RelayServerURL:   wsURL,
+		CodexRealBinary:  "go",
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex", "--require-initialize"},
+		InstanceID:       "inst-wrapper-restart",
+		DisplayName:      "codex-remote",
+		WorkspaceRoot:    repoRoot,
+		WorkspaceKey:     repoRoot,
+		ShortName:        filepath.Base(repoRoot),
+		Source:           "headless",
+		Version:          "test",
+		BuildFingerprint: "fp-test",
+		BinaryPath:       "/test/codex-remote",
+		DaemonBinaryPath: "/test/codex-remote",
+		DebugRelayRaw:    true,
+		RawLogPath:       rawPath,
+	}
+	app := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := app.Run(ctx, stdinReader, &stdout, &stderr)
+		done <- err
+	}()
+
+	waitForHello(t, helloCh, "inst-wrapper-restart")
+
+	if _, err := io.WriteString(stdinWriter, mustJSONLine(t, map[string]any{
+		"id":     "local-resume-1",
+		"method": "thread/resume",
+		"params": map[string]any{
+			"threadId": "thread-1",
+			"cwd":      testutil.WorkspacePath("data", "dl", "droid"),
+		},
+	})); err != nil {
+		t.Fatalf("write local thread/resume: %v", err)
+	}
+	waitForEvent(t, eventsCh, 10*time.Second, func(events []agentproto.Event) bool {
+		return batchHasEvent(events, func(event agentproto.Event) bool {
+			return event.Kind == agentproto.EventThreadFocused && event.ThreadID == "thread-1"
+		})
+	}, &stdout, &stderr, done)
+	waitForStdout(t, 10*time.Second, &stdout, &stderr, done, func(out string) bool {
+		return strings.Contains(out, `"id":"local-resume-1"`) && strings.Contains(out, `"method":"thread/started"`)
+	})
+
+	if err := server.SendCommand("inst-wrapper-restart", agentproto.Command{
+		CommandID: "cmd-child-restart",
+		Kind:      agentproto.CommandProcessChildRestart,
+	}); err != nil {
+		t.Fatalf("send child restart: %v", err)
+	}
+	waitForAck(t, ackCh, 10*time.Second, func(ack agentproto.CommandAck) bool {
+		return ack.CommandID == "cmd-child-restart" && ack.Accepted
+	}, &stdout, &stderr, done)
+
+	if err := server.SendCommand("inst-wrapper-restart", agentproto.Command{
+		CommandID: "cmd-refresh-after-restart",
+		Kind:      agentproto.CommandThreadsRefresh,
+	}); err != nil {
+		t.Fatalf("send refresh after restart: %v", err)
+	}
+	waitForEvent(t, eventsCh, 15*time.Second, func(events []agentproto.Event) bool {
+		return batchHasEvent(events, func(event agentproto.Event) bool {
+			return event.Kind == agentproto.EventThreadsSnapshot && len(event.Threads) == 1
+		})
+	}, &stdout, &stderr, done)
+
+	if count := countRawFramesByMethod(t, rawPath, "codex.stdin", "initialize"); count != 2 {
+		t.Fatalf("expected two initialize frames after child restart, got %d", count)
+	}
+	if count := countRawFramesByMethod(t, rawPath, "codex.stdin", "thread/resume"); count != 2 {
+		t.Fatalf("expected original + restore thread/resume frames on codex.stdin, got %d", count)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("wrapper run failed: %v\nstderr:\n%s", err, stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for wrapper shutdown")
+	}
+}
+
 func TestWrapperFailsBeforeStartingChildWhenRelayBootstrapFails(t *testing.T) {
 	tempDir := t.TempDir()
 	pidFile := filepath.Join(tempDir, "mockcodex.pid")
@@ -769,6 +901,35 @@ func waitForStdout(t *testing.T, timeout time.Duration, stdout, stderr *bytes.Bu
 			t.Fatalf("timed out waiting for matching stdout\nstdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
 		}
 	}
+}
+
+func countRawFramesByMethod(t *testing.T, rawPath, channel, method string) int {
+	t.Helper()
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", rawPath, err)
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var record debuglog.RawRecord
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("unmarshal raw record: %v", err)
+		}
+		if record.Channel != channel || len(record.Frame) == 0 {
+			continue
+		}
+		var frame map[string]any
+		if err := json.Unmarshal(record.Frame, &frame); err != nil {
+			t.Fatalf("unmarshal raw frame: %v", err)
+		}
+		if frame["method"] == method {
+			count++
+		}
+	}
+	return count
 }
 
 func mustJSONLine(t *testing.T, payload any) string {

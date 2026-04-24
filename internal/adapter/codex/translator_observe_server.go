@@ -59,6 +59,20 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			}
 			return Result{}, nil
 		}
+		if pending, exists := t.pendingChildRestartRestore[requestID]; exists {
+			delete(t.pendingChildRestartRestore, requestID)
+			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
+				t.debugf("observe server child restart restore error: request=%s thread=%s error=%s", requestID, pending.ThreadID, errMsg)
+				return Result{Suppress: true}, nil
+			}
+			t.currentThreadID = pending.ThreadID
+			if pending.CWD != "" {
+				t.knownThreadCWD[pending.ThreadID] = pending.CWD
+			}
+			t.suppressedThreadStarted[pending.ThreadID] = true
+			t.debugf("observe server child restart restore result: request=%s thread=%s", requestID, pending.ThreadID)
+			return Result{Suppress: true}, nil
+		}
 		if pending, exists := t.pendingThreadCreate[requestID]; exists {
 			delete(t.pendingThreadCreate, requestID)
 			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
@@ -341,82 +355,9 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 		t.debugf("observe server error without turn: code=%s message=%s", problem.Code, problem.Message)
 		return Result{Events: []agentproto.Event{agentproto.NewSystemErrorEvent(*problem)}}, nil
 	case "thread/started":
-		threadRecord := parseThreadRecord(lookupAny(message, "params", "thread"))
-		threadID := threadRecord.ThreadID
-		if threadID == "" {
-			threadID = lookupString(message, "params", "threadId")
-		}
-		cwd := threadRecord.CWD
-		if cwd == "" {
-			cwd = lookupString(message, "params", "cwd")
-		}
-		name := threadRecord.Name
-		runtimeStatus := agentproto.CloneThreadRuntimeStatus(threadRecord.RuntimeStatus)
-		status := ""
-		loaded := false
-		if runtimeStatus != nil {
-			status = runtimeStatus.LegacyState()
-			loaded = runtimeStatus.IsLoaded()
-		}
-		if t.internalThreadIDs[threadID] {
-			if cwd != "" {
-				t.knownThreadCWD[threadID] = cwd
-			}
-			return Result{Events: []agentproto.Event{{
-				Kind:          agentproto.EventThreadDiscovered,
-				ThreadID:      threadID,
-				CWD:           cwd,
-				Name:          name,
-				PlanMode:      threadRecord.PlanMode,
-				Status:        status,
-				Loaded:        loaded,
-				FocusSource:   "remote_created_thread",
-				TrafficClass:  agentproto.TrafficClassInternalHelper,
-				Initiator:     agentproto.Initiator{Kind: agentproto.InitiatorInternalHelper},
-				RuntimeStatus: runtimeStatus,
-				Metadata:      map[string]any{"internalHelper": true},
-			}}}, nil
-		}
-		t.currentThreadID = threadID
-		if t.pendingLocalNewThreadTurn && threadID != "" {
-			t.pendingLocalTurnByThread[threadID] = true
-			t.pendingLocalNewThreadTurn = false
-		}
-		if cwd != "" {
-			t.knownThreadCWD[threadID] = cwd
-		}
-		return Result{Events: []agentproto.Event{{
-			Kind:          agentproto.EventThreadDiscovered,
-			ThreadID:      threadID,
-			CWD:           cwd,
-			Name:          name,
-			PlanMode:      threadRecord.PlanMode,
-			Status:        status,
-			Loaded:        loaded,
-			FocusSource:   "remote_created_thread",
-			RuntimeStatus: runtimeStatus,
-		}}}, nil
+		return t.observeThreadStarted(message), nil
 	case "thread/status/changed":
-		threadID := lookupString(message, "params", "threadId")
-		runtimeStatus := parseThreadRuntimeStatus(lookupAny(message, "params", "status"))
-		if threadID == "" || runtimeStatus == nil {
-			return Result{}, nil
-		}
-		trafficClass := agentproto.TrafficClassPrimary
-		initiator := agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface}
-		if t.internalThreadIDs[threadID] {
-			trafficClass = agentproto.TrafficClassInternalHelper
-			initiator = agentproto.Initiator{Kind: agentproto.InitiatorInternalHelper}
-		}
-		return Result{Events: []agentproto.Event{{
-			Kind:          agentproto.EventThreadRuntimeStatusUpdated,
-			ThreadID:      threadID,
-			Status:        runtimeStatus.LegacyState(),
-			Loaded:        runtimeStatus.IsLoaded(),
-			TrafficClass:  trafficClass,
-			Initiator:     initiator,
-			RuntimeStatus: runtimeStatus,
-		}}}, nil
+		return t.observeThreadStatusChanged(message), nil
 	case "thread/name/updated":
 		threadID := lookupString(message, "params", "threadId")
 		threadRecord := parseThreadRecord(lookupAny(message, "params", "thread"))
@@ -508,88 +449,9 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			Initiator:    t.initiatorForTurn(reroute.ThreadID, reroute.TurnID),
 		}}}, nil
 	case "turn/started":
-		threadID := lookupString(message, "params", "thread", "id")
-		if threadID == "" {
-			threadID = lookupString(message, "params", "threadId")
-		}
-		turnID := lookupString(message, "params", "turn", "id")
-		if turnID == "" {
-			turnID = lookupString(message, "params", "turnId")
-		}
-		trafficClass := t.trafficClassForTurn(threadID, turnID)
-		pendingRemoteSurface := t.pendingRemoteTurnByThread[threadID]
-		pendingLocal := t.pendingLocalTurnByThread[threadID]
-		initiator := t.resolveTurnInitiator(threadID, turnID, trafficClass)
-		if turnID != "" {
-			t.turnInitiators[turnID] = initiator
-		}
-		t.debugf(
-			"observe server turn/started: thread=%s turn=%s initiator=%s traffic=%s pendingRemoteSurface=%s pendingLocal=%t",
-			threadID,
-			turnID,
-			initiator.Kind,
-			trafficClass,
-			pendingRemoteSurface,
-			pendingLocal,
-		)
-		return Result{Events: []agentproto.Event{{
-			Kind:         agentproto.EventTurnStarted,
-			ThreadID:     threadID,
-			TurnID:       turnID,
-			Status:       "running",
-			TrafficClass: trafficClass,
-			Initiator:    initiator,
-		}}}, nil
+		return t.observeTurnStarted(message), nil
 	case "turn/completed":
-		threadID := lookupString(message, "params", "thread", "id")
-		if threadID == "" {
-			threadID = lookupString(message, "params", "threadId")
-		}
-		turnID := lookupString(message, "params", "turn", "id")
-		if turnID == "" {
-			turnID = lookupString(message, "params", "turnId")
-		}
-		trafficClass := t.trafficClassForTurn(threadID, turnID)
-		status := lookupString(message, "params", "turn", "status")
-		if status == "" {
-			status = "completed"
-		}
-		errMsg := lookupString(message, "params", "turn", "error", "message")
-		problem, hasProblem := t.pendingTurnProblems[turnID]
-		delete(t.pendingTurnProblems, turnID)
-		if status == "completed" {
-			hasProblem = false
-		}
-		if errMsg == "" && hasProblem {
-			errMsg = problem.Message
-		}
-		initiator := t.turnInitiators[turnID]
-		if initiator.Kind == "" {
-			initiator = t.resolveTurnInitiator(threadID, turnID, trafficClass)
-		}
-		delete(t.turnInitiators, turnID)
-		delete(t.internalTurnIDs, turnID)
-		t.debugf("observe server turn/completed: thread=%s turn=%s status=%s initiator=%s", threadID, turnID, status, initiator.Kind)
-		event := agentproto.Event{
-			Kind:         agentproto.EventTurnCompleted,
-			ThreadID:     threadID,
-			TurnID:       turnID,
-			Status:       status,
-			ErrorMessage: errMsg,
-			TrafficClass: trafficClass,
-			Initiator:    initiator,
-		}
-		if hasProblem {
-			problemCopy := problem
-			if problemCopy.ThreadID == "" {
-				problemCopy.ThreadID = threadID
-			}
-			if problemCopy.TurnID == "" {
-				problemCopy.TurnID = turnID
-			}
-			event.Problem = &problemCopy
-		}
-		return Result{Events: []agentproto.Event{event}}, nil
+		return t.observeTurnCompleted(message), nil
 	case "serverRequest/started", "request/started":
 		request := extractRequestPayload(message)
 		requestID := extractRequestID(message, request)
