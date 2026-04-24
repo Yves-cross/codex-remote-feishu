@@ -1,8 +1,8 @@
 # Documentation Index
 
 > Type: `general`
-> Updated: `2026-04-23`
-> Summary: 更新文档索引并纳入 web preview renderer 架构重构草案。
+> Updated: `2026-04-24`
+> Summary: 更新文档索引并纳入上游可重试 turn 自动恢复设计草稿。
 
 ## 1. 适用范围
 
@@ -172,6 +172,7 @@
 - [non-linux-user-autostart-research.md](./draft/non-linux-user-autostart-research.md)
 - [plan-mode-feishu-support-design.md](./draft/plan-mode-feishu-support-design.md)
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
+- [upstream-retryable-turn-recovery-design.md](./draft/upstream-retryable-turn-recovery-design.md)
 - [web-preview-snapshot-design.md](./draft/web-preview-snapshot-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
 - [web-preview-renderer-architecture-redesign.md](./draft/web-preview-renderer-architecture-redesign.md)
