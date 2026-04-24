@@ -113,15 +113,31 @@ func (m *Manager) CleanupRun(ctx context.Context, sourceKey, runRoot string) err
 	mirrorPath := filepath.Join(m.stateDir, InternalRootDirName, CacheDirName, strings.TrimSpace(sourceKey), "mirror.git")
 	var cleanupErr error
 	if strings.TrimSpace(sourceKey) != "" && pathExists(mirrorPath) && pathExists(worktreeDir) {
-		if err := gitRun(ctx, "", "--git-dir", mirrorPath, "worktree", "remove", "--force", worktreeDir); err != nil {
+		if err := runGitCommand(ctx, "", "--git-dir", mirrorPath, "worktree", "remove", "--force", gitWorktreePathArg(worktreeDir)); err != nil {
 			cleanupErr = classifyGitError(ErrorCleanupFailed, "git worktree cleanup failed", SourceSpec{}, runRoot, err)
 		}
-		_ = gitRun(ctx, "", "--git-dir", mirrorPath, "worktree", "prune")
 	}
 	if err := os.RemoveAll(runRoot); err != nil && cleanupErr == nil {
 		cleanupErr = &Error{Code: ErrorCleanupFailed, Message: "failed to remove cron run root", Path: runRoot, Err: err}
 	}
+	if strings.TrimSpace(sourceKey) != "" && pathExists(mirrorPath) {
+		pruneErr := runGitCommand(ctx, "", "--git-dir", mirrorPath, "worktree", "prune", "--expire", "now")
+		switch {
+		case pruneErr == nil && cleanupErr != nil && !pathExists(runRoot):
+			cleanupErr = nil
+		case pruneErr != nil && cleanupErr == nil:
+			cleanupErr = classifyGitError(ErrorCleanupFailed, "git worktree cleanup failed", SourceSpec{}, runRoot, pruneErr)
+		}
+	}
 	return cleanupErr
+}
+
+func gitWorktreePathArg(pathValue string) string {
+	pathValue = cleanAbs(pathValue)
+	if pathValue == "" {
+		return ""
+	}
+	return filepath.ToSlash(pathValue)
 }
 
 func (m *Manager) ensureMirror(ctx context.Context, spec SourceSpec, mirrorPath string) error {

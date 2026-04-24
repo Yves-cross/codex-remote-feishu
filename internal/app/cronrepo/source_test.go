@@ -1,9 +1,11 @@
 package cronrepo
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -68,6 +70,45 @@ func TestManagerMaterializeUsesRepoDefaultBranchWhenRefMissing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(result.RunDirectory, "README.md")); err != nil {
 		t.Fatalf("materialized default branch worktree missing file: %v", err)
+	}
+}
+
+func TestManagerCleanupRunFallsBackToPruneAfterRemoveFailure(t *testing.T) {
+	stateDir := t.TempDir()
+	manager := NewManager(stateDir)
+	sourceKey := "source-key"
+	runRoot := filepath.Join(stateDir, InternalRootDirName, RunsDirName, "inst-cron-1")
+	worktreeDir := filepath.Join(runRoot, "worktree")
+	mirrorPath := filepath.Join(stateDir, InternalRootDirName, CacheDirName, sourceKey, "mirror.git")
+	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(worktreeDir): %v", err)
+	}
+	if err := os.MkdirAll(mirrorPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(mirrorPath): %v", err)
+	}
+
+	var calls [][]string
+	originalRunGitCommand := runGitCommand
+	runGitCommand = func(_ context.Context, _ string, args ...string) error {
+		calls = append(calls, slices.Clone(args))
+		if len(args) >= 4 && args[2] == "worktree" && args[3] == "remove" {
+			return &Error{Code: ErrorCleanupFailed, Message: "git worktree cleanup failed", Err: os.ErrInvalid}
+		}
+		return nil
+	}
+	defer func() { runGitCommand = originalRunGitCommand }()
+
+	if err := manager.CleanupRun(t.Context(), sourceKey, runRoot); err != nil {
+		t.Fatalf("CleanupRun: %v", err)
+	}
+	if _, err := os.Stat(runRoot); !os.IsNotExist(err) {
+		t.Fatalf("expected run root removed, got err=%v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected remove+prune git calls, got %#v", calls)
+	}
+	if got := calls[0][len(calls[0])-1]; got != filepath.ToSlash(filepath.Clean(worktreeDir)) {
+		t.Fatalf("cleanup remove path = %q, want %q", got, filepath.ToSlash(filepath.Clean(worktreeDir)))
 	}
 }
 

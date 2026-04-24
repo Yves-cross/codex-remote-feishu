@@ -84,6 +84,8 @@ func gitRun(ctx context.Context, dir string, args ...string) error {
 	return err
 }
 
+var runGitCommand = gitRun
+
 func formatGitStderr(stderr string) string {
 	stderr = strings.TrimSpace(stderr)
 	if stderr == "" {
