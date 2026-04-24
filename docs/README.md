@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-24`
-> Summary: 更新文档索引并纳入上游可重试 turn 自动恢复设计草稿。
+> Summary: 更新文档索引并纳入页面 Mock 生成规范。
 
 ## 1. 适用范围
 
@@ -126,6 +126,7 @@
 - [install-deploy-design.md](./general/install-deploy-design.md)
 - [issue-orchestration-workflow.md](./general/issue-orchestration-workflow.md)
 - [local-self-upgrade-flow.md](./general/local-self-upgrade-flow.md)
+- [page-mock-guidelines.md](./general/page-mock-guidelines.md)
 - [release-roadmap-workflow.md](./general/release-roadmap-workflow.md)
 - [remote-surface-state-machine.md](./general/remote-surface-state-machine.md)
 - [relay-error-reporting-protocol.md](./general/relay-error-reporting-protocol.md)

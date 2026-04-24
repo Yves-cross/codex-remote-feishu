@@ -173,11 +173,22 @@ Prefer `./safe-push.sh` for happy-path push.
 
 Use `.codex/skills/issue-doc-sync/` when syncing closed GitHub issues back into `docs/`.
 
+### `build-page-mock`
+
+Use `.codex/skills/build-page-mock/` when working on:
+
+- `页面 Mock`
+- 浏览器可运行的页面原型 / interactive demo
+- `docs/draft/*mock*.html`
+- `web/src/**` 或 `internal/app/daemon/adminui/**` 下新增的 mock / preview 页面
+- 需要用假数据覆盖真实交互的用户可见页面预览
+
 ## Web Design Baseline
 
 For web page design/layout/copy/interaction changes, follow:
 
 - `docs/general/web-design-guidelines.md`
+- `docs/general/page-mock-guidelines.md` when the task includes page mocks or browser-runnable prototypes
 
 Trigger area:
 
