@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -175,47 +174,4 @@ func turnDiffPreviewSourcePath(snapshot *control.TurnDiffSnapshot) string {
 	threadID := shortStablePreviewID(strings.TrimSpace(snapshot.ThreadID))
 	turnID := shortStablePreviewID(strings.TrimSpace(snapshot.TurnID))
 	return filepath.Join("turn-diff", threadID, turnID+".json")
-}
-
-func (p *DriveMarkdownPreviewer) loadTurnDiffAnchorText(file turnDiffParsedFile, req FinalBlockPreviewRequest) (string, bool, bool) {
-	if text, ok := p.readTurnDiffPathText(strings.TrimSpace(file.NewPath), req); ok {
-		return text, true, true
-	}
-	if text, ok := p.readTurnDiffPathText(strings.TrimSpace(file.OldPath), req); ok {
-		return text, false, true
-	}
-	return "", false, false
-}
-
-func (p *DriveMarkdownPreviewer) readTurnDiffPathText(target string, req FinalBlockPreviewRequest) (string, bool) {
-	target = strings.TrimSpace(target)
-	if target == "" {
-		return "", false
-	}
-	roots := previewAllowedRoots(req.ThreadCWD, req.WorkspaceRoot, p.config.ProcessCWD)
-	if len(roots) == 0 {
-		return "", false
-	}
-	for _, candidate := range previewPathCandidates(target, roots) {
-		resolved, err := previewCanonicalPath(candidate)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			continue
-		}
-		if !previewPathWithinAnyRoot(resolved, roots) {
-			continue
-		}
-		info, err := os.Stat(resolved)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		content, err := os.ReadFile(resolved)
-		if err != nil {
-			continue
-		}
-		return string(content), true
-	}
-	return "", false
 }

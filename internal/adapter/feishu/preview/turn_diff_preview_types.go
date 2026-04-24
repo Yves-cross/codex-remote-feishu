@@ -56,6 +56,8 @@ type turnDiffParsedFile struct {
 	Index       int
 	OldPath     string
 	NewPath     string
+	OldBlobID   string
+	NewBlobID   string
 	ChangeKind  string
 	Binary      bool
 	RawLines    []string

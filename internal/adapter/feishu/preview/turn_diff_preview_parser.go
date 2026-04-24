@@ -132,11 +132,51 @@ func applyTurnDiffHeaderLine(file *turnDiffParsedFile, line string) {
 		file.ChangeKind = "delete"
 	case strings.HasPrefix(line, "Binary files "):
 		file.Binary = true
+	case strings.HasPrefix(line, "index "):
+		oldBlobID, newBlobID, ok := parseTurnDiffIndexLine(line)
+		if ok {
+			file.OldBlobID = oldBlobID
+			file.NewBlobID = newBlobID
+		}
 	case strings.HasPrefix(line, "--- "):
 		file.OldPath = parseTurnDiffPathMarkerLine(line)
 	case strings.HasPrefix(line, "+++ "):
 		file.NewPath = parseTurnDiffPathMarkerLine(line)
 	}
+}
+
+func parseTurnDiffIndexLine(line string) (string, string, bool) {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "index "))
+	if rest == "" {
+		return "", "", false
+	}
+	firstField := strings.Fields(rest)
+	if len(firstField) == 0 {
+		return "", "", false
+	}
+	parts := strings.SplitN(firstField[0], "..", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	oldBlobID, oldOK := normalizeTurnDiffBlobID(parts[0])
+	newBlobID, newOK := normalizeTurnDiffBlobID(parts[1])
+	if !oldOK || !newOK {
+		return "", "", false
+	}
+	return oldBlobID, newBlobID, true
+}
+
+func normalizeTurnDiffBlobID(value string) (string, bool) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return "", false
+	}
+	for _, ch := range value {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return "", false
+		}
+	}
+	return value, true
 }
 
 func normalizeTurnDiffParsedFile(file *turnDiffParsedFile) {
