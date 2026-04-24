@@ -19,7 +19,7 @@ import (
 )
 
 const defaultCookieName = "codex_remote_external_access"
-const DefaultIdleTTL = 30 * time.Minute
+const DefaultIdleTTL = 12 * time.Hour
 
 var (
 	ErrDisabled             = errors.New("external access disabled")
