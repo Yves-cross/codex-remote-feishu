@@ -11,7 +11,7 @@ func debugUsageEvents(surfaceID, formDefault, message string) []eventcontract.Ev
 }
 
 func upgradeUsageEvents(surfaceID, formDefault, message string) []eventcontract.Event {
-	return commandPageEvents(surfaceID, buildUpgradeRootPageView(install.InstallState{}, formDefault, "error", message))
+	return commandPageEvents(surfaceID, buildUpgradeRootPageView(install.InstallState{}, false, formDefault, "error", message))
 }
 
 func runCommandButton(label, commandText, style string, disabled bool) control.CommandCatalogButton {

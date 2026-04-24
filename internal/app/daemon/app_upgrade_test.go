@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/app/codexupgrade"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -444,7 +445,7 @@ func TestBuildUpgradeRootPageOnlyExposesUpgradeMenus(t *testing.T) {
 	catalog := buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
-	}, "", "", "")
+	}, false, "", "", "")
 	if !catalog.Interactive {
 		t.Fatalf("expected interactive upgrade catalog, got %#v", catalog)
 	}
@@ -463,6 +464,72 @@ func TestBuildUpgradeRootPageOnlyExposesUpgradeMenus(t *testing.T) {
 	summary := catalogSummaryText(&catalog)
 	if summary != "" {
 		t.Fatalf("expected upgrade root page to stay free of summary copy, got %#v", summary)
+	}
+}
+
+func TestBuildUpgradeRootPageCanExposeCodexUpgradeEntry(t *testing.T) {
+	catalog := buildUpgradeRootPageView(install.InstallState{
+		CurrentTrack:   install.ReleaseTrackProduction,
+		CurrentVersion: "v1.0.0",
+	}, true, "", "", "")
+	found := false
+	for _, button := range catalog.Sections[0].Entries[0].Buttons {
+		if button.CommandText == "/upgrade codex" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected upgrade root page to expose /upgrade codex button, got %#v", catalog.Sections[0].Entries[0].Buttons)
+	}
+}
+
+func TestUpgradeRootPageShowsCodexButtonOnlyForStandaloneInstallations(t *testing.T) {
+	gateway := newLifecycleGateway()
+	app, _ := newUpgradeTestApp(t, gateway)
+	app.codexUpgradeRuntime.Inspect = func(context.Context, codexupgrade.InspectOptions) (codexupgrade.Installation, error) {
+		return codexupgrade.Installation{
+			ConfiguredBinary: "codex",
+			EffectiveBinary:  "codex",
+			SourceKind:       codexupgrade.SourceStandaloneNPM,
+			PackageVersion:   "0.123.0",
+		}, nil
+	}
+
+	events := app.handleDaemonCommand(control.DaemonCommand{
+		Kind:             control.DaemonCommandUpgrade,
+		SurfaceSessionID: "surface-1",
+		Text:             "/upgrade",
+	})
+	page := catalogFromUIEvent(t, events[0])
+	foundCodex := false
+	for _, button := range page.Sections[0].Entries[0].Buttons {
+		if button.CommandText == "/upgrade codex" {
+			foundCodex = true
+			break
+		}
+	}
+	if !foundCodex {
+		t.Fatalf("expected /upgrade root page to expose /upgrade codex, got %#v", page.Sections[0].Entries[0].Buttons)
+	}
+
+	app.codexUpgradeRuntime.Inspect = func(context.Context, codexupgrade.InspectOptions) (codexupgrade.Installation, error) {
+		return codexupgrade.Installation{
+			ConfiguredBinary: "codex",
+			EffectiveBinary:  "/Applications/VSCode.app/codex",
+			SourceKind:       codexupgrade.SourceVSCodeBundle,
+		}, nil
+	}
+	events = app.handleDaemonCommand(control.DaemonCommand{
+		Kind:             control.DaemonCommandUpgrade,
+		SurfaceSessionID: "surface-1",
+		Text:             "/upgrade",
+	})
+	page = catalogFromUIEvent(t, events[0])
+	for _, button := range page.Sections[0].Entries[0].Buttons {
+		if button.CommandText == "/upgrade codex" {
+			t.Fatalf("expected /upgrade root page to hide /upgrade codex for bundle-backed installs, got %#v", page.Sections[0].Entries[0].Buttons)
+		}
 	}
 }
 
@@ -525,6 +592,14 @@ func TestParseUpgradeCommandTextRecognizesTrackCommands(t *testing.T) {
 	}
 	if parsed.Track != install.ReleaseTrackBeta {
 		t.Fatalf("track = %q, want beta", parsed.Track)
+	}
+
+	parsed, err = parseUpgradeCommandText("/upgrade codex")
+	if err != nil {
+		t.Fatalf("parseUpgradeCommandText codex: %v", err)
+	}
+	if parsed.Mode != upgradeCommandCodex {
+		t.Fatalf("codex mode = %q, want %q", parsed.Mode, upgradeCommandCodex)
 	}
 }
 

@@ -38,6 +38,7 @@ func TestParseFeishuTextActionRecognizesUpgradeCommand(t *testing.T) {
 		"/upgrade track",
 		"/upgrade track beta",
 		"/upgrade latest",
+		"/upgrade codex",
 		"/upgrade local",
 	}
 	for _, input := range tests {

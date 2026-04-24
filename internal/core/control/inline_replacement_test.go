@@ -321,6 +321,15 @@ func TestAllowsCommandCardResultReplacement(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "upgrade codex stays append-only",
+			action: Action{
+				Kind:    ActionUpgradeCommand,
+				Text:    "/upgrade codex",
+				Inbound: &ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+			},
+			want: false,
+		},
+		{
 			name: "bare debug root page can replace stamped command card",
 			action: Action{
 				Kind:    ActionDebugCommand,

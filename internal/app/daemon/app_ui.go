@@ -345,6 +345,10 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 				payload.View.TrackingKey,
 				operation.MessageID,
 			)
+			a.recordCodexUpgradeOwnerCardMessageLocked(
+				payload.View.TrackingKey,
+				operation.MessageID,
+			)
 			a.recordVSCodeMigrationFlowMessageLocked(payload.View.TrackingKey, operation.MessageID)
 			break
 		}

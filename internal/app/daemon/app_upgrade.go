@@ -35,6 +35,7 @@ const (
 	upgradeCommandShowTrack  upgradeCommandMode = "track_show"
 	upgradeCommandSetTrack   upgradeCommandMode = "track_set"
 	upgradeCommandLatest     upgradeCommandMode = "latest"
+	upgradeCommandCodex      upgradeCommandMode = "codex"
 	upgradeCommandDev        upgradeCommandMode = "dev"
 	upgradeCommandLocal      upgradeCommandMode = "local"
 )
@@ -129,13 +130,15 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []eventc
 
 	switch parsed.Mode {
 	case upgradeCommandShowStatus:
-		return commandPageEvents(command.SurfaceSessionID, buildUpgradeRootPageView(stateValue, "", "", ""))
+		return commandPageEvents(command.SurfaceSessionID, buildUpgradeRootPageView(stateValue, a.standaloneCodexUpgradeVisibleLocked(), "", "", ""))
 	case upgradeCommandShowTrack:
 		return trackSummaryEvents(command.SurfaceSessionID, stateValue)
 	case upgradeCommandSetTrack:
 		return a.setTrackEvents(command.SurfaceSessionID, stateValue, parsed.Track)
 	case upgradeCommandLatest:
 		return a.handleUpgradeLatestCommand(command, stateValue)
+	case upgradeCommandCodex:
+		return a.openCodexUpgradeOwnerFlowLocked(command)
 	case upgradeCommandDev:
 		return a.handleUpgradeDevCommand(command, stateValue)
 	case upgradeCommandLocal:

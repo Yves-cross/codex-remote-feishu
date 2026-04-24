@@ -388,7 +388,7 @@ func upgradeCommandRunsImmediately(text string) bool {
 		return false
 	}
 	switch {
-	case len(fields) == 2 && (fields[1] == "latest" || fields[1] == "dev" || fields[1] == "local"):
+	case len(fields) == 2 && (fields[1] == "latest" || fields[1] == "codex" || fields[1] == "dev" || fields[1] == "local"):
 		return true
 	case len(fields) == 3 && fields[1] == "track" && isReleaseTrackToken(fields[2]):
 		return true

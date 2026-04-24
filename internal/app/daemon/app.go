@@ -201,6 +201,9 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		finalPreviewTimeout:         90 * time.Second,
 		commandAnchorRecallDelay:    8 * time.Second,
 	}
+	app.codexUpgradeRuntime.Inspect = func(ctx context.Context, opts codexupgrade.InspectOptions) (codexupgrade.Installation, error) {
+		return codexupgrade.Inspect(ctx, opts), nil
+	}
 	app.codexUpgradeRuntime.LatestLookup = func(ctx context.Context) (string, error) {
 		return codexupgrade.LookupLatestVersion(ctx, codexupgrade.LatestVersionOptions{})
 	}

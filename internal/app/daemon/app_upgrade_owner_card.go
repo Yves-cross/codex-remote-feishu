@@ -296,6 +296,9 @@ func (a *App) openUpgradeLatestOwnerConfirmLocked(command control.DaemonCommand,
 }
 
 func (a *App) handleUpgradeOwnerFlowCommandLocked(command control.DaemonCommand) []eventcontract.Event {
+	if isCodexUpgradeOwnerFlowID(command.PickerID) {
+		return a.handleCodexUpgradeOwnerFlowCommandLocked(command)
+	}
 	switch strings.TrimSpace(command.OptionID) {
 	case upgradeOwnerActionCheck:
 		return a.startUpgradeOwnerCheckLocked(command)

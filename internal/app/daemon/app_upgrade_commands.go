@@ -51,6 +51,8 @@ func parseUpgradeCommandText(text string) (parsedUpgradeCommand, error) {
 			return parsedUpgradeCommand{Mode: upgradeCommandShowTrack}, nil
 		case "latest":
 			return parsedUpgradeCommand{Mode: upgradeCommandLatest}, nil
+		case "codex":
+			return parsedUpgradeCommand{Mode: upgradeCommandCodex}, nil
 		case "dev":
 			return parsedUpgradeCommand{Mode: upgradeCommandDev}, nil
 		case "local":

@@ -26,7 +26,7 @@ func TestBuildUpgradeStatusCatalogHidesShippingOnlyOptions(t *testing.T) {
 	catalog := buildUpgradeRootPageView(install.InstallState{
 		CurrentTrack:   install.ReleaseTrackProduction,
 		CurrentVersion: "v1.0.0",
-	}, "", "", "")
+	}, false, "", "", "")
 	assertCatalogUsesPlainTextContracts(t, &catalog)
 	summary := catalogSummaryText(&catalog)
 	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 3 {

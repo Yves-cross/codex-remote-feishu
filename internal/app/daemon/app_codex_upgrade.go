@@ -41,9 +41,15 @@ func (a *App) inspectStandaloneCodexInstallation(ctx context.Context) (codexupgr
 		return codexupgrade.Installation{}, err
 	}
 	configured, _ := resolvedCodexRealBinarySetting(loaded)
-	return codexupgrade.Inspect(ctx, codexupgrade.InspectOptions{
+	inspect := a.codexUpgradeRuntime.Inspect
+	if inspect == nil {
+		inspect = func(ctx context.Context, opts codexupgrade.InspectOptions) (codexupgrade.Installation, error) {
+			return codexupgrade.Inspect(ctx, opts), nil
+		}
+	}
+	return inspect(ctx, codexupgrade.InspectOptions{
 		ConfiguredBinary: configured,
-	}), nil
+	})
 }
 
 func (a *App) checkStandaloneCodexUpgrade(ctx context.Context, initiatorSurfaceID string) (codexUpgradeCheckResult, error) {
@@ -150,11 +156,19 @@ func (a *App) runStandaloneCodexUpgrade(tx *codexupgraderuntime.Transaction, onC
 	if err := installFn(ctx, tx.Install, tx.TargetVersion); err != nil {
 		runErr = err
 	} else {
-		verified := codexupgrade.Inspect(ctx, codexupgrade.InspectOptions{
+		inspect := a.codexUpgradeRuntime.Inspect
+		if inspect == nil {
+			inspect = func(ctx context.Context, opts codexupgrade.InspectOptions) (codexupgrade.Installation, error) {
+				return codexupgrade.Inspect(ctx, opts), nil
+			}
+		}
+		verified, err := inspect(ctx, codexupgrade.InspectOptions{
 			ConfiguredBinary: tx.Install.ConfiguredBinary,
 			NPMCommand:       tx.Install.NPMCommand,
 		})
-		if !verified.Upgradeable() {
+		if err != nil {
+			runErr = fmt.Errorf("verify codex installation after upgrade: %w", err)
+		} else if !verified.Upgradeable() {
 			runErr = fmt.Errorf("codex upgrade finished but runtime binary is no longer upgradeable")
 		} else if verified.CurrentVersion() != tx.TargetVersion {
 			runErr = fmt.Errorf("codex upgrade finished with version %s, want %s", firstNonEmpty(verified.CurrentVersion(), "unknown"), tx.TargetVersion)

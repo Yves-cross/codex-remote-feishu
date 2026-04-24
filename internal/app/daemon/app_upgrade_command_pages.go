@@ -28,11 +28,14 @@ func buildDebugRootPageView(stateValue install.InstallState, checkInFlight bool,
 	}
 }
 
-func buildUpgradeRootPageView(stateValue install.InstallState, formDefault, statusKind, statusText string) control.FeishuPageView {
+func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade bool, formDefault, statusKind, statusText string) control.FeishuPageView {
 	quickButtons := []control.CommandCatalogButton{
 		runCommandButton("查看 Track", "/upgrade track", "", false),
 		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
 		runCommandButton("开发构建", "/upgrade dev", "", false),
+	}
+	if showCodexUpgrade {
+		quickButtons = append(quickButtons, runCommandButton("Codex 升级", "/upgrade codex", "", false))
 	}
 	if install.CurrentBuildAllowsLocalUpgrade() {
 		quickButtons = append(quickButtons, runCommandButton("本地升级", "/upgrade local", "", false))
