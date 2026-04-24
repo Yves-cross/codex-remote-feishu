@@ -13,6 +13,14 @@ Prefer this command from the repo root:
 ./safe-push.sh
 ```
 
+Before repeatedly checking whether the branch is publish-ready, prefer:
+
+```bash
+bash scripts/dev/worktree-facts.sh
+```
+
+Do not default to raw `git push origin <branch>` when this helper fits the task.
+
 ## Default behavior
 
 The helper only automates the safe happy path:

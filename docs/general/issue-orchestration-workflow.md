@@ -1,8 +1,8 @@
 # Issue Orchestration Workflow
 
 > Type: `general`
-> Updated: `2026-04-20`
-> Summary: 公开版 issue workflow 基线，定义母子 issue、未拆分直做单元、显式状态标签、执行快照、产品决策门、结果回卷与 verifier close gate 的最小运行规则。
+> Updated: `2026-04-24`
+> Summary: 公开版 issue workflow 基线，定义母子 issue、未拆分直做单元、显式状态标签、执行快照、产品决策门、结果回卷、close-plan 与 verifier close gate 的最小运行规则。
 
 ## 1. 文档定位
 
@@ -484,6 +484,32 @@ verifier 结果应显式记录为以下三种之一：
 - 默认只关闭内部执行 issue，不自动替外部提单人关闭原 issue
 - 如需关闭原 issue，应由人类维护者显式决定，而不是作为 workflow 默认行为
 
+### 12.5 close-plan 先于 finish --close
+
+不要把第一次 `finish --close` 当作探测 close gate 的手段。
+
+在 issue 进入正常 close path 时，先运行一次 issue-side dry-run：
+
+```bash
+bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh close-plan --issue <number>
+```
+
+`close-plan` 至少负责预检这些阻塞项：
+
+- workflow contract 是否缺 `执行决策` / 执行快照必填字段
+- verifier close gate 是否已经通过
+- 子 issue 的父 issue durable 回卷是否已经到位
+- 母 issue 的 close-out 汇总视图是否已经补齐
+- 旧 issue 的 child/parent contract 是否仍停留在 legacy 形式
+
+只有 `close-plan` 已经返回 ready，才继续执行真正的：
+
+```bash
+bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh finish --issue <number> --close
+```
+
+这样做的目的，是避免一次失败的 close 尝试只用来告诉执行者“其实还缺 verifier/回卷/汇总”。
+
 ## 13. 收尾决策
 
 在任何正常 stop path 或 close path 之前，当前执行单元都必须显式记录：
@@ -512,3 +538,16 @@ verifier 结果应显式记录为以下三种之一：
   - 进入 verifier pass
 
 如果不想区分过多入口，只保留 `处理 #123` 也可以。
+
+## 15. 仓库 helper 的默认用途
+
+为减少确定性试错，repo 内默认优先使用这些 helper：
+
+- `bash scripts/dev/worktree-facts.sh`
+  - 看当前 worktree 是否干净、ahead/behind 状态，以及推荐 publish 动作
+- `bash scripts/dev/resolve-repo-path.sh <path>`
+  - 在打开文件前确认 repo 路径是否真实存在
+- `bash scripts/dev/gh-json-fields.sh <gh-subcommand...>`
+  - 在使用新的 `gh ... --json` 字段前先确认字段是否真的受支持
+
+同一个确定性失败命令，如果输入、环境和代码都没变，不应原样重跑第二次。

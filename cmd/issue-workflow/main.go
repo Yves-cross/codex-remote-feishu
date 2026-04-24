@@ -35,6 +35,8 @@ func run(ctx context.Context, args []string) (int, error) {
 		return runPrepare(ctx, svc, args[1:])
 	case "lint":
 		return runLint(ctx, svc, args[1:])
+	case "close-plan":
+		return runClosePlan(ctx, svc, args[1:])
 	case "finish":
 		return runFinish(ctx, svc, args[1:])
 	default:
@@ -123,6 +125,44 @@ func runLint(ctx context.Context, svc *issueworkflow.Service, args []string) (in
 		return 1, err
 	}
 	if lintHasErrors(result.Lint) {
+		return 3, nil
+	}
+	return 0, nil
+}
+
+func runClosePlan(ctx context.Context, svc *issueworkflow.Service, args []string) (int, error) {
+	fs := flag.NewFlagSet("close-plan", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	repoValue := fs.String("repo", "", "GitHub repo in owner/name form; defaults to origin remote")
+	issueNumber := fs.Int("issue", 0, "issue number")
+	modeValue := fs.String("mode", "full", "workflow mode: full or fast")
+	format := fs.String("format", "text", "output format: text or json")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0, nil
+		}
+		return 2, err
+	}
+	mode, err := parseWorkflowMode(*modeValue)
+	if err != nil {
+		return 2, err
+	}
+	repo, err := parseOptionalRepo(*repoValue)
+	if err != nil {
+		return 2, err
+	}
+	result, err := svc.ClosePlan(ctx, issueworkflow.ClosePlanOptions{
+		Repo:         repo,
+		IssueNumber:  *issueNumber,
+		WorkflowMode: mode,
+	})
+	if err != nil {
+		return 1, err
+	}
+	if err := writeOutput(os.Stdout, result, *format, renderClosePlan); err != nil {
+		return 1, err
+	}
+	if !result.CloseReady {
 		return 3, nil
 	}
 	return 0, nil
@@ -334,6 +374,35 @@ func renderFinish(result issueworkflow.FinishResult) string {
 	return strings.Join(lines, "\n")
 }
 
+func renderClosePlan(result issueworkflow.ClosePlanResult) string {
+	lines := []string{
+		fmt.Sprintf("repo: %s", result.Repo),
+		fmt.Sprintf("issue: #%d", result.IssueNumber),
+		fmt.Sprintf("workflow mode: %s", result.WorkflowMode),
+		fmt.Sprintf("close ready: %t", result.CloseReady),
+	}
+	if result.Issue != nil {
+		lines = append(lines, fmt.Sprintf("title: %s", result.Issue.Title))
+	}
+	lines = append(lines, renderLintSummary(result.Lint)...)
+	if len(result.Checks) > 0 {
+		lines = append(lines, "checks:")
+		for _, check := range result.Checks {
+			lines = append(lines, fmt.Sprintf("  - [%s] %s: %s", check.Status, check.Name, check.Message))
+		}
+	}
+	if len(result.NextActions) > 0 {
+		lines = append(lines, "next actions:")
+		for _, action := range result.NextActions {
+			lines = append(lines, fmt.Sprintf("  - %s: %s", action.Code, action.Summary))
+			if action.Command != "" {
+				lines = append(lines, fmt.Sprintf("    command: %s", action.Command))
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func lintHasErrors(report issueworkflow.LintReport) bool {
 	for _, finding := range report.Findings {
 		if finding.Severity == issueworkflow.LintSeverityError {
@@ -354,5 +423,5 @@ func finishHasFailures(checks []issueworkflow.CheckResult) bool {
 
 func usageError(format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
-	return fmt.Errorf("%s\nusage:\n  go run ./cmd/issue-workflow prepare --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow lint --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow finish --issue 123 [--comment-file path] [--close] [--skip-checks] [--mode full|fast]", msg)
+	return fmt.Errorf("%s\nusage:\n  go run ./cmd/issue-workflow prepare --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow lint --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow close-plan --issue 123 [--repo owner/name] [--mode full|fast] [--format text|json]\n  go run ./cmd/issue-workflow finish --issue 123 [--comment-file path] [--close] [--skip-checks] [--mode full|fast]", msg)
 }

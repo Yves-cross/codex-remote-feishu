@@ -159,3 +159,27 @@ type FinishResult struct {
 	IssueClosed        bool          `json:"issueClosed,omitempty"`
 	ProcessingReleased bool          `json:"processingReleased,omitempty"`
 }
+
+type ClosePlanOptions struct {
+	Repo         Repo
+	IssueNumber  int
+	WorkflowMode WorkflowMode
+}
+
+type ClosePlanAction struct {
+	Code          string `json:"code"`
+	BlockingCheck string `json:"blockingCheck,omitempty"`
+	Summary       string `json:"summary"`
+	Command       string `json:"command,omitempty"`
+}
+
+type ClosePlanResult struct {
+	Repo         string            `json:"repo"`
+	IssueNumber  int               `json:"issueNumber"`
+	WorkflowMode WorkflowMode      `json:"workflowMode"`
+	CloseReady   bool              `json:"closeReady"`
+	Issue        *Issue            `json:"issue,omitempty"`
+	Lint         LintReport        `json:"lint"`
+	Checks       []CheckResult     `json:"checks,omitempty"`
+	NextActions  []ClosePlanAction `json:"nextActions,omitempty"`
+}

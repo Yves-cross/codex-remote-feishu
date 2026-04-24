@@ -256,6 +256,7 @@ Default to the bundled wrapper instead of redoing raw `git` / `gh` sequences by 
 ```bash
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh prepare --issue <number>
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh lint --issue <number>
+bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh close-plan --issue <number>
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh finish --issue <number> [--comment-file path] [--close]
 ```
 
@@ -264,6 +265,7 @@ When you intentionally want the helper output to match the chosen workflow mode,
 ```bash
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh prepare --issue <number> --mode fast
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh lint --issue <number> --mode fast
+bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh close-plan --issue <number> --mode fast
 ```
 
 `--mode full` keeps the legacy behavior.
@@ -283,12 +285,17 @@ What each command owns:
 - `finish`
   - runs the fixed local mechanical checks
   - can post a comment, close the issue, and release `processing`
+- `close-plan`
+  - dry-runs the issue-side close gates
+  - reports whether close is ready
+  - returns explicit next actions for verifier / parent roll-up / parent summary / legacy contract blockers
 
 Use these commands at fixed times:
 
 1. Before substantive issue assessment, run `prepare`.
 2. After body or label edits, run `lint`.
-3. Before any normal stop path for the issue, run `finish`.
+3. Before `finish --close`, run `close-plan`.
+4. Before any normal stop path for the issue, run `finish`.
 
 Important:
 
@@ -306,6 +313,12 @@ In this repository, do not rely on bare `gh issue view <number>` for issue reads
 
 - The default `gh issue view` path may fail with a GraphQL error tied to deprecated classic Projects fields such as `repository.issue.projectCards`.
 - Prefer `gh issue view <number> --json ...` when you need structured issue data.
+- Before using unfamiliar `gh ... --json` fields, prefer:
+
+```bash
+bash scripts/dev/gh-json-fields.sh --check number,title,state issue view <number>
+```
+
 - If you only need raw issue contents or `--json` is still inconvenient, use REST directly:
 
 ```bash
@@ -322,6 +335,15 @@ Only spend extra reasoning on the parts the scripts cannot decide:
 - how to split staged delivery
 - what tests are sufficient
 - what the final completion or blocking comment should say
+
+For deterministic repo facts, also prefer the bundled helpers:
+
+```bash
+bash scripts/dev/worktree-facts.sh
+bash scripts/dev/resolve-repo-path.sh docs/general/issue-orchestration-workflow.md
+```
+
+Do not rerun the same deterministic failing command unchanged; first change the input or choose the right helper.
 
 ## Read Order
 
@@ -479,6 +501,7 @@ If the issue was already implementable and still is after reassessment:
 - when the overall issue is finished, do not stop at “last stage implemented locally”; continue through publish/close-out work in the same turn unless blocked
 - for medium/large issue work, default to an independent verifier pass before close-out; only skip when the user explicitly waived it or the task is explicitly `workflow:fast`
 - before close-out, record what local validation ran, whether verifier ran, and why any verifier skip was acceptable
+- before `finish --close`, run `close-plan` and clear every failing issue-side close gate first
 - if the current issue is a child issue, make sure its result has been durably rolled back into the parent issue before `finish --close`
 - if the current issue is a parent issue, make sure its total view already includes child roll-up state, verifier state, and current close judgment before `finish --close`
 - if the current issue is an older issue that predates the current workflow contract, rehab the missing parent/child link or close-out fields before attempting `finish --close`
@@ -549,7 +572,9 @@ If you cannot reach that terminal state, say exactly why and what remains blocke
 Before finishing the turn, prefer:
 
 ```bash
+bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh close-plan --issue <number>
 bash .codex/skills/issue-workflow-guardrail/scripts/issuectl.sh finish --issue <number> --comment-file <file> --close
 ```
 
-This runs the fixed local checks first, then closes the issue and releases `processing`.
+The first command must be green before using the second command.
+`finish --close` then runs the fixed local checks, closes the issue, and releases `processing`.

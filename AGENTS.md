@@ -35,6 +35,13 @@ For every new repository task in chat (not only GitHub issue workflow):
 - Do not mix unrelated edits into one commit by default.
 - When the user asks to "先提交" or similar, complete that commit before starting additional implementation work.
 
+## Deterministic Repo Helper Rule
+
+- For repeated tail-state or publish-state checks, prefer `bash scripts/dev/worktree-facts.sh` instead of manually rerunning `git status --short --branch`.
+- Before opening a guessed repo path, prefer `bash scripts/dev/resolve-repo-path.sh <path>` or `rg --files` so path probes do not fail by typo.
+- Before using unfamiliar `gh ... --json` fields, prefer `bash scripts/dev/gh-json-fields.sh <gh-subcommand...>` and `--check ...` when needed.
+- Do not rerun an identical deterministic failure unless some input, state, or environment has changed; first state what changed.
+
 ## Staged Execution Continuity Rule
 
 When the user explicitly asks staged rollout (for example: `按阶段推进`, `分阶段推进`, `阶段式推进`, `staged rollout`):
@@ -315,6 +322,7 @@ When corresponding logic carriers changed:
 - If implementation uncovers a red inconsistency that changes goals, acceptance, dependencies, or sibling issue assumptions, stop local patching and return the result to the orchestrating issue for replanning.
 - If issue work reaches a real product decision gate, do not guess. Add a dedicated `待决策` or `产品待拍板` section with the minimal decision packet, ask only for the smallest blocking decision, then resume after that decision is synced back into the issue body.
 - For medium/large finished issues, default to an independent verifier pass before close-out; only skip when the user explicitly waives it or the task is explicitly `workflow:fast`.
+- Before `finish --close`, run `issuectl close-plan` and fix any returned issue-side blockers instead of using the first close attempt as a probe.
 - If a child issue has a parent issue, do not `finish --close` it until the parent has received a durable roll-up of the child result.
 - If a parent issue is being closed, make sure its total view includes child roll-up state, verifier state, and current close judgment before `finish --close`.
 - If an older issue is resumed under the current workflow, do not let it enter close-out with a legacy contract; first add the missing current workflow fields that the close gate depends on.
