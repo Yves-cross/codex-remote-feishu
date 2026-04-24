@@ -652,3 +652,242 @@ v1 暂不纳入：
 不要反过来先改 backoff 或 prompt。
 
 如果分类层没先建立，再漂亮的 backoff 都只是更激进的 patch。
+
+## 10. 第二轮收口结论
+
+第二轮继续往下梳理后，这个问题已经不再是“还缺少事实”，而是“要不要把收口边界写清楚”。
+
+当前已经可以确认：`#418` 进入执行时，不应再把焦点放在 backoff、notice 文案或单个 suppress 标志上，而应先落下面五个结构。
+
+### 10.1 先有原始 outcome，再有产品 terminal cause
+
+当前 translator 往 orchestrator 上送的 failure，并不都是同一种 turn 终态：
+
+1. 真正的 `turn/completed`
+2. `turn/start` 失败后被折叠成 `EventTurnCompleted(status=failed)`
+3. `thread/resume` / `thread/start` follow-up 失败后被折叠成 `EventTurnCompleted(status=failed)`
+4. turn 中途先挂了 retryable problem，之后用户 `/stop`，最终又以 `interrupted` 收尾
+
+如果后续仍然让各处直接读：
+
+- `status`
+- `errorMessage`
+- `problem.Retryable`
+
+就会继续把“真正跑起来后中断”和“根本没成功进入 turn”混成一类。
+
+因此建议新增一层原始 carrier，例如 `RemoteTurnOutcome`，至少明确：
+
+- `FailureOrigin`
+- `StartAccepted`
+- `StartedTurnID`
+- `Problem`
+- `InterruptRequested`
+- `AnyOutputSeen`
+
+然后再从这层统一映射到产品 `TerminalCause`：
+
+- `completed`
+- `user_interrupted`
+- `upstream_retryable_failure`
+- `startup_failed`
+- `nonretryable_failure`
+- `transport_lost`
+
+这里的关键不是枚举名，而是：
+
+- `problem.Retryable` 不再直接驱动产品动作
+- `EventTurnCompleted` 也不再被当成唯一真实终态来源
+
+### 10.2 需要显式消息车道契约，不能继续靠 projector 猜
+
+第二轮确认后，当前系统真正缺的不是 reply anchor 本身，而是“这条消息该走哪条车道”的显式 contract。
+
+现状是：
+
+1. orchestrator 已经把 `SourceMessageID` / `replyAnchorForTurn(...)` 当成稳定事实往下传
+2. 但 projector 对很多 payload family 仍直接按当前默认行为发送：
+   - `RequestPayload` 顶层卡
+   - `PlanUpdatePayload` 顶层卡
+   - `ExecCommandProgressPayload` 顶层卡
+   - `ImageOutputPayload` 顶层图片
+3. daemon 还要再用 `attention` 去补偿“这张卡虽然没 reply，但需要把用户叫回来”
+
+这说明当前是：
+
+- 上游知道锚点是谁
+- 下游不知道这条消息是否应该消费这个锚点
+
+因此建议新增显式消息车道契约，至少拆成两维：
+
+1. 首次发送车道
+   - `reply_thread`
+   - `top_level`
+   - `inline_replace`
+2. 后续变更策略
+   - `append_only`
+   - `patch_same_message`
+   - `patch_same_message_tail_only`
+
+`DeliverySemantics` 继续负责可见性 / handoff 即可，不再让它兼管消息车道。
+
+这也给 `#418` 提供了一个不再需要额外产品拍板的收口点：
+
+1. 自动恢复链路内被本单改到的 turn-owned 业务输出，显式走 `reply_thread`
+2. 恢复状态卡显式走 `reply_thread + patch_same_message_tail_only`
+3. 现有未在本单范围内变更的其它 card family，可以先显式映射到当前行为，不再靠 projector 猜
+
+也就是说：
+
+- 这单先消灭“靠猜”
+- 不要求同一单里把全仓库所有既有 top-level 卡全部翻成 reply
+
+### 10.3 `tail-only patch gate` 需要 surface message ledger
+
+当前 owner-card runtime 只能回答：
+
+- 这张卡的 `message_id` 是多少
+- 当前 revision / phase 是多少
+
+它回答不了：
+
+- 这张卡后面是否已经 append 过别的消息
+- 它现在是不是时间线尾部最后一张
+
+而本轮拍板的产品规则是：
+
+- 恢复状态卡只有仍位于尾部时才允许继续 patch
+- 一旦后面出现任何新消息，就冻结，不再回头改历史卡
+
+所以这里不能继续复用现有 owner-card flow 当作 tail gate。
+
+建议新增 surface 级 append ledger，至少记录：
+
+- `MessageID`
+- `SurfaceSessionID`
+- `AppendSeq`
+- `Kind`
+- `ReplyToMessageID`
+
+并补一个 surface 级 `LastAppendSeq`。
+
+判断能否继续 patch：
+
+- `card.AppendSeq == surface.LastAppendSeq`
+
+这样 patch 资格就变成显式状态，而不是“技术上能 patch，所以就继续 patch”。
+
+### 10.4 自动恢复应建独立 `PendingRecoveryEpisode`
+
+继续沿用普通 queue item 的问题已经很明确：
+
+1. FIFO 天然不表达“恢复优先于普通消息”
+2. `completeRemoteTurn(...)` 当前顺序先失败、再 dispatch、最后才 `maybeScheduleAutoContinue...`
+3. 继续借 `QueueItemSourceAutoContinue` 伪装，会让恢复逻辑长期被普通队列语义绑架
+
+因此建议显式新增 `PendingRecoveryEpisode`，挂在 surface 级 runtime，下游 dispatch 顺序改成：
+
+1. 先看 recovery lane
+2. 再看普通 queue
+
+建议 episode 至少承载：
+
+- `EpisodeID`
+- `RootReplyAnchorMessageID`
+- `RootReplyAnchorPreview`
+- `TriggerKind`
+- `NoticeMessageID`
+- `NoticeAppendSeq`
+- `AttemptCount`
+- `ConsecutiveDryFailureCount`
+- `CurrentAttemptOutputSeen`
+- `PendingDueAt`
+- `LastProblem`
+- `State`
+
+这样：
+
+- 恢复优先级
+- 恢复状态展示
+- 恢复 backoff
+- `/stop` 对 recovery 的终止
+
+才不需要继续借 `autowhip` 或普通 queue 做兼容式表达。
+
+### 10.5 失败收口必须拆成 derive / finalize 两段
+
+当前最大的耦合点仍是 `completeRemoteTurn(...)`。
+
+它现在同时做：
+
+- turn 结束解释
+- queue item success/failure
+- 失败 notice
+- `dispatchNext(...)`
+- `finishSurfaceAfterWork(...)`
+- auto-continue 调度
+
+这就是“先失败、再恢复”语义冲突持续存在的根源。
+
+建议拆成两段：
+
+1. `deriveRemoteTurnOutcome(...)`
+   - 只负责把原始 outcome 算清楚
+2. `finalizeRemoteTurnOutcome(...)`
+   - 再根据 `TerminalCause` 决定：
+     - completed
+     - enter recovery
+     - final failure
+     - user interrupted
+
+只有明确不进入 recovery 时，才发最终失败答复。
+
+### 10.6 当前已达到可开工状态
+
+按本轮评估标准，`#418` 现在已经达到 execution closure。
+
+原因不是“实现已经想清楚到每一行”，而是关键结构判断已经拍实：
+
+1. turn 终态需要 `RemoteTurnOutcome -> TerminalCause` 双层收口
+2. 消息车道需要独立 contract，不能继续混在 `DeliverySemantics` 或 projector heuristics 里
+3. 恢复卡 tail gate 需要 surface ledger，而不是复用 owner-card 现状
+4. 自动恢复需要独立 `PendingRecoveryEpisode`
+5. `autowhip.retryable_failure` 不再是可长期保留的产品路径
+
+这五件事一旦固定，后续实现就不再需要重建大范围背景，也不需要再做产品级二次拍板。
+
+### 10.7 推荐实施顺序
+
+进入实现后，建议按下面顺序推进：
+
+1. `RemoteTurnOutcome` + `TerminalCause`
+2. `remoteTurnBinding` 补 `InterruptRequested` / `AnyOutputSeen`
+3. 显式消息车道契约
+4. surface message ledger
+5. `PendingRecoveryEpisode` + dispatch 优先级
+6. 恢复状态卡 / 最终失败答复 / backoff 接线
+7. 删除 `autowhip.retryable_failure` 旧产品语义
+
+如果顺序反过来，最终大概率只会得到一版“更聪明的旧 patch”。
+
+## 11. 当前 issue 的行为变更边界
+
+为了让后续实现不再在过程中重新猜边界，这里补一条明确约束。
+
+本 issue 进入实现后，允许且预期出现的现有行为变化包括：
+
+1. 上游可重试失败不再直接走旧 `autowhip.retryable_failure` notice / 计数 / backoff
+2. 自动恢复开启且实际进入 recovery 时，不再先外发一张终局红色失败卡，再补恢复卡
+3. 恢复状态卡会成为单次 episode 的唯一状态卡，并受 tail-only patch gate 约束
+4. 恢复链路里被本单接管的 turn-owned 业务输出，会显式消费 `Root Reply Anchor`，不再让恢复提示卡 message id 抢走父锚点
+
+本 issue 当前不要求同步完成的事情：
+
+1. 把全仓库所有既有 top-level business 卡统一翻成 reply lane
+2. 把 relay / wrapper / daemon / instance 侧所有可恢复错误面并入 recovery
+3. 在同一轮里顺手重构所有 attention 相关策略
+
+也就是说：
+
+- 这单会把 recovery 相关结构收干净
+- 但不会借题发挥，把所有历史车道产品语义一次性重写
