@@ -31,26 +31,16 @@ const (
 	ActionPolicyReadOnly    ActionPolicy = "read_only"
 )
 
-type FollowupPolicy string
-
-const (
-	FollowupPolicyReplaceCurrentCard FollowupPolicy = "replace_current_card"
-	FollowupPolicyPatchCurrentCard   FollowupPolicy = "patch_current_card"
-	FollowupPolicyAppendOnly         FollowupPolicy = "append_only"
-)
-
 type Frame struct {
-	OwnerKind      OwnerCardKind
-	Phase          Phase
-	ActionPolicy   ActionPolicy
-	FollowupPolicy FollowupPolicy
+	OwnerKind    OwnerCardKind
+	Phase        Phase
+	ActionPolicy ActionPolicy
 }
 
 func NormalizeFrame(frame Frame) Frame {
 	frame.OwnerKind = normalizeOwnerCardKind(frame.OwnerKind)
 	frame.Phase = NormalizePhase(frame.Phase)
 	frame.ActionPolicy = normalizeActionPolicy(frame.Phase, frame.ActionPolicy)
-	frame.FollowupPolicy = normalizeFollowupPolicy(frame.FollowupPolicy)
 	return frame
 }
 
@@ -143,16 +133,5 @@ func normalizeActionPolicy(phase Phase, policy ActionPolicy) ActionPolicy {
 		return ActionPolicyReadOnly
 	default:
 		return DefaultActionPolicy(phase)
-	}
-}
-
-func normalizeFollowupPolicy(policy FollowupPolicy) FollowupPolicy {
-	switch strings.TrimSpace(string(policy)) {
-	case string(FollowupPolicyReplaceCurrentCard):
-		return FollowupPolicyReplaceCurrentCard
-	case string(FollowupPolicyAppendOnly):
-		return FollowupPolicyAppendOnly
-	default:
-		return FollowupPolicyPatchCurrentCard
 	}
 }
