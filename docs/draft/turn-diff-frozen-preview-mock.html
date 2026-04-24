@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>变更查看</title>
+    <style>
+      :root {
+        --shell-bg: #f7f4ee;
+        --line: #e6ded1;
+        --line-strong: #d7ccbc;
+        --text: #1b1812;
+        --muted: #766a59;
+        --surface: rgba(255, 252, 247, 0.95);
+        --surface-soft: rgba(252, 248, 241, 0.96);
+        --surface-rail: linear-gradient(180deg, rgba(252, 249, 243, 0.98), rgba(244, 238, 228, 0.9));
+        --accent: #c06f3a;
+        --accent-soft: #fff4e7;
+        --green-bg: #eaf5ee;
+        --green-text: #28543d;
+        --red-bg: #fff0ed;
+        --red-text: #7b3629;
+        --hunk-bg: linear-gradient(180deg, rgba(255, 246, 220, 0.96), rgba(255, 242, 205, 0.84));
+        --hunk-text: #71571d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top left, rgba(255, 247, 230, 0.95), transparent 28%),
+          linear-gradient(180deg, #ece4d8 0%, #f4efe8 42%, #e9e0d1 100%);
+        color: var(--text);
+        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      body {
+        padding: 14px;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      .viewer-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        border: 1px solid rgba(211, 201, 185, 0.92);
+        border-radius: 24px;
+        overflow: hidden;
+        background: var(--shell-bg);
+        box-shadow: 0 20px 48px rgba(87, 63, 27, 0.12);
+      }
+
+      .mobile-bar {
+        display: none;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(250, 248, 243, 0.96);
+        flex: 0 0 auto;
+      }
+
+      .mobile-logo {
+        width: 22px;
+        height: 22px;
+        display: block;
+        flex: 0 0 auto;
+      }
+
+      .mobile-file-select {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
+      .mobile-file-select select {
+        width: 100%;
+        min-width: 0;
+        padding: 10px 14px;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: #fffdf8;
+        color: var(--text);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 272px minmax(0, 1fr);
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      .file-rail {
+        min-height: 0;
+        overflow: auto;
+        padding: 14px 12px 14px 14px;
+        border-right: 1px solid var(--line);
+        background: var(--surface-rail);
+        scrollbar-gutter: stable;
+      }
+
+      .file-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .file-pill {
+        width: 100%;
+        display: grid;
+        gap: 6px;
+        padding: 12px;
+        border: 1px solid transparent;
+        border-radius: 16px;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .file-pill:hover {
+        background: rgba(255, 252, 245, 0.82);
+        border-color: rgba(217, 207, 191, 0.7);
+      }
+
+      .file-pill.is-active {
+        background: var(--accent-soft);
+        border-color: #e6d2b6;
+        box-shadow: 0 8px 18px rgba(171, 121, 60, 0.08);
+      }
+
+      .file-pill__name {
+        display: block;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .file-pill__meta {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .file-pill__stats {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+      }
+
+      .file-pill__stat--add {
+        color: var(--green-text);
+      }
+
+      .file-pill__stat--remove {
+        color: var(--red-text);
+      }
+
+      .diff-panel {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .diff-scroll {
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow: auto;
+        padding: 18px;
+        background:
+          linear-gradient(180deg, rgba(247, 244, 238, 0.98), rgba(243, 237, 228, 0.96));
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .diff-stack {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .stack-item {
+        position: relative;
+        margin-top: 12px;
+      }
+
+      .stack-item:first-child {
+        margin-top: 0;
+      }
+
+      .stack-item--merge-prev {
+        margin-top: 0;
+      }
+
+      .stack-item--gap-expanded {
+        margin-top: 0;
+      }
+
+      .hunk-card,
+      .gap-card {
+        overflow: hidden;
+        border: 1px solid rgba(221, 212, 197, 0.92);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: 0 10px 24px rgba(102, 76, 40, 0.06);
+      }
+
+      .stack-item--merge-next .hunk-card {
+        border-bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        box-shadow: none;
+      }
+
+      .stack-item--merge-prev .hunk-card {
+        border-top: 0;
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+        box-shadow: none;
+      }
+
+      .stack-item--merge-next .diff-lines {
+        padding-bottom: 0;
+      }
+
+      .stack-item--merge-prev .hunk-header {
+        display: none;
+      }
+
+      .stack-item--merge-prev .diff-lines {
+        padding-top: 0;
+      }
+
+      .stack-item--gap-expanded .gap-card {
+        border-top: 0;
+        border-bottom: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: var(--surface-soft);
+      }
+
+      .stack-item--gap-expanded .diff-lines {
+        padding-top: 0;
+        padding-bottom: 0;
+      }
+
+      .hunk-anchor {
+        position: relative;
+        top: -12px;
+      }
+
+      .hunk-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 14px;
+        border-bottom: 1px solid rgba(231, 213, 161, 0.8);
+        background: var(--hunk-bg);
+        color: var(--hunk-text);
+      }
+
+      .hunk-title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .hunk-range {
+        font-size: 12px;
+        color: rgba(113, 87, 29, 0.84);
+      }
+
+      .diff-lines {
+        padding: 8px 0;
+      }
+
+      .gap-toggle {
+        width: 100%;
+        padding: 14px 16px;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .gap-toggle:hover {
+        background: rgba(246, 237, 223, 0.72);
+      }
+
+      .gap-toggle::before {
+        content: "+";
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        margin-right: 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: #fffdf8;
+        color: var(--accent);
+      }
+
+      .stack-item--gap-expanded .gap-toggle {
+        display: none;
+      }
+
+      .gap-body {
+        display: none;
+        position: relative;
+      }
+
+      .stack-item--gap-expanded .gap-body {
+        display: block;
+      }
+
+      .gap-collapse {
+        position: absolute;
+        top: 7px;
+        left: 12px;
+        z-index: 2;
+        width: 22px;
+        height: 22px;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: rgba(255, 253, 248, 0.95);
+        color: var(--accent);
+        font-size: 15px;
+        line-height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .gap-collapse:hover {
+        background: #fff8ee;
+      }
+
+      .diff-line {
+        display: grid;
+        grid-template-columns: 52px 52px minmax(0, 1fr);
+        align-items: stretch;
+        font-family: "SFMono-Regular", "Cascadia Code", "Consolas", monospace;
+        font-size: 12.5px;
+        line-height: 1.68;
+      }
+
+      .diff-line__old,
+      .diff-line__new {
+        padding: 0 10px 0 8px;
+        color: #8c7d6b;
+        text-align: right;
+        user-select: none;
+        border-right: 1px solid rgba(235, 228, 216, 0.92);
+      }
+
+      .diff-line__code {
+        min-width: 0;
+        padding: 0 14px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #3c332a;
+      }
+
+      .diff-line--add {
+        background: var(--green-bg);
+      }
+
+      .diff-line--add .diff-line__code {
+        color: var(--green-text);
+      }
+
+      .diff-line--remove {
+        background: var(--red-bg);
+      }
+
+      .diff-line--remove .diff-line__code {
+        color: var(--red-text);
+      }
+
+      @media (orientation: landscape) and (max-width: 980px) {
+        body {
+          padding: 0;
+        }
+
+        .viewer-shell {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .workspace {
+          grid-template-columns: 224px minmax(0, 1fr);
+        }
+
+        .file-rail {
+          padding: 12px 10px 12px 12px;
+        }
+
+        .diff-scroll {
+          padding: 14px;
+        }
+
+        .diff-line {
+          grid-template-columns: 44px 44px minmax(0, 1fr);
+          font-size: 12px;
+        }
+
+        .diff-line__code {
+          padding: 0 12px;
+        }
+      }
+
+      @media (orientation: portrait) {
+        body {
+          padding: 0;
+        }
+
+        .viewer-shell {
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .mobile-bar {
+          display: flex;
+        }
+
+        .workspace {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .file-rail {
+          display: none;
+        }
+
+        .diff-scroll {
+          padding: 14px;
+        }
+
+        .diff-line {
+          grid-template-columns: 44px 44px minmax(0, 1fr);
+          font-size: 12px;
+        }
+
+        .diff-line__code {
+          padding: 0 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="viewer-shell"></div>
+
+    <script>
+      const CONTEXT_RADIUS = 8;
+      const PREVIEW_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBmaWxsPSJub25lIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmciIHgxPSI5MiIgeTE9Ijc2IiB4Mj0iNDI0IiB5Mj0iNDM4IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiMxNjNENEQiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIwLjU2IiBzdG9wLWNvbG9yPSIjMTEyQjM5Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzBBMTgyNCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icGFuZWwiIHgxPSIxMjAiIHkxPSIyNDAiIHgyPSIzMjIiIHkyPSIzOTgiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iI0Y3RUJENyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNFN0Q1QjYiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJ1YmJsZSIgeDE9IjIwOCIgeTE9IjExMCIgeDI9IjQyMCIgeTI9IjI4MiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgogICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjMjBDQkI4Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzBGOTU4OCIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ibGluayIgeDE9IjIxNCIgeTE9IjI5MiIgeDI9IjMzNiIgeTI9IjE3NCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgogICAgICA8c3RvcCBzdG9wLWNvbG9yPSIjRkZCNTZGIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI0ZGRDQ4QyIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPHJlY3QgeD0iNTYiIHk9IjU2IiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjQwMCIgcng9IjEwNCIgZmlsbD0idXJsKCNiZykiLz4KICA8cmVjdCB4PSI1Ni41IiB5PSI1Ni41IiB3aWR0aD0iMzk5IiBoZWlnaHQ9IjM5OSIgcng9IjEwMy41IiBzdHJva2U9IiNGRkZERjgiIHN0cm9rZS1vcGFjaXR5PSIuMDgiLz4KICA8cGF0aCBkPSJNMjE5IDI5MkMyNTAgMjYzIDI4NCAyMjcgMzI1IDE4OCIgc3Ryb2tlPSJ1cmwoI2xpbmspIiBzdHJva2Utd2lkdGg9IjI2IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICA8cGF0aCBkPSJNMzExIDE4MSAzMzQgMTg3IDMyMiAyMDgiIHN0cm9rZT0idXJsKCNsaW5rKSIgc3Ryb2tlLXdpZHRoPSIyMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CiAgPHBhdGggZmlsbD0idXJsKCNidWJibGUpIiBkPSJNMjQ3IDExMGMtMjQgMC00MyAxOS00MyA0M3Y1MGMwIDI0IDE5IDQzIDQzIDQzaDIwdjMwYzAgMTIgMTQgMTggMjMgMTBsNDItNDBoNTZjMjQgMCA0My0xOSA0My00M3YtNTBjMC0yNC0xOS00My00My00M0gyNDdaIi8+CiAgPHJlY3QgeD0iMjQ0IiB5PSIxNTciIHdpZHRoPSIxMjIiIGhlaWdodD0iMTQiIHJ4PSI3IiBmaWxsPSIjRUNGRkZDIiBmaWxsLW9wYWNpdHk9Ii45MiIvPgogIDxyZWN0IHg9IjI0NCIgeT0iMTg2IiB3aWR0aD0iODgiIGhlaWdodD0iMTQiIHJ4PSI3IiBmaWxsPSIjRUNGRkZDIiBmaWxsLW9wYWNpdHk9Ii44MiIvPgogIDxyZWN0IHg9IjEwOCIgeT0iMjM2IiB3aWR0aD0iMjIyIiBoZWlnaHQ9IjE2MiIgcng9IjQ0IiBmaWxsPSJ1cmwoI3BhbmVsKSIvPgogIDxyZWN0IHg9IjEyOCIgeT0iMjYyIiB3aWR0aD0iMjIiIGhlaWdodD0iMjIiIHJ4PSIxMSIgZmlsbD0iIzE3MzQ0MyIgZmlsbC1vcGFjaXR5PSIuOTIiLz4KICA8cmVjdCB4PSIxNjAiIHk9IjI2MiIgd2lkdGg9IjIyIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxNzM0NDMiIGZpbGwtb3BhY2l0eT0iLjMiLz4KICA8cmVjdCB4PSIxOTIiIHk9IjI2MiIgd2lkdGg9IjIyIiBoZWlnaHQ9IjIyIiByeD0iMTEiIGZpbGw9IiMxNzM0NDMiIGZpbGwtb3BhY2l0eT0iLjE4Ii8+CiAgPHBhdGggZD0ibTE1MCAzMzQgMjgtMjhtLTI4IDI4IDI4IDI4IiBzdHJva2U9IiMxNzM0NDMiIHN0cm9rZS13aWR0aD0iMTgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgogIDxyZWN0IHg9IjE5NiIgeT0iMzI1IiB3aWR0aD0iNjgiIGhlaWdodD0iMTgiIHJ4PSI5IiBmaWxsPSIjMTczNDQzIi8+CiAgPHBhdGggZD0ibTI4MSAzOTEgMzMtMjUiIHN0cm9rZT0iI0NDQjI4NyIgc3Ryb2tlLXdpZHRoPSIxNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBvcGFjaXR5PSIuODUiLz4KPC9zdmc+Cg==";
+
+      function createMergedBuilder(oldStart, newStart) {
+        let oldLine = oldStart;
+        let newLine = newStart;
+        const lines = [];
+        return {
+          lines,
+          context(text) {
+            lines.push({ kind: "context", old: oldLine, now: newLine, text });
+            oldLine += 1;
+            newLine += 1;
+            return lines.length - 1;
+          },
+          add(text) {
+            lines.push({ kind: "add", old: "", now: newLine, text });
+            newLine += 1;
+            return lines.length - 1;
+          },
+          remove(text) {
+            lines.push({ kind: "remove", old: oldLine, now: "", text });
+            oldLine += 1;
+            return lines.length - 1;
+          }
+        };
+      }
+
+      function pushContext(builder, lines) {
+        lines.forEach((line) => builder.context(line));
+      }
+
+      function withStats(file) {
+        let added = 0;
+        let removed = 0;
+        for (const line of file.lines) {
+          if (line.kind === "add") {
+            added += 1;
+          } else if (line.kind === "remove") {
+            removed += 1;
+          }
+        }
+        return {
+          ...file,
+          stats: { added, removed }
+        };
+      }
+
+      function buildRouterFile() {
+        const b = createMergedBuilder(6, 6);
+        pushContext(b, [
+          "package daemon",
+          "",
+          "import (",
+          "\t\"context\"",
+          "\t\"strings\"",
+          ")",
+          "",
+          "type CommandRouter struct {",
+          "\tcurrentTarget func(context.Context) string",
+          "}",
+          "",
+          "func (r *CommandRouter) Route(ctx context.Context, raw string) error {",
+          "\tcommand := strings.TrimSpace(raw)",
+          "\tif command == \"\" {",
+          "\t\treturn ErrEmptyCommand",
+          "\t}"
+        ]);
+        const hunk1Start = b.add("\ttarget := currentTarget(ctx)");
+        b.add("\tif target == \"\" {");
+        b.add("\t\ttarget = \"workspace\"")
+        b.add("\t}");
+        b.add("\tcommand = normalizeCommand(command)");
+        b.add("\tif err := validateCommand(command); err != nil {");
+        b.add("\t\treturn err");
+        const hunk1End = b.add("\t}");
+        pushContext(b, [
+          "\treturn dispatch(ctx, target, command)",
+          "}",
+          "",
+          "func currentTarget(ctx context.Context) string {",
+          "\tvalue, _ := ctx.Value(targetContextKey{}).(string)",
+          "\treturn strings.TrimSpace(value)",
+          "}",
+          "",
+          "func normalizeCommand(raw string) string {",
+          "\tcommand := strings.TrimSpace(raw)",
+          "\tcommand = strings.ReplaceAll(command, \"\\n\", \" \")",
+          "\treturn strings.Join(strings.Fields(command), \" \")",
+          "}",
+          "",
+          "func validateCommand(command string) error {",
+          "\tif strings.HasPrefix(command, \"/use \") && !strings.Contains(command, \"--thread\") {",
+          "\t\treturn ErrMissingThreadTarget",
+          "\t}",
+          "\treturn nil",
+          "}",
+          "",
+          "func dispatch(ctx context.Context, target string, command string) error {"
+        ]);
+        const hunk2Start = b.remove("\treturn runCommand(ctx, command)");
+        b.add("\tcommand = attachTarget(command, target)");
+        b.add("\treturn runCommand(ctx, command)");
+        b.add("}");
+        b.add("");
+        b.add("func attachTarget(command string, target string) string {");
+        b.add("\tif target == \"workspace\" {");
+        b.add("\t\treturn command");
+        const hunk2End = b.add("\t}")
+        pushContext(b, [
+          "\treturn command + \" --thread \" + target",
+          "}"
+        ]);
+        return {
+          key: "router_file",
+          name: "app/command_router.go",
+          hunks: [
+            { title: "第 16-23 行", subtitle: "+7 / -0", start: hunk1Start, end: hunk1End },
+            { title: "第 44-50 行", subtitle: "+6 / -1", start: hunk2Start, end: hunk2End }
+          ],
+          lines: b.lines
+        };
+      }
+
+      function buildInstallPageFile() {
+        const b = createMergedBuilder(8, 8);
+        pushContext(b, [
+          "import { useEffect, useState } from \"react\";",
+          "",
+          "const steps = [",
+          "  { key: \"repo\", label: \"连接仓库\" },",
+          "  { key: \"auth\", label: \"完成登录\" },",
+          "  { key: \"ready\", label: \"开始使用\" },",
+          "];",
+          "",
+          "export default function InstallPage() {",
+          "  const [compact, setCompact] = useState(false);",
+          "  const [currentStep, setCurrentStep] = useState(\"repo\");"
+        ]);
+        const hunk1Start = b.remove("  const [currentStep, setCurrentStep] = useState(\"repo\");");
+        b.add("  const [currentStep, setCurrentStep] = useState(\"auth\");");
+        b.add("");
+        b.add("  useEffect(() => {");
+        b.add("    const updateCompact = () => setCompact(window.innerWidth < 960);");
+        b.add("    updateCompact();");
+        b.add("    window.addEventListener(\"resize\", updateCompact);");
+        b.add("    return () => window.removeEventListener(\"resize\", updateCompact);");
+        const hunk1End = b.add("  }, []);");
+        pushContext(b, [
+          "",
+          "  return (",
+          "    <main className={compact ? \"page compact\" : \"page\"}>",
+          "      <aside className=\"hero\">",
+          "        <StepList steps={steps} currentStep={currentStep} onChange={setCurrentStep} />",
+          "      </aside>",
+          "      <section className=\"content\">",
+          "        <StepPanel step={currentStep} />",
+          "      </section>",
+          "    </main>",
+          "  );",
+          "}",
+          "",
+          "function StepList({ steps, currentStep, onChange }) {",
+          "  return (",
+          "    <ol className=\"step-list\">",
+          "      {steps.map((step) => (",
+          "        <li key={step.key}>",
+          "          <button"
+        ]);
+        const hunk2Start = b.remove("            className={step.key === currentStep ? \"step is-active\" : \"step\"}");
+        b.add("            className={step.key === currentStep ? \"step is-active\" : \"step\"}");
+        b.add("            aria-current={step.key === currentStep ? \"step\" : undefined}");
+        b.add("            onClick={() => onChange(step.key)}");
+        b.add("          >");
+        b.add("            <span className=\"step-label\">{step.label}</span>");
+        const hunk2End = b.add("          </button>");
+        pushContext(b, [
+          "        </li>",
+          "      ))}",
+          "    </ol>",
+          "  );",
+          "}"
+        ]);
+        return {
+          key: "install_page",
+          name: "web/install/page.tsx",
+          hunks: [
+            { title: "第 11-18 行", subtitle: "+8 / -1", start: hunk1Start, end: hunk1End },
+            { title: "第 32-37 行", subtitle: "+5 / -1", start: hunk2Start, end: hunk2End }
+          ],
+          lines: b.lines
+        };
+      }
+
+      function buildStateMachineDocFile() {
+        const b = createMergedBuilder(6, 6);
+        pushContext(b, [
+          "# Remote Surface State Machine",
+          "",
+          "## Attach Flow",
+          "",
+          "- When no target is selected, `/use` opens the selector directly.",
+          "- When a workspace is already locked, the selector should stay in the same workspace.",
+          "- A detached thread cannot receive new input until attach succeeds.",
+          "",
+          "## Selection Prompt",
+          "",
+          "- Portrait mode keeps the current task in a top selector.",
+          "- Landscape mode moves the selector into a left-side list.",
+          "- The selected file should keep its previous reading position."
+        ]);
+        const hunk1Start = b.add("## Workspace Lock");
+        b.add("");
+        b.add("- If a thread already belongs to the current workspace, the workspace field becomes read-only.");
+        b.add("- The picker only shows sessions inside the locked workspace.");
+        b.add("- Leaving the workspace requires exiting the selection flow first.");
+        const hunk1End = b.add("- A locked workspace must still allow switching between eligible threads.");
+        pushContext(b, [
+          "",
+          "## Validation",
+          "",
+          "- Old cards should reject stale callbacks.",
+          "- A selection prompt must never attach across workspaces silently.",
+          "- If the available target set changes, the prompt refreshes in place.",
+          "- If refresh fails, the prompt falls back to a safe retry state.",
+          "",
+          "## Open Questions",
+          "",
+          "- Should a locked workspace hide other sessions entirely or show them disabled?",
+          "- Should the retry action keep the last selected thread?"
+        ]);
+        const hunk2Start = b.add("## Recovery");
+        b.add("");
+        b.add("- If the selected thread disappears, the picker returns to the session list.");
+        b.add("- If the workspace lock becomes invalid, the current selection is cleared.");
+        b.add("- The user can immediately choose another eligible thread without leaving the page.");
+        const hunk2End = b.add("- Returning to the same file restores the last local scroll position.");
+        pushContext(b, [
+          "",
+          "## Follow Mode",
+          "",
+          "- Follow mode keeps the current thread selected until the user chooses another target."
+        ]);
+        return {
+          key: "state_machine_doc",
+          name: "docs/remote-surface-state-machine.md",
+          hunks: [
+            { title: "第 14-18 行", subtitle: "+5 / -0", start: hunk1Start, end: hunk1End },
+            { title: "第 31-35 行", subtitle: "+5 / -0", start: hunk2Start, end: hunk2End }
+          ],
+          lines: b.lines
+        };
+      }
+
+      const FILES = [
+        buildRouterFile(),
+        buildInstallPageFile(),
+        buildStateMachineDocFile()
+      ].map(withStats);
+
+      const state = {
+        currentFileKey: FILES[0].key,
+        scrollByFile: {},
+        expandedGaps: {}
+      };
+
+      function isGapExpanded(fileKey, gapID) {
+        return !!(state.expandedGaps[fileKey] && state.expandedGaps[fileKey][gapID]);
+      }
+
+      function setGapExpanded(fileKey, gapID, expanded) {
+        state.expandedGaps[fileKey] ??= {};
+        state.expandedGaps[fileKey][gapID] = expanded;
+      }
+
+      function rememberCurrentScroll() {
+        const scroller = document.querySelector(".diff-scroll");
+        if (!scroller) {
+          return;
+        }
+        state.scrollByFile[state.currentFileKey] = scroller.scrollTop;
+      }
+
+      function buildSections(file) {
+        let cursor = 0;
+        const sections = [];
+        for (const hunk of file.hunks) {
+          let displayStart = Math.max(0, hunk.start - CONTEXT_RADIUS);
+          const displayEnd = Math.min(file.lines.length - 1, hunk.end + CONTEXT_RADIUS);
+          if (displayStart - cursor <= 4) {
+            displayStart = cursor;
+          }
+          if (displayStart > cursor) {
+            const gapLines = file.lines.slice(cursor, displayStart);
+            sections.push({
+              type: "gap",
+              id: `gap-${cursor}-${displayStart - 1}`,
+              lines: gapLines,
+              hiddenCount: gapLines.length
+            });
+          }
+          sections.push({
+            type: "hunk",
+            id: `hunk-${hunk.start}-${hunk.end}`,
+            title: hunk.title,
+            subtitle: hunk.subtitle,
+            lines: file.lines.slice(displayStart, displayEnd + 1)
+          });
+          cursor = displayEnd + 1;
+        }
+        return sections;
+      }
+
+      function renderApp() {
+        const root = document.getElementById("app");
+        root.innerHTML = `
+          <header class="mobile-bar">
+            <img class="mobile-logo" src="${PREVIEW_LOGO}" alt="" aria-hidden="true" />
+            <div class="mobile-file-select">
+              <label class="sr-only" for="mobile-file-select">选择文件</label>
+              <select id="mobile-file-select"></select>
+            </div>
+          </header>
+          <div class="workspace">
+            <aside class="file-rail">
+              <div class="file-list"></div>
+            </aside>
+            <section class="diff-panel">
+              <div class="diff-scroll">
+                <div class="diff-stack"></div>
+              </div>
+            </section>
+          </div>
+        `;
+
+        const fileList = root.querySelector(".file-list");
+        fileList.innerHTML = FILES.map((file) => `
+          <button class="file-pill" data-file-key="${file.key}">
+            <span class="file-pill__name">${escapeHTML(file.name)}</span>
+            <span class="file-pill__meta">
+              <span class="file-pill__stats">
+                <span class="file-pill__stat--add">+${file.stats.added}</span>
+                <span class="file-pill__stat--remove">-${file.stats.removed}</span>
+              </span>
+            </span>
+          </button>
+        `).join("");
+        fileList.addEventListener("click", (event) => {
+          const button = event.target.closest(".file-pill");
+          if (!button) return;
+          switchFile(button.dataset.fileKey);
+        });
+
+        const select = root.querySelector("#mobile-file-select");
+        select.innerHTML = FILES.map((file) => `
+          <option value="${file.key}">${escapeHTML(file.name)}</option>
+        `).join("");
+        select.addEventListener("change", () => switchFile(select.value));
+
+        root.querySelector(".diff-scroll").addEventListener("click", (event) => {
+          const openToggle = event.target.closest(".gap-toggle");
+          if (openToggle) {
+            rememberCurrentScroll();
+            setGapExpanded(state.currentFileKey, openToggle.dataset.gapId, true);
+            renderCurrentFile(false);
+            return;
+          }
+          const collapseToggle = event.target.closest(".gap-collapse");
+          if (collapseToggle) {
+            rememberCurrentScroll();
+            setGapExpanded(state.currentFileKey, collapseToggle.dataset.gapId, false);
+            renderCurrentFile(false);
+          }
+        });
+
+        renderCurrentFile(true);
+      }
+
+      function switchFile(nextKey) {
+        if (!nextKey || nextKey === state.currentFileKey) {
+          return;
+        }
+        const scroller = document.querySelector(".diff-scroll");
+        if (scroller) {
+          state.scrollByFile[state.currentFileKey] = scroller.scrollTop;
+        }
+        state.currentFileKey = nextKey;
+        renderCurrentFile(false);
+      }
+
+      function renderCurrentFile(initialRender) {
+        const file = FILES.find((item) => item.key === state.currentFileKey);
+        if (!file) {
+          return;
+        }
+
+        document.querySelectorAll(".file-pill").forEach((pill) => {
+          pill.classList.toggle("is-active", pill.dataset.fileKey === file.key);
+        });
+
+        const select = document.querySelector("#mobile-file-select");
+        if (select) {
+          select.value = file.key;
+        }
+
+        const sections = buildSections(file);
+        document.querySelector(".diff-stack").innerHTML = sections
+          .map((section, index) => renderSection(file, sections, section, index))
+          .join("");
+
+        const scroller = document.querySelector(".diff-scroll");
+        const restorePosition = state.scrollByFile[file.key];
+        const firstAnchor = document.querySelector(".hunk-anchor");
+        requestAnimationFrame(() => {
+          if (typeof restorePosition === "number") {
+            scroller.scrollTop = restorePosition;
+            return;
+          }
+          if (!firstAnchor) {
+            scroller.scrollTop = 0;
+            return;
+          }
+          if (initialRender || typeof restorePosition !== "number") {
+            scroller.scrollTop = Math.max(firstAnchor.offsetTop - 18, 0);
+          }
+        });
+      }
+
+      function renderSection(file, sections, section, index) {
+        const previous = sections[index - 1] || null;
+        const next = sections[index + 1] || null;
+        const previousExpanded = previous && previous.type === "gap" && isGapExpanded(file.key, previous.id);
+        const nextExpanded = next && next.type === "gap" && isGapExpanded(file.key, next.id);
+        const classes = ["stack-item"];
+        if (previousExpanded) {
+          classes.push("stack-item--merge-prev");
+        }
+        if (nextExpanded) {
+          classes.push("stack-item--merge-next");
+        }
+
+        if (section.type === "gap") {
+          const expanded = isGapExpanded(file.key, section.id);
+          if (expanded) {
+            classes.push("stack-item--gap-expanded");
+          }
+          return `
+            <div class="${classes.join(" ")}">
+              <div class="gap-card">
+                <button class="gap-toggle" type="button" data-gap-id="${section.id}">
+                  ${section.hiddenCount} 行未修改内容
+                </button>
+                <div class="gap-body">
+                  <button class="gap-collapse" type="button" data-gap-id="${section.id}" aria-label="收起">−</button>
+                  <div class="diff-lines">
+                    ${section.lines.map(renderLine).join("")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="${classes.join(" ")}">
+            <section class="hunk-card">
+              <div class="hunk-anchor"></div>
+              <div class="hunk-header">
+                <span class="hunk-title">${escapeHTML(section.title)}</span>
+                <span class="hunk-range">${escapeHTML(section.subtitle)}</span>
+              </div>
+              <div class="diff-lines">
+                ${section.lines.map(renderLine).join("")}
+              </div>
+            </section>
+          </div>
+        `;
+      }
+
+      function renderLine(line) {
+        return `
+          <div class="diff-line diff-line--${line.kind}">
+            <div class="diff-line__old">${line.old === "" ? "" : line.old}</div>
+            <div class="diff-line__new">${line.now === "" ? "" : line.now}</div>
+            <div class="diff-line__code">${escapeHTML(line.text)}</div>
+          </div>
+        `;
+      }
+
+      function escapeHTML(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll("\"", "&quot;");
+      }
+
+      renderApp();
+    </script>
+  </body>
+</html>

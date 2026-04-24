@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-24`
-> Summary: 更新文档索引并纳入页面 Mock 生成规范。
+> Summary: 更新文档索引并纳入页面 Mock 生成规范、frozen turn diff preview 设计稿和对应 mock。
 
 ## 1. 适用范围
 
@@ -154,6 +154,7 @@
 - [final-message-feidex-audit.md](./inprogress/final-message-feidex-audit.md)
 - [relay-daemon-autostart-design.md](./inprogress/relay-daemon-autostart-design.md)
 - [thread-description-unification-plan.md](./inprogress/thread-description-unification-plan.md)
+- [turn-diff-frozen-preview-design.md](./inprogress/turn-diff-frozen-preview-design.md)
 - [unified-binary-design.md](./inprogress/unified-binary-design.md)
 
 ### 6.4 `draft`
@@ -173,6 +174,7 @@
 - [non-linux-user-autostart-research.md](./draft/non-linux-user-autostart-research.md)
 - [plan-mode-feishu-support-design.md](./draft/plan-mode-feishu-support-design.md)
 - [repository-review-2026-04.md](./draft/repository-review-2026-04.md)
+- [turn-diff-frozen-preview-mock.html](./draft/turn-diff-frozen-preview-mock.html)
 - [upstream-retryable-turn-autocontinue-design.md](./draft/upstream-retryable-turn-autocontinue-design.md)
 - [web-preview-snapshot-design.md](./draft/web-preview-snapshot-design.md)
 - [web-install-admin-prerequisites-design.md](./draft/web-install-admin-prerequisites-design.md)
