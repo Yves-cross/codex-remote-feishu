@@ -21,6 +21,7 @@ type childSession struct {
 	stderr      io.Reader
 	waitErr     chan error
 	cancel      context.CancelFunc
+	ioCancel    context.CancelFunc
 	writeCancel context.CancelFunc
 }
 
@@ -67,10 +68,12 @@ func startChildSessionIO(ctx context.Context, session *childSession, parentStdou
 	if session == nil {
 		return
 	}
-	writeCtx, writeCancel := context.WithCancel(ctx)
+	ioCtx, ioCancel := context.WithCancel(ctx)
+	session.ioCancel = ioCancel
+	writeCtx, writeCancel := context.WithCancel(ioCtx)
 	session.writeCancel = writeCancel
 	go writeLoop(writeCtx, session.stdin, writeCh, errCh, debugf, rawLogger, reportProblem)
-	go stdoutLoop(ctx, session.stdout, parentStdout, writeCh, translator, client, commandResponses, errCh, debugf, rawLogger, reportProblem)
+	go stdoutLoop(ioCtx, session.stdout, parentStdout, writeCh, translator, client, commandResponses, errCh, debugf, rawLogger, reportProblem)
 	go streamCopy(session.stderr, parentStderr, errCh)
 }
 
@@ -80,6 +83,9 @@ func stopChildSession(session *childSession, debugf func(string, ...any)) {
 	}
 	if session.writeCancel != nil {
 		session.writeCancel()
+	}
+	if session.ioCancel != nil {
+		session.ioCancel()
 	}
 	if session.cmd != nil && session.cmd.Process != nil && session.cmd.Process.Pid > 0 {
 		if err := relayruntime.TerminateProcess(session.cmd.Process.Pid, wrapperChildStopGrace); err != nil && debugf != nil {

@@ -3,12 +3,39 @@ package wrapper
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/codex"
 )
+
+type blockingReader struct {
+	done chan struct{}
+	err  error
+}
+
+func newBlockingReader(err error) *blockingReader {
+	return &blockingReader{
+		done: make(chan struct{}),
+		err:  err,
+	}
+}
+
+func (r *blockingReader) Read(_ []byte) (int, error) {
+	<-r.done
+	return 0, r.err
+}
+
+func (r *blockingReader) Close() {
+	select {
+	case <-r.done:
+	default:
+		close(r.done)
+	}
+}
 
 func TestRestoreChildSessionContextClearsPendingStateOnCancel(t *testing.T) {
 	app := &App{
@@ -66,5 +93,32 @@ func TestRestoreChildSessionContextClearsPendingStateOnCancel(t *testing.T) {
 
 	if len(commandResponses.pending) != 0 {
 		t.Fatalf("expected command response tracker to be cleared, got %#v", commandResponses.pending)
+	}
+}
+
+func TestStdoutLoopIgnoresClosedPipeAfterSessionCancel(t *testing.T) {
+	reader := newBlockingReader(errors.New("read |0: file already closed"))
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	done := make(chan struct{})
+
+	go func() {
+		stdoutLoop(ctx, reader, io.Discard, make(chan []byte, 1), codex.NewTranslator("inst-1"), nil, newCommandResponseTracker(), errCh, nil, nil, nil)
+		close(done)
+	}()
+
+	cancel()
+	reader.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stdoutLoop to exit")
+	}
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("expected canceled session to suppress closed-pipe error, got %v", err)
+	default:
 	}
 }

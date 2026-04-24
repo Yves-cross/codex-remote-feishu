@@ -180,6 +180,9 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 		if err == io.EOF {
 			return
 		}
+		if ctx.Err() != nil || strings.Contains(err.Error(), "file already closed") {
+			return
+		}
 		errCh <- err
 		return
 	}
