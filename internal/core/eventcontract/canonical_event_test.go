@@ -125,3 +125,23 @@ func TestCanonicalSemanticsUsesExplicitOverride(t *testing.T) {
 		t.Fatalf("CanonicalSemantics() = %#v, want %#v", got, want)
 	}
 }
+
+func TestEventMetaNormalizesAttentionAnnotation(t *testing.T) {
+	meta := EventMeta{
+		Attention: AttentionAnnotation{
+			Text:          "  需要你回来处理：请确认这条请求。 \n",
+			MentionUserID: " ou-user-1 ",
+		},
+	}.Normalized()
+
+	want := AttentionAnnotation{
+		Text:          "需要你回来处理：请确认这条请求。",
+		MentionUserID: "ou-user-1",
+	}
+	if meta.Attention != want {
+		t.Fatalf("normalized attention = %#v, want %#v", meta.Attention, want)
+	}
+	if got := (EventMeta{Attention: AttentionAnnotation{Text: "只有文案"}}).Normalized().Attention; got != (AttentionAnnotation{}) {
+		t.Fatalf("expected incomplete attention annotation to normalize to zero, got %#v", got)
+	}
+}

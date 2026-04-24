@@ -1,8 +1,8 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-23`
-> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）也统一回到锁定当前工作区的 target picker。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、upgrade owner-flow、共享过程卡、attention ping 与 turn reply 语义见正文。
+> Updated: `2026-04-24`
+> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）也统一回到锁定当前工作区的 target picker。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、upgrade owner-flow、共享过程卡、原锚点 attention annotation 与 turn reply 语义见正文。
 
 ## 1. 文档定位
 
@@ -75,7 +75,7 @@
   - 负责把当前需要的 callback payload 字段写进卡片按钮/表单/下拉
   - 纯 projector builder / payload projection 现在已下沉到邻接子包 `internal/adapter/feishu/projector`；`internal/adapter/feishu/projector.go` 继续保留 `Projector` 入口、`Operation` 组装与少量兼容 wrapper
   - 对共享过程卡（当前承载 `exec_command` / `web_search` / `mcp_tool_call` / `dynamic_tool_call` / `file_change` / 被动 `context_compaction`），负责在首次发送时打开 `config.update_multi=true`，让后续同一窗口卡可被 `message.patch` 更新；首卡当前固定顶层 append，不继承 turn reply anchor。若当前窗口卡在 projector 层按“每行一个 element”的粒度已放不下，projector 会继续 patch 同一张卡：丢弃最旧可见行、把 `card_start_seq` 前移到当前窗口首行，并在顶部补一行“较早过程已省略，仅保留最近进度。”
-  - 对 turn timeline 文本（final reply、非 final assistant 文本、`用户补充`、`attention_ping` 这类轻量 text event），负责根据 `ReplyToMessageID` 选择 reply 发送；reply 失败时 gateway 会回退到普通 text/card create。`attention_ping` 若携带显式 mention 目标，则 gateway 会改走结构化 `post` 文本，把单目标 `at` 与正文一起投递；上游不再直接拼裸 `@xxx`
+  - 对 turn timeline 文本（非 final assistant 文本、`用户补充` 这类轻量 text event），负责根据 `ReplyToMessageID` 选择 reply 发送；reply 失败时 gateway 会回退到普通 text/card create。若某条 `OperationSendText` 携带显式 attention annotation，gateway 会改走结构化 `post` 文本，把单目标 `at` 与 attention 正文合并投递；当前正式启用的 attention 锚点都落在原卡片/主消息本身，不再派生独立 `attention_ping` timeline text
   - 对显式 `/compact` 这种 direct-command owner card，当前通过 patchable `FeishuPageView` 发送首卡，并依赖 `TrackingKey -> message_id` 回写把 running / terminal 状态继续 patch 回同一张卡
   - 当前是 selection / target-picker / page cards 最终 projection 的 owner：
     [internal/adapter/feishu/projector/target_picker.go](../../internal/adapter/feishu/projector/target_picker.go)
@@ -476,13 +476,13 @@ MCP request 卡片当前新增的可视语义：
   - 非 final 的 assistant 普通文本（当前只限 `render.BlockAssistantMarkdown` / `render.BlockAssistantCode`）现在也会沿用当前 turn reply anchor；是否真正可见仍由 surface verbosity 过滤决定，quiet 下不会因为 reply thread 改动而强行变可见
   - steer accept 成功后，orchestrator 现在会额外发一条 `UIEventTimelineText(type=steer_user_supplement)`；这条文本 reply 到当前 turn anchor，内容只镜像本次真正并入 turn 的用户补充，不复用 assistant block / notice 语义，也不重发图片或文件实体
   - `用户补充` 的图片计数当前只来自 steer 输入里的 `InputLocalImage` / `InputRemoteImage`；文件计数只来自结构化转发/引用文本中显式编码的 `file` 节点
-  - daemon 当前会先在 `[]UIEvent` 批处理入口选出 `attention_ping` 的 follow-up anchor，再只在对应原事件成功送达后追加 `UIEventTimelineText(type=attention_ping)`：
-    - 这条提醒不是新的 owner-card / request-card substrate，只是跟随原事件位置追加的一条轻量文本消息；若原事件未送达，或 `global runtime` notice 被节流 / suppress，则不会单独补发孤儿提醒
-    - request prompt started 命中 `approval` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` 时，当前按 `surface + request_id + revision` 只提醒一次；inline rerender 不会单独派生提醒；request dedupe 只在提醒真正送达后记账，因此原 request 卡投递失败后的同 revision 重试仍可补发提醒
-    - turn 结束批次里，`turn_failed` 优先于 final；若同批既有 final 又有 `提案计划` 卡，只派生一条“本轮已结束且有提案待确认”的提醒
-    - `attached_instance_transport_degraded`、`gateway_apply_failure`、`daemon_shutting_down` 这三类 `global runtime` notice 当前也会在原 notice 后面追加 attention ping，并继续复用同一套 family + dedupe key + throttle window
-    - 若原事件是 reply-chain（例如 final reply），提醒也 reply 到同一 anchor；若原事件本来是顶层 append（例如 request prompt、plan proposal、global runtime notice），提醒也保持顶层 append
-    - mention 目标固定取当前 surface 的 `ActorUserID`；若当前 surface 没有可用 actor identity，则直接跳过派生提醒，原事件照常投递
+  - daemon 当前会先在 `[]UIEvent` 批处理入口为原锚点事件打 attention annotation，不再追加独立 `UIEventTimelineText(type=attention_ping)`：
+    - 这条提醒不是新的 owner-card / request-card substrate，而是原事件自身的 delivery annotation；若原事件未送达，或 `global runtime` notice 被节流 / suppress，则不会额外补发第二条 `@` 消息
+    - request prompt started 命中 `approval` / `request_user_input` / `permissions_request_approval` / `mcp_server_elicitation` 时，当前按 `surface + request_id + revision` 只标注一次；inline rerender 不会重复标注；request dedupe 只在带 attention 的原 request 卡真正送达后记账，因此原 request 卡投递失败后的同 revision 重试仍可补发 attention
+    - turn 结束批次里，`turn_failed` 优先于 final；若同批既有 final 又有 `提案计划` 卡，则只把“本轮已结束且有提案待确认”的 attention 挂到 `提案计划` 卡上
+    - `attached_instance_transport_degraded`、`gateway_apply_failure`、`daemon_shutting_down` 这三类 `global runtime` notice 当前也会把 attention 直接挂到原 notice card，并继续复用同一套 family + dedupe key + throttle window
+    - 若原事件是 reply-chain（例如 final reply），attention 也跟随这张原消息 reply 到同一 anchor；若原事件本来是顶层 append（例如 request prompt、plan proposal、global runtime notice），attention 也保持顶层 append
+    - mention 目标固定取当前 surface 的 `ActorUserID`；若当前 surface 没有可用 actor identity，则直接跳过 attention annotation，原事件照常投递
   - 这两类新增 reply-thread 文本当前都属于 live delivery；`ThreadReplayRecord` 仍只负责 final reply / notice replay，中途脱离 surface 时不承诺补发完整 reply-thread 文本轨迹
 - `/history` 当前是单独的混合路径：
   - bare `/history`、`history_page`、`history_detail` 都在 inline-replace allow-list 里
@@ -696,13 +696,13 @@ MCP request 卡片当前新增的可视语义：
 - [internal/core/orchestrator/service_final_card_test.go](../../internal/core/orchestrator/service_final_card_test.go)
   - 锁定 final reply recent anchor 的 turn-scope 回查、同 turn 覆盖、lifecycle 匹配与 detach 清理
 - [internal/adapter/feishu/projector_snapshot_final_test.go](../../internal/adapter/feishu/projector_snapshot_final_test.go)
-  - 锁定 final reply 在普通场景仍保持单主卡；超长 Markdown / code final 会在 projector 层 split 成主卡 + `✅ 最后答复（续）`，且每张卡单独都能落在 Feishu payload 限制内；同时锁定非 final assistant 文本与 `timeline text` 会正确挂 reply anchor，`attention_ping` 会保留显式 mention carrier
+  - 锁定 final reply 在普通场景仍保持单主卡；超长 Markdown / code final 会在 projector 层 split 成主卡 + `✅ 最后答复（续）`，且每张卡单独都能落在 Feishu payload 限制内；同时锁定非 final assistant 文本与 `timeline text` 会正确挂 reply anchor，而挂在 final reply 上的 attention annotation 只会落在主卡，不会在 overflow cards 重复 `@`
 - [internal/app/daemon/app_final_card_test.go](../../internal/app/daemon/app_final_card_test.go)
   - 锁定同步 preview 超时后的 second-chance final patch：同卡 `message.patch`、无改进静默跳过、detach 后 anchor 失效即放弃，以及 split final reply 只回补主卡、不重发 overflow cards
 - [internal/adapter/feishu/gateway_target_picker_test.go](../../internal/adapter/feishu/gateway_target_picker_test.go)
   - 锁定 `target_picker_*` callback payload 能正确回到 `control.Action`
 - [internal/adapter/feishu/gateway_test.go](../../internal/adapter/feishu/gateway_test.go)
-  - 锁定 callback payload 解析、同步等待 replace 的触发条件（inline navigation + stamped command result replacement + dormant command submission anchor compatibility branch）、无 lifecycle 导航仍异步 ack、`OperationSendText` 的 reply/fallback 出站路径（含 mention 时改走 `post`），以及共享更新卡的 `message.patch` 出站路径
+  - 锁定 callback payload 解析、同步等待 replace 的触发条件（inline navigation + stamped command result replacement + dormant command submission anchor compatibility branch）、无 lifecycle 导航仍异步 ack、card/text attention annotation 的 reply/fallback 出站路径，以及共享更新卡的 `message.patch` 出站路径
 - [internal/app/daemon/app_upgrade_owner_card_test.go](../../internal/app/daemon/app_upgrade_owner_card_test.go)
   - 锁定 `/upgrade latest` checking / confirm / cancel 的 owner-card flow 会通过 page `TrackingKey -> message_id` 回写继续 patch 同一张升级卡
 - [internal/adapter/feishu/projector_exec_command_progress_test.go](../../internal/adapter/feishu/projector_exec_command_progress_test.go)
@@ -754,7 +754,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/app/daemon/app_global_runtime_notice_test.go](../../internal/app/daemon/app_global_runtime_notice_test.go)
   - 锁定 `global runtime` 提示维持独立 delivery lane，并按 family + dedupe key 做短窗节流 / pending queue 去重
 - [internal/app/daemon/app_attention_ping_test.go](../../internal/app/daemon/app_attention_ping_test.go)
-  - 锁定 request prompt / final reply / `turn_failed` / `提案计划` / targeted `global runtime` notice 的 attention ping 派生规则、reply/append 跟随原事件位置的语义、request anchor 失败后不会发孤儿提醒且重试仍可补发，以及 same-batch suppressed runtime notice 不会额外泄漏 ping
+  - 锁定 request prompt / final reply / `turn_failed` / `提案计划` / targeted `global runtime` notice 的 attention annotation 归属规则、reply/append 跟随原事件位置的语义、request anchor 失败后不会错误消耗 dedupe 且重试仍可补发，以及 same-batch suppressed runtime notice 不会额外泄漏第二条消息
 - [internal/app/daemon/app_menu_handoff_test.go](../../internal/app/daemon/app_menu_handoff_test.go)
   - 锁定 `/list` 在 normal / vscode 两种模式下都改走菜单同卡 handoff，vscode `/list` / `/use` / `/useall` 的空态、attach 结果与 `use_thread` 结果都会继续收口在原菜单卡；同时 `/help`、`/steerall`、`/compact`、`/sendfile` 会直接把菜单卡交给后续结果/owner/picker 卡继续收口，`/stop`、`/new`、`/follow`、`/detach` 也会直接 seal 当前菜单卡
 - [internal/app/daemon/app_submission_anchor_test.go](../../internal/app/daemon/app_submission_anchor_test.go)

@@ -22,7 +22,7 @@ func (a *App) handleUIEvents(ctx context.Context, events []eventcontract.Event) 
 
 func (a *App) handleUIEventsLocked(ctx context.Context, events []eventcontract.Event) {
 	_ = ctx
-	turnAttentionPings := a.planTurnAttentionPingsLocked(events)
+	turnAttention := a.planTurnAttentionAnnotationsLocked(events)
 	for index, event := range events {
 		event = event.Normalized()
 		if event.DaemonCommand != nil {
@@ -119,6 +119,17 @@ func (a *App) handleUIEventsLocked(ctx context.Context, events []eventcontract.E
 			continue
 		}
 		event = a.routeVSCodeMigrationFlowNoticeLocked(event)
+		attention := turnAttention[index]
+		if isGlobalRuntimeNotice && attention.Empty() {
+			attention = a.globalRuntimeAttentionAnnotationForEventLocked(event, time.Now(), false)
+		}
+		requestKey := ""
+		if attention.Empty() {
+			attention, requestKey = a.requestAttentionAnnotationCandidateLocked(event, time.Now())
+		}
+		if !attention.Empty() {
+			event.Meta.Attention = attention
+		}
 		if err := a.deliverUIEventLocked(context.Background(), event); err != nil {
 			chatID := a.service.SurfaceChatID(event.SurfaceSessionID)
 			log.Printf("gateway apply failed: chat=%s event=%s err=%v", chatID, event.Kind, err)
@@ -128,33 +139,11 @@ func (a *App) handleUIEventsLocked(ctx context.Context, events []eventcontract.E
 		deliveredAt := time.Now()
 		if isGlobalRuntimeNotice {
 			a.recordGlobalRuntimeNoticeLocked(event, deliveredAt)
-			if ping := a.globalRuntimeAttentionPingForEventLocked(event, deliveredAt, false); ping != nil {
-				a.deliverAttentionFollowupLocked(event, *ping)
-			}
 		}
-		if ping, requestKey := a.requestAttentionPingCandidateLocked(event, deliveredAt); ping != nil {
-			if a.deliverAttentionFollowupLocked(event, *ping) {
-				a.recordRequestAttentionPingLocked(requestKey, deliveredAt)
-			}
-		}
-		for _, ping := range turnAttentionPings[index] {
-			a.deliverAttentionFollowupLocked(event, ping)
+		if requestKey != "" {
+			a.recordRequestAttentionPingLocked(requestKey, deliveredAt)
 		}
 	}
-}
-
-func (a *App) deliverAttentionFollowupLocked(anchorEvent, followup eventcontract.Event) bool {
-	if err := a.deliverUIEventLocked(context.Background(), followup); err != nil {
-		log.Printf(
-			"attention follow-up dropped after delivered anchor: surface=%s anchor=%s followup=%s err=%v",
-			followup.SurfaceSessionID,
-			anchorEvent.Kind,
-			followup.Kind,
-			err,
-		)
-		return false
-	}
-	return true
 }
 
 func (a *App) deliverUIEvent(event eventcontract.Event) error {

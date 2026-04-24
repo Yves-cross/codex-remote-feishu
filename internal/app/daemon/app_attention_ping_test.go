@@ -10,7 +10,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/render"
 )
 
-func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) {
+func TestHandleUIEventsAddsAttentionToRequestOncePerRevision(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -37,24 +37,24 @@ func TestHandleUIEventsAddsAttentionPingForRequestOncePerRevision(t *testing.T) 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
-	if len(gateway.operations) != 3 {
-		t.Fatalf("expected request card + ping + request card, got %#v", gateway.operations)
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected request card with attention + rerender without attention, got %#v", gateway.operations)
 	}
 	if gateway.operations[0].Kind != feishu.OperationSendCard {
 		t.Fatalf("expected first operation to be request card, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].MentionUserID != "ou-user-1" {
-		t.Fatalf("expected second operation to be attention ping, got %#v", gateway.operations[1])
+	if gateway.operations[0].AttentionUserID != "ou-user-1" || gateway.operations[0].AttentionText != "需要你回来处理：请确认这条请求。" {
+		t.Fatalf("expected first request card to carry attention, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].ReplyToMessageID != "" || gateway.operations[1].Text != "需要你回来处理：请确认这条请求。" {
-		t.Fatalf("unexpected request attention ping: %#v", gateway.operations[1])
+	if gateway.operations[1].Kind != feishu.OperationSendCard {
+		t.Fatalf("expected rerender to keep original request card only, got %#v", gateway.operations[1])
 	}
-	if gateway.operations[2].Kind != feishu.OperationSendCard {
-		t.Fatalf("expected rerender to keep original request card only, got %#v", gateway.operations[2])
+	if gateway.operations[1].AttentionUserID != "" || gateway.operations[1].AttentionText != "" {
+		t.Fatalf("expected rerendered request card to skip duplicate attention, got %#v", gateway.operations[1])
 	}
 }
 
-func TestHandleUIEventsAddsAttentionPingForPayloadFirstRequest(t *testing.T) {
+func TestHandleUIEventsAddsAttentionToPayloadFirstRequest(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -77,15 +77,15 @@ func TestHandleUIEventsAddsAttentionPingForPayloadFirstRequest(t *testing.T) {
 
 	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
-	if len(gateway.operations) != 2 {
-		t.Fatalf("expected payload-first request card + ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected payload-first request card with attention, got %#v", gateway.operations)
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：请确认这条请求。" {
-		t.Fatalf("unexpected payload-first request attention ping: %#v", gateway.operations[1])
+	if gateway.operations[0].Kind != feishu.OperationSendCard || gateway.operations[0].AttentionText != "需要你回来处理：请确认这条请求。" {
+		t.Fatalf("unexpected payload-first request attention: %#v", gateway.operations[0])
 	}
 }
 
-func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *testing.T) {
+func TestHandleUIEventsRetriesRequestAttentionAfterAnchorDeliveryFailure(t *testing.T) {
 	gateway := &flakyGateway{failures: 1}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -117,21 +117,21 @@ func TestHandleUIEventsRetriesRequestAttentionPingAfterAnchorDeliveryFailure(t *
 	delete(app.pendingGlobalRuntimeNotices, "surface-1")
 	app.handleUIEvents(context.Background(), []eventcontract.Event{requestEvent})
 
-	if len(gateway.operations) != 2 {
-		t.Fatalf("expected successful retry to deliver request card and ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected successful retry to deliver request card with attention, got %#v", gateway.operations)
 	}
 	if gateway.operations[0].Kind != feishu.OperationSendCard {
 		t.Fatalf("expected retried request card first, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：请确认这条请求。" {
-		t.Fatalf("expected retried attention ping after successful request delivery, got %#v", gateway.operations[1])
+	if gateway.operations[0].AttentionText != "需要你回来处理：请确认这条请求。" {
+		t.Fatalf("expected retried attention after successful request delivery, got %#v", gateway.operations[0])
 	}
 	if got := len(app.feishuRuntime.attentionRequests); got != 1 {
-		t.Fatalf("expected successful request ping to record dedupe state, got %#v", app.feishuRuntime.attentionRequests)
+		t.Fatalf("expected successful request attention to record dedupe state, got %#v", app.feishuRuntime.attentionRequests)
 	}
 }
 
-func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing.T) {
+func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionAnchor(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -168,8 +168,8 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 		},
 	})
 
-	if len(gateway.operations) != 3 {
-		t.Fatalf("expected final + plan + ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected final + plan with attention on plan card, got %#v", gateway.operations)
 	}
 	if gateway.operations[0].Kind != feishu.OperationSendCard || gateway.operations[0].ReplyToMessageID != "om-source-1" {
 		t.Fatalf("expected final reply card first, got %#v", gateway.operations[0])
@@ -177,11 +177,11 @@ func TestHandleUIEventsMergesFinalAndPlanProposalIntoOneAttentionPing(t *testing
 	if gateway.operations[1].Kind != feishu.OperationSendCard || gateway.operations[1].ReplyToMessageID != "" {
 		t.Fatalf("expected plan proposal card second, got %#v", gateway.operations[1])
 	}
-	if gateway.operations[2].Kind != feishu.OperationSendText || gateway.operations[2].ReplyToMessageID != "" {
-		t.Fatalf("expected merged attention ping after plan proposal, got %#v", gateway.operations[2])
+	if gateway.operations[0].AttentionText != "" || gateway.operations[0].AttentionUserID != "" {
+		t.Fatalf("expected final reply card to stay unmentioned when plan proposal exists, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[2].Text != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
-		t.Fatalf("unexpected plan attention ping text: %#v", gateway.operations[2])
+	if gateway.operations[1].AttentionText != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
+		t.Fatalf("unexpected plan attention text: %#v", gateway.operations[1])
 	}
 }
 
@@ -215,15 +215,15 @@ func TestHandleUIEventsRecognizesPayloadFirstPlanProposal(t *testing.T) {
 		},
 	})
 
-	if len(gateway.operations) != 3 {
-		t.Fatalf("expected payload-first final + plan + ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected payload-first final + plan with attention on plan card, got %#v", gateway.operations)
 	}
-	if gateway.operations[2].Kind != feishu.OperationSendText || gateway.operations[2].Text != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
-		t.Fatalf("unexpected payload-first plan attention ping: %#v", gateway.operations[2])
+	if gateway.operations[1].Kind != feishu.OperationSendCard || gateway.operations[1].AttentionText != "需要你回来处理：本轮执行已结束，并生成了提案计划。" {
+		t.Fatalf("unexpected payload-first plan attention: %#v", gateway.operations[1])
 	}
 }
 
-func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
+func TestHandleUIEventsUsesFailureAttentionWhenTurnFails(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -252,18 +252,18 @@ func TestHandleUIEventsUsesFailureAttentionPingWhenTurnFails(t *testing.T) {
 		},
 	})
 
-	if len(gateway.operations) != 3 {
-		t.Fatalf("expected final card + failure notice + ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected final card + failure notice with attention, got %#v", gateway.operations)
 	}
-	if gateway.operations[2].Kind != feishu.OperationSendText || gateway.operations[2].ReplyToMessageID != "" {
-		t.Fatalf("expected failure attention ping to follow top-level notice, got %#v", gateway.operations[2])
+	if gateway.operations[1].Kind != feishu.OperationSendCard || gateway.operations[1].ReplyToMessageID != "" {
+		t.Fatalf("expected failure attention to stay on top-level notice card, got %#v", gateway.operations[1])
 	}
-	if gateway.operations[2].Text != "需要你回来处理：本轮执行已停止。" {
-		t.Fatalf("unexpected failure attention ping text: %#v", gateway.operations[2])
+	if gateway.operations[1].AttentionText != "需要你回来处理：本轮执行已停止。" {
+		t.Fatalf("unexpected failure attention text: %#v", gateway.operations[1])
 	}
 }
 
-func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *testing.T) {
+func TestHandleUIEventsAddsAttentionOnlyForTargetedGlobalRuntimeNotices(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "ou-user-1")
@@ -279,11 +279,11 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 			DeliveryDedupKey: "attached_instance_transport_degraded",
 		},
 	}})
-	if len(gateway.operations) != 2 {
-		t.Fatalf("expected targeted runtime notice to add one ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected targeted runtime notice to stay one card with attention, got %#v", gateway.operations)
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：当前连接状态异常。" {
-		t.Fatalf("unexpected transport attention ping: %#v", gateway.operations[1])
+	if gateway.operations[0].Kind != feishu.OperationSendCard || gateway.operations[0].AttentionText != "需要你回来处理：当前连接状态异常。" {
+		t.Fatalf("unexpected transport attention: %#v", gateway.operations[0])
 	}
 
 	gateway = &recordingGateway{}
@@ -301,14 +301,14 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 		},
 	}
 	app.handleUIEvents(context.Background(), []eventcontract.Event{runtimeNotice, runtimeNotice})
-	if len(gateway.operations) != 2 {
-		t.Fatalf("expected suppressed same-batch runtime notice not to emit extra ping, got %#v", gateway.operations)
+	if len(gateway.operations) != 1 {
+		t.Fatalf("expected suppressed same-batch runtime notice not to emit extra card, got %#v", gateway.operations)
 	}
 	if gateway.operations[0].Kind != feishu.OperationSendCard {
 		t.Fatalf("expected first runtime notice card, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：当前连接状态异常。" {
-		t.Fatalf("expected only one runtime attention ping after unsuppressed notice, got %#v", gateway.operations[1])
+	if gateway.operations[0].AttentionText != "需要你回来处理：当前连接状态异常。" {
+		t.Fatalf("expected only one runtime attention after unsuppressed notice, got %#v", gateway.operations[0])
 	}
 
 	gateway.operations = nil
@@ -324,11 +324,11 @@ func TestHandleUIEventsAddsAttentionPingOnlyForTargetedGlobalRuntimeNotices(t *t
 		},
 	}})
 	if len(gateway.operations) != 1 || gateway.operations[0].Kind != feishu.OperationSendCard {
-		t.Fatalf("expected non-targeted runtime notice to skip attention ping, got %#v", gateway.operations)
+		t.Fatalf("expected non-targeted runtime notice to skip attention, got %#v", gateway.operations)
 	}
 }
 
-func TestHandleUIEventsSkipsAttentionPingWithoutActorIdentity(t *testing.T) {
+func TestHandleUIEventsSkipsAttentionWithoutActorIdentity(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, serverIdentityForTest())
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "")
@@ -349,6 +349,9 @@ func TestHandleUIEventsSkipsAttentionPingWithoutActorIdentity(t *testing.T) {
 	}})
 
 	if len(gateway.operations) != 1 || gateway.operations[0].Kind != feishu.OperationSendCard {
-		t.Fatalf("expected original request card without attention ping when actor missing, got %#v", gateway.operations)
+		t.Fatalf("expected original request card without attention when actor missing, got %#v", gateway.operations)
+	}
+	if gateway.operations[0].AttentionText != "" || gateway.operations[0].AttentionUserID != "" {
+		t.Fatalf("expected original request card to stay unmentioned when actor missing, got %#v", gateway.operations[0])
 	}
 }

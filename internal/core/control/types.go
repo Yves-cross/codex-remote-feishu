@@ -468,7 +468,6 @@ type TimelineTextType string
 
 const (
 	TimelineTextSteerUserSupplement TimelineTextType = "steer_user_supplement"
-	TimelineTextAttentionPing       TimelineTextType = "attention_ping"
 )
 
 type TimelineText struct {
@@ -476,7 +475,6 @@ type TimelineText struct {
 	TurnID                string
 	Type                  TimelineTextType
 	Text                  string
-	MentionUserID         string
 	ReplyToMessageID      string
 	ReplyToMessagePreview string
 }

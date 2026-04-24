@@ -838,24 +838,71 @@ func TestProjectTimelineTextRepliesToTurnAnchor(t *testing.T) {
 	}
 }
 
-func TestProjectAttentionPingUsesMentionCarrier(t *testing.T) {
+func TestProjectRequestCardCarriesAttentionAnnotation(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
-		Kind: eventcontract.KindTimelineText,
-		TimelineText: &control.TimelineText{
-			Type:          control.TimelineTextAttentionPing,
-			Text:          "需要你回来处理：本轮执行已结束。",
-			MentionUserID: "ou-user-1",
+		Kind: eventcontract.KindRequest,
+		RequestView: &control.FeishuRequestView{
+			RequestID:   "req-1",
+			RequestType: "approval",
+			Title:       "需要确认",
+			Options: []control.RequestPromptOption{{
+				OptionID: "accept",
+				Label:    "允许执行",
+			}},
+		},
+		Meta: eventcontract.EventMeta{
+			Attention: eventcontract.AttentionAnnotation{
+				Text:          "需要你回来处理：请确认这条请求。",
+				MentionUserID: "ou-user-1",
+			},
 		},
 	})
-	if len(ops) != 1 || ops[0].Kind != OperationSendText {
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
 		t.Fatalf("unexpected ops: %#v", ops)
 	}
-	if ops[0].ReplyToMessageID != "" || ops[0].MentionUserID != "ou-user-1" {
-		t.Fatalf("unexpected attention ping operation: %#v", ops[0])
+	if ops[0].ReplyToMessageID != "" || ops[0].AttentionUserID != "ou-user-1" {
+		t.Fatalf("unexpected attention operation: %#v", ops[0])
 	}
-	if ops[0].Text != "需要你回来处理：本轮执行已结束。" {
-		t.Fatalf("unexpected attention ping text: %#v", ops[0])
+	if ops[0].AttentionText != "需要你回来处理：请确认这条请求。" {
+		t.Fatalf("unexpected attention text: %#v", ops[0])
+	}
+}
+
+func TestProjectFinalSplitCarriesAttentionOnlyOnPrimaryCard(t *testing.T) {
+	projector := NewProjector()
+	longBody := strings.Repeat("第一段说明包含较长的描述，以及 [设计文档](./docs/design.md)。\n第二行继续补充上下文。\n\n", 500)
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.KindBlockCommitted,
+		SourceMessageID: "msg-long",
+		Block: &render.Block{
+			Kind:  render.BlockAssistantMarkdown,
+			Text:  longBody,
+			Final: true,
+		},
+		Meta: eventcontract.EventMeta{
+			Attention: eventcontract.AttentionAnnotation{
+				Text:          "需要你回来处理：本轮执行已结束。",
+				MentionUserID: "ou-user-1",
+			},
+		},
+	})
+	if len(ops) < 2 {
+		t.Fatalf("expected oversized final reply to split into multiple cards, got %#v", ops)
+	}
+	if ops[0].AttentionUserID != "ou-user-1" || ops[0].AttentionText != "需要你回来处理：本轮执行已结束。" {
+		t.Fatalf("expected primary final card to carry attention, got %#v", ops[0])
+	}
+	if !containsMarkdownExact(renderedV2BodyElements(t, ops[0]), "<at id=ou-user-1></at> 需要你回来处理：本轮执行已结束。") {
+		t.Fatalf("expected primary final card payload to render in-card attention, got %#v", renderedV2BodyElements(t, ops[0]))
+	}
+	for i := 1; i < len(ops); i++ {
+		if ops[i].AttentionUserID != "" || ops[i].AttentionText != "" {
+			t.Fatalf("expected overflow final card %d to skip duplicate attention, got %#v", i, ops[i])
+		}
+		if containsMarkdownExact(renderedV2BodyElements(t, ops[i]), "<at id=ou-user-1></at> 需要你回来处理：本轮执行已结束。") {
+			t.Fatalf("expected overflow final card %d to omit in-card attention, got %#v", i, renderedV2BodyElements(t, ops[i]))
+		}
 	}
 }
 

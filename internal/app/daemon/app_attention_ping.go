@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 )
@@ -20,7 +19,7 @@ type attentionTurnBatchCandidate struct {
 	hasPlanProposal bool
 }
 
-func (a *App) planTurnAttentionPingsLocked(events []eventcontract.Event) map[int][]eventcontract.Event {
+func (a *App) planTurnAttentionAnnotationsLocked(events []eventcontract.Event) map[int]eventcontract.AttentionAnnotation {
 	if len(events) == 0 {
 		return nil
 	}
@@ -28,61 +27,61 @@ func (a *App) planTurnAttentionPingsLocked(events []eventcontract.Event) map[int
 	for index, event := range events {
 		a.recordTurnAttentionCandidateLocked(turns, index, event)
 	}
-	followups := map[int][]eventcontract.Event{}
+	annotations := map[int]eventcontract.AttentionAnnotation{}
 	for _, candidate := range turns {
-		if ping := a.turnAttentionPingLocked(candidate); ping != nil {
-			followups[candidate.anchorIndex] = append(followups[candidate.anchorIndex], *ping)
+		if attention := a.turnAttentionAnnotationLocked(candidate); !attention.Empty() {
+			annotations[candidate.anchorIndex] = attention
 		}
 	}
-	return followups
+	return annotations
 }
 
-func (a *App) requestAttentionPingCandidateLocked(event eventcontract.Event, now time.Time) (*eventcontract.Event, string) {
+func (a *App) requestAttentionAnnotationCandidateLocked(event eventcontract.Event, now time.Time) (eventcontract.AttentionAnnotation, string) {
 	if event.CanonicalKind() != eventcontract.KindRequest || event.InlineReplaceCurrentCard {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
 	requestPayload, ok := requestPayloadFromEvent(event)
 	if !ok {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
 	request := requestPayload.View
 	text, ok := attentionRequestPingText(request.RequestType)
 	if !ok {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
 	surfaceID := strings.TrimSpace(event.SurfaceSessionID)
 	requestID := strings.TrimSpace(request.RequestID)
 	if surfaceID == "" || requestID == "" {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
 	mentionUserID, ok := a.attentionPingMentionTarget(surfaceID)
 	if !ok {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
 	key := surfaceID + "::" + requestID + "::" + strconv.Itoa(request.RequestRevision)
 	if last := a.feishuRuntime.attentionRequests[key]; !last.IsZero() && now.Sub(last) < attentionRequestDedupTTL {
-		return nil, ""
+		return eventcontract.AttentionAnnotation{}, ""
 	}
-	return a.newAttentionPingEvent(surfaceID, mentionUserID, a.attentionPingReplyTarget(event), text), key
+	return newAttentionAnnotation(text, mentionUserID), key
 }
 
-func (a *App) globalRuntimeAttentionPingForEventLocked(event eventcontract.Event, now time.Time, honorSuppression bool) *eventcontract.Event {
+func (a *App) globalRuntimeAttentionAnnotationForEventLocked(event eventcontract.Event, now time.Time, honorSuppression bool) eventcontract.AttentionAnnotation {
 	normalized, ok := normalizeGlobalRuntimeNoticeEvent(event)
 	if !ok || normalized.Notice == nil {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	text, ok := attentionGlobalRuntimePingText(normalized.Notice.DeliveryFamily)
 	if !ok {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	if honorSuppression && a.shouldSuppressGlobalRuntimeNoticeLocked(normalized, now) {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	mentionUserID, ok := a.attentionPingMentionTarget(normalized.SurfaceSessionID)
 	if !ok {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
-	return a.newAttentionPingEvent(normalized.SurfaceSessionID, mentionUserID, a.attentionPingReplyTarget(normalized), text)
+	return newAttentionAnnotation(text, mentionUserID)
 }
 
 func (a *App) recordRequestAttentionPingLocked(key string, now time.Time) {
@@ -124,17 +123,17 @@ func (a *App) recordTurnAttentionCandidateLocked(candidates map[string]*attentio
 	}
 }
 
-func (a *App) turnAttentionPingLocked(candidate *attentionTurnBatchCandidate) *eventcontract.Event {
+func (a *App) turnAttentionAnnotationLocked(candidate *attentionTurnBatchCandidate) eventcontract.AttentionAnnotation {
 	if candidate == nil {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	surfaceID := strings.TrimSpace(candidate.anchorEvent.SurfaceSessionID)
 	if surfaceID == "" {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	mentionUserID, ok := a.attentionPingMentionTarget(surfaceID)
 	if !ok {
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
 	var text string
 	switch {
@@ -145,9 +144,9 @@ func (a *App) turnAttentionPingLocked(candidate *attentionTurnBatchCandidate) *e
 	case candidate.hasFinal:
 		text = "需要你回来处理：本轮执行已结束。"
 	default:
-		return nil
+		return eventcontract.AttentionAnnotation{}
 	}
-	return a.newAttentionPingEvent(surfaceID, mentionUserID, a.attentionPingReplyTarget(candidate.anchorEvent), text)
+	return newAttentionAnnotation(text, mentionUserID)
 }
 
 func (a *App) attentionPingMentionTarget(surfaceID string) (string, bool) {
@@ -155,39 +154,11 @@ func (a *App) attentionPingMentionTarget(surfaceID string) (string, bool) {
 	return mentionUserID, mentionUserID != ""
 }
 
-func (a *App) attentionPingReplyTarget(event eventcontract.Event) string {
-	chatID := strings.TrimSpace(a.service.SurfaceChatID(event.SurfaceSessionID))
-	if chatID == "" {
-		return ""
-	}
-	for _, operation := range a.projector.ProjectEvent(chatID, event.Normalized()) {
-		switch operation.Kind {
-		case feishu.OperationSendText, feishu.OperationSendCard, feishu.OperationSendImage:
-			return strings.TrimSpace(operation.ReplyToMessageID)
-		}
-	}
-	return ""
-}
-
-func (a *App) newAttentionPingEvent(surfaceID, mentionUserID, replyToMessageID, text string) *eventcontract.Event {
-	text = strings.TrimSpace(text)
-	mentionUserID = strings.TrimSpace(mentionUserID)
-	surfaceID = strings.TrimSpace(surfaceID)
-	if surfaceID == "" || mentionUserID == "" || text == "" {
-		return nil
-	}
-	replyToMessageID = strings.TrimSpace(replyToMessageID)
-	return &eventcontract.Event{
-		Kind:             eventcontract.KindTimelineText,
-		SurfaceSessionID: surfaceID,
-		SourceMessageID:  replyToMessageID,
-		TimelineText: &control.TimelineText{
-			Type:             control.TimelineTextAttentionPing,
-			Text:             text,
-			MentionUserID:    mentionUserID,
-			ReplyToMessageID: replyToMessageID,
-		},
-	}
+func newAttentionAnnotation(text, mentionUserID string) eventcontract.AttentionAnnotation {
+	return eventcontract.AttentionAnnotation{
+		Text:          text,
+		MentionUserID: mentionUserID,
+	}.Normalized()
 }
 
 func (a *App) pruneAttentionRequestsLocked(cutoff time.Time) {

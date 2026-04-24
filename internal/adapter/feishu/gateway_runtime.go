@@ -383,28 +383,37 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 
 func sendTextPayload(operation Operation) (string, string, error) {
 	text := strings.TrimSpace(operation.Text)
-	if text == "" {
-		return "text", `{"text":""}`, nil
-	}
-	if strings.TrimSpace(operation.MentionUserID) == "" {
+	attentionText := strings.TrimSpace(operation.AttentionText)
+	attentionUserID := strings.TrimSpace(operation.AttentionUserID)
+	if attentionUserID == "" || attentionText == "" {
+		if text == "" {
+			return "text", `{"text":""}`, nil
+		}
 		body, err := json.Marshal(feishuTextContent{Text: text})
 		if err != nil {
 			return "", "", err
 		}
 		return "text", string(body), nil
 	}
+	nodes := []feishuPostNode{
+		{
+			Tag:    "at",
+			UserID: attentionUserID,
+		},
+		{
+			Tag:  "text",
+			Text: " " + attentionText,
+		},
+	}
+	if text != "" {
+		nodes = append(nodes, feishuPostNode{
+			Tag:  "text",
+			Text: "\n" + text,
+		})
+	}
 	post := feishuLocalizedPostContent{
 		ZhCN: feishuPostContent{
-			Content: [][]feishuPostNode{{
-				{
-					Tag:    "at",
-					UserID: strings.TrimSpace(operation.MentionUserID),
-				},
-				{
-					Tag:  "text",
-					Text: " " + text,
-				},
-			}},
+			Content: [][]feishuPostNode{nodes},
 		},
 	}
 	body, err := json.Marshal(post)

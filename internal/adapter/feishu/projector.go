@@ -37,7 +37,8 @@ type Operation struct {
 	EmojiType            string
 	TimeSensitive        bool
 	Text                 string
-	MentionUserID        string
+	AttentionText        string
+	AttentionUserID      string
 	ImagePath            string
 	ImageBase64          string
 	CardTitle            string
@@ -92,6 +93,10 @@ func (p *Projector) SetSnapshotBinary(value string) {
 
 func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Operation {
 	event = event.Normalized()
+	return applyAttentionToOperations(p.projectEventBase(chatID, event), event.Meta.Attention)
+}
+
+func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) []Operation {
 	switch payload := event.CanonicalPayload().(type) {
 	case eventcontract.SnapshotPayload:
 		elements := p.projectSnapshotElements(payload.Snapshot)
@@ -216,7 +221,6 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 			ChatID:           chatID,
 			ReplyToMessageID: replyToMessageID,
 			Text:             text,
-			MentionUserID:    strings.TrimSpace(payload.TimelineText.MentionUserID),
 		}}
 	case eventcontract.PathPickerPayload:
 		view := payload.View
@@ -337,7 +341,16 @@ func (p *Projector) ProjectEvent(chatID string, event eventcontract.Event) []Ope
 		}
 		return ops
 	case eventcontract.BlockCommittedPayload:
-		return p.projectBlock(event.GatewayID, event.SurfaceSessionID, chatID, firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID), firstNonEmpty(event.SourceMessagePreview, event.Meta.SourceMessagePreview), payload.Block, payload.FileChangeSummary, payload.FinalTurnSummary)
+		return p.projectBlock(
+			event.GatewayID,
+			event.SurfaceSessionID,
+			chatID,
+			firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
+			firstNonEmpty(event.SourceMessagePreview, event.Meta.SourceMessagePreview),
+			payload.Block,
+			payload.FileChangeSummary,
+			payload.FinalTurnSummary,
+		)
 	case eventcontract.ImageOutputPayload:
 		if strings.TrimSpace(payload.ImageOutput.SavedPath) == "" && strings.TrimSpace(payload.ImageOutput.ImageBase64) == "" {
 			return nil
@@ -427,6 +440,22 @@ func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID
 		ops = append(ops, op)
 	}
 	return ops
+}
+
+func applyAttentionToOperations(operations []Operation, attention eventcontract.AttentionAnnotation) []Operation {
+	attention = attention.Normalized()
+	if len(operations) == 0 || attention.Empty() {
+		return operations
+	}
+	for i := range operations {
+		switch operations[i].Kind {
+		case OperationSendCard, OperationUpdateCard, OperationSendText:
+			operations[i].AttentionText = attention.Text
+			operations[i].AttentionUserID = attention.MentionUserID
+			return operations
+		}
+	}
+	return operations
 }
 
 func shouldUseWordBasedTitlePreview(text string) bool {

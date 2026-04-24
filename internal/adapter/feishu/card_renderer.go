@@ -77,6 +77,7 @@ func renderOperationCard(operation Operation, version cardEnvelopeVersion) map[s
 	if doc == nil {
 		doc = rawCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.CardElements)
 	}
+	doc = withAttentionCardDocument(doc, operation.AttentionText, operation.AttentionUserID)
 	if doc == nil {
 		return nil
 	}
@@ -243,6 +244,29 @@ func appendCardFooterButtonGroup(elements []map[string]any, buttons []map[string
 	}
 	elements = append(elements, group)
 	return elements
+}
+
+func withAttentionCardDocument(doc *cardDocument, attentionText, mentionUserID string) *cardDocument {
+	if doc == nil {
+		return nil
+	}
+	attention := renderCardAttentionMarkdown(attentionText, mentionUserID)
+	if attention == "" {
+		return doc
+	}
+	components := make([]cardComponent, 0, len(doc.Components)+1)
+	components = append(components, cardMarkdownComponent{Content: attention})
+	components = append(components, doc.Components...)
+	return newCardDocument(doc.Title, doc.ThemeKey, components...)
+}
+
+func renderCardAttentionMarkdown(attentionText, mentionUserID string) string {
+	attentionText = strings.TrimSpace(attentionText)
+	mentionUserID = strings.TrimSpace(mentionUserID)
+	if attentionText == "" || mentionUserID == "" {
+		return ""
+	}
+	return "<at id=" + mentionUserID + "></at> " + attentionText
 }
 
 func cloneCardMap(value map[string]any) map[string]any {

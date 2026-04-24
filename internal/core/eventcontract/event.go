@@ -15,6 +15,7 @@ type EventMeta struct {
 	DaemonLifecycleID    string
 	InlineReplaceMode    InlineReplaceMode
 	Semantics            DeliverySemantics
+	Attention            AttentionAnnotation
 }
 
 func (meta EventMeta) Normalized() EventMeta {
@@ -28,6 +29,7 @@ func (meta EventMeta) Normalized() EventMeta {
 		meta.InlineReplaceMode = InlineReplaceNone
 	}
 	meta.Semantics = meta.Semantics.Normalized()
+	meta.Attention = meta.Attention.Normalized()
 	return meta
 }
 

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
@@ -31,24 +30,24 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	})
-	if len(gateway.operations) < 3 {
-		t.Fatalf("expected queued error notice, attention ping, and current card after recovery, got %#v", gateway.operations)
+	if len(gateway.operations) < 2 {
+		t.Fatalf("expected queued error notice with attention and current card after recovery, got %#v", gateway.operations)
 	}
 	if !strings.Contains(gateway.operations[0].CardTitle, "链路错误") || gateway.operations[0].CardBody != "" || !strings.Contains(fmt.Sprint(gateway.operations[0].CardElements), "位置：gateway_apply") {
 		t.Fatalf("expected queued gateway failure notice first, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[1].Kind != feishu.OperationSendText || gateway.operations[1].Text != "需要你回来处理：飞书投递失败。" {
-		t.Fatalf("expected attention ping after queued gateway failure notice, got %#v", gateway.operations[1])
+	if gateway.operations[0].AttentionText != "需要你回来处理：飞书投递失败。" || gateway.operations[0].AttentionUserID != "user-1" {
+		t.Fatalf("expected queued gateway failure notice to carry attention, got %#v", gateway.operations[0])
 	}
-	if gateway.operations[2].CardTitle != "切换工作会话" {
-		t.Fatalf("expected recovered response to be target picker card, got %#v", gateway.operations[2])
+	if gateway.operations[1].CardTitle != "切换工作会话" {
+		t.Fatalf("expected recovered response to be target picker card, got %#v", gateway.operations[1])
 	}
-	if !strings.Contains(fmt.Sprint(gateway.operations[2].CardElements), "当前还没有可切换的工作区") {
-		t.Fatalf("expected recovered target picker to explain missing workspaces, got %#v", gateway.operations[2])
+	if !strings.Contains(fmt.Sprint(gateway.operations[1].CardElements), "当前还没有可切换的工作区") {
+		t.Fatalf("expected recovered target picker to explain missing workspaces, got %#v", gateway.operations[1])
 	}
 	sawConfirmSwitch := false
 	sawDisabledSwitch := false
-	for _, button := range operationCardButtons(gateway.operations[2]) {
+	for _, button := range operationCardButtons(gateway.operations[1]) {
 		textNode, _ := button["text"].(map[string]any)
 		label, _ := textNode["content"].(string)
 		switch label {
@@ -58,6 +57,6 @@ func TestDaemonFlushesQueuedGatewayFailureNoticeOnNextSuccess(t *testing.T) {
 		}
 	}
 	if !sawConfirmSwitch || !sawDisabledSwitch {
-		t.Fatalf("expected recovered target picker to expose disabled switch action, got %#v", gateway.operations[2])
+		t.Fatalf("expected recovered target picker to expose disabled switch action, got %#v", gateway.operations[1])
 	}
 }

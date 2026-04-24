@@ -107,11 +107,11 @@ func (a *App) flushPendingGlobalRuntimeNoticesLocked(surfaceID string) {
 	}
 	for _, event := range pending {
 		event, _ = normalizeGlobalRuntimeNoticeEvent(event)
+		if attention := a.globalRuntimeAttentionAnnotationForEventLocked(event, time.Now(), false); !attention.Empty() {
+			event.Meta.Attention = attention
+		}
 		if err := a.deliverUIEventLocked(context.Background(), event); err != nil {
 			return
-		}
-		if ping := a.globalRuntimeAttentionPingForEventLocked(event, time.Now(), false); ping != nil {
-			a.deliverAttentionFollowupLocked(event, *ping)
 		}
 		a.recordGlobalRuntimeNoticeLocked(event, time.Now())
 	}

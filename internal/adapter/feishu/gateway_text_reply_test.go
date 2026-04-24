@@ -164,8 +164,8 @@ func TestApplySendTextMentionRepliesWithPostPayload(t *testing.T) {
 		ReceiveID:        "oc_chat",
 		ReceiveIDType:    "chat_id",
 		ReplyToMessageID: "om-source-1",
-		Text:             "请处理这条请求。",
-		MentionUserID:    "ou-user-1",
+		AttentionText:    "请处理这条请求。",
+		AttentionUserID:  "ou-user-1",
 	}})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -232,8 +232,8 @@ func TestApplySendTextMentionFallsBackToCreateWhenReplyFails(t *testing.T) {
 		ReceiveID:        "oc_chat",
 		ReceiveIDType:    "chat_id",
 		ReplyToMessageID: "om-source-1",
-		Text:             "本轮执行已结束。",
-		MentionUserID:    "ou-user-1",
+		AttentionText:    "本轮执行已结束。",
+		AttentionUserID:  "ou-user-1",
 	}})
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
