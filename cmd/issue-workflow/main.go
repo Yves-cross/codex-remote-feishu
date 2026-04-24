@@ -9,9 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/issueworkflow"
 )
+
+const defaultStaleProcessingAfter = 6 * time.Hour
 
 func main() {
 	code, err := run(context.Background(), os.Args[1:])
@@ -51,6 +54,8 @@ func runPrepare(ctx context.Context, svc *issueworkflow.Service, args []string) 
 	issueNumber := fs.Int("issue", 0, "issue number")
 	comments := fs.Int("comments", 8, "recent comments to include in the snapshot")
 	claim := fs.Bool("claim-processing", true, "claim the processing label when available")
+	reclaimStale := fs.Bool("reclaim-stale-processing", true, "reclaim a stale existing processing label when the latest issue activity is older than the stale window")
+	staleAfter := fs.Duration("stale-processing-after", defaultStaleProcessingAfter, "consider an existing processing label stale after this age; set 0 to disable stale reclaim")
 	snapshotPath := fs.String("snapshot-file", "", "where to write the prepare snapshot JSON")
 	modeValue := fs.String("mode", "full", "workflow mode: full or fast")
 	format := fs.String("format", "text", "output format: text or json")
@@ -69,12 +74,14 @@ func runPrepare(ctx context.Context, svc *issueworkflow.Service, args []string) 
 		return 2, err
 	}
 	result, err := svc.Prepare(ctx, issueworkflow.PrepareOptions{
-		Repo:            repo,
-		IssueNumber:     *issueNumber,
-		CommentsLimit:   *comments,
-		ClaimProcessing: *claim,
-		SnapshotPath:    strings.TrimSpace(*snapshotPath),
-		WorkflowMode:    mode,
+		Repo:                   repo,
+		IssueNumber:            *issueNumber,
+		CommentsLimit:          *comments,
+		ClaimProcessing:        *claim,
+		ReclaimStaleProcessing: *reclaimStale,
+		StaleProcessingAfter:   *staleAfter,
+		SnapshotPath:           strings.TrimSpace(*snapshotPath),
+		WorkflowMode:           mode,
 	})
 	if err != nil {
 		return 1, err
@@ -337,6 +344,12 @@ func renderLintSummary(report issueworkflow.LintReport) []string {
 			} else {
 				lines = append(lines, "execution snapshot: ok")
 			}
+		}
+		if report.WorkflowGuardrails.CloseoutTailOnly {
+			lines = append(lines, "execution state: close-out tail only")
+		}
+		if len(report.WorkflowGuardrails.SnapshotContradictions) > 0 {
+			lines = append(lines, "execution snapshot contradictions: "+strings.Join(report.WorkflowGuardrails.SnapshotContradictions, "; "))
 		}
 	}
 	if len(report.Findings) > 0 {

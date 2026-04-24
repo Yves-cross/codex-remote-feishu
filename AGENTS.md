@@ -311,6 +311,7 @@ When corresponding logic carriers changed:
 - When an issue is implementable and not truly single-stage, keep `建议范围`, `实现参考`, `检查参考`, and `收尾参考` current in the issue body.
 - For multi-stage or multi-turn issue work, keep a durable execution snapshot in the issue body or linked design doc, including at least `当前执行点`, `下一步`, `最后一致状态`, `未完成尾项`, and `恢复步骤`.
 - On resume, do not continue from chat memory alone. Re-read the execution snapshot and verify it against the current code and latest issue state before acting.
+- If `未完成尾项` only contains close-out work such as verifier / commit / push / finish, then `当前执行点` and `下一步` must also stay in close-out semantics; do not leave snapshot text that still points at more implementation or validation.
 - For unsplit implementable issues, a recorded phase/stage is execution sequencing only; it does not create a default stop point.
 - After each completed phase on an unsplit issue, explicitly decide only among:
   - issue is actually complete
@@ -323,6 +324,7 @@ When corresponding logic carriers changed:
 - If issue work reaches a real product decision gate, do not guess. Add a dedicated `待决策` or `产品待拍板` section with the minimal decision packet, ask only for the smallest blocking decision, then resume after that decision is synced back into the issue body.
 - For medium/large finished issues, default to an independent verifier pass before close-out; only skip when the user explicitly waives it or the task is explicitly `workflow:fast`.
 - Before `finish --close`, run `issuectl close-plan` and fix any returned issue-side blockers instead of using the first close attempt as a probe.
+- Treat a stale naked `processing` label as a recoverable lease, not a permanent lock; the default `prepare` path may reclaim it after the configured stale window, and resumed work must refresh the issue snapshot before continuing.
 - If a child issue has a parent issue, do not `finish --close` it until the parent has received a durable roll-up of the child result.
 - If a parent issue is being closed, make sure its total view includes child roll-up state, verifier state, and current close judgment before `finish --close`.
 - If an older issue is resumed under the current workflow, do not let it enter close-out with a legacy contract; first add the missing current workflow fields that the close gate depends on.

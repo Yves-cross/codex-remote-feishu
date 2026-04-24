@@ -97,12 +97,24 @@ func (s *Service) Prepare(ctx context.Context, opts PrepareOptions) (PrepareResu
 	result.Lint = BuildLintReport(issue, opts.WorkflowMode)
 	if opts.ClaimProcessing {
 		if hasLabel(issue.Labels, processingLabel) {
-			result.Status = PrepareStatusBlockedProcessingClaim
+			if canReclaimStaleProcessing(s.Now(), issue.UpdatedAt, opts.StaleProcessingAfter, opts.ReclaimStaleProcessing) {
+				if err := s.GitHub.RemoveLabels(ctx, repo, opts.IssueNumber, []string{processingLabel}); err != nil {
+					return result, err
+				}
+				if err := s.GitHub.AddLabels(ctx, repo, opts.IssueNumber, []string{processingLabel}); err != nil {
+					return result, err
+				}
+				result.ProcessingAction = ProcessingActionReclaimedStale
+			} else {
+				result.Status = PrepareStatusBlockedProcessingClaim
+			}
 		} else {
 			if err := s.GitHub.AddLabels(ctx, repo, opts.IssueNumber, []string{processingLabel}); err != nil {
 				return result, err
 			}
 			result.ProcessingAction = ProcessingActionClaimed
+		}
+		if result.Status == PrepareStatusReady {
 			result.Issue.Labels = appendSortedUnique(result.Issue.Labels, processingLabel)
 			result.Lint = BuildLintReport(*result.Issue, opts.WorkflowMode)
 		}
@@ -362,6 +374,20 @@ func BuildLintReport(issue Issue, mode WorkflowMode) LintReport {
 			})
 		}
 	}
+	if report.WorkflowGuardrails.CloseoutTailOnly {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityInfo,
+			Code:     "tail-only-closeout-state",
+			Message:  "execution snapshot only lists close-out tail items; resume with verifier/publish/finish instead of new implementation work",
+		})
+	}
+	if len(report.WorkflowGuardrails.SnapshotContradictions) > 0 {
+		report.Findings = append(report.Findings, LintFinding{
+			Severity: LintSeverityError,
+			Code:     "contradictory-execution-snapshot",
+			Message:  "execution snapshot is self-contradictory: " + strings.Join(report.WorkflowGuardrails.SnapshotContradictions, "; "),
+		})
+	}
 	if report.WorkflowMode == WorkflowModeFast {
 		return report
 	}
@@ -556,6 +582,9 @@ func detectWorkflowGuardrails(body string, sections documentSections, implementa
 			guardrails.SnapshotMissingFields = append(guardrails.SnapshotMissingFields, field)
 		}
 	}
+	snapshotState := analyzeExecutionSnapshot(body)
+	guardrails.CloseoutTailOnly = snapshotState.CloseoutTailOnly
+	guardrails.SnapshotContradictions = append(guardrails.SnapshotContradictions, snapshotState.Contradictions...)
 	return guardrails
 }
 
@@ -572,6 +601,9 @@ func workflowContractCheck(report LintReport) *CheckResult {
 	}
 	if report.WorkflowGuardrails.SnapshotRequired && len(report.WorkflowGuardrails.SnapshotMissingFields) > 0 {
 		problems = append(problems, "missing execution snapshot fields: "+strings.Join(report.WorkflowGuardrails.SnapshotMissingFields, ", "))
+	}
+	if len(report.WorkflowGuardrails.SnapshotContradictions) > 0 {
+		problems = append(problems, "execution snapshot contradictions: "+strings.Join(report.WorkflowGuardrails.SnapshotContradictions, "; "))
 	}
 	if len(problems) == 0 {
 		return &CheckResult{Name: "issue_workflow_contract", Status: CheckStatusPass, Message: "ok"}

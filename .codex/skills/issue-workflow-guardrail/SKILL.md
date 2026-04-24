@@ -277,11 +277,13 @@ What each command owns:
   - runs `git pull --ff-only`
   - fetches the live issue snapshot from GitHub
   - claims `processing` when available
+  - can reclaim a stale `processing` claim after the configured stale window
   - writes a reusable snapshot JSON under `.codex/state/issue-workflow/`
 - `lint`
   - checks required issue sections
   - checks status/category/scope label shape
   - warns when the staged-plan section is still missing on an issue explicitly marked `status:implementable-now`
+  - fails when the execution snapshot says only close-out tail work remains but `当前执行点` / `下一步` still point at more implementation or validation
 - `finish`
   - runs the fixed local mechanical checks
   - can post a comment, close the issue, and release `processing`
@@ -300,6 +302,7 @@ Use these commands at fixed times:
 Important:
 
 - For an implementable issue, “local code is written and tests passed” is not by itself a normal stop path.
+- A stale `processing` label is a recoverable lease, not a durable lock. Reclaiming it only unlocks resume; it does not prove the issue is ready for close-out.
 - Unless the user explicitly asked for local-only staging, continue through the routine tail work as part of the same issue flow:
   - commit the finished change
   - push it when repo policy says pushes should happen

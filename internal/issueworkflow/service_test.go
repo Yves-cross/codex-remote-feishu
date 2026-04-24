@@ -168,6 +168,103 @@ func TestPrepareStopsOnDirtyTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestPrepareReclaimsStaleProcessingClaim(t *testing.T) {
+	root := t.TempDir()
+	updatedAt := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number:    22,
+			Title:     "修复 attach 行为",
+			UpdatedAt: updatedAt,
+			Body: strings.Join([]string{
+				"# 标题",
+				"",
+				"## 背景",
+				"body",
+				"## 目标",
+				"goal",
+				"## 完成标准",
+				"done",
+			}, "\n"),
+			Labels: []string{"bug", "area:daemon", statusLabelImplementable, "processing"},
+		},
+	}
+	svc := &Service{
+		RootDir: root,
+		Git: &fakeGitClient{
+			branch:    "master",
+			head:      "abc123",
+			originURL: "https://github.com/kxn/codex-remote-feishu.git",
+		},
+		GitHub: gh,
+		Now:    func() time.Time { return updatedAt.Add(8 * time.Hour) },
+	}
+	result, err := svc.Prepare(context.Background(), PrepareOptions{
+		IssueNumber:            22,
+		ClaimProcessing:        true,
+		ReclaimStaleProcessing: true,
+		StaleProcessingAfter:   6 * time.Hour,
+		WorkflowMode:           WorkflowModeFull,
+	})
+	if err != nil {
+		t.Fatalf("Prepare error = %v", err)
+	}
+	if result.Status != PrepareStatusReady || result.ProcessingAction != ProcessingActionReclaimedStale {
+		t.Fatalf("unexpected prepare result: %#v", result)
+	}
+	if got := gh.removedLabels; len(got) != 1 || got[0] != "processing" {
+		t.Fatalf("removed labels = %#v, want processing", got)
+	}
+	if got := gh.addedLabels; len(got) != 1 || got[0] != "processing" {
+		t.Fatalf("added labels = %#v, want processing", got)
+	}
+}
+
+func TestPrepareBlocksFreshProcessingClaim(t *testing.T) {
+	updatedAt := time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC)
+	gh := &fakeGitHubClient{
+		issue: Issue{
+			Number:    22,
+			UpdatedAt: updatedAt,
+			Body: strings.Join([]string{
+				"## 背景",
+				"body",
+				"## 目标",
+				"goal",
+				"## 完成标准",
+				"done",
+			}, "\n"),
+			Labels: []string{"bug", "area:daemon", statusLabelImplementable, "processing"},
+		},
+	}
+	svc := &Service{
+		RootDir: t.TempDir(),
+		Git: &fakeGitClient{
+			branch:    "master",
+			head:      "abc123",
+			originURL: "https://github.com/kxn/codex-remote-feishu.git",
+		},
+		GitHub: gh,
+		Now:    func() time.Time { return updatedAt.Add(30 * time.Minute) },
+	}
+	result, err := svc.Prepare(context.Background(), PrepareOptions{
+		IssueNumber:            22,
+		ClaimProcessing:        true,
+		ReclaimStaleProcessing: true,
+		StaleProcessingAfter:   6 * time.Hour,
+		WorkflowMode:           WorkflowModeFull,
+	})
+	if err != nil {
+		t.Fatalf("Prepare error = %v", err)
+	}
+	if result.Status != PrepareStatusBlockedProcessingClaim {
+		t.Fatalf("unexpected prepare result: %#v", result)
+	}
+	if len(gh.removedLabels) != 0 || len(gh.addedLabels) != 0 {
+		t.Fatalf("did not expect label churn for fresh processing claim, got %#v / %#v", gh.removedLabels, gh.addedLabels)
+	}
+}
+
 func TestBuildLintReportFlagsMissingSectionsAndStatusLabels(t *testing.T) {
 	report := BuildLintReport(Issue{
 		Body: strings.Join([]string{
@@ -396,6 +493,72 @@ func TestBuildLintReportRequiresExecutionDecisionEvenInFastMode(t *testing.T) {
 	}, WorkflowModeFast)
 	if !hasFindingCode(report.Findings, "missing-execution-decision-section") {
 		t.Fatalf("expected execution decision finding in fast mode, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportFlagsTailOnlyCloseoutState(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：本 issue",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：阶段 D",
+			"- 当前执行点：close-out",
+			"- 已完成：实现与验证",
+			"- 下一步：run verifier",
+			"- 恢复步骤：1. run verifier",
+			"- 未完成尾项：verifier、commit、push、finish",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
+	}, WorkflowModeFull)
+	if !report.WorkflowGuardrails.CloseoutTailOnly {
+		t.Fatalf("expected close-out tail only guardrail, got %#v", report.WorkflowGuardrails)
+	}
+	if !hasFindingCode(report.Findings, "tail-only-closeout-state") {
+		t.Fatalf("expected tail-only-closeout-state finding, got %#v", report.Findings)
+	}
+}
+
+func TestBuildLintReportFlagsContradictoryExecutionSnapshot(t *testing.T) {
+	report := BuildLintReport(Issue{
+		Body: strings.Join([]string{
+			"## 背景",
+			"body",
+			"## 目标",
+			"goal",
+			"## 完成标准",
+			"done",
+			"## 执行决策",
+			"- 是否拆分：否",
+			"- 当前执行单元：本 issue",
+			"- verifier 决策：需要",
+			"## 执行快照",
+			"- 当前阶段：阶段 D",
+			"- 当前执行点：正在收尾前补回归测试",
+			"- 已完成：quote expansion",
+			"- 下一步：补回归测试，再做 contract 收口",
+			"- 恢复步骤：1. 继续改代码",
+			"- 未完成尾项：verifier、commit、push、finish",
+		}, "\n"),
+		Labels: []string{"bug", "area:daemon", statusLabelImplementable},
+	}, WorkflowModeFull)
+	if len(report.WorkflowGuardrails.SnapshotContradictions) == 0 {
+		t.Fatalf("expected snapshot contradictions, got %#v", report.WorkflowGuardrails)
+	}
+	if !hasFindingCode(report.Findings, "contradictory-execution-snapshot") {
+		t.Fatalf("expected contradictory-execution-snapshot finding, got %#v", report.Findings)
+	}
+	check := workflowContractCheck(report)
+	if check == nil || check.Status != CheckStatusFail {
+		t.Fatalf("expected workflow contract check to fail, got %#v", check)
 	}
 }
 

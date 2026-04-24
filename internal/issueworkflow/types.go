@@ -51,8 +51,9 @@ const (
 type ProcessingAction string
 
 const (
-	ProcessingActionNone    ProcessingAction = "none"
-	ProcessingActionClaimed ProcessingAction = "claimed"
+	ProcessingActionNone           ProcessingAction = "none"
+	ProcessingActionClaimed        ProcessingAction = "claimed"
+	ProcessingActionReclaimedStale ProcessingAction = "reclaimed_stale"
 )
 
 type LintSeverity string
@@ -88,15 +89,19 @@ type WorkflowGuardrails struct {
 	ExecutionDecisionMissingItems []string `json:"executionDecisionMissingItems,omitempty"`
 	SnapshotRequired              bool     `json:"snapshotRequired,omitempty"`
 	SnapshotMissingFields         []string `json:"snapshotMissingFields,omitempty"`
+	CloseoutTailOnly              bool     `json:"closeoutTailOnly,omitempty"`
+	SnapshotContradictions        []string `json:"snapshotContradictions,omitempty"`
 }
 
 type PrepareOptions struct {
-	Repo            Repo
-	IssueNumber     int
-	CommentsLimit   int
-	ClaimProcessing bool
-	SnapshotPath    string
-	WorkflowMode    WorkflowMode
+	Repo                   Repo
+	IssueNumber            int
+	CommentsLimit          int
+	ClaimProcessing        bool
+	ReclaimStaleProcessing bool
+	StaleProcessingAfter   time.Duration
+	SnapshotPath           string
+	WorkflowMode           WorkflowMode
 }
 
 type PrepareResult struct {

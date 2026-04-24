@@ -71,6 +71,9 @@ func buildClosePlanActions(issue Issue, report LintReport, checks []CheckResult,
 		if report.WorkflowGuardrails.SnapshotRequired && len(report.WorkflowGuardrails.SnapshotMissingFields) > 0 {
 			problems = append(problems, "fill execution snapshot fields: "+strings.Join(report.WorkflowGuardrails.SnapshotMissingFields, ", "))
 		}
+		if len(report.WorkflowGuardrails.SnapshotContradictions) > 0 {
+			problems = append(problems, "resolve execution snapshot contradictions: "+strings.Join(report.WorkflowGuardrails.SnapshotContradictions, "; "))
+		}
 		if len(problems) > 0 {
 			add(ClosePlanAction{
 				Code:          "refresh_issue_workflow_contract",
