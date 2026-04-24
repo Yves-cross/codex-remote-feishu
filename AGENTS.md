@@ -185,6 +185,18 @@ Use `.codex/skills/build-page-mock/` when working on:
 - `web/src/**` 或 `internal/app/daemon/adminui/**` 下新增的 mock / preview 页面
 - 需要用假数据覆盖真实交互的用户可见页面预览
 
+Execution floor:
+
+- before writing visible page content, define the page's visible-content contract:
+  - final user
+  - current task
+  - allowed information types
+  - disallowed information types
+  - allowed feedback slots
+- before delivery, audit every visible string and sample value against that contract
+- if a visible element cannot be clearly justified for the final user's current task, remove it
+- sample data is not exempt; code, repo paths, internal names, protocol fields, and design notes are disallowed on non-technical user pages by default
+
 ## Web Design Baseline
 
 For web page design/layout/copy/interaction changes, follow:
@@ -205,6 +217,7 @@ Baseline requirements:
 - copy is user-facing, not architecture-facing
 - avoid long dump pages; defer/fold/split lower-priority info
 - do not expose internal design-purpose text to end users
+- define a visible-content contract before editing and use fail-closed judgment for visible content
 - if baseline rules are intentionally changed, update `docs/general/web-design-guidelines.md` in the same change
 
 ## Feishu Card Constraints Baseline

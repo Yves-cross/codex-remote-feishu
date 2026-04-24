@@ -1,6 +1,6 @@
 ---
 name: build-page-mock
-description: "Use when creating or revising a page mock, browser-runnable prototype, or interactive demo for this repository's web, setup, onboarding, status, or admin pages, and also when implementing a real product page from an approved mock. Ensures the artifact is final-user-facing, covers post-action feedback states, and keeps the final product aligned with the approved mock except for real business data and runtime feedback instances inside approved feedback slots."
+description: "Use when creating or revising a page mock, browser-runnable prototype, or interactive demo for this repository's web, setup, onboarding, status, or admin pages, and also when implementing a real product page from an approved mock. Enforces a visible-content contract, final-user-facing content, post-action feedback states, and mock-to-product parity except for real business data and runtime feedback instances inside approved feedback slots."
 ---
 
 # build-page-mock
@@ -21,6 +21,20 @@ Read these docs before editing:
 - `docs/general/page-mock-guidelines.md`
 - `docs/general/web-design-guidelines.md`
 
+## Required execution order
+
+Before editing the page, explicitly lock these five items for yourself:
+
+1. Who is the final user?
+2. What single task is this page serving right now?
+3. Which information types are allowed to appear on the page?
+4. Which information types are not allowed to appear on the page?
+5. Which feedback slots are allowed to show success / validation / error / fallback?
+
+Treat this as the page's visible-content contract.
+
+Do not start writing visible page content until this contract is clear.
+
 ## Rules
 
 ### 1. Treat the mock as a final-user artifact
@@ -28,6 +42,14 @@ Read these docs before editing:
 - The rendered page must show only final-user-facing content.
 - Do not render `mock`, `demo`, `prototype`, `wireframe`, `设计说明`, `TODO`, or other internal wording in the page.
 - This includes browser title, page header, helper text, placeholders, empty states, notices, and debug panels.
+- This rule applies to fake data and demo data too, not only to fixed copy.
+
+### 1.1 Default to fail-closed for visible content
+
+- Only content that clearly belongs to the visible-content contract may appear on screen.
+- If you cannot justify why a visible element helps the final user complete the page's current task, remove it.
+- Do not keep questionable content just because it is sample data, illustrative data, or easy to reuse.
+- When the page is not explicitly for engineering, debugging, or operator diagnosis, treat code, repo paths, internal object names, protocol fields, and implementation notes as disallowed by default.
 
 ### 2. Make it runnable, not illustrative
 
@@ -41,6 +63,8 @@ Read these docs before editing:
 - Use fake data freely when the backend is absent.
 - Cover every user-editable, user-selectable, filterable, searchable, or navigable data surface that the page exposes.
 - If the user can reach empty / populated / validation / success / failure states, make those states reachable in the mock.
+- Fake data must still obey the visible-content contract.
+- Do not use source code, repo paths, internal state names, debug output, or design notes as visible sample content unless the page contract explicitly allows technical content.
 
 ### 4. Cover the feedback contract, not just the happy path
 
@@ -89,5 +113,9 @@ Before finishing, verify:
 6. Generic fallback behavior is defined inside approved feedback slots.
 7. Desktop, mobile, and orientation changes remain usable.
 8. If implementing from an approved mock, the real product still matches that mock in all user-visible aspects except business data and runtime feedback instances inside approved slots.
+9. A visible-content contract exists: final user, current task, allowed information types, disallowed information types, and allowed feedback slots.
+10. Every visible string, label, placeholder, sample value, list item, and notice can be justified against that contract.
+11. No visible sample data accidentally exposes code, repo structure, internal names, protocol fields, or other engineering-facing content unless that is explicitly the page's user-facing purpose.
+12. If any visible content felt questionable, it was removed unless the contract clearly allowed it.
 
 If one of these fails, the mock is not done.
