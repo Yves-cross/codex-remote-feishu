@@ -871,6 +871,45 @@ button {
   color: var(--text-soft);
 }
 
+.requirement-copy-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.requirement-copy-cell code {
+  overflow-wrap: anywhere;
+}
+
+.table-copy-button {
+  padding: 0.28rem 0.62rem;
+  border: 1px solid rgba(18, 34, 48, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-strong);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.table-copy-button:hover,
+.table-copy-button:focus-visible {
+  border-color: rgba(18, 34, 48, 0.3);
+  background: rgba(18, 34, 48, 0.06);
+  outline: none;
+}
+
+.table-copy-button:active {
+  transform: translateY(1px);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

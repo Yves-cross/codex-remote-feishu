@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   APIRequestError,
   type APIErrorShape,
@@ -70,6 +70,11 @@ type TestState = {
 type RuntimeApplyFailureDetails = {
   gatewayId?: string;
   app?: FeishuAppSummary;
+};
+
+type RequirementTableRow = {
+  key: string;
+  cells: ReactNode[];
 };
 
 const setupSteps: Array<{ id: SetupStepID; name: string }> = [
@@ -975,7 +980,13 @@ export function SetupRoute() {
         </p>
         {renderRequirementTable(
           ["事件", "用途"],
-          (manifest?.events || []).map((item) => [item.event, item.purpose || ""]),
+          (manifest?.events || []).map((item) => ({
+            key: item.event,
+            cells: [
+              renderCopyableRequirement(item.event, "事件名"),
+              item.purpose || "",
+            ],
+          })),
         )}
         <div className="button-row">
           <button
@@ -1027,7 +1038,13 @@ export function SetupRoute() {
         </p>
         {renderRequirementTable(
           ["回调", "用途"],
-          (manifest?.callbacks || []).map((item) => [item.callback, item.purpose || ""]),
+          (manifest?.callbacks || []).map((item) => ({
+            key: item.callback,
+            cells: [
+              renderCopyableRequirement(item.callback, "回调名"),
+              item.purpose || "",
+            ],
+          })),
         )}
         <div className="button-row">
           <button
@@ -1310,6 +1327,34 @@ export function SetupRoute() {
     }
   }
 
+  async function copyRequirementValue(value: string, label: string) {
+    if (!value.trim()) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice({ tone: "good", message: `已复制${label}。` });
+    } catch {
+      setNotice({ tone: "warn", message: `${label}复制没有成功，请手动复制。` });
+    }
+  }
+
+  function renderCopyableRequirement(value: string, label: string) {
+    return (
+      <div className="requirement-copy-cell">
+        <code>{value}</code>
+        <button
+          className="table-copy-button"
+          type="button"
+          aria-label={`复制${label} ${value}`}
+          onClick={() => void copyRequirementValue(value, label)}
+        >
+          复制
+        </button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="product-page">
@@ -1420,7 +1465,7 @@ function buildSetupPageTitle(bootstrap: BootstrapState | null): string {
   return version ? `${name} ${version} 安装程序` : `${name} 安装程序`;
 }
 
-function renderRequirementTable(headers: string[], rows: string[][]) {
+function renderRequirementTable(headers: string[], rows: RequirementTableRow[]) {
   return (
     <div className="detail-table-wrap">
       <table className="detail-table">
@@ -1435,8 +1480,8 @@ function renderRequirementTable(headers: string[], rows: string[][]) {
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={`${rowIndex}-${row[0] || "row"}`}>
-              {row.map((value, cellIndex) => (
+            <tr key={row.key || `${rowIndex}-row`}>
+              {row.cells.map((value, cellIndex) => (
                 <td key={`${rowIndex}-${cellIndex}`}>{value}</td>
               ))}
             </tr>

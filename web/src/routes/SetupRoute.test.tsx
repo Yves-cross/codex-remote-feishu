@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRoute } from "./SetupRoute";
@@ -355,5 +355,168 @@ describe("SetupRoute", () => {
         "手动添加的机器人无法自动发送测试消息，请直接在飞书后台继续手动配置。",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("copies an event name from the requirement table", async () => {
+    window.history.replaceState({}, "", "/setup");
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/manifest": { body: makeFeishuManifest() },
+      "/api/setup/feishu/apps": {
+        body: {
+          apps: [
+            makeApp({
+              id: "bot-copy",
+              name: "复制机器人",
+              verifiedAt: "2026-04-25T08:30:00Z",
+            }),
+          ],
+        },
+      },
+      "/api/setup/runtime-requirements/detect": {
+        body: makeRuntimeRequirementsDetect(),
+      },
+      "/api/setup/feishu/apps/bot-copy/permission-check": {
+        body: makePermissionCheck({
+          app: makeApp({ id: "bot-copy" }),
+          ready: true,
+        }),
+      },
+      "/api/setup/feishu/apps/bot-copy/test-events": {
+        body: {
+          gatewayId: "bot-copy",
+          startedAt: "2026-04-25T08:12:00Z",
+          expiresAt: "2026-04-25T08:22:00Z",
+          phrase: "测试",
+          message: "事件订阅测试提示已发送。",
+        },
+      },
+      "/api/setup/autostart/detect": {
+        body: {
+          platform: "linux",
+          supported: true,
+          status: "disabled",
+          configured: false,
+          enabled: false,
+          canApply: true,
+        },
+      },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByRole("heading", { name: "权限检查" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "事件订阅" }, { timeout: 2_000 }),
+    ).toBeInTheDocument();
+
+    const eventRow = screen.getByText("im.message.receive_v1").closest("tr");
+    expect(eventRow).not.toBeNull();
+
+    await user.click(
+      within(eventRow as HTMLTableRowElement).getByRole("button", {
+        name: /复制事件名 im\.message\.receive_v1/,
+      }),
+    );
+
+    expect(writeText).toHaveBeenCalledWith("im.message.receive_v1");
+    expect(await screen.findByText("已复制事件名。")).toBeInTheDocument();
+  });
+
+  it("copies a callback name from the requirement table", async () => {
+    window.history.replaceState({}, "", "/setup");
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    installMockFetch({
+      "/api/setup/bootstrap-state": { body: makeBootstrap() },
+      "/api/setup/feishu/manifest": { body: makeFeishuManifest() },
+      "/api/setup/feishu/apps": {
+        body: {
+          apps: [
+            makeApp({
+              id: "bot-copy",
+              name: "复制机器人",
+              verifiedAt: "2026-04-25T08:30:00Z",
+            }),
+          ],
+        },
+      },
+      "/api/setup/runtime-requirements/detect": {
+        body: makeRuntimeRequirementsDetect(),
+      },
+      "/api/setup/feishu/apps/bot-copy/permission-check": {
+        body: makePermissionCheck({
+          app: makeApp({ id: "bot-copy" }),
+          ready: true,
+        }),
+      },
+      "/api/setup/feishu/apps/bot-copy/test-events": {
+        body: {
+          gatewayId: "bot-copy",
+          startedAt: "2026-04-25T08:12:00Z",
+          expiresAt: "2026-04-25T08:22:00Z",
+          phrase: "测试",
+          message: "事件订阅测试提示已发送。",
+        },
+      },
+      "/api/setup/feishu/apps/bot-copy/test-callback": {
+        body: {
+          gatewayId: "bot-copy",
+          startedAt: "2026-04-25T08:13:00Z",
+          expiresAt: "2026-04-25T08:23:00Z",
+          message: "回调测试卡片已发送。",
+        },
+      },
+      "/api/setup/feishu/apps/bot-copy/install-tests/events/clear": {
+        body: {},
+      },
+      "/api/setup/autostart/detect": {
+        body: {
+          platform: "linux",
+          supported: true,
+          status: "disabled",
+          configured: false,
+          enabled: false,
+          canApply: true,
+        },
+      },
+      "/api/setup/vscode/detect": { body: makeVSCodeDetect() },
+    });
+
+    render(<SetupRoute />);
+
+    expect(await screen.findByRole("heading", { name: "权限检查" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "事件订阅" }, { timeout: 2_000 }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(await screen.findByRole("heading", { name: "回调配置" })).toBeInTheDocument();
+
+    const callbackRow = screen.getByText("card.action.trigger").closest("tr");
+    expect(callbackRow).not.toBeNull();
+
+    await user.click(
+      within(callbackRow as HTMLTableRowElement).getByRole("button", {
+        name: /复制回调名 card\.action\.trigger/,
+      }),
+    );
+
+    expect(writeText).toHaveBeenCalledWith("card.action.trigger");
+    expect(await screen.findByText("已复制回调名。")).toBeInTheDocument();
   });
 });
