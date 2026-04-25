@@ -3,1272 +3,934 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Codex Remote 设置向导</title>
+    <title>Codex Remote 安装程序</title>
     <style>
       :root {
-        color-scheme: light;
-        --bg: #f4efe7;
-        --bg-strong: #f8f4ed;
-        --panel: rgba(255, 252, 246, 0.88);
-        --panel-strong: #fffdf8;
-        --ink: #213039;
-        --muted: #63727d;
-        --line: rgba(33, 48, 57, 0.12);
-        --accent: #0d7a68;
-        --accent-strong: #085448;
-        --warn: #b86b1d;
-        --danger: #b24949;
-        --good: #187d56;
-        --shadow: 0 24px 70px rgba(33, 48, 57, 0.12);
-        --radius-xl: 28px;
-        --radius-lg: 20px;
-        --radius-md: 16px;
-        --radius-sm: 12px;
+        --bg: #f3f6f4;
+        --panel: #ffffff;
+        --line: #d6e2dd;
+        --ink: #14211e;
+        --sub: #4a615b;
+        --muted: #69807a;
+        --brand: #0e8269;
+        --brand-2: #0a6b56;
+        --good: #1f7f40;
+        --warn: #a76400;
+        --bad: #b0283b;
+        --shadow: 0 14px 36px rgba(9, 28, 23, 0.08);
+        --radius-xl: 24px;
+        --radius-lg: 16px;
+        --radius-md: 12px;
       }
 
       * {
         box-sizing: border-box;
       }
 
-      html,
       body {
         margin: 0;
-        min-height: 100%;
-        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
         color: var(--ink);
+        font-family:
+          "Avenir Next",
+          "PingFang SC",
+          "Microsoft YaHei",
+          "Noto Sans CJK SC",
+          sans-serif;
         background:
-          radial-gradient(circle at top left, rgba(255, 187, 92, 0.18), transparent 32%),
-          radial-gradient(circle at right, rgba(13, 122, 104, 0.14), transparent 28%),
-          linear-gradient(180deg, #f7f2ea 0%, #f1ebe2 100%);
+          radial-gradient(900px 460px at -12% -20%, #c6efe2 0%, transparent 58%),
+          radial-gradient(760px 420px at 112% -15%, #fae8c3 0%, transparent 54%),
+          var(--bg);
       }
 
-      body {
-        padding: 24px;
+      .shell {
+        max-width: 1220px;
+        margin: 28px auto;
+        padding: 0 18px 30px;
       }
 
-      button,
-      input {
-        font: inherit;
-      }
-
-      button {
-        border: 0;
-        cursor: pointer;
-      }
-
-      a {
-        color: var(--accent-strong);
-      }
-
-      .app-shell {
-        max-width: 1360px;
-        margin: 0 auto;
-        display: grid;
-        grid-template-columns: 320px minmax(0, 1fr);
-        gap: 24px;
-        align-items: start;
-      }
-
-      .rail,
-      .stage,
-      .footer-bar,
-      .modal-card {
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-      }
-
-      .rail {
-        position: sticky;
-        top: 24px;
+      .topbar {
         background: var(--panel);
-        border: 1px solid rgba(255, 255, 255, 0.75);
+        border: 1px solid var(--line);
         border-radius: var(--radius-xl);
         box-shadow: var(--shadow);
-        padding: 24px;
+        padding: 18px 20px;
       }
 
-      .rail-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
-        margin-bottom: 20px;
-      }
-
-      .eyebrow {
-        margin: 0 0 8px;
-        color: var(--accent);
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .rail h1 {
+      .title {
         margin: 0;
         font-size: 28px;
-        line-height: 1.15;
       }
 
-      .rail p,
-      .stage p,
-      .card p,
-      .notice p,
-      .step-link small {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.65;
-      }
-
-      .mobile-menu-button {
-        display: none;
-        border-radius: 999px;
-        padding: 10px 14px;
-        background: rgba(13, 122, 104, 0.1);
-        color: var(--accent-strong);
-        font-weight: 700;
-      }
-
-      .step-list {
-        display: grid;
-        gap: 12px;
-      }
-
-      .step-link {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 14px;
-        align-items: center;
-        width: 100%;
-        text-align: left;
-        padding: 16px 18px;
-        border-radius: var(--radius-lg);
-        background: rgba(255, 255, 255, 0.55);
-        border: 1px solid transparent;
-        transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-      }
-
-      .step-link:hover:not(:disabled) {
-        transform: translateY(-1px);
-        border-color: rgba(13, 122, 104, 0.22);
-      }
-
-      .step-link:disabled {
-        cursor: not-allowed;
-        opacity: 0.58;
-      }
-
-      .step-link.current {
-        background: linear-gradient(135deg, rgba(13, 122, 104, 0.14), rgba(255, 255, 255, 0.92));
-        border-color: rgba(13, 122, 104, 0.22);
-      }
-
-      .step-index {
-        width: 34px;
-        height: 34px;
-        display: grid;
-        place-items: center;
-        border-radius: 50%;
-        background: rgba(13, 122, 104, 0.12);
-        color: var(--accent-strong);
-        font-weight: 700;
-      }
-
-      .step-link.done .step-index {
-        background: rgba(24, 125, 86, 0.14);
-        color: var(--good);
-      }
-
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        white-space: nowrap;
-        padding: 7px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .status-pill.good {
-        background: rgba(24, 125, 86, 0.12);
-        color: var(--good);
-      }
-
-      .status-pill.warn {
-        background: rgba(184, 107, 29, 0.12);
-        color: var(--warn);
-      }
-
-      .status-pill.danger {
-        background: rgba(178, 73, 73, 0.12);
-        color: var(--danger);
-      }
-
-      .status-pill.neutral {
-        background: rgba(99, 114, 125, 0.12);
-        color: #50606a;
-      }
-
-      .stage {
-        min-height: calc(100vh - 48px);
-        background: rgba(255, 253, 248, 0.58);
-        border: 1px solid rgba(255, 255, 255, 0.8);
-        border-radius: 34px;
-        box-shadow: var(--shadow);
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .stage-head {
-        padding: 28px 32px 18px;
-        border-bottom: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        align-items: flex-start;
-      }
-
-      .stage-head h2 {
-        margin: 0 0 10px;
-        font-size: clamp(28px, 4vw, 42px);
-        line-height: 1.08;
-      }
-
-      .stage-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .stage-body {
-        padding: 28px 32px 140px;
-        display: grid;
-        gap: 22px;
+      .notice-slot {
+        margin-top: 14px;
+        min-height: 40px;
       }
 
       .notice {
-        border-radius: var(--radius-lg);
-        padding: 16px 18px;
+        border-radius: 10px;
+        padding: 11px 13px;
+        font-size: 14px;
         border: 1px solid transparent;
-        display: grid;
-        gap: 8px;
-      }
-
-      .notice strong {
-        font-size: 15px;
       }
 
       .notice.good {
-        background: rgba(24, 125, 86, 0.08);
-        border-color: rgba(24, 125, 86, 0.12);
+        color: var(--good);
+        background: #edf9f0;
+        border-color: #cbe6d2;
       }
 
       .notice.warn {
-        background: rgba(184, 107, 29, 0.08);
-        border-color: rgba(184, 107, 29, 0.12);
+        color: var(--warn);
+        background: #fff6e9;
+        border-color: #efd9b5;
       }
 
-      .notice.danger {
-        background: rgba(178, 73, 73, 0.08);
-        border-color: rgba(178, 73, 73, 0.12);
+      .notice.bad {
+        color: var(--bad);
+        background: #fff0f3;
+        border-color: #efcbd2;
       }
 
-      .card-grid {
+      .layout {
+        margin-top: 16px;
         display: grid;
-        gap: 18px;
-      }
-
-      .card-grid.two {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 270px 1fr;
+        gap: 16px;
       }
 
       .card {
-        background: var(--panel-strong);
-        border: 1px solid rgba(33, 48, 57, 0.08);
-        border-radius: var(--radius-lg);
-        padding: 22px;
-        display: grid;
-        gap: 14px;
-      }
-
-      .card.soft {
-        background: linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(250, 245, 238, 0.84));
-      }
-
-      .card h3,
-      .card h4 {
-        margin: 0;
-        font-size: 20px;
-      }
-
-      .summary-row {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-
-      .check-list,
-      .task-list,
-      .bullet-list {
-        display: grid;
-        gap: 12px;
-      }
-
-      .check-item,
-      .task-item {
-        display: grid;
-        gap: 10px;
+        background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: var(--radius-md);
-        padding: 16px;
-        background: rgba(255, 255, 255, 0.7);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
       }
 
-      .check-item-top,
-      .task-top {
+      .card-head {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .card-desc {
+        margin: 8px 0 0;
+        color: var(--sub);
+        font-size: 14px;
+      }
+
+      .card-body {
+        padding: 16px 18px 18px;
+      }
+
+      .step-list {
+        padding: 10px;
+      }
+
+      .step-btn {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fff;
+        text-align: left;
+        padding: 10px 12px;
+        margin: 6px 0;
+        cursor: pointer;
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .step-btn.active {
+        background: #ebfaf6;
+        border-color: #7dc8b8;
+      }
+
+      .step-btn.done {
+        border-color: #b9e1cc;
+      }
+
+      .step-meta {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .row {
         display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
       }
 
-      .task-item.done {
-        border-color: rgba(24, 125, 86, 0.18);
-        background: rgba(24, 125, 86, 0.06);
-      }
-
-      .task-item strong,
-      .check-item strong {
-        font-size: 16px;
-      }
-
-      .field-grid {
+      .grid-2 {
         display: grid;
-        gap: 16px;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .btn {
+        border: none;
+        border-radius: 10px;
+        font-size: 14px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      .btn.primary {
+        background: var(--brand);
+        color: #fff;
+      }
+
+      .btn.primary:hover {
+        background: var(--brand-2);
+      }
+
+      .btn.secondary {
+        background: #e5f3ef;
+        color: #15473b;
+      }
+
+      .btn.ghost {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--sub);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        padding: 5px 10px;
+        font-size: 12px;
+        color: var(--sub);
+        background: #fff;
+      }
+
+      .tag.warn {
+        color: var(--warn);
+        background: #fff6e9;
+        border-color: #efd9b5;
+      }
+
+      .hint {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
       }
 
       .field {
         display: grid;
-        gap: 8px;
-      }
-
-      .field label {
-        font-size: 14px;
-        font-weight: 700;
-      }
-
-      .field input {
-        width: 100%;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid rgba(33, 48, 57, 0.14);
-        background: #fffdfa;
-        color: var(--ink);
-      }
-
-      .field input:focus {
-        outline: 2px solid rgba(13, 122, 104, 0.22);
-        border-color: rgba(13, 122, 104, 0.28);
-      }
-
-      .field-error {
-        color: var(--danger);
-        font-size: 13px;
-      }
-
-      .choice-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-      }
-
-      .choice-card {
-        border-radius: var(--radius-lg);
-        border: 1px solid rgba(33, 48, 57, 0.1);
-        background: rgba(255, 255, 255, 0.82);
-        padding: 20px;
-        display: grid;
-        gap: 10px;
-        text-align: left;
-      }
-
-      .choice-card.selected {
-        border-color: rgba(13, 122, 104, 0.26);
-        box-shadow: inset 0 0 0 1px rgba(13, 122, 104, 0.12);
-        background: linear-gradient(135deg, rgba(13, 122, 104, 0.1), rgba(255, 255, 255, 0.92));
-      }
-
-      .qr-box {
-        aspect-ratio: 1;
-        width: min(100%, 280px);
-        border-radius: 24px;
-        background:
-          linear-gradient(90deg, rgba(13, 122, 104, 0.1) 25%, transparent 25%, transparent 50%, rgba(13, 122, 104, 0.1) 50%, rgba(13, 122, 104, 0.1) 75%, transparent 75%),
-          linear-gradient(rgba(13, 122, 104, 0.1) 25%, transparent 25%, transparent 50%, rgba(13, 122, 104, 0.1) 50%, rgba(13, 122, 104, 0.1) 75%, transparent 75%),
-          #fbfaf5;
-        background-size: 34px 34px;
-        border: 1px solid rgba(13, 122, 104, 0.14);
-        display: grid;
-        place-items: center;
-        color: var(--accent-strong);
-        font-weight: 700;
-      }
-
-      .inline-actions,
-      .footer-actions,
-      .modal-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .button-primary,
-      .button-secondary,
-      .button-ghost {
-        min-height: 48px;
-        padding: 0 18px;
-        border-radius: 999px;
-        font-weight: 700;
-        transition: transform 140ms ease, filter 140ms ease;
-      }
-
-      .button-primary:hover,
-      .button-secondary:hover,
-      .button-ghost:hover {
-        transform: translateY(-1px);
-        filter: brightness(0.99);
-      }
-
-      .button-primary {
-        background: linear-gradient(135deg, var(--accent), #169e85);
-        color: #fff;
-      }
-
-      .button-secondary {
-        background: rgba(13, 122, 104, 0.1);
-        color: var(--accent-strong);
-      }
-
-      .button-ghost {
-        background: rgba(33, 48, 57, 0.06);
-        color: var(--ink);
-      }
-
-      .button-primary:disabled,
-      .button-secondary:disabled,
-      .button-ghost:disabled {
-        cursor: not-allowed;
-        opacity: 0.45;
-        transform: none;
-      }
-
-      .footer-bar {
-        position: sticky;
-        bottom: 18px;
-        margin: -102px 18px 18px;
-        border-radius: 24px;
-        background: rgba(23, 36, 44, 0.9);
-        color: #fefaf3;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 24px 60px rgba(12, 18, 24, 0.2);
-        padding: 18px 20px;
-        display: flex;
-        justify-content: space-between;
-        gap: 18px;
-        align-items: center;
-      }
-
-      .footer-copy {
-        display: grid;
-        gap: 4px;
-      }
-
-      .footer-copy strong {
-        font-size: 16px;
-      }
-
-      .footer-copy span {
-        color: rgba(254, 250, 243, 0.72);
-        font-size: 14px;
-      }
-
-      .footer-bar .button-secondary,
-      .footer-bar .button-ghost {
-        background: rgba(255, 255, 255, 0.1);
-        color: #fefaf3;
-      }
-
-      .footer-bar .button-primary {
-        background: linear-gradient(135deg, #ffb44d, #ff8b39);
-        color: #362211;
-      }
-
-      .modal-layer {
-        position: fixed;
-        inset: 0;
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        background: rgba(22, 29, 33, 0.5);
-        z-index: 20;
-      }
-
-      .modal-layer.open {
-        display: flex;
-      }
-
-      .modal-card {
-        width: min(560px, 100%);
-        background: var(--panel-strong);
-        border-radius: 28px;
-        padding: 24px;
-        box-shadow: 0 28px 80px rgba(18, 26, 32, 0.24);
-        display: grid;
-        gap: 14px;
-      }
-
-      .modal-card h3 {
-        margin: 0;
-        font-size: 26px;
-      }
-
-      .summary-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      .mini-card-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .mini-card {
-        padding: 16px;
-        border-radius: 16px;
-        background: rgba(13, 122, 104, 0.06);
-        border: 1px solid rgba(13, 122, 104, 0.08);
-        display: grid;
         gap: 6px;
       }
 
-      .mini-card strong {
-        font-size: 15px;
+      .field label {
+        font-size: 13px;
+        color: var(--sub);
       }
 
-      @media (max-width: 1080px) {
-        body {
-          padding: 16px;
-        }
+      .input,
+      .textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 11px;
+        font-size: 14px;
+        color: var(--ink);
+        background: #fff;
+      }
 
-        .app-shell {
-          grid-template-columns: 1fr;
-        }
+      .textarea {
+        min-height: 126px;
+        resize: vertical;
+        font-family:
+          "JetBrains Mono",
+          "Consolas",
+          monospace;
+        font-size: 12px;
+      }
 
-        .rail {
-          position: static;
-          top: auto;
-          display: none;
-        }
+      .line-list {
+        margin: 10px 0 0;
+        padding: 0 0 0 20px;
+        color: var(--sub);
+      }
 
-        .rail.open {
-          display: block;
-        }
+      .line-list li {
+        margin: 7px 0;
+      }
 
-        .mobile-menu-button {
-          display: inline-flex;
-        }
+      .link {
+        color: #0b6b57;
+        text-decoration: none;
+      }
 
-        .card-grid.two,
-        .choice-grid,
-        .mini-card-grid {
+      .link:hover {
+        text-decoration: underline;
+      }
+
+      .scan-stage {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #f7fbf9;
+        padding: 14px;
+      }
+
+      .qr-frame {
+        width: 220px;
+        max-width: 100%;
+        aspect-ratio: 1 / 1;
+        border: 1px solid #bdd8d0;
+        border-radius: 12px;
+        background:
+          linear-gradient(45deg, #eaf5f2 25%, transparent 25%) -8px 0 / 16px 16px,
+          linear-gradient(-45deg, #eaf5f2 25%, transparent 25%) -8px 0 / 16px 16px,
+          linear-gradient(45deg, transparent 75%, #eaf5f2 75%) -8px 0 / 16px 16px,
+          linear-gradient(-45deg, transparent 75%, #eaf5f2 75%) -8px 0 / 16px 16px,
+          #fff;
+        display: grid;
+        place-items: center;
+        color: #215449;
+        font-size: 13px;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .timeline-item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 10px;
+        background: #fff;
+        font-size: 13px;
+        color: var(--sub);
+      }
+
+      .done-card {
+        border: 1px solid #bde3cd;
+        border-radius: 14px;
+        background: #edf9f0;
+        padding: 14px;
+      }
+
+      .done-title {
+        margin: 0;
+        font-size: 18px;
+        color: #1c6f38;
+      }
+
+      .done-sub {
+        margin: 7px 0 0;
+        color: #2a6348;
+        font-size: 14px;
+      }
+
+      @media (max-width: 980px) {
+        .layout,
+        .grid-2 {
           grid-template-columns: 1fr;
         }
       }
 
-      @media (max-width: 720px) {
-        .stage-head,
-        .stage-body {
-          padding-left: 18px;
-          padding-right: 18px;
+      @media (max-width: 620px) {
+        .shell {
+          margin: 14px auto;
+          padding: 0 12px 20px;
         }
 
-        .footer-bar {
-          margin: -110px 12px 12px;
-          padding: 16px;
-          flex-direction: column;
-          align-items: stretch;
+        .topbar {
+          padding: 14px;
         }
 
-        .footer-actions {
-          width: 100%;
-          flex-direction: column-reverse;
-        }
-
-        .footer-actions button {
-          width: 100%;
+        .title {
+          font-size: 23px;
         }
       }
     </style>
   </head>
   <body>
-    <div id="app"></div>
-    <div id="modal" class="modal-layer" aria-live="polite"></div>
+    <div class="shell">
+      <header class="topbar">
+        <h1 class="title">Codex Remote 安装程序</h1>
+        <div id="globalNotice" class="notice-slot"></div>
+      </header>
+
+      <main class="layout">
+        <aside class="card">
+          <div class="card-head">
+            <h2 class="card-title">设置流程</h2>
+            <p class="card-desc">可随时回看已完成步骤。</p>
+          </div>
+          <div id="setupSteps" class="step-list"></div>
+        </aside>
+
+        <section class="card">
+          <div class="card-head">
+            <h2 id="stepTitle" class="card-title"></h2>
+            <p id="stepDesc" class="card-desc"></p>
+          </div>
+          <div id="setupContent" class="card-body"></div>
+        </section>
+      </main>
+    </div>
+
     <script>
       const steps = [
-        { id: "start", label: "准备这台机器", hint: "先确认这台机器已经具备正常使用条件。" },
-        { id: "connect", label: "连接飞书应用", hint: "选择新建或接入已有飞书应用。" },
-        { id: "capability", label: "完成基础能力", hint: "把基础对话与交互需要的飞书后台设置补齐。" },
-        { id: "vscode", label: "VS Code（可选）", hint: "如果你要在这台机器上用 VS Code，现在一起处理。" },
-        { id: "finish", label: "完成设置", hint: "确认已完成的内容，并进入本地管理页。" },
+        { id: "env", name: "环境检查" },
+        { id: "connect", name: "飞书连接" },
+        { id: "permission", name: "权限检查" },
+        { id: "events", name: "事件订阅" },
+        { id: "callback", name: "回调配置" },
+        { id: "menu", name: "菜单确认" },
+        { id: "autostart", name: "自动启动" },
+        { id: "vscode", name: "VS Code 集成" },
+        { id: "done", name: "完成" },
       ];
 
       const state = {
-        railOpen: window.innerWidth > 1080,
-        currentStep: "start",
-        notice: {
-          tone: "warn",
-          title: "先确认这台机器已经准备好",
-          message: "完成这一步后，就可以继续连接飞书应用。",
-        },
-        modal: null,
-        machine: {
-          ready: false,
-          loading: false,
-          rechecked: false,
-          checks: [
-            { id: "service", title: "本地服务已启动", summary: "这台机器上的本地服务已经可以响应。", tone: "good" },
-            { id: "command", title: "Codex 命令可用", summary: "还需要先确认这台机器上可以直接启动 Codex。", tone: "danger" },
-            { id: "network", title: "网络访问正常", summary: "当前网络可以继续连接飞书和 VS Code。", tone: "good" },
-          ],
-        },
+        step: "env",
+        done: {},
+        env: { status: "checking" },
         connect: {
-          mode: "new",
-          connected: false,
-          qrDone: false,
-          fields: {
-            appId: "",
-            appSecret: "",
-          },
-          errors: {},
+          mode: "qr",
+          verified: false,
+          qr: { status: "idle", pollCount: 0, timer: null },
+          manual: { name: "", appId: "", appSecret: "", tip: "", tipTone: "warn" },
         },
-        capability: {
-          permissions: false,
-          events: false,
-          callback: false,
-          menu: false,
-          publish: false,
+        permission: {
+          status: "idle",
+          pass: false,
+          checkCount: 0,
+          missing: ["drive:drive", "im:datasync.feed_card.time_sensitive:write"],
         },
-        vscode: {
-          choice: null,
-          extensionSeen: false,
-          finished: false,
+        events: { sent: false },
+        callback: { sent: false },
+        autostart: {
+          status: "idle",
+          supported: null,
+          enabledChoice: null,
         },
+        vscode: { choice: null, integrated: false },
       };
 
-      function isMachineReady() {
-        return state.machine.ready;
+      const setupSteps = document.getElementById("setupSteps");
+      const stepTitle = document.getElementById("stepTitle");
+      const stepDesc = document.getElementById("stepDesc");
+      const setupContent = document.getElementById("setupContent");
+      const globalNotice = document.getElementById("globalNotice");
+
+      function pushNotice(text, tone = "good") {
+        globalNotice.innerHTML = `<div class="notice ${tone}">${text}</div>`;
+        window.clearTimeout(pushNotice._timer);
+        pushNotice._timer = window.setTimeout(() => {
+          globalNotice.innerHTML = "";
+        }, 3400);
       }
 
-      function isConnected() {
-        return state.connect.connected;
-      }
-
-      function isCapabilityDone() {
-        return Object.values(state.capability).every(Boolean);
-      }
-
-      function isVSCodeDone() {
-        return state.vscode.choice === "later" || state.vscode.finished;
-      }
-
-      function isStepUnlocked(stepId) {
-        switch (stepId) {
-          case "start":
-            return true;
-          case "connect":
-            return isMachineReady();
-          case "capability":
-            return isMachineReady() && isConnected();
-          case "vscode":
-            return isMachineReady() && isConnected() && isCapabilityDone();
-          case "finish":
-            return isMachineReady() && isConnected() && isCapabilityDone() && isVSCodeDone();
-          default:
-            return false;
+      function gotoStep(step, auto) {
+        state.step = step;
+        render();
+        if (auto) {
+          runStepAuto(step);
         }
       }
 
-      function stepState(stepId) {
-        if (state.currentStep === stepId) {
-          return "current";
-        }
-        switch (stepId) {
-          case "start":
-            return isMachineReady() ? "done" : "current";
-          case "connect":
-            return !isMachineReady() ? "locked" : isConnected() ? "done" : state.currentStep === "connect" ? "current" : "upcoming";
-          case "capability":
-            return !isConnected() ? "locked" : isCapabilityDone() ? "done" : state.currentStep === "capability" ? "current" : "upcoming";
-          case "vscode":
-            return !isCapabilityDone() ? "locked" : isVSCodeDone() ? "done" : state.currentStep === "vscode" ? "current" : "upcoming";
-          case "finish":
-            return !isVSCodeDone() ? "locked" : "upcoming";
-          default:
-            return "locked";
-        }
-      }
-
-      function statusHTML(type, text) {
-        return '<span class="status-pill ' + type + '">' + text + "</span>";
-      }
-
-      function setNotice(tone, title, message) {
-        state.notice = { tone, title, message };
-      }
-
-      function openModal(title, message, detail) {
-        state.modal = { title, message, detail };
-        renderModal();
-      }
-
-      function closeModal() {
-        state.modal = null;
-        renderModal();
-      }
-
-      function gotoStep(stepId) {
-        if (!isStepUnlocked(stepId)) {
+      function runStepAuto(step) {
+        if (step === "permission") {
+          autoCheckPermission();
           return;
         }
-        state.currentStep = stepId;
-        if (window.innerWidth <= 1080) {
-          state.railOpen = false;
-        }
-        render();
-      }
-
-      function startCheck() {
-        state.machine.loading = true;
-        setNotice("warn", "正在重新检查这台机器", "我们会再次确认当前机器是否已经满足继续接入的条件。");
-        render();
-        window.setTimeout(() => {
-          state.machine.loading = false;
-          state.machine.ready = true;
-          state.machine.rechecked = true;
-          state.machine.checks = [
-            { id: "service", title: "本地服务已启动", summary: "这台机器上的本地服务可以继续使用。", tone: "good" },
-            { id: "command", title: "Codex 命令可用", summary: "已经确认这台机器可以直接启动 Codex。", tone: "good" },
-            { id: "network", title: "网络访问正常", summary: "当前网络可以继续连接飞书和 VS Code。", tone: "good" },
-          ];
-          state.currentStep = "connect";
-          setNotice("good", "这台机器已经准备好了", "现在可以继续连接飞书应用。");
-          render();
-        }, 900);
-      }
-
-      function chooseConnectMode(mode) {
-        state.connect.mode = mode;
-        state.connect.connected = false;
-        state.connect.qrDone = false;
-        state.connect.errors = {};
-        setNotice("neutral", "", "");
-        render();
-      }
-
-      function completeQRCode() {
-        state.connect.qrDone = true;
-        state.connect.connected = true;
-        state.connect.errors = {};
-        state.currentStep = "capability";
-        setNotice("good", "飞书应用已经接进来了", "下一步只处理基础对话与交互必须完成的飞书后台设置。");
-        render();
-      }
-
-      function updateField(field, value) {
-        state.connect.fields[field] = value;
-        state.connect.connected = false;
-        if (state.connect.errors[field]) {
-          delete state.connect.errors[field];
-        }
-        render();
-      }
-
-      function validateExistingApp() {
-        const errors = {};
-        if (!state.connect.fields.appId.trim()) {
-          errors.appId = "请先填写 App ID。";
-        }
-        if (!state.connect.fields.appSecret.trim()) {
-          errors.appSecret = "请先填写 App Secret。";
-        }
-        if (state.connect.fields.appId.trim() && state.connect.fields.appId.trim().length < 6) {
-          errors.appId = "这个 App ID 看起来不完整，请再核对一次。";
-        }
-        if (state.connect.fields.appId.trim().startsWith("bad_")) {
-          errors.appId = "当前填写的 App ID 无法通过连接测试，请确认你复制的是正在使用的飞书应用。";
-        }
-        state.connect.errors = errors;
-        if (Object.keys(errors).length > 0) {
-          setNotice("danger", "这一步还没有完成", "请先修正页面上的字段，再继续连接测试。");
-          render();
+        if (step === "events") {
+          autoSendEventTest();
           return;
         }
-        state.connect.connected = true;
-        state.currentStep = "capability";
-        setNotice("good", "连接测试已经通过", "飞书应用已经接好，下一步继续补齐基础能力。");
-        render();
-      }
-
-      function toggleCapability(task) {
-        state.capability[task] = !state.capability[task];
-        render();
-      }
-
-      function continueCapability() {
-        if (!isCapabilityDone()) {
-          setNotice("warn", "还有必做项没完成", "先把基础权限、事件、回调、菜单和发布都处理好，再继续。");
-          render();
+        if (step === "callback") {
+          autoSendCallbackTest();
           return;
         }
-        state.currentStep = "vscode";
-        setNotice("good", "基础对话与交互已经就绪", "这台机器现在已经可以开始使用。VS Code 是可选项，可以现在处理，也可以稍后再说。");
-        render();
-      }
-
-      function chooseVSCode(choice) {
-        state.vscode.choice = choice;
-        render();
-      }
-
-      function continueVSCode() {
-        if (!state.vscode.choice) {
-          openModal("还差一步", "请先选择你是否要在这台机器上继续处理 VS Code。");
-          return;
+        if (step === "autostart") {
+          autoDetectAutostart();
         }
-        if (state.vscode.choice === "later") {
-          state.vscode.finished = true;
-          state.currentStep = "finish";
-          setNotice("warn", "VS Code 已稍后处理", "你现在可以先完成设置。以后需要时，再回到本地管理页继续。");
-          render();
-          return;
-        }
-        if (!state.vscode.extensionSeen) {
-          setNotice("warn", "还没检测到这台机器上的 VS Code 扩展", "请先在这台机器上打开一次 VS Code，并确认已经安装 Codex 扩展。完成后再回来继续。");
-          render();
-          return;
-        }
-        state.vscode.finished = true;
-        state.currentStep = "finish";
-        setNotice("good", "VS Code 已接入", "以后需要调整时，再回到本地管理页处理即可。");
-        render();
       }
 
-      function markExtensionReady() {
-        state.vscode.extensionSeen = true;
-        setNotice("good", "已经检测到 VS Code 扩展", "现在可以继续在这台机器上启用 VS Code。");
-        render();
-      }
+      function renderStepList() {
+        const currentIndex = steps.findIndex((x) => x.id === state.step);
+        setupSteps.innerHTML = steps
+          .map((item, index) => {
+            const done = Boolean(state.done[item.id]);
+            const active = item.id === state.step;
+            const cls = active ? "active" : done ? "done" : "";
+            const meta = done ? "已完成" : active ? "进行中" : "待处理";
+            return `<button class="step-btn ${cls}" data-step="${item.id}" data-index="${index}">
+              <div>${item.name}</div>
+              <div class="step-meta">${meta}</div>
+            </button>`;
+          })
+          .join("");
 
-      function restartWizard() {
-        state.currentStep = "start";
-        state.notice = {
-          tone: "warn",
-          title: "已回到向导开头",
-          message: "你可以重新从第一步开始查看。",
-        };
-        render();
-      }
-
-      function copyChecklist() {
-        const lines = [
-          "基础权限：机器人能力、消息发送、卡片回调",
-          "事件订阅：消息和回调事件",
-          "回调方式：保存并启用",
-          "机器人菜单：把常用功能加进去",
-          "发布应用：确认当前版本已发布",
-        ];
-        const text = lines.join("\n");
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(() => {
-            setNotice("good", "清单已复制", "你可以直接把这份简版清单带去飞书后台逐项确认。");
-            render();
+        setupSteps.querySelectorAll(".step-btn").forEach((node) => {
+          node.addEventListener("click", () => {
+            const index = Number(node.dataset.index);
+            if (index <= currentIndex || state.done[steps[index].id]) {
+              gotoStep(node.dataset.step, false);
+            }
           });
-        } else {
-          openModal("这台浏览器暂时不能直接复制", "请手动记录这份清单：", text);
+        });
+      }
+
+      function setStepContent(title, desc, html) {
+        stepTitle.textContent = title;
+        stepDesc.textContent = desc;
+        setupContent.innerHTML = html;
+      }
+
+      function renderEnvStep() {
+        const s = state.env.status;
+        if (s === "checking") {
+          setStepContent("环境检查", "进入后自动检查服务与运行条件。", `<div class="notice warn">正在检查当前环境，请稍候...</div>`);
+          return;
         }
-      }
-
-      function renderStepRail() {
-        return (
-          '<aside class="rail' +
-          (state.railOpen ? " open" : "") +
-          '">' +
-          '<div class="rail-top">' +
-          '<div><p class="eyebrow">Codex Remote</p><h1>设置向导</h1><p>跟着下面几步做完，就可以开始使用。</p></div>' +
-          '<button class="mobile-menu-button" type="button" onclick="toggleRail()">收起</button>' +
-          "</div>" +
-          '<div class="step-list">' +
-          steps
-            .map((step, index) => {
-              const stateName = stepState(step.id);
-              const badge =
-                stateName === "done"
-                  ? statusHTML("good", "已完成")
-                  : stateName === "current"
-                    ? statusHTML("warn", "当前")
-                    : stateName === "locked"
-                      ? statusHTML("neutral", "未开始")
-                      : statusHTML("neutral", "待处理");
-              return (
-                '<button class="step-link ' +
-                stateName +
-                (step.id === state.currentStep ? " current" : "") +
-                '" type="button" onclick="gotoStep(\'' +
-                step.id +
-                '\')" ' +
-                (isStepUnlocked(step.id) ? "" : "disabled") +
-                ">" +
-                '<span class="step-index">' +
-                (index + 1) +
-                "</span>" +
-                "<div><strong>" +
-                step.label +
-                "</strong><small>" +
-                step.hint +
-                "</small></div>" +
-                badge +
-                "</button>"
-              );
-            })
-            .join("") +
-          "</div>" +
-          "</aside>"
-        );
-      }
-
-      function renderNotice() {
-        if (!state.notice || !state.notice.title) {
-          return "";
+        if (s === "failed") {
+          setStepContent(
+            "环境检查",
+            "请先修复当前环境问题。",
+            `<div class="notice bad">当前服务尚未就绪，请确认服务状态后重试。</div>
+             <div class="row" style="margin-top:12px"><button id="retryEnv" class="btn secondary">重新检查</button></div>`
+          );
+          document.getElementById("retryEnv").onclick = () => {
+            state.env.status = "checking";
+            render();
+            window.setTimeout(() => {
+              state.env.status = "ready";
+              state.done.env = true;
+              gotoStep("connect", true);
+              pushNotice("环境正常，已进入飞书连接。");
+            }, 850);
+          };
+          return;
         }
-        return (
-          '<section class="notice ' +
-          state.notice.tone +
-          '"><strong>' +
-          state.notice.title +
-          "</strong><p>" +
-          state.notice.message +
-          "</p></section>"
-        );
-      }
-
-      function renderStartStep() {
-        return (
-          '<section class="card soft"><h3>先确认这台机器是否可以继续</h3><p>检查通过以后，就继续连接飞书应用。</p><div class="card-grid two">' +
-          '<article class="card"><h4>当前结果</h4><div class="summary-row">' +
-          (state.machine.ready ? statusHTML("good", "可以继续") : statusHTML("danger", "还不能继续")) +
-          (state.machine.rechecked ? statusHTML("neutral", "已重新检查") : statusHTML("neutral", "首次进入")) +
-          '</div><p>' +
-          (state.machine.ready
-            ? "这台机器已经满足继续接入飞书应用的基本条件。"
-            : "请先把这台机器准备好，再继续下一步。") +
-          '</p><div class="inline-actions"><button class="button-primary" type="button" onclick="startCheck()" ' +
-          (state.machine.loading ? "disabled" : "") +
-          ">" +
-          (state.machine.loading ? "正在检查..." : state.machine.ready ? "再检查一次" : "我已经修好，重新检查") +
-          '</button></div></article>' +
-          '<article class="card"><h4>完成后会发生什么</h4><div class="bullet-list"><p>通过以后，继续连接飞书应用。</p><p>如果还有未完成项，会在这里直接提示。</p><p>处理完再重新检查一次即可。</p></div></article>' +
-          "</div></section>" +
-          '<section class="card"><h4>检查结果</h4><div class="check-list">' +
-          state.machine.checks
-            .map((check) => {
-              return (
-                '<article class="check-item"><div class="check-item-top"><div><strong>' +
-                check.title +
-                "</strong><p>" +
-                check.summary +
-                "</p></div>" +
-                statusHTML(check.tone === "good" ? "good" : "danger", check.tone === "good" ? "通过" : "待处理") +
-                "</div></article>"
-              );
-            })
-            .join("") +
-          "</div></section>"
-        );
+        setStepContent("环境检查", "检查通过后会自动进入下一步。", `<div class="notice good">环境检查通过，正在进入飞书连接...</div>`);
       }
 
       function renderConnectStep() {
-        const isNew = state.connect.mode === "new";
-        return (
-          '<section class="card soft"><h3>这次要怎么连接飞书应用？</h3><p>选一种最适合你的方式继续。</p><div class="choice-grid">' +
-          '<button class="choice-card' +
-          (isNew ? " selected" : "") +
-          '" type="button" onclick="chooseConnectMode(\'new\')"><strong>新建飞书应用</strong><p>推荐。用手机扫码后，页面自动把新应用接回来。</p></button>' +
-          '<button class="choice-card' +
-          (!isNew ? " selected" : "") +
-          '" type="button" onclick="chooseConnectMode(\'existing\')"><strong>接入已有飞书应用</strong><p>如果你已经在飞书开放平台有应用，直接填写 App ID 和 App Secret。</p></button>' +
-          "</div></section>" +
-          (isNew
-            ? '<section class="card"><div class="card-grid two"><article class="card"><h4>扫码新建</h4><p>请用飞书手机客户端扫码。完成后，继续下一步。</p><div class="qr-box">扫码创建飞书应用</div><div class="inline-actions"><button class="button-primary" type="button" onclick="completeQRCode()">我已完成扫码</button><a class="button-secondary" href="https://open.feishu.cn/app?lang=zh-CN" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">打开飞书开放平台</a></div></article><article class="card"><h4>需要准备什么</h4><div class="bullet-list"><p>一部已经登录飞书的手机。</p><p>扫码后按提示完成创建。</p><p>完成后回到这里继续。</p></div></article></div></section>'
-            : '<section class="card"><div class="card-grid two"><article class="card"><h4>已有飞书应用</h4><div class="field-grid"><div class="field"><label for="app-id">App ID</label><input id="app-id" value="' +
-              escapeHTML(state.connect.fields.appId) +
-              '" oninput="updateField(\'appId\', this.value)" placeholder="例如 cli_xxx" />' +
-              (state.connect.errors.appId ? '<div class="field-error">' + state.connect.errors.appId + "</div>" : "") +
-              '</div><div class="field"><label for="app-secret">App Secret</label><input id="app-secret" type="password" value="' +
-              escapeHTML(state.connect.fields.appSecret) +
-              '" oninput="updateField(\'appSecret\', this.value)" placeholder="例如 secret_xxx" />' +
-              (state.connect.errors.appSecret ? '<div class="field-error">' + state.connect.errors.appSecret + "</div>" : "") +
-              '</div></div><div class="inline-actions"><button class="button-primary" type="button" onclick="validateExistingApp()">验证并继续</button><a class="button-secondary" href="https://open.feishu.cn/app?lang=zh-CN" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">打开飞书开放平台</a></div></article><article class="card"><h4>怎么找到这两个字段</h4><div class="bullet-list"><p>打开飞书开放平台。</p><p>进入目标应用的凭证与基础信息页面。</p><p>复制 App ID 和 App Secret 后回来继续。</p></div></article></div></section>')
+        const mode = state.connect.mode;
+        const qr = state.connect.qr;
+        const manual = state.connect.manual;
+
+        setStepContent(
+          "飞书连接",
+          "选择扫码创建或手动输入，连接验证通过后会自动进入下一步。",
+          `<div class="tag-row">
+             <button id="modeQr" class="btn ${mode === "qr" ? "primary" : "ghost"}">扫码创建</button>
+             <button id="modeManual" class="btn ${mode === "manual" ? "primary" : "ghost"}">手动输入</button>
+           </div>
+           <div id="connectPanel" style="margin-top:14px"></div>`
         );
+
+        document.getElementById("modeQr").onclick = () => {
+          state.connect.mode = "qr";
+          render();
+        };
+        document.getElementById("modeManual").onclick = () => {
+          state.connect.mode = "manual";
+          render();
+        };
+
+        const panel = document.getElementById("connectPanel");
+        if (mode === "manual") {
+          panel.innerHTML = `
+            <div class="grid-2">
+              <div class="field">
+                <label>机器人名称</label>
+                <input id="mName" class="input" placeholder="例如：团队机器人" value="${escapeAttr(manual.name)}" />
+              </div>
+              <div class="field">
+                <label>App ID</label>
+                <input id="mAppId" class="input" placeholder="请输入 App ID" value="${escapeAttr(manual.appId)}" />
+              </div>
+            </div>
+            <div class="field" style="margin-top:12px">
+              <label>App Secret</label>
+              <input id="mSecret" class="input" placeholder="请输入 App Secret" value="${escapeAttr(manual.appSecret)}" />
+            </div>
+            <div class="row" style="margin-top:12px">
+              <button id="manualVerify" class="btn primary">验证并继续</button>
+            </div>
+            <div style="margin-top:10px">${manual.tip ? `<div class="notice ${manual.tipTone}">${manual.tip}</div>` : ""}</div>
+          `;
+          document.getElementById("manualVerify").onclick = () => {
+            manual.name = document.getElementById("mName").value.trim();
+            manual.appId = document.getElementById("mAppId").value.trim();
+            manual.appSecret = document.getElementById("mSecret").value.trim();
+            if (!manual.appId || !manual.appSecret) {
+              manual.tip = "请填写完整的 App ID 和 App Secret。";
+              manual.tipTone = "bad";
+              render();
+              return;
+            }
+            manual.tip = "验证通过，连接已建立。正在进入权限检查...";
+            manual.tipTone = "good";
+            state.done.connect = true;
+            state.connect.verified = true;
+            render();
+            window.setTimeout(() => {
+              gotoStep("permission", true);
+              pushNotice("连接验证成功。");
+            }, 820);
+          };
+          return;
+        }
+
+        if (qr.status === "idle") {
+          startQrPolling();
+          return;
+        }
+
+        panel.innerHTML = `
+          <div class="scan-stage">
+            <div class="grid-2">
+              <div>
+                <h3 style="margin:0;font-size:16px">扫码创建</h3>
+                <div style="margin-top:10px" class="qr-frame">扫码创建页面</div>
+              </div>
+              <div>
+                <div id="qrAction" style="margin-top:12px"></div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const qrAction = document.getElementById("qrAction");
+        if (qr.status === "polling") {
+          qrAction.innerHTML = `<div class="notice warn">正在等待扫码结果（第 ${qr.pollCount} 次检查）...</div>
+                                <div class="row" style="margin-top:10px"><button id="switchManual" class="btn ghost">改用手动输入</button></div>`;
+          document.getElementById("switchManual").onclick = () => {
+            stopQrPolling();
+            state.connect.mode = "manual";
+            render();
+          };
+          return;
+        }
+        if (qr.status === "ready") {
+          qrAction.innerHTML = `<div class="notice good">扫码成功，连接验证已通过，正在进入权限检查...</div>`;
+          return;
+        }
+        qrAction.innerHTML = `<div class="notice bad">扫码超时，请重新开始。</div>
+                              <div class="row" style="margin-top:10px">
+                                <button id="restartQr" class="btn secondary">重新扫码</button>
+                                <button id="switchManual2" class="btn ghost">改用手动输入</button>
+                              </div>`;
+        document.getElementById("restartQr").onclick = () => startQrPolling();
+        document.getElementById("switchManual2").onclick = () => {
+          state.connect.mode = "manual";
+          render();
+        };
       }
 
-      function renderCapabilityStep() {
-        const tasks = [
-          { id: "permissions", title: "导入基础权限", summary: "保证这条飞书应用已经具备基础对话与交互需要的权限。" },
-          { id: "events", title: "开启事件订阅", summary: "让消息和回调事件能够回到这台机器。" },
-          { id: "callback", title: "保存回调方式", summary: "确认回调已经按当前接入方式启用。" },
-          { id: "menu", title: "设置机器人菜单", summary: "把常用功能加到飞书应用菜单里。 " },
-          { id: "publish", title: "发布当前版本", summary: "让刚才完成的设置正式生效。" },
-        ];
-        return (
-          '<section class="card soft"><div class="card-grid two"><article class="card"><h3>先把基础对话与交互准备好</h3><p>把下面这些事项完成后，你就可以开始正常使用。</p><div class="summary-row">' +
-          statusHTML(isCapabilityDone() ? "good" : "warn", isCapabilityDone() ? "已全部完成" : "还有待完成项") +
-          '</div></article><article class="card"><h4>你可以怎么做</h4><div class="bullet-list"><p>打开当前飞书应用后台逐项确认。</p><p>完成一项，就在这里勾掉一项。</p><p>需要时可以复制一份简版清单带过去。</p></div><div class="inline-actions"><button class="button-secondary" type="button" onclick="copyChecklist()">复制简版清单</button></div></article></div></section>' +
-          '<section class="card"><h4>必做项</h4><div class="task-list">' +
-          tasks
-            .map((task) => {
-              const done = state.capability[task.id];
-              return (
-                '<article class="task-item' +
-                (done ? " done" : "") +
-                '"><div class="task-top"><div><strong>' +
-                task.title +
-                "</strong><p>" +
-                task.summary +
-                "</p></div>" +
-                statusHTML(done ? "good" : "warn", done ? "已完成" : "待处理") +
-                '</div><div class="inline-actions"><button class="' +
-                (done ? "button-ghost" : "button-secondary") +
-                '" type="button" onclick="toggleCapability(\'' +
-                task.id +
-                "')\">" +
-                (done ? "撤回示例状态" : "我已完成这项") +
-                "</button></div></article>"
-              );
-            })
-            .join("") +
-          "</div></section>"
+      function startQrPolling() {
+        stopQrPolling();
+        state.connect.qr.status = "polling";
+        state.connect.qr.pollCount = 0;
+        render();
+        state.connect.qr.timer = window.setInterval(() => {
+          const qr = state.connect.qr;
+          qr.pollCount += 1;
+          if (qr.pollCount >= 3) {
+            stopQrPolling();
+            qr.status = "ready";
+            state.done.connect = true;
+            state.connect.verified = true;
+            render();
+            window.setTimeout(() => {
+              gotoStep("permission", true);
+              pushNotice("扫码连接成功，已自动进入权限检查。");
+            }, 300);
+            return;
+          }
+          render();
+        }, 2000);
+      }
+
+      function stopQrPolling() {
+        if (state.connect.qr.timer) {
+          window.clearInterval(state.connect.qr.timer);
+          state.connect.qr.timer = null;
+        }
+      }
+
+      function autoCheckPermission() {
+        state.permission.status = "checking";
+        render();
+        window.setTimeout(() => {
+          state.permission.checkCount += 1;
+          if (state.permission.checkCount === 1) {
+            state.permission.status = "missing";
+          } else {
+            state.permission.status = "ready";
+            state.permission.pass = true;
+            state.done.permission = true;
+            render();
+            window.setTimeout(() => {
+              gotoStep("events", true);
+              pushNotice("权限检查通过，已进入事件订阅。");
+            }, 720);
+            return;
+          }
+          render();
+        }, 880);
+      }
+
+      function renderPermissionStep() {
+        if (state.permission.status === "checking" || state.permission.status === "idle") {
+          setStepContent("权限检查", "进入页面后自动检查当前权限。", `<div class="notice warn">正在检查权限，请稍候...</div>`);
+          return;
+        }
+        if (state.permission.status === "ready") {
+          setStepContent("权限检查", "权限已完整，系统会自动进入下一步。", `<div class="notice good">检查通过，正在进入事件订阅...</div>`);
+          return;
+        }
+        setStepContent(
+          "权限检查",
+          "检测到缺失权限，请先在飞书后台补齐。",
+          `<div class="notice bad">当前还不能进入下一步，请先补齐缺失权限。</div>
+           <ul class="line-list">${state.permission.missing.map((scope) => `<li><code>${scope}</code></li>`).join("")}</ul>
+           <p class="hint"><a class="link" href="#" onclick="return false;">打开飞书后台权限配置</a></p>
+           <div class="field" style="margin-top:10px">
+             <label>可复制的一次性权限配置</label>
+             <textarea id="scopeJson" class="textarea" readonly>{
+  "scopes": {
+    "tenant": [
+      "drive:drive",
+      "im:datasync.feed_card.time_sensitive:write"
+    ],
+    "user": []
+  }
+}</textarea>
+           </div>
+           <div class="row" style="margin-top:10px">
+             <button id="copyScope" class="btn ghost">复制配置</button>
+             <button id="permissionRecheck" class="btn primary">我已处理，重新检查</button>
+           </div>`
         );
+        document.getElementById("copyScope").onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(document.getElementById("scopeJson").value);
+            pushNotice("已复制权限配置。");
+          } catch (_) {
+            pushNotice("复制失败，请手动复制。", "warn");
+          }
+        };
+        document.getElementById("permissionRecheck").onclick = () => autoCheckPermission();
+      }
+
+      function autoSendEventTest() {
+        if (state.events.sent) return;
+        state.events.sent = true;
+        render();
+        window.setTimeout(() => pushNotice("事件订阅测试提示已发送到机器人会话。"), 500);
+      }
+
+      function renderEventsStep() {
+        setStepContent(
+          "事件订阅",
+          "进入本页会自动向机器人发送测试提示。",
+          `<div class="notice warn">请到机器人会话中按指引输入固定验证词，完成事件订阅测试。</div>
+           <p class="hint">如果你确认这一步已经完成，也可以直接继续下一步。</p>
+           <div class="row" style="margin-top:12px"><button id="eventNext" class="btn primary">下一步</button></div>`
+        );
+        document.getElementById("eventNext").onclick = () => {
+          state.done.events = true;
+          gotoStep("callback", true);
+        };
+      }
+
+      function autoSendCallbackTest() {
+        if (state.callback.sent) return;
+        state.callback.sent = true;
+        render();
+        window.setTimeout(() => pushNotice("回调测试卡片已发送到机器人会话。"), 500);
+      }
+
+      function renderCallbackStep() {
+        setStepContent(
+          "回调配置",
+          "进入本页会自动向机器人发送回调测试卡片。",
+          `<div class="notice warn">请到机器人会话中点击测试卡片按钮，确认回调可用。</div>
+           <p class="hint">如果你确认这一步已经完成，也可以直接继续下一步。</p>
+           <div class="row" style="margin-top:12px"><button id="callbackNext" class="btn primary">下一步</button></div>`
+        );
+        document.getElementById("callbackNext").onclick = () => {
+          state.done.callback = true;
+          gotoStep("menu", false);
+        };
+      }
+
+      function renderMenuStep() {
+        setStepContent(
+          "菜单确认",
+          "请在飞书后台完成菜单配置后继续。",
+          `<div class="notice warn">如果尚未配置菜单，请先进入飞书后台完成设置。</div>
+           <p class="hint"><a class="link" href="#" onclick="return false;">打开飞书后台菜单配置</a></p>
+           <div class="row" style="margin-top:12px"><button id="menuNext" class="btn primary">下一步</button></div>`
+        );
+        document.getElementById("menuNext").onclick = () => {
+          state.done.menu = true;
+          gotoStep("autostart", true);
+        };
+      }
+
+      function autoDetectAutostart() {
+        if (state.autostart.status !== "idle") return;
+        state.autostart.status = "checking";
+        render();
+        window.setTimeout(() => {
+          state.autostart.supported = true;
+          state.autostart.status = "ready";
+          render();
+        }, 780);
+      }
+
+      function renderAutostartStep() {
+        if (state.autostart.status === "checking" || state.autostart.status === "idle") {
+          setStepContent("自动启动", "正在检查当前系统是否支持自动启动。", `<div class="notice warn">检测中，请稍候...</div>`);
+          return;
+        }
+        if (!state.autostart.supported) {
+          setStepContent("自动启动", "当前系统不支持自动启动，已自动跳过。", `<div class="notice warn">当前系统不支持自动启动，正在进入 VS Code 集成...</div>`);
+          window.setTimeout(() => {
+            state.done.autostart = true;
+            gotoStep("vscode", false);
+          }, 700);
+          return;
+        }
+        setStepContent(
+          "自动启动",
+          "请选择是否在登录后自动运行。",
+          `<div class="tag-row"><span class="tag warn">当前默认未启用</span></div>
+           <div class="row" style="margin-top:12px">
+             <button id="autostartOn" class="btn primary">启用自动启动</button>
+             <button id="autostartOff" class="btn ghost">保持关闭并继续</button>
+           </div>`
+        );
+        document.getElementById("autostartOn").onclick = () => {
+          state.autostart.enabledChoice = true;
+          state.done.autostart = true;
+          pushNotice("已启用自动启动。");
+          gotoStep("vscode", false);
+        };
+        document.getElementById("autostartOff").onclick = () => {
+          state.autostart.enabledChoice = false;
+          state.done.autostart = true;
+          pushNotice("自动启动保持关闭。");
+          gotoStep("vscode", false);
+        };
       }
 
       function renderVSCodeStep() {
-        return (
-          '<section class="card soft"><h3>现在要不要一起处理 VS Code？</h3><p>如果你准备在这台机器上用 VS Code，可以现在一起完成。</p><div class="choice-grid">' +
-          '<button class="choice-card' +
-          (state.vscode.choice === "current" ? " selected" : "") +
-          '" type="button" onclick="chooseVSCode(\'current\')"><strong>要在这台机器上继续使用 VS Code</strong><p>现在一起完成，之后就可以直接从这台机器继续使用。</p></button>' +
-          '<button class="choice-card' +
-          (state.vscode.choice === "later" ? " selected" : "") +
-          '" type="button" onclick="chooseVSCode(\'later\')"><strong>以后再处理</strong><p>先完成当前设置，需要时再回来继续。</p></button>' +
-          "</div></section>" +
-          (state.vscode.choice === "current"
-            ? '<section class="card"><div class="card-grid two"><article class="card"><h4>当前要确认什么</h4><div class="bullet-list"><p>这台机器上已经安装 Codex 扩展。</p><p>你已经打开过一次 VS Code。</p><p>确认后，页面就能继续启用。</p></div><div class="inline-actions"><button class="button-secondary" type="button" onclick="markExtensionReady()">' +
-              (state.vscode.extensionSeen ? "已检测到扩展" : "我已经打开 VS Code 并确认扩展已安装") +
-              '</button></div></article><article class="card"><h4>当前状态</h4><div class="summary-row">' +
-              (state.vscode.extensionSeen ? statusHTML("good", "可以继续启用") : statusHTML("warn", "还在等待确认")) +
-              "</div><p>" +
-              (state.vscode.extensionSeen
-                ? "现在可以继续完成这一步。"
-                : "还没确认扩展是否已经安装。") +
-              "</p></article></div></section>"
-            : '<section class="card"><h4>稍后再处理也没问题</h4><p>这不会影响你先开始使用。等你需要时，再回来继续。</p></section>')
+        setStepContent(
+          "VS Code 集成",
+          "是否在这台机器上使用 VS Code + Codex。",
+          `<div class="notice warn">如果你需要在这台机器上使用 VS Code，请完成集成。</div>
+           <div class="row" style="margin-top:12px">
+             <button id="vscodeYes" class="btn primary">确认集成</button>
+             <button id="vscodeNo" class="btn ghost">先不使用</button>
+           </div>`
         );
+        document.getElementById("vscodeYes").onclick = () => {
+          state.vscode.choice = true;
+          state.vscode.integrated = true;
+          state.done.vscode = true;
+          pushNotice("VS Code 集成已完成。");
+          gotoStep("done", false);
+        };
+        document.getElementById("vscodeNo").onclick = () => {
+          state.vscode.choice = false;
+          state.done.vscode = true;
+          gotoStep("done", false);
+        };
       }
 
-      function renderFinishStep() {
-        return (
-          '<section class="card soft"><h3>设置已经完成</h3><p>现在你已经可以开始使用 Codex Remote 了。</p><div class="mini-card-grid"><article class="mini-card"><strong>这台机器</strong><p>已准备好</p></article><article class="mini-card"><strong>飞书应用</strong><p>已接入</p></article><article class="mini-card"><strong>VS Code</strong><p>' +
-          (state.vscode.choice === "later" ? "稍后处理" : "已接入") +
-          "</p></article></div></section>" +
-          '<section class="card"><h4>下一步</h4><div class="bullet-list"><p>进入本地管理页查看当前状态。</p><p>以后需要清理图片、继续处理 VS Code 或补其它设置，都可以在那里完成。</p><p>如果你现在只是想先接通，到这里就可以了。</p></div><div class="inline-actions"><a class="button-primary" href="#admin" style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">进入本地管理页</a><button class="button-ghost" type="button" onclick="restartWizard()">重新开始</button></div></section>'
-        );
-      }
-
-      function renderBody() {
-        switch (state.currentStep) {
-          case "start":
-            return renderStartStep();
-          case "connect":
-            return renderConnectStep();
-          case "capability":
-            return renderCapabilityStep();
-          case "vscode":
-            return renderVSCodeStep();
-          case "finish":
-            return renderFinishStep();
-          default:
-            return "";
-        }
-      }
-
-      function footerCopy() {
-        switch (state.currentStep) {
-          case "start":
-            return { title: "先确认环境", text: "通过以后再进入飞书步骤。", primary: "继续检查", secondary: "" };
-          case "connect":
-            return { title: "连接飞书应用", text: "完成后继续下一步。", primary: state.connect.mode === "new" ? "我已完成扫码" : "验证并继续", secondary: "上一步" };
-          case "capability":
-            return { title: "完成基础能力", text: "全部完成后继续。", primary: "检查并继续", secondary: "上一步" };
-          case "vscode":
-            return { title: "处理 VS Code", text: "可以现在完成，也可以稍后处理。", primary: state.vscode.choice === "later" ? "完成设置" : "继续", secondary: "上一步" };
-          case "finish":
-            return { title: "进入本地管理页", text: "后续维护都在那里处理。", primary: "打开管理页", secondary: "重新开始" };
-          default:
-            return { title: "", text: "", primary: "", secondary: "" };
-        }
-      }
-
-      function runPrimaryAction() {
-        switch (state.currentStep) {
-          case "start":
-            startCheck();
-            break;
-          case "connect":
-            if (state.connect.mode === "new") {
-              completeQRCode();
-            } else {
-              validateExistingApp();
-            }
-            break;
-          case "capability":
-            continueCapability();
-            break;
-          case "vscode":
-            continueVSCode();
-            break;
-          case "finish":
-            window.location.hash = "admin";
-            setNotice("good", "可以进入本地管理页了", "下一步就从那里继续。");
-            render();
-            break;
-        }
-      }
-
-      function runSecondaryAction() {
-        switch (state.currentStep) {
-          case "connect":
-          case "capability":
-          case "vscode":
-            gotoStep(steps[Math.max(0, steps.findIndex((item) => item.id === state.currentStep) - 1)].id);
-            break;
-          case "finish":
-            restartWizard();
-            break;
-        }
-      }
-
-      function renderFooter() {
-        const copy = footerCopy();
-        return (
-          '<div class="footer-bar"><div class="footer-copy"><strong>' +
-          copy.title +
-          "</strong><span>" +
-          copy.text +
-          '</span></div><div class="footer-actions">' +
-          (copy.secondary
-            ? '<button class="button-ghost" type="button" onclick="runSecondaryAction()">' + copy.secondary + "</button>"
-            : "") +
-          '<button class="button-primary" type="button" onclick="runPrimaryAction()">' +
-          copy.primary +
-          "</button></div></div>"
+      function renderDoneStep() {
+        setStepContent(
+          "欢迎使用",
+          "基础设置已完成。",
+          `<div class="done-card">
+             <h3 class="done-title">欢迎，设置已经完成。</h3>
+             <p class="done-sub">你现在可以进入管理页面，继续维护机器人、系统集成和存储清理。</p>
+           </div>
+           <div class="row" style="margin-top:12px">
+             <a class="btn ghost" href="#" onclick="return false;">查看使用说明</a>
+             <a class="btn primary" href="./web-admin-user-mock.html">去管理页面</a>
+           </div>`
         );
       }
 
       function render() {
-        const currentIndex = steps.findIndex((step) => step.id === state.currentStep);
-        const app = document.getElementById("app");
-        app.innerHTML =
-          '<div class="app-shell">' +
-          renderStepRail() +
-          '<main class="stage"><div class="stage-head"><div><p class="eyebrow">步骤 ' +
-          (currentIndex + 1) +
-          " / " +
-          steps.length +
-          '</p><h2>' +
-          steps[currentIndex].label +
-          '</h2><p>' +
-          steps[currentIndex].hint +
-          '</p></div><div class="stage-meta"><button class="mobile-menu-button" type="button" onclick="toggleRail()">步骤导航</button>' +
-          statusHTML(isStepUnlocked("finish") ? "good" : "warn", isStepUnlocked("finish") ? "即将完成" : "进行中") +
-          "</div></div><div class=\"stage-body\">" +
-          renderNotice() +
-          renderBody() +
-          "</div>" +
-          renderFooter() +
-          "</main></div>";
-        renderModal();
-      }
-
-      function renderModal() {
-        const modal = document.getElementById("modal");
-        if (!state.modal) {
-          modal.className = "modal-layer";
-          modal.innerHTML = "";
-          return;
+        renderStepList();
+        switch (state.step) {
+          case "env":
+            renderEnvStep();
+            break;
+          case "connect":
+            renderConnectStep();
+            break;
+          case "permission":
+            renderPermissionStep();
+            break;
+          case "events":
+            renderEventsStep();
+            break;
+          case "callback":
+            renderCallbackStep();
+            break;
+          case "menu":
+            renderMenuStep();
+            break;
+          case "autostart":
+            renderAutostartStep();
+            break;
+          case "vscode":
+            renderVSCodeStep();
+            break;
+          case "done":
+            renderDoneStep();
+            break;
+          default:
+            renderEnvStep();
         }
-        modal.className = "modal-layer open";
-        modal.innerHTML =
-          '<div class="modal-card" role="dialog" aria-modal="true"><h3>' +
-          state.modal.title +
-          "</h3><p>" +
-          state.modal.message +
-          "</p>" +
-          (state.modal.detail ? "<pre style=\"margin:0;padding:16px;border-radius:16px;background:#f7f3ec;overflow:auto;white-space:pre-wrap;\">" + escapeHTML(state.modal.detail) + "</pre>" : "") +
-          '<div class="modal-actions"><button class="button-primary" type="button" onclick="closeModal()">我知道了</button></div></div>';
       }
 
-      function escapeHTML(value) {
-        return String(value)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;");
+      function escapeAttr(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
       }
-
-      function toggleRail() {
-        state.railOpen = !state.railOpen;
-        render();
-      }
-
-      window.gotoStep = gotoStep;
-      window.startCheck = startCheck;
-      window.chooseConnectMode = chooseConnectMode;
-      window.completeQRCode = completeQRCode;
-      window.updateField = updateField;
-      window.validateExistingApp = validateExistingApp;
-      window.toggleCapability = toggleCapability;
-      window.continueCapability = continueCapability;
-      window.chooseVSCode = chooseVSCode;
-      window.continueVSCode = continueVSCode;
-      window.markExtensionReady = markExtensionReady;
-      window.runPrimaryAction = runPrimaryAction;
-      window.runSecondaryAction = runSecondaryAction;
-      window.toggleRail = toggleRail;
-      window.closeModal = closeModal;
-      window.restartWizard = restartWizard;
-      window.copyChecklist = copyChecklist;
-
-      window.addEventListener("resize", () => {
-        if (window.innerWidth > 1080) {
-          state.railOpen = true;
-        }
-      });
 
       render();
+      window.setTimeout(() => {
+        if (state.step === "env" && state.env.status === "checking") {
+          state.env.status = "ready";
+          state.done.env = true;
+          render();
+          window.setTimeout(() => {
+            gotoStep("connect", true);
+            pushNotice("环境正常，已自动进入飞书连接。");
+          }, 620);
+        }
+      }, 860);
     </script>
   </body>
 </html>

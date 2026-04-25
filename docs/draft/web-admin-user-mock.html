@@ -3,1366 +3,728 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Codex Remote 本地管理</title>
+    <title>Codex Remote v0.0.0 管理</title>
     <style>
       :root {
-        --bg: #eef1ed;
-        --panel: rgba(250, 252, 247, 0.9);
-        --panel-strong: #fffefb;
-        --ink: #223234;
-        --muted: #657577;
-        --line: rgba(34, 50, 52, 0.12);
-        --accent: #17695b;
-        --accent-strong: #124a40;
-        --accent-soft: rgba(23, 105, 91, 0.1);
-        --warn: #b97224;
-        --warn-soft: rgba(185, 114, 36, 0.1);
-        --danger: #b34e4e;
-        --danger-soft: rgba(179, 78, 78, 0.1);
-        --good: #177b55;
-        --good-soft: rgba(23, 123, 85, 0.1);
-        --shadow: 0 24px 60px rgba(21, 29, 33, 0.12);
-        --radius-xl: 30px;
-        --radius-lg: 22px;
-        --radius-md: 16px;
-        --radius-sm: 12px;
+        --bg: #f3f6f4;
+        --panel: #ffffff;
+        --line: #d6e2dd;
+        --ink: #14211e;
+        --sub: #4a615b;
+        --muted: #69807a;
+        --brand: #0e8269;
+        --brand-2: #0a6b56;
+        --good: #1f7f40;
+        --warn: #a76400;
+        --bad: #b0283b;
+        --shadow: 0 14px 36px rgba(9, 28, 23, 0.08);
+        --radius-xl: 24px;
+        --radius-lg: 16px;
       }
 
       * {
         box-sizing: border-box;
       }
 
-      html,
       body {
         margin: 0;
-        min-height: 100%;
-        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
         color: var(--ink);
+        font-family:
+          "Avenir Next",
+          "PingFang SC",
+          "Microsoft YaHei",
+          "Noto Sans CJK SC",
+          sans-serif;
         background:
-          radial-gradient(circle at top right, rgba(23, 105, 91, 0.12), transparent 28%),
-          radial-gradient(circle at top left, rgba(249, 185, 98, 0.14), transparent 24%),
-          linear-gradient(180deg, #f4f6f2 0%, #edf0ea 100%);
-      }
-
-      body {
-        padding: 24px;
-      }
-
-      button,
-      input,
-      textarea {
-        font: inherit;
-      }
-
-      button {
-        border: 0;
-        cursor: pointer;
-      }
-
-      a {
-        color: var(--accent-strong);
+          radial-gradient(900px 460px at -12% -20%, #c6efe2 0%, transparent 58%),
+          radial-gradient(760px 420px at 112% -15%, #fae8c3 0%, transparent 54%),
+          var(--bg);
       }
 
       .shell {
-        max-width: 1400px;
-        margin: 0 auto;
-        display: grid;
-        grid-template-columns: 286px minmax(0, 1fr);
-        gap: 22px;
+        max-width: 1260px;
+        margin: 28px auto;
+        padding: 0 18px 30px;
       }
 
-      .sidebar,
-      .main,
-      .modal-card,
-      .toast {
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-      }
-
-      .sidebar {
-        position: sticky;
-        top: 24px;
-        align-self: start;
-        padding: 24px;
+      .topbar {
+        background: var(--panel);
+        border: 1px solid var(--line);
         border-radius: var(--radius-xl);
-        background: rgba(255, 255, 255, 0.78);
-        border: 1px solid rgba(255, 255, 255, 0.8);
         box-shadow: var(--shadow);
-        display: grid;
-        gap: 18px;
+        padding: 18px 20px;
       }
 
-      .eyebrow {
-        margin: 0;
-        color: var(--accent);
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-      }
-
-      .sidebar h1 {
+      .title {
         margin: 0;
         font-size: 28px;
-        line-height: 1.12;
       }
 
-      .sidebar p,
-      .main p,
-      .card p,
-      .panel p {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.65;
+      .subtitle {
+        margin: 8px 0 0;
+        font-size: 14px;
+        color: var(--sub);
       }
 
-      .nav-list {
+      .layout {
+        margin-top: 16px;
         display: grid;
-        gap: 10px;
+        gap: 16px;
       }
 
-      .nav-button {
-        width: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.62);
-        text-align: left;
-      }
-
-      .nav-button.active {
-        background: linear-gradient(135deg, rgba(23, 105, 91, 0.15), rgba(255, 255, 255, 0.9));
-        box-shadow: inset 0 0 0 1px rgba(23, 105, 91, 0.14);
-      }
-
-      .nav-button small {
-        display: block;
-        color: var(--muted);
-      }
-
-      .mobile-nav-button {
-        display: none;
-        padding: 10px 14px;
-        border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent-strong);
-        font-weight: 700;
-      }
-
-      .main {
-        background: rgba(255, 255, 255, 0.62);
-        border-radius: 34px;
-        border: 1px solid rgba(255, 255, 255, 0.84);
+      .block {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
         box-shadow: var(--shadow);
-        overflow: hidden;
-        min-height: calc(100vh - 48px);
       }
 
-      .main-head {
-        padding: 28px 32px 20px;
-        border-bottom: 1px solid var(--line);
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        align-items: flex-start;
-      }
-
-      .main-head h2 {
-        margin: 0 0 10px;
-        font-size: clamp(30px, 4vw, 44px);
-        line-height: 1.06;
-      }
-
-      .head-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .page-body {
-        padding: 26px 32px 34px;
-        display: grid;
-        gap: 20px;
-      }
-
-      .notice,
-      .toast {
-        border-radius: 18px;
+      .block-head {
         padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .block-title {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .block-desc {
+        margin: 6px 0 0;
+        color: var(--sub);
+        font-size: 14px;
+      }
+
+      .block-body {
+        padding: 16px 18px 18px;
+      }
+
+      .robot-layout {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: 12px;
+      }
+
+      .robot-list {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 8px;
+        background: #fbfdfc;
+      }
+
+      .robot-item {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px 11px;
+        text-align: left;
+        margin: 7px 0;
+        cursor: pointer;
+      }
+
+      .robot-item.active {
+        border-color: #7fcdc0;
+        background: #ebfaf7;
+      }
+
+      .robot-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .robot-name {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .robot-id {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+
+      .card-head {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .card-title {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .card-desc {
+        margin: 8px 0 0;
+        color: var(--sub);
+        font-size: 14px;
+      }
+
+      .card-body {
+        padding: 16px 18px 18px;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px;
+        margin: 8px 0;
+        font-size: 14px;
+      }
+
+      .kv dt {
+        color: var(--muted);
+      }
+
+      .kv dd {
+        margin: 0;
+      }
+
+      .notice {
+        border-radius: 10px;
+        padding: 11px 13px;
+        font-size: 14px;
         border: 1px solid transparent;
       }
 
-      .notice strong,
-      .toast strong {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 15px;
-      }
-
-      .notice.good,
-      .toast.good {
-        background: var(--good-soft);
-        border-color: rgba(23, 123, 85, 0.12);
-      }
-
-      .notice.warn,
-      .toast.warn {
-        background: var(--warn-soft);
-        border-color: rgba(185, 114, 36, 0.12);
-      }
-
-      .notice.danger,
-      .toast.danger {
-        background: var(--danger-soft);
-        border-color: rgba(179, 78, 78, 0.12);
-      }
-
-      .card-grid {
-        display: grid;
-        gap: 16px;
-      }
-
-      .card-grid.four {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-
-      .card-grid.two {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .card,
-      .panel {
-        background: var(--panel-strong);
-        border-radius: var(--radius-lg);
-        border: 1px solid rgba(34, 50, 52, 0.08);
-        padding: 22px;
-        display: grid;
-        gap: 14px;
-      }
-
-      .card h3,
-      .panel h3,
-      .panel h4 {
-        margin: 0;
-      }
-
-      .stat-value {
-        font-size: clamp(28px, 4vw, 40px);
-        line-height: 1;
-        font-weight: 800;
-      }
-
-      .status-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .status-pill.good {
-        background: var(--good-soft);
+      .notice.good {
         color: var(--good);
+        background: #edf9f0;
+        border-color: #cbe6d2;
       }
 
-      .status-pill.warn {
-        background: var(--warn-soft);
+      .notice.warn {
         color: var(--warn);
+        background: #fff6e9;
+        border-color: #efd9b5;
       }
 
-      .status-pill.danger {
-        background: var(--danger-soft);
-        color: var(--danger);
+      .notice.bad {
+        color: var(--bad);
+        background: #fff0f3;
+        border-color: #efcbd2;
       }
 
-      .status-pill.neutral {
-        background: rgba(101, 117, 119, 0.12);
-        color: #556467;
+      .hint {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
       }
 
-      .attention-list,
-      .task-list,
-      .support-list {
-        display: grid;
-        gap: 12px;
+      .link {
+        color: #0b6b57;
+        text-decoration: none;
       }
 
-      .attention-row,
-      .task-row,
-      .support-row {
-        display: grid;
-        gap: 10px;
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.72);
+      .link:hover {
+        text-decoration: underline;
       }
 
-      .row-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
-      }
-
-      .button-row,
-      .form-actions,
-      .modal-actions,
-      .switch-row {
+      .row {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-      }
-
-      .button-primary,
-      .button-secondary,
-      .button-ghost,
-      .button-danger {
-        min-height: 46px;
-        padding: 0 18px;
-        border-radius: 999px;
-        font-weight: 700;
-        transition: transform 140ms ease, filter 140ms ease;
-      }
-
-      .button-primary:hover,
-      .button-secondary:hover,
-      .button-ghost:hover,
-      .button-danger:hover {
-        transform: translateY(-1px);
-      }
-
-      .button-primary {
-        background: linear-gradient(135deg, var(--accent), #23947f);
-        color: #fff;
-      }
-
-      .button-secondary {
-        background: var(--accent-soft);
-        color: var(--accent-strong);
-      }
-
-      .button-ghost {
-        background: rgba(34, 50, 52, 0.06);
-        color: var(--ink);
-      }
-
-      .button-danger {
-        background: rgba(179, 78, 78, 0.1);
-        color: var(--danger);
-      }
-
-      .button-primary:disabled,
-      .button-secondary:disabled,
-      .button-ghost:disabled,
-      .button-danger:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-        transform: none;
-      }
-
-      .split-layout {
-        display: grid;
-        grid-template-columns: 320px minmax(0, 1fr);
-        gap: 18px;
-      }
-
-      .app-list {
-        display: grid;
-        gap: 12px;
-      }
-
-      .app-list button {
-        width: 100%;
-        padding: 16px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(34, 50, 52, 0.08);
-        text-align: left;
-        display: grid;
-        gap: 8px;
-      }
-
-      .app-list button.active {
-        background: linear-gradient(135deg, rgba(23, 105, 91, 0.12), rgba(255, 255, 255, 0.92));
-        box-shadow: inset 0 0 0 1px rgba(23, 105, 91, 0.14);
-      }
-
-      .list-meta {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
+        gap: 10px;
         align-items: center;
       }
 
-      .field-grid {
+      .grid-2 {
         display: grid;
-        gap: 16px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .field-grid .wide {
-        grid-column: 1 / -1;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
       }
 
       .field {
         display: grid;
-        gap: 8px;
+        gap: 6px;
       }
 
       .field label {
-        font-size: 14px;
-        font-weight: 700;
+        font-size: 13px;
+        color: var(--sub);
       }
 
-      .field input,
-      .field textarea {
+      .input {
         width: 100%;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid rgba(34, 50, 52, 0.14);
-        background: #fffef9;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 11px;
+        font-size: 14px;
         color: var(--ink);
+        background: #fff;
       }
 
-      .field textarea {
-        min-height: 120px;
-        resize: vertical;
+      .btn {
+        border: none;
+        border-radius: 10px;
+        font-size: 14px;
+        padding: 10px 14px;
+        cursor: pointer;
       }
 
-      .field-error {
-        color: var(--danger);
+      .btn.primary {
+        background: var(--brand);
+        color: #fff;
+      }
+
+      .btn.primary:hover {
+        background: var(--brand-2);
+      }
+
+      .btn.secondary {
+        background: #e5f3ef;
+        color: #15473b;
+      }
+
+      .btn.ghost {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--sub);
+      }
+
+      .btn.danger {
+        background: #ffe9ed;
+        color: #8f2232;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        padding: 5px 10px;
+        font-size: 12px;
+        color: var(--sub);
+        background: #fff;
+      }
+
+      .tag.warn {
+        color: var(--warn);
+        background: #fff6e9;
+        border-color: #efd9b5;
+      }
+
+      .three-col {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .soft-card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px;
+        background: #fbfdfc;
+      }
+
+      .soft-card h4 {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      .soft-card p {
+        margin: 8px 0 0;
+        color: var(--sub);
         font-size: 13px;
       }
 
-      .summary-tags {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-
-      .details {
-        border-radius: 18px;
-        border: 1px solid var(--line);
-        background: rgba(248, 250, 246, 0.82);
-      }
-
-      .details summary {
-        cursor: pointer;
-        list-style: none;
-        padding: 16px 18px;
-        font-weight: 700;
-      }
-
-      .details summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .details-body {
-        padding: 0 18px 18px;
-        display: grid;
-        gap: 14px;
-      }
-
-      .support-copy {
-        padding: 16px;
-        border-radius: 16px;
-        background: rgba(23, 105, 91, 0.06);
-        border: 1px solid rgba(23, 105, 91, 0.08);
-      }
-
-      .support-copy code {
-        display: block;
-        margin-top: 10px;
-        padding: 14px;
-        border-radius: 14px;
-        background: #f5f3ee;
-        overflow: auto;
-        white-space: pre-wrap;
-      }
-
-      .toast {
-        position: fixed;
-        right: 24px;
-        bottom: 24px;
-        width: min(360px, calc(100vw - 32px));
-        display: none;
-        box-shadow: 0 20px 50px rgba(22, 30, 35, 0.18);
-        z-index: 16;
-      }
-
-      .toast.show {
-        display: block;
-      }
-
-      .modal {
+      .modal-mask {
         position: fixed;
         inset: 0;
+        background: rgba(15, 28, 24, 0.42);
         display: none;
         align-items: center;
         justify-content: center;
-        padding: 20px;
-        background: rgba(20, 28, 32, 0.52);
-        z-index: 20;
+        padding: 16px;
+        z-index: 99;
       }
 
-      .modal.open {
+      .modal-mask.open {
         display: flex;
       }
 
       .modal-card {
-        width: min(560px, 100%);
-        background: var(--panel-strong);
-        border-radius: 30px;
-        padding: 24px;
-        box-shadow: 0 26px 70px rgba(18, 25, 30, 0.24);
-        display: grid;
-        gap: 14px;
+        width: min(460px, 100%);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        padding: 16px 16px 14px;
       }
 
-      .modal-card h3 {
+      .modal-title {
         margin: 0;
-        font-size: 28px;
+        font-size: 18px;
       }
 
-      .inline-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
+      .modal-text {
+        margin: 8px 0 0;
+        font-size: 14px;
+        color: var(--sub);
       }
 
-      @media (max-width: 1120px) {
-        body {
-          padding: 16px;
+      @media (max-width: 980px) {
+        .robot-layout,
+        .three-col,
+        .grid-2 {
+          grid-template-columns: 1fr;
         }
+      }
 
+      @media (max-width: 620px) {
         .shell {
-          grid-template-columns: 1fr;
+          margin: 14px auto;
+          padding: 0 12px 20px;
         }
 
-        .sidebar {
-          position: static;
-          display: none;
+        .topbar {
+          padding: 14px;
         }
 
-        .sidebar.open {
-          display: grid;
-        }
-
-        .mobile-nav-button {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .card-grid.four,
-        .card-grid.two,
-        .split-layout,
-        .field-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      @media (max-width: 720px) {
-        .main-head,
-        .page-body {
-          padding-left: 18px;
-          padding-right: 18px;
-        }
-
-        .head-actions,
-        .button-row,
-        .form-actions,
-        .modal-actions {
-          width: 100%;
-        }
-
-        .head-actions button,
-        .button-row button,
-        .form-actions button,
-        .modal-actions button {
-          width: 100%;
+        .title {
+          font-size: 23px;
         }
       }
     </style>
   </head>
   <body>
-    <div id="app"></div>
-    <div id="modal" class="modal" aria-live="polite"></div>
-    <div id="toast" class="toast"></div>
-    <script>
-      const sections = [
-        { id: "overview", label: "概览", hint: "先看这台机器现在是否能正常使用。" },
-        { id: "apps", label: "飞书应用", hint: "新增、接入和维护飞书应用。" },
-        { id: "instances", label: "工作实例", hint: "确认当前有哪些实例在线。" },
-        { id: "storage", label: "文档与图片", hint: "按需清理旧内容。" },
-        { id: "vscode", label: "VS Code", hint: "继续处理这台机器上的 VS Code。" },
-        { id: "support", label: "当前摘要", hint: "需要转发给别人时再打开。" },
-      ];
+    <div class="shell">
+      <header class="topbar">
+        <h1 class="title">Codex Remote v0.0.0 管理</h1>
+        <p class="subtitle">管理机器人、系统集成与本地存储。</p>
+      </header>
 
+      <main class="layout">
+        <section class="block">
+          <div class="block-head">
+            <h2 class="block-title">机器人管理</h2>
+            <p class="block-desc">查看所有机器人并处理需要关注的状态。</p>
+          </div>
+          <div class="block-body">
+            <div class="robot-layout">
+              <div id="robotList" class="robot-list"></div>
+              <div id="robotDetail" class="card"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <h2 class="block-title">系统集成</h2>
+            <p class="block-desc">统一管理自动运行设置与 VS Code 集成。</p>
+          </div>
+          <div class="block-body three-col">
+            <article class="soft-card">
+              <h4>自动运行设置</h4>
+              <p id="autoRunText">当前已启用。</p>
+              <div class="row" style="margin-top:10px">
+                <button id="autoRunToggle" class="btn secondary"></button>
+              </div>
+            </article>
+            <article class="soft-card">
+              <h4>VS Code 集成</h4>
+              <p id="vscodeText">当前已接入。</p>
+              <div class="row" style="margin-top:10px">
+                <button id="vscodeRepairBtn" class="btn ghost">重新检查并修复</button>
+              </div>
+            </article>
+            <article class="soft-card">
+              <h4>状态提醒</h4>
+              <p id="integrationHint">当前没有需要处理的集成异常。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-head">
+            <h2 class="block-title">存储管理</h2>
+            <p class="block-desc">查看占用并按需清理旧文件。</p>
+          </div>
+          <div class="block-body three-col">
+            <article class="soft-card">
+              <h4>预览文件</h4>
+              <p id="previewStat"></p>
+              <div class="row" style="margin-top:10px">
+                <button id="cleanPreviewBtn" class="btn secondary">清理旧预览</button>
+              </div>
+            </article>
+            <article class="soft-card">
+              <h4>图片暂存</h4>
+              <p id="imageStat"></p>
+              <div class="row" style="margin-top:10px">
+                <button id="cleanImageBtn" class="btn secondary">清理旧图片</button>
+              </div>
+            </article>
+            <article class="soft-card">
+              <h4>日志文件</h4>
+              <p id="logStat"></p>
+              <div class="row" style="margin-top:10px">
+                <button id="cleanLogBtn" class="btn secondary">清理一天前日志</button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="deleteRobotModal" class="modal-mask" aria-hidden="true">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteRobotTitle">
+        <h3 id="deleteRobotTitle" class="modal-title">确认删除机器人</h3>
+        <p id="deleteRobotText" class="modal-text"></p>
+        <div class="row" style="margin-top:14px">
+          <button id="cancelDeleteRobot" class="btn ghost">取消</button>
+          <button id="confirmDeleteRobot" class="btn danger">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
       const state = {
-        navOpen: window.innerWidth > 1120,
-        section: "overview",
-        notice: {
-          tone: "good",
-          title: "这台机器现在可以正常使用",
-          message: "如果你要继续处理某一项，直接从下面的分区进入即可。",
-        },
-        toast: null,
-        modal: null,
-        selectedAppId: "app-main",
-        appDraft: {},
-        appErrors: {},
-        onboardingMode: "new",
-        supportExpanded: false,
-        vscodeScenario: "current",
-        vscodeReady: false,
-        apps: [
-          {
-            id: "app-main",
-            name: "团队飞书应用",
-            appId: "cli_team_001",
-            appSecret: "secret_team_001",
-            enabled: true,
-            status: { tone: "good", label: "可用", detail: "当前这条飞书应用已经可以正常对话。" },
-            pending: [
-              { id: "preview", title: "补开文档预览权限", detail: "如果你要把 Markdown 预览上传到飞书云盘，再补这一项即可。", done: false },
-            ],
-            lastNotice: null,
-          },
-          {
-            id: "app-ops",
-            name: "值班飞书应用",
-            appId: "cli_ops_019",
-            appSecret: "secret_ops_019",
-            enabled: true,
-            status: { tone: "warn", label: "待补全", detail: "这条飞书应用已经接进来，但还有基础项没有补齐。" },
-            pending: [
-              { id: "verify", title: "重新测试连接", detail: "建议先确认这份凭证仍然可用。", done: false },
-              { id: "publish", title: "完成发布确认", detail: "让最近做的后台设置正式生效。", done: false },
-            ],
-            lastNotice: "最近一次保存已经成功，但你还没有重新确认连接。",
-          },
-        ],
-        instances: [
-          { id: "inst-1", name: "官网改版", workspace: "品牌官网", status: { tone: "good", label: "在线" }, detail: "刚刚还有新内容返回。" },
-          { id: "inst-2", name: "知识库整理", workspace: "团队知识库", status: { tone: "neutral", label: "空闲" }, detail: "目前没有新的进行中任务。" },
-        ],
-        storage: {
-          images: { count: 28, size: "126 MB", active: 4 },
-          previews: [
-            { id: "team", name: "团队飞书应用", status: { tone: "good", label: "正常" }, files: 16, lastUsed: "今天 14:20" },
-            { id: "ops", name: "值班飞书应用", status: { tone: "warn", label: "可清理" }, files: 42, lastUsed: "3 天前" },
-          ],
-        },
+        selectedRobot: "bot-main",
+        eventAttempt: 0,
+        callbackAttempt: 0,
+        eventStatus: "idle",
+        callbackStatus: "idle",
+        deleteTarget: null,
+        autoRunOn: true,
+        vscodeReady: true,
+        previewFiles: 236,
+        previewSize: "1.4 GB",
+        imageFiles: 92,
+        imageSize: "420 MB",
+        logFiles: 128,
+        logSize: "860 MB",
       };
 
-      function activeApp() {
-        return state.apps.find((app) => app.id === state.selectedAppId) || null;
+      const robots = [
+        { id: "bot-main", title: "主机器人", appId: "cli_main_01", status: "ok", issues: [] },
+        { id: "bot-team", title: "协作机器人", appId: "cli_team_09", status: "warn", issues: ["缺少 drive:drive 权限，文档预览不可用。"] },
+        { id: "new", title: "新增机器人", appId: "", status: "new", issues: [] },
+      ];
+
+      const robotList = document.getElementById("robotList");
+      const robotDetail = document.getElementById("robotDetail");
+      const deleteRobotModal = document.getElementById("deleteRobotModal");
+      const deleteRobotText = document.getElementById("deleteRobotText");
+
+      function renderRobotList() {
+        robotList.innerHTML = robots
+          .map((r) => {
+            const active = r.id === state.selectedRobot;
+            let tag = "";
+            if (r.status === "warn") tag = `<span class="tag warn">有异常</span>`;
+            if (r.status === "new") tag = `<span class="tag">新增</span>`;
+            return `
+              <button class="robot-item ${active ? "active" : ""}" data-rid="${r.id}">
+                <div class="robot-top">
+                  <p class="robot-name">${r.title}</p>
+                  ${tag}
+                </div>
+                ${r.appId ? `<p class="robot-id">${r.appId}</p>` : `<p class="robot-id">点击开始接入</p>`}
+              </button>`;
+          })
+          .join("");
+
+        robotList.querySelectorAll(".robot-item").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            state.selectedRobot = btn.dataset.rid;
+            state.eventStatus = "idle";
+            state.callbackStatus = "idle";
+            renderAdmin();
+          });
+        });
       }
 
-      function resetDraftFromApp() {
-        const app = activeApp();
-        state.appDraft = app
-          ? {
-              name: app.name,
-              appId: app.appId,
-              appSecret: app.appSecret,
-              enabled: app.enabled,
+      function renderRobotDetail() {
+        const selected = robots.find((r) => r.id === state.selectedRobot);
+        if (!selected) return;
+
+        if (selected.id === "new") {
+          robotDetail.innerHTML = `
+            <div class="card-head">
+              <h3 class="card-title">新增机器人</h3>
+              <p class="card-desc">完成连接验证后将自动进入权限检查。</p>
+            </div>
+            <div class="card-body">
+              <div class="grid-2">
+                <div class="field">
+                  <label>机器人名称</label>
+                  <input id="newRobotName" class="input" placeholder="例如：运营机器人" />
+                </div>
+                <div class="field">
+                  <label>App ID</label>
+                  <input id="newRobotAppId" class="input" placeholder="请输入 App ID" />
+                </div>
+              </div>
+              <div class="field" style="margin-top:12px">
+                <label>App Secret</label>
+                <input id="newRobotSecret" class="input" placeholder="请输入 App Secret" />
+              </div>
+              <div class="row" style="margin-top:12px">
+                <button id="newRobotSave" class="btn primary">验证并保存</button>
+              </div>
+              <div id="newRobotSlot" style="margin-top:10px"></div>
+            </div>`;
+          document.getElementById("newRobotSave").onclick = () => {
+            const appId = document.getElementById("newRobotAppId").value.trim();
+            const sec = document.getElementById("newRobotSecret").value.trim();
+            const slot = document.getElementById("newRobotSlot");
+            if (!appId || !sec) {
+              slot.innerHTML = `<div class="notice bad">请填写完整的 App ID 和 App Secret。</div>`;
+              return;
             }
-          : { name: "", appId: "", appSecret: "", enabled: true };
-        state.appErrors = {};
-      }
-
-      resetDraftFromApp();
-
-      function statusHTML(tone, text) {
-        return '<span class="status-pill ' + tone + '">' + text + "</span>";
-      }
-
-      function setNotice(tone, title, message) {
-        state.notice = { tone, title, message };
-      }
-
-      function showToast(tone, title, message) {
-        state.toast = { tone, title, message };
-        renderToast();
-        window.clearTimeout(showToast.timer);
-        showToast.timer = window.setTimeout(() => {
-          state.toast = null;
-          renderToast();
-        }, 2600);
-      }
-
-      function openModal(content) {
-        state.modal = content;
-        renderModal();
-      }
-
-      function closeModal() {
-        state.modal = null;
-        renderModal();
-      }
-
-      function switchSection(sectionId) {
-        state.section = sectionId;
-        if (window.innerWidth <= 1120) {
-          state.navOpen = false;
-        }
-        render();
-      }
-
-      function selectApp(appId) {
-        state.selectedAppId = appId;
-        resetDraftFromApp();
-        setNotice("neutral", "", "");
-        render();
-      }
-
-      function updateDraft(field, value) {
-        state.appDraft[field] = field === "enabled" ? value : value;
-        if (state.appErrors[field]) {
-          delete state.appErrors[field];
-        }
-        render();
-      }
-
-      function saveApp() {
-        const errors = {};
-        if (!state.appDraft.name.trim()) {
-          errors.name = "请先给这条飞书应用起一个容易辨认的名字。";
-        }
-        if (!state.appDraft.appId.trim()) {
-          errors.appId = "请先填写 App ID。";
-        }
-        if (!state.appDraft.appSecret.trim()) {
-          errors.appSecret = "请先填写 App Secret。";
-        }
-        state.appErrors = errors;
-        if (Object.keys(errors).length) {
-          setNotice("danger", "这次保存还没有完成", "请先修正当前字段，再继续保存。");
-          render();
-          return;
-        }
-        const app = activeApp();
-        app.name = state.appDraft.name.trim();
-        app.appId = state.appDraft.appId.trim();
-        app.appSecret = state.appDraft.appSecret.trim();
-        app.enabled = Boolean(state.appDraft.enabled);
-        app.lastNotice = "本地更改已经保存。";
-        app.status = {
-          tone: "warn",
-          label: "待确认",
-          detail: "这次更改已经保存，建议马上重新测试连接，确认现在还能正常使用。",
-        };
-        setNotice("good", "更改已保存", "建议下一步立即测试连接，避免把旧状态当成仍然可用。");
-        showToast("good", "已保存", "飞书应用信息已更新。");
-        render();
-      }
-
-      function verifyApp() {
-        const app = activeApp();
-        if (!state.appDraft.appId.trim() || !state.appDraft.appSecret.trim()) {
-          state.appErrors.appId = state.appDraft.appId.trim() ? "" : "请先填写 App ID。";
-          state.appErrors.appSecret = state.appDraft.appSecret.trim() ? "" : "请先填写 App Secret。";
-          setNotice("danger", "还不能测试连接", "请先把必填字段补齐。");
-          render();
-          return;
-        }
-        if (state.appDraft.appId.startsWith("bad_")) {
-          app.lastNotice = "这次连接测试失败，请核对你当前复制的是不是这条飞书应用的凭证。";
-          app.status = {
-            tone: "danger",
-            label: "连接失败",
-            detail: "目前还不能正常使用，请先修正这条飞书应用的凭证。",
+            slot.innerHTML = `<div class="notice good">保存成功，已完成连接验证。</div>`;
           };
-          setNotice("danger", "连接测试失败", "请核对 App ID、App Secret，以及飞书后台里这条应用是否仍然启用。");
-          render();
           return;
         }
-        app.status = {
-          tone: "good",
-          label: "可用",
-          detail: "连接测试通过，这条飞书应用现在可以继续使用。",
+
+        const testSlot = `
+          ${state.eventStatus === "pending" ? `<div class="notice warn">事件订阅测试已发出，等待回复。</div>` : ""}
+          ${state.eventStatus === "error" ? `<div class="notice bad">事件订阅测试未通过，请重试。</div>` : ""}
+          ${state.eventStatus === "ok" ? `<div class="notice good">事件订阅测试通过。</div>` : ""}
+          ${state.callbackStatus === "pending" ? `<div class="notice warn">回调测试卡片已发送，等待按钮回调。</div>` : ""}
+          ${state.callbackStatus === "error" ? `<div class="notice bad">回调测试发送失败，请稍后重试。</div>` : ""}
+          ${state.callbackStatus === "ok" ? `<div class="notice good">回调测试通过。</div>` : ""}
+        `;
+
+        const issueBlock =
+          selected.issues.length > 0
+            ? `<div class="notice bad">${selected.issues[0]}</div><p class="hint"><a href="#" onclick="return false;" class="link">打开飞书后台处理权限</a></p>`
+            : `<div class="notice good">当前状态正常。</div>`;
+
+        robotDetail.innerHTML = `
+          <div class="card-head">
+            <h3 class="card-title">${selected.title}</h3>
+            <p class="card-desc">机器人状态与测试入口。</p>
+          </div>
+          <div class="card-body">
+            <dl class="kv">
+              <dt>App ID</dt><dd>${selected.appId}</dd>
+              <dt>连接状态</dt><dd>${selected.status === "ok" ? "连接正常" : "需处理"}</dd>
+            </dl>
+            ${issueBlock}
+            <div class="row" style="margin-top:12px">
+              <button id="adminTestEvent" class="btn primary">测试事件订阅</button>
+              <button id="adminTestCallback" class="btn secondary">测试回调</button>
+              <button id="deleteRobotBtn" class="btn danger">删除机器人</button>
+            </div>
+            <div style="margin-top:10px">${testSlot}</div>
+          </div>`;
+
+        document.getElementById("adminTestEvent").onclick = () => {
+          state.eventAttempt += 1;
+          state.eventStatus = "pending";
+          renderAdmin();
+          window.setTimeout(() => {
+            state.eventStatus = state.eventAttempt % 2 === 1 ? "ok" : "error";
+            renderAdmin();
+          }, 880);
         };
-        app.lastNotice = "连接测试刚刚通过。";
-        app.pending = app.pending.filter((item) => item.id !== "verify");
-        setNotice("good", "连接测试通过", "这条飞书应用已经确认可用。");
-        showToast("good", "已通过", "你可以继续补齐其它事项。");
-        render();
+        document.getElementById("adminTestCallback").onclick = () => {
+          state.callbackAttempt += 1;
+          state.callbackStatus = "pending";
+          renderAdmin();
+          window.setTimeout(() => {
+            state.callbackStatus = state.callbackAttempt % 2 === 1 ? "error" : "ok";
+            renderAdmin();
+          }, 880);
+        };
+        document.getElementById("deleteRobotBtn").onclick = () => openDeleteRobotModal(selected.id);
       }
 
-      function reconnectApp() {
-        const app = activeApp();
-        app.lastNotice = "已经重新拉起这条飞书应用的连接，状态会在下一次刷新后更新。";
-        setNotice("warn", "已触发重新连接", "如果你刚改完飞书后台设置，可以稍等片刻再看状态。");
-        showToast("warn", "已发起", "重新连接请求已发送。");
-        render();
+      function openDeleteRobotModal(robotId) {
+        const robot = robots.find((item) => item.id === robotId);
+        if (!robot || robot.id === "new") return;
+        state.deleteTarget = robotId;
+        deleteRobotText.textContent = `删除后将移除“${robot.title}”，此操作不可恢复。`;
+        deleteRobotModal.classList.add("open");
+        deleteRobotModal.setAttribute("aria-hidden", "false");
       }
 
-      function toggleAppEnabled() {
-        const app = activeApp();
-        app.enabled = !app.enabled;
-        state.appDraft.enabled = app.enabled;
-        app.status = app.enabled
-          ? { tone: "warn", label: "待确认", detail: "已经重新启用，建议马上测试连接。" }
-          : { tone: "neutral", label: "已停用", detail: "这条飞书应用已经停用，不会再被默认使用。" };
-        setNotice("good", app.enabled ? "已重新启用" : "已停用", app.enabled ? "建议现在就重新测试连接。" : "以后需要时可以再启用。");
-        render();
+      function closeDeleteRobotModal() {
+        state.deleteTarget = null;
+        deleteRobotModal.classList.remove("open");
+        deleteRobotModal.setAttribute("aria-hidden", "true");
       }
 
-      function toggleTask(taskId) {
-        const app = activeApp();
-        const task = app.pending.find((item) => item.id === taskId);
-        if (!task) {
+      function confirmDeleteRobot() {
+        const target = state.deleteTarget;
+        if (!target) {
+          closeDeleteRobotModal();
           return;
         }
-        task.done = !task.done;
-        render();
-      }
-
-      function completePendingTasks() {
-        const app = activeApp();
-        const undone = app.pending.filter((item) => !item.done);
-        if (undone.length) {
-          setNotice("warn", "还有待处理项", "先把这张卡片里的待处理项完成，再刷新状态。");
-          render();
+        const index = robots.findIndex((item) => item.id === target);
+        if (index < 0) {
+          closeDeleteRobotModal();
           return;
         }
-        app.pending = [];
-        app.status = { tone: "good", label: "可用", detail: "这条飞书应用的当前待处理项已经全部完成。" };
-        setNotice("good", "待处理项已清空", "现在这条飞书应用可以按可用状态展示。");
-        showToast("good", "已完成", "这条飞书应用已经回到稳定状态。");
-        render();
+        robots.splice(index, 1);
+        const fallback = robots.find((item) => item.id !== "new") || robots.find((item) => item.id === "new");
+        state.selectedRobot = fallback ? fallback.id : "";
+        state.eventStatus = "idle";
+        state.callbackStatus = "idle";
+        closeDeleteRobotModal();
+        renderAdmin();
       }
 
-      function beginNewApp() {
-        openModal({
-          type: "new-app",
-        });
+      function renderStorageAndIntegrations() {
+        document.getElementById("autoRunText").textContent = state.autoRunOn ? "当前已启用。" : "当前未启用。";
+        document.getElementById("autoRunToggle").textContent = state.autoRunOn ? "关闭自动运行" : "启用自动运行";
+        document.getElementById("vscodeText").textContent = state.vscodeReady ? "当前已接入。" : "当前未完成接入。";
+        document.getElementById("integrationHint").textContent = state.vscodeReady
+          ? "当前没有需要处理的集成异常。"
+          : "检测到 VS Code 集成未完成，请先修复。";
+        document.getElementById("previewStat").textContent = `${state.previewFiles} 个文件，约 ${state.previewSize}`;
+        document.getElementById("imageStat").textContent = `${state.imageFiles} 个文件，约 ${state.imageSize}`;
+        document.getElementById("logStat").textContent = `${state.logFiles} 个文件，约 ${state.logSize}`;
       }
 
-      function saveNewApp(mode) {
-        if (mode === "new") {
-          state.apps.unshift({
-            id: "app-new",
-            name: "新飞书应用",
-            appId: "cli_new_088",
-            appSecret: "secret_new_088",
-            enabled: true,
-            status: { tone: "warn", label: "待确认", detail: "扫码创建已经完成，建议先测试连接。" },
-            pending: [{ id: "verify", title: "测试连接", detail: "先确认这份新凭证已经可以正常使用。", done: false }],
-            lastNotice: "刚刚新增，建议先完成第一轮连接测试。",
-          });
-          state.selectedAppId = "app-new";
-          resetDraftFromApp();
-          setNotice("good", "新飞书应用已加入列表", "现在直接在这个页面里继续测试连接和补齐事项。");
-          showToast("good", "已新增", "新飞书应用已经接进来了。");
-          closeModal();
-          render();
-          return;
-        }
-        state.apps.unshift({
-          id: "app-manual",
-          name: "手动接入应用",
-          appId: "cli_manual_105",
-          appSecret: "secret_manual_105",
-          enabled: true,
-          status: { tone: "warn", label: "待确认", detail: "凭证已经录入，下一步请先测试连接。" },
-          pending: [{ id: "verify", title: "测试连接", detail: "先确认这份凭证已经可用。", done: false }],
-          lastNotice: null,
-        });
-        state.selectedAppId = "app-manual";
-        resetDraftFromApp();
-        setNotice("good", "已创建手动接入项", "继续在飞书应用页完成连接测试即可。");
-        showToast("good", "已创建", "现在可以继续填写或核对凭证。");
-        closeModal();
-        render();
+      function bindActions() {
+        document.getElementById("autoRunToggle").onclick = () => {
+          state.autoRunOn = !state.autoRunOn;
+          renderAdmin();
+        };
+        document.getElementById("vscodeRepairBtn").onclick = () => {
+          state.vscodeReady = !state.vscodeReady;
+          renderAdmin();
+        };
+        document.getElementById("cleanPreviewBtn").onclick = () => {
+          state.previewFiles = Math.max(0, state.previewFiles - 68);
+          state.previewSize = state.previewFiles === 0 ? "0 MB" : "980 MB";
+          renderAdmin();
+        };
+        document.getElementById("cleanImageBtn").onclick = () => {
+          state.imageFiles = Math.max(0, state.imageFiles - 24);
+          state.imageSize = state.imageFiles === 0 ? "0 MB" : "300 MB";
+          renderAdmin();
+        };
+        document.getElementById("cleanLogBtn").onclick = () => {
+          state.logFiles = Math.max(0, state.logFiles - 70);
+          state.logSize = state.logFiles === 0 ? "0 MB" : "420 MB";
+          renderAdmin();
+        };
       }
 
-      function confirmDeleteApp() {
-        const app = activeApp();
-        openModal({
-          type: "confirm",
-          title: "确认删除这条飞书应用？",
-          message: "删除后，这台机器将不再继续使用它。这个操作不会帮你删除飞书开放平台里的原应用。",
-          confirmLabel: "确认删除",
-          danger: true,
-          onConfirm: () => {
-            state.apps = state.apps.filter((item) => item.id !== app.id);
-            state.selectedAppId = state.apps[0] ? state.apps[0].id : "";
-            resetDraftFromApp();
-            setNotice("warn", "已删除当前飞书应用", state.apps.length ? "你可以继续管理列表里的其它飞书应用。" : "当前机器还没有飞书应用，建议先新增一条。");
-            showToast("warn", "已删除", "当前飞书应用已从列表移除。");
-            closeModal();
-            render();
-          },
-        });
+      function renderAdmin() {
+        renderRobotList();
+        renderRobotDetail();
+        renderStorageAndIntegrations();
+        bindActions();
       }
 
-      function cleanupImages() {
-        openModal({
-          type: "confirm",
-          title: "清理旧图片？",
-          message: "会保留仍在使用的图片，只清掉当前已经不再需要的旧内容。",
-          confirmLabel: "清理旧图片",
-          onConfirm: () => {
-            state.storage.images.count = 8;
-            state.storage.images.size = "34 MB";
-            setNotice("good", "旧图片已清理", "当前保留的都是还在使用的图片。");
-            showToast("good", "已清理", "图片暂存已经缩减。");
-            closeModal();
-            render();
-          },
-        });
-      }
-
-      function cleanupPreview(id) {
-        const item = state.storage.previews.find((preview) => preview.id === id);
-        openModal({
-          type: "confirm",
-          title: "清理这条飞书应用的旧预览？",
-          message: "会保留新的内容，只清掉已经很久没再使用的旧预览。",
-          confirmLabel: "清理旧预览",
-          onConfirm: () => {
-            item.files = 6;
-            item.lastUsed = "今天 16:00";
-            item.status = { tone: "good", label: "正常" };
-            setNotice("good", "旧预览已清理", "这条飞书应用的预览目录已经恢复到较轻的占用状态。");
-            showToast("good", "已清理", "文档预览目录已更新。");
-            closeModal();
-            render();
-          },
-        });
-      }
-
-      function continueVSCode() {
-        if (state.vscodeScenario === "later") {
-          state.vscodeReady = false;
-          setNotice("warn", "VS Code 已留到以后处理", "这不会影响你现在继续使用。");
-          showToast("warn", "已稍后处理", "以后再回这页继续。");
-          render();
-          return;
-        }
-        state.vscodeReady = true;
-        setNotice("good", "VS Code 已准备好", "以后如果扩展升级，只需要回到这页重新处理一次。");
-        showToast("good", "已接入", "VS Code 已经可以继续使用。");
-        render();
-      }
-
-      function copySupportInfo() {
-        const text = [
-          "机器状态：可用",
-          "飞书应用数量：" + state.apps.length,
-          "当前选中应用：" + (activeApp() ? activeApp().name : "无"),
-          "文档预览目录状态：已记录",
-          "VS Code 当前状态：" + (state.vscodeReady ? "已接入" : "待处理"),
-        ].join("\n");
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(() => {
-            setNotice("good", "当前摘要已复制", "把这份摘要发给需要协助你的人即可。");
-            showToast("good", "已复制", "当前摘要已写入剪贴板。");
-            render();
-          });
-        } else {
-          openModal({
-            type: "info",
-            title: "这台浏览器暂时不能直接复制",
-            message: "你可以手动复制下面这份当前摘要：",
-            detail: text,
-          });
-        }
-      }
-
-      function toggleNav() {
-        state.navOpen = !state.navOpen;
-        render();
-      }
-
-      function renderSidebar() {
-        return (
-          '<aside class="sidebar' +
-          (state.navOpen ? " open" : "") +
-          '"><div><p class="eyebrow">Codex Remote</p><h1>本地管理</h1><p>在这里查看当前状态，并继续处理常用设置。</p></div><div class="nav-list">' +
-          sections
-            .map((section) => {
-              return (
-                '<button class="nav-button' +
-                (section.id === state.section ? " active" : "") +
-                '" type="button" onclick="switchSection(\'' +
-                section.id +
-                "')\"><div><strong>" +
-                section.label +
-                "</strong><small>" +
-                section.hint +
-                "</small></div>" +
-                statusHTML(section.id === state.section ? "good" : "neutral", section.id === state.section ? "当前" : "查看") +
-                "</button>"
-              );
-            })
-            .join("") +
-          "</div></aside>"
-        );
-      }
-
-      function renderNotice() {
-        if (!state.notice || !state.notice.title) {
-          return "";
-        }
-        return '<section class="notice ' + state.notice.tone + '"><strong>' + state.notice.title + "</strong><p>" + state.notice.message + "</p></section>";
-      }
-
-      function renderOverview() {
-        const needsAttention = state.apps.filter((app) => app.status.tone !== "good").length + state.storage.previews.filter((item) => item.status.tone === "warn").length + (state.vscodeReady ? 0 : 1);
-        return (
-          '<section class="card-grid four">' +
-          '<article class="card"><h3>飞书应用</h3><div class="stat-value">' +
-          state.apps.length +
-          "</div><p>当前机器已经接入 " +
-          state.apps.length +
-          " 条飞书应用。</p></article>" +
-          '<article class="card"><h3>待处理事项</h3><div class="stat-value">' +
-          needsAttention +
-          "</div><p>优先看看这些项目。</p></article>" +
-          '<article class="card"><h3>工作实例</h3><div class="stat-value">' +
-          state.instances.length +
-          "</div><p>当前有 " +
-          state.instances.filter((item) => item.status.label === "在线").length +
-          " 个实例在线。</p></article>" +
-          '<article class="card"><h3>文档与图片</h3><div class="stat-value">' +
-          (state.storage.images.count + state.storage.previews.reduce((sum, item) => sum + item.files, 0)) +
-          "</div><p>有需要时再进入对应分区处理。</p></article></section>" +
-          '<section class="panel"><div class="row-head"><div><h3>建议优先处理</h3><p>先从这些项目开始会更省事。</p></div>' +
-          statusHTML(needsAttention ? "warn" : "good", needsAttention ? "建议处理" : "当前稳定") +
-          '</div><div class="attention-list">' +
-          [
-            {
-              title: "值班飞书应用还有待补全项",
-              detail: "建议先重新测试连接，再完成发布确认。",
-              action: "去飞书应用",
-              onClick: "focusOpsApp()",
-            },
-            {
-              title: "VS Code 还没有处理",
-              detail: "如果你要在这台机器上继续用 VS Code，现在可以一起处理。",
-              action: "去 VS Code",
-              onClick: "switchSection('vscode')",
-            },
-            {
-              title: "有一条文档预览已经很久没再使用",
-              detail: "现在清理，能让这台机器保持更轻的占用。",
-              action: "去文档与图片",
-              onClick: "switchSection('storage')",
-            },
-          ]
-            .map((item) => {
-              return '<article class="attention-row"><div class="row-head"><div><strong>' + item.title + "</strong><p>" + item.detail + '</p></div>' + statusHTML("warn", "待处理") + '</div><div class="button-row"><button class="button-secondary" type="button" onclick="' + item.onClick + '">' + item.action + "</button></div></article>";
-            })
-            .join("") +
-          "</div></section>"
-        );
-      }
-
-      function renderApps() {
-        const app = activeApp();
-        return (
-          '<section class="split-layout"><aside class="panel"><div class="row-head"><div><h3>飞书应用列表</h3><p>选择一条飞书应用继续查看或修改。</p></div><button class="button-secondary" type="button" onclick="beginNewApp()">新增飞书应用</button></div><div class="app-list">' +
-          (state.apps.length
-            ? state.apps
-                .map((item) => {
-                  return '<button type="button" class="' + (item.id === state.selectedAppId ? "active" : "") + '" onclick="selectApp(\'' + item.id + "')\"><div class=\"list-meta\"><strong>" + item.name + "</strong>" + statusHTML(item.status.tone, item.status.label) + "</div><p>" + item.status.detail + '</p><div class="inline-pills">' + statusHTML(item.enabled ? "good" : "neutral", item.enabled ? "已启用" : "已停用") + (item.pending.length ? statusHTML("warn", "待处理 " + item.pending.length + " 项") : statusHTML("good", "当前稳定")) + "</div></button>";
-                })
-                .join("")
-            : '<div class="card"><h3>还没有飞书应用</h3><p>先新增一条，再回来继续做连接测试和维护。</p><div class="button-row"><button class="button-primary" type="button" onclick="beginNewApp()">新增首个飞书应用</button></div></div>') +
-          "</div></aside>" +
-          (app
-            ? '<div class="card-grid"><section class="panel"><div class="row-head"><div><h3>' +
-              app.name +
-              "</h3><p>在这里查看当前状态，并继续处理这条飞书应用。</p></div>" +
-              statusHTML(app.status.tone, app.status.label) +
-              '</div><div class="summary-tags">' +
-              statusHTML(app.enabled ? "good" : "neutral", app.enabled ? "已启用" : "已停用") +
-              (app.pending.length ? statusHTML("warn", "还有 " + app.pending.length + " 项待处理") : statusHTML("good", "当前稳定")) +
-              '</div><p>' +
-              app.status.detail +
-              '</p>' +
-              (app.lastNotice ? '<div class="notice warn"><strong>最近提示</strong><p>' + app.lastNotice + "</p></div>" : "") +
-              '<div class="field-grid"><div class="field"><label for="name">飞书应用名称</label><input id="name" value="' +
-              escapeHTML(state.appDraft.name || "") +
-              '" oninput="updateDraft(\'name\', this.value)" />' +
-              (state.appErrors.name ? '<div class="field-error">' + state.appErrors.name + "</div>" : "") +
-              '</div><div class="field"><label for="appid">App ID</label><input id="appid" value="' +
-              escapeHTML(state.appDraft.appId || "") +
-              '" oninput="updateDraft(\'appId\', this.value)" />' +
-              (state.appErrors.appId ? '<div class="field-error">' + state.appErrors.appId + "</div>" : "") +
-              '</div><div class="field wide"><label for="secret">App Secret</label><input id="secret" type="password" value="' +
-              escapeHTML(state.appDraft.appSecret || "") +
-              '" oninput="updateDraft(\'appSecret\', this.value)" />' +
-              (state.appErrors.appSecret ? '<div class="field-error">' + state.appErrors.appSecret + "</div>" : "") +
-              '</div></div><div class="switch-row"><button class="' +
-              (state.appDraft.enabled ? "button-secondary" : "button-ghost") +
-              '" type="button" onclick="updateDraft(\'enabled\', ' +
-              (!state.appDraft.enabled) +
-              ')">' +
-              (state.appDraft.enabled ? "当前：已启用" : "当前：已停用") +
-              '</button></div><div class="form-actions"><button class="button-primary" type="button" onclick="saveApp()">保存更改</button><button class="button-secondary" type="button" onclick="verifyApp()">测试连接</button><button class="button-ghost" type="button" onclick="reconnectApp()">重新连接</button><button class="button-ghost" type="button" onclick="toggleAppEnabled()">' +
-              (app.enabled ? "停用飞书应用" : "启用飞书应用") +
-              '</button><button class="button-danger" type="button" onclick="confirmDeleteApp()">删除飞书应用</button></div></section>' +
-              '<section class="panel"><div class="row-head"><div><h3>建议处理</h3><p>按顺序处理下面这些事项即可。</p></div>' +
-              (app.pending.length ? statusHTML("warn", "有待处理项") : statusHTML("good", "当前稳定")) +
-              '</div>' +
-              (app.pending.length
-                ? '<div class="task-list">' +
-                  app.pending
-                    .map((task) => {
-                      return '<article class="task-row"><div class="row-head"><div><strong>' + task.title + "</strong><p>" + task.detail + "</p></div>" + statusHTML(task.done ? "good" : "warn", task.done ? "已完成" : "待处理") + '</div><div class="button-row"><button class="' + (task.done ? "button-ghost" : "button-secondary") + '" type="button" onclick="toggleTask(\'' + task.id + "')\">" + (task.done ? "撤回示例状态" : "我已完成这项") + '</button></div></article>';
-                    })
-                    .join("") +
-                  '<div class="button-row"><button class="button-primary" type="button" onclick="completePendingTasks()">刷新当前状态</button></div></div>'
-                : '<div class="notice good"><strong>当前没有明显待处理项</strong><p>这条飞书应用已经处于比较稳定的状态。</p></div>') +
-              '<details class="details"><summary>查看飞书后台检查清单</summary><div class="details-body"><div class="support-list"><div class="support-row"><strong>基础权限</strong><p>先确认基础对话与交互需要的权限都已经开通。</p></div><div class="support-row"><strong>事件与回调</strong><p>确认消息和回调都已经正确开启。</p></div><div class="support-row"><strong>菜单与发布</strong><p>菜单设置完成后，记得发布当前版本。</p></div></div></div></details></section></div>'
-            : "") +
-          "</section>"
-        );
-      }
-
-      function renderInstances() {
-        return (
-          '<section class="panel"><div class="row-head"><div><h3>工作实例</h3><p>看看当前有哪些实例在线，以及它们是否还在继续工作。</p></div>' +
-          statusHTML(state.instances.some((item) => item.status.label === "在线") ? "good" : "neutral", "当前可见") +
-          '</div><div class="card-grid two">' +
-          state.instances
-            .map((instance) => {
-              return '<article class="card"><div class="row-head"><div><strong>' + instance.name + "</strong><p>" + instance.workspace + "</p></div>" + statusHTML(instance.status.tone, instance.status.label) + "</div><p>" + instance.detail + "</p></article>";
-            })
-            .join("") +
-          "</div></section>"
-        );
-      }
-
-      function renderStorage() {
-        return (
-          '<section class="card-grid two"><article class="panel"><div class="row-head"><div><h3>图片暂存</h3><p>查看当前占用，并按需清理旧内容。</p></div>' +
-          statusHTML("neutral", "按需清理") +
-          '</div><div class="card-grid two"><div class="card"><strong>暂存文件</strong><p class="stat-value">' +
-          state.storage.images.count +
-          "</p><p>仍在使用 " +
-          state.storage.images.active +
-          " 个</p></div><div class=\"card\"><strong>占用空间</strong><p class=\"stat-value\">" +
-          state.storage.images.size +
-          '</p><p>需要时再清理即可。</p></div></div><div class="button-row"><button class="button-secondary" type="button" onclick="cleanupImages()">清理旧图片</button></div></article>' +
-          '<article class="panel"><div class="row-head"><div><h3>文档预览</h3><p>按飞书应用分别查看当前占用情况。</p></div>' +
-          statusHTML("warn", "可逐条清理") +
-          '</div><div class="task-list">' +
-          state.storage.previews
-            .map((preview) => {
-              return '<article class="task-row"><div class="row-head"><div><strong>' + preview.name + "</strong><p>最近使用：" + preview.lastUsed + " · 当前共 " + preview.files + " 个文件</p></div>" + statusHTML(preview.status.tone, preview.status.label) + '</div><div class="button-row"><button class="button-secondary" type="button" onclick="cleanupPreview(\'' + preview.id + "')\">清理旧预览</button></div></article>";
-            })
-            .join("") +
-          "</div></article></section>"
-        );
-      }
-
-      function renderVSCode() {
-        return (
-          '<section class="panel"><div class="row-head"><div><h3>VS Code</h3><p>如果你准备在这台机器上继续使用 VS Code，可以现在一起处理。</p></div>' +
-          statusHTML(state.vscodeReady ? "good" : "warn", state.vscodeReady ? "已处理" : "待处理") +
-          '</div><div class="card-grid two"><article class="card"><h4>你要怎么用</h4><div class="button-row"><button class="' +
-          (state.vscodeScenario === "current" ? "button-secondary" : "button-ghost") +
-          '" type="button" onclick="setVSCodeScenario(\'current\')">要在这台机器上继续使用</button><button class="' +
-          (state.vscodeScenario === "later" ? "button-secondary" : "button-ghost") +
-          '" type="button" onclick="setVSCodeScenario(\'later\')">以后再处理</button></div><p>' +
-          (state.vscodeScenario === "current"
-            ? "如果你现在就要在这台机器上继续用 VS Code，可以直接处理。"
-            : "如果你暂时不用，可以以后再处理。 ") +
-          '</p></article><article class="card"><h4>当前说明</h4><p>' +
-          (state.vscodeScenario === "current"
-            ? "只要这台机器上已经安装扩展，就可以继续。以后需要时再回来处理也可以。"
-            : "这不会影响你现在继续使用。等你需要时，再回来处理。") +
-          '</p></article></div><div class="button-row"><button class="button-primary" type="button" onclick="continueVSCode()">' +
-          (state.vscodeScenario === "later" ? "稍后处理" : "继续处理 VS Code") +
-          "</button></div></section>"
-        );
-      }
-
-      function renderSupport() {
-        return (
-          '<section class="panel"><div class="row-head"><div><h3>当前摘要</h3><p>如果你要把当前情况发给同事，可以直接复制这一份摘要。</p></div>' +
-          statusHTML("neutral", "按需展开") +
-          '</div><div class="support-list"><article class="support-row"><strong>复制当前摘要</strong><p>把当前状态整理成一段简短说明，方便转给需要协助你的人。</p><div class="button-row"><button class="button-secondary" type="button" onclick="copySupportInfo()">复制当前摘要</button></div></article><details class="details" ' +
-          (state.supportExpanded ? "open" : "") +
-          '><summary onclick="toggleSupport(event)">查看当前摘要内容</summary><div class="details-body"><div class="support-copy"><p>你可以直接复制下面这段内容。</p><code>当前页面：本地管理\n当前选中飞书应用：' +
-          escapeHTML(activeApp() ? activeApp().name : "无") +
-          "\n当前飞书应用状态：" +
-          escapeHTML(activeApp() ? activeApp().status.label : "无") +
-          "\n工作实例数：" +
-          state.instances.length +
-          "\n文档预览状态：已记录\nVS Code 状态：" +
-          (state.vscodeReady ? "已处理" : "待处理") +
-          '</code></div></div></details></div></section>'
-        );
-      }
-
-      function renderSection() {
-        switch (state.section) {
-          case "overview":
-            return renderOverview();
-          case "apps":
-            return renderApps();
-          case "instances":
-            return renderInstances();
-          case "storage":
-            return renderStorage();
-          case "vscode":
-            return renderVSCode();
-          case "support":
-            return renderSupport();
-          default:
-            return "";
-        }
-      }
-
-      function render() {
-        const sectionMeta = sections.find((item) => item.id === state.section);
-        document.getElementById("app").innerHTML =
-          '<div class="shell">' +
-          renderSidebar() +
-          '<main class="main"><div class="main-head"><div><p class="eyebrow">本地管理</p><h2>' +
-          sectionMeta.label +
-          '</h2><p>' +
-          sectionMeta.hint +
-          '</p></div><div class="head-actions"><button class="mobile-nav-button" type="button" onclick="toggleNav()">分区导航</button><button class="button-ghost" type="button" onclick="refreshPage()">刷新状态</button></div></div><div class="page-body">' +
-          renderNotice() +
-          renderSection() +
-          "</div></main></div>";
-        renderModal();
-        renderToast();
-      }
-
-      function renderModal() {
-        const modal = document.getElementById("modal");
-        if (!state.modal) {
-          modal.className = "modal";
-          modal.innerHTML = "";
-          return;
-        }
-        if (state.modal.type === "new-app") {
-          modal.className = "modal open";
-          modal.innerHTML =
-            '<div class="modal-card"><h3>新增飞书应用</h3><p>选择一种方式继续。</p><div class="button-row"><button class="button-primary" type="button" onclick="saveNewApp(\'new\')">扫码新建飞书应用</button><button class="button-secondary" type="button" onclick="saveNewApp(\'existing\')">接入已有飞书应用</button></div><div class="modal-actions"><button class="button-ghost" type="button" onclick="closeModal()">取消</button></div></div>';
-          return;
-        }
-        if (state.modal.type === "confirm") {
-          modal.className = "modal open";
-          modal.innerHTML =
-            '<div class="modal-card"><h3>' +
-            state.modal.title +
-            "</h3><p>" +
-            state.modal.message +
-            '</p><div class="modal-actions"><button class="' +
-            (state.modal.danger ? "button-danger" : "button-primary") +
-            '" type="button" onclick="confirmModalAction()">' +
-            state.modal.confirmLabel +
-            '</button><button class="button-ghost" type="button" onclick="closeModal()">取消</button></div></div>';
-          return;
-        }
-        modal.className = "modal open";
-        modal.innerHTML =
-          '<div class="modal-card"><h3>' +
-          state.modal.title +
-          "</h3><p>" +
-          state.modal.message +
-          '</p><pre style="margin:0;padding:14px;border-radius:14px;background:#f6f3ed;white-space:pre-wrap;overflow:auto;">' +
-          escapeHTML(state.modal.detail || "") +
-          '</pre><div class="modal-actions"><button class="button-primary" type="button" onclick="closeModal()">我知道了</button></div></div>';
-      }
-
-      function renderToast() {
-        const toast = document.getElementById("toast");
-        if (!state.toast) {
-          toast.className = "toast";
-          toast.innerHTML = "";
-          return;
-        }
-        toast.className = "toast show " + state.toast.tone;
-        toast.innerHTML = "<strong>" + state.toast.title + "</strong><p>" + state.toast.message + "</p>";
-      }
-
-      function confirmModalAction() {
-        if (state.modal && state.modal.onConfirm) {
-          state.modal.onConfirm();
-        }
-      }
-
-      function refreshPage() {
-        setNotice("good", "状态已刷新", "你现在看到的是最新结果。");
-        showToast("good", "已刷新", "当前页面状态已更新。");
-        render();
-      }
-
-      function focusOpsApp() {
-        state.section = "apps";
-        state.selectedAppId = "app-ops";
-        resetDraftFromApp();
-        setNotice("warn", "已定位到值班飞书应用", "你现在可以直接在当前页测试连接并处理待补全项。");
-        render();
-      }
-
-      function setVSCodeScenario(value) {
-        state.vscodeScenario = value;
-        render();
-      }
-
-      function toggleSupport(event) {
-        event.preventDefault();
-        state.supportExpanded = !state.supportExpanded;
-        render();
-      }
-
-      function escapeHTML(value) {
-        return String(value)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;");
-      }
-
-      window.switchSection = switchSection;
-      window.toggleNav = toggleNav;
-      window.selectApp = selectApp;
-      window.updateDraft = updateDraft;
-      window.saveApp = saveApp;
-      window.verifyApp = verifyApp;
-      window.reconnectApp = reconnectApp;
-      window.toggleAppEnabled = toggleAppEnabled;
-      window.toggleTask = toggleTask;
-      window.completePendingTasks = completePendingTasks;
-      window.beginNewApp = beginNewApp;
-      window.saveNewApp = saveNewApp;
-      window.closeModal = closeModal;
-      window.confirmDeleteApp = confirmDeleteApp;
-      window.confirmModalAction = confirmModalAction;
-      window.cleanupImages = cleanupImages;
-      window.cleanupPreview = cleanupPreview;
-      window.continueVSCode = continueVSCode;
-      window.refreshPage = refreshPage;
-      window.focusOpsApp = focusOpsApp;
-      window.setVSCodeScenario = setVSCodeScenario;
-      window.toggleSupport = toggleSupport;
-      window.copySupportInfo = copySupportInfo;
-
-      window.addEventListener("resize", () => {
-        if (window.innerWidth > 1120) {
-          state.navOpen = true;
-        }
+      document.getElementById("cancelDeleteRobot").onclick = () => closeDeleteRobotModal();
+      document.getElementById("confirmDeleteRobot").onclick = () => confirmDeleteRobot();
+      deleteRobotModal.addEventListener("click", (event) => {
+        if (event.target === deleteRobotModal) closeDeleteRobotModal();
       });
 
-      render();
+      renderAdmin();
     </script>
   </body>
 </html>
