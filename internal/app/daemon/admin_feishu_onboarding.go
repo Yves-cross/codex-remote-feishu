@@ -843,6 +843,7 @@ func (a *App) handleFeishuOnboardingSessionComplete(w http.ResponseWriter, r *ht
 	}
 
 	response.Session = a.markOnboardingSessionCompleted(sessionID, gatewayID, summary, mutation, result)
+	a.maybeSendFeishuAppVerifySuccessNotices(r.Context(), gatewayID, strings.HasPrefix(r.URL.Path, "/api/setup/"))
 	writeJSON(w, http.StatusOK, response)
 }
 

@@ -73,6 +73,7 @@ type feishuRuntimeState struct {
 	permissionNextRefresh     time.Time
 	permissionRefreshInFlight bool
 	onboarding                map[string]*feishuOnboardingSession
+	tests                     map[string]*feishuAppTestContext
 	setup                     feishuSetupClient
 }
 
@@ -103,5 +104,6 @@ func newFeishuRuntimeState() feishuRuntimeState {
 		permissionGaps:         map[string]map[string]*feishuPermissionGapRecord{},
 		permissionRefreshEvery: defaultFeishuPermissionRefreshEvery,
 		onboarding:             map[string]*feishuOnboardingSession{},
+		tests:                  map[string]*feishuAppTestContext{},
 	}
 }

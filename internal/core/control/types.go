@@ -77,6 +77,7 @@ const (
 	ActionTargetPickerConfirm         ActionKind = "surface.target_picker.confirm"
 	ActionHistoryPage                 ActionKind = "surface.history.page"
 	ActionHistoryDetail               ActionKind = "surface.history.detail"
+	ActionFeishuAppTestCallback       ActionKind = "surface.button.feishu_app_test_callback"
 )
 
 type InboundLifecycleVerdict string

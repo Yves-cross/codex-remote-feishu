@@ -440,6 +440,7 @@ func (a *App) handleFeishuAppVerify(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	a.maybeSendFeishuAppVerifySuccessNotices(r.Context(), gatewayID, strings.HasPrefix(r.URL.Path, "/api/setup/"))
 	writeJSON(w, http.StatusOK, feishuAppVerifyResponse{
 		App:    summary,
 		Result: result,

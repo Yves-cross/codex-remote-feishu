@@ -13,6 +13,8 @@ import (
 
 const defaultFeishuPermissionRefreshEvery = 2 * time.Minute
 
+var listFeishuAppScopes = feishu.ListAppScopes
+
 type feishuPermissionGapRecord struct {
 	Scope           string
 	ScopeType       string
@@ -177,7 +179,7 @@ func (a *App) loadGrantedFeishuScopes(ctx context.Context, gatewayID string) ([]
 	if !ok {
 		return nil, nil
 	}
-	return feishu.ListAppScopes(ctx, feishu.LiveGatewayConfig{
+	return listFeishuAppScopes(ctx, feishu.LiveGatewayConfig{
 		GatewayID: runtimeCfg.GatewayID,
 		AppID:     runtimeCfg.AppID,
 		AppSecret: runtimeCfg.AppSecret,
