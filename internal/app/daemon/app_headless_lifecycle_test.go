@@ -337,7 +337,7 @@ func TestDaemonShutdownRequestsConnectedWrapperExitAndSkipsSecondKill(t *testing
 	}
 }
 
-func TestDaemonShutdownForceKillsConnectedWrapperAfterTimeout(t *testing.T) {
+func TestDaemonShutdownSkipsVSCodeWrapperConnections(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
 	app.shutdownDrainTimeout = 25 * time.Millisecond
@@ -357,8 +357,7 @@ func TestDaemonShutdownForceKillsConnectedWrapperAfterTimeout(t *testing.T) {
 	app.rememberRelayConnectionWithPID("inst-vscode-live", 9, 4567)
 
 	var commands []agentproto.Command
-	stoppedPID := 0
-	stoppedGrace := time.Second
+	stopCalled := false
 	app.sendAgentCommand = func(instanceID string, command agentproto.Command) error {
 		if instanceID != "inst-vscode-live" {
 			t.Fatalf("unexpected command target: %s", instanceID)
@@ -366,23 +365,19 @@ func TestDaemonShutdownForceKillsConnectedWrapperAfterTimeout(t *testing.T) {
 		commands = append(commands, command)
 		return nil
 	}
-	app.stopProcess = func(pid int, grace time.Duration) error {
-		stoppedPID = pid
-		stoppedGrace = grace
+	app.stopProcess = func(pid int, _ time.Duration) error {
+		stopCalled = true
 		return nil
 	}
 
 	if err := app.Shutdown(context.Background()); err != nil {
 		t.Fatalf("Shutdown() error = %v", err)
 	}
-	if len(commands) != 1 || commands[0].Kind != agentproto.CommandProcessExit {
-		t.Fatalf("expected one process.exit command, got %#v", commands)
+	if len(commands) != 0 {
+		t.Fatalf("expected vscode wrapper to be skipped during shutdown drain, got %#v", commands)
 	}
-	if stoppedPID != 4567 {
-		t.Fatalf("expected force kill pid 4567, got %d", stoppedPID)
-	}
-	if stoppedGrace != 0 {
-		t.Fatalf("expected force kill grace 0, got %s", stoppedGrace)
+	if stopCalled {
+		t.Fatal("expected vscode wrapper pid not to be force-stopped by daemon shutdown")
 	}
 }
 

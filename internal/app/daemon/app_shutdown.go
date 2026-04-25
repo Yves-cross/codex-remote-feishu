@@ -22,7 +22,9 @@ type relayShutdownTarget struct {
 }
 
 type relayShutdownObservedInstance struct {
-	PID int
+	PID     int
+	Source  string
+	Managed bool
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
@@ -261,14 +263,16 @@ func (a *App) collectRelayShutdownTargets() []relayShutdownTarget {
 		if connection.CurrentConnectionID == 0 {
 			continue
 		}
+		observed, ok := instances[instanceID]
+		if !ok || !strings.EqualFold(strings.TrimSpace(observed.Source), "headless") || !observed.Managed {
+			continue
+		}
 		target := relayShutdownTarget{
 			InstanceID: strings.TrimSpace(instanceID),
 			PID:        connection.PID,
 		}
-		if observed, ok := instances[instanceID]; ok {
-			if observed.PID > 0 {
-				target.PID = observed.PID
-			}
+		if observed.PID > 0 {
+			target.PID = observed.PID
 		}
 		if target.InstanceID == "" {
 			continue
@@ -288,7 +292,9 @@ func (a *App) snapshotRelayInstancesForShutdown() map[string]relayShutdownObserv
 			continue
 		}
 		snapshot[inst.InstanceID] = relayShutdownObservedInstance{
-			PID: inst.PID,
+			PID:     inst.PID,
+			Source:  inst.Source,
+			Managed: inst.Managed,
 		}
 	}
 	return snapshot

@@ -262,7 +262,8 @@ release 包中的归档目录只是版本缓存位置，不是长期运行路径
   - daemon 只负责检查、提示、落 journal 和启动 helper
   - helper 负责停当前 daemon、切换稳定入口、观察健康并在失败时自动回滚
   - daemon 在停机窗口里会先进入 shutdown gate，停止自动补拉 headless / wrapper
-  - daemon 会向当前在线 wrapper 广播 `process.exit`，最多等待约 3 秒；仍未退出的实例按 PID 强制结束，避免升级切 stable entry 时命中 `ETXTBSY`
+  - daemon 会向当前在线的 managed headless wrapper 广播 `process.exit`，最多等待约 3 秒；仍未退出的实例按 PID 强制结束，避免升级切 stable entry 时命中 `ETXTBSY`
+  - `source=vscode` 且 `managed=false` 的 VS Code 侧连接不会在 daemon shutdown 阶段被主动 `process.exit`
 
 ### 4.4 Linux `systemd --user` 管理模式
 
