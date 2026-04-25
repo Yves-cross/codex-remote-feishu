@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/testkit/mockcodex"
 )
@@ -12,11 +13,13 @@ import (
 func main() {
 	requireInitialize := flag.Bool("require-initialize", false, "require initialize/initialized handshake before other requests")
 	noAutoComplete := flag.Bool("no-auto-complete", false, "keep turns active until interrupted or completed manually")
+	threadListDelay := flag.Duration("thread-list-delay", 0, "delay thread/list responses")
 	flag.Parse()
 
 	engine := mockcodex.New()
 	engine.RequireInitialize = *requireInitialize
 	engine.AutoComplete = !*noAutoComplete
+	engine.ThreadListDelay = time.Duration(*threadListDelay)
 	engine.SeedThread("thread-1", "/data/dl/droid", "修复登录流程")
 
 	scanner := bufio.NewScanner(os.Stdin)

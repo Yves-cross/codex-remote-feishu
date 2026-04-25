@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type MockCodex struct {
@@ -21,6 +22,7 @@ type MockCodex struct {
 	Initialized       bool
 	LastTurnStart     map[string]any
 	Responder         func(turn TurnStart) string
+	ThreadListDelay   time.Duration
 }
 
 type Thread struct {
@@ -146,6 +148,9 @@ func (m *MockCodex) HandleRemoteCommand(raw []byte) ([][]byte, error) {
 	case "thread/list":
 		if outputs := m.requireInitialized(id); outputs != nil {
 			return outputs, nil
+		}
+		if m.ThreadListDelay > 0 {
+			time.Sleep(m.ThreadListDelay)
 		}
 		items := make([]map[string]any, 0, len(m.Threads))
 		for _, thread := range m.Threads {

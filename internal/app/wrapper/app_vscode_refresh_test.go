@@ -59,7 +59,7 @@ func TestWrapperStartupRefreshBorrowsVSCodeThreadList(t *testing.T) {
 	cfg := Config{
 		RelayServerURL:   wsURL,
 		CodexRealBinary:  "go",
-		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex"},
+		Args:             []string{"run", "./testkit/mockcodex/cmd/mockcodex", "--thread-list-delay=250ms"},
 		InstanceID:       "inst-wrapper-vscode-refresh",
 		DisplayName:      "codex-remote",
 		WorkspaceRoot:    repoRoot,
