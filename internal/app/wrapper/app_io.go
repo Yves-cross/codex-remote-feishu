@@ -19,6 +19,7 @@ func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, tran
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
+			forwardOriginal := true
 			logRawFrame(rawLogger, "parent.stdin", "in", line, "", "")
 			if debugf != nil {
 				debugf("stdin from parent: %s", summarizeFrame(line))
@@ -40,6 +41,7 @@ func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, tran
 						}))
 					}
 				}
+				forwardOriginal = !result.Suppress
 			} else {
 				if debugf != nil {
 					debugf("stdin observe parse failed: err=%v preview=%q", parseErr, previewRawLine(line))
@@ -55,13 +57,17 @@ func stdinLoop(ctx context.Context, stdin io.Reader, writeCh chan<- []byte, tran
 					})
 				}
 			}
-			select {
-			case writeCh <- line:
-				if debugf != nil {
-					debugf("stdin forwarded to codex: %s", summarizeFrame(line))
+			if forwardOriginal {
+				select {
+				case writeCh <- line:
+					if debugf != nil {
+						debugf("stdin forwarded to codex: %s", summarizeFrame(line))
+					}
+				case <-ctx.Done():
+					return
 				}
-			case <-ctx.Done():
-				return
+			} else if debugf != nil {
+				debugf("stdin suppressed before codex: %s", summarizeFrame(line))
 			}
 		}
 		if err == nil {
@@ -136,6 +142,24 @@ func stdoutLoop(ctx context.Context, childStdout io.Reader, parentStdout io.Writ
 								Stage:     "write_parent_stdout",
 								Operation: "parent.stdout",
 								Message:   "wrapper 无法把 Codex 输出回传给上游客户端。",
+							}))
+						}
+						errCh <- writeErr
+						return
+					}
+				}
+				for _, parentFrame := range result.OutboundToParent {
+					if len(parentFrame) == 0 {
+						continue
+					}
+					if _, writeErr := parentStdout.Write(parentFrame); writeErr != nil {
+						if reportProblem != nil {
+							reportProblem(agentproto.ErrorInfoFromError(writeErr, agentproto.ErrorInfo{
+								Code:      "write_parent_stdout_failed",
+								Layer:     "wrapper",
+								Stage:     "write_parent_stdout",
+								Operation: "parent.stdout",
+								Message:   "wrapper 无法把合并后的 Codex 输出回传给上游客户端。",
 							}))
 						}
 						errCh <- writeErr
