@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SetupRoute } from "./SetupRoute";
@@ -49,11 +49,13 @@ describe("SetupRoute", () => {
     render(<SetupRoute />);
 
     expect(await screen.findByRole("heading", { name: "飞书连接" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        calls.some((call) => call.path === "/g/demo/api/setup/feishu/onboarding/sessions"),
+      ).toBe(true);
+    });
     expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((call) => call.rawURL.startsWith("./"))).toBe(true);
-    expect(
-      calls.some((call) => call.path === "/g/demo/api/setup/feishu/onboarding/sessions"),
-    ).toBe(true);
   });
 
   it("connects manually, shows missing permissions, and rechecks into events", async () => {
