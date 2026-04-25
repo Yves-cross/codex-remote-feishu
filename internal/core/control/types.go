@@ -57,6 +57,7 @@ const (
 	ActionShowScopedThreads           ActionKind = "surface.button.show_scoped_threads"
 	ActionShowWorkspaceThreads        ActionKind = "surface.button.show_workspace_threads"
 	ActionUseThread                   ActionKind = "surface.button.use_thread"
+	ActionThreadSelectionPage         ActionKind = "surface.thread_selection.page"
 	ActionConfirmKickThread           ActionKind = "surface.button.confirm_kick_thread"
 	ActionCancelKickThread            ActionKind = "surface.button.cancel_kick_thread"
 	ActionFollowLocal                 ActionKind = "surface.button.follow_local"

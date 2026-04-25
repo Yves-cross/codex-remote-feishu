@@ -38,6 +38,7 @@ const (
 	cardActionKindAttachInstance              = frontstagecontract.CardActionKindAttachInstance
 	cardActionKindAttachWorkspace             = frontstagecontract.CardActionKindAttachWorkspace
 	cardActionKindUseThread                   = frontstagecontract.CardActionKindUseThread
+	cardActionKindThreadSelectionPage         = frontstagecontract.CardActionKindThreadSelectionPage
 	cardActionKindShowScopedThreads           = frontstagecontract.CardActionKindShowScopedThreads
 	cardActionKindShowThreads                 = frontstagecontract.CardActionKindShowThreads
 	cardActionKindShowAllThreads              = frontstagecontract.CardActionKindShowAllThreads
@@ -72,24 +73,25 @@ const (
 )
 
 var (
-	actionPayloadWithLifecycle      = frontstagecontract.ActionPayloadWithLifecycle
-	actionPayloadNavigation         = frontstagecontract.ActionPayloadNavigation
-	actionPayloadNavigationPage     = frontstagecontract.ActionPayloadNavigationPage
-	actionPayloadThreadNavigation   = frontstagecontract.ActionPayloadThreadNavigation
-	actionPayloadWorkspaceThreads   = frontstagecontract.ActionPayloadWorkspaceThreads
-	actionPayloadAttachInstance     = frontstagecontract.ActionPayloadAttachInstance
-	actionPayloadAttachWorkspace    = frontstagecontract.ActionPayloadAttachWorkspace
-	actionPayloadUseThread          = frontstagecontract.ActionPayloadUseThread
-	actionPayloadUseThreadField     = frontstagecontract.ActionPayloadUseThreadField
-	actionPayloadKickThreadConfirm  = frontstagecontract.ActionPayloadKickThreadConfirm
-	actionPayloadPageAction         = frontstagecontract.ActionPayloadPageAction
-	actionPayloadPageSubmit         = frontstagecontract.ActionPayloadPageSubmit
-	actionPayloadRequestRespond     = frontstagecontract.ActionPayloadRequestRespond
-	actionPayloadRequestControl     = frontstagecontract.ActionPayloadRequestControl
-	actionPayloadPathPicker         = frontstagecontract.ActionPayloadPathPicker
-	actionPayloadPathPickerCursor   = frontstagecontract.ActionPayloadPathPickerCursor
-	actionPayloadTargetPicker       = frontstagecontract.ActionPayloadTargetPicker
-	actionPayloadTargetPickerCursor = frontstagecontract.ActionPayloadTargetPickerCursor
-	actionPayloadTargetPickerValue  = frontstagecontract.ActionPayloadTargetPickerValue
-	actionPayloadThreadHistory      = frontstagecontract.ActionPayloadThreadHistory
+	actionPayloadWithLifecycle         = frontstagecontract.ActionPayloadWithLifecycle
+	actionPayloadNavigation            = frontstagecontract.ActionPayloadNavigation
+	actionPayloadNavigationPage        = frontstagecontract.ActionPayloadNavigationPage
+	actionPayloadThreadNavigation      = frontstagecontract.ActionPayloadThreadNavigation
+	actionPayloadWorkspaceThreads      = frontstagecontract.ActionPayloadWorkspaceThreads
+	actionPayloadAttachInstance        = frontstagecontract.ActionPayloadAttachInstance
+	actionPayloadAttachWorkspace       = frontstagecontract.ActionPayloadAttachWorkspace
+	actionPayloadUseThread             = frontstagecontract.ActionPayloadUseThread
+	actionPayloadUseThreadField        = frontstagecontract.ActionPayloadUseThreadField
+	actionPayloadThreadSelectionCursor = frontstagecontract.ActionPayloadThreadSelectionCursor
+	actionPayloadKickThreadConfirm     = frontstagecontract.ActionPayloadKickThreadConfirm
+	actionPayloadPageAction            = frontstagecontract.ActionPayloadPageAction
+	actionPayloadPageSubmit            = frontstagecontract.ActionPayloadPageSubmit
+	actionPayloadRequestRespond        = frontstagecontract.ActionPayloadRequestRespond
+	actionPayloadRequestControl        = frontstagecontract.ActionPayloadRequestControl
+	actionPayloadPathPicker            = frontstagecontract.ActionPayloadPathPicker
+	actionPayloadPathPickerCursor      = frontstagecontract.ActionPayloadPathPickerCursor
+	actionPayloadTargetPicker          = frontstagecontract.ActionPayloadTargetPicker
+	actionPayloadTargetPickerCursor    = frontstagecontract.ActionPayloadTargetPickerCursor
+	actionPayloadTargetPickerValue     = frontstagecontract.ActionPayloadTargetPickerValue
+	actionPayloadThreadHistory         = frontstagecontract.ActionPayloadThreadHistory
 )

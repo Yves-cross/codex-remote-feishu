@@ -43,6 +43,7 @@ const (
 	CardActionKindAttachInstance              = "attach_instance"
 	CardActionKindAttachWorkspace             = "attach_workspace"
 	CardActionKindUseThread                   = "use_thread"
+	CardActionKindThreadSelectionPage         = "thread_selection_page"
 	CardActionKindShowScopedThreads           = "show_scoped_threads"
 	CardActionKindShowThreads                 = "show_threads"
 	CardActionKindShowAllThreads              = "show_all_threads"
@@ -158,6 +159,19 @@ func ActionPayloadUseThreadField(fieldName string, allowCrossWorkspace bool) map
 		fieldName = CardSelectionThreadFieldName
 	}
 	payload[CardActionPayloadKeyFieldName] = fieldName
+	return payload
+}
+
+func ActionPayloadThreadSelectionCursor(viewMode string, cursor int) map[string]any {
+	payload := map[string]any{
+		CardActionPayloadKeyKind: CardActionKindThreadSelectionPage,
+	}
+	if strings.TrimSpace(viewMode) != "" {
+		payload[CardActionPayloadKeyViewMode] = strings.TrimSpace(viewMode)
+	}
+	if cursor > 0 {
+		payload[CardActionPayloadKeyCursor] = cursor
+	}
 	return payload
 }
 

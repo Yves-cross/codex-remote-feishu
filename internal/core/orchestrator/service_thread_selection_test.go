@@ -317,6 +317,64 @@ func TestPresentVSCodeThreadSelectionBuildsDropdownViewWithRecentLimit(t *testin
 	}
 }
 
+func TestThreadSelectionPageRebuildsVSCodeAllViewAtCursor(t *testing.T) {
+	now := time.Date(2026, 4, 11, 5, 20, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	materializeVSCodeSurfaceForTest(svc, "surface-1")
+	inst := &state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Source:        "vscode",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	}
+	for i := 1; i <= 12; i++ {
+		threadID := fmt.Sprintf("thread-%d", i)
+		inst.Threads[threadID] = &state.ThreadRecord{
+			ThreadID:         threadID,
+			CWD:              "/data/dl/droid",
+			LastUsedAt:       now.Add(time.Duration(i) * time.Minute),
+			FirstUserMessage: fmt.Sprintf("处理第 %d 个会话的日志聚合问题", i),
+		}
+	}
+	svc.UpsertInstance(inst)
+	svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionAttachInstance,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		InstanceID:       "inst-1",
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionThreadSelectionPage,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		ViewMode:         string(control.FeishuThreadSelectionVSCodeAll),
+		Cursor:           7,
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected one selection view, got %#v", events)
+	}
+	view := selectionViewFromEvent(t, events[0])
+	if view.Thread == nil {
+		t.Fatalf("expected structured vscode thread view, got %#v", view)
+	}
+	if view.Thread.Mode != control.FeishuThreadSelectionVSCodeAll || view.Thread.Cursor != 7 {
+		t.Fatalf("expected vscode all view rebuilt at cursor 7, got %#v", view.Thread)
+	}
+	if len(view.Thread.Entries) != 12 || view.Thread.Entries[0].ThreadID != "thread-12" {
+		t.Fatalf("expected full recency-sorted entry list to be rebuilt, got %#v", view.Thread.Entries)
+	}
+	if view.Thread.CurrentInstance == nil || view.Thread.CurrentInstance.Label != "droid" {
+		t.Fatalf("expected current instance summary to remain intact, got %#v", view.Thread.CurrentInstance)
+	}
+}
+
 func TestPresentAllThreadSelectionUsesThreeWorkspaceGroupsPerPage(t *testing.T) {
 	now := time.Date(2026, 4, 11, 5, 20, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

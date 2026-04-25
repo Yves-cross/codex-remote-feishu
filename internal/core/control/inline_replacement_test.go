@@ -137,6 +137,11 @@ func TestInlineCardReplacementPolicyActionSet(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:   "thread selection pagination",
+			action: Action{Kind: ActionThreadSelectionPage, ViewMode: string(FeishuThreadSelectionVSCodeAll), Cursor: 7},
+			want:   true,
+		},
+		{
 			name:   "path picker navigation",
 			action: Action{Kind: ActionPathPickerEnter, PickerID: "picker-1", PickerEntry: "subdir"},
 			want:   true,

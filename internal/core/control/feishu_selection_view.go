@@ -75,6 +75,7 @@ type FeishuThreadSelectionView struct {
 	TotalPages       int
 	ReturnPage       int
 	RecentLimit      int
+	Cursor           int
 	CurrentWorkspace *FeishuThreadSelectionWorkspaceContext
 	CurrentInstance  *FeishuThreadSelectionInstanceContext
 	Workspace        *FeishuThreadSelectionWorkspaceContext

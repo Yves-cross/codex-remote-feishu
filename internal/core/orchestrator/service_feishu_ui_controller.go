@@ -103,6 +103,8 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 			return s.openTargetPicker(surface, control.TargetPickerRequestSourceUseAll, intent.WorkspaceKey, "", intent.SourceMessageID, true)
 		}
 		return s.presentThreadSelectionMode(surface, threadSelectionDisplayAllExpanded, intent.Page)
+	case control.FeishuUIIntentThreadSelectionPage:
+		return s.handleThreadSelectionPage(surface, intent.ViewMode, intent.Cursor)
 	case control.FeishuUIIntentPathPickerEnter:
 		return s.handlePathPickerEnter(surface, intent.PickerID, intent.PickerEntry, intent.ActorUserID)
 	case control.FeishuUIIntentPathPickerUp:

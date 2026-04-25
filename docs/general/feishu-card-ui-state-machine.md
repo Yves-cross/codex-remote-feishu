@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-25`
-> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）也统一回到锁定当前工作区的 target picker。`/workspace list` 的 target page 现已接入 byte-budget dropdown pagination：workspace / session 双下拉通过 `target_picker_page(picker_id + field_name + cursor)` 走同卡翻页，workspace 预算目标 `1/3`、session `2/3`，并支持空余预算回借；workspace 翻页会重算 session 候选，session 翻页则保留 workspace 状态并清空不可见会话选择。复用 path picker 现在也接入同类 byte-budget dropdown pagination：目录模式单下拉、文件模式目录/文件双下拉、target-picker owner-subpage 的 compact 目录下拉都改走 `path_picker_page(picker_id + field_name + cursor)`；目录 lane 固定保留 `.` / `..`，文件 lane 翻页会清空不可见文件选择并禁用 confirm。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；本轮还新增了 `/autocontinue` 参数卡与 reply-thread、tail-only patch 的自动继续状态卡；`/upgrade` 根页现在会按 standalone Codex 安装状态决定是否暴露 `Codex 升级`，`/upgrade latest` 与 `/upgrade codex` 共用 `upgrade_owner_flow` callback family，但分别收口到 release / Codex 两条 owner-card flow；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、共享过程卡、原锚点 attention annotation 与 turn reply 语义见正文。
+> Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）也统一回到锁定当前工作区的 target picker。`/workspace list` 的 target page 现已接入 byte-budget dropdown pagination：workspace / session 双下拉通过 `target_picker_page(picker_id + field_name + cursor)` 走同卡翻页，workspace 预算目标 `1/3`、session `2/3`，并支持空余预算回借；workspace 翻页会重算 session 候选，session 翻页则保留 workspace 状态并清空不可见会话选择。复用 path picker 现在也接入同类 byte-budget dropdown pagination：目录模式单下拉、文件模式目录/文件双下拉、target-picker owner-subpage 的 compact 目录下拉都改走 `path_picker_page(picker_id + field_name + cursor)`；目录 lane 固定保留 `.` / `..`，文件 lane 翻页会清空不可见文件选择并禁用 confirm。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，大集合候选会按 transport byte budget 动态分页，并通过 `thread_selection_page(view_mode + cursor)` 原地翻页；若当前 thread 不在可见页，不再伪造 `initial_option`。kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；本轮还新增了 `/autocontinue` 参数卡与 reply-thread、tail-only patch 的自动继续状态卡；`/upgrade` 根页现在会按 standalone Codex 安装状态决定是否暴露 `Codex 升级`，`/upgrade latest` 与 `/upgrade codex` 共用 `upgrade_owner_flow` callback family，但分别收口到 release / Codex 两条 owner-card flow；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、共享过程卡、原锚点 attention annotation 与 turn reply 语义见正文。
 
 ## 1. 文档定位
 
@@ -101,6 +101,7 @@
 | `/menu` 首页 / 分组 / 返回 | `feishu-ui-owned (launcher)` | 当前由 Feishu UI controller 处理同一张命令菜单内的层级切换；首页仅保留分组导航入口，不再额外渲染“常用操作”区块；首页 breadcrumb 固定停在 `菜单首页`，不会再从 `/menu` 命令定义继承 `系统管理` 分组 breadcrumb 或回退按钮；首页分组按钮直接显示分组名，分组页才显示显式 `返回上一层`；菜单导航状态当前通过 owner-card runtime 的 `command_menu + role=launcher` 记录，不再依赖旧 `Surface.MenuFlow` |
 | `show_all_workspaces` / `show_recent_workspaces` | `feishu-ui-owned` | normal mode 下当前只负责重新打开 `/workspace list` 切换卡；`/list` 这类旧入口只是 alias，不再决定新的主展示结构 |
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | normal mode 下当前也只负责重新打开 `/workspace list` 切换卡；vscode mode 下会刷新当前实例的结构化 thread dropdown，不再维持旧分页 prompt |
+| `thread_selection_page` | `feishu-ui-owned` | VS Code 结构化 thread dropdown 的 byte-budget 翻页动作；payload 携带 `view_mode + cursor(start-index)`。命中当前 surface 时 controller 会按当前 surface 状态重建 `FeishuThreadSelectionView`，projector 再按 transport budget 切出新页并 inline replace 当前卡，不引入 owner runtime |
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | normal mode 下当前只负责用指定 workspace 重新打开 `/workspace list` 切换卡；legacy selection path 下才继续承担旧分页导航 |
 | `target_picker_select_mode` / `target_picker_select_source` / `target_picker_select_workspace` / `target_picker_select_session` | `feishu-ui-owned` | 当前 normal mode 主路径实际使用的是三张独立工作会话卡：`/workspace list` 直接落 `target` 页，`/workspace new dir` / `git` 直接落各自业务页，因此 `target_picker_select_workspace` / `target_picker_select_session` 是主路径仍在使用的回调，而 `target_picker_select_mode` / `target_picker_select_source` 只保留 transport/runtime 兼容。命中当前 active picker 时都只原地替换当前卡，不直接改 route；切真实 workspace 或显式改选 session 时会按当前卡状态重建 picker read model |
 | `target_picker_page` | `feishu-ui-owned` | `/workspace list` target page 的 dropdown 翻页动作；payload 携带 `picker_id + field_name + cursor(start-index)`。命中当前 active picker 时继续 inline replace 当前卡，不直接改 route。workspace lane 翻页会把 cursor 指向的新 workspace 设为当前工作区并重算 session 候选；session lane 翻页会保留 workspace cursor / 选中工作区，但若原 session 掉出可见页则清空选中并禁用 confirm |
@@ -151,6 +152,8 @@
   - VS Code `/list` 的 instance selection、VS Code `/use` / `/useall` 的 thread selection，以及 kick-thread confirm，当前都直接跨 `UIEvent` 边界携带 `FeishuSelectionView`
   - title / layout / context / hidden-entry hint 当前统一由 `control.DeriveFeishuSelectionSemantics(...)` 派生，orchestrator 的 `FeishuSelectionContext` 与 adapter projector 共用这一份语义 owner，不再各自重复推导
   - VS Code thread dropdown 当前会直接隐藏 disabled thread，并用 plain-text hint 提示“已省略当前不可切换的会话”
+  - VS Code `/use` / `/useall` 的大候选集不再整包塞进单个 `select_static`；projector 会按 Feishu transport byte budget 做动态分页，并通过 `thread_selection_page(view_mode + cursor)` 同卡翻页
+  - 若当前 thread 不在当前 dropdown 可见页，projector 不会再给 `select_static` 写 `initial_option`
 - `control.FeishuDirectSelectionPrompt` 仍然保留，但当前只剩测试 / mockfeishu 兼容用途，不再是 live adapter 输入：
   - workspace/thread selection live 路径已经不再从 `FeishuSelectionView` 回退投影成 `FeishuDirectSelectionPrompt`
   - kick-thread confirm 等 live selection 也直接消费 `FeishuSelectionView`
@@ -185,7 +188,7 @@
 - callback payload schema 已收束到 [internal/core/frontstagecontract/callback_payload.go](../../internal/core/frontstagecontract/callback_payload.go)
 - projector、gateway、daemon owner-card producer 与 orchestrator owner-card producer 现在共用这份 schema 常量/构造 helper，不再继续各自扩一份裸字符串约定
 - `request_respond` / `submit_request_form` 与 `upgrade_owner_flow` / `vscode_migrate_owner_flow` 当前在 gateway 解析后只写入 `Action.Request` / `Action.OwnerFlow` family；这些回调不再依赖 root `Action.Request*` 或 root `PickerID/OptionID` 兼容字段作为 live 路径输入
-- 分页导航与 target/path picker 下拉当前也复用这套 schema：projector 负责写入 `page` / `view_mode` / `return_page` / `picker_id` / `field_name` / `cursor`，gateway 负责解析回 `control.Action`，Feishu UI controller 再用这些字段重建当前页 view 或当前 picker 并 inline replace 原卡。其中 thread/history 等固定分页仍用 `page`，target/path picker dropdown 的动态 byte-budget 分页改用 `cursor(start-index)`。
+- 分页导航与 target/path picker / selection dropdown 当前也复用这套 schema：projector 负责写入 `page` / `view_mode` / `return_page` / `picker_id` / `field_name` / `cursor`，gateway 负责解析回 `control.Action`，Feishu UI controller 再用这些字段重建当前页 view、thread selection view 或当前 picker 并 inline replace 原卡。其中 thread/history 等固定分页仍用 `page`，target/path picker / VS Code thread dropdown 的动态 byte-budget 分页改用 `cursor(start-index)`。
 
 ### 4.2 当前常见 payload 字段
 
@@ -194,6 +197,7 @@
 | `attach_instance` | `instance_id` | 接管指定实例 |
 | `attach_workspace` | `workspace_key` | 接管指定工作区 |
 | `use_thread` | `thread_id`、`field_name`、`allow_cross_workspace` | 选择 thread；VS Code 结构化 thread dropdown 走 `field_name` + `form_value/option` 取值，其余按钮路径仍可直接带 `thread_id` |
+| `thread_selection_page` | `view_mode`、`cursor` | VS Code 结构化 thread dropdown 的 byte-budget 翻页回调；`view_mode` 指明当前是 recent / all / scoped_all 哪条 direct selection flow，`cursor` 是候选项 start-index。服务端只重建当前 selection view，不持久化 owner runtime；projector 若发现当前 thread 不在新页，会清空 `initial_option` |
 | `show_threads` / `show_all_threads` / `show_scoped_threads` | `view_mode`、`page` | normal mode 下重新打开 `/workspace list` 切换卡；vscode / legacy selection path 下仍用于在当前 same-context thread 列表里切页 |
 | `show_all_workspaces` / `show_recent_workspaces` | `page` | normal mode 下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
 | `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `page` | normal mode 下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
@@ -703,6 +707,8 @@ MCP request 卡片当前新增的可视语义：
   - 锁定哪些动作会被分流到 Feishu UI controller，哪些 mixed/product-owned 动作仍留在主 reducer
 - [internal/adapter/feishu/projector_test.go](../../internal/adapter/feishu/projector_test.go)
   - 锁定 `FeishuDirectSelectionPrompt` / `FeishuSelectionView` / `FeishuCatalogView -> FeishuPageView` / `FeishuRequestView` 的 lifecycle stamp、projection 结果、request prompt 顶层投递语义与 callback payload 结构
+- [internal/adapter/feishu/projector_selection_structured_test.go](../../internal/adapter/feishu/projector_selection_structured_test.go)
+  - 锁定 VS Code 结构化 thread dropdown 的 `thread_selection_page` 分页投影、prev/next payload、以及当前 thread 掉出可见页时不再写 `initial_option`
 - [internal/adapter/feishu/projector_notice_test.go](../../internal/adapter/feishu/projector_notice_test.go)
   - 锁定结构化 notice 继续走纯文本 section 渲染，以及 `global runtime` notice 的独立 append-only delivery lane
 - [internal/adapter/feishu/projector_plan_update_test.go](../../internal/adapter/feishu/projector_plan_update_test.go)
@@ -739,6 +745,8 @@ MCP request 卡片当前新增的可视语义：
   - 锁定 `path_picker_*` 与 `path_picker_page` callback payload 能正确回到 `control.Action`
 - [internal/core/orchestrator/service_test.go](../../internal/core/orchestrator/service_test.go)
   - 锁定 `UIEventFeishuTargetPicker` 会携带显式 `FeishuTargetPickerContext`，以及 normal `/list` 的基础 target picker 语义
+- [internal/core/orchestrator/service_thread_selection_test.go](../../internal/core/orchestrator/service_thread_selection_test.go)
+  - 锁定 VS Code direct selection 会用 `thread_selection_page` 按当前 surface 状态重建 `FeishuThreadSelectionView`，而不是引入新的 owner runtime
 - [internal/core/orchestrator/service_exec_command_progress_test.go](../../internal/core/orchestrator/service_exec_command_progress_test.go)
   - 锁定共享过程卡对 `exec_command` / `web_search` / `dynamic_tool_call` / `mcp_tool_call` / `file_change` / `context_compaction` 的可见性分档、首卡顶层 append、同卡复用、`file_change` / `mcp_tool_call` / `context_compaction` 在 normal 下也会进入共享过程卡、滚动窗口时 `card_start_seq` 前移、正文出现后终止、同类 tool 行级聚合、失败态行内标记，以及底部瞬时 reasoning 状态的本地化/清理时机
 - [internal/app/daemon/app_ui_progress_test.go](../../internal/app/daemon/app_ui_progress_test.go)

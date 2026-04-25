@@ -733,6 +733,36 @@ func TestParseCardActionTriggerEventBuildsUseThreadActionFromSelectStatic(t *tes
 	}
 }
 
+func TestParseCardActionTriggerEventBuildsThreadSelectionPageAction(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	gateway.recordSurfaceMessage("om-card-3c", "feishu:app-1:user:user-1")
+	userID := "user-1"
+	event := &larkcallback.CardActionTriggerEvent{
+		Event: &larkcallback.CardActionTriggerRequest{
+			Operator: &larkcallback.Operator{UserID: &userID},
+			Action: &larkcallback.CallBackAction{
+				Value: map[string]interface{}{
+					"kind":      "thread_selection_page",
+					"view_mode": "vscode_all",
+					"cursor":    18,
+				},
+			},
+			Context: &larkcallback.Context{
+				OpenChatID:    "oc_1",
+				OpenMessageID: "om-card-3c",
+			},
+		},
+	}
+
+	action, ok := gateway.parseCardActionTriggerEvent(event)
+	if !ok {
+		t.Fatal("expected thread-selection pagination callback to be parsed")
+	}
+	if action.Kind != control.ActionThreadSelectionPage || action.ViewMode != "vscode_all" || action.Cursor != 18 {
+		t.Fatalf("unexpected thread-selection page action: %#v", action)
+	}
+}
+
 func TestParseCardActionTriggerEventBuildsShowWorkspaceThreadsAction(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	gateway.recordSurfaceMessage("om-card-workspace", "feishu:app-1:user:user-1")

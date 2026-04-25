@@ -43,6 +43,7 @@ const (
 	cardActionKindAttachInstance              = frontstagecontract.CardActionKindAttachInstance
 	cardActionKindAttachWorkspace             = frontstagecontract.CardActionKindAttachWorkspace
 	cardActionKindUseThread                   = frontstagecontract.CardActionKindUseThread
+	cardActionKindThreadSelectionPage         = frontstagecontract.CardActionKindThreadSelectionPage
 	cardActionKindShowScopedThreads           = frontstagecontract.CardActionKindShowScopedThreads
 	cardActionKindShowThreads                 = frontstagecontract.CardActionKindShowThreads
 	cardActionKindShowAllThreads              = frontstagecontract.CardActionKindShowAllThreads

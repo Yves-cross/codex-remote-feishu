@@ -25,6 +25,24 @@ func TestActionPayloadUseThreadFieldDefaultsSelectionFieldName(t *testing.T) {
 	}
 }
 
+func TestActionPayloadThreadSelectionCursorUsesCanonicalShape(t *testing.T) {
+	payload := actionPayloadThreadSelectionCursor("vscode_all", 0)
+	if payload[cardActionPayloadKeyKind] != cardActionKindThreadSelectionPage {
+		t.Fatalf("unexpected thread-selection page kind: %#v", payload)
+	}
+	if payload[cardActionPayloadKeyViewMode] != "vscode_all" {
+		t.Fatalf("expected view mode to be serialized, got %#v", payload)
+	}
+	if _, ok := payload[cardActionPayloadKeyCursor]; ok {
+		t.Fatalf("did not expect zero cursor to be serialized, got %#v", payload)
+	}
+
+	next := actionPayloadThreadSelectionCursor("vscode_scoped_all", 7)
+	if next[cardActionPayloadKeyCursor] != 7 {
+		t.Fatalf("expected positive cursor to be serialized, got %#v", next)
+	}
+}
+
 func TestActionPayloadRequestControlOmitsEmptyOptionalFields(t *testing.T) {
 	payload := actionPayloadRequestControl("req-1", "request_user_input", "cancel_turn", "", 0)
 	if payload[cardActionPayloadKeyKind] != cardActionKindRequestControl {

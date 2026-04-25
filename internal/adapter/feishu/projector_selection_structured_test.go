@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -154,6 +155,89 @@ func TestProjectVSCodeThreadSelectionViewUsesDropdown(t *testing.T) {
 	}
 	if !strings.Contains(renderedV2CardText(t, ops[0]), "已省略当前不可切换的会话。") {
 		t.Fatalf("expected hidden-thread hint in rendered card, got %q", renderedV2CardText(t, ops[0]))
+	}
+}
+
+func TestProjectVSCodeThreadSelectionViewPaginatesLargeDropdown(t *testing.T) {
+	projector := NewProjector()
+	entries := make([]control.FeishuThreadSelectionEntry, 0, 160)
+	for i := 0; i < 160; i++ {
+		entries = append(entries, control.FeishuThreadSelectionEntry{
+			ThreadID: fmt.Sprintf("thread-%02d", i),
+			Summary:  fmt.Sprintf("droid · 会话 %02d %s", i, strings.Repeat("日志聚合 ", 120)),
+			Current:  i == 0,
+		})
+	}
+	view := control.FeishuSelectionView{
+		PromptKind: control.SelectionPromptUseThread,
+		Thread: &control.FeishuThreadSelectionView{
+			Mode:   control.FeishuThreadSelectionVSCodeAll,
+			Cursor: 60,
+			CurrentInstance: &control.FeishuThreadSelectionInstanceContext{
+				Label:  "droid",
+				Status: "当前跟随中",
+			},
+			Entries: entries,
+		},
+	}
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:              eventcontract.KindSelection,
+		DaemonLifecycleID: "life-3",
+		SelectionView:     &view,
+		SelectionContext: &control.FeishuUISelectionContext{
+			DTOOwner:     control.FeishuUIDTOwnerSelection,
+			PromptKind:   control.SelectionPromptUseThread,
+			Title:        "当前实例全部会话",
+			ContextTitle: "当前实例",
+			ContextText:  "droid · 当前跟随中",
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationSendCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	rendered := renderedV2BodyElements(t, ops[0])
+
+	var row map[string]any
+	for _, element := range rendered {
+		if cardStringValue(element["tag"]) == "column_set" {
+			row = element
+			break
+		}
+	}
+	if len(row) == 0 {
+		t.Fatalf("expected paginated dropdown row, got %#v", rendered)
+	}
+	columns, _ := row["columns"].([]map[string]any)
+	if len(columns) != 3 {
+		t.Fatalf("expected prev/select/next columns, got %#v", row)
+	}
+	prev := columns[0]["elements"].([]map[string]any)[0]
+	next := columns[2]["elements"].([]map[string]any)[0]
+	selectElement := columns[1]["elements"].([]map[string]any)[0]
+
+	prevValue := renderedButtonCallbackValue(t, prev)
+	if prevValue[cardActionPayloadKeyKind] != "thread_selection_page" ||
+		prevValue[cardActionPayloadKeyViewMode] != string(control.FeishuThreadSelectionVSCodeAll) ||
+		prevValue[cardActionPayloadKeyDaemonLifecycleID] != "life-3" {
+		t.Fatalf("unexpected prev payload: %#v", prevValue)
+	}
+	nextValue := renderedButtonCallbackValue(t, next)
+	if nextValue[cardActionPayloadKeyKind] != "thread_selection_page" ||
+		nextValue[cardActionPayloadKeyViewMode] != string(control.FeishuThreadSelectionVSCodeAll) ||
+		nextValue[cardActionPayloadKeyDaemonLifecycleID] != "life-3" {
+		t.Fatalf("unexpected next payload: %#v", nextValue)
+	}
+	if got := cardStringValue(selectElement["initial_option"]); got != "" {
+		t.Fatalf("expected off-page current thread to clear initial option, got %#v", selectElement)
+	}
+	value := cardValueMap(selectElement)
+	if value[cardActionPayloadKeyKind] != cardActionKindUseThread ||
+		value[cardActionPayloadKeyFieldName] != cardSelectionThreadFieldName ||
+		value[cardActionPayloadKeyDaemonLifecycleID] != "life-3" {
+		t.Fatalf("unexpected dropdown callback payload: %#v", value)
+	}
+	if !strings.Contains(renderedV2CardText(t, ops[0]), "超出卡片大小，如未找到请翻页。") {
+		t.Fatalf("expected pagination hint in rendered card, got %q", renderedV2CardText(t, ops[0]))
 	}
 }
 

@@ -93,6 +93,22 @@ func ParseCardActionTriggerEvent(env RoutingEnv, event *larkcallback.CardActionT
 			AllowCrossWorkspace: boolMapValue(value, cardActionPayloadKeyAllowCrossWorkspace),
 			Inbound:             meta,
 		}, true
+	case cardActionKindThreadSelectionPage:
+		viewMode := strings.TrimSpace(stringMapValue(value, cardActionPayloadKeyViewMode))
+		if viewMode == "" {
+			return control.Action{}, false
+		}
+		return control.Action{
+			Kind:             control.ActionThreadSelectionPage,
+			GatewayID:        gatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			ActorUserID:      operatorID,
+			MessageID:        messageID,
+			ViewMode:         viewMode,
+			Cursor:           intMapValue(value, cardActionPayloadKeyCursor),
+			Inbound:          meta,
+		}, true
 	case cardActionKindShowScopedThreads:
 		return control.Action{
 			Kind:             control.ActionShowScopedThreads,

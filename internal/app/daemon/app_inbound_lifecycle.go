@@ -246,6 +246,8 @@ func rejectedInboundIntentLabel(intent control.FeishuUIIntent) (label, command s
 		return "查看全部会话", "/useall"
 	case control.FeishuUIIntentShowWorkspaceThreads:
 		return "展开该工作区下的会话列表", ""
+	case control.FeishuUIIntentThreadSelectionPage:
+		return "切换会话候选页", ""
 	case control.FeishuUIIntentPathPickerEnter:
 		return "进入目录", ""
 	case control.FeishuUIIntentPathPickerUp:

@@ -257,6 +257,7 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowWorkspaceThreads,
 		FeishuUIIntentShowAllThreadWorkspaces,
 		FeishuUIIntentShowRecentThreadWorkspaces,
+		FeishuUIIntentThreadSelectionPage,
 		FeishuUIIntentPathPickerEnter,
 		FeishuUIIntentPathPickerUp,
 		FeishuUIIntentPathPickerSelect,

@@ -14,15 +14,15 @@ func (s *Service) presentThreadSelection(surface *state.SurfaceConsoleRecord, sh
 	if showAll {
 		mode = threadSelectionDisplayAll
 	}
-	return s.presentThreadSelectionMode(surface, mode, 1)
+	return s.presentThreadSelectionModeAtCursor(surface, mode, 1, 0)
 }
 
 func (s *Service) presentAllThreadWorkspaces(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
-	return s.presentThreadSelectionMode(surface, threadSelectionDisplayAllExpanded, 1)
+	return s.presentThreadSelectionModeAtCursor(surface, threadSelectionDisplayAllExpanded, 1, 0)
 }
 
 func (s *Service) presentScopedThreadSelection(surface *state.SurfaceConsoleRecord) []eventcontract.Event {
-	return s.presentThreadSelectionMode(surface, threadSelectionDisplayScopedAll, 1)
+	return s.presentThreadSelectionModeAtCursor(surface, threadSelectionDisplayScopedAll, 1, 0)
 }
 
 func (s *Service) presentWorkspaceThreadSelection(surface *state.SurfaceConsoleRecord, workspaceKey string) []eventcontract.Event {
@@ -87,7 +87,11 @@ func (s *Service) buildWorkspaceThreadSelectionModel(surface *state.SurfaceConso
 }
 
 func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) []eventcontract.Event {
-	model, events := s.buildThreadSelectionModel(surface, mode, page)
+	return s.presentThreadSelectionModeAtCursor(surface, mode, page, 0)
+}
+
+func (s *Service) presentThreadSelectionModeAtCursor(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page, cursor int) []eventcontract.Event {
+	model, events := s.buildThreadSelectionModelAtCursor(surface, mode, page, cursor)
 	if len(events) != 0 {
 		return events
 	}
@@ -101,6 +105,10 @@ func (s *Service) presentThreadSelectionMode(surface *state.SurfaceConsoleRecord
 }
 
 func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page int) (*control.FeishuThreadSelectionView, []eventcontract.Event) {
+	return s.buildThreadSelectionModelAtCursor(surface, mode, page, 0)
+}
+
+func (s *Service) buildThreadSelectionModelAtCursor(surface *state.SurfaceConsoleRecord, mode threadSelectionDisplayMode, page, cursor int) (*control.FeishuThreadSelectionView, []eventcontract.Event) {
 	if surface != nil && s.normalizeSurfaceProductMode(surface) == state.ProductModeVSCode && strings.TrimSpace(surface.AttachedInstanceID) == "" {
 		return nil, notice(surface, "not_attached_vscode", "vscode 模式下请先 /list 选择一个 VS Code 实例，再使用 /use 或 /useall。")
 	}
@@ -140,6 +148,7 @@ func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord,
 		default:
 			model.RecentLimit = vscodeRecentThreadSelectionLimit
 		}
+		model.Cursor = maxInt(cursor, 0)
 		model.PageSize = len(selectedViews)
 		for _, view := range selectedViews {
 			model.Entries = append(model.Entries, s.threadSelectionViewEntry(surface, view, false))
@@ -207,6 +216,27 @@ func (s *Service) buildThreadSelectionModel(surface *state.SurfaceConsoleRecord,
 		return nil, notice(surface, "no_visible_threads", "当前还没有可恢复会话。")
 	}
 	return model, nil
+}
+
+func (s *Service) handleThreadSelectionPage(surface *state.SurfaceConsoleRecord, viewMode string, cursor int) []eventcontract.Event {
+	mode, ok := threadSelectionDisplayModeFromViewMode(viewMode)
+	if !ok {
+		return notice(surface, "thread_selection_page_invalid", "当前会话列表已过期，请重新发送 /use 或 /useall。")
+	}
+	return s.presentThreadSelectionModeAtCursor(surface, mode, 1, cursor)
+}
+
+func threadSelectionDisplayModeFromViewMode(viewMode string) (threadSelectionDisplayMode, bool) {
+	switch strings.TrimSpace(viewMode) {
+	case string(control.FeishuThreadSelectionVSCodeRecent):
+		return threadSelectionDisplayRecent, true
+	case string(control.FeishuThreadSelectionVSCodeAll):
+		return threadSelectionDisplayAll, true
+	case string(control.FeishuThreadSelectionVSCodeScopedAll):
+		return threadSelectionDisplayScopedAll, true
+	default:
+		return "", false
+	}
 }
 
 type pagedThreadGroupResult struct {
