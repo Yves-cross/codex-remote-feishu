@@ -861,7 +861,6 @@ func (a *App) createFeishuOnboardedApp(name, appID, appSecret string) (adminFeis
 		AppID: daemonStringPtr(appID),
 	}
 	gatewayID := nextGatewayID(loaded.Config.Feishu.Apps, admin, req)
-	now := time.Now().UTC()
 	app := config.FeishuAppConfig{
 		ID:        gatewayID,
 		Name:      firstNonEmpty(strings.TrimSpace(name), strings.TrimSpace(appID), gatewayID),
@@ -869,7 +868,6 @@ func (a *App) createFeishuOnboardedApp(name, appID, appSecret string) (adminFeis
 		AppSecret: strings.TrimSpace(appSecret),
 		Enabled:   daemonBoolPtr(true),
 	}
-	markFeishuCredentialsSaved(&app, now)
 
 	updated := loaded.Config
 	updated.Feishu.Apps = append(updated.Feishu.Apps, app)

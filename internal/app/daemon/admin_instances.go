@@ -2,10 +2,8 @@ package daemon
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -13,10 +11,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
-
-type adminInstancesResponse struct {
-	Instances []adminInstanceSummary `json:"instances"`
-}
 
 type adminInstanceSummary struct {
 	InstanceID             string     `json:"instanceId"`
@@ -35,73 +29,6 @@ type adminInstanceSummary struct {
 	LastRefreshCompletedAt *time.Time `json:"lastRefreshCompletedAt,omitempty"`
 	RefreshInFlight        bool       `json:"refreshInFlight"`
 	LastError              string     `json:"lastError,omitempty"`
-}
-
-type adminInstanceCreateRequest struct {
-	WorkspaceRoot string `json:"workspaceRoot"`
-	DisplayName   string `json:"displayName,omitempty"`
-}
-
-func (a *App) handleAdminInstancesList(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, adminInstancesResponse{Instances: a.adminInstancesSnapshot()})
-}
-
-func (a *App) handleAdminInstanceCreate(w http.ResponseWriter, r *http.Request) {
-	_ = r
-	writeAPIError(w, http.StatusGone, apiError{
-		Code:    "managed_instance_admin_removed",
-		Message: "managed background instances are no longer created from web admin",
-	})
-}
-
-func (a *App) handleAdminInstanceDelete(w http.ResponseWriter, r *http.Request) {
-	_ = r
-	writeAPIError(w, http.StatusGone, apiError{
-		Code:    "managed_instance_admin_removed",
-		Message: "managed background instances are no longer deleted from web admin",
-	})
-}
-
-func (a *App) adminInstancesSnapshot() []adminInstanceSummary {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.syncManagedHeadlessLocked(time.Now().UTC())
-
-	summaries := make([]adminInstanceSummary, 0, len(a.service.Instances()))
-	for _, inst := range a.service.Instances() {
-		if inst == nil || strings.EqualFold(strings.TrimSpace(inst.Source), "headless") {
-			continue
-		}
-		summary := adminInstanceSummary{
-			InstanceID:    inst.InstanceID,
-			DisplayName:   inst.DisplayName,
-			WorkspaceRoot: inst.WorkspaceRoot,
-			Source:        inst.Source,
-			Managed:       inst.Managed,
-			Online:        inst.Online,
-			PID:           inst.PID,
-			Status:        "offline",
-		}
-		if inst.Online {
-			summary.Status = "online"
-			if headlessruntime.IsManagedInstance(inst) {
-				summary.Status = headlessruntime.StatusBusy
-			}
-		}
-		if managed := a.managedHeadlessRuntime.Processes[inst.InstanceID]; managed != nil {
-			overlayManagedSummary(&summary, managed)
-		}
-		summaries = append(summaries, summary)
-	}
-	sort.Slice(summaries, func(i, j int) bool {
-		leftRank := adminInstanceStatusRank(summaries[i].Status)
-		rightRank := adminInstanceStatusRank(summaries[j].Status)
-		if leftRank == rightRank {
-			return summaries[i].InstanceID < summaries[j].InstanceID
-		}
-		return leftRank < rightRank
-	})
-	return summaries
 }
 
 func (a *App) createManagedHeadlessInstance(workspaceRoot, displayName string) (adminInstanceSummary, error) {
@@ -315,24 +242,5 @@ func (a *App) noteManagedHeadlessDisconnectedLocked(instanceID string) {
 		managed.Status = headlessruntime.StatusOffline
 		managed.RefreshInFlight = false
 		managed.RefreshCommandID = ""
-	}
-}
-
-func adminInstanceStatusRank(status string) int {
-	switch strings.TrimSpace(status) {
-	case headlessruntime.StatusBusy:
-		return 0
-	case "online":
-		return 1
-	case headlessruntime.StatusIdle:
-		return 2
-	case headlessruntime.StatusStopping:
-		return 3
-	case headlessruntime.StatusStarting:
-		return 4
-	case headlessruntime.StatusOffline:
-		return 5
-	default:
-		return 6
 	}
 }

@@ -659,7 +659,7 @@ export function AdminRoute() {
           </button>
         </div>
         {selectedApp.readOnly ? (
-          <p className="wizard-hero-copy">当前机器人由运行环境提供，不能在这里删除。</p>
+          <p className="support-copy">当前机器人由运行环境提供，不能在这里删除。</p>
         ) : null}
       </section>
     );

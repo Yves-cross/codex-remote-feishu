@@ -15,7 +15,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
-	"github.com/kxn/codex-remote-feishu/internal/feishuapp"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
@@ -105,7 +104,7 @@ func (f *fakeFeishuSetupClient) DescribeApp(context.Context, string, string) (fe
 	return f.describeResult, f.describeErr
 }
 
-func TestFeishuManifestAndScopesRoutes(t *testing.T) {
+func TestFeishuManifestRoute(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	cfg.Feishu.Apps = []config.FeishuAppConfig{{
 		ID:        "main",
@@ -138,21 +137,6 @@ func TestFeishuManifestAndScopesRoutes(t *testing.T) {
 		if got != want {
 			t.Fatalf("manifest menu[%d] key = %q, want %q", index, got, want)
 		}
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/api/admin/feishu/apps/main/scopes-json", nil)
-	req.RemoteAddr = "127.0.0.1:12345"
-	rec = httptest.NewRecorder()
-	app.apiServer.Handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("scopes status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	var scopes feishuapp.ScopesImport
-	if err := json.NewDecoder(rec.Body).Decode(&scopes); err != nil {
-		t.Fatalf("decode scopes: %v", err)
-	}
-	if scopes.Scopes.Tenant[0] != "drive:drive" {
-		t.Fatalf("unexpected scopes payload: %#v", scopes)
 	}
 }
 
@@ -397,8 +381,7 @@ func TestSetupFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	if len(loaded.Config.Feishu.Apps) != 1 {
 		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
-	wizard := loaded.Config.Feishu.Apps[0].Wizard
-	if loaded.Config.Feishu.Apps[0].Name != "扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || wizard.ConnectionVerifiedAt == nil || wizard.ScopesExportedAt == nil || wizard.EventsConfirmedAt == nil || wizard.CallbacksConfirmedAt == nil || wizard.MenusConfirmedAt == nil || wizard.PublishedAt == nil {
+	if loaded.Config.Feishu.Apps[0].Name != "扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
 		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
 	}
 }
@@ -456,8 +439,7 @@ func TestAdminFeishuOnboardingSessionLifecycleCreatesAndVerifiesApp(t *testing.T
 	if len(loaded.Config.Feishu.Apps) != 1 {
 		t.Fatalf("expected one saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
-	adminWizard := loaded.Config.Feishu.Apps[0].Wizard
-	if loaded.Config.Feishu.Apps[0].Name != "Admin 扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || adminWizard.ConnectionVerifiedAt == nil || adminWizard.ScopesExportedAt == nil || adminWizard.EventsConfirmedAt == nil || adminWizard.CallbacksConfirmedAt == nil || adminWizard.MenusConfirmedAt == nil || adminWizard.PublishedAt == nil {
+	if loaded.Config.Feishu.Apps[0].Name != "Admin 扫码 Bot" || loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
 		t.Fatalf("unexpected saved app: %#v", loaded.Config.Feishu.Apps[0])
 	}
 }
@@ -521,7 +503,7 @@ func TestSetupFeishuOnboardingRetryDoesNotDuplicateAppAfterVerifyFailure(t *test
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath(retry): %v", err)
 	}
-	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].VerifiedAt == nil || loaded.Config.Feishu.Apps[0].Wizard.PublishedAt == nil {
+	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
 		t.Fatalf("expected retry to reuse saved app, got %#v", loaded.Config.Feishu.Apps)
 	}
 }
@@ -555,9 +537,6 @@ func TestFeishuAppsCreateUpdateVerifyAndDisable(t *testing.T) {
 	if len(loaded.Config.Feishu.Apps) != 1 || loaded.Config.Feishu.Apps[0].AppSecret != "secret_xxx" {
 		t.Fatalf("unexpected saved config after create: %#v", loaded.Config.Feishu.Apps)
 	}
-	if loaded.Config.Feishu.Apps[0].Wizard.CredentialsSavedAt == nil {
-		t.Fatalf("expected credentialsSavedAt to be persisted, got %#v", loaded.Config.Feishu.Apps[0].Wizard)
-	}
 
 	rec = performAdminRequest(t, app, http.MethodPut, "/api/admin/feishu/apps/main", `{"name":"Main Bot 2","appSecret":""}`)
 	if rec.Code != http.StatusOK {
@@ -588,9 +567,6 @@ func TestFeishuAppsCreateUpdateVerifyAndDisable(t *testing.T) {
 	}
 	if loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
 		t.Fatalf("expected verifiedAt to be persisted, got %#v", loaded.Config.Feishu.Apps[0])
-	}
-	if loaded.Config.Feishu.Apps[0].Wizard.ConnectionVerifiedAt == nil {
-		t.Fatalf("expected connectionVerifiedAt to be persisted, got %#v", loaded.Config.Feishu.Apps[0].Wizard)
 	}
 
 	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/disable", "")
@@ -630,7 +606,7 @@ func TestFeishuCreateAutoFillsDisplayNameWhenNameOmitted(t *testing.T) {
 	}
 }
 
-func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
+func TestFeishuAppIDChangeResetsVerification(t *testing.T) {
 	cfg := config.DefaultAppConfig()
 	gateway := &fakeAdminGatewayController{}
 	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
@@ -639,19 +615,17 @@ func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
 	}
-
-	rec = performAdminRequest(t, app, http.MethodPatch, "/api/admin/feishu/apps/main/wizard", `{"scopesExported":true,"eventsConfirmed":true,"callbacksConfirmed":true,"menusConfirmed":true,"published":true}`)
+	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/verify", "")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("wizard update status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("verify status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 
 	loaded, err := config.LoadAppConfigAtPath(configPath)
 	if err != nil {
-		t.Fatalf("LoadAppConfigAtPath(wizard): %v", err)
+		t.Fatalf("LoadAppConfigAtPath(verify): %v", err)
 	}
-	wizard := loaded.Config.Feishu.Apps[0].Wizard
-	if wizard.ScopesExportedAt == nil || wizard.EventsConfirmedAt == nil || wizard.CallbacksConfirmedAt == nil || wizard.MenusConfirmedAt == nil || wizard.PublishedAt == nil {
-		t.Fatalf("expected wizard confirmations to be persisted, got %#v", wizard)
+	if loaded.Config.Feishu.Apps[0].VerifiedAt == nil {
+		t.Fatalf("expected verifiedAt to be set before app id change, got %#v", loaded.Config.Feishu.Apps[0])
 	}
 
 	rec = performAdminRequest(t, app, http.MethodPut, "/api/admin/feishu/apps/main", `{"appId":"cli_new"}`)
@@ -669,12 +643,8 @@ func TestFeishuWizardUpdateAndAppIDChangeResetManualSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadAppConfigAtPath(reset): %v", err)
 	}
-	wizard = loaded.Config.Feishu.Apps[0].Wizard
-	if wizard.CredentialsSavedAt == nil {
-		t.Fatalf("expected credentialsSavedAt to remain set, got %#v", wizard)
-	}
-	if wizard.ConnectionVerifiedAt != nil || wizard.ScopesExportedAt != nil || wizard.EventsConfirmedAt != nil || wizard.CallbacksConfirmedAt != nil || wizard.MenusConfirmedAt != nil || wizard.PublishedAt != nil {
-		t.Fatalf("expected app id change to reset verification/manual wizard steps, got %#v", wizard)
+	if loaded.Config.Feishu.Apps[0].VerifiedAt != nil {
+		t.Fatalf("expected app id change to reset verification, got %#v", loaded.Config.Feishu.Apps[0])
 	}
 }
 
@@ -803,74 +773,6 @@ func TestFeishuDeleteFailureKeepsPendingRemovalVisibleUntilRetry(t *testing.T) {
 	}
 	if len(apps.Apps) != 0 {
 		t.Fatalf("expected retry delete to clear pending entry, got %#v", apps.Apps)
-	}
-}
-
-func TestFeishuPublishCheckRequiresPreviousSetupSteps(t *testing.T) {
-	cfg := config.DefaultAppConfig()
-	gateway := &fakeAdminGatewayController{}
-	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-
-	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
-	}
-
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/publish-check", "")
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("publish check status = %d, want 409 body=%s", rec.Code, rec.Body.String())
-	}
-	var payload feishuAppPublishCheckResponse
-	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode publish check: %v", err)
-	}
-	if payload.Ready {
-		t.Fatalf("expected publish check to be blocked, got %#v", payload)
-	}
-	if len(payload.Issues) == 0 {
-		t.Fatalf("expected publish check issues, got %#v", payload)
-	}
-}
-
-func TestFeishuPublishCheckMarksPublishedWhenReady(t *testing.T) {
-	cfg := config.DefaultAppConfig()
-	gateway := &fakeAdminGatewayController{}
-	app, configPath := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
-
-	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
-	}
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/verify", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("verify status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	rec = performAdminRequest(t, app, http.MethodPatch, "/api/admin/feishu/apps/main/wizard", `{"scopesExported":true,"eventsConfirmed":true,"callbacksConfirmed":true,"menusConfirmed":true}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("wizard update status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-
-	rec = performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/publish-check", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("publish check status = %d, want 200 body=%s", rec.Code, rec.Body.String())
-	}
-	var payload feishuAppPublishCheckResponse
-	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode publish check: %v", err)
-	}
-	if !payload.Ready {
-		t.Fatalf("expected publish check to pass, got %#v", payload)
-	}
-	if len(gateway.verifyConfigs) < 2 {
-		t.Fatalf("expected publish check to re-run gateway verify, got %#v", gateway.verifyConfigs)
-	}
-
-	loaded, err := config.LoadAppConfigAtPath(configPath)
-	if err != nil {
-		t.Fatalf("LoadAppConfigAtPath: %v", err)
-	}
-	if loaded.Config.Feishu.Apps[0].Wizard.PublishedAt == nil {
-		t.Fatalf("expected publish check to persist publishedAt, got %#v", loaded.Config.Feishu.Apps[0].Wizard)
 	}
 }
 

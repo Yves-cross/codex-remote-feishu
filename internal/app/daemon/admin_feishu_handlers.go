@@ -88,7 +88,6 @@ func (a *App) handleFeishuAppCreate(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-	now := time.Now().UTC()
 	resolvedName := a.suggestFeishuAppName(r.Context(), trimmedString(req.Name), trimmedString(req.AppID), trimmedString(req.AppSecret), gatewayID)
 	app := config.FeishuAppConfig{
 		ID:      gatewayID,
@@ -99,7 +98,6 @@ func (a *App) handleFeishuAppCreate(w http.ResponseWriter, r *http.Request) {
 	if secret := trimmedString(req.AppSecret); secret != "" {
 		app.AppSecret = secret
 	}
-	markFeishuCredentialsSaved(&app, now)
 	updated.Feishu.Apps = append(updated.Feishu.Apps, app)
 	if err := config.WriteAppConfig(loaded.Path, updated); err != nil {
 		a.adminConfigMu.Unlock()
@@ -222,12 +220,7 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 		current.Enabled = daemonBoolPtr(*req.Enabled)
 	}
 	if appIDChanged || secretChanged {
-		now := time.Now().UTC()
-		markFeishuCredentialsSaved(&current, now)
 		resetFeishuVerification(&current)
-		if appIDChanged {
-			resetFeishuWizardManualSteps(&current)
-		}
 	}
 	updated.Feishu.Apps[index] = current
 	if err := config.WriteAppConfig(loaded.Path, updated); err != nil {
@@ -270,35 +263,6 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 		App:      summary,
 		Mutation: buildFeishuAppMutation(appIDChanged, secretChanged),
 	})
-}
-
-func (a *App) handleFeishuAppWizardUpdate(w http.ResponseWriter, r *http.Request) {
-	gatewayID := canonicalGatewayID(r.PathValue("id"))
-	var req feishuAppWizardUpdateRequest
-	if err := decodeJSONBody(r, &req); err != nil {
-		writeAPIError(w, http.StatusBadRequest, apiError{
-			Code:    "invalid_request",
-			Message: "failed to decode feishu wizard payload",
-			Details: err.Error(),
-		})
-		return
-	}
-
-	updated, err := a.updateFeishuAppWizard(gatewayID, req, time.Now().UTC())
-	if err != nil {
-		a.writeFeishuMutationError(w, gatewayID, err)
-		return
-	}
-	summary, _, err := a.adminFeishuAppSummary(updated, gatewayID)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "feishu_app_unavailable",
-			Message: "failed to load feishu app after wizard update",
-			Details: gatewayID,
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, feishuAppResponse{App: summary})
 }
 
 func (a *App) handleFeishuAppDelete(w http.ResponseWriter, r *http.Request) {
@@ -517,41 +481,6 @@ func (a *App) handleFeishuAppRetryApply(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (a *App) handleFeishuAppPublishCheck(w http.ResponseWriter, r *http.Request) {
-	gatewayID := canonicalGatewayID(r.PathValue("id"))
-	summary, issues, err := a.checkFeishuAppPublishReady(r.Context(), gatewayID)
-	if err != nil {
-		a.writeFeishuMutationError(w, gatewayID, err)
-		return
-	}
-	if len(issues) > 0 {
-		writeJSON(w, http.StatusConflict, feishuAppPublishCheckResponse{
-			App:    summary,
-			Ready:  false,
-			Issues: issues,
-		})
-		return
-	}
-	updated, err := a.updateFeishuAppWizard(gatewayID, feishuAppWizardUpdateRequest{Published: daemonBoolPtr(true)}, time.Now().UTC())
-	if err != nil {
-		a.writeFeishuMutationError(w, gatewayID, err)
-		return
-	}
-	summary, _, err = a.adminFeishuAppSummary(updated, gatewayID)
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "feishu_app_unavailable",
-			Message: "failed to load feishu app after publish check",
-			Details: gatewayID,
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, feishuAppPublishCheckResponse{
-		App:   summary,
-		Ready: true,
-	})
-}
-
 func (a *App) handleFeishuAppEnable(w http.ResponseWriter, r *http.Request) {
 	a.handleFeishuAppRuntimeAction(w, r, daemonBoolPtr(true))
 }
@@ -589,26 +518,4 @@ func (a *App) handleFeishuAppRuntimeAction(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, feishuAppResponse{App: summary})
-}
-
-func (a *App) handleFeishuAppScopesJSON(w http.ResponseWriter, r *http.Request) {
-	gatewayID := canonicalGatewayID(r.PathValue("id"))
-	loaded, err := a.loadAdminConfig()
-	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, apiError{
-			Code:    "config_unavailable",
-			Message: "failed to load config",
-			Details: err.Error(),
-		})
-		return
-	}
-	if _, ok, err := a.adminFeishuAppSummary(loaded, gatewayID); err != nil || !ok {
-		writeAPIError(w, http.StatusNotFound, apiError{
-			Code:    "feishu_app_not_found",
-			Message: "feishu app not found",
-			Details: gatewayID,
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, feishuapp.DefaultManifest().Scopes)
 }

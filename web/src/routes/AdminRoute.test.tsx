@@ -145,9 +145,6 @@ describe("AdminRoute", () => {
                     name: "运营机器人",
                     appId: "cli_new",
                     verifiedAt: "2026-04-25T09:10:00Z",
-                    wizard: {
-                      connectionVerifiedAt: "2026-04-25T09:10:00Z",
-                    },
                   }),
                 ]
               : [makeApp({ id: "bot-1", name: "主机器人", appId: "cli_main" })],
@@ -173,9 +170,6 @@ describe("AdminRoute", () => {
             name: "运营机器人",
             appId: "cli_new",
             verifiedAt: "2026-04-25T09:10:00Z",
-            wizard: {
-              connectionVerifiedAt: "2026-04-25T09:10:00Z",
-            },
           }),
           result: { connected: true, duration: 1_000_000_000 },
         },

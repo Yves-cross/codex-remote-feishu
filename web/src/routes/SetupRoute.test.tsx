@@ -97,9 +97,6 @@ describe("SetupRoute", () => {
                     name: "团队机器人",
                     appId: "cli_manual",
                     verifiedAt: "2026-04-25T08:10:00Z",
-                    wizard: {
-                      connectionVerifiedAt: "2026-04-25T08:10:00Z",
-                    },
                   }),
                 ]
               : [],
@@ -113,9 +110,6 @@ describe("SetupRoute", () => {
             name: "团队机器人",
             appId: "cli_manual",
             verifiedAt: "2026-04-25T08:10:00Z",
-            wizard: {
-              connectionVerifiedAt: "2026-04-25T08:10:00Z",
-            },
           }),
           result: { connected: true, duration: 1_000_000_000 },
         },
@@ -200,9 +194,6 @@ describe("SetupRoute", () => {
                   name: "扫码机器人",
                   appId: "cli_qr",
                   verifiedAt: "2026-04-25T08:20:00Z",
-                  wizard: {
-                    connectionVerifiedAt: "2026-04-25T08:20:00Z",
-                  },
                 }),
               ]
             : [],
@@ -238,9 +229,6 @@ describe("SetupRoute", () => {
               name: "扫码机器人",
               appId: "cli_qr",
               verifiedAt: "2026-04-25T08:20:00Z",
-              wizard: {
-                connectionVerifiedAt: "2026-04-25T08:20:00Z",
-              },
             }),
             result: { connected: true, duration: 1_000_000_000 },
             session: {
@@ -294,9 +282,6 @@ describe("SetupRoute", () => {
               id: "bot-1",
               name: "主机器人",
               verifiedAt: "2026-04-25T08:30:00Z",
-              wizard: {
-                connectionVerifiedAt: "2026-04-25T08:30:00Z",
-              },
             }),
           ],
         },

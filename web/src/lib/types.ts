@@ -52,16 +52,6 @@ export interface RuntimeStatus {
   activeRemoteTurns: Array<Record<string, unknown>>;
 }
 
-export interface FeishuAppWizardState {
-  credentialsSavedAt?: string;
-  connectionVerifiedAt?: string;
-  scopesExportedAt?: string;
-  eventsConfirmedAt?: string;
-  callbacksConfirmedAt?: string;
-  menusConfirmedAt?: string;
-  publishedAt?: string;
-}
-
 export interface FeishuAppSummary {
   id: string;
   name?: string;
@@ -69,7 +59,6 @@ export interface FeishuAppSummary {
   hasSecret: boolean;
   enabled: boolean;
   verifiedAt?: string;
-  wizard?: FeishuAppWizardState;
   persisted: boolean;
   runtimeOnly?: boolean;
   runtimeOverride?: boolean;
@@ -173,42 +162,6 @@ export interface FeishuOnboardingCompleteResponse {
   guide?: FeishuOnboardingGuide;
 }
 
-export interface FeishuAppPublishCheckResponse {
-  app: FeishuAppSummary;
-  ready: boolean;
-  issues?: string[];
-}
-
-export interface FeishuManifestResponse {
-  manifest: FeishuManifest;
-}
-
-export interface FeishuManifest {
-  scopesImport: {
-    scopes: {
-      tenant: string[];
-      user: string[];
-    };
-  };
-  events: Array<{
-    event: string;
-    purpose?: string;
-  }>;
-  callbacks: Array<{
-    callback: string;
-    purpose?: string;
-  }>;
-  menus: Array<{
-    key: string;
-    name: string;
-    description?: string;
-  }>;
-  checklist: Array<{
-    area: string;
-    items: string[];
-  }>;
-}
-
 export interface VSCodeSettingsStatus {
   path: string;
   exists: boolean;
@@ -284,29 +237,6 @@ export interface SetupCompleteResponse {
   setupRequired: boolean;
   adminURL: string;
   message: string;
-}
-
-export interface AdminInstancesResponse {
-  instances: AdminInstanceSummary[];
-}
-
-export interface AdminInstanceSummary {
-  instanceId: string;
-  displayName?: string;
-  workspaceRoot?: string;
-  source?: string;
-  managed: boolean;
-  online: boolean;
-  pid?: number;
-  status: string;
-  requestedAt?: string;
-  startedAt?: string;
-  idleSince?: string;
-  lastHelloAt?: string;
-  lastRefreshRequestedAt?: string;
-  lastRefreshCompletedAt?: string;
-  refreshInFlight: boolean;
-  lastError?: string;
 }
 
 export interface ImageStagingStatusResponse {

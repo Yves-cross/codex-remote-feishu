@@ -1,10 +1,8 @@
 import type {
-  AdminInstanceSummary,
   AutostartDetectResponse,
   BootstrapState,
   FeishuAppPermissionCheckResponse,
   FeishuAppSummary,
-  FeishuManifest,
   GatewayStatus,
   ImageStagingStatusResponse,
   LogsStorageStatusResponse,
@@ -94,26 +92,7 @@ export function makeApp(
     enabled: true,
     persisted: true,
     readOnly: false,
-    wizard: {},
     status: makeGatewayStatus(),
-    ...overrides,
-  };
-}
-
-export function makeManifest(
-  overrides: Partial<FeishuManifest> = {},
-): FeishuManifest {
-  return {
-    scopesImport: {
-      scopes: {
-        tenant: ["im:message"],
-        user: [],
-      },
-    },
-    events: [{ event: "im.message.receive_v1", purpose: "接收消息" }],
-    callbacks: [{ callback: "card.action.trigger", purpose: "处理卡片交互" }],
-    menus: [{ key: "status", name: "状态", description: "查看状态" }],
-    checklist: [],
     ...overrides,
   };
 }
@@ -258,22 +237,6 @@ export function makeLogsStorageStatus(
     rootDir: "/tmp/logs",
     fileCount: 0,
     totalBytes: 0,
-    ...overrides,
-  };
-}
-
-export function makeInstance(
-  overrides: Partial<AdminInstanceSummary> = {},
-): AdminInstanceSummary {
-  return {
-    instanceId: "inst-1",
-    displayName: "Workspace",
-    workspaceRoot: "/tmp/workspace",
-    source: "headless",
-    managed: true,
-    online: true,
-    status: "online",
-    refreshInFlight: false,
     ...overrides,
   };
 }

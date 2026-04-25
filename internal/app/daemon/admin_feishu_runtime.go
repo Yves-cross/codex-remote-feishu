@@ -12,73 +12,6 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
-func (a *App) checkFeishuAppPublishReady(ctx context.Context, gatewayID string) (adminFeishuAppSummary, []string, error) {
-	loaded, err := a.loadAdminConfig()
-	if err != nil {
-		return adminFeishuAppSummary{}, nil, err
-	}
-	summary, ok, err := a.adminFeishuAppSummary(loaded, gatewayID)
-	if err != nil {
-		return adminFeishuAppSummary{}, nil, err
-	}
-	if !ok {
-		return adminFeishuAppSummary{}, nil, fmt.Errorf("feishu_app_not_found:%s", gatewayID)
-	}
-	index := indexOfConfigFeishuApp(loaded.Config.Feishu.Apps, gatewayID)
-	if index < 0 {
-		return summary, []string{"当前应用还没有持久化到本地配置。"}, nil
-	}
-
-	app := loaded.Config.Feishu.Apps[index]
-	issues := make([]string, 0, 6)
-	if strings.TrimSpace(app.AppID) == "" || strings.TrimSpace(app.AppSecret) == "" {
-		issues = append(issues, "当前应用的 App ID / App Secret 还不完整。")
-	}
-	if app.Wizard.ConnectionVerifiedAt == nil {
-		issues = append(issues, "还没有完成“创建并连接飞书应用”里的连接测试。")
-	}
-	if app.Wizard.ScopesExportedAt == nil {
-		issues = append(issues, "还没有确认权限导入。")
-	}
-	if app.Wizard.EventsConfirmedAt == nil {
-		issues = append(issues, "还没有确认事件订阅。")
-	}
-	if app.Wizard.CallbacksConfirmedAt == nil {
-		issues = append(issues, "还没有确认回调长连接配置。")
-	}
-	if app.Wizard.MenusConfirmedAt == nil {
-		issues = append(issues, "还没有确认机器人菜单配置。")
-	}
-
-	if runtimeCfg, ok := a.runtimeGatewayConfigFor(loaded.Config, gatewayID); ok {
-		controller, controllerErr := a.gatewayController()
-		if controllerErr != nil {
-			issues = append(issues, "当前环境暂时无法执行飞书长连接验收。")
-		} else {
-			verifyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			result, verifyErr := controller.Verify(verifyCtx, runtimeCfg)
-			if verifyErr != nil {
-				message := strings.TrimSpace(result.ErrorMessage)
-				if message == "" {
-					message = verifyErr.Error()
-				}
-				issues = append(issues, "飞书长连接验证失败："+message)
-			} else if !result.Connected {
-				message := strings.TrimSpace(result.ErrorMessage)
-				if message == "" {
-					message = "连接没有成功建立"
-				}
-				issues = append(issues, "飞书长连接验证失败："+message)
-			}
-		}
-	} else {
-		issues = append(issues, "当前应用还没有进入运行时长连接配置。")
-	}
-
-	return summary, issues, nil
-}
-
 func (a *App) adminFeishuApps(loaded config.LoadedAppConfig) ([]adminFeishuAppSummary, error) {
 	admin := a.snapshotAdminRuntime()
 	runtimeApps := effectiveFeishuApps(loaded.Config, admin.services)
@@ -159,7 +92,6 @@ func buildFeishuAppSummary(gatewayID string, persisted config.FeishuAppConfig, r
 		HasSecret:       strings.TrimSpace(firstNonEmpty(strings.TrimSpace(runtime.AppSecret), strings.TrimSpace(persisted.AppSecret))) != "",
 		Enabled:         runtime.Enabled == nil || *runtime.Enabled,
 		VerifiedAt:      persisted.VerifiedAt,
-		Wizard:          adminWizardStateView(persisted.Wizard),
 		Persisted:       persistedConfig,
 		RuntimeOnly:     runtimeOnly,
 		RuntimeOverride: readOnly,
@@ -171,27 +103,6 @@ func buildFeishuAppSummary(gatewayID string, persisted config.FeishuAppConfig, r
 		summary.Status = &statusCopy
 	}
 	return summary
-}
-
-func adminWizardStateView(state config.FeishuAppWizardState) *adminFeishuAppWizardView {
-	if state.CredentialsSavedAt == nil &&
-		state.ConnectionVerifiedAt == nil &&
-		state.ScopesExportedAt == nil &&
-		state.EventsConfirmedAt == nil &&
-		state.CallbacksConfirmedAt == nil &&
-		state.MenusConfirmedAt == nil &&
-		state.PublishedAt == nil {
-		return nil
-	}
-	return &adminFeishuAppWizardView{
-		CredentialsSavedAt:   state.CredentialsSavedAt,
-		ConnectionVerifiedAt: state.ConnectionVerifiedAt,
-		ScopesExportedAt:     state.ScopesExportedAt,
-		EventsConfirmedAt:    state.EventsConfirmedAt,
-		CallbacksConfirmedAt: state.CallbacksConfirmedAt,
-		MenusConfirmedAt:     state.MenusConfirmedAt,
-		PublishedAt:          state.PublishedAt,
-	}
 }
 
 func feishuAppReadOnly(admin adminRuntimeState, gatewayID string) (bool, string) {
@@ -268,7 +179,6 @@ func (a *App) markFeishuAppVerified(path, gatewayID string, verifiedAt time.Time
 	updated := loaded.Config
 	value := verifiedAt.UTC()
 	updated.Feishu.Apps[index].VerifiedAt = &value
-	updated.Feishu.Apps[index].Wizard.ConnectionVerifiedAt = &value
 	return config.WriteAppConfig(path, updated)
 }
 
@@ -286,45 +196,7 @@ func (a *App) markFeishuAppOnboardingCompleted(path, gatewayID string, verifiedA
 	updated := loaded.Config
 	value := verifiedAt.UTC()
 	updated.Feishu.Apps[index].VerifiedAt = &value
-	updated.Feishu.Apps[index].Wizard.ConnectionVerifiedAt = &value
-	updated.Feishu.Apps[index].Wizard.ScopesExportedAt = &value
-	updated.Feishu.Apps[index].Wizard.EventsConfirmedAt = &value
-	updated.Feishu.Apps[index].Wizard.CallbacksConfirmedAt = &value
-	updated.Feishu.Apps[index].Wizard.MenusConfirmedAt = &value
-	updated.Feishu.Apps[index].Wizard.PublishedAt = &value
 	return config.WriteAppConfig(path, updated)
-}
-
-func (a *App) updateFeishuAppWizard(gatewayID string, req feishuAppWizardUpdateRequest, at time.Time) (config.LoadedAppConfig, error) {
-	a.adminConfigMu.Lock()
-	defer a.adminConfigMu.Unlock()
-
-	loaded, err := a.loadAdminConfig()
-	if err != nil {
-		return config.LoadedAppConfig{}, err
-	}
-	admin := a.snapshotAdminRuntime()
-	if readOnly, reason := feishuAppReadOnly(admin, gatewayID); readOnly {
-		return config.LoadedAppConfig{}, fmt.Errorf("runtime_override_read_only:%s", reason)
-	}
-	updated := loaded.Config
-	index := indexOfConfigFeishuApp(updated.Feishu.Apps, gatewayID)
-	if index < 0 {
-		return config.LoadedAppConfig{}, fmt.Errorf("feishu_app_not_found:%s", gatewayID)
-	}
-
-	current := updated.Feishu.Apps[index]
-	applyWizardToggle(&current.Wizard.ScopesExportedAt, req.ScopesExported, at)
-	applyWizardToggle(&current.Wizard.EventsConfirmedAt, req.EventsConfirmed, at)
-	applyWizardToggle(&current.Wizard.CallbacksConfirmedAt, req.CallbacksConfirmed, at)
-	applyWizardToggle(&current.Wizard.MenusConfirmedAt, req.MenusConfirmed, at)
-	applyWizardToggle(&current.Wizard.PublishedAt, req.Published, at)
-	updated.Feishu.Apps[index] = current
-
-	if err := config.WriteAppConfig(loaded.Path, updated); err != nil {
-		return config.LoadedAppConfig{}, err
-	}
-	return config.LoadedAppConfig{Path: loaded.Path, Config: updated}, nil
 }
 
 func (a *App) setFeishuAppEnabled(gatewayID string, enabled *bool) (config.LoadedAppConfig, config.LoadedAppConfig, error) {

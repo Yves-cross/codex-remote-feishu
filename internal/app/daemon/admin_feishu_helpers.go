@@ -6,51 +6,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
-
-func markFeishuCredentialsSaved(app *config.FeishuAppConfig, at time.Time) {
-	if app == nil {
-		return
-	}
-	if strings.TrimSpace(app.AppID) == "" || strings.TrimSpace(app.AppSecret) == "" {
-		return
-	}
-	value := at.UTC()
-	app.Wizard.CredentialsSavedAt = &value
-}
 
 func resetFeishuVerification(app *config.FeishuAppConfig) {
 	if app == nil {
 		return
 	}
 	app.VerifiedAt = nil
-	app.Wizard.ConnectionVerifiedAt = nil
-}
-
-func resetFeishuWizardManualSteps(app *config.FeishuAppConfig) {
-	if app == nil {
-		return
-	}
-	app.Wizard.ScopesExportedAt = nil
-	app.Wizard.EventsConfirmedAt = nil
-	app.Wizard.CallbacksConfirmedAt = nil
-	app.Wizard.MenusConfirmedAt = nil
-	app.Wizard.PublishedAt = nil
-}
-
-func applyWizardToggle(target **time.Time, enabled *bool, at time.Time) {
-	if enabled == nil || target == nil {
-		return
-	}
-	if *enabled {
-		value := at.UTC()
-		*target = &value
-		return
-	}
-	*target = nil
 }
 
 func decodeJSONBody(r *http.Request, target any) error {

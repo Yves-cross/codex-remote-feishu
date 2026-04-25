@@ -664,7 +664,7 @@ export function SetupRoute() {
         <div className="scan-preview">
           <div>
             <h4 style={{ margin: 0 }}>扫码创建</h4>
-            <p className="wizard-hero-copy">
+            <p className="support-copy">
               选中后会立即显示二维码，并自动轮询扫码结果。
             </p>
             <div className="scan-frame">
@@ -928,7 +928,7 @@ export function SetupRoute() {
         {eventTest.status === "error" ? (
           <div className="notice-banner danger">{eventTest.message}</div>
         ) : null}
-        <p className="wizard-hero-copy">
+        <p className="support-copy">
           如果你确认这一步已经完成，也可以直接继续下一步。
         </p>
         <div className="button-row">
@@ -974,7 +974,7 @@ export function SetupRoute() {
         {callbackTest.status === "error" ? (
           <div className="notice-banner danger">{callbackTest.message}</div>
         ) : null}
-        <p className="wizard-hero-copy">
+        <p className="support-copy">
           如果你确认这一步已经完成，也可以直接继续下一步。
         </p>
         <div className="button-row">
@@ -1364,7 +1364,7 @@ function deriveSetupEntryStep(
 }
 
 function hasConnectedApp(app: FeishuAppSummary | null): boolean {
-  return Boolean(app?.verifiedAt || app?.wizard?.connectionVerifiedAt);
+  return Boolean(app?.verifiedAt);
 }
 
 function buildFeishuConsoleURL(appID?: string): string {
