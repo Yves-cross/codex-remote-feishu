@@ -28,17 +28,16 @@ type Translator struct {
 	turnStartByThread       map[string]map[string]any
 	newThreadTurnTemplate   map[string]any
 
-	pendingThreadListRequestID       string
-	pendingThreadListBorrowed        bool
-	pendingThreadReads               map[string]string
-	threadRefreshRecords             map[string]agentproto.ThreadSnapshotRecord
-	threadRefreshOrder               []string
-	startupThreadListBorrowArmed     bool
-	startupThreadListBorrowSatisfied bool
-	startupThreadListBorrowRequestID string
-	pendingThreadHistoryReads        map[string]pendingThreadHistoryRead
-	pendingSuppressedResponse        map[string]suppressedResponseContext
-	pendingRequestTypes              map[string]agentproto.RequestType
+	pendingThreadListRequestID string
+	pendingThreadListBorrowed  bool
+	pendingThreadReads         map[string]string
+	threadListInflight         map[string]*threadListInflight
+	threadListOwnerKeys        map[string]string
+	threadRefreshRecords       map[string]agentproto.ThreadSnapshotRecord
+	threadRefreshOrder         []string
+	pendingThreadHistoryReads  map[string]pendingThreadHistoryRead
+	pendingSuppressedResponse  map[string]suppressedResponseContext
+	pendingRequestTypes        map[string]agentproto.RequestType
 }
 
 type pendingThreadCreate struct {
@@ -72,9 +71,10 @@ type suppressedResponseContext struct {
 }
 
 type Result struct {
-	Events          []agentproto.Event
-	OutboundToCodex [][]byte
-	Suppress        bool
+	Events           []agentproto.Event
+	OutboundToCodex  [][]byte
+	OutboundToParent [][]byte
+	Suppress         bool
 }
 
 func NewTranslator(instanceID string) *Translator {
@@ -96,6 +96,8 @@ func NewTranslator(instanceID string) *Translator {
 		suppressedThreadStarted:    map[string]bool{},
 		turnStartByThread:          map[string]map[string]any{},
 		pendingThreadReads:         map[string]string{},
+		threadListInflight:         map[string]*threadListInflight{},
+		threadListOwnerKeys:        map[string]string{},
 		threadRefreshRecords:       map[string]agentproto.ThreadSnapshotRecord{},
 		pendingThreadHistoryReads:  map[string]pendingThreadHistoryRead{},
 		pendingSuppressedResponse:  map[string]suppressedResponseContext{},

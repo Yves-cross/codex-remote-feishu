@@ -17,11 +17,8 @@ func (t *Translator) ObserveClient(raw []byte) (Result, error) {
 
 	switch method {
 	case "thread/list":
-		if t.startupThreadListBorrowArmed && t.startupThreadListBorrowRequestID == "" {
-			if requestID, ok := message["id"]; ok {
-				t.startupThreadListBorrowRequestID = fmt.Sprint(requestID)
-				t.debugf("observe client thread/list captured for startup refresh: request=%s", t.startupThreadListBorrowRequestID)
-			}
+		if requestID, ok := message["id"]; ok {
+			return t.observeClientThreadList(fmt.Sprint(requestID), params), nil
 		}
 		return Result{}, nil
 	case "thread/resume":

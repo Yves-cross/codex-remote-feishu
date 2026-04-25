@@ -17,15 +17,6 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 
 	if id, ok := message["id"]; ok {
 		requestID := fmt.Sprint(id)
-		if t.startupThreadListBorrowArmed &&
-			t.pendingThreadListRequestID == "" &&
-			requestID != "" &&
-			requestID == t.startupThreadListBorrowRequestID {
-			t.pendingThreadListRequestID = requestID
-			t.pendingThreadListBorrowed = true
-			t.startupThreadListBorrowSatisfied = true
-			t.startupThreadListBorrowRequestID = ""
-		}
 		if pending, ok := t.pendingSuppressedResponse[requestID]; ok {
 			delete(t.pendingSuppressedResponse, requestID)
 			if errMsg := extractJSONRPCErrorMessage(message); errMsg != "" {
@@ -202,6 +193,14 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				}},
 			}, nil
 		}
+		var threadListAliasResponses [][]byte
+		if inflight, ok := t.takeThreadListInflightByOwner(requestID); ok {
+			aliasResponses, err := buildAliasedJSONRPCResponses(message, inflight.AliasRequestIDs)
+			if err != nil {
+				return Result{}, err
+			}
+			threadListAliasResponses = aliasResponses
+		}
 		if requestID == t.pendingThreadListRequestID {
 			delete(t.threadRefreshRecords, "")
 			t.pendingThreadListRequestID = ""
@@ -219,7 +218,8 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 			if len(threads) == 0 {
 				t.threadRefreshRecords = map[string]agentproto.ThreadSnapshotRecord{}
 				return Result{
-					Suppress: !borrowed,
+					Suppress:         !borrowed,
+					OutboundToParent: threadListAliasResponses,
 					Events: []agentproto.Event{{
 						Kind:    agentproto.EventThreadsSnapshot,
 						Threads: nil,
@@ -256,7 +256,9 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 					borrowed,
 					len(threads),
 				)
-				return t.finishThreadRefresh(!borrowed), nil
+				result := t.finishThreadRefresh(!borrowed)
+				result.OutboundToParent = threadListAliasResponses
+				return result, nil
 			}
 			t.debugf(
 				"observe server thread/list refresh followups: request=%s borrowed=%t threadReads=%d firstThread=%s",
@@ -265,7 +267,14 @@ func (t *Translator) ObserveServer(raw []byte) (Result, error) {
 				len(outbound),
 				threads[0].ThreadID,
 			)
-			return Result{Suppress: !borrowed, OutboundToCodex: outbound}, nil
+			return Result{
+				Suppress:         !borrowed,
+				OutboundToCodex:  outbound,
+				OutboundToParent: threadListAliasResponses,
+			}, nil
+		}
+		if len(threadListAliasResponses) != 0 {
+			return Result{OutboundToParent: threadListAliasResponses}, nil
 		}
 		if threadID, exists := t.pendingThreadReads[requestID]; exists {
 			record := t.threadRefreshRecords[threadID]
