@@ -72,7 +72,7 @@ func (s *Service) prepareNewThread(surface *state.SurfaceConsoleRecord) []eventc
 	surface.PreparedFromThreadID = threadID
 	surface.PreparedAt = s.now()
 	events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeNewThreadReady)...)
-	events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeNewThreadReady), preparedNewThreadSelectionTitle(), "")...)
+	events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeNewThreadReady), preparedNewThreadSelectionTitle())...)
 	text := "已清空当前远端上下文。下一条文本会创建新会话。"
 	if discarded > 0 {
 		text = fmt.Sprintf("已清空当前远端上下文，并丢弃 %d 条未发送输入。下一条文本会创建新会话。", discarded)

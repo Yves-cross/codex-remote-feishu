@@ -94,19 +94,16 @@ type FeishuThreadSelectionInstanceContext struct {
 }
 
 type FeishuThreadSelectionEntry struct {
-	ThreadID             string
-	Summary              string
-	WorkspaceKey         string
-	WorkspaceLabel       string
-	AgeText              string
-	Status               string
-	FirstUserMessage     string
-	LastUserMessage      string
-	LastAssistantMessage string
-	VSCodeFocused        bool
-	Disabled             bool
-	AllowCrossWorkspace  bool
-	Current              bool
+	ThreadID            string
+	Summary             string
+	WorkspaceKey        string
+	WorkspaceLabel      string
+	AgeText             string
+	Status              string
+	VSCodeFocused       bool
+	Disabled            bool
+	AllowCrossWorkspace bool
+	Current             bool
 }
 
 type FeishuKickThreadSelectionView struct {

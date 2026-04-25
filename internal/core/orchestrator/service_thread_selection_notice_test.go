@@ -22,11 +22,9 @@ func TestThreadSelectionEventsEmitNoticeFamilyEvent(t *testing.T) {
 		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
 			"thread-1": {
-				ThreadID:             "thread-1",
-				Name:                 "修复登录流程",
-				CWD:                  "/data/dl/droid",
-				FirstUserMessage:     "先看报错日志",
-				LastAssistantMessage: "我先排查登录链路",
+				ThreadID: "thread-1",
+				Name:     "修复登录流程",
+				CWD:      "/data/dl/droid",
 			},
 		},
 	})
@@ -40,7 +38,7 @@ func TestThreadSelectionEventsEmitNoticeFamilyEvent(t *testing.T) {
 	})
 	surface := svc.root.Surfaces["surface-1"]
 
-	events := svc.threadSelectionEvents(surface, "thread-1", string(state.RouteModePinned), "droid · 修复登录流程", "最近预览")
+	events := svc.threadSelectionEvents(surface, "thread-1", string(state.RouteModePinned), "droid · 修复登录流程")
 	if len(events) != 1 {
 		t.Fatalf("expected one selection event, got %#v", events)
 	}
@@ -54,17 +52,11 @@ func TestThreadSelectionEventsEmitNoticeFamilyEvent(t *testing.T) {
 	if event.Notice == nil || event.Notice.Code != "thread_selection_changed" {
 		t.Fatalf("expected thread-selection notice, got %#v", event.Notice)
 	}
-	if len(event.Notice.Sections) != 3 {
-		t.Fatalf("expected title/first-user/last-assistant sections, got %#v", event.Notice.Sections)
+	if len(event.Notice.Sections) != 1 {
+		t.Fatalf("expected title-only section, got %#v", event.Notice.Sections)
 	}
 	if event.Notice.Sections[0].Label != "当前输入目标" || event.Notice.Sections[0].Lines[0] != "droid · 修复登录流程" {
 		t.Fatalf("unexpected first section: %#v", event.Notice.Sections[0])
-	}
-	if event.Notice.Sections[1].Label != "会话起点" || event.Notice.Sections[1].Lines[0] != "先看报错日志" {
-		t.Fatalf("unexpected second section: %#v", event.Notice.Sections[1])
-	}
-	if event.Notice.Sections[2].Label != "最近回复" || event.Notice.Sections[2].Lines[0] != "我先排查登录链路" {
-		t.Fatalf("unexpected third section: %#v", event.Notice.Sections[2])
 	}
 }
 
@@ -74,7 +66,7 @@ func TestThreadSelectionEventsEmitNewThreadReadyNoticeFamilyEvent(t *testing.T) 
 	materializeVSCodeSurfaceForTest(svc, "surface-1")
 	surface := svc.root.Surfaces["surface-1"]
 
-	events := svc.threadSelectionEvents(surface, "", string(state.RouteModeNewThreadReady), preparedNewThreadSelectionTitle(), "")
+	events := svc.threadSelectionEvents(surface, "", string(state.RouteModeNewThreadReady), preparedNewThreadSelectionTitle())
 	if len(events) != 1 {
 		t.Fatalf("expected one selection event, got %#v", events)
 	}

@@ -248,21 +248,7 @@ func kickThreadSelectionRenderModelFromView(view control.FeishuKickThreadSelecti
 
 func vscodeThreadSelectionOption(entry control.FeishuThreadSelectionEntry) control.SelectionOption {
 	option := threadSelectionOption(entry, false)
-	label := strings.TrimSpace(entry.FirstUserMessage)
-	if label == "" {
-		label = strings.TrimSpace(entry.LastUserMessage)
-	}
-	if label == "" {
-		label = strings.TrimSpace(entry.LastAssistantMessage)
-	}
-	if label == "" {
-		if parts := strings.SplitN(strings.TrimSpace(entry.Summary), " · ", 2); len(parts) == 2 {
-			label = strings.TrimSpace(parts[1])
-		}
-	}
-	if label == "" {
-		label = firstNonEmpty(strings.TrimSpace(entry.Summary), strings.TrimSpace(entry.ThreadID))
-	}
+	label := firstNonEmpty(strings.TrimSpace(entry.Summary), strings.TrimSpace(entry.ThreadID))
 	option.Label = label
 	option.ButtonLabel = label
 	return option
@@ -318,21 +304,5 @@ func threadSelectionMetaText(entry control.FeishuThreadSelectionEntry) string {
 			base = firstNonEmpty(status, strings.TrimSpace(entry.AgeText), "时间未知")
 		}
 	}
-	if hint := threadSelectionConversationHint(entry); hint != "" {
-		return base + "\n" + hint
-	}
 	return base
-}
-
-func threadSelectionConversationHint(entry control.FeishuThreadSelectionEntry) string {
-	if lastUser := strings.TrimSpace(entry.LastUserMessage); lastUser != "" {
-		return "最近用户：" + lastUser
-	}
-	if firstUser := strings.TrimSpace(entry.FirstUserMessage); firstUser != "" {
-		return "会话起点：" + firstUser
-	}
-	if lastAssistant := strings.TrimSpace(entry.LastAssistantMessage); lastAssistant != "" {
-		return "最近回复：" + lastAssistant
-	}
-	return ""
 }

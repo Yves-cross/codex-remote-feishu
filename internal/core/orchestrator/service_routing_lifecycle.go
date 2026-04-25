@@ -104,7 +104,6 @@ func (s *Service) followLocal(surface *state.SurfaceConsoleRecord) []eventcontra
 			surface.SelectedThreadID,
 			string(state.RouteModeFollowLocal),
 			displayThreadTitle(inst, thread, surface.SelectedThreadID),
-			threadPreview(thread),
 		)...)
 	}
 	if len(events) != 0 {
@@ -171,7 +170,7 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 		events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已变化，之前的提案计划已失效。")
 		events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)...)
 		s.releaseSurfaceThreadClaim(surface)
-		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）", "")...)
+		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）")...)
 	}
 	if owner := s.threadClaimSurface(targetThreadID); owner != nil && owner.SurfaceSessionID != surface.SurfaceSessionID {
 		if surface.SelectedThreadID == "" {
@@ -182,7 +181,7 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 		events := s.maybeSealPlanProposalForRouteChange(surface, "当前工作目标已变化，之前的提案计划已失效。")
 		events = append(events, s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)...)
 		s.releaseSurfaceThreadClaim(surface)
-		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）", "")...)
+		return append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）")...)
 	}
 	if surface.SelectedThreadID == targetThreadID && s.surfaceOwnsThread(surface, targetThreadID) {
 		return nil
@@ -193,26 +192,12 @@ func (s *Service) reevaluateFollowSurface(surface *state.SurfaceConsoleRecord) [
 func (s *Service) presentKickThreadPrompt(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string, owner *state.SurfaceConsoleRecord) []eventcontract.Event {
 	thread := inst.Threads[threadID]
 	title := displayThreadTitle(inst, thread, threadID)
-	lines := []string{}
-	if firstUser := threadFirstUserSnippet(thread, 72); firstUser != "" {
-		lines = append(lines, "会话起点："+firstUser)
-	}
-	if lastUser := threadLastUserSnippet(thread, 72); lastUser != "" {
-		lines = append(lines, "最近用户："+lastUser)
-	}
-	if lastAssistant := threadLastAssistantSnippet(thread, 72); lastAssistant != "" {
-		lines = append(lines, "最近回复："+lastAssistant)
-	}
-	subtitle := strings.Join(lines, "\n")
-	if subtitle == "" {
-		subtitle = s.threadSelectionSubtitle(surface, inst, thread)
-	}
 	return []eventcontract.Event{s.selectionViewEvent(surface, control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptKickThread,
 		KickThread: &control.FeishuKickThreadSelectionView{
 			ThreadID:       threadID,
 			ThreadLabel:    title,
-			ThreadSubtitle: subtitle,
+			ThreadSubtitle: "",
 			Hint:           "只有对方当前空闲时才能强踢；确认前会再次校验状态。",
 			CancelLabel:    "取消",
 			ConfirmLabel:   "强踢并占用",
@@ -283,7 +268,7 @@ func (s *Service) releaseVictimThread(surface *state.SurfaceConsoleRecord, inst 
 		events = s.discardStagedInputsForRouteChange(surface, prevThreadID, prevRouteMode, "", state.RouteModeFollowLocal)
 	}
 	surface.RouteMode = routeMode
-	events = append(events, s.threadSelectionEvents(surface, "", string(routeMode), title, "")...)
+	events = append(events, s.threadSelectionEvents(surface, "", string(routeMode), title)...)
 	events = append(events, eventcontract.Event{
 		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: surface.SurfaceSessionID,

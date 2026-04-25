@@ -45,7 +45,7 @@ func headlessRestoreHintFromSurfaceResumeEntry(entry surfaceresume.Entry) (surfa
 		ChatID:           strings.TrimSpace(entry.ChatID),
 		ActorUserID:      strings.TrimSpace(entry.ActorUserID),
 		ThreadID:         strings.TrimSpace(entry.ResumeThreadID),
-		ThreadTitle:      firstNonEmpty(strings.TrimSpace(entry.ResumeThreadTitle), strings.TrimSpace(entry.ResumeThreadID)),
+		ThreadTitle:      strings.TrimSpace(entry.ResumeThreadTitle),
 		ThreadCWD:        state.NormalizeWorkspaceKey(entry.ResumeThreadCWD),
 	}
 	return surfaceresume.NormalizeHeadlessRestoreHint(hint)

@@ -1410,18 +1410,18 @@ func TestProjectSnapshotIncludesBackgroundRestoreAttachmentAndPendingLaunch(t *t
 	}
 }
 
-func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
+func TestProjectSnapshotTruncatesLongSelectedLastUserMessage(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
 		Kind: eventcontract.KindSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
-				InstanceID:            "inst-1",
-				DisplayName:           "droid",
-				SelectedThreadID:      "thread-1",
-				SelectedThreadTitle:   "droid · 这是一个特别长特别长特别长的当前输入目标标题",
-				SelectedThreadPreview: "这是一条特别长特别长特别长特别长的最近消息内容，需要在 status 卡片里缩略显示",
-				RouteMode:             "pinned",
+				InstanceID:                    "inst-1",
+				DisplayName:                   "droid",
+				SelectedThreadID:              "thread-1",
+				SelectedThreadTitle:           "droid · 这是一个特别长特别长特别长的当前输入目标标题",
+				SelectedThreadLastUserMessage: "这是一条特别长特别长特别长特别长的最近消息内容，需要在 status 卡片里缩略显示",
+				RouteMode:                     "pinned",
 			},
 			NextPrompt: control.PromptRouteSummary{
 				ThreadID:                       "thread-1",
@@ -1442,7 +1442,7 @@ func TestProjectSnapshotTruncatesLongSelectedPreview(t *testing.T) {
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
 		"当前输入目标：droid · 这是一个特别长特别长特别长的当前输入目标...",
-		"最近回复：这是一条特别长特别长特别长特别长的最近消息内容，...",
+		"最近用户：这是一条特别长特别长特别长特别长的最近消息内容，...",
 	) {
 		t.Fatalf("expected snapshot rendering to compact long text, got %q", rendered)
 	}
@@ -1454,12 +1454,12 @@ func TestProjectSnapshotNeutralizesDynamicThreadText(t *testing.T) {
 		Kind: eventcontract.KindSnapshot,
 		Snapshot: &control.Snapshot{
 			Attachment: control.AttachmentSummary{
-				InstanceID:                         "inst-1",
-				DisplayName:                        "droid",
-				SelectedThreadID:                   "thread-1",
-				SelectedThreadTitle:                "# 修复 `登录`",
-				SelectedThreadLastAssistantMessage: "[本地链接](docs/demo.md)\n- 列表项",
-				RouteMode:                          "pinned",
+				InstanceID:                    "inst-1",
+				DisplayName:                   "droid",
+				SelectedThreadID:              "thread-1",
+				SelectedThreadTitle:           "# 修复 `登录`",
+				SelectedThreadLastUserMessage: "[本地链接](docs/demo.md)\n- 列表项",
+				RouteMode:                     "pinned",
 			},
 			NextPrompt: control.PromptRouteSummary{
 				ThreadID:                 "thread-1",
@@ -1477,7 +1477,7 @@ func TestProjectSnapshotNeutralizesDynamicThreadText(t *testing.T) {
 	rendered := renderedV2CardText(t, ops[0])
 	if !containsAll(rendered,
 		"当前输入目标：# 修复 `登录`",
-		"最近回复：[本地链接](docs/demo.md) - 列...",
+		"最近用户：[本地链接](docs/demo.md) - 列...",
 	) {
 		t.Fatalf("expected snapshot rendering to preserve dynamic thread text in plain_text, got %q", rendered)
 	}

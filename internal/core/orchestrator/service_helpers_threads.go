@@ -2,7 +2,6 @@ package orchestrator
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,15 +12,13 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
-func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage string) eventcontract.Event {
+const unnamedThreadDisplayName = "未命名会话"
+
+func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title string) eventcontract.Event {
 	selection := &control.ThreadSelectionChanged{
-		ThreadID:             threadID,
-		RouteMode:            routeMode,
-		Title:                title,
-		Preview:              preview,
-		FirstUserMessage:     firstUserMessage,
-		LastUserMessage:      lastUserMessage,
-		LastAssistantMessage: lastAssistantMessage,
+		ThreadID:  threadID,
+		RouteMode: routeMode,
+		Title:     title,
 	}
 	notice := threadSelectionNotice(*selection)
 	return surfaceEventFromPayload(
@@ -35,7 +32,7 @@ func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMo
 }
 
 func threadSelectionNotice(selection control.ThreadSelectionChanged) *control.Notice {
-	sections := make([]control.FeishuCardTextSection, 0, 4)
+	sections := make([]control.FeishuCardTextSection, 0, 1)
 	if strings.TrimSpace(selection.RouteMode) == string(state.RouteModeNewThreadReady) {
 		sections = append(sections, control.FeishuCardTextSection{
 			Label: "当前状态",
@@ -49,29 +46,6 @@ func threadSelectionNotice(selection control.ThreadSelectionChanged) *control.No
 			sections = append(sections, control.FeishuCardTextSection{
 				Label: "当前输入目标",
 				Lines: []string{title},
-			})
-		}
-		if first := strings.TrimSpace(selection.FirstUserMessage); first != "" {
-			sections = append(sections, control.FeishuCardTextSection{
-				Label: "会话起点",
-				Lines: []string{first},
-			})
-		}
-		if lastUser := strings.TrimSpace(selection.LastUserMessage); lastUser != "" {
-			sections = append(sections, control.FeishuCardTextSection{
-				Label: "最近用户",
-				Lines: []string{lastUser},
-			})
-		}
-		if lastAssistant := strings.TrimSpace(selection.LastAssistantMessage); lastAssistant != "" {
-			sections = append(sections, control.FeishuCardTextSection{
-				Label: "最近回复",
-				Lines: []string{lastAssistant},
-			})
-		} else if preview := strings.TrimSpace(selection.Preview); preview != "" {
-			sections = append(sections, control.FeishuCardTextSection{
-				Label: "最近回复",
-				Lines: []string{preview},
 			})
 		}
 	}
@@ -275,44 +249,13 @@ func isDigits(value string) bool {
 }
 
 func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallback string) string {
-	short := threadWorkspaceLabel(inst, thread)
-	if thread == nil {
-		if short == "" {
-			return "未命名会话"
-		}
-		return short
-	}
-	if body := threadDisplayBody(thread, 40); body != "" {
-		if short == "" {
-			return body
-		}
-		return fmt.Sprintf("%s · %s", short, body)
-	}
-	if thread.CWD != "" {
-		base := filepath.Base(thread.CWD)
-		switch {
-		case base == "", base == ".", base == string(filepath.Separator), base == short:
-			if short == "" {
-				return "未命名会话"
-			}
-			return short
-		default:
-			if short == "" {
-				return base
-			}
-			return fmt.Sprintf("%s · %s", short, base)
-		}
-	}
-	if short != "" {
-		return short
-	}
-	if body := threadDisplayBody(thread, 40); body != "" {
+	_ = fallback
+	prefix := threadWorkspaceLabel(inst, thread)
+	body := threadDisplayBody(thread, 40)
+	if prefix == "" {
 		return body
 	}
-	if strings.TrimSpace(fallback) != "" {
-		return "未命名会话"
-	}
-	return "未命名会话"
+	return fmt.Sprintf("%s · %s", prefix, body)
 }
 
 func threadWorkspaceLabel(inst *state.InstanceRecord, thread *state.ThreadRecord) string {
@@ -339,13 +282,10 @@ func threadWorkspaceLabel(inst *state.InstanceRecord, thread *state.ThreadRecord
 }
 
 func threadDisplayBody(thread *state.ThreadRecord, limit int) string {
-	if thread == nil {
-		return ""
-	}
 	if title := threadDisplayPrimary(thread, limit); title != "" {
 		return title
 	}
-	return ""
+	return unnamedThreadDisplayName
 }
 
 func threadDisplayPrimary(thread *state.ThreadRecord, limit int) string {
@@ -360,12 +300,6 @@ func threadDisplayPrimary(thread *state.ThreadRecord, limit int) string {
 	}
 	if firstUser := threadFirstUserSnippet(thread, limit); firstUser != "" {
 		return firstUser
-	}
-	if recentAssistant := threadLastAssistantSnippet(thread, limit); recentAssistant != "" {
-		return recentAssistant
-	}
-	if preview := previewOfText(thread.Preview); preview != "" {
-		return truncateThreadDisplayText(preview, limit)
 	}
 	return ""
 }
@@ -433,15 +367,7 @@ func threadPreview(thread *state.ThreadRecord) string {
 }
 
 func threadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
-	source := threadDisplayBody(thread, 20)
-	if source == "" {
-		source = "未命名会话"
-	}
-	workspace := threadWorkspaceLabel(nil, thread)
-	if workspace == "" {
-		return source
-	}
-	return workspace + " · " + source
+	return threadTitle(nil, thread, fallback)
 }
 
 func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {

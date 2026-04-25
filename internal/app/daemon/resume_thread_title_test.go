@@ -99,3 +99,11 @@ func TestSurfaceResumeStoreNormalizesLegacyDisplayThreadTitle(t *testing.T) {
 		t.Fatalf("expected legacy display title to normalize to raw thread name, got %#v", entry)
 	}
 }
+
+func TestStoredThreadTitleDoesNotFallBackToThreadID(t *testing.T) {
+	t.Parallel()
+
+	if got := surfaceresume.StoredThreadTitle("", "thread-1", "/data/dl/droid", "/data/dl/droid", ""); got != "" {
+		t.Fatalf("expected empty stored title when no reusable thread title exists, got %q", got)
+	}
+}

@@ -9,17 +9,16 @@ import (
 )
 
 type adminSurfaceStatusSummary struct {
-	SurfaceSessionID     string     `json:"surfaceSessionId"`
-	Platform             string     `json:"platform,omitempty"`
-	ProductMode          string     `json:"productMode,omitempty"`
-	DisplayTitle         string     `json:"displayTitle"`
-	ThreadTitle          string     `json:"threadTitle,omitempty"`
-	FirstUserMessage     string     `json:"firstUserMessage,omitempty"`
-	LastUserMessage      string     `json:"lastUserMessage,omitempty"`
-	LastAssistantMessage string     `json:"lastAssistantMessage,omitempty"`
-	WorkspacePath        string     `json:"workspacePath,omitempty"`
-	InstanceDisplayName  string     `json:"instanceDisplayName,omitempty"`
-	LastActiveAt         *time.Time `json:"lastActiveAt,omitempty"`
+	SurfaceSessionID    string     `json:"surfaceSessionId"`
+	Platform            string     `json:"platform,omitempty"`
+	ProductMode         string     `json:"productMode,omitempty"`
+	DisplayTitle        string     `json:"displayTitle"`
+	ThreadTitle         string     `json:"threadTitle,omitempty"`
+	FirstUserMessage    string     `json:"firstUserMessage,omitempty"`
+	LastUserMessage     string     `json:"lastUserMessage,omitempty"`
+	WorkspacePath       string     `json:"workspacePath,omitempty"`
+	InstanceDisplayName string     `json:"instanceDisplayName,omitempty"`
+	LastActiveAt        *time.Time `json:"lastActiveAt,omitempty"`
 }
 
 func (a *App) runtimeSurfaceStatusesLocked(surfaces []*state.SurfaceConsoleRecord) []adminSurfaceStatusSummary {
@@ -38,7 +37,6 @@ func (a *App) runtimeSurfaceStatusesLocked(surfaces []*state.SurfaceConsoleRecor
 			summary.ThreadTitle = normalizeAdminSurfaceText(snapshot.Attachment.SelectedThreadTitle)
 			summary.FirstUserMessage = normalizeAdminSurfaceText(snapshot.Attachment.SelectedThreadFirstUserMessage)
 			summary.LastUserMessage = normalizeAdminSurfaceText(snapshot.Attachment.SelectedThreadLastUserMessage)
-			summary.LastAssistantMessage = normalizeAdminSurfaceText(snapshot.Attachment.SelectedThreadLastAssistantMessage)
 			summary.WorkspacePath = normalizeAdminSurfaceText(snapshot.WorkspaceKey)
 			summary.InstanceDisplayName = normalizeAdminSurfaceText(snapshot.Attachment.DisplayName)
 		}
@@ -73,9 +71,6 @@ func normalizeAdminSurfaceText(value string) string {
 func adminSurfaceDisplayTitle(summary adminSurfaceStatusSummary) string {
 	for _, candidate := range []string{
 		summary.ThreadTitle,
-		summary.LastUserMessage,
-		summary.FirstUserMessage,
-		summary.LastAssistantMessage,
 		summary.InstanceDisplayName,
 		summary.WorkspacePath,
 	} {

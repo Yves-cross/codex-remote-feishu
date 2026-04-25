@@ -241,13 +241,12 @@ func TestRuntimeStatusPayloadOmitsSurfaceProgressSummaries(t *testing.T) {
 		t.Fatal("expected instance after hello")
 	}
 	inst.Threads["thread-1"] = &state.ThreadRecord{
-		ThreadID:             "thread-1",
-		Name:                 "整理 websetup 流程",
-		FirstUserMessage:     "请把 websetup 的体验重新整理一下",
-		LastUserMessage:      "顺便把探索过程卡也接到 web 里",
-		LastAssistantMessage: "我会先补结构化探索状态卡。",
-		Loaded:               true,
-		LastUsedAt:           time.Date(2026, 4, 16, 8, 15, 0, 0, time.UTC),
+		ThreadID:         "thread-1",
+		Name:             "整理 websetup 流程",
+		FirstUserMessage: "请把 websetup 的体验重新整理一下",
+		LastUserMessage:  "顺便把探索过程卡也接到 web 里",
+		Loaded:           true,
+		LastUsedAt:       time.Date(2026, 4, 16, 8, 15, 0, 0, time.UTC),
 	}
 	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
 	surfaces := app.service.Surfaces()
@@ -289,9 +288,6 @@ func TestRuntimeStatusPayloadOmitsSurfaceProgressSummaries(t *testing.T) {
 	}
 	if summary.LastUserMessage != "顺便把探索过程卡也接到 web 里" {
 		t.Fatalf("unexpected last user message: %#v", summary)
-	}
-	if summary.LastAssistantMessage != "我会先补结构化探索状态卡。" {
-		t.Fatalf("unexpected last assistant message: %#v", summary)
 	}
 	if summary.InstanceDisplayName != "Demo Workspace" || !testutil.SamePath(summary.WorkspacePath, "/tmp/demo") {
 		t.Fatalf("unexpected instance summary: %#v", summary)

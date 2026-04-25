@@ -63,20 +63,7 @@ func compactOwnerCardSplitSections(sections []control.FeishuCardTextSection) ([]
 }
 
 func compactThreadLabel(threadID string, thread *state.ThreadRecord) string {
-	name := ""
-	if thread != nil {
-		name = strings.TrimSpace(thread.Name)
-		threadID = firstNonEmpty(strings.TrimSpace(thread.ThreadID), strings.TrimSpace(threadID))
-	}
-	threadID = strings.TrimSpace(threadID)
-	switch {
-	case name != "" && threadID != "":
-		return name + " (" + threadID + ")"
-	case name != "":
-		return name
-	default:
-		return threadID
-	}
+	return displayThreadTitle(nil, thread, threadID)
 }
 
 func compactOwnerCardSections(threadID string, thread *state.ThreadRecord, lines ...string) []control.FeishuCardTextSection {

@@ -124,9 +124,6 @@ func threadHistorySummaryMarkdown(view control.FeishuThreadHistoryView) string {
 	if label := strings.TrimSpace(view.ThreadLabel); label != "" {
 		lines = append(lines, "**当前会话**\n"+formatNeutralTextTag(label))
 	}
-	if threadID := strings.TrimSpace(view.ThreadID); threadID != "" {
-		lines = append(lines, "**thread**\n"+formatInlineCodeTextTag(threadID))
-	}
 	if view.TurnCount > 0 {
 		lines = append(lines, fmt.Sprintf("**总轮数**\n%s", formatNeutralTextTag(fmt.Sprintf("%d", view.TurnCount))))
 	}

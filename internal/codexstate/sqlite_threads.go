@@ -333,13 +333,11 @@ func scanPersistedThread(scanner rowScanner) (*state.ThreadRecord, error) {
 	if preview == "" {
 		preview = title
 	}
-	if title == "" {
-		title = preview
-	}
 	return &state.ThreadRecord{
 		ThreadID:                threadID,
 		Name:                    title,
 		Preview:                 preview,
+		FirstUserMessage:        preview,
 		CWD:                     cwd,
 		ExplicitModel:           strings.TrimSpace(model.String),
 		ExplicitReasoningEffort: strings.TrimSpace(reasoningEffort.String),

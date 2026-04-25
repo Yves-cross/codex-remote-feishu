@@ -144,6 +144,7 @@
 - [relay-backpressure-hardening-design.md](./implemented/relay-backpressure-hardening-design.md)
 - [shared-exploration-progress-card-design.md](./implemented/shared-exploration-progress-card-design.md)
 - [authenticated-external-access-foundation-design.md](./implemented/authenticated-external-access-foundation-design.md)
+- [thread-description-unification-plan.md](./implemented/thread-description-unification-plan.md)
 - [web-admin-ui-redesign.md](./implemented/web-admin-ui-redesign.md)
 
 ### 6.3 `inprogress`
@@ -153,7 +154,6 @@
 - [cross-layer-event-contract-redesign.md](./inprogress/cross-layer-event-contract-redesign.md)
 - [final-message-feidex-audit.md](./inprogress/final-message-feidex-audit.md)
 - [relay-daemon-autostart-design.md](./inprogress/relay-daemon-autostart-design.md)
-- [thread-description-unification-plan.md](./inprogress/thread-description-unification-plan.md)
 - [turn-diff-frozen-preview-design.md](./implemented/turn-diff-frozen-preview-design.md)
 - [unified-binary-design.md](./inprogress/unified-binary-design.md)
 

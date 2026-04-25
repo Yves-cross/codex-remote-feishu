@@ -246,12 +246,11 @@ func TestProjectKickThreadSelectionViewUsesStructuredButtons(t *testing.T) {
 	view := control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptKickThread,
 		KickThread: &control.FeishuKickThreadSelectionView{
-			ThreadID:       "thread-1",
-			ThreadLabel:    "droid · 修复登录流程",
-			ThreadSubtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢",
-			Hint:           "只有对方当前空闲时才能强踢；确认前会再次校验状态。",
-			CancelLabel:    "取消",
-			ConfirmLabel:   "强踢并占用",
+			ThreadID:     "thread-1",
+			ThreadLabel:  "droid · 修复登录流程",
+			Hint:         "只有对方当前空闲时才能强踢；确认前会再次校验状态。",
+			CancelLabel:  "取消",
+			ConfirmLabel: "强踢并占用",
 		},
 	}
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
@@ -271,9 +270,6 @@ func TestProjectKickThreadSelectionViewUsesStructuredButtons(t *testing.T) {
 		t.Fatalf("unexpected kick-thread title: %#v", ops[0])
 	}
 	rendered := renderedV2BodyElements(t, ops[0])
-	if !strings.Contains(renderedV2CardText(t, ops[0]), "已被其他飞书会话占用，可强踢") {
-		t.Fatalf("expected kick-thread subtitle in plain text block, got %q", renderedV2CardText(t, ops[0]))
-	}
 	var sawConfirm bool
 	for _, element := range rendered {
 		if cardStringValue(element["tag"]) != "button" && cardStringValue(element["tag"]) != "column_set" {

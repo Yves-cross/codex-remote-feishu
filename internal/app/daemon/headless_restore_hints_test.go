@@ -586,7 +586,7 @@ func putRestoreHintForTest(t *testing.T, stateDir string, hint surfaceresume.Hea
 		entry.ResumeThreadID = hint.ThreadID
 	}
 	if entry.ResumeThreadTitle == "" {
-		entry.ResumeThreadTitle = firstNonEmpty(hint.ThreadTitle, hint.ThreadID)
+		entry.ResumeThreadTitle = hint.ThreadTitle
 	}
 	if entry.ResumeThreadCWD == "" {
 		entry.ResumeThreadCWD = state.NormalizeWorkspaceKey(hint.ThreadCWD)

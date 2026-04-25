@@ -47,38 +47,23 @@ func (s *Service) bindSurfaceToThreadMode(surface *state.SurfaceConsoleRecord, i
 		threadID,
 		string(surface.RouteMode),
 		displayThreadTitle(inst, thread, threadID),
-		threadPreview(thread),
 	)...)
 	return events
 }
 
-func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, threadID, routeMode, title, preview string) []eventcontract.Event {
-	firstUserMessage := ""
-	lastUserMessage := ""
-	lastAssistantMessage := ""
-	if surface != nil && strings.TrimSpace(threadID) != "" {
-		if inst := s.root.Instances[strings.TrimSpace(surface.AttachedInstanceID)]; inst != nil {
-			if thread := inst.Threads[threadID]; threadVisible(thread) {
-				firstUserMessage = threadFirstUserSnippet(thread, 64)
-				lastUserMessage = threadLastUserSnippet(thread, 64)
-				lastAssistantMessage = threadLastAssistantSnippet(thread, 64)
-			}
-		}
-	}
+func (s *Service) threadSelectionEvents(surface *state.SurfaceConsoleRecord, threadID, routeMode, title string) []eventcontract.Event {
 	if surface.LastSelection != nil &&
 		surface.LastSelection.ThreadID == threadID &&
 		surface.LastSelection.RouteMode == routeMode {
 		surface.LastSelection.Title = title
-		surface.LastSelection.Preview = preview
 		return nil
 	}
 	surface.LastSelection = &state.SelectionAnnouncementRecord{
 		ThreadID:  threadID,
 		RouteMode: routeMode,
 		Title:     title,
-		Preview:   preview,
 	}
-	return []eventcontract.Event{threadSelectionEvent(surface, threadID, routeMode, title, preview, firstUserMessage, lastUserMessage, lastAssistantMessage)}
+	return []eventcontract.Event{threadSelectionEvent(surface, threadID, routeMode, title)}
 }
 
 func notice(surface *state.SurfaceConsoleRecord, code, text string) []eventcontract.Event {

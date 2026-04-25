@@ -1278,11 +1278,10 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	ops := projector.ProjectEvent("chat-1", selectionEvent(control.FeishuSelectionView{
 		PromptKind: control.SelectionPromptKickThread,
 		KickThread: &control.FeishuKickThreadSelectionView{
-			ThreadID:       "thread-1",
-			ThreadLabel:    "droid · 修复登录流程",
-			ThreadSubtitle: "/data/dl/droid\n已被其他飞书会话占用，可强踢",
-			CancelLabel:    "取消",
-			ConfirmLabel:   "强踢并占用",
+			ThreadID:     "thread-1",
+			ThreadLabel:  "droid · 修复登录流程",
+			CancelLabel:  "取消",
+			ConfirmLabel: "强踢并占用",
 		},
 	}, &control.FeishuUISelectionContext{
 		DTOOwner:   control.FeishuUIDTOwnerSelection,

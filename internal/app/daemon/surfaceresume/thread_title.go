@@ -54,5 +54,5 @@ func StoredThreadTitle(snapshotTitle, threadID, threadCWD, workspaceKey, threadN
 	if raw := NormalizeThreadTitle(snapshotTitle, threadID, threadCWD, workspaceKey); raw != "" {
 		return raw
 	}
-	return strings.TrimSpace(threadID)
+	return ""
 }

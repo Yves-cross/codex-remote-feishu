@@ -366,16 +366,10 @@ func mergedThreadMetadataScore(thread *state.ThreadRecord) int {
 	if strings.TrimSpace(thread.Name) != "" {
 		score++
 	}
-	if strings.TrimSpace(thread.Preview) != "" {
-		score++
-	}
 	if strings.TrimSpace(thread.FirstUserMessage) != "" {
 		score++
 	}
 	if strings.TrimSpace(thread.LastUserMessage) != "" {
-		score++
-	}
-	if strings.TrimSpace(thread.LastAssistantMessage) != "" {
 		score++
 	}
 	if strings.TrimSpace(thread.CWD) != "" {

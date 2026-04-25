@@ -306,7 +306,7 @@ func (a *App) currentSurfaceResumeTargetLocked(surface *state.SurfaceConsoleReco
 	if pending := surface.PendingHeadless; pending != nil {
 		return surfaceResumeTarget{
 			ResumeThreadID:     strings.TrimSpace(pending.ThreadID),
-			ResumeThreadTitle:  firstNonEmpty(strings.TrimSpace(pending.ThreadTitle), strings.TrimSpace(pending.ThreadID)),
+			ResumeThreadTitle:  strings.TrimSpace(pending.ThreadTitle),
 			ResumeThreadCWD:    state.ResolveWorkspaceKey(pending.ThreadCWD),
 			ResumeWorkspaceKey: state.ResolveWorkspaceKey(workspaceKey, pending.ThreadCWD),
 			ResumeRouteMode:    string(state.RouteModePinned),

@@ -369,7 +369,12 @@ func (s *Service) threadHistoryResolvedLabel(inst *state.InstanceRecord, history
 			return label
 		}
 	}
-	return firstNonEmpty(strings.TrimSpace(history.Thread.Name), strings.TrimSpace(history.Thread.Preview), strings.TrimSpace(history.Thread.ThreadID))
+	thread := &state.ThreadRecord{
+		ThreadID: history.Thread.ThreadID,
+		Name:     strings.TrimSpace(history.Thread.Name),
+		CWD:      strings.TrimSpace(history.Thread.CWD),
+	}
+	return displayThreadTitle(syntheticPersistedThreadInstance(thread), thread, history.Thread.ThreadID)
 }
 
 func buildThreadHistoryTurnSummaries(history agentproto.ThreadHistoryRecord, currentTurnID string) []threadHistoryTurnSummary {

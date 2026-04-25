@@ -100,12 +100,10 @@ func (s *Service) useAttachedVisibleThreadMode(surface *state.SurfaceConsoleReco
 	s.clearPreparedNewThread(surface)
 	surface.RouteMode = routeMode
 	title := threadID
-	preview := ""
 	thread = s.ensureThread(inst, threadID)
 	s.touchThread(thread)
 	title = displayThreadTitle(inst, thread, threadID)
-	preview = threadPreview(thread)
-	events = append(events, s.threadSelectionEvents(surface, threadID, string(surface.RouteMode), title, preview)...)
+	events = append(events, s.threadSelectionEvents(surface, threadID, string(surface.RouteMode), title)...)
 	events = append(events, s.replayThreadUpdate(surface, inst, threadID)...)
 	if len(events) != 0 {
 		return events
@@ -259,7 +257,7 @@ func (s *Service) attachSurfaceToKnownThread(surface *state.SurfaceConsoleRecord
 				Text: fmt.Sprintf("%s 当前输入目标：%s", attachLead, title),
 			},
 		})
-		events = append(events, s.threadSelectionEvents(surface, view.ThreadID, string(surface.RouteMode), title, preview)...)
+		events = append(events, s.threadSelectionEvents(surface, view.ThreadID, string(surface.RouteMode), title)...)
 		events = append(events, s.replayThreadUpdate(surface, inst, view.ThreadID)...)
 	}
 	events = append(events, s.maybeRequestThreadRefresh(surface, inst, view.ThreadID)...)

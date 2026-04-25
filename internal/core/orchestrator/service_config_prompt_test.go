@@ -1821,7 +1821,7 @@ func TestThreadSelectionNoticeIsNotRepeatedWhenOnlyPreviewChanges(t *testing.T) 
 	})
 
 	surface := svc.root.Surfaces["surface-1"]
-	events := svc.threadSelectionEvents(surface, "thread-1", string(state.RouteModePinned), "droid · 修复登录流程", "新预览")
+	events := svc.threadSelectionEvents(surface, "thread-1", string(state.RouteModePinned), "droid · 修复登录流程")
 	if len(events) != 0 {
 		t.Fatalf("expected no repeated selection notice for same thread, got %#v", events)
 	}

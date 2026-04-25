@@ -255,7 +255,7 @@ func (s *Service) attachVSCodeInstance(surface *state.SurfaceConsoleRecord, inst
 
 	events := s.reevaluateFollowSurface(surface)
 	if len(events) == 0 && surface.SelectedThreadID == "" {
-		events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）", "")...)
+		events = append(events, s.threadSelectionEvents(surface, "", string(state.RouteModeFollowLocal), "跟随当前 VS Code（等待中）")...)
 	}
 
 	verb := "已接管"

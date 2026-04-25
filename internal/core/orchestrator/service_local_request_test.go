@@ -1788,7 +1788,7 @@ func TestTickExpiresRequestCapture(t *testing.T) {
 	}
 }
 
-func TestThreadTitleUsesPreviewSummaryWhenNameMissing(t *testing.T) {
+func TestThreadTitleUsesUnnamedPlaceholderWhenNameAndUserMessagesMissing(t *testing.T) {
 	title := threadTitle(&state.InstanceRecord{
 		DisplayName:   "dl",
 		WorkspaceKey:  "/data/dl",
@@ -1800,8 +1800,8 @@ func TestThreadTitleUsesPreviewSummaryWhenNameMissing(t *testing.T) {
 		CWD:      "/data/dl",
 	}, "019d5679-370c-7b03-b86f-15a33a017c83")
 
-	if title != "dl · 当前目录 `/data/dl` 下的内容如下：" {
-		t.Fatalf("expected preview summary fallback, got %q", title)
+	if title != "dl · 未命名会话" {
+		t.Fatalf("expected unnamed placeholder fallback, got %q", title)
 	}
 }
 
@@ -1822,7 +1822,7 @@ func TestThreadTitleUsesThreadWorkspaceSuffixOverInstanceShortName(t *testing.T)
 	}
 }
 
-func TestThreadTitleSkipsPlaceholderNameAndTruncatesPreview(t *testing.T) {
+func TestThreadTitleSkipsPlaceholderNameWithoutUsingPreview(t *testing.T) {
 	title := threadTitle(&state.InstanceRecord{
 		DisplayName:   "atlas-admin",
 		WorkspaceKey:  "/data/dl/atlas-admin",
@@ -1835,12 +1835,12 @@ func TestThreadTitleSkipsPlaceholderNameAndTruncatesPreview(t *testing.T) {
 		CWD:      "/data/dl/atlas-admin",
 	}, "thread-1")
 
-	if title != "atlas-admin · 0123456789012345678901234567890123456789..." {
-		t.Fatalf("expected placeholder name to fall back to truncated preview, got %q", title)
+	if title != "atlas-admin · 未命名会话" {
+		t.Fatalf("expected placeholder name to fall back to unnamed session, got %q", title)
 	}
 }
 
-func TestThreadSelectionButtonLabelUsesWorkspaceSuffixAndPreviewFallback(t *testing.T) {
+func TestThreadSelectionButtonLabelUsesUnnamedPlaceholderWithoutPreviewFallback(t *testing.T) {
 	label := threadSelectionButtonLabel(&state.ThreadRecord{
 		ThreadID: "thread-1",
 		Name:     "新会话",
@@ -1848,8 +1848,8 @@ func TestThreadSelectionButtonLabelUsesWorkspaceSuffixAndPreviewFallback(t *test
 		CWD:      "/data/dl/atlas-admin",
 	}, "thread-1")
 
-	if label != "atlas-admin · 01234567890123456789..." {
-		t.Fatalf("expected selection label to include workspace suffix and truncated preview, got %q", label)
+	if label != "atlas-admin · 未命名会话" {
+		t.Fatalf("expected selection label to use unnamed placeholder, got %q", label)
 	}
 }
 
