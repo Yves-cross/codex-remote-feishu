@@ -21,6 +21,14 @@ func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode 
 }
 
 func FeishuCommandDefinitionForDisplayContext(def FeishuCommandDefinition, interactive bool, ctx CatalogContext) (FeishuCommandDefinition, bool) {
+	resolved, ok := ResolveFeishuCommandDisplayFamily(strings.TrimSpace(def.ID), interactive, ctx)
+	if !ok {
+		return FeishuCommandDefinition{}, false
+	}
+	return resolved.Definition, true
+}
+
+func projectFeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, interactive bool, ctx CatalogContext) (FeishuCommandDefinition, bool) {
 	ctx = NormalizeCatalogContext(ctx)
 	if interactive {
 		if !def.ShowInMenu || !FeishuCommandVisibleInMenuStage(def.ID, ctx.MenuStage) {
@@ -63,12 +71,10 @@ func BuildFeishuCommandDisplayPageView(title, summary string, interactive bool, 
 func BuildFeishuCommandDisplayPageViewForContext(title, summary string, interactive bool, ctx CatalogContext) FeishuPageView {
 	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
 	for _, group := range feishuCommandGroups {
-		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
-		for _, spec := range feishuCommandSpecs {
-			def, ok := FeishuCommandDefinitionForDisplayContext(runtimeFeishuCommandDefinition(spec), interactive, ctx)
-			if !ok || def.GroupID != group.ID {
-				continue
-			}
+		resolved := ResolveFeishuCommandDisplayGroup(group.ID, interactive, ctx)
+		entries := make([]CommandCatalogEntry, 0, len(resolved))
+		for _, current := range resolved {
+			def := current.Definition
 			if interactive {
 				entries = append(entries, buildFeishuCommandCatalogEntry(def, catalogButtonLabel(def)))
 				continue

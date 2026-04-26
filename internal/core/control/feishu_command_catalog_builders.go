@@ -62,12 +62,8 @@ func BuildFeishuCommandMenuGroupPageViewForContext(groupID string, ctx CatalogCo
 		return BuildFeishuCommandMenuHomePageViewForContext(ctx)
 	}
 	entries := make([]CommandCatalogEntry, 0, 6)
-	for _, def := range FeishuCommandDefinitionsForGroup(groupID) {
-		def, ok := FeishuCommandDefinitionForDisplayContext(def, true, ctx)
-		if !ok {
-			continue
-		}
-		entries = append(entries, buildFeishuCommandMenuEntry(def))
+	for _, current := range ResolveFeishuCommandDisplayGroup(groupID, true, ctx) {
+		entries = append(entries, buildFeishuCommandMenuEntry(current.Definition))
 	}
 	return FeishuPageView{
 		CommandID:    FeishuCommandMenu,
