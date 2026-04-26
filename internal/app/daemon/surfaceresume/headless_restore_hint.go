@@ -3,6 +3,8 @@ package surfaceresume
 import (
 	"strings"
 	"time"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/threadtitle"
 )
 
 type HeadlessRestoreHint struct {
@@ -23,7 +25,10 @@ func NormalizeHeadlessRestoreHint(hint HeadlessRestoreHint) (HeadlessRestoreHint
 	hint.ActorUserID = strings.TrimSpace(hint.ActorUserID)
 	hint.ThreadID = strings.TrimSpace(hint.ThreadID)
 	hint.ThreadCWD = strings.TrimSpace(hint.ThreadCWD)
-	hint.ThreadTitle = NormalizeThreadTitle(hint.ThreadTitle, hint.ThreadID, hint.ThreadCWD, "")
+	hint.ThreadTitle = threadtitle.NormalizeStoredInput(hint.ThreadTitle, threadtitle.Context{
+		ThreadID:  hint.ThreadID,
+		ThreadCWD: hint.ThreadCWD,
+	})
 	if hint.SurfaceSessionID == "" || hint.ThreadID == "" {
 		return HeadlessRestoreHint{}, false
 	}

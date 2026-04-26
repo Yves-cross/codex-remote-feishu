@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/core/threadtitle"
 )
 
 const (
@@ -205,7 +206,11 @@ func NormalizeEntry(entry Entry) (Entry, bool) {
 	entry.ResumeThreadID = strings.TrimSpace(entry.ResumeThreadID)
 	entry.ResumeThreadCWD = state.NormalizeWorkspaceKey(entry.ResumeThreadCWD)
 	entry.ResumeWorkspaceKey = state.NormalizeWorkspaceKey(entry.ResumeWorkspaceKey)
-	entry.ResumeThreadTitle = NormalizeThreadTitle(entry.ResumeThreadTitle, entry.ResumeThreadID, entry.ResumeThreadCWD, entry.ResumeWorkspaceKey)
+	entry.ResumeThreadTitle = threadtitle.NormalizeStoredInput(entry.ResumeThreadTitle, threadtitle.Context{
+		ThreadID:     entry.ResumeThreadID,
+		ThreadCWD:    entry.ResumeThreadCWD,
+		WorkspaceKey: entry.ResumeWorkspaceKey,
+	})
 	entry.ResumeRouteMode = strings.TrimSpace(entry.ResumeRouteMode)
 	if state.NormalizeProductMode(state.ProductMode(entry.ProductMode)) != state.ProductModeNormal {
 		entry.ResumeHeadless = false

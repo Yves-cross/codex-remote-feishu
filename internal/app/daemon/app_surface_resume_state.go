@@ -11,6 +11,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/core/threadtitle"
 )
 
 type surfaceResumeTarget struct {
@@ -287,19 +288,23 @@ func (a *App) currentSurfaceResumeTargetLocked(surface *state.SurfaceConsoleReco
 			ResumeWorkspaceKey: state.ResolveWorkspaceKey(workspaceKey, surface.ClaimedWorkspaceKey, surface.PreparedThreadCWD),
 			ResumeRouteMode:    strings.TrimSpace(string(surface.RouteMode)),
 		}
-		threadName := ""
 		if snapshot != nil {
 			target.ResumeHeadless = snapshot.Attachment.Managed && strings.EqualFold(strings.TrimSpace(snapshot.Attachment.Source), "headless")
 			target.ResumeThreadTitle = strings.TrimSpace(snapshot.Attachment.SelectedThreadTitle)
 		}
 		if target.ResumeThreadID != "" {
+			var thread *state.ThreadRecord
 			if inst := a.service.Instance(target.ResumeInstanceID); inst != nil {
-				if thread := inst.Threads[target.ResumeThreadID]; thread != nil {
-					threadName = strings.TrimSpace(thread.Name)
+				if current := inst.Threads[target.ResumeThreadID]; current != nil {
+					thread = current
 					target.ResumeThreadCWD = state.ResolveWorkspaceKey(thread.CWD)
 				}
 			}
-			target.ResumeThreadTitle = surfaceresume.StoredThreadTitle(target.ResumeThreadTitle, target.ResumeThreadID, target.ResumeThreadCWD, target.ResumeWorkspaceKey, threadName)
+			target.ResumeThreadTitle = threadtitle.StoredTitle(target.ResumeThreadTitle, threadtitle.Context{
+				ThreadID:     target.ResumeThreadID,
+				ThreadCWD:    target.ResumeThreadCWD,
+				WorkspaceKey: target.ResumeWorkspaceKey,
+			}, thread)
 		}
 		return target, true
 	}

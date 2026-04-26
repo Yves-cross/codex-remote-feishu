@@ -5,6 +5,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/threadtitle"
 )
 
 func TestNormalizeResumeThreadTitle(t *testing.T) {
@@ -43,7 +44,14 @@ func TestNormalizeResumeThreadTitle(t *testing.T) {
 			want:      "修复登录流程",
 		},
 		{
-			name:      "clears unnamed display title",
+			name:      "clears current unnamed display title",
+			title:     "droid · 未命名会话",
+			threadID:  threadID,
+			threadCWD: "/data/dl/droid",
+			want:      "",
+		},
+		{
+			name:      "clears legacy short id only display title",
 			title:     "droid · " + shortID,
 			threadID:  threadID,
 			threadCWD: "/data/dl/droid",
@@ -62,8 +70,12 @@ func TestNormalizeResumeThreadTitle(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := surfaceresume.NormalizeThreadTitle(tc.title, tc.threadID, tc.threadCWD, tc.workspaceKey); got != tc.want {
-				t.Fatalf("surfaceresume.NormalizeThreadTitle() = %q, want %q", got, tc.want)
+			if got := threadtitle.NormalizeStoredInput(tc.title, threadtitle.Context{
+				ThreadID:     tc.threadID,
+				ThreadCWD:    tc.threadCWD,
+				WorkspaceKey: tc.workspaceKey,
+			}); got != tc.want {
+				t.Fatalf("threadtitle.NormalizeStoredInput() = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -103,7 +115,11 @@ func TestSurfaceResumeStoreNormalizesLegacyDisplayThreadTitle(t *testing.T) {
 func TestStoredThreadTitleDoesNotFallBackToThreadID(t *testing.T) {
 	t.Parallel()
 
-	if got := surfaceresume.StoredThreadTitle("", "thread-1", "/data/dl/droid", "/data/dl/droid", ""); got != "" {
+	if got := threadtitle.StoredTitle("", threadtitle.Context{
+		ThreadID:     "thread-1",
+		ThreadCWD:    "/data/dl/droid",
+		WorkspaceKey: "/data/dl/droid",
+	}, nil); got != "" {
 		t.Fatalf("expected empty stored title when no reusable thread title exists, got %q", got)
 	}
 }

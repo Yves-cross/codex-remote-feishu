@@ -1,8 +1,8 @@
 # 会话描述统一方案
 
 > Type: `implemented`
-> Updated: `2026-04-25`
-> Summary: 已落地 canonical thread DisplayName contract，统一非 `/status` 展示，并把 `/status` 收口为唯一受控例外。
+> Updated: `2026-04-26`
+> Summary: 已落地 canonical thread DisplayName contract，并进一步把展示 / 存储 / 恢复的 thread title 语义收口到单一 `threadtitle` owner。
 
 ## 背景
 
@@ -71,7 +71,13 @@
 
 ### Producer / helper
 
-- `threadTitle / displayThreadTitle / threadSelectionButtonLabel` 现在统一走 canonical `DisplayName`
+- `internal/core/threadtitle` 现在是唯一 thread title owner，统一提供：
+  - raw semantic title
+  - display body / display title
+  - workspace prefix
+  - stored title
+  - legacy display 输入归一化
+- orchestrator 的 `threadTitle / displayThreadTitle / threadSelectionButtonLabel` 已降为 owner package 的薄包装，不再独立维护 title contract
 - preview/assistant 已移出主显示名链路
 - persisted sqlite thread 会把旧库里的 `firstUserMessage` 映射到 `FirstUserMessage`，不再伪装成 `Name`
 
@@ -112,9 +118,15 @@
 
 ### 2. Resume / headless restore
 
-resume 存储仍保留旧标题清洗逻辑，用来去掉历史遗留的 workspace prefix 与 short-id suffix；但如果拿不到可复用的原始标题，不再退回 `threadID` 作为 `ResumeThreadTitle`。
+resume / headless restore 不再由 `surfaceresume` 独立维护标题归一化 contract。
 
-恢复后的最终用户可见标题仍重新走当前 canonical contract。
+当前规则是：
+
+- surface resume store、headless restore hint、resume target 一律走 `internal/core/threadtitle`
+- 历史遗留的 workspace prefix / short-id suffix 只允许在 owner package 内部做有界吸收
+- 如果拿不到可复用的原始标题，不再退回 `threadID` 或保留 `未命名会话` 作为 stored raw title
+
+恢复后的最终用户可见标题仍在最后一跳重新走 canonical display contract。
 
 ## 验证面
 
@@ -128,3 +140,4 @@ resume 存储仍保留旧标题清洗逻辑，用来去掉历史遗留的 worksp
 - `/status`
 - admin runtime surface
 - resume / headless restore 兼容
+- stored raw title 与 display format 解耦

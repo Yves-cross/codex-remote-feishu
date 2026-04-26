@@ -10,9 +10,8 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/core/threadtitle"
 )
-
-const unnamedThreadDisplayName = "未命名会话"
 
 func threadSelectionEvent(surface *state.SurfaceConsoleRecord, threadID, routeMode, title string) eventcontract.Event {
 	selection := &control.ThreadSelectionChanged{
@@ -250,83 +249,7 @@ func isDigits(value string) bool {
 
 func threadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallback string) string {
 	_ = fallback
-	prefix := threadWorkspaceLabel(inst, thread)
-	body := threadDisplayBody(thread, 40)
-	if prefix == "" {
-		return body
-	}
-	return fmt.Sprintf("%s · %s", prefix, body)
-}
-
-func threadWorkspaceLabel(inst *state.InstanceRecord, thread *state.ThreadRecord) string {
-	if thread != nil {
-		if short := state.WorkspaceShortName(thread.CWD); short != "" {
-			return short
-		}
-	}
-	if inst != nil {
-		if short := state.WorkspaceShortName(inst.WorkspaceKey); short != "" {
-			return short
-		}
-		if short := state.WorkspaceShortName(inst.WorkspaceRoot); short != "" {
-			return short
-		}
-		if short := strings.TrimSpace(inst.ShortName); short != "" {
-			return short
-		}
-		if short := strings.TrimSpace(inst.DisplayName); short != "" {
-			return short
-		}
-	}
-	return ""
-}
-
-func threadDisplayBody(thread *state.ThreadRecord, limit int) string {
-	if title := threadDisplayPrimary(thread, limit); title != "" {
-		return title
-	}
-	return unnamedThreadDisplayName
-}
-
-func threadDisplayPrimary(thread *state.ThreadRecord, limit int) string {
-	if thread == nil {
-		return ""
-	}
-	if name := threadDisplayName(thread); name != "" {
-		return truncateThreadDisplayText(name, limit)
-	}
-	if recentUser := threadLastUserSnippet(thread, limit); recentUser != "" {
-		return recentUser
-	}
-	if firstUser := threadFirstUserSnippet(thread, limit); firstUser != "" {
-		return firstUser
-	}
-	return ""
-}
-
-func threadDisplayName(thread *state.ThreadRecord) string {
-	if thread == nil {
-		return ""
-	}
-	name := strings.Join(strings.Fields(strings.TrimSpace(thread.Name)), " ")
-	switch strings.ToLower(name) {
-	case "", "新会话", "新聊天", "new chat", "new thread":
-		return ""
-	default:
-		return name
-	}
-}
-
-func truncateThreadDisplayText(text string, limit int) string {
-	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
-	if text == "" || limit <= 0 {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return string(runes)
-	}
-	return string(runes[:limit]) + "..."
+	return threadtitle.DisplayTitle(inst, thread, threadtitle.DefaultDisplayLimit)
 }
 
 func displayThreadTitle(inst *state.InstanceRecord, thread *state.ThreadRecord, fallback string) string {
@@ -360,14 +283,15 @@ func threadPreview(thread *state.ThreadRecord) string {
 	if assistant := threadLastAssistantSnippet(thread, 40); assistant != "" {
 		return assistant
 	}
-	if user := threadLastUserSnippet(thread, 40); user != "" {
+	if user := threadtitle.LastUserSnippet(thread, threadtitle.DefaultDisplayLimit); user != "" {
 		return user
 	}
 	return previewSnippet(thread.Preview)
 }
 
 func threadSelectionButtonLabel(thread *state.ThreadRecord, fallback string) string {
-	return threadTitle(nil, thread, fallback)
+	_ = fallback
+	return threadtitle.DisplayTitle(nil, thread, threadtitle.DefaultDisplayLimit)
 }
 
 func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord, inst *state.InstanceRecord, threadID string) []eventcontract.Event {
@@ -408,25 +332,11 @@ func threadSelectionSubtitle(thread *state.ThreadRecord, threadID string) string
 }
 
 func threadFirstUserSnippet(thread *state.ThreadRecord, limit int) string {
-	if thread == nil {
-		return ""
-	}
-	value := previewOfText(thread.FirstUserMessage)
-	if value == "" {
-		return ""
-	}
-	return truncateThreadDisplayText(value, limit)
+	return threadtitle.FirstUserSnippet(thread, limit)
 }
 
 func threadLastUserSnippet(thread *state.ThreadRecord, limit int) string {
-	if thread == nil {
-		return ""
-	}
-	value := previewOfText(thread.LastUserMessage)
-	if value == "" {
-		return ""
-	}
-	return truncateThreadDisplayText(value, limit)
+	return threadtitle.LastUserSnippet(thread, limit)
 }
 
 func threadLastAssistantSnippet(thread *state.ThreadRecord, limit int) string {
@@ -437,7 +347,7 @@ func threadLastAssistantSnippet(thread *state.ThreadRecord, limit int) string {
 	if value == "" {
 		return ""
 	}
-	return truncateThreadDisplayText(value, limit)
+	return truncateThreadPreview(value, limit)
 }
 
 func headlessPendingNoticeCode(pending *state.HeadlessLaunchRecord) string {
@@ -500,9 +410,17 @@ func previewSnippet(text string) string {
 	if text == "" {
 		return ""
 	}
+	return truncateThreadPreview(text, 40)
+}
+
+func truncateThreadPreview(text string, limit int) string {
+	text = strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
+	if text == "" || limit <= 0 {
+		return ""
+	}
 	runes := []rune(text)
-	if len(runes) > 40 {
-		return string(runes[:40]) + "..."
+	if len(runes) > limit {
+		return string(runes[:limit]) + "..."
 	}
 	return text
 }
