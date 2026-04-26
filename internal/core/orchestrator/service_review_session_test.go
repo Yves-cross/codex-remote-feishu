@@ -6,6 +6,7 @@ import (
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/render"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
@@ -204,5 +205,99 @@ func TestReviewSessionLifecycleAndReplyAnchorFallback(t *testing.T) {
 	}
 	if svc.turnSurface("inst-1", "thread-review", "turn-review-1") != surface {
 		t.Fatalf("expected review thread turnSurface fallback to resolve surface")
+	}
+}
+
+func TestStartReviewFromFinalCardBuildsDetachedReviewCommand(t *testing.T) {
+	svc, surface := newReviewSessionService(t)
+	finalBlock := render.Block{
+		Kind:       render.BlockAssistantMarkdown,
+		InstanceID: "inst-1",
+		ThreadID:   "thread-main",
+		TurnID:     "turn-main-1",
+		ItemID:     "item-main-1",
+		Text:       "已经处理完成。",
+		Final:      true,
+	}
+	svc.RecordFinalCardMessage(surface.SurfaceSessionID, finalBlock, "msg-user-1", "om-final-1", "life-1")
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReviewStart,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		MessageID:        "om-final-1",
+		Inbound:          &control.ActionInboundMeta{CardDaemonLifecycleID: "life-1"},
+	})
+
+	if len(events) != 2 {
+		t.Fatalf("expected notice + review start command, got %#v", events)
+	}
+	if events[1].Command == nil || events[1].Command.Kind != agentproto.CommandReviewStart {
+		t.Fatalf("expected review start command, got %#v", events)
+	}
+	command := events[1].Command
+	if command.Target.ThreadID != "thread-main" {
+		t.Fatalf("unexpected review start target: %#v", command.Target)
+	}
+	if command.Review.Delivery != agentproto.ReviewDeliveryDetached || command.Review.Target.Kind != agentproto.ReviewTargetKindUncommittedChanges {
+		t.Fatalf("unexpected review request: %#v", command.Review)
+	}
+	if surface.ReviewSession == nil || surface.ReviewSession.Phase != state.ReviewSessionPhasePending || surface.ReviewSession.ParentThreadID != "thread-main" || surface.ReviewSession.SourceMessageID != "om-final-1" {
+		t.Fatalf("unexpected pending review session: %#v", surface.ReviewSession)
+	}
+}
+
+func TestApplyReviewSessionResultBuildsParentPromptAndClearsSession(t *testing.T) {
+	svc, surface := newReviewSessionService(t)
+	surface.ReviewSession = &state.ReviewSessionRecord{
+		Phase:          state.ReviewSessionPhaseActive,
+		ParentThreadID: "thread-main",
+		ReviewThreadID: "thread-review",
+		ThreadCWD:      "/data/dl/droid",
+		LastReviewText: "建议先补一条 review 回归测试。",
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReviewApply,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		MessageID:        "om-review-final-1",
+	})
+
+	if len(events) != 2 {
+		t.Fatalf("expected notice + prompt send command, got %#v", events)
+	}
+	if events[1].Command == nil || events[1].Command.Kind != agentproto.CommandPromptSend {
+		t.Fatalf("expected prompt send command, got %#v", events)
+	}
+	command := events[1].Command
+	if command.Target.ThreadID != "thread-main" || command.Target.ExecutionMode != agentproto.PromptExecutionModeResumeExisting || command.Target.SurfaceBindingPolicy != agentproto.SurfaceBindingPolicyKeepSurfaceSelection {
+		t.Fatalf("unexpected apply-review target: %#v", command.Target)
+	}
+	if len(command.Prompt.Inputs) != 1 || command.Prompt.Inputs[0].Text != reviewApplyPromptPrefix+"建议先补一条 review 回归测试。" {
+		t.Fatalf("unexpected apply-review prompt: %#v", command.Prompt)
+	}
+	if surface.ReviewSession != nil {
+		t.Fatalf("expected review session to clear after apply, got %#v", surface.ReviewSession)
+	}
+}
+
+func TestDiscardReviewSessionClearsRuntime(t *testing.T) {
+	svc, surface := newReviewSessionService(t)
+	surface.ReviewSession = &state.ReviewSessionRecord{
+		Phase:          state.ReviewSessionPhaseActive,
+		ParentThreadID: "thread-main",
+		ReviewThreadID: "thread-review",
+	}
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReviewDiscard,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		MessageID:        "om-review-final-1",
+	})
+
+	if len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "review_discarded" {
+		t.Fatalf("expected discard notice, got %#v", events)
+	}
+	if surface.ReviewSession != nil {
+		t.Fatalf("expected review session to clear, got %#v", surface.ReviewSession)
 	}
 }

@@ -128,6 +128,13 @@ func renderCardDocument(doc *cardDocument, version cardEnvelopeVersion, updateMu
 	}
 }
 
+func InvalidateOperationCard(operation *Operation) {
+	if operation == nil {
+		return
+	}
+	operation.card = nil
+}
+
 func cardPlainText(content string) map[string]any {
 	return map[string]any{
 		"tag":     "plain_text",

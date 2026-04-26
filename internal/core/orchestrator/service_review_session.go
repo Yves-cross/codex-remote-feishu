@@ -33,6 +33,16 @@ func (s *Service) activeReviewSession(surface *state.SurfaceConsoleRecord) *stat
 	return session
 }
 
+func (s *Service) ReviewSession(surfaceID string) *state.ReviewSessionRecord {
+	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
+	session := s.activeReviewSession(surface)
+	if session == nil {
+		return nil
+	}
+	copy := *session
+	return &copy
+}
+
 func (s *Service) reviewSessionSurface(instanceID, threadID string) (*state.SurfaceConsoleRecord, *state.ReviewSessionRecord) {
 	threadID = strings.TrimSpace(threadID)
 	if strings.TrimSpace(instanceID) == "" || threadID == "" {

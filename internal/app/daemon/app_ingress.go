@@ -414,6 +414,7 @@ func (a *App) projectFirstCardAsReplacementLocked(action control.Action, event e
 	}
 	event.DaemonLifecycleID = a.daemonLifecycleID
 	ops := a.projector.ProjectEvent(a.service.SurfaceChatID(event.SurfaceSessionID), event.Normalized())
+	ops = a.decorateReviewOperationsLocked(event, ops)
 	if len(ops) != 1 || ops[0].Kind != feishu.OperationSendCard {
 		return nil
 	}

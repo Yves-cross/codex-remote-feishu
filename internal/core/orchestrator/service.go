@@ -410,6 +410,12 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = s.openSendFilePicker(surface)
 	case control.ActionSteerAll:
 		events = s.handleSteerAllCommand(surface, action)
+	case control.ActionReviewStart:
+		events = s.startReviewFromFinalCard(surface, action)
+	case control.ActionReviewDiscard:
+		events = s.discardReviewSession(surface)
+	case control.ActionReviewApply:
+		events = s.applyReviewSessionResult(surface, action)
 	case control.ActionAttachInstance:
 		events = s.attachInstance(surface, action.InstanceID)
 	case control.ActionAttachWorkspace:

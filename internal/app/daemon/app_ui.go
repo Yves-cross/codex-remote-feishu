@@ -225,6 +225,7 @@ func (a *App) deliverUIEventWithContextMode(ctx context.Context, event eventcont
 	event.Payload = nil
 	event = event.Normalized()
 	operations := a.projector.ProjectEvent(chatID, event)
+	operations = a.decorateReviewOperationsLocked(event, operations)
 	for i := range operations {
 		if operations[i].GatewayID == "" {
 			operations[i].GatewayID = gatewayID

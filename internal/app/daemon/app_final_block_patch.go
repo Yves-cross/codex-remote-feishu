@@ -140,6 +140,13 @@ func (a *App) runSecondChanceFinalPatch(job secondChanceFinalPatchJob) {
 			FinalTurnSummary:  job.FinalTurnSummary,
 		},
 	})
+	a.mu.Lock()
+	ops = a.decorateReviewOperationsLocked(eventcontract.Event{
+		Kind:             eventcontract.KindBlockCommitted,
+		SurfaceSessionID: job.SurfaceSessionID,
+		Block:            &result.Block,
+	}, ops)
+	a.mu.Unlock()
 	primary := firstFinalSendCard(ops)
 	if primary == nil {
 		return

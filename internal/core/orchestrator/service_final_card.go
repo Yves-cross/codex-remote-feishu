@@ -87,6 +87,30 @@ func (s *Service) LookupFinalCard(surfaceID, instanceID, threadID, turnID, itemI
 	return nil
 }
 
+func (s *Service) LookupFinalCardByMessageID(surfaceID, messageID, daemonLifecycleID string) *state.FinalCardRecord {
+	surface := s.root.Surfaces[strings.TrimSpace(surfaceID)]
+	if surface == nil {
+		return nil
+	}
+	messageID = strings.TrimSpace(messageID)
+	daemonLifecycleID = strings.TrimSpace(daemonLifecycleID)
+	if messageID == "" {
+		return nil
+	}
+	for i := len(surface.RecentFinalCards) - 1; i >= 0; i-- {
+		record := surface.RecentFinalCards[i]
+		if record == nil || strings.TrimSpace(record.MessageID) != messageID {
+			continue
+		}
+		if daemonLifecycleID != "" && strings.TrimSpace(record.DaemonLifecycleID) != daemonLifecycleID {
+			continue
+		}
+		copy := *record
+		return &copy
+	}
+	return nil
+}
+
 func (s *Service) LookupFinalCardForBlock(surfaceID string, block render.Block, daemonLifecycleID string) *state.FinalCardRecord {
 	if !block.Final {
 		return nil
