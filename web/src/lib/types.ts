@@ -255,6 +255,74 @@ export interface RuntimeRequirementsDetectResponse {
   notes?: string[];
 }
 
+export interface OnboardingWorkflowDecision {
+  value?: string;
+  decidedAt?: string;
+}
+
+export interface OnboardingWorkflowStage {
+  id: string;
+  title: string;
+  status: string;
+  summary: string;
+  blocking?: boolean;
+  optional?: boolean;
+  allowedActions?: string[];
+}
+
+export interface OnboardingWorkflowPermission extends OnboardingWorkflowStage {
+  missingScopes?: FeishuAppPermissionCheckItem[];
+  grantJSON?: string;
+  lastCheckedAt?: string;
+}
+
+export interface OnboardingWorkflowAppStep extends OnboardingWorkflowStage {
+  confirmedAt?: string;
+}
+
+export interface OnboardingWorkflowMachineStep extends OnboardingWorkflowStage {
+  decision?: OnboardingWorkflowDecision;
+  autostart?: AutostartDetectResponse;
+  vscode?: VSCodeDetectResponse;
+  error?: string;
+}
+
+export interface OnboardingWorkflowApp {
+  app: FeishuAppSummary;
+  connection: OnboardingWorkflowStage;
+  permission: OnboardingWorkflowPermission;
+  events: OnboardingWorkflowAppStep;
+  callback: OnboardingWorkflowAppStep;
+  menu: OnboardingWorkflowAppStep;
+}
+
+export interface OnboardingWorkflowGuide {
+  autoConfiguredSummary?: string;
+  remainingManualActions?: string[];
+  recommendedNextStep?: string;
+}
+
+export interface OnboardingWorkflowCompletion {
+  setupRequired: boolean;
+  canComplete: boolean;
+  summary: string;
+  blockingReason?: string;
+}
+
+export interface OnboardingWorkflowResponse {
+  apps: FeishuAppSummary[];
+  selectedAppId?: string;
+  currentStage: string;
+  machineState: string;
+  completion: OnboardingWorkflowCompletion;
+  runtimeRequirements: RuntimeRequirementsDetectResponse;
+  app?: OnboardingWorkflowApp;
+  autostart: OnboardingWorkflowMachineStep;
+  vscode: OnboardingWorkflowMachineStep;
+  guide?: OnboardingWorkflowGuide;
+  stages: OnboardingWorkflowStage[];
+}
+
 export interface SetupCompleteResponse {
   setupRequired: boolean;
   adminURL: string;

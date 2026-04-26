@@ -6,6 +6,14 @@ import type {
   GatewayStatus,
   ImageStagingStatusResponse,
   LogsStorageStatusResponse,
+  OnboardingWorkflowApp,
+  OnboardingWorkflowCompletion,
+  OnboardingWorkflowDecision,
+  OnboardingWorkflowGuide,
+  OnboardingWorkflowMachineStep,
+  OnboardingWorkflowPermission,
+  OnboardingWorkflowResponse,
+  OnboardingWorkflowStage,
   PreviewDriveStatusResponse,
   RuntimeRequirementsDetectResponse,
   RuntimeStatus,
@@ -176,6 +184,240 @@ export function makeRuntimeRequirementsDetect(
     ],
     notes: ["这里只检查基础运行条件，不检查 Codex 登录状态。"],
     ...overrides,
+  };
+}
+
+export function makeOnboardingStage(
+  overrides: Partial<OnboardingWorkflowStage> = {},
+): OnboardingWorkflowStage {
+  return {
+    id: "connect",
+    title: "飞书连接",
+    status: "blocked",
+    summary: "还没有接入可用的飞书应用。",
+    blocking: true,
+    optional: false,
+    allowedActions: [],
+    ...overrides,
+  };
+}
+
+type OnboardingWorkflowAppOverrides = Partial<
+  Omit<OnboardingWorkflowApp, "app" | "connection" | "permission" | "events" | "callback" | "menu">
+> & {
+  app?: Partial<FeishuAppSummary>;
+  connection?: Partial<OnboardingWorkflowStage>;
+  permission?: Partial<OnboardingWorkflowPermission>;
+  events?: Partial<OnboardingWorkflowPermission>;
+  callback?: Partial<OnboardingWorkflowPermission>;
+  menu?: Partial<OnboardingWorkflowPermission>;
+};
+
+type OnboardingWorkflowMachineStepOverrides = Partial<
+  Omit<OnboardingWorkflowMachineStep, "decision" | "autostart" | "vscode">
+> & {
+  decision?: Partial<OnboardingWorkflowDecision>;
+  autostart?: Partial<AutostartDetectResponse>;
+  vscode?: Partial<VSCodeDetectResponse>;
+};
+
+type OnboardingWorkflowOverrides = Partial<
+  Omit<OnboardingWorkflowResponse, "completion" | "runtimeRequirements" | "app" | "autostart" | "vscode" | "guide" | "stages">
+> & {
+  completion?: Partial<OnboardingWorkflowCompletion>;
+  runtimeRequirements?: Partial<RuntimeRequirementsDetectResponse>;
+  app?: OnboardingWorkflowAppOverrides | null;
+  autostart?: OnboardingWorkflowMachineStepOverrides;
+  vscode?: OnboardingWorkflowMachineStepOverrides;
+  guide?: Partial<OnboardingWorkflowGuide>;
+  stages?: OnboardingWorkflowStage[];
+};
+
+export function makeOnboardingWorkflow(
+  overrides: OnboardingWorkflowOverrides = {},
+): OnboardingWorkflowResponse {
+  const currentApp = makeApp({
+    id: "bot-1",
+    name: "Main Bot",
+    appId: "cli_main",
+    verifiedAt: "2026-04-25T08:10:00Z",
+    ...(overrides.app?.app || {}),
+  });
+  const connection = makeOnboardingStage({
+    id: "connect",
+    title: "飞书连接",
+    status: "complete",
+    summary: "当前飞书应用连接验证已通过。",
+    allowedActions: ["verify"],
+    ...(overrides.app?.connection || {}),
+  });
+  const permission: OnboardingWorkflowPermission = {
+    ...makeOnboardingStage({
+      id: "permission",
+      title: "权限检查",
+      status: "pending",
+      summary: "当前还缺少建议补齐的权限，请处理后重新检查。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["open_auth", "recheck"],
+    }),
+    missingScopes: [{ scope: "drive:drive", scopeType: "tenant" }],
+    grantJSON: `{
+  "scopes": {
+    "tenant": ["drive:drive"],
+    "user": []
+  }
+}`,
+    ...(overrides.app?.permission || {}),
+  };
+  const events = {
+    ...makeOnboardingStage({
+      id: "events",
+      title: "事件订阅",
+      status: "pending",
+      summary: "建议完成一次事件订阅联调。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["start_test", "confirm"],
+    }),
+    ...(overrides.app?.events || {}),
+  };
+  const callback = {
+    ...makeOnboardingStage({
+      id: "callback",
+      title: "回调配置",
+      status: "pending",
+      summary: "建议完成一次回调联调。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["start_test", "confirm"],
+    }),
+    ...(overrides.app?.callback || {}),
+  };
+  const menu = {
+    ...makeOnboardingStage({
+      id: "menu",
+      title: "菜单确认",
+      status: "pending",
+      summary: "建议确认飞书应用菜单已经配置完成。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["open_console", "confirm"],
+    }),
+    ...(overrides.app?.menu || {}),
+  };
+  const app =
+    overrides.app === null
+      ? undefined
+      : {
+          app: currentApp,
+          connection,
+          permission,
+          events,
+          callback,
+          menu,
+        };
+  const autostart: OnboardingWorkflowMachineStep = {
+    ...makeOnboardingStage({
+      id: "autostart",
+      title: "自动启动",
+      status: "pending",
+      summary: "当前还没有完成自动启动决策。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["apply", "defer"],
+    }),
+    autostart: makeAutostartDetect({
+      platform: "linux",
+      supported: true,
+      status: "disabled",
+      configured: false,
+      enabled: false,
+      canApply: true,
+      ...(overrides.autostart?.autostart || {}),
+    }),
+    decision: overrides.autostart?.decision
+      ? {
+          value: overrides.autostart.decision.value,
+          decidedAt: overrides.autostart.decision.decidedAt,
+        }
+      : undefined,
+    error: overrides.autostart?.error,
+    ...overrides.autostart,
+  };
+  const vscode: OnboardingWorkflowMachineStep = {
+    ...makeOnboardingStage({
+      id: "vscode",
+      title: "VS Code 集成",
+      status: "pending",
+      summary: "当前还没有完成 VS Code 集成决策。",
+      optional: true,
+      blocking: false,
+      allowedActions: ["apply", "defer", "remote_only"],
+    }),
+    vscode: makeVSCodeDetect(overrides.vscode?.vscode || {}),
+    decision: overrides.vscode?.decision
+      ? {
+          value: overrides.vscode.decision.value,
+          decidedAt: overrides.vscode.decision.decidedAt,
+        }
+      : undefined,
+    error: overrides.vscode?.error,
+    ...overrides.vscode,
+  };
+
+  return {
+    apps: overrides.apps ?? (app ? [currentApp] : []),
+    selectedAppId: overrides.selectedAppId ?? app?.app.id,
+    currentStage: overrides.currentStage ?? "permission",
+    machineState: overrides.machineState ?? "usable_with_pending_items",
+    completion: {
+      setupRequired: overrides.completion?.setupRequired ?? true,
+      canComplete: overrides.completion?.canComplete ?? false,
+      summary:
+        overrides.completion?.summary ??
+        "当前 setup 还不能完成，请先处理阻塞项。",
+      blockingReason:
+        overrides.completion?.blockingReason ?? "还没有完成自动启动决策。",
+    },
+    runtimeRequirements: makeRuntimeRequirementsDetect(overrides.runtimeRequirements || {}),
+    app,
+    autostart,
+    vscode,
+    guide: {
+      autoConfiguredSummary:
+        overrides.guide?.autoConfiguredSummary ??
+        "当前飞书应用已经接入，下面请继续补齐剩余联调与机器决策。",
+      remainingManualActions:
+        overrides.guide?.remainingManualActions ?? [
+          "补齐基础权限并重新检查。",
+          "完成一次事件订阅联调。",
+          "完成一次回调联调。",
+          "确认飞书应用菜单已经配置。",
+          "决定是否在这台机器上启用自动启动。",
+          "决定如何处理这台机器上的 VS Code 集成。",
+        ],
+      recommendedNextStep:
+        overrides.guide?.recommendedNextStep ?? (overrides.currentStage || "permission"),
+    },
+    stages:
+      overrides.stages ?? [
+        makeOnboardingStage({
+          id: "runtime_requirements",
+          title: "环境检查",
+          status: "complete",
+          summary: "当前机器已满足基础运行条件，可以继续后面的可选配置。",
+          blocking: false,
+          allowedActions: ["retry"],
+        }),
+        connection,
+        permission,
+        events,
+        callback,
+        menu,
+        autostart,
+        vscode,
+      ],
   };
 }
 

@@ -1,46 +1,37 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   APIRequestError,
   type APIErrorShape,
   type JSONResult,
   requestJSON,
   requestJSONAllowHTTPError,
+  requestVoid,
   sendJSON,
 } from "../lib/api";
 import { relativeLocalPath } from "../lib/paths";
 import type {
-  AutostartDetectResponse,
   BootstrapState,
-  FeishuManifestResponse,
-  FeishuAppPermissionCheckResponse,
   FeishuAppResponse,
   FeishuAppSummary,
   FeishuAppTestStartResponse,
   FeishuAppVerifyResponse,
-  FeishuAppsResponse,
+  FeishuManifestResponse,
   FeishuOnboardingCompleteResponse,
   FeishuOnboardingSession,
   FeishuOnboardingSessionResponse,
-  RuntimeRequirementsDetectResponse,
-  VSCodeDetectResponse,
+  OnboardingWorkflowAppStep,
+  OnboardingWorkflowMachineStep,
+  OnboardingWorkflowPermission,
+  OnboardingWorkflowResponse,
+  OnboardingWorkflowStage,
+  SetupCompleteResponse,
 } from "../lib/types";
 import {
-  loadAutostartState,
-  loadVSCodeState,
+  blankToUndefined,
+  buildSetupFeishuVerifySuccessMessage,
   vscodeApplyModeForScenario,
   vscodeIsReady,
 } from "./shared/helpers";
-
-type SetupStepID =
-  | "env"
-  | "connect"
-  | "permission"
-  | "events"
-  | "callback"
-  | "menu"
-  | "autostart"
-  | "vscode"
-  | "done";
 
 type NoticeTone = "good" | "warn" | "danger";
 
@@ -54,13 +45,6 @@ type ManualConnectForm = {
   appId: string;
   appSecret: string;
 };
-
-type PermissionState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; data: FeishuAppPermissionCheckResponse }
-  | { status: "missing"; data: FeishuAppPermissionCheckResponse }
-  | { status: "error"; message: string };
 
 type TestState = {
   status: "idle" | "sending" | "sent" | "error";
@@ -77,18 +61,6 @@ type RequirementTableRow = {
   cells: ReactNode[];
 };
 
-const setupSteps: Array<{ id: SetupStepID; name: string }> = [
-  { id: "env", name: "环境检查" },
-  { id: "connect", name: "飞书连接" },
-  { id: "permission", name: "权限检查" },
-  { id: "events", name: "事件订阅" },
-  { id: "callback", name: "回调配置" },
-  { id: "menu", name: "菜单确认" },
-  { id: "autostart", name: "自动启动" },
-  { id: "vscode", name: "VS Code 集成" },
-  { id: "done", name: "完成" },
-];
-
 const defaultQRCodePollIntervalSeconds = 5;
 const vscodeApplyTimeoutMs = 10_000;
 const vscodeDetectRecoveryTimeoutMs = 5_000;
@@ -100,17 +72,8 @@ export function SetupRoute() {
   const [manifest, setManifest] = useState<FeishuManifestResponse["manifest"] | null>(
     null,
   );
-  const [apps, setApps] = useState<FeishuAppSummary[]>([]);
-  const [selectedAppID, setSelectedAppID] = useState("");
-  const [runtimeRequirements, setRuntimeRequirements] =
-    useState<RuntimeRequirementsDetectResponse | null>(null);
-  const [autostart, setAutostart] = useState<AutostartDetectResponse | null>(
-    null,
-  );
-  const [autostartError, setAutostartError] = useState("");
-  const [vscode, setVSCode] = useState<VSCodeDetectResponse | null>(null);
-  const [vscodeError, setVSCodeError] = useState("");
-  const [currentStep, setCurrentStep] = useState<SetupStepID>("env");
+  const [workflow, setWorkflow] = useState<OnboardingWorkflowResponse | null>(null);
+  const [visibleStageID, setVisibleStageID] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [connectMode, setConnectMode] = useState<"qr" | "manual">("qr");
   const [manualForm, setManualForm] = useState<ManualConnectForm>({
@@ -122,9 +85,6 @@ export function SetupRoute() {
   const [onboardingSession, setOnboardingSession] =
     useState<FeishuOnboardingSession | null>(null);
   const [connectError, setConnectError] = useState("");
-  const [permissionState, setPermissionState] = useState<PermissionState>({
-    status: "idle",
-  });
   const [eventTest, setEventTest] = useState<TestState>({
     status: "idle",
     message: "",
@@ -133,36 +93,21 @@ export function SetupRoute() {
     status: "idle",
     message: "",
   });
-  const [eventsDone, setEventsDone] = useState(false);
-  const [callbackDone, setCallbackDone] = useState(false);
-  const [menuDone, setMenuDone] = useState(false);
-  const [autostartDone, setAutostartDone] = useState(false);
-  const [vscodeDone, setVSCodeDone] = useState(false);
 
-  const activeApp = useMemo(
-    () => apps.find((app) => app.id === selectedAppID) ?? null,
-    [apps, selectedAppID],
-  );
   const title = buildSetupPageTitle(bootstrap);
   const adminURL = relativeLocalPath(bootstrap?.admin.url || "/");
+  const currentStageID = workflow?.currentStage || workflow?.stages[0]?.id || "runtime_requirements";
+  const stageID = visibleStageID || currentStageID;
+  const currentStage = workflowStageByID(workflow, currentStageID);
+  const activeStage = workflowStageByID(workflow, stageID);
+  const activeApp = workflow?.app?.app ?? null;
   const activeConsoleLinks = activeApp?.consoleLinks;
   const isReadOnlyApp = Boolean(activeApp?.readOnly);
-  const currentStepIndex = setupSteps.findIndex((step) => step.id === currentStep);
-  const setupComplete = vscodeDone || currentStep === "done";
-  const autostartReady = Boolean(autostart);
-  const vscodeReadyNow = vscodeIsReady(vscode);
-
-  const stepDone: Record<SetupStepID, boolean> = {
-    env: Boolean(runtimeRequirements?.ready),
-    connect: hasConnectedApp(activeApp),
-    permission: permissionState.status === "ready",
-    events: eventsDone,
-    callback: callbackDone,
-    menu: menuDone,
-    autostart: autostartDone || Boolean(autostart?.enabled),
-    vscode: vscodeDone || vscodeReadyNow,
-    done: setupComplete,
-  };
+  const connectionStage = workflow?.app?.connection || workflowStageByID(workflow, "connect");
+  const permissionStage = workflow?.app?.permission || null;
+  const eventsStage = workflow?.app?.events || null;
+  const callbackStage = workflow?.app?.callback || null;
+  const menuStage = workflow?.app?.menu || null;
 
   useEffect(() => {
     document.title = title;
@@ -170,7 +115,7 @@ export function SetupRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadSetupPage({ showEnvironmentAdvanceNotice: false }).catch(() => {
+    void loadSetupPage({ focusCurrentStage: true }).catch(() => {
       if (!cancelled) {
         setLoadError("当前页面暂时无法读取状态，请刷新后重试。");
         setLoading(false);
@@ -194,19 +139,39 @@ export function SetupRoute() {
   }, [activeApp?.id, activeApp?.name, activeApp?.appId]);
 
   useEffect(() => {
-    setPermissionState({ status: "idle" });
     setEventTest({ status: "idle", message: "" });
     setCallbackTest({ status: "idle", message: "" });
-  }, [selectedAppID]);
+  }, [activeApp?.id]);
+
+  useEffect(() => {
+    if (!workflow) {
+      return;
+    }
+    if (visibleStageID && workflow.stages.some((stage) => stage.id === visibleStageID)) {
+      return;
+    }
+    setVisibleStageID(workflow.currentStage || workflow.stages[0]?.id || "");
+  }, [visibleStageID, workflow]);
 
   useEffect(() => {
     if (typeof window.scrollTo === "function") {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-  }, [currentStep]);
+  }, [stageID]);
 
   useEffect(() => {
-    if (currentStep !== "connect" || connectMode !== "qr") {
+    if (currentStageID === "connect") {
+      return;
+    }
+    setOnboardingSession(null);
+    setConnectError("");
+  }, [currentStageID]);
+
+  useEffect(() => {
+    if (currentStageID !== "connect" || connectMode !== "qr") {
+      return;
+    }
+    if (!stageAllowsAction(connectionStage, "start_qr")) {
       return;
     }
     if (actionBusy === "qr-start" || actionBusy === "qr-complete") {
@@ -233,123 +198,64 @@ export function SetupRoute() {
       void refreshQRCodeSession(onboardingSession.id);
     }, pollDelaySeconds * 1_000);
     return () => window.clearTimeout(timer);
-  }, [actionBusy, connectError, connectMode, currentStep, onboardingSession]);
-
-  useEffect(() => {
-    if (currentStep !== "permission") {
-      return;
-    }
-    if (!activeApp?.id) {
-      return;
-    }
-    if (permissionState.status === "idle") {
-      void checkPermissions(activeApp.id);
-      return;
-    }
-    if (permissionState.status !== "ready") {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setNotice({ tone: "good", message: "权限检查通过，已进入事件订阅。" });
-      setCurrentStep("events");
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [activeApp?.id, currentStep, permissionState]);
-
-  useEffect(() => {
-    if (currentStep === "events" && activeApp?.id && eventTest.status === "idle") {
-      void startTest(activeApp.id, "events");
-    }
-  }, [activeApp?.id, currentStep, eventTest.status]);
+  }, [actionBusy, connectError, connectMode, connectionStage, currentStageID, onboardingSession]);
 
   useEffect(() => {
     if (
-      currentStep === "callback" &&
-      activeApp?.id &&
-      callbackTest.status === "idle"
+      currentStageID !== "events" ||
+      !activeApp?.id ||
+      !stageAllowsAction(eventsStage, "start_test") ||
+      eventTest.status !== "idle"
     ) {
-      void startTest(activeApp.id, "callback");
+      return;
     }
-  }, [activeApp?.id, callbackTest.status, currentStep]);
+    void startTest(activeApp.id, "events");
+  }, [activeApp?.id, currentStageID, eventTest.status, eventsStage]);
 
   useEffect(() => {
-    if (currentStep !== "autostart" || !autostartReady) {
+    if (
+      currentStageID !== "callback" ||
+      !activeApp?.id ||
+      !stageAllowsAction(callbackStage, "start_test") ||
+      callbackTest.status !== "idle"
+    ) {
       return;
     }
-    if (autostartError) {
-      return;
-    }
-    if (autostart?.supported !== false) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setAutostartDone(true);
-      setNotice({ tone: "warn", message: "当前系统不支持自动启动，已进入 VS Code 集成。" });
-      setCurrentStep("vscode");
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [autostart, autostartError, autostartReady, currentStep]);
+    void startTest(activeApp.id, "callback");
+  }, [activeApp?.id, callbackStage, callbackTest.status, currentStageID]);
 
   async function loadSetupPage(options?: {
     preferredAppID?: string;
-    preserveStep?: boolean;
-    showEnvironmentAdvanceNotice?: boolean;
+    soft?: boolean;
+    focusCurrentStage?: boolean;
   }) {
-    if (!options?.preserveStep) {
+    if (!options?.soft) {
       setLoading(true);
     }
     setLoadError("");
-    const [
-      bootstrapState,
-      manifestState,
-      appList,
-      runtimeState,
-      autostartState,
-      vscodeState,
-    ] =
-      await Promise.all([
-        requestJSON<BootstrapState>("/api/setup/bootstrap-state"),
-        requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
-        requestJSON<FeishuAppsResponse>("/api/setup/feishu/apps"),
-        requestJSON<RuntimeRequirementsDetectResponse>(
-          "/api/setup/runtime-requirements/detect",
-        ),
-        loadAutostartState("/api/setup/autostart/detect"),
-        loadVSCodeState("/api/setup/vscode/detect"),
-      ]);
-
-    const nextSelectedAppID =
-      appList.apps.find((app) => app.id === options?.preferredAppID)?.id ||
-      appList.apps.find((app) => app.id === selectedAppID)?.id ||
-      appList.apps[0]?.id ||
-      "";
+    const preferredAppID =
+      options?.preferredAppID || workflow?.selectedAppId || activeApp?.id || "";
+    const [bootstrapState, manifestState, workflowState] = await Promise.all([
+      requestJSON<BootstrapState>("/api/setup/bootstrap-state"),
+      requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
+      requestJSON<OnboardingWorkflowResponse>(buildWorkflowPath(preferredAppID)),
+    ]);
 
     setBootstrap(bootstrapState);
     setManifest(manifestState.manifest);
-    setApps(appList.apps);
-    setSelectedAppID(nextSelectedAppID);
-    setRuntimeRequirements(runtimeState);
-    setAutostart(autostartState.data);
-    setAutostartError(autostartState.error);
-    setVSCode(vscodeState.data);
-    setVSCodeError(vscodeState.error);
-    setLoading(false);
-
-    if (!options?.preserveStep) {
-      const selectedApp =
-        appList.apps.find((app) => app.id === nextSelectedAppID) ?? null;
-      const nextStep = deriveSetupEntryStep(runtimeState, selectedApp);
-      setCurrentStep(nextStep);
-      if (options?.showEnvironmentAdvanceNotice && nextStep === "connect") {
-        setNotice({ tone: "good", message: "环境正常，已自动进入飞书连接。" });
-      }
+    setWorkflow(workflowState);
+    if (options?.focusCurrentStage) {
+      setVisibleStageID(workflowState.currentStage || workflowState.stages[0]?.id || "");
     }
+    setLoading(false);
+    return workflowState;
   }
 
   async function retryEnvironmentCheck() {
     await loadSetupPage({
       preferredAppID: activeApp?.id,
-      showEnvironmentAdvanceNotice: true,
+      soft: true,
+      focusCurrentStage: true,
     });
   }
 
@@ -403,12 +309,17 @@ export function SetupRoute() {
       }
       await loadSetupPage({
         preferredAppID: response.data.app.id,
-        preserveStep: true,
+        soft: true,
+        focusCurrentStage: true,
       });
-      setSelectedAppID(response.data.app.id);
-      setNotice({ tone: "good", message: "连接验证成功。" });
+      setNotice({
+        tone: "good",
+        message: buildSetupFeishuVerifySuccessMessage(
+          response.data.app,
+          response.data.mutation,
+        ),
+      });
       setConnectError("");
-      setCurrentStep("permission");
     } catch {
       setConnectError("扫码已经完成，但当前还不能继续，请稍后重试。");
     } finally {
@@ -450,8 +361,11 @@ export function SetupRoute() {
         `/api/setup/feishu/apps/${encodeURIComponent(appID)}/verify`,
         { method: "POST" },
       );
-      await loadSetupPage({ preferredAppID: appID, preserveStep: true });
-      setSelectedAppID(appID);
+      await loadSetupPage({
+        preferredAppID: appID,
+        soft: true,
+        focusCurrentStage: true,
+      });
       if (!verify.ok) {
         setNotice({
           tone: "danger",
@@ -459,8 +373,10 @@ export function SetupRoute() {
         });
         return;
       }
-      setNotice({ tone: "good", message: "连接验证成功。" });
-      setCurrentStep("permission");
+      setNotice({
+        tone: "good",
+        message: buildSetupFeishuVerifySuccessMessage(verify.data.app),
+      });
     } catch (error: unknown) {
       if (await maybeRecoverRuntimeApplyFailure(error, activeApp?.id)) {
         return;
@@ -481,7 +397,8 @@ export function SetupRoute() {
     const details = error.details as RuntimeApplyFailureDetails | undefined;
     await loadSetupPage({
       preferredAppID: details?.app?.id || details?.gatewayId || fallbackAppID,
-      preserveStep: true,
+      soft: true,
+      focusCurrentStage: true,
     });
     setNotice({
       tone: "warn",
@@ -491,33 +408,23 @@ export function SetupRoute() {
     return true;
   }
 
-  async function checkPermissions(appID: string) {
-    setPermissionState({ status: "loading" });
-    const response = await requestJSONAllowHTTPError<
-      FeishuAppPermissionCheckResponse | APIErrorShape
-    >(`/api/setup/feishu/apps/${encodeURIComponent(appID)}/permission-check`);
-    if (!response.ok) {
-      setPermissionState({
-        status: "error",
-        message: "暂时无法完成权限检查，请稍后重试。",
-      });
-      return;
-    }
-    const payload = response.data as FeishuAppPermissionCheckResponse;
-    setPermissionState(payload.ready ? { status: "ready", data: payload } : { status: "missing", data: payload });
+  async function refreshWorkflowFocus() {
+    await loadSetupPage({
+      preferredAppID: activeApp?.id,
+      soft: true,
+      focusCurrentStage: true,
+    });
   }
 
-  async function startTest(
-    appID: string,
-    kind: "events" | "callback",
-  ) {
+  async function startTest(appID: string, kind: "events" | "callback") {
     const setState = kind === "events" ? setEventTest : setCallbackTest;
     setState({ status: "sending", message: "" });
-    const response = await requestJSONAllowHTTPError<
-      FeishuAppTestStartResponse | APIErrorShape
-    >(`/api/setup/feishu/apps/${encodeURIComponent(appID)}/${kind === "events" ? "test-events" : "test-callback"}`, {
-      method: "POST",
-    });
+    const response = await requestJSONAllowHTTPError<FeishuAppTestStartResponse | APIErrorShape>(
+      `/api/setup/feishu/apps/${encodeURIComponent(appID)}/${kind === "events" ? "test-events" : "test-callback"}`,
+      {
+        method: "POST",
+      },
+    );
     if (!response.ok) {
       const error = readAPIError(response);
       setState({
@@ -532,8 +439,10 @@ export function SetupRoute() {
       });
       return;
     }
-    const payload = response.data as FeishuAppTestStartResponse;
-    setState({ status: "sent", message: payload.message });
+    setState({
+      status: "sent",
+      message: response.data.message,
+    });
   }
 
   async function clearInstallTest(appID: string, kind: "events" | "callback") {
@@ -545,17 +454,65 @@ export function SetupRoute() {
     );
   }
 
-  async function applyAutostartAndContinue() {
-    setActionBusy("autostart");
+  async function confirmAppStep(step: "events" | "callback" | "menu") {
+    if (!activeApp?.id) {
+      return;
+    }
+    setActionBusy(`confirm-${step}`);
     try {
-      const response = await sendJSON<AutostartDetectResponse>(
-        "/api/setup/autostart/apply",
-        "POST",
+      await requestVoid(
+        `/api/setup/feishu/apps/${encodeURIComponent(activeApp.id)}/onboarding-steps/${encodeURIComponent(step)}/complete`,
+        {
+          method: "POST",
+        },
       );
-      setAutostart(response);
-      setAutostartDone(true);
+      if (step === "events" || step === "callback") {
+        await clearInstallTest(activeApp.id, step);
+      }
+      if (step === "events") {
+        setEventTest({ status: "idle", message: "" });
+      }
+      if (step === "callback") {
+        setCallbackTest({ status: "idle", message: "" });
+      }
+      await refreshWorkflowFocus();
+      setNotice({ tone: "good", message: `${stepTitle(step)}已记录完成。` });
+    } catch {
+      setNotice({ tone: "danger", message: `当前还不能记录${stepTitle(step)}完成，请稍后重试。` });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function recordMachineDecision(
+    kind: "autostart" | "vscode",
+    decision: string,
+    message: string,
+  ) {
+    setActionBusy(`${kind}-${decision}`);
+    try {
+      await requestVoid(`/api/setup/onboarding/machine-decisions/${kind}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      });
+      await refreshWorkflowFocus();
+      setNotice({ tone: "good", message });
+    } catch {
+      setNotice({ tone: "danger", message: "当前还不能保存你的选择，请稍后重试。" });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function applyAutostart() {
+    setActionBusy("autostart-apply");
+    try {
+      await sendJSON("/api/setup/autostart/apply", "POST");
+      await refreshWorkflowFocus();
       setNotice({ tone: "good", message: "已启用自动启动。" });
-      setCurrentStep("vscode");
     } catch {
       setNotice({ tone: "danger", message: "当前还不能启用自动启动，请稍后重试。" });
     } finally {
@@ -563,15 +520,16 @@ export function SetupRoute() {
     }
   }
 
-  async function applyVSCodeAndContinue() {
+  async function applyVSCode() {
+    const vscode = workflow?.vscode.vscode || null;
     if (!vscode) {
       setNotice({ tone: "danger", message: "暂时还不能完成 VS Code 集成，请稍后重试。" });
       return;
     }
-    setActionBusy("vscode");
+    setActionBusy("vscode-apply");
     try {
       const mode = vscodeApplyModeForScenario(vscode, "current_machine");
-      const response = await sendJSON<VSCodeDetectResponse>(
+      await sendJSON(
         "/api/setup/vscode/apply",
         "POST",
         {
@@ -580,11 +538,8 @@ export function SetupRoute() {
         },
         { timeoutMs: vscodeApplyTimeoutMs },
       );
-      setVSCode(response);
-      setVSCodeError("");
-      setVSCodeDone(true);
+      await refreshWorkflowFocus();
       setNotice({ tone: "good", message: "VS Code 集成已完成。" });
-      setCurrentStep("done");
     } catch (error: unknown) {
       if (await maybeRecoverVSCodeApply(error)) {
         return;
@@ -599,19 +554,21 @@ export function SetupRoute() {
   }
 
   async function maybeRecoverVSCodeApply(error: unknown): Promise<boolean> {
-    const refreshed = await loadVSCodeState(
-      "/api/setup/vscode/detect",
-      vscodeDetectRecoveryTimeoutMs,
-    );
-    if (refreshed.data) {
-      setVSCode(refreshed.data);
-      setVSCodeError("");
-      if (vscodeIsReady(refreshed.data)) {
-        setVSCodeDone(true);
+    try {
+      const refreshed = await loadSetupPage({
+        preferredAppID: activeApp?.id,
+        soft: true,
+        focusCurrentStage: true,
+      });
+      const ready =
+        refreshed.vscode.status === "complete" ||
+        vscodeIsReady(refreshed.vscode.vscode || null);
+      if (ready) {
         setNotice({ tone: "good", message: "VS Code 集成已完成。" });
-        setCurrentStep("done");
         return true;
       }
+    } catch {
+      // ignore refresh failure and continue with timeout handling below
     }
 
     if (error instanceof APIRequestError && error.code === "request_timeout") {
@@ -625,47 +582,126 @@ export function SetupRoute() {
     return false;
   }
 
-  function renderCurrentStep() {
-    switch (currentStep) {
-      case "env":
-        return renderEnvironmentStep();
-      case "connect":
-        return renderConnectStep();
-      case "permission":
-        return renderPermissionStep();
-      case "events":
-        return renderEventsStep();
-      case "callback":
-        return renderCallbackStep();
-      case "menu":
-        return renderMenuStep();
-      case "autostart":
-        return renderAutostartStep();
-      case "vscode":
-        return renderVSCodeStep();
-      case "done":
-        return renderDoneStep();
-      default:
-        return null;
+  async function completeSetup() {
+    setActionBusy("complete-setup");
+    try {
+      const response = await requestJSONAllowHTTPError<SetupCompleteResponse>(
+        "/api/setup/complete",
+        { method: "POST" },
+      );
+      if (!response.ok) {
+        const error = readAPIError(response);
+        setNotice({
+          tone: "danger",
+          message:
+            typeof error?.details === "string" && error.details.trim()
+              ? String(error.details)
+              : "当前 setup 还不能完成，请先处理阻塞项。",
+        });
+        await refreshWorkflowFocus();
+        return;
+      }
+      const nextURL = relativeLocalPath(response.data.adminURL || bootstrap?.admin.url || "/");
+      window.location.assign(nextURL);
+    } catch {
+      setNotice({ tone: "danger", message: "当前还不能完成 setup，请稍后重试。" });
+    } finally {
+      setActionBusy("");
     }
   }
 
-  function renderEnvironmentStep() {
+  function renderWorkflowOverview() {
+    if (!workflow) {
+      return null;
+    }
+    const remainingActions = workflow.guide?.remainingManualActions || [];
+    return (
+      <div className="detail-stack">
+        <div
+          className={`notice-banner ${
+            workflow.completion.canComplete ? "good" : "warn"
+          }`}
+        >
+          {workflow.completion.summary}
+        </div>
+        {workflow.guide?.autoConfiguredSummary ? (
+          <p className="support-copy">{workflow.guide.autoConfiguredSummary}</p>
+        ) : null}
+        {currentStage?.title ? (
+          <p className="support-copy">当前推荐处理：{currentStage.title}</p>
+        ) : null}
+        {!workflow.completion.canComplete && workflow.completion.blockingReason ? (
+          <div className="notice-banner warn">{workflow.completion.blockingReason}</div>
+        ) : null}
+        {remainingActions.length > 0 ? (
+          <div className="panel">
+            <div className="section-heading">
+              <div>
+                <h4>剩余建议项</h4>
+                <p>这些项目不会都阻塞 setup 完成，但页面会继续按 workflow 提示你处理。</p>
+              </div>
+            </div>
+            <ul className="ordered-checklist">
+              {remainingActions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {workflow.completion.canComplete && stageID !== "done" ? (
+          <div className="button-row">
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "complete-setup"}
+              onClick={() => void completeSetup()}
+            >
+              完成设置并进入管理页面
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderCurrentStage() {
+    switch (stageID) {
+      case "runtime_requirements":
+        return renderEnvironmentStage();
+      case "connect":
+        return renderConnectStage();
+      case "permission":
+        return renderPermissionStage();
+      case "events":
+        return renderEventsStage();
+      case "callback":
+        return renderCallbackStage();
+      case "menu":
+        return renderMenuStage();
+      case "autostart":
+        return renderAutostartStage();
+      case "vscode":
+        return renderVSCodeStage();
+      case "done":
+        return renderDoneStage();
+      default:
+        return renderEnvironmentStage();
+    }
+  }
+
+  function renderEnvironmentStage() {
+    const runtimeRequirements = workflow?.runtimeRequirements;
     const failingChecks =
       runtimeRequirements?.checks.filter((check) => check.status !== "pass") || [];
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>环境检查</h2>
-          <p>进入后自动检查服务与运行条件。</p>
+          <p>当前页面直接使用后端 workflow 返回的环境检查结果。</p>
         </div>
-        {runtimeRequirements?.ready ? (
-          <div className="notice-banner good">
-            环境检查通过，正在进入飞书连接...
-          </div>
-        ) : (
-          <div className="notice-banner warn">当前服务还在检查中，请稍候。</div>
-        )}
+        <div className={`notice-banner ${runtimeRequirements?.ready ? "good" : "warn"}`}>
+          {runtimeRequirements?.summary || "当前服务还在检查中，请稍候。"}
+        </div>
         {failingChecks.length > 0 ? (
           <div className="panel">
             <div className="section-heading">
@@ -684,28 +720,32 @@ export function SetupRoute() {
             </ul>
           </div>
         ) : null}
-        {!runtimeRequirements?.ready ? (
-          <div className="button-row">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => void retryEnvironmentCheck()}
-            >
-              重新检查
-            </button>
-          </div>
-        ) : null}
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void retryEnvironmentCheck()}
+          >
+            重新检查
+          </button>
+        </div>
       </section>
     );
   }
 
-  function renderConnectStep() {
+  function renderConnectStage() {
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>飞书连接</h2>
-          <p>选择扫码创建或手动输入，连接验证通过后会自动进入下一步。</p>
+          <p>{connectionStage?.summary || "接入并验证一个可用的飞书应用。"}</p>
         </div>
+        {activeApp ? (
+          <div className="notice-banner good">
+            当前应用：{activeApp.name || activeApp.id}
+            {activeApp.readOnly ? "（运行时接管，只能验证，不可在网页修改）" : ""}
+          </div>
+        ) : null}
         <div className="choice-toggle">
           <button
             className={connectMode === "qr" ? "primary-button" : "ghost-button"}
@@ -715,9 +755,7 @@ export function SetupRoute() {
             扫码创建
           </button>
           <button
-            className={
-              connectMode === "manual" ? "primary-button" : "ghost-button"
-            }
+            className={connectMode === "manual" ? "primary-button" : "ghost-button"}
             type="button"
             onClick={() => changeConnectMode("manual")}
           >
@@ -730,19 +768,20 @@ export function SetupRoute() {
   }
 
   function renderQRCodePanel() {
+    const canStart = stageAllowsAction(connectionStage, "start_qr");
     return (
       <div className="panel">
         <div className="scan-preview">
           <div>
             <h4 style={{ margin: 0 }}>扫码创建</h4>
             <p className="support-copy">
-              请使用飞书扫码完成创建，页面会自动轮询并继续下一步。
+              请使用飞书扫码完成创建，页面会按当前 workflow 自动刷新连接阶段。
             </p>
             <div className="scan-frame">
               {onboardingSession?.qrCodeDataUrl ? (
                 <img alt="飞书扫码创建二维码" src={onboardingSession.qrCodeDataUrl} />
               ) : (
-                <span>二维码准备中</span>
+                <span>{canStart ? "二维码准备中" : "当前暂时不能发起扫码"}</span>
               )}
             </div>
           </div>
@@ -751,9 +790,7 @@ export function SetupRoute() {
               <div className="notice-banner warn">正在等待扫码结果...</div>
             ) : null}
             {onboardingSession?.status === "ready" && !connectError ? (
-              <div className="notice-banner good">
-                扫码成功，连接验证已通过，正在进入权限检查...
-              </div>
+              <div className="notice-banner good">扫码成功，正在刷新当前连接状态...</div>
             ) : null}
             {onboardingSession?.status === "failed" ||
             onboardingSession?.status === "expired" ||
@@ -769,7 +806,7 @@ export function SetupRoute() {
                 <button
                   className="secondary-button"
                   type="button"
-                  disabled={actionBusy === "qr-start"}
+                  disabled={actionBusy === "qr-start" || !canStart}
                   onClick={() => {
                     setOnboardingSession(null);
                     setConnectError("");
@@ -808,6 +845,7 @@ export function SetupRoute() {
   }
 
   function renderManualPanel() {
+    const canSubmit = stageAllowsAction(connectionStage, "submit_manual");
     return (
       <div className="panel">
         {isReadOnlyApp ? (
@@ -870,7 +908,7 @@ export function SetupRoute() {
           <button
             className="primary-button"
             type="button"
-            disabled={actionBusy === "manual-connect"}
+            disabled={actionBusy === "manual-connect" || !canSubmit}
             onClick={() => void submitManualConnect()}
           >
             验证并继续
@@ -880,117 +918,91 @@ export function SetupRoute() {
     );
   }
 
-  function renderPermissionStep() {
-    if (permissionState.status === "loading" || permissionState.status === "idle") {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>权限检查</h2>
-            <p>进入页面后自动检查当前权限。</p>
-          </div>
-          <div className="notice-banner warn">正在检查权限，请稍候...</div>
-        </section>
-      );
+  function renderPermissionStage() {
+    if (!permissionStage) {
+      return renderUnavailableStage("权限检查", "当前还没有可用的飞书应用，暂时无法检查权限。");
     }
-
-    if (permissionState.status === "ready") {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>权限检查</h2>
-            <p>权限已完整，系统会自动进入下一步。</p>
-          </div>
-          <div className="notice-banner good">检查通过，正在进入事件订阅...</div>
-        </section>
-      );
-    }
-
-    if (permissionState.status === "error") {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>权限检查</h2>
-            <p>暂时没有拿到最新结果，请重新检查。</p>
-          </div>
-          <div className="notice-banner danger">{permissionState.message}</div>
-          <div className="button-row">
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => activeApp?.id && void checkPermissions(activeApp.id)}
-            >
-              重新检查
-            </button>
-          </div>
-        </section>
-      );
-    }
-
+    const showWarning = permissionStage.status !== "complete";
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>权限检查</h2>
-          <p>检测到缺失权限，请先在飞书后台补齐。</p>
+          <p>{permissionStage.summary}</p>
         </div>
-        <div className="notice-banner danger">
-          当前还不能进入下一步，请先补齐缺失权限。
+        <div className={`notice-banner ${showWarning ? "warn" : "good"}`}>
+          {permissionStage.status === "complete"
+            ? "当前基础权限已经齐全。"
+            : "这一步现在是建议补齐项，不会单独决定 setup 是否可完成。"}
         </div>
-        <div className="scope-list">
-          {(permissionState.data.missingScopes || []).map((scope) => (
-            <span key={`${scope.scopeType || "tenant"}-${scope.scope}`} className="scope-pill">
-              <code>{scope.scope}</code>
-            </span>
-          ))}
-        </div>
-        <div className="panel">
-          <div className="section-heading">
-            <div>
-              <h4>可复制的一次性权限配置</h4>
-              <p>补齐后重新检查即可继续。</p>
+        {(permissionStage.missingScopes || []).length > 0 ? (
+          <div className="scope-list">
+            {(permissionStage.missingScopes || []).map((scope) => (
+              <span
+                key={`${scope.scopeType || "tenant"}-${scope.scope}`}
+                className="scope-pill"
+              >
+                <code>{scope.scope}</code>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {permissionStage.grantJSON ? (
+          <div className="panel">
+            <div className="section-heading">
+              <div>
+                <h4>可复制的一次性权限配置</h4>
+                <p>补齐后刷新 workflow 即可看到最新状态。</p>
+              </div>
+            </div>
+            <textarea
+              readOnly
+              className="code-textarea"
+              value={permissionStage.grantJSON || ""}
+            />
+            <div className="button-row">
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => void copyGrantJSON(permissionStage.grantJSON || "")}
+              >
+                复制配置
+              </button>
+              {stageAllowsAction(permissionStage, "open_auth") ? (
+                <a
+                  className="ghost-button"
+                  href={activeConsoleLinks?.auth || "#"}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  打开飞书后台权限配置
+                </a>
+              ) : null}
             </div>
           </div>
-          <textarea
-            readOnly
-            className="code-textarea"
-            value={permissionState.data.grantJSON || ""}
-          />
-          <div className="button-row">
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() =>
-                void copyGrantJSON(permissionState.data.grantJSON || "")
-              }
-            >
-              复制配置
-            </button>
-            <a
-              className="ghost-button"
-              href={permissionState.data.app.consoleLinks?.auth || activeConsoleLinks?.auth || "#"}
-              rel="noreferrer"
-              target="_blank"
-            >
-              打开飞书后台权限配置
-            </a>
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => activeApp?.id && void checkPermissions(activeApp.id)}
-            >
-              我已处理，重新检查
-            </button>
-          </div>
+        ) : null}
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!stageAllowsAction(permissionStage, "recheck")}
+            onClick={() => void refreshWorkflowFocus()}
+          >
+            重新检查
+          </button>
         </div>
       </section>
     );
   }
 
-  function renderEventsStep() {
+  function renderEventsStage() {
+    if (!eventsStage) {
+      return renderUnavailableStage("事件订阅", "当前还没有可用的飞书应用，暂时无法进入事件订阅联调。");
+    }
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>事件订阅</h2>
-          <p>进入本页后，机器人会自动发出事件订阅测试提示。</p>
+          <p>{eventsStage.summary}</p>
         </div>
         {eventTest.status === "sent" ? (
           <div className="notice-banner good">
@@ -1001,8 +1013,7 @@ export function SetupRoute() {
           <div className="notice-banner danger">{eventTest.message}</div>
         ) : null}
         <p className="support-copy">
-          前往
-          {" "}
+          前往{" "}
           <a
             className="inline-link"
             href={activeConsoleLinks?.events || "#"}
@@ -1010,8 +1021,7 @@ export function SetupRoute() {
             target="_blank"
           >
             飞书后台
-          </a>
-          {" "}
+          </a>{" "}
           配置事件订阅。
         </p>
         {renderRequirementTable(
@@ -1025,30 +1035,40 @@ export function SetupRoute() {
           })),
         )}
         <div className="button-row">
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              if (activeApp?.id) {
-                void clearInstallTest(activeApp.id, "events");
-              }
-              setEventsDone(true);
-              setCurrentStep("callback");
-            }}
-          >
-            下一步
-          </button>
+          {stageAllowsAction(eventsStage, "start_test") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "test-events" || !activeApp?.id}
+              onClick={() => activeApp?.id && void startTest(activeApp.id, "events")}
+            >
+              重新发送测试提示
+            </button>
+          ) : null}
+          {stageAllowsAction(eventsStage, "confirm") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "confirm-events"}
+              onClick={() => void confirmAppStep("events")}
+            >
+              我已完成，继续
+            </button>
+          ) : null}
         </div>
       </section>
     );
   }
 
-  function renderCallbackStep() {
+  function renderCallbackStage() {
+    if (!callbackStage) {
+      return renderUnavailableStage("回调配置", "当前还没有可用的飞书应用，暂时无法进入回调联调。");
+    }
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>回调配置</h2>
-          <p>进入本页后，机器人会自动发出回调测试卡片。</p>
+          <p>{callbackStage.summary}</p>
         </div>
         {callbackTest.status === "sent" ? (
           <div className="notice-banner good">
@@ -1059,8 +1079,7 @@ export function SetupRoute() {
           <div className="notice-banner danger">{callbackTest.message}</div>
         ) : null}
         <p className="support-copy">
-          前往
-          {" "}
+          前往{" "}
           <a
             className="inline-link"
             href={activeConsoleLinks?.callback || "#"}
@@ -1068,8 +1087,7 @@ export function SetupRoute() {
             target="_blank"
           >
             飞书后台
-          </a>
-          {" "}
+          </a>{" "}
           配置回调。
         </p>
         {renderRequirementTable(
@@ -1083,34 +1101,43 @@ export function SetupRoute() {
           })),
         )}
         <div className="button-row">
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              if (activeApp?.id) {
-                void clearInstallTest(activeApp.id, "callback");
-              }
-              setCallbackDone(true);
-              setCurrentStep("menu");
-            }}
-          >
-            下一步
-          </button>
+          {stageAllowsAction(callbackStage, "start_test") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "test-callback" || !activeApp?.id}
+              onClick={() => activeApp?.id && void startTest(activeApp.id, "callback")}
+            >
+              重新发送测试提示
+            </button>
+          ) : null}
+          {stageAllowsAction(callbackStage, "confirm") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "confirm-callback"}
+              onClick={() => void confirmAppStep("callback")}
+            >
+              我已完成，继续
+            </button>
+          ) : null}
         </div>
       </section>
     );
   }
 
-  function renderMenuStep() {
+  function renderMenuStage() {
+    if (!menuStage) {
+      return renderUnavailableStage("菜单确认", "当前还没有可用的飞书应用，暂时无法确认菜单。");
+    }
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>菜单确认</h2>
-          <p>请在飞书后台完成菜单配置后继续下一步。</p>
+          <p>{menuStage.summary}</p>
         </div>
         <p className="support-copy">
-          前往
-          {" "}
+          前往{" "}
           <a
             className="inline-link"
             href={activeConsoleLinks?.bot || "#"}
@@ -1118,235 +1145,222 @@ export function SetupRoute() {
             target="_blank"
           >
             飞书后台
-          </a>
-          {" "}
+          </a>{" "}
           完成菜单配置。
         </p>
         <div className="button-row">
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => {
-              setMenuDone(true);
-              setCurrentStep("autostart");
-            }}
-          >
-            下一步
-          </button>
+          {stageAllowsAction(menuStage, "confirm") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "confirm-menu"}
+              onClick={() => void confirmAppStep("menu")}
+            >
+              我已完成，继续
+            </button>
+          ) : null}
         </div>
       </section>
     );
   }
 
-  function renderAutostartStep() {
-    if (!autostartReady) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>自动启动</h2>
-            <p>正在检查当前系统是否支持自动启动。</p>
-          </div>
-          <div className="notice-banner warn">检测中，请稍候...</div>
-        </section>
-      );
+  function renderAutostartStage() {
+    const autostartStage = workflow?.autostart;
+    const autostart = autostartStage?.autostart || null;
+    if (!autostartStage) {
+      return renderUnavailableStage("自动启动", "暂时没有拿到自动启动状态。");
     }
-
-    if (autostartError) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>自动启动</h2>
-            <p>暂时没有确认当前系统的自动启动状态。</p>
-          </div>
-          <div className="notice-banner warn">
-            当前还不能判断自动启动状态。你可以稍后在管理页面继续处理。
-          </div>
-          <div className="button-row">
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => {
-                setAutostartDone(true);
-                setCurrentStep("vscode");
-              }}
-            >
-              先跳过
-            </button>
-          </div>
-        </section>
-      );
-    }
-
-    if (autostart?.supported === false) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>自动启动</h2>
-            <p>当前系统不支持自动启动，已自动跳过。</p>
-          </div>
-          <div className="notice-banner warn">
-            当前系统不支持自动启动，正在进入 VS Code 集成...
-          </div>
-        </section>
-      );
-    }
-
-    if (autostart?.enabled) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>自动启动</h2>
-            <p>当前已经启用自动启动。</p>
-          </div>
-          <div className="notice-banner good">当前已启用。</div>
-          <div className="button-row">
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => {
-                setAutostartDone(true);
-                setCurrentStep("vscode");
-              }}
-            >
-              下一步
-            </button>
-          </div>
-        </section>
-      );
-    }
-
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>自动启动</h2>
-          <p>请选择是否在登录后自动运行。</p>
+          <p>{autostartStage.summary}</p>
         </div>
-        <div className="notice-banner warn">当前默认未启用。</div>
+        <div
+          className={`notice-banner ${
+            autostartStage.status === "complete" ? "good" : "warn"
+          }`}
+        >
+          {autostartStage.summary}
+        </div>
+        {autostartStage.error ? (
+          <div className="notice-banner warn">{autostartStage.error}</div>
+        ) : null}
         <div className="button-row">
-          <button
-            className="primary-button"
-            type="button"
-            disabled={actionBusy === "autostart"}
-            onClick={() => void applyAutostartAndContinue()}
-          >
-            启用自动启动
-          </button>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => {
-              setAutostartDone(true);
-              setNotice({ tone: "good", message: "自动启动保持关闭。" });
-              setCurrentStep("vscode");
-            }}
-          >
-            保持关闭并继续
-          </button>
+          {stageAllowsAction(autostartStage, "apply") && autostart?.canApply ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "autostart-apply"}
+              onClick={() => void applyAutostart()}
+            >
+              启用自动启动
+            </button>
+          ) : null}
+          {stageAllowsAction(autostartStage, "record_enabled") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "autostart-enabled"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "autostart",
+                  "enabled",
+                  "已记录自动启动决策。",
+                )
+              }
+            >
+              已启用，记录完成
+            </button>
+          ) : null}
+          {stageAllowsAction(autostartStage, "defer") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "autostart-deferred"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "autostart",
+                  "deferred",
+                  "自动启动已留待稍后处理。",
+                )
+              }
+            >
+              稍后处理
+            </button>
+          ) : null}
         </div>
       </section>
     );
   }
 
-  function renderVSCodeStep() {
-    if (vscodeError) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>VS Code 集成</h2>
-            <p>是否在这台机器上使用 VS Code + Codex。</p>
-          </div>
-          <div className="notice-banner warn">
-            当前还不能确认 VS Code 集成状态。你可以稍后在管理页面继续处理。
-          </div>
-          <div className="button-row">
-            <button
-              className="ghost-button"
-              type="button"
-              onClick={() => {
-                setVSCodeDone(true);
-                setCurrentStep("done");
-              }}
-            >
-              先不使用
-            </button>
-          </div>
-        </section>
-      );
+  function renderVSCodeStage() {
+    const vscodeStage = workflow?.vscode;
+    const vscode = vscodeStage?.vscode || null;
+    if (!vscodeStage) {
+      return renderUnavailableStage("VS Code 集成", "暂时没有拿到 VS Code 集成状态。");
     }
-
-    if (vscodeReadyNow) {
-      return (
-        <section className="step-section">
-          <div className="step-stage-head">
-            <h2>VS Code 集成</h2>
-            <p>当前已经完成 VS Code 集成。</p>
-          </div>
-          <div className="notice-banner good">当前已接入。</div>
-          <div className="button-row">
-            <button
-              className="primary-button"
-              type="button"
-              onClick={() => {
-                setVSCodeDone(true);
-                setCurrentStep("done");
-              }}
-            >
-              下一步
-            </button>
-          </div>
-        </section>
-      );
-    }
-
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>VS Code 集成</h2>
-          <p>是否在这台机器上使用 VS Code + Codex。</p>
+          <p>{vscodeStage.summary}</p>
         </div>
-        <div className="notice-banner warn">
-          如果你需要在这台机器上使用 VS Code，请完成集成。
+        <div
+          className={`notice-banner ${
+            vscodeStage.status === "complete" ? "good" : "warn"
+          }`}
+        >
+          {vscodeStage.summary}
         </div>
+        {vscodeStage.error ? (
+          <div className="notice-banner warn">{vscodeStage.error}</div>
+        ) : null}
         <div className="button-row">
-          <button
-            className="primary-button"
-            type="button"
-            disabled={actionBusy === "vscode"}
-            onClick={() => void applyVSCodeAndContinue()}
-          >
-            确认集成
-          </button>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => {
-              setVSCodeDone(true);
-              setCurrentStep("done");
-            }}
-          >
-            先不使用
-          </button>
+          {stageAllowsAction(vscodeStage, "apply") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "vscode-apply"}
+              onClick={() => void applyVSCode()}
+            >
+              确认集成
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "record_managed_shim") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "vscode-managed_shim"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "managed_shim",
+                  "已记录 VS Code 集成决策。",
+                )
+              }
+            >
+              已处理，记录完成
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "remote_only") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "vscode-remote_only"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "remote_only",
+                  "VS Code 集成已留到目标 SSH 机器上处理。",
+                )
+              }
+            >
+              去目标 SSH 机器处理
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "defer") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "vscode-deferred"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "deferred",
+                  "VS Code 集成已留待稍后处理。",
+                )
+              }
+            >
+              稍后处理
+            </button>
+          ) : null}
         </div>
+        {vscode ? (
+          <p className="support-copy">
+            当前检测结果：{vscodeIsReady(vscode) ? "已接入" : "尚未接入"}。
+          </p>
+        ) : null}
       </section>
     );
   }
 
-  function renderDoneStep() {
+  function renderDoneStage() {
     return (
       <section className="step-section">
         <div className="step-stage-head">
           <h2>欢迎使用</h2>
-          <p>基础设置已完成。</p>
+          <p>当前 workflow 已经允许完成 setup。</p>
         </div>
         <div className="completed-card">
           <h3>欢迎，设置已经完成。</h3>
           <p>你现在可以进入管理页面，继续维护机器人、系统集成和存储清理。</p>
         </div>
         <div className="button-row">
-          <a className="primary-button" href={adminURL}>
-            去管理页面
+          <button
+            className="primary-button"
+            type="button"
+            disabled={actionBusy === "complete-setup"}
+            onClick={() => void completeSetup()}
+          >
+            完成设置并进入管理页面
+          </button>
+          <a className="ghost-button" href={adminURL}>
+            直接查看管理页面
           </a>
         </div>
+      </section>
+    );
+  }
+
+  function renderUnavailableStage(titleText: string, message: string) {
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>{titleText}</h2>
+          <p>{message}</p>
+        </div>
+        <div className="notice-banner warn">{message}</div>
       </section>
     );
   }
@@ -1421,7 +1435,7 @@ export function SetupRoute() {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => void loadSetupPage()}
+                onClick={() => void loadSetupPage({ focusCurrentStage: true })}
               >
                 重新加载
               </button>
@@ -1446,53 +1460,94 @@ export function SetupRoute() {
         <aside className="panel step-rail">
           <div className="step-stage-head">
             <h2>设置流程</h2>
-            <p>可随时回看已完成步骤。</p>
+            <p>当前步骤和状态全部来自后端 workflow。</p>
           </div>
           <div className="step-list">
-            {setupSteps.map((step, index) => {
-              const disabled = !(index <= currentStepIndex || stepDone[step.id]);
-              return (
-                <button
-                  key={step.id}
-                  className={`step-item${step.id === currentStep ? " active" : ""}${stepDone[step.id] ? " done" : ""}`}
-                  disabled={disabled}
-                  type="button"
-                  onClick={() => setCurrentStep(step.id)}
-                >
-                  <strong>{step.name}</strong>
-                  <span>
-                    {step.id === currentStep
-                      ? "进行中"
-                      : stepDone[step.id]
-                        ? "已完成"
-                        : "待处理"}
-                  </span>
-                </button>
-              );
-            })}
+            {(workflow?.stages || []).map((stage) => (
+              <button
+                key={stage.id}
+                className={`step-item${stage.id === stageID ? " active" : ""}${
+                  isResolvedStageStatus(stage.status) ? " done" : ""
+                }`}
+                type="button"
+                onClick={() => setVisibleStageID(stage.id)}
+              >
+                <strong>{stage.title}</strong>
+                <span>{workflowStageLabel(stage, currentStageID)}</span>
+              </button>
+            ))}
           </div>
         </aside>
-        <section className="panel step-stage">{renderCurrentStep()}</section>
+        <section className="panel step-stage">
+          {renderWorkflowOverview()}
+          {renderCurrentStage()}
+        </section>
       </main>
     </div>
   );
 }
 
-function deriveSetupEntryStep(
-  runtimeRequirements: RuntimeRequirementsDetectResponse | null,
-  app: FeishuAppSummary | null,
-): SetupStepID {
-  if (!runtimeRequirements?.ready) {
-    return "env";
+function buildWorkflowPath(preferredAppID: string): string {
+  if (!preferredAppID.trim()) {
+    return "/api/setup/onboarding/workflow";
   }
-  if (!hasConnectedApp(app)) {
-    return "connect";
-  }
-  return "permission";
+  return `/api/setup/onboarding/workflow?app=${encodeURIComponent(preferredAppID)}`;
 }
 
-function hasConnectedApp(app: FeishuAppSummary | null): boolean {
-  return Boolean(app?.verifiedAt);
+function stepTitle(step: "events" | "callback" | "menu"): string {
+  switch (step) {
+    case "events":
+      return "事件订阅";
+    case "callback":
+      return "回调配置";
+    case "menu":
+      return "菜单确认";
+    default:
+      return step;
+  }
+}
+
+function workflowStageByID(
+  workflow: OnboardingWorkflowResponse | null,
+  id: string,
+): OnboardingWorkflowStage | null {
+  if (!workflow) {
+    return null;
+  }
+  return workflow.stages.find((stage) => stage.id === id) || null;
+}
+
+function stageAllowsAction(
+  stage:
+    | OnboardingWorkflowStage
+    | OnboardingWorkflowPermission
+    | OnboardingWorkflowAppStep
+    | OnboardingWorkflowMachineStep
+    | null
+    | undefined,
+  action: string,
+): boolean {
+  if (!stage) {
+    return false;
+  }
+  return (stage.allowedActions || []).includes(action);
+}
+
+function isResolvedStageStatus(status: string): boolean {
+  return status === "complete" || status === "deferred" || status === "not_applicable";
+}
+
+function workflowStageLabel(stage: OnboardingWorkflowStage, currentStageID: string): string {
+  if (stage.id === currentStageID) {
+    return "当前推荐";
+  }
+  if (isResolvedStageStatus(stage.status)) {
+    return "已处理";
+  }
+  if (stage.status === "blocked") {
+    return "阻塞";
+  }
+  return "待处理";
 }
 
 function buildSetupPageTitle(bootstrap: BootstrapState | null): string {
@@ -1526,11 +1581,6 @@ function renderRequirementTable(headers: string[], rows: RequirementTableRow[]) 
       </table>
     </div>
   );
-}
-
-function blankToUndefined(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 function readAPIError(result: JSONResult<unknown>) {
