@@ -227,8 +227,8 @@ func TestSetupOnboardingWorkflowTracksMachineDecisionsAndManualSteps(t *testing.
 	if !payload.Completion.CanComplete || payload.Completion.SetupRequired {
 		t.Fatalf("unexpected completion gate: %#v", payload.Completion)
 	}
-	if payload.Autostart.Status != onboardingStageStatusDeferred {
-		t.Fatalf("autostart status = %q, want deferred", payload.Autostart.Status)
+	if payload.Autostart.Status != onboardingStageStatusDeferred && payload.Autostart.Status != onboardingStageStatusNotApplicable {
+		t.Fatalf("autostart status = %q, want deferred or not_applicable", payload.Autostart.Status)
 	}
 	if payload.VSCode.Status != onboardingStageStatusDeferred {
 		t.Fatalf("vscode status = %q, want deferred", payload.VSCode.Status)

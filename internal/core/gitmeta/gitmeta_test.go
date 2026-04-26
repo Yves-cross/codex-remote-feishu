@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func TestParseGitDirFile(t *testing.T) {
@@ -25,11 +27,13 @@ func TestParseGitDirFile(t *testing.T) {
 }
 
 func TestResolveGitDirPath(t *testing.T) {
-	base := "/repo/worktree"
-	if got := ResolveGitDirPath(base, "../.git/modules/demo"); got != "/repo/.git/modules/demo" {
+	base := filepath.Join(string(filepath.Separator), "repo", "worktree")
+	wantRelative := filepath.Clean(filepath.Join(base, "..", ".git", "modules", "demo"))
+	if got := ResolveGitDirPath(base, "../.git/modules/demo"); got != wantRelative {
 		t.Fatalf("ResolveGitDirPath(relative) = %q", got)
 	}
-	if got := ResolveGitDirPath(base, "/var/tmp/repo.git"); got != "/var/tmp/repo.git" {
+	abs := filepath.Join(string(filepath.Separator), "var", "tmp", "repo.git")
+	if got := ResolveGitDirPath(base, abs); got != abs {
 		t.Fatalf("ResolveGitDirPath(abs) = %q", got)
 	}
 }
@@ -118,7 +122,7 @@ func TestWorkspaceInfoRepoFamilyKeyMatchesLinkedWorktreeFamily(t *testing.T) {
 	if repoInfo.RepoFamilyKey() == "" {
 		t.Fatalf("expected repo family key, got %#v", repoInfo)
 	}
-	if repoInfo.RepoFamilyKey() != worktreeInfo.RepoFamilyKey() {
+	if !testutil.SamePath(repoInfo.RepoFamilyKey(), worktreeInfo.RepoFamilyKey()) {
 		t.Fatalf("RepoFamilyKey mismatch: repo=%q worktree=%q", repoInfo.RepoFamilyKey(), worktreeInfo.RepoFamilyKey())
 	}
 }

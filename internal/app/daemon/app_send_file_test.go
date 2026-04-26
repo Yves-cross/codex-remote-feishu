@@ -329,6 +329,10 @@ func TestHandleActionPathPickerConfirmSendFileDoesNotDeadlock(t *testing.T) {
 		})
 	})
 
+	deadline := time.Now().Add(2 * time.Second)
+	for len(sender.calls) != 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if len(sender.calls) != 1 {
 		t.Fatalf("expected one send call after confirm, got %#v", sender.calls)
 	}

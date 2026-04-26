@@ -37,14 +37,14 @@ func TestTargetPickerWorkspaceMetaByKeyUsesBranchWithinRepoFamily(t *testing.T) 
 func TestTargetPickerWorkspaceMetaByKeyUpgradesSameBranchToShortTail(t *testing.T) {
 	entries := []workspaceSelectionEntry{
 		{
-			workspaceKey: "/Users/alice/repo",
+			workspaceKey: "/data/dl/alice/repo",
 			gitInfo: gitmeta.WorkspaceInfo{
 				GitDir: "/git/repo/.git",
 				Branch: "main",
 			},
 		},
 		{
-			workspaceKey: "/Users/bob/repo",
+			workspaceKey: "/data/dl/bob/repo",
 			gitInfo: gitmeta.WorkspaceInfo{
 				GitDir:         "/git/repo/.git/worktrees/repo-b",
 				Branch:         "main",
@@ -54,10 +54,10 @@ func TestTargetPickerWorkspaceMetaByKeyUpgradesSameBranchToShortTail(t *testing.
 	}
 
 	metaByKey := targetPickerWorkspaceMetaByKey(entries)
-	if got := metaByKey["/Users/alice/repo"]; got != "main@alice/repo" {
+	if got := metaByKey["/data/dl/alice/repo"]; got != "main@alice/repo" {
 		t.Fatalf("alice workspace meta = %q, want %q", got, "main@alice/repo")
 	}
-	if got := metaByKey["/Users/bob/repo"]; got != "main@bob/repo" {
+	if got := metaByKey["/data/dl/bob/repo"]; got != "main@bob/repo" {
 		t.Fatalf("bob workspace meta = %q, want %q", got, "main@bob/repo")
 	}
 }

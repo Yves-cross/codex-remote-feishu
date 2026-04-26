@@ -10,6 +10,7 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/renderer"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
+	"github.com/kxn/codex-remote-feishu/internal/testutil"
 )
 
 func newServiceForTest(now *time.Time) *Service {
@@ -80,7 +81,7 @@ func targetPickerWorkspaceOption(view *control.FeishuTargetPickerView, value str
 		return control.FeishuTargetPickerWorkspaceOption{}, false
 	}
 	for _, option := range view.WorkspaceOptions {
-		if option.Value == value {
+		if testutil.SamePath(option.Value, value) {
 			return option, true
 		}
 	}
