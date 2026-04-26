@@ -181,7 +181,7 @@ func TestToolMCPListAndCallTools(t *testing.T) {
 	if !strings.Contains(seen[feishuSendIMImageToolName]["description"].(string), ".codex-remote/surface-context.json") {
 		t.Fatalf("image-send description missing workspace context rule: %#v", seen[feishuSendIMImageToolName])
 	}
-	if !strings.Contains(seen[feishuReadDriveFileCommentsToolName]["description"].(string), "previously uploaded markdown") {
+	if !strings.Contains(seen[feishuReadDriveFileCommentsToolName]["description"].(string), "Pass the exact Feishu URL") {
 		t.Fatalf("drive-comment description missing comment workflow trigger: %#v", seen[feishuReadDriveFileCommentsToolName])
 	}
 
@@ -279,8 +279,7 @@ func TestToolMCPListAndCallTools(t *testing.T) {
 			"name": feishuReadDriveFileCommentsToolName,
 			"arguments": map[string]any{
 				"surface_session_id": "surface-normal",
-				"file_token":         "file-token-1",
-				"file_type":          "file",
+				"url":                "https://my.feishu.cn/file/file-token-1",
 			},
 		}),
 	})

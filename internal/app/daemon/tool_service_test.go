@@ -631,8 +631,7 @@ func TestReadDriveFileCommentsToolRoutesByResolvedSurface(t *testing.T) {
 
 	result, toolErr := app.readDriveFileCommentsTool(context.Background(), map[string]any{
 		"surface_session_id": "surface-2",
-		"file_token":         "file-token-1",
-		"file_type":          "file",
+		"url":                "https://my.feishu.cn/file/file-token-1",
 	})
 	if toolErr != nil {
 		t.Fatalf("readDriveFileCommentsTool() error = %#v", toolErr)
@@ -664,11 +663,10 @@ func TestReadDriveFileCommentsToolRejectsInvalidInputAndDetachedSurface(t *testi
 
 	_, toolErr := app.readDriveFileCommentsTool(context.Background(), map[string]any{
 		"surface_session_id": "surface-1",
-		"file_token":         "file-token-1",
-		"file_type":          "wiki",
+		"url":                "https://my.feishu.cn/wiki/wiki-token-1",
 	})
-	if toolErr == nil || toolErr.Code != "unsupported_file_type" {
-		t.Fatalf("expected unsupported file type rejection, got %#v", toolErr)
+	if toolErr == nil || toolErr.Code != "unsupported_document_url" {
+		t.Fatalf("expected unsupported document url rejection, got %#v", toolErr)
 	}
 
 	app.HandleAction(context.Background(), control.Action{
@@ -681,10 +679,77 @@ func TestReadDriveFileCommentsToolRejectsInvalidInputAndDetachedSurface(t *testi
 	})
 	_, toolErr = app.readDriveFileCommentsTool(context.Background(), map[string]any{
 		"surface_session_id": "surface-detached",
-		"file_token":         "file-token-1",
-		"file_type":          "file",
+		"url":                "https://my.feishu.cn/file/file-token-1",
 	})
 	if toolErr == nil || toolErr.Code != "surface_not_attached" {
 		t.Fatalf("expected detached surface rejection, got %#v", toolErr)
+	}
+}
+
+func TestParseDriveCommentsURL(t *testing.T) {
+	testCases := []struct {
+		name      string
+		rawURL    string
+		wantToken string
+		wantType  string
+		wantCode  string
+	}{
+		{
+			name:      "my feishu file url",
+			rawURL:    "https://my.feishu.cn/file/IU5Jb0ZyroW99DxGCvfcJYlenAS",
+			wantToken: "IU5Jb0ZyroW99DxGCvfcJYlenAS",
+			wantType:  "file",
+		},
+		{
+			name:      "drive file url",
+			rawURL:    "https://foo.feishu.cn/drive/file/boxcnABC123",
+			wantToken: "boxcnABC123",
+			wantType:  "file",
+		},
+		{
+			name:      "docx url with query",
+			rawURL:    "https://foo.feishu.cn/docx/doxcnABC123?from=share",
+			wantToken: "doxcnABC123",
+			wantType:  "docx",
+		},
+		{
+			name:      "sheets url",
+			rawURL:    "https://foo.feishu.cn/sheets/shtcnABC123",
+			wantToken: "shtcnABC123",
+			wantType:  "sheet",
+		},
+		{
+			name:     "wiki unsupported",
+			rawURL:   "https://foo.feishu.cn/wiki/wikcnABC123",
+			wantCode: "unsupported_document_url",
+		},
+		{
+			name:     "non feishu host unsupported",
+			rawURL:   "https://example.com/file/ABC123",
+			wantCode: "unsupported_document_url",
+		},
+		{
+			name:     "invalid url",
+			rawURL:   "not-a-url",
+			wantCode: "invalid_url",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotToken, gotType, toolErr := parseDriveCommentsURL(tc.rawURL)
+			if tc.wantCode != "" {
+				if toolErr == nil || toolErr.Code != tc.wantCode {
+					t.Fatalf("expected error %q, got %#v", tc.wantCode, toolErr)
+				}
+				return
+			}
+			if toolErr != nil {
+				t.Fatalf("parseDriveCommentsURL() error = %#v", toolErr)
+			}
+			if gotToken != tc.wantToken || gotType != tc.wantType {
+				t.Fatalf("unexpected parse result: token=%q type=%q", gotToken, gotType)
+			}
+		})
 	}
 }

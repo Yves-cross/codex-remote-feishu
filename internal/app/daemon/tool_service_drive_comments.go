@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
@@ -27,14 +29,9 @@ func driveFileCommentsToolInputSchema() map[string]any {
 				"type":        "string",
 				"description": "Feishu surface session id loaded from .codex-remote/surface-context.json",
 			},
-			"file_token": map[string]any{
+			"url": map[string]any{
 				"type":        "string",
-				"description": "Feishu Drive file token for the file whose comments should be read",
-			},
-			"file_type": map[string]any{
-				"type":        "string",
-				"description": "Feishu Drive file type. V1 supports doc, docx, sheet, file, and slides.",
-				"enum":        []string{"doc", "docx", "sheet", "file", "slides"},
+				"description": "Full Feishu file or document URL whose comments should be read",
 			},
 			"page_token": map[string]any{
 				"type":        "string",
@@ -47,30 +44,19 @@ func driveFileCommentsToolInputSchema() map[string]any {
 				"maximum":     toolDriveFileCommentsMaxPageSize,
 			},
 		},
-		"required":             []string{"surface_session_id", "file_token", "file_type"},
+		"required":             []string{"surface_session_id", "url"},
 		"additionalProperties": false,
 	}
 }
 
 func (a *App) readDriveFileCommentsTool(ctx context.Context, arguments map[string]any) (any, *toolError) {
 	surfaceID, _ := arguments["surface_session_id"].(string)
-	fileToken, _ := arguments["file_token"].(string)
-	fileType, _ := arguments["file_type"].(string)
+	rawURL, _ := arguments["url"].(string)
 	pageToken, _ := arguments["page_token"].(string)
 
-	fileToken = strings.TrimSpace(fileToken)
-	if fileToken == "" {
-		return nil, &toolError{
-			Code:    "file_token_required",
-			Message: "file_token is required",
-		}
-	}
-	fileType = strings.ToLower(strings.TrimSpace(fileType))
-	if !feishuDriveFileCommentTypeSupported(fileType) {
-		return nil, &toolError{
-			Code:    "unsupported_file_type",
-			Message: "file_type must be one of: doc, docx, sheet, file, slides",
-		}
+	fileToken, fileType, apiErr := parseDriveCommentsURL(rawURL)
+	if apiErr != nil {
+		return nil, apiErr
 	}
 	pageSize, apiErr := toolOptionalIntegerArgument(arguments, "page_size", toolDriveFileCommentsDefaultPageSize, 1, toolDriveFileCommentsMaxPageSize)
 	if apiErr != nil {
@@ -129,15 +115,6 @@ func (a *App) readDriveFileCommentsTool(ctx context.Context, arguments map[strin
 	}, nil
 }
 
-func feishuDriveFileCommentTypeSupported(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "doc", "docx", "sheet", "file", "slides":
-		return true
-	default:
-		return false
-	}
-}
-
 func toolOptionalIntegerArgument(arguments map[string]any, key string, defaultValue, minValue, maxValue int) (int, *toolError) {
 	raw, ok := arguments[key]
 	if !ok || raw == nil {
@@ -172,4 +149,96 @@ func toolOptionalIntegerArgument(arguments map[string]any, key string, defaultVa
 		}
 	}
 	return value, nil
+}
+
+func parseDriveCommentsURL(raw string) (string, string, *toolError) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", &toolError{
+			Code:    "url_required",
+			Message: "url is required",
+		}
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil || strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
+		return "", "", &toolError{
+			Code:    "invalid_url",
+			Message: "url must be a valid absolute Feishu URL",
+		}
+	}
+	if !isSupportedFeishuURLHost(parsed.Hostname()) {
+		return "", "", &toolError{
+			Code:    "unsupported_document_url",
+			Message: "url must point to a supported Feishu file or document",
+		}
+	}
+
+	segments := normalizedURLPathSegments(parsed.Path)
+	if len(segments) < 2 {
+		return "", "", &toolError{
+			Code:    "unsupported_document_url",
+			Message: "url must point to a supported Feishu file or document",
+		}
+	}
+	switch {
+	case len(segments) == 2 && segments[0] == "file":
+		return segments[1], "file", nil
+	case len(segments) == 3 && segments[0] == "drive" && segments[1] == "file":
+		return segments[2], "file", nil
+	case len(segments) == 2 && segments[0] == "docx":
+		return segments[1], "docx", nil
+	case len(segments) == 2 && segments[0] == "doc":
+		return segments[1], "doc", nil
+	case len(segments) == 2 && segments[0] == "sheets":
+		return segments[1], "sheet", nil
+	case len(segments) == 2 && segments[0] == "slides":
+		return segments[1], "slides", nil
+	case len(segments) == 2 && segments[0] == "wiki":
+		return "", "", &toolError{
+			Code:    "unsupported_document_url",
+			Message: "wiki urls are not supported by this tool yet",
+		}
+	default:
+		return "", "", &toolError{
+			Code:    "unsupported_document_url",
+			Message: "url must point to a supported Feishu file or document",
+		}
+	}
+}
+
+func isSupportedFeishuURLHost(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	switch {
+	case host == "feishu.cn", host == "feishu.net", host == "larksuite.com", host == "larksuite.com.cn", host == "larkoffice.com":
+		return true
+	case strings.HasSuffix(host, ".feishu.cn"),
+		strings.HasSuffix(host, ".feishu.net"),
+		strings.HasSuffix(host, ".larksuite.com"),
+		strings.HasSuffix(host, ".larksuite.com.cn"),
+		strings.HasSuffix(host, ".larkoffice.com"):
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizedURLPathSegments(rawPath string) []string {
+	cleaned := strings.TrimSpace(path.Clean(rawPath))
+	if cleaned == "" || cleaned == "." || cleaned == "/" {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(cleaned, "/"), "/")
+	out := make([]string, 0, len(parts))
+	for _, item := range parts {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		out = append(out, strings.ToLower(item))
+	}
+	if len(out) >= 2 {
+		out[len(out)-1] = strings.TrimSpace(path.Base(strings.Trim(cleaned, "/")))
+	}
+	return out
 }
