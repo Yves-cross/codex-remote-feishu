@@ -2,8 +2,8 @@ package orchestrator
 
 import (
 	"errors"
+	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -108,6 +108,168 @@ func TestTargetPickerSelectWorkspaceRefreshesSessionsInline(t *testing.T) {
 	}
 	if view.CanConfirm {
 		t.Fatalf("expected confirm to stay disabled until a new session is chosen, got %#v", view)
+	}
+}
+
+func TestTargetPickerSelectSessionShowsHistoryContextPreview(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 1, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-droid",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-droid": {
+				ThreadID:             "thread-droid",
+				Name:                 "修复登录",
+				CWD:                  "/data/dl/droid",
+				FirstUserMessage:     "看一下登录页为什么首屏空白",
+				LastUserMessage:      "顺便检查 OAuth 回调",
+				LastAssistantMessage: "已经定位到回调状态丢失，需要补一层校验",
+				LastUsedAt:           now.Add(-2 * time.Minute),
+				Loaded:               true,
+			},
+		},
+	})
+
+	initial := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectSession,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          initial.PickerID,
+		TargetPickerValue: targetPickerThreadValue("thread-droid"),
+	})
+
+	if len(events) != 2 || !events[0].InlineReplaceCurrentCard || events[1].DaemonCommand == nil {
+		t.Fatalf("expected inline target picker refresh, got %#v", events)
+	}
+	view := targetPickerFromEvent(t, events[0])
+	section, ok := targetPickerBodySection(view, "历史对话摘要")
+	if !ok {
+		t.Fatalf("expected selected session context section, got %#v", view.BodySections)
+	}
+	joined := strings.Join(section.Lines, "\n")
+	if !strings.Contains(joined, "正在读取最近 5 轮历史对话") {
+		t.Fatalf("expected history context loading state, got %q", joined)
+	}
+	if events[1].DaemonCommand.Kind != control.DaemonCommandThreadHistoryRead || events[1].DaemonCommand.ThreadID != "thread-droid" || events[1].DaemonCommand.PickerID != initial.PickerID {
+		t.Fatalf("expected target picker history read command, got %#v", events[1].DaemonCommand)
+	}
+}
+
+func TestTargetPickerSelectSessionLimitsCachedHistoryContextToRecentFiveTurns(t *testing.T) {
+	now := time.Date(2026, 4, 14, 15, 1, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-droid",
+		DisplayName:   "droid",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Online:        true,
+		Threads: map[string]*state.ThreadRecord{
+			"thread-droid": {
+				ThreadID: "thread-droid",
+				Name:     "修复登录",
+				CWD:      "/data/dl/droid",
+				Loaded:   true,
+			},
+		},
+	})
+	initial := singleTargetPickerEvent(t, svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionListInstances,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+	}))
+	turns := make([]agentproto.ThreadHistoryTurnRecord, 0, 6)
+	for i := 1; i <= 6; i++ {
+		turns = append(turns, agentproto.ThreadHistoryTurnRecord{
+			TurnID:      fmt.Sprintf("turn-%d", i),
+			Status:      "completed",
+			CompletedAt: now.Add(time.Duration(i) * time.Minute),
+			Items: []agentproto.ThreadHistoryItemRecord{
+				{Kind: "user_message", Text: fmt.Sprintf("第 %d 轮用户输入", i)},
+				{Kind: "agent_message", Text: fmt.Sprintf("第 %d 轮助手回复", i)},
+			},
+		})
+	}
+	svc.RecordSurfaceThreadHistory("surface-1", agentproto.ThreadHistoryRecord{
+		Thread: agentproto.ThreadSnapshotRecord{
+			ThreadID: "thread-droid",
+			Name:     "修复登录",
+			CWD:      "/data/dl/droid",
+		},
+		Turns: turns,
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:              control.ActionTargetPickerSelectSession,
+		SurfaceSessionID:  "surface-1",
+		ChatID:            "chat-1",
+		ActorUserID:       "user-1",
+		PickerID:          initial.PickerID,
+		TargetPickerValue: targetPickerThreadValue("thread-droid"),
+	})
+
+	view := targetPickerFromEvent(t, events[0])
+	section, ok := targetPickerBodySection(view, "历史对话摘要")
+	if !ok {
+		t.Fatalf("expected selected session context section, got %#v", view.BodySections)
+	}
+	if len(section.Lines) != 5 {
+		t.Fatalf("expected five recent turns, got %#v", section.Lines)
+	}
+	joined := strings.Join(section.Lines, "\n")
+	if !strings.Contains(joined, "#2 第 2 轮用户输入") || !strings.Contains(joined, "#6 第 6 轮用户输入") {
+		t.Fatalf("expected recent five turns from older to newer, got %q", joined)
+	}
+	if !strings.HasPrefix(joined, "#2 第 2 轮用户输入") || !strings.Contains(joined, "\n#6 第 6 轮用户输入") {
+		t.Fatalf("expected recent turns ordered from older to newer, got %q", joined)
+	}
+	if strings.Contains(joined, "第 1 轮用户输入") {
+		t.Fatalf("expected oldest turn to be omitted, got %q", joined)
+	}
+}
+
+func TestTargetPickerLocalSessionHistorySummaryIgnoresToolAndProcessItems(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout-thread-1.jsonl")
+	content := strings.Join([]string{
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"第一轮需求"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"正在检查代码"}],"phase":"commentary"}}`,
+		`{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"go test\"}"}}`,
+		`{"type":"response_item","payload":{"type":"function_call_output","output":"工具输出"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第一轮最终回复"}],"phase":"final_answer"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"第二轮需求"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"第二轮最终回复"}],"phase":"final_answer"}}`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	lines := targetPickerRecentDialogueLinesFromSessionFile(path, 5)
+	joined := strings.Join(lines, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected two dialogue lines, got %#v", lines)
+	}
+	if !strings.Contains(joined, "#1 第一轮需求 -> 第一轮最终回复") || !strings.Contains(joined, "#2 第二轮需求 -> 第二轮最终回复") {
+		t.Fatalf("expected user/assistant summaries, got %q", joined)
+	}
+	if !strings.HasPrefix(joined, "#1 第一轮需求") {
+		t.Fatalf("expected local summaries ordered from older to newer, got %q", joined)
+	}
+	if strings.Contains(joined, "正在检查代码") || strings.Contains(joined, "工具输出") || strings.Contains(joined, "go test") {
+		t.Fatalf("expected process and tool details to be omitted, got %q", joined)
 	}
 }
 
@@ -756,6 +918,9 @@ func TestTargetPickerListShowsRepoFamilyBranchMeta(t *testing.T) {
 	repoRoot := createTargetPickerGitRepo(t)
 	worktreeRoot := filepath.Join(t.TempDir(), "feature-worktree")
 	runTargetPickerGitCommand(t, repoRoot, "worktree", "add", "-b", "feature/auth", worktreeRoot, "HEAD")
+	if resolved, err := filepath.EvalSymlinks(worktreeRoot); err == nil {
+		worktreeRoot = resolved
+	}
 
 	svc.UpsertInstance(&state.InstanceRecord{
 		InstanceID:    "inst-main",
@@ -1842,38 +2007,6 @@ func openAddWorkspaceGitPage(t *testing.T, svc *Service, view *control.FeishuTar
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
 	}))
-}
-
-func createTargetPickerGitRepo(t *testing.T) string {
-	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git unavailable in test environment")
-	}
-	repoRoot := filepath.Join(t.TempDir(), "repo")
-	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
-		t.Fatalf("mkdir repo root: %v", err)
-	}
-	runTargetPickerGitCommand(t, repoRoot, "init", "-q")
-	if err := os.WriteFile(filepath.Join(repoRoot, "README.md"), []byte("hello\n"), 0o644); err != nil {
-		t.Fatalf("write repo file: %v", err)
-	}
-	runTargetPickerGitCommand(t, repoRoot, "add", "README.md")
-	runTargetPickerGitCommand(t, repoRoot, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "init")
-	runTargetPickerGitCommand(t, repoRoot, "branch", "-M", "main")
-	return repoRoot
-}
-
-func runTargetPickerGitCommand(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GCM_INTERACTIVE=Never",
-	)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v failed: %v\n%s", args, err, string(output))
-	}
 }
 
 func slicesContain(values []string, want string) bool {

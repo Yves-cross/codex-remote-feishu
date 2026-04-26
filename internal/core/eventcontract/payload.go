@@ -99,6 +99,13 @@ type BlockCommittedPayload struct {
 func (BlockCommittedPayload) Kind() Kind { return KindBlockCommitted }
 func (BlockCommittedPayload) isPayload() {}
 
+type AssistantStreamPayload struct {
+	View control.AssistantStreamView
+}
+
+func (AssistantStreamPayload) Kind() Kind { return KindAssistantStream }
+func (AssistantStreamPayload) isPayload() {}
+
 type TimelineTextPayload struct {
 	TimelineText control.TimelineText
 }

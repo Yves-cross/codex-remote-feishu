@@ -70,10 +70,13 @@ func selectionContextFromEvent(t *testing.T, event eventcontract.Event) *control
 
 func singleTargetPickerEvent(t *testing.T, events []eventcontract.Event) *control.FeishuTargetPickerView {
 	t.Helper()
-	if len(events) != 1 {
-		t.Fatalf("expected exactly one event, got %#v", events)
+	for _, event := range events {
+		if event.TargetPickerView != nil {
+			return event.TargetPickerView
+		}
 	}
-	return targetPickerFromEvent(t, events[0])
+	t.Fatalf("expected target picker event, got %#v", events)
+	return nil
 }
 
 func targetPickerWorkspaceOption(view *control.FeishuTargetPickerView, value string) (control.FeishuTargetPickerWorkspaceOption, bool) {
@@ -98,6 +101,19 @@ func targetPickerSessionOption(view *control.FeishuTargetPickerView, value strin
 		}
 	}
 	return control.FeishuTargetPickerSessionOption{}, false
+}
+
+func targetPickerBodySection(view *control.FeishuTargetPickerView, label string) (control.FeishuCardTextSection, bool) {
+	if view == nil {
+		return control.FeishuCardTextSection{}, false
+	}
+	label = strings.TrimSpace(label)
+	for _, section := range view.BodySections {
+		if strings.TrimSpace(section.Label) == label {
+			return section, true
+		}
+	}
+	return control.FeishuCardTextSection{}, false
 }
 
 func targetPickerModeOption(view *control.FeishuTargetPickerView, value control.FeishuTargetPickerMode) (control.FeishuTargetPickerModeOption, bool) {

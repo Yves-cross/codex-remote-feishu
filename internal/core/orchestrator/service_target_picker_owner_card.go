@@ -77,6 +77,7 @@ func resetTargetPickerEditingState(record *activeTargetPickerRecord) {
 	record.PendingKind = targetPickerPendingNone
 	record.PendingWorkspaceKey = ""
 	record.PendingThreadID = ""
+	record.HistoryLoadingThreadID = ""
 }
 
 func setTargetPickerMessages(record *activeTargetPickerRecord, messages ...control.FeishuTargetPickerMessage) {
@@ -92,6 +93,7 @@ func setTargetPickerMessages(record *activeTargetPickerRecord, messages ...contr
 	record.PendingKind = targetPickerPendingNone
 	record.PendingWorkspaceKey = ""
 	record.PendingThreadID = ""
+	record.HistoryLoadingThreadID = ""
 }
 
 func (s *Service) startTargetPickerProcessing(

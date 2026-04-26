@@ -278,7 +278,7 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 	}
 	if blockPayload, ok := blockPayloadFromEvent(event); event.Kind == eventcontract.KindBlockCommitted && ok && blockPayload.Block.Final {
 		for _, operation := range operations {
-			if operation.Kind != feishu.OperationSendCard {
+			if operation.Kind != feishu.OperationSendCard && operation.Kind != feishu.OperationUpdateCard {
 				continue
 			}
 			if strings.TrimSpace(operation.MessageID) == "" {
@@ -290,6 +290,25 @@ func (a *App) recordUIEventDelivery(event eventcontract.Event, operations []feis
 				event.SourceMessageID,
 				operation.MessageID,
 				event.DaemonLifecycleID,
+			)
+			break
+		}
+	}
+	if payload, ok := assistantStreamPayloadFromEvent(event); ok {
+		for _, operation := range operations {
+			if operation.Kind != feishu.OperationSendStreamCard && operation.Kind != feishu.OperationUpdateStreamCard && operation.Kind != feishu.OperationSendCard && operation.Kind != feishu.OperationUpdateCard && operation.Kind != feishu.OperationSendText {
+				continue
+			}
+			if strings.TrimSpace(operation.MessageID) == "" {
+				continue
+			}
+			a.service.RecordAssistantStreamMessage(
+				event.SurfaceSessionID,
+				payload.View.ThreadID,
+				payload.View.TurnID,
+				payload.View.ItemID,
+				operation.MessageID,
+				operation.StreamCardID,
 			)
 			break
 		}
@@ -397,7 +416,7 @@ func outboundSurfaceMessageKind(kind feishu.OperationKind) (state.SurfaceMessage
 	switch kind {
 	case feishu.OperationSendText:
 		return state.SurfaceMessageKindText, true
-	case feishu.OperationSendCard:
+	case feishu.OperationSendCard, feishu.OperationSendStreamCard:
 		return state.SurfaceMessageKindCard, true
 	case feishu.OperationSendImage:
 		return state.SurfaceMessageKindImage, true

@@ -69,6 +69,7 @@ type pendingThreadHistoryRead struct {
 	SurfaceSessionID string
 	InstanceID       string
 	ThreadID         string
+	PickerID         string
 }
 
 type vscodeCompatibilityCacheState struct {

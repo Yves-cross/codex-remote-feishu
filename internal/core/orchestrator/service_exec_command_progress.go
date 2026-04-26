@@ -39,6 +39,7 @@ func (s *Service) handleProcessProgressItemDelta(instanceID string, event agentp
 	case "agent_message":
 		events := s.clearExecCommandProgressReasoning(instanceID, event.ThreadID, event.TurnID)
 		s.terminateExecCommandProgressForTurn(instanceID, event.ThreadID, event.TurnID)
+		events = append(events, s.handleAssistantStreamDelta(instanceID, event)...)
 		return events
 	case "reasoning_summary":
 		return s.handleReasoningSummaryProgressDelta(instanceID, event)

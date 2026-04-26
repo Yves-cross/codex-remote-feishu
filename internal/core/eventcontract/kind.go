@@ -15,6 +15,7 @@ const (
 	KindNotice              Kind = "notice"
 	KindPlanUpdate          Kind = "plan.updated"
 	KindBlockCommitted      Kind = "block.committed"
+	KindAssistantStream     Kind = "assistant.stream"
 	KindTimelineText        Kind = "timeline.text"
 	KindImageOutput         Kind = "image.output"
 	KindExecCommandProgress Kind = "exec_command.progress"
@@ -34,6 +35,7 @@ var allKinds = []Kind{
 	KindNotice,
 	KindPlanUpdate,
 	KindBlockCommitted,
+	KindAssistantStream,
 	KindTimelineText,
 	KindImageOutput,
 	KindExecCommandProgress,

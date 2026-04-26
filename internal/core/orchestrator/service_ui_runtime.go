@@ -100,6 +100,7 @@ type activeTargetPickerRecord struct {
 	WorktreeFinalPath     string
 	CreatedAt             time.Time
 	ExpiresAt             time.Time
+	HistoryLoadingThreadID string
 }
 
 type activeThreadHistoryRecord struct {

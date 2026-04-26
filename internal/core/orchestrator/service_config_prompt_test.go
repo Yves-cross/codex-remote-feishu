@@ -1745,6 +1745,115 @@ func TestAssistantTextIsBufferedFromDeltaUntilItemCompleted(t *testing.T) {
 	}
 }
 
+func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-2",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-2": {ThreadID: "thread-2", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"phase": "final_answer"},
+	})
+	if len(started) != 0 {
+		t.Fatalf("expected no UI events on item start, got %#v", started)
+	}
+
+	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Delta:    "您好",
+	})
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.Text != "您好" {
+		t.Fatalf("expected first final delta to emit assistant stream card, got %#v", first)
+	}
+	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
+
+	second := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Delta:    "，世界",
+	})
+	if len(second) != 0 {
+		t.Fatalf("expected stream delta inside throttle window to be suppressed, got %#v", second)
+	}
+
+	now = now.Add(assistantStreamMinInterval)
+	third := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Delta:    "。",
+	})
+	if len(third) != 0 {
+		t.Fatalf("expected short stream delta to wait for a readable chunk, got %#v", third)
+	}
+
+	now = now.Add(assistantStreamMaxInterval - assistantStreamMinInterval)
+	fourth := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Delta:    "继续补充一段用于触发最长等待刷新。",
+	})
+	if len(fourth) != 1 || fourth[0].AssistantStream == nil || fourth[0].AssistantStream.MessageID != "om-stream-1" || fourth[0].AssistantStream.StreamCardID != "card-stream-1" || fourth[0].AssistantStream.Text != "您好，世界。继续补充一段用于触发最长等待刷新。" {
+		t.Fatalf("expected coalesced stream update to patch existing card, got %#v", fourth)
+	}
+
+	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+	})
+	if len(completed) != 0 {
+		t.Fatalf("expected final answer to wait for turn completion, got %#v", completed)
+	}
+
+	finished := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:      agentproto.EventTurnCompleted,
+		ThreadID:  "thread-2",
+		TurnID:    "turn-1",
+		Status:    "completed",
+		Initiator: agentproto.Initiator{Kind: agentproto.InitiatorRemoteSurface, SurfaceSessionID: "surface-1"},
+	})
+	if len(finished) != 1 || finished[0].Block == nil || !finished[0].Block.Final {
+		t.Fatalf("expected final block to complete stream, got %#v", finished)
+	}
+	if finished[0].Block.MessageID != "om-stream-1" || finished[0].Block.Text != "您好，世界。继续补充一段用于触发最长等待刷新。" {
+		t.Fatalf("expected final block to patch stream card, got %#v", finished[0].Block)
+	}
+	if stream := svc.root.Surfaces["surface-1"].ActiveAssistantStream; stream != nil {
+		t.Fatalf("expected stream state to clear after final block, got %#v", stream)
+	}
+}
+
 func TestAssistantProcessTextFlushesWhenTurnContinuesWithAnotherItem(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

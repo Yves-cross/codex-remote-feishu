@@ -16,6 +16,7 @@ func clearFeishuMCPBearerEnv(t *testing.T) {
 
 func TestBuildCodexChildLaunchAddsFeishuMCPForHeadless(t *testing.T) {
 	clearFeishuMCPBearerEnv(t)
+	t.Setenv("CODEX_REMOTE_FEISHU_ENABLE_MCP", "1")
 	statePath := writeToolServiceState(t, `{
   "url": "http://127.0.0.1:9702",
   "token": "secret-token",
@@ -47,6 +48,7 @@ func TestBuildCodexChildLaunchAddsFeishuMCPForHeadless(t *testing.T) {
 
 func TestBuildCodexChildLaunchSkipsFeishuMCPForVSCodeSource(t *testing.T) {
 	clearFeishuMCPBearerEnv(t)
+	t.Setenv("CODEX_REMOTE_FEISHU_ENABLE_MCP", "1")
 	statePath := writeToolServiceState(t, `{
   "url": "http://127.0.0.1:9702",
   "token": "secret-token",
@@ -69,6 +71,7 @@ func TestBuildCodexChildLaunchSkipsFeishuMCPForVSCodeSource(t *testing.T) {
 
 func TestBuildCodexChildLaunchSkipsFeishuMCPWhenStateMissing(t *testing.T) {
 	clearFeishuMCPBearerEnv(t)
+	t.Setenv("CODEX_REMOTE_FEISHU_ENABLE_MCP", "1")
 	app := New(Config{
 		Source:       "headless",
 		RuntimePaths: relayruntime.Paths{ToolServiceFile: filepath.Join(t.TempDir(), "missing.json")},
@@ -86,6 +89,7 @@ func TestBuildCodexChildLaunchSkipsFeishuMCPWhenStateMissing(t *testing.T) {
 
 func TestBuildCodexChildLaunchSkipsFeishuMCPForUnsupportedTokenType(t *testing.T) {
 	clearFeishuMCPBearerEnv(t)
+	t.Setenv("CODEX_REMOTE_FEISHU_ENABLE_MCP", "1")
 	statePath := writeToolServiceState(t, `{
   "url": "http://127.0.0.1:9702",
   "token": "secret-token",

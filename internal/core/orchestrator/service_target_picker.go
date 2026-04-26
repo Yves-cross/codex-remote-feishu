@@ -82,12 +82,16 @@ func (s *Service) openTargetPickerWithOptions(surface *state.SurfaceConsoleRecor
 	}
 	s.setActiveOwnerCardFlow(surface, flow)
 	s.setActiveTargetPicker(surface, record)
-	view, err := s.buildTargetPickerView(surface, record)
+	view, historyReadEvent, err := s.buildTargetPickerViewWithHistoryRead(surface, record)
 	if err != nil {
 		s.clearTargetPickerRuntime(surface)
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	return []eventcontract.Event{s.targetPickerViewEvent(surface, view, opts.Inline)}
+	events := []eventcontract.Event{s.targetPickerViewEvent(surface, view, opts.Inline)}
+	if historyReadEvent != nil {
+		events = append(events, *historyReadEvent)
+	}
+	return events
 }
 
 func (s *Service) openLockedWorkspaceTargetPicker(surface *state.SurfaceConsoleRecord, workspaceKey string, allowNewThread bool) []eventcontract.Event {
@@ -200,11 +204,15 @@ func (s *Service) handleTargetPickerSelectWorkspace(surface *state.SurfaceConsol
 				Text:  "当前工作区已锁定，不能在这里切换到其他工作区。",
 			})
 		}
-		view, err := s.buildTargetPickerView(surface, record)
+		view, historyReadEvent, err := s.buildTargetPickerViewWithHistoryRead(surface, record)
 		if err != nil {
 			return notice(surface, "target_picker_unavailable", err.Error())
 		}
-		return []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+		events := []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+		if historyReadEvent != nil {
+			events = append(events, *historyReadEvent)
+		}
+		return events
 	}
 	record.SelectedWorkspaceKey = normalizeTargetPickerWorkspaceSelection(workspaceKey)
 	record.SessionCursor = 0
@@ -213,11 +221,15 @@ func (s *Service) handleTargetPickerSelectWorkspace(surface *state.SurfaceConsol
 		record.SelectedMode == control.FeishuTargetPickerModeExistingWorkspace {
 		record.Page = control.FeishuTargetPickerPageTarget
 	}
-	view, err := s.buildTargetPickerView(surface, record)
+	view, historyReadEvent, err := s.buildTargetPickerViewWithHistoryRead(surface, record)
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	return []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+	events := []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+	if historyReadEvent != nil {
+		events = append(events, *historyReadEvent)
+	}
+	return events
 }
 
 func (s *Service) handleTargetPickerSelectSession(surface *state.SurfaceConsoleRecord, pickerID, value, actorUserID string, answers map[string][]string) []eventcontract.Event {
@@ -232,11 +244,31 @@ func (s *Service) handleTargetPickerSelectSession(surface *state.SurfaceConsoleR
 		record.SelectedMode == control.FeishuTargetPickerModeExistingWorkspace {
 		record.Page = control.FeishuTargetPickerPageTarget
 	}
-	view, err := s.buildTargetPickerView(surface, record)
+	view, historyReadEvent, err := s.buildTargetPickerViewWithHistoryRead(surface, record)
 	if err != nil {
 		return notice(surface, "target_picker_unavailable", err.Error())
 	}
-	return []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+	events := []eventcontract.Event{s.targetPickerViewEvent(surface, view, true)}
+	if historyReadEvent != nil {
+		events = append(events, *historyReadEvent)
+	}
+	return events
+}
+
+func (s *Service) buildTargetPickerViewWithHistoryRead(surface *state.SurfaceConsoleRecord, record *activeTargetPickerRecord) (control.FeishuTargetPickerView, *eventcontract.Event, error) {
+	view, err := s.buildTargetPickerView(surface, record)
+	if err != nil {
+		return control.FeishuTargetPickerView{}, nil, err
+	}
+	historyReadEvent := s.targetPickerThreadHistoryReadCommand(surface, record)
+	if historyReadEvent == nil {
+		return view, nil, nil
+	}
+	view, err = s.buildTargetPickerView(surface, record)
+	if err != nil {
+		return control.FeishuTargetPickerView{}, nil, err
+	}
+	return view, historyReadEvent, nil
 }
 
 func (s *Service) handleTargetPickerPage(surface *state.SurfaceConsoleRecord, pickerID, fieldName string, cursor int, actorUserID string, answers map[string][]string) []eventcontract.Event {
@@ -749,6 +781,7 @@ func (s *Service) buildTargetPickerView(surface *state.SurfaceConsoleRecord, rec
 		strings.TrimSpace(record.WorktreeBranchName),
 		strings.TrimSpace(record.WorktreeFinalPath),
 	)
+	bodySections = append(bodySections, s.targetPickerSelectedSessionContextSections(surface, selectedWorkspace, selectedSession)...)
 	noticeSections := targetPickerStatusNoticeSections(record)
 	return control.NormalizeFeishuTargetPickerView(control.FeishuTargetPickerView{
 		PickerID:                 record.PickerID,

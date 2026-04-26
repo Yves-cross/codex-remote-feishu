@@ -190,7 +190,7 @@ func secondChanceFinalPreviewTimeout(base time.Duration) time.Duration {
 
 func firstFinalSendCard(operations []feishu.Operation) *feishu.Operation {
 	for i := range operations {
-		if operations[i].Kind != feishu.OperationSendCard {
+		if operations[i].Kind != feishu.OperationSendCard && operations[i].Kind != feishu.OperationUpdateCard {
 			continue
 		}
 		if strings.TrimSpace(operations[i].FinalSourceBody()) == "" {

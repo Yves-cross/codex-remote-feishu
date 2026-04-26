@@ -84,6 +84,15 @@ func (s *Service) ensureItemBuffer(instanceID, threadID, turnID, itemID, itemKin
 	return buf
 }
 
+func (b *itemBuffer) updatePhase(phase string) {
+	if b == nil {
+		return
+	}
+	if phase = strings.TrimSpace(phase); phase != "" {
+		b.Phase = phase
+	}
+}
+
 func deleteMatchingItemBuffers(buffers map[string]*itemBuffer, instanceID, threadID, turnID string) {
 	for key, buf := range buffers {
 		if buf == nil {
