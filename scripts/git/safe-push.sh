@@ -17,18 +17,20 @@ Safe happy-path push helper for this repository.
 
 Default behavior:
   1. require a clean worktree
-  2. fetch the target remote branch
-  3. if upstream moved ahead, rebase onto it
-  4. rerun tests only when a rebase actually happened
-  5. if a rebase happened, require a post-rebase review confirmation
-  6. push only if every previous step succeeds
+  2. verify repository gofmt and public-doc path hygiene
+  3. fetch the target remote branch
+  4. if upstream moved ahead, rebase onto it
+  5. rerun tests only when a rebase actually happened
+  6. if a rebase happened, require a post-rebase review confirmation
+  7. push only if every previous step succeeds
 
 It intentionally does not try to auto-resolve conflicts or recover from test
 failures. In those cases it stops and leaves the repository state visible for
 manual handling.
 
-It also verifies repository Go formatting before any fetch/rebase/push work so
-missing local git hooks cannot leak gofmt failures into CI.
+It also verifies repository Go formatting and blocks machine-local absolute
+paths before any fetch/rebase/push work so missing local git hooks cannot leak
+either class of failure into CI.
 
 options:
   --remote <name>    remote to push/fetch (default: tracking remote, else origin)
@@ -100,8 +102,11 @@ if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
   exit 1
 fi
 
-printf '[0/5] verify gofmt\n'
+printf '[0/6] verify gofmt\n'
 bash scripts/check/go-format.sh
+
+printf '[1/6] check public docs for machine-local paths\n'
+bash scripts/check/no-local-paths.sh
 
 current_branch="$(git branch --show-current)"
 if [[ -z "${current_branch}" ]]; then
@@ -127,7 +132,7 @@ fi
 
 remote_ref="refs/remotes/${REMOTE}/${BRANCH}"
 
-printf '[1/4] fetch %s %s\n' "${REMOTE}" "${BRANCH}"
+printf '[2/6] fetch %s %s\n' "${REMOTE}" "${BRANCH}"
 git fetch "${REMOTE}" "${BRANCH}"
 
 if ! git show-ref --verify --quiet "${remote_ref}"; then
@@ -140,7 +145,7 @@ read -r ahead behind <<< "${counts}"
 rebase_happened=0
 
 if [[ "${behind}" != "0" ]]; then
-  printf '[2/5] rebase onto %s/%s (ahead=%s behind=%s)\n' "${REMOTE}" "${BRANCH}" "${ahead}" "${behind}"
+  printf '[3/6] rebase onto %s/%s (ahead=%s behind=%s)\n' "${REMOTE}" "${BRANCH}" "${ahead}" "${behind}"
   if ! git rebase "${remote_ref}"; then
     cat >&2 <<'EOF'
 rebase failed and was left in place for manual resolution.
@@ -150,13 +155,13 @@ EOF
   fi
   rebase_happened=1
 else
-  printf '[2/5] remote is not ahead (ahead=%s behind=%s); skip rebase\n' "${ahead}" "${behind}"
+  printf '[3/6] remote is not ahead (ahead=%s behind=%s); skip rebase\n' "${ahead}" "${behind}"
 fi
 
 if [[ "${NO_TEST}" == "1" ]]; then
-  printf '[3/5] skip tests (--no-test)\n'
+  printf '[4/6] skip tests (--no-test)\n'
 elif [[ "${rebase_happened}" == "1" || "${ALWAYS_TEST}" == "1" ]]; then
-  printf '[3/5] run tests: %s\n' "${TEST_CMD}"
+  printf '[4/6] run tests: %s\n' "${TEST_CMD}"
   if ! TEST_CMD="${TEST_CMD}" bash -lc 'unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy; eval "$TEST_CMD"'; then
     cat >&2 <<'EOF'
 tests failed after repository sync.
@@ -165,15 +170,15 @@ EOF
     exit 3
   fi
 else
-  printf '[3/5] skip tests (no rebase happened)\n'
+  printf '[4/6] skip tests (no rebase happened)\n'
 fi
 
 if [[ "${rebase_happened}" == "1" ]]; then
   if [[ "${CONFIRM_REBASE_REVIEW}" == "1" ]]; then
-    printf '[4/5] rebase review confirmed (--confirm-rebase-review)\n'
+    printf '[5/6] rebase review confirmed (--confirm-rebase-review)\n'
   elif [[ -t 0 ]]; then
     cat <<EOF
-[4/5] rebase review required
+[5/6] rebase review required
 the branch was rebased onto ${REMOTE}/${BRANCH}.
 before pushing, re-audit:
   1. whether the implementation direction still matches the intended plan
@@ -184,7 +189,7 @@ EOF
     read -r -p "review completed and deviations fixed if any? [y/N] " confirm
     case "${confirm}" in
       y|Y|yes|YES)
-        printf '[4/5] rebase review confirmed interactively\n'
+        printf '[5/6] rebase review confirmed interactively\n'
         ;;
       *)
         echo "post-rebase review not confirmed; push aborted" >&2
@@ -193,7 +198,7 @@ EOF
     esac
   else
     cat >&2 <<EOF
-[4/5] rebase review required (non-interactive shell)
+[5/6] rebase review required (non-interactive shell)
 the branch was rebased onto ${REMOTE}/${BRANCH}.
 review direction and implementation drift first; fix drift if found.
 then rerun with:
@@ -202,10 +207,10 @@ EOF
     exit 4
   fi
 elif [[ "${CONFIRM_REBASE_REVIEW}" == "1" ]]; then
-  printf '[4/5] no rebase happened; --confirm-rebase-review ignored\n'
+  printf '[5/6] no rebase happened; --confirm-rebase-review ignored\n'
 else
-  printf '[4/5] no post-rebase review required\n'
+  printf '[5/6] no post-rebase review required\n'
 fi
 
-printf '[5/5] push %s HEAD:%s\n' "${REMOTE}" "${BRANCH}"
+printf '[6/6] push %s HEAD:%s\n' "${REMOTE}" "${BRANCH}"
 git push "${REMOTE}" "HEAD:${BRANCH}"
