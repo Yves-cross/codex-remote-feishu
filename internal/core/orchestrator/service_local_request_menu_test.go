@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/state"
@@ -385,6 +386,42 @@ func TestBareReasoningCommandBuildsParameterCard(t *testing.T) {
 	}
 }
 
+func TestBareReasoningCommandPreservesCatalogVariantFromAction(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	svc.root.Surfaces["surface-1"].AttachedInstanceID = "inst-1"
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionReasoningCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/reasoning",
+		CatalogFamilyID:  control.FeishuCommandReasoning,
+		CatalogVariantID: "reasoning.codex.normal",
+		CatalogBackend:   agentproto.BackendCodex,
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected reasoning command catalog, got %#v", events)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	buttons := catalog.Sections[0].Entries[0].Buttons
+	if len(buttons) == 0 {
+		t.Fatalf("expected reasoning buttons, got %#v", catalog)
+	}
+	for _, button := range buttons {
+		if button.CatalogFamilyID != control.FeishuCommandReasoning || button.CatalogVariantID != "reasoning.codex.normal" || button.CatalogBackend != agentproto.BackendCodex {
+			t.Fatalf("expected reasoning button to preserve catalog provenance, got %#v", button)
+		}
+	}
+}
+
 func TestBareModelCommandBuildsDropdownAndManualFormCard(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
@@ -427,5 +464,45 @@ func TestBareModelCommandBuildsDropdownAndManualFormCard(t *testing.T) {
 	manual := catalog.Sections[1].Entries[0]
 	if manual.Form == nil || manual.Form.CommandText != "/model" {
 		t.Fatalf("expected manual model form, got %#v", manual)
+	}
+}
+
+func TestBareModelCommandPreservesCatalogVariantFromAction(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	svc.root.Surfaces["surface-1"].AttachedInstanceID = "inst-1"
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+
+	events := svc.ApplySurfaceAction(control.Action{
+		Kind:             control.ActionModelCommand,
+		SurfaceSessionID: "surface-1",
+		Text:             "/model",
+		CatalogFamilyID:  control.FeishuCommandModel,
+		CatalogVariantID: "model.codex.normal",
+		CatalogBackend:   agentproto.BackendCodex,
+	})
+	if len(events) != 1 {
+		t.Fatalf("expected model catalog, got %#v", events)
+	}
+	catalog := commandCatalogFromEvent(t, events[0])
+	if len(catalog.Sections) != 2 {
+		t.Fatalf("expected dropdown + manual sections, got %#v", catalog.Sections)
+	}
+	for _, section := range catalog.Sections {
+		for _, entry := range section.Entries {
+			if entry.Form == nil {
+				continue
+			}
+			if entry.Form.CatalogFamilyID != control.FeishuCommandModel || entry.Form.CatalogVariantID != "model.codex.normal" || entry.Form.CatalogBackend != agentproto.BackendCodex {
+				t.Fatalf("expected model form to preserve catalog provenance, got %#v", entry.Form)
+			}
+		}
 	}
 }

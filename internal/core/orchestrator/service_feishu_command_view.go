@@ -18,29 +18,27 @@ func (s *Service) buildCommandMenuView(surface *state.SurfaceConsoleRecord, raw 
 }
 
 func (s *Service) buildConfigCommandView(surface *state.SurfaceConsoleRecord, commandID string) control.FeishuCatalogView {
-	return s.buildConfigCommandViewState(surface, commandID, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildConfigCommandViewState(
-	surface *state.SurfaceConsoleRecord,
-	commandID string,
-	cardState control.FeishuCatalogConfigView,
-) control.FeishuCatalogView {
 	flow, ok := control.FeishuConfigFlowDefinitionByCommandID(commandID)
 	if !ok {
 		return control.FeishuCatalogView{}
 	}
+	return s.buildConfigCommandViewState(surface, flow, control.FeishuCatalogConfigView{})
+}
 
+func (s *Service) buildConfigCommandViewState(
+	surface *state.SurfaceConsoleRecord,
+	flow control.FeishuConfigFlowDefinition,
+	cardState control.FeishuCatalogConfigView,
+) control.FeishuCatalogView {
+	base := flow.BaseCatalogView()
 	view := control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:        flow.CommandID,
-			CatalogFamilyID:  flow.CommandID,
-			CatalogVariantID: defaultCatalogVariantID(flow.CommandID),
-		}, cardState),
+		Config: s.applyCommandConfigCardState(&base, cardState),
 	}
 
 	ctx := s.buildCatalogContext(surface)
-	view.Config.CatalogBackend = ctx.Backend
+	if view.Config.CatalogBackend == "" {
+		view.Config.CatalogBackend = ctx.Backend
+	}
 	inst := s.root.Instances[ctx.InstanceID]
 	if flow.RequiresAttachment && ctx.AttachedKind == string(control.CatalogAttachedKindDetached) {
 		view.Config.RequiresAttachment = true
@@ -57,6 +55,32 @@ func (s *Service) buildConfigCommandViewState(
 	view.Config.OverrideValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.OverrideValueKey)
 	view.Config.OverrideExtraValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.OverrideExtraValueKey)
 	return view
+}
+
+func mergeConfigCardStateFromAction(
+	flow control.FeishuConfigFlowDefinition,
+	action control.Action,
+	cardState control.FeishuCatalogConfigView,
+) control.FeishuCatalogConfigView {
+	if strings.TrimSpace(cardState.CommandID) == "" {
+		cardState.CommandID = strings.TrimSpace(flow.CommandID)
+	}
+	if strings.TrimSpace(cardState.CatalogFamilyID) == "" {
+		cardState.CatalogFamilyID = strings.TrimSpace(action.CatalogFamilyID)
+		if cardState.CatalogFamilyID == "" {
+			cardState.CatalogFamilyID = flow.CatalogFamilyID()
+		}
+	}
+	if strings.TrimSpace(cardState.CatalogVariantID) == "" {
+		cardState.CatalogVariantID = strings.TrimSpace(action.CatalogVariantID)
+		if cardState.CatalogVariantID == "" {
+			cardState.CatalogVariantID = flow.DefaultVariantID()
+		}
+	}
+	if cardState.CatalogBackend == "" {
+		cardState.CatalogBackend = action.CatalogBackend
+	}
+	return cardState
 }
 
 func (s *Service) resolveConfigFlowValue(
@@ -135,14 +159,6 @@ func (s *Service) applyCommandConfigCardState(base *control.FeishuCatalogConfigV
 		base.Sealed = true
 	}
 	return base
-}
-
-func defaultCatalogVariantID(commandID string) string {
-	commandID = strings.TrimSpace(commandID)
-	if commandID == "" {
-		return ""
-	}
-	return commandID + ".default"
 }
 
 func (s *Service) commandPageFromView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) control.FeishuPageView {

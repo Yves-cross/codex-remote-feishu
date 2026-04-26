@@ -33,6 +33,42 @@ type FeishuConfigFlowDefinition struct {
 	RequiresAttachment    bool
 }
 
+func (d FeishuConfigFlowDefinition) CatalogFamilyID() string {
+	return strings.TrimSpace(d.CommandID)
+}
+
+func (d FeishuConfigFlowDefinition) DefaultVariantID() string {
+	familyID := d.CatalogFamilyID()
+	if familyID == "" {
+		return ""
+	}
+	return defaultFeishuCommandDisplayVariantID(familyID)
+}
+
+func (d FeishuConfigFlowDefinition) BaseCatalogView() FeishuCatalogConfigView {
+	return FeishuCatalogConfigView{
+		CommandID:        strings.TrimSpace(d.CommandID),
+		CatalogFamilyID:  d.CatalogFamilyID(),
+		CatalogVariantID: d.DefaultVariantID(),
+	}
+}
+
+func (d FeishuConfigFlowDefinition) MatchesCatalog(familyID, variantID string) bool {
+	familyID = strings.TrimSpace(familyID)
+	variantID = strings.TrimSpace(variantID)
+	currentFamilyID := d.CatalogFamilyID()
+	if familyID != "" && familyID != currentFamilyID {
+		return false
+	}
+	if variantID == "" {
+		return familyID != ""
+	}
+	if variantID == d.DefaultVariantID() {
+		return true
+	}
+	return currentFamilyID != "" && strings.HasPrefix(variantID, currentFamilyID+".")
+}
+
 func (d FeishuConfigFlowDefinition) UsesPromptSummary() bool {
 	return d.CurrentValueKey.UsesPromptSummary() ||
 		d.EffectiveValueKey.UsesPromptSummary() ||
@@ -153,6 +189,15 @@ func FeishuConfigFlowDefinitionByActionKind(kind ActionKind) (FeishuConfigFlowDe
 	return FeishuConfigFlowDefinition{}, false
 }
 
+func FeishuConfigFlowDefinitionForCatalog(familyID, variantID string) (FeishuConfigFlowDefinition, bool) {
+	for _, def := range feishuConfigFlowDefinitions {
+		if def.MatchesCatalog(familyID, variantID) {
+			return def, true
+		}
+	}
+	return FeishuConfigFlowDefinition{}, false
+}
+
 func FeishuConfigFlowDefinitionByIntentKind(kind FeishuUIIntentKind) (FeishuConfigFlowDefinition, bool) {
 	for _, def := range feishuConfigFlowDefinitions {
 		if def.IntentKind == kind {
@@ -162,8 +207,31 @@ func FeishuConfigFlowDefinitionByIntentKind(kind FeishuUIIntentKind) (FeishuConf
 	return FeishuConfigFlowDefinition{}, false
 }
 
+func ResolveFeishuConfigFlowDefinitionFromView(view FeishuCatalogConfigView) (FeishuConfigFlowDefinition, bool) {
+	if def, ok := FeishuConfigFlowDefinitionForCatalog(view.CatalogFamilyID, view.CatalogVariantID); ok {
+		return def, true
+	}
+	if def, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(view.CommandID)); ok {
+		return def, true
+	}
+	return FeishuConfigFlowDefinition{}, false
+}
+
+func ResolveFeishuConfigFlowDefinitionFromAction(action Action) (FeishuConfigFlowDefinition, bool) {
+	if def, ok := FeishuConfigFlowDefinitionForCatalog(action.CatalogFamilyID, action.CatalogVariantID); ok {
+		return def, true
+	}
+	if def, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(action.CommandID)); ok {
+		return def, true
+	}
+	if def, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind); ok {
+		return def, true
+	}
+	return FeishuConfigFlowDefinition{}, false
+}
+
 func FeishuConfigFlowIntentFromAction(action Action) (*FeishuUIIntent, bool) {
-	def, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind)
+	def, ok := ResolveFeishuConfigFlowDefinitionFromAction(action)
 	if !ok || !isBareInlineCommand(action.Text, def.BareCommand) {
 		return nil, false
 	}

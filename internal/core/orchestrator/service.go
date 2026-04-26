@@ -388,7 +388,7 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		s.recordInboundSurfaceMessage(surface, action.MessageID, state.SurfaceMessageKindCard)
 	}
 	if intent, ok := control.FeishuUIIntentFromAction(action); ok {
-		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, *intent))
+		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, action, *intent))
 	}
 	s.applyCommandLauncherDisposition(surface, action)
 	var events []eventcontract.Event

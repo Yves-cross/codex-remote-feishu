@@ -8,12 +8,13 @@ import (
 
 func (s *Service) ApplyFeishuUIIntent(action control.Action, intent control.FeishuUIIntent) []eventcontract.Event {
 	surface := s.ensureSurface(action)
-	return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, intent))
+	return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, action, intent))
 }
 
-func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, intent control.FeishuUIIntent) []eventcontract.Event {
+func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, action control.Action, intent control.FeishuUIIntent) []eventcontract.Event {
 	if flow, ok := control.FeishuConfigFlowDefinitionByIntentKind(intent.Kind); ok {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildConfigCommandView(surface, flow.CommandID))}
+		_ = flow
+		return s.openConfigCommandPageForAction(surface, action)
 	}
 	switch intent.Kind {
 	case control.FeishuUIIntentShowWorkspaceRoot:

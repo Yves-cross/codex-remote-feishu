@@ -14,7 +14,7 @@ var commonFeishuModelValues = []string{
 const modelPresetCommandFieldName = "command_args_model_preset"
 
 func BuildFeishuCommandConfigPageView(view FeishuCatalogConfigView) FeishuPageView {
-	flow, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(view.CommandID))
+	flow, ok := ResolveFeishuConfigFlowDefinitionFromView(view)
 	if !ok || flow.PageBuilder == nil {
 		return FeishuPageView{}
 	}

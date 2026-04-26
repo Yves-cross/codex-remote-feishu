@@ -1,6 +1,10 @@
 package control
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+)
 
 func TestFeishuConfigFlowRegistryRoundTrip(t *testing.T) {
 	tests := []struct {
@@ -34,6 +38,11 @@ func TestFeishuConfigFlowRegistryRoundTrip(t *testing.T) {
 				t.Fatalf("expected action lookup for %q, got %#v", tt.actionKind, defByAction)
 			}
 
+			defByCatalog, ok := FeishuConfigFlowDefinitionForCatalog(tt.commandID, tt.commandID+".codex.normal")
+			if !ok || defByCatalog.CommandID != tt.commandID {
+				t.Fatalf("expected catalog lookup for %q, got %#v", tt.commandID, defByCatalog)
+			}
+
 			defByIntent, ok := FeishuConfigFlowDefinitionByIntentKind(tt.intentKind)
 			if !ok || defByIntent.CommandID != tt.commandID {
 				t.Fatalf("expected intent lookup for %q, got %#v", tt.intentKind, defByIntent)
@@ -57,6 +66,27 @@ func TestFeishuConfigFlowRegistryRoundTrip(t *testing.T) {
 				t.Fatalf("BuildFeishuCommandConfigPageView(%q) returned %#v", tt.commandID, page)
 			}
 		})
+	}
+}
+
+func TestBuildFeishuCommandConfigPageViewResolvesFromCatalogFamily(t *testing.T) {
+	page := BuildFeishuCommandConfigPageView(FeishuCatalogConfigView{
+		CatalogFamilyID:  FeishuCommandModel,
+		CatalogVariantID: "model.codex.normal",
+		CatalogBackend:   agentproto.BackendCodex,
+	})
+	if page.CommandID != FeishuCommandModel || page.Title == "" {
+		t.Fatalf("expected model config page, got %#v", page)
+	}
+	if page.CatalogBackend != agentproto.BackendCodex {
+		t.Fatalf("expected codex backend, got %#v", page)
+	}
+	if len(page.Sections) == 0 || len(page.Sections[0].Entries) == 0 || page.Sections[0].Entries[0].Form == nil {
+		t.Fatalf("expected model config page form, got %#v", page)
+	}
+	form := page.Sections[0].Entries[0].Form
+	if form.CatalogFamilyID != FeishuCommandModel || form.CatalogVariantID != "model.codex.normal" || form.CatalogBackend != agentproto.BackendCodex {
+		t.Fatalf("expected catalog provenance to stay on config form, got %#v", form)
 	}
 }
 
