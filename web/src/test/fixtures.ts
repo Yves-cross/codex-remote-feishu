@@ -236,12 +236,17 @@ type OnboardingWorkflowOverrides = Partial<
 export function makeOnboardingWorkflow(
   overrides: OnboardingWorkflowOverrides = {},
 ): OnboardingWorkflowResponse {
+  const {
+    autostart: autostartOverridesInput,
+    vscode: vscodeOverridesInput,
+    ...workflowOverrides
+  } = overrides;
   const currentApp = makeApp({
     id: "bot-1",
     name: "Main Bot",
     appId: "cli_main",
     verifiedAt: "2026-04-25T08:10:00Z",
-    ...(overrides.app?.app || {}),
+    ...(workflowOverrides.app?.app || {}),
   });
   const connection = makeOnboardingStage({
     id: "connect",
@@ -249,7 +254,7 @@ export function makeOnboardingWorkflow(
     status: "complete",
     summary: "当前飞书应用连接验证已通过。",
     allowedActions: ["verify"],
-    ...(overrides.app?.connection || {}),
+    ...(workflowOverrides.app?.connection || {}),
   });
   const permission: OnboardingWorkflowPermission = {
     ...makeOnboardingStage({
@@ -268,7 +273,7 @@ export function makeOnboardingWorkflow(
     "user": []
   }
 }`,
-    ...(overrides.app?.permission || {}),
+    ...(workflowOverrides.app?.permission || {}),
   };
   const events = {
     ...makeOnboardingStage({
@@ -280,7 +285,7 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["start_test", "confirm"],
     }),
-    ...(overrides.app?.events || {}),
+    ...(workflowOverrides.app?.events || {}),
   };
   const callback = {
     ...makeOnboardingStage({
@@ -292,7 +297,7 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["start_test", "confirm"],
     }),
-    ...(overrides.app?.callback || {}),
+    ...(workflowOverrides.app?.callback || {}),
   };
   const menu = {
     ...makeOnboardingStage({
@@ -304,10 +309,10 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["open_console", "confirm"],
     }),
-    ...(overrides.app?.menu || {}),
+    ...(workflowOverrides.app?.menu || {}),
   };
   const app =
-    overrides.app === null
+    workflowOverrides.app === null
       ? undefined
       : {
           app: currentApp,
@@ -318,11 +323,11 @@ export function makeOnboardingWorkflow(
           menu,
         };
   const {
+    decision: autostartDecisionOverrides,
     autostart: autostartDetectOverrides,
     vscode: _unusedAutostartVSCodeOverrides,
-    decision: autostartDecisionOverrides,
     ...autostartStageOverrides
-  } = overrides.autostart || {};
+  } = autostartOverridesInput || {};
   const autostart: OnboardingWorkflowMachineStep = {
     ...makeOnboardingStage({
       id: "autostart",
@@ -333,7 +338,6 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["apply", "defer"],
     }),
-    ...autostartStageOverrides,
     autostart: makeAutostartDetect({
       platform: "linux",
       supported: true,
@@ -349,13 +353,15 @@ export function makeOnboardingWorkflow(
           decidedAt: autostartDecisionOverrides.decidedAt,
         }
       : undefined,
+    error: autostartStageOverrides.error,
+    ...autostartStageOverrides,
   };
   const {
+    decision: vscodeDecisionOverrides,
     vscode: vscodeDetectOverrides,
     autostart: _unusedVSCodeAutostartOverrides,
-    decision: vscodeDecisionOverrides,
     ...vscodeStageOverrides
-  } = overrides.vscode || {};
+  } = vscodeOverridesInput || {};
   const vscode: OnboardingWorkflowMachineStep = {
     ...makeOnboardingStage({
       id: "vscode",
@@ -366,7 +372,6 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["apply", "defer", "remote_only"],
     }),
-    ...vscodeStageOverrides,
     vscode: makeVSCodeDetect(vscodeDetectOverrides || {}),
     decision: vscodeDecisionOverrides
       ? {
@@ -374,32 +379,36 @@ export function makeOnboardingWorkflow(
           decidedAt: vscodeDecisionOverrides.decidedAt,
         }
       : undefined,
+    error: vscodeStageOverrides.error,
+    ...vscodeStageOverrides,
   };
 
   return {
-    apps: overrides.apps ?? (app ? [currentApp] : []),
-    selectedAppId: overrides.selectedAppId ?? app?.app.id,
-    currentStage: overrides.currentStage ?? "permission",
-    machineState: overrides.machineState ?? "usable_with_pending_items",
+    apps: workflowOverrides.apps ?? (app ? [currentApp] : []),
+    selectedAppId: workflowOverrides.selectedAppId ?? app?.app.id,
+    currentStage: workflowOverrides.currentStage ?? "permission",
+    machineState: workflowOverrides.machineState ?? "usable_with_pending_items",
     completion: {
-      setupRequired: overrides.completion?.setupRequired ?? true,
-      canComplete: overrides.completion?.canComplete ?? false,
+      setupRequired: workflowOverrides.completion?.setupRequired ?? true,
+      canComplete: workflowOverrides.completion?.canComplete ?? false,
       summary:
-        overrides.completion?.summary ??
+        workflowOverrides.completion?.summary ??
         "当前 setup 还不能完成，请先处理阻塞项。",
       blockingReason:
-        overrides.completion?.blockingReason ?? "还没有完成自动启动决策。",
+        workflowOverrides.completion?.blockingReason ?? "还没有完成自动启动决策。",
     },
-    runtimeRequirements: makeRuntimeRequirementsDetect(overrides.runtimeRequirements || {}),
+    runtimeRequirements: makeRuntimeRequirementsDetect(
+      workflowOverrides.runtimeRequirements || {},
+    ),
     app,
     autostart,
     vscode,
     guide: {
       autoConfiguredSummary:
-        overrides.guide?.autoConfiguredSummary ??
+        workflowOverrides.guide?.autoConfiguredSummary ??
         "当前飞书应用已经接入，下面请继续补齐剩余联调与机器决策。",
       remainingManualActions:
-        overrides.guide?.remainingManualActions ?? [
+        workflowOverrides.guide?.remainingManualActions ?? [
           "补齐基础权限并重新检查。",
           "完成一次事件订阅联调。",
           "完成一次回调联调。",
@@ -408,10 +417,11 @@ export function makeOnboardingWorkflow(
           "决定如何处理这台机器上的 VS Code 集成。",
         ],
       recommendedNextStep:
-        overrides.guide?.recommendedNextStep ?? (overrides.currentStage || "permission"),
+        workflowOverrides.guide?.recommendedNextStep ??
+        (workflowOverrides.currentStage || "permission"),
     },
     stages:
-      overrides.stages ?? [
+      workflowOverrides.stages ?? [
         makeOnboardingStage({
           id: "runtime_requirements",
           title: "环境检查",
