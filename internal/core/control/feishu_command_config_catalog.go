@@ -14,26 +14,11 @@ var commonFeishuModelValues = []string{
 const modelPresetCommandFieldName = "command_args_model_preset"
 
 func BuildFeishuCommandConfigPageView(view FeishuCatalogConfigView) FeishuPageView {
-	switch strings.TrimSpace(view.CommandID) {
-	case FeishuCommandMode:
-		return modePageViewFromCommandConfigView(view)
-	case FeishuCommandAutoWhip:
-		return autoWhipPageViewFromCommandConfigView(view)
-	case FeishuCommandAutoContinue:
-		return autoContinuePageViewFromCommandConfigView(view)
-	case FeishuCommandReasoning:
-		return reasoningPageViewFromCommandConfigView(view)
-	case FeishuCommandAccess:
-		return accessPageViewFromCommandConfigView(view)
-	case FeishuCommandPlan:
-		return planPageViewFromCommandConfigView(view)
-	case FeishuCommandModel:
-		return modelPageViewFromCommandConfigView(view)
-	case FeishuCommandVerbose:
-		return verbosePageViewFromCommandConfigView(view)
-	default:
+	flow, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(view.CommandID))
+	if !ok || flow.PageBuilder == nil {
 		return FeishuPageView{}
 	}
+	return flow.PageBuilder(view)
 }
 
 func modePageViewFromCommandConfigView(view FeishuCatalogConfigView) FeishuPageView {

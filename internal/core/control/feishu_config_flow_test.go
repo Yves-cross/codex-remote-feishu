@@ -1,0 +1,100 @@
+package control
+
+import "testing"
+
+func TestFeishuConfigFlowRegistryRoundTrip(t *testing.T) {
+	tests := []struct {
+		commandID   string
+		actionKind  ActionKind
+		bareCommand string
+		intentKind  FeishuUIIntentKind
+	}{
+		{commandID: FeishuCommandMode, actionKind: ActionModeCommand, bareCommand: "/mode", intentKind: FeishuUIIntentShowModeCatalog},
+		{commandID: FeishuCommandAutoWhip, actionKind: ActionAutoWhipCommand, bareCommand: "/autowhip", intentKind: FeishuUIIntentShowAutoWhipCatalog},
+		{commandID: FeishuCommandAutoContinue, actionKind: ActionAutoContinueCommand, bareCommand: "/autocontinue", intentKind: FeishuUIIntentShowAutoContinueCatalog},
+		{commandID: FeishuCommandReasoning, actionKind: ActionReasoningCommand, bareCommand: "/reasoning", intentKind: FeishuUIIntentShowReasoningCatalog},
+		{commandID: FeishuCommandAccess, actionKind: ActionAccessCommand, bareCommand: "/access", intentKind: FeishuUIIntentShowAccessCatalog},
+		{commandID: FeishuCommandPlan, actionKind: ActionPlanCommand, bareCommand: "/plan", intentKind: FeishuUIIntentShowPlanCatalog},
+		{commandID: FeishuCommandModel, actionKind: ActionModelCommand, bareCommand: "/model", intentKind: FeishuUIIntentShowModelCatalog},
+		{commandID: FeishuCommandVerbose, actionKind: ActionVerboseCommand, bareCommand: "/verbose", intentKind: FeishuUIIntentShowVerboseCatalog},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.commandID, func(t *testing.T) {
+			defByCommand, ok := FeishuConfigFlowDefinitionByCommandID(tt.commandID)
+			if !ok {
+				t.Fatalf("expected config flow for command %q", tt.commandID)
+			}
+			if defByCommand.ActionKind != tt.actionKind || defByCommand.BareCommand != tt.bareCommand || defByCommand.IntentKind != tt.intentKind {
+				t.Fatalf("unexpected command registry entry: %#v", defByCommand)
+			}
+
+			defByAction, ok := FeishuConfigFlowDefinitionByActionKind(tt.actionKind)
+			if !ok || defByAction.CommandID != tt.commandID {
+				t.Fatalf("expected action lookup for %q, got %#v", tt.actionKind, defByAction)
+			}
+
+			defByIntent, ok := FeishuConfigFlowDefinitionByIntentKind(tt.intentKind)
+			if !ok || defByIntent.CommandID != tt.commandID {
+				t.Fatalf("expected intent lookup for %q, got %#v", tt.intentKind, defByIntent)
+			}
+
+			actionKind, ok := ActionKindForFeishuCommandID(tt.commandID)
+			if !ok || actionKind != tt.actionKind {
+				t.Fatalf("ActionKindForFeishuCommandID(%q) = (%q, %v), want (%q, true)", tt.commandID, actionKind, ok, tt.actionKind)
+			}
+
+			if got := BuildFeishuActionText(tt.actionKind, ""); got != tt.bareCommand {
+				t.Fatalf("BuildFeishuActionText(%q) = %q, want %q", tt.actionKind, got, tt.bareCommand)
+			}
+
+			if got := ResolveFeishuLauncherDisposition(Action{Kind: tt.actionKind, Text: tt.bareCommand}); got != FeishuFrontstageLauncherKeep {
+				t.Fatalf("ResolveFeishuLauncherDisposition(%q) = %q, want keep", tt.actionKind, got)
+			}
+
+			page := BuildFeishuCommandConfigPageView(FeishuCatalogConfigView{CommandID: tt.commandID})
+			if page.CommandID != tt.commandID || page.Title == "" {
+				t.Fatalf("BuildFeishuCommandConfigPageView(%q) returned %#v", tt.commandID, page)
+			}
+		})
+	}
+}
+
+func TestFeishuConfigFlowIntentOnlyMatchesBareCommands(t *testing.T) {
+	tests := []struct {
+		name   string
+		action Action
+		want   FeishuUIIntentKind
+		ok     bool
+	}{
+		{
+			name:   "bare command opens config catalog",
+			action: Action{Kind: ActionReasoningCommand, Text: "/reasoning"},
+			want:   FeishuUIIntentShowReasoningCatalog,
+			ok:     true,
+		},
+		{
+			name:   "parameter command stays product owned",
+			action: Action{Kind: ActionReasoningCommand, Text: "/reasoning high"},
+			ok:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			intent, ok := FeishuConfigFlowIntentFromAction(tt.action)
+			if ok != tt.ok {
+				t.Fatalf("FeishuConfigFlowIntentFromAction(%#v) ok = %v, want %v", tt.action, ok, tt.ok)
+			}
+			if !tt.ok {
+				if intent != nil {
+					t.Fatalf("expected nil intent, got %#v", intent)
+				}
+				return
+			}
+			if intent == nil || intent.Kind != tt.want {
+				t.Fatalf("unexpected intent: %#v", intent)
+			}
+		})
+	}
+}

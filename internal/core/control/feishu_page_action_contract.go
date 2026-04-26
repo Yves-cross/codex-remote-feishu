@@ -30,6 +30,9 @@ func FeishuActionArgumentText(text string) string {
 }
 
 func ActionKindForFeishuCommandID(commandID string) (ActionKind, bool) {
+	if flow, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(commandID)); ok {
+		return flow.ActionKind, true
+	}
 	switch strings.TrimSpace(commandID) {
 	case FeishuCommandMenu:
 		return ActionShowCommandMenu, true
@@ -37,22 +40,6 @@ func ActionKindForFeishuCommandID(commandID string) (ActionKind, bool) {
 		return ActionShowCommandHelp, true
 	case FeishuCommandHistory:
 		return ActionShowHistory, true
-	case FeishuCommandMode:
-		return ActionModeCommand, true
-	case FeishuCommandAutoWhip:
-		return ActionAutoWhipCommand, true
-	case FeishuCommandAutoContinue:
-		return ActionAutoContinueCommand, true
-	case FeishuCommandReasoning:
-		return ActionReasoningCommand, true
-	case FeishuCommandAccess:
-		return ActionAccessCommand, true
-	case FeishuCommandPlan:
-		return ActionPlanCommand, true
-	case FeishuCommandModel:
-		return ActionModelCommand, true
-	case FeishuCommandVerbose:
-		return ActionVerboseCommand, true
 	case FeishuCommandCron:
 		return ActionCronCommand, true
 	case FeishuCommandUpgrade:
@@ -89,6 +76,9 @@ func ActionKindForFeishuCommandID(commandID string) (ActionKind, bool) {
 }
 
 func canonicalSlashForActionKind(kind ActionKind) string {
+	if flow, ok := FeishuConfigFlowDefinitionByActionKind(kind); ok {
+		return flow.BareCommand
+	}
 	switch kind {
 	case ActionShowCommandMenu:
 		return "/menu"
@@ -96,22 +86,6 @@ func canonicalSlashForActionKind(kind ActionKind) string {
 		return "/help"
 	case ActionShowHistory:
 		return "/history"
-	case ActionModeCommand:
-		return "/mode"
-	case ActionAutoWhipCommand:
-		return "/autowhip"
-	case ActionAutoContinueCommand:
-		return "/autocontinue"
-	case ActionReasoningCommand:
-		return "/reasoning"
-	case ActionAccessCommand:
-		return "/access"
-	case ActionPlanCommand:
-		return "/plan"
-	case ActionModelCommand:
-		return "/model"
-	case ActionVerboseCommand:
-		return "/verbose"
 	case ActionCronCommand:
 		return "/cron"
 	case ActionUpgradeCommand:

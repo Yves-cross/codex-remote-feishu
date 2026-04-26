@@ -72,6 +72,9 @@ type FeishuUIIntent struct {
 }
 
 func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
+	if intent, ok := FeishuConfigFlowIntentFromAction(action); ok {
+		return intent, true
+	}
 	switch action.Kind {
 	case ActionWorkspaceRoot:
 		if isBareInlineCommand(action.Text, "/workspace") || strings.TrimSpace(action.Text) == "" {
@@ -92,38 +95,6 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 	case ActionShowHistory:
 		if isBareInlineCommand(action.Text, "/history") {
 			return &FeishuUIIntent{Kind: FeishuUIIntentShowHistory, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		}
-	case ActionModeCommand:
-		if isBareInlineCommand(action.Text, "/mode") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowModeCatalog, RawText: action.Text}, true
-		}
-	case ActionAutoWhipCommand:
-		if isBareInlineCommand(action.Text, "/autowhip") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowAutoWhipCatalog, RawText: action.Text}, true
-		}
-	case ActionAutoContinueCommand:
-		if isBareInlineCommand(action.Text, "/autocontinue") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowAutoContinueCatalog, RawText: action.Text}, true
-		}
-	case ActionReasoningCommand:
-		if isBareInlineCommand(action.Text, "/reasoning") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowReasoningCatalog, RawText: action.Text}, true
-		}
-	case ActionAccessCommand:
-		if isBareInlineCommand(action.Text, "/access") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowAccessCatalog, RawText: action.Text}, true
-		}
-	case ActionPlanCommand:
-		if isBareInlineCommand(action.Text, "/plan") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowPlanCatalog, RawText: action.Text}, true
-		}
-	case ActionModelCommand:
-		if isBareInlineCommand(action.Text, "/model") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowModelCatalog, RawText: action.Text}, true
-		}
-	case ActionVerboseCommand:
-		if isBareInlineCommand(action.Text, "/verbose") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowVerboseCatalog, RawText: action.Text}, true
 		}
 	case ActionListInstances:
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowList, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true

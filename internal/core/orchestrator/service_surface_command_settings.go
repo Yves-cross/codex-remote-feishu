@@ -77,26 +77,19 @@ func actionCommandArgumentText(action control.Action) string {
 }
 
 func (s *Service) buildCommandConfigViewForAction(surface *state.SurfaceConsoleRecord, action control.Action, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	switch action.Kind {
-	case control.ActionModeCommand:
-		return s.buildModeCommandViewState(surface, cardState)
-	case control.ActionAutoWhipCommand:
-		return s.buildAutoWhipCommandViewState(surface, cardState)
-	case control.ActionAutoContinueCommand:
-		return s.buildAutoContinueCommandViewState(surface, cardState)
-	case control.ActionReasoningCommand:
-		return s.buildReasoningCommandViewState(surface, cardState)
-	case control.ActionAccessCommand:
-		return s.buildAccessCommandViewState(surface, cardState)
-	case control.ActionPlanCommand:
-		return s.buildPlanCommandViewState(surface, cardState)
-	case control.ActionModelCommand:
-		return s.buildModelCommandViewState(surface, cardState)
-	case control.ActionVerboseCommand:
-		return s.buildVerboseCommandViewState(surface, cardState)
-	default:
+	flow, ok := control.FeishuConfigFlowDefinitionByActionKind(action.Kind)
+	if !ok {
 		return control.FeishuCatalogView{}
 	}
+	return s.buildConfigCommandViewState(surface, flow.CommandID, cardState)
+}
+
+func (s *Service) openConfigCommandPageForAction(surface *state.SurfaceConsoleRecord, actionKind control.ActionKind) []eventcontract.Event {
+	flow, ok := control.FeishuConfigFlowDefinitionByActionKind(actionKind)
+	if !ok {
+		return nil
+	}
+	return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildConfigCommandView(surface, flow.CommandID))}
 }
 
 func (s *Service) inlineCommandCardEvents(surface *state.SurfaceConsoleRecord, action control.Action, cardState control.FeishuCatalogConfigView, extra ...eventcontract.Event) []eventcontract.Event {
@@ -109,7 +102,7 @@ func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action 
 	current := s.normalizeSurfaceProductMode(surface)
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModeCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
@@ -179,7 +172,7 @@ func (s *Service) handleModeCommand(surface *state.SurfaceConsoleRecord, action 
 func (s *Service) handleAutoWhipCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoWhipCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
@@ -233,7 +226,7 @@ func (s *Service) handleAutoWhipCommand(surface *state.SurfaceConsoleRecord, act
 func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoContinueCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
@@ -287,7 +280,7 @@ func (s *Service) handleAutoContinueCommand(surface *state.SurfaceConsoleRecord,
 func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildVerboseCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
@@ -329,7 +322,7 @@ func (s *Service) handleVerboseCommand(surface *state.SurfaceConsoleRecord, acti
 func (s *Service) handlePlanCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildPlanCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	if len(parts) != 2 {
 		return s.inlineCommandCardEvents(surface, action, control.FeishuCatalogConfigView{
@@ -376,7 +369,7 @@ func (s *Service) handlePlanCommand(surface *state.SurfaceConsoleRecord, action 
 func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModelCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
@@ -436,7 +429,7 @@ func (s *Service) handleModelCommand(surface *state.SurfaceConsoleRecord, action
 func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildReasoningCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {
@@ -483,7 +476,7 @@ func (s *Service) handleReasoningCommand(surface *state.SurfaceConsoleRecord, ac
 func (s *Service) handleAccessCommand(surface *state.SurfaceConsoleRecord, action control.Action) []eventcontract.Event {
 	parts := strings.Fields(strings.TrimSpace(action.Text))
 	if len(parts) <= 1 {
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAccessCommandView(surface))}
+		return s.openConfigCommandPageForAction(surface, action.Kind)
 	}
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	if inst == nil {

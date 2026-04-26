@@ -12,6 +12,9 @@ func (s *Service) ApplyFeishuUIIntent(action control.Action, intent control.Feis
 }
 
 func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, intent control.FeishuUIIntent) []eventcontract.Event {
+	if flow, ok := control.FeishuConfigFlowDefinitionByIntentKind(intent.Kind); ok {
+		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildConfigCommandView(surface, flow.CommandID))}
+	}
 	switch intent.Kind {
 	case control.FeishuUIIntentShowWorkspaceRoot:
 		if s.normalizeSurfaceProductMode(surface) != state.ProductModeNormal {
@@ -42,22 +45,6 @@ func (s *Service) applyFeishuUIIntent(surface *state.SurfaceConsoleRecord, inten
 		return []eventcontract.Event{s.menuPageEvent(surface, intent.RawText)}
 	case control.FeishuUIIntentShowHistory:
 		return s.openThreadHistory(surface, intent.SourceMessageID, intent.Inline)
-	case control.FeishuUIIntentShowModeCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModeCommandView(surface))}
-	case control.FeishuUIIntentShowAutoWhipCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoWhipCommandView(surface))}
-	case control.FeishuUIIntentShowAutoContinueCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAutoContinueCommandView(surface))}
-	case control.FeishuUIIntentShowReasoningCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildReasoningCommandView(surface))}
-	case control.FeishuUIIntentShowAccessCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildAccessCommandView(surface))}
-	case control.FeishuUIIntentShowPlanCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildPlanCommandView(surface))}
-	case control.FeishuUIIntentShowModelCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildModelCommandView(surface))}
-	case control.FeishuUIIntentShowVerboseCatalog:
-		return []eventcontract.Event{s.configPageEventFromCatalogView(surface, s.buildVerboseCommandView(surface))}
 	case control.FeishuUIIntentShowList:
 		if s.normalizeSurfaceProductMode(surface) == state.ProductModeNormal {
 			return s.openTargetPicker(surface, control.TargetPickerRequestSourceList, "", "", intent.SourceMessageID, true)

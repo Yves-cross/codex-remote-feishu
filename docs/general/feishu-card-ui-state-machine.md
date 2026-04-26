@@ -1,7 +1,7 @@
 # Feishu 卡片 UI 状态机
 
 > Type: `general`
-> Updated: `2026-04-25`
+> Updated: `2026-04-26`
 > Summary: 当前实现把 normal mode 的工作会话收敛到 `workspace` 命令族与三张独立 target-picker 卡：bare `/workspace` 与 `/workspace new` 是 page-owner 父页，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三条业务路径，`/list` `/use` `/useall` 只保留 alias；被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）也统一回到锁定当前工作区的 target picker。`/workspace list` 的 target page 现已接入 byte-budget dropdown pagination：workspace / session 双下拉通过 `target_picker_page(picker_id + field_name + cursor)` 走同卡翻页，workspace 预算目标 `1/3`、session `2/3`，并支持空余预算回借；workspace 翻页会重算 session 候选，session 翻页则保留 workspace 状态并清空不可见会话选择。复用 path picker 现在也接入同类 byte-budget dropdown pagination：目录模式单下拉、文件模式目录/文件双下拉、target-picker owner-subpage 的 compact 目录下拉都改走 `path_picker_page(picker_id + field_name + cursor)`；目录 lane 固定保留 `.` / `..`，文件 lane 翻页会清空不可见文件选择并禁用 confirm。selection 卡片这轮进一步收口到 `FeishuSelectionView + FeishuSelectionSemantics`：VS Code `/list` 继续按钮式实例卡，VS Code `/use` / `/useall` 统一成当前实例内的 dropdown，大集合候选会按 transport byte budget 动态分页，并通过 `thread_selection_page(view_mode + cursor)` 原地翻页；若当前 thread 不在可见页，不再伪造 `initial_option`。kick-thread confirm 也走同一 selection substrate；adapter live 路径不再回退 `FeishuDirectSelectionPrompt`。其余 target picker / path picker / history 继续共用 owner-card runtime，并统一承载 `body / notice / sealed` contract；本轮还新增了 `/autocontinue` 参数卡与 reply-thread、tail-only patch 的自动继续状态卡；`/upgrade` 根页现在会按 standalone Codex 安装状态决定是否暴露 `Codex 升级`，`/upgrade latest` 与 `/upgrade codex` 共用 `upgrade_owner_flow` callback family，但分别收口到 release / Codex 两条 owner-card flow；菜单、帮助、page-result replacement、request cards、plan proposal、VS Code guidance、共享过程卡、原锚点 attention annotation 与 turn reply 语义见正文。
 
 ## 1. 文档定位
@@ -69,6 +69,7 @@
   - 对 normal mode `/list` / `/use` / `/useall`，以及 attach-unbound / `selected_thread_lost` / `thread_claim_lost` 这类被动恢复入口，当前先产出 `FeishuTargetPickerView` read model，再连同 `FeishuTargetPickerContext` 穿过 `UIEvent` 边界
   - 对 VS Code instance/thread selection、kick-thread confirm，以及仍保留 selection 卡形态的少量兼容路径，当前统一先产出 `FeishuSelectionView` read model，再连同 `FeishuSelectionContext` 穿过 `UIEvent` 边界
   - 对 `/menu` 与 bare `/mode` `/autowhip` `/autocontinue` `/reasoning` `/access` `/plan` `/model` `/verbose`，当前统一产出 `FeishuPageView` read model，并连同 `FeishuPageContext` 走 `UIEventFeishuPageView` 边界（配置页内部仍复用 catalog-to-page builder 生成 page 内容）
+  - 这组 bare config-card 的 open intent、launcher keep contract、controller 分发与 config page builder 当前已通过 `FeishuConfigFlowDefinition` registry 收口，不再分别在 intent / lifecycle / controller / config catalog 多层平行枚举
   - 对 approval / `request_user_input` / MCP request cards，当前先产出 `FeishuRequestView`，再连同 `FeishuRequestContext` 穿过 `UIEvent` 边界
   - 对飞书文件/目录选择器，当前先产出 `FeishuPathPickerView` read model，再连同 `FeishuPathPickerContext` 穿过 `UIEvent` 边界；进入目录、返回上一级、文件选择属于 controller 内 pure navigation，confirm/cancel 则转到 picker consumer handoff
 - `projector`

@@ -331,6 +331,39 @@ func TestApplyFeishuUIIntentBuildsVerboseCatalog(t *testing.T) {
 	}
 }
 
+func TestApplyFeishuUIIntentBuildsConfigCatalogsFromRegistry(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+
+	for _, flow := range control.FeishuConfigFlowDefinitions() {
+		t.Run(flow.CommandID, func(t *testing.T) {
+			events := svc.ApplyFeishuUIIntent(control.Action{
+				Kind:             flow.ActionKind,
+				SurfaceSessionID: "surface-1",
+				ChatID:           "chat-1",
+				ActorUserID:      "user-1",
+				Text:             flow.BareCommand,
+			}, control.FeishuUIIntent{
+				Kind:    flow.IntentKind,
+				RawText: flow.BareCommand,
+			})
+			if len(events) != 1 {
+				t.Fatalf("expected a single config catalog event, got %#v", events)
+			}
+			if events[0].PageView == nil || events[0].PageView.CommandID != flow.CommandID {
+				t.Fatalf("expected page view for %q, got %#v", flow.CommandID, events[0].PageView)
+			}
+			if events[0].PageContext == nil || events[0].PageContext.CommandID != flow.CommandID {
+				t.Fatalf("expected page context for %q, got %#v", flow.CommandID, events[0].PageContext)
+			}
+			catalog := commandCatalogFromEvent(t, events[0])
+			if strings.TrimSpace(catalog.Title) == "" {
+				t.Fatalf("expected non-empty catalog title for %q", flow.CommandID)
+			}
+		})
+	}
+}
+
 func TestApplySurfaceActionModeInvalidArgsReturnsCommandView(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

@@ -126,16 +126,11 @@ func ResolveFeishuFrontstageActionContract(action Action) FeishuFrontstageAction
 }
 
 func ResolveFeishuLauncherDisposition(action Action) FeishuFrontstageLauncherDisposition {
+	if _, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind); ok {
+		return FeishuFrontstageLauncherKeep
+	}
 	switch action.Kind {
-	case ActionShowCommandMenu,
-		ActionModeCommand,
-		ActionAutoWhipCommand,
-		ActionAutoContinueCommand,
-		ActionReasoningCommand,
-		ActionAccessCommand,
-		ActionPlanCommand,
-		ActionModelCommand,
-		ActionVerboseCommand:
+	case ActionShowCommandMenu:
 		return FeishuFrontstageLauncherKeep
 	case ActionShowCommandHelp, ActionStatus:
 		return FeishuFrontstageLauncherEnterTerminal
@@ -210,16 +205,13 @@ func AllowsBareCommandContinuation(Action) bool { return false }
 func AllowsCommandSubmissionAnchorReplacement(Action) bool { return false }
 
 func inlineReplaceableFeishuUIIntentAction(action Action) bool {
+	if _, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind); ok {
+		if !isSingleTokenSlashCommand(action.Text) {
+			return true
+		}
+	}
 	switch action.Kind {
-	case ActionModeCommand,
-		ActionAutoWhipCommand,
-		ActionAutoContinueCommand,
-		ActionReasoningCommand,
-		ActionAccessCommand,
-		ActionPlanCommand,
-		ActionModelCommand,
-		ActionVerboseCommand,
-		ActionPlanProposalDecision,
+	case ActionPlanProposalDecision,
 		ActionRespondRequest,
 		ActionControlRequest:
 		if isSingleTokenSlashCommand(action.Text) {
@@ -231,6 +223,9 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	if !ok || intent == nil {
 		return false
 	}
+	if _, ok := FeishuConfigFlowDefinitionByIntentKind(intent.Kind); ok {
+		return true
+	}
 	switch intent.Kind {
 	case FeishuUIIntentShowCommandMenu,
 		FeishuUIIntentShowWorkspaceRoot,
@@ -239,14 +234,6 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 		FeishuUIIntentShowWorkspaceNewDir,
 		FeishuUIIntentShowWorkspaceNewGit,
 		FeishuUIIntentShowHistory,
-		FeishuUIIntentShowModeCatalog,
-		FeishuUIIntentShowAutoWhipCatalog,
-		FeishuUIIntentShowAutoContinueCatalog,
-		FeishuUIIntentShowReasoningCatalog,
-		FeishuUIIntentShowAccessCatalog,
-		FeishuUIIntentShowPlanCatalog,
-		FeishuUIIntentShowModelCatalog,
-		FeishuUIIntentShowVerboseCatalog,
 		FeishuUIIntentShowList,
 		FeishuUIIntentOpenSendFilePicker,
 		FeishuUIIntentShowRecentWorkspaces,

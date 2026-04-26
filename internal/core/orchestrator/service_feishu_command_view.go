@@ -16,165 +16,92 @@ func (s *Service) buildCommandMenuView(surface *state.SurfaceConsoleRecord, raw 
 	}
 }
 
-func (s *Service) buildModeCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildModeCommandViewState(surface, control.FeishuCatalogConfigView{})
+func (s *Service) buildConfigCommandView(surface *state.SurfaceConsoleRecord, commandID string) control.FeishuCatalogView {
+	return s.buildConfigCommandViewState(surface, commandID, control.FeishuCatalogConfigView{})
 }
 
-func (s *Service) buildModeCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	return control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:    control.FeishuCommandMode,
-			CurrentValue: string(s.normalizeSurfaceProductMode(surface)),
-		}, cardState),
+func (s *Service) buildConfigCommandViewState(
+	surface *state.SurfaceConsoleRecord,
+	commandID string,
+	cardState control.FeishuCatalogConfigView,
+) control.FeishuCatalogView {
+	flow, ok := control.FeishuConfigFlowDefinitionByCommandID(commandID)
+	if !ok {
+		return control.FeishuCatalogView{}
 	}
-}
 
-func (s *Service) buildAutoWhipCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildAutoWhipCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildAutoWhipCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	current := "off"
-	if surface != nil && surface.AutoWhip.Enabled {
-		current = "on"
-	}
-	return control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:    control.FeishuCommandAutoWhip,
-			CurrentValue: current,
-		}, cardState),
-	}
-}
-
-func (s *Service) buildAutoContinueCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildAutoContinueCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildAutoContinueCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	current := "off"
-	if surface != nil && surface.AutoContinue.Enabled {
-		current = "on"
-	}
-	return control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:    control.FeishuCommandAutoContinue,
-			CurrentValue: current,
-		}, cardState),
-	}
-}
-
-func (s *Service) buildReasoningCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildReasoningCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildReasoningCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
 	view := control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{CommandID: control.FeishuCommandReasoning}, cardState),
+		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{CommandID: flow.CommandID}, cardState),
 	}
+
 	attachedInstanceID := ""
 	if surface != nil {
 		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
 	}
 	inst := s.root.Instances[attachedInstanceID]
-	if inst == nil {
+	if flow.RequiresAttachment && inst == nil {
 		view.Config.RequiresAttachment = true
 		return view
 	}
-	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
-	view.Config.EffectiveValue = strings.TrimSpace(summary.EffectiveReasoningEffort)
-	view.Config.OverrideValue = strings.TrimSpace(summary.OverrideReasoningEffort)
+
+	var summary control.PromptRouteSummary
+	if flow.UsesPromptSummary() && inst != nil {
+		summary = s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
+	}
+
+	view.Config.CurrentValue = s.resolveConfigFlowValue(surface, summary, flow.CurrentValueKey)
+	view.Config.EffectiveValue = s.resolveConfigFlowValue(surface, summary, flow.EffectiveValueKey)
+	view.Config.OverrideValue = s.resolveConfigFlowValue(surface, summary, flow.OverrideValueKey)
+	view.Config.OverrideExtraValue = s.resolveConfigFlowValue(surface, summary, flow.OverrideExtraValueKey)
 	return view
 }
 
-func (s *Service) buildAccessCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildAccessCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildAccessCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	view := control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{CommandID: control.FeishuCommandAccess}, cardState),
-	}
-	attachedInstanceID := ""
-	if surface != nil {
-		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
-	}
-	inst := s.root.Instances[attachedInstanceID]
-	if inst == nil {
-		view.Config.RequiresAttachment = true
-		return view
-	}
-	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
-	view.Config.EffectiveValue = strings.TrimSpace(summary.EffectiveAccessMode)
-	view.Config.OverrideValue = strings.TrimSpace(summary.OverrideAccessMode)
-	return view
-}
-
-func (s *Service) buildPlanCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildPlanCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildPlanCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	current := state.PlanModeSettingOff
-	if surface != nil {
-		current = state.NormalizePlanModeSetting(surface.PlanMode)
-	}
-	view := control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:    control.FeishuCommandPlan,
-			CurrentValue: string(current),
-		}, cardState),
-	}
-	attachedInstanceID := ""
-	if surface != nil {
-		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
-	}
-	inst := s.root.Instances[attachedInstanceID]
-	if inst == nil || surface == nil {
-		return view
-	}
-	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
-	view.Config.EffectiveValue = strings.TrimSpace(summary.ObservedThreadPlanMode)
-	return view
-}
-
-func (s *Service) buildModelCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildModelCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildModelCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	view := control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{CommandID: control.FeishuCommandModel}, cardState),
-	}
-	attachedInstanceID := ""
-	if surface != nil {
-		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
-	}
-	inst := s.root.Instances[attachedInstanceID]
-	if inst == nil {
-		view.Config.RequiresAttachment = true
-		return view
-	}
-	summary := s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
-	view.Config.EffectiveValue = strings.TrimSpace(summary.EffectiveModel)
-	view.Config.OverrideValue = strings.TrimSpace(summary.OverrideModel)
-	view.Config.OverrideExtraValue = strings.TrimSpace(summary.OverrideReasoningEffort)
-	return view
-}
-
-func (s *Service) buildVerboseCommandView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	return s.buildVerboseCommandViewState(surface, control.FeishuCatalogConfigView{})
-}
-
-func (s *Service) buildVerboseCommandViewState(surface *state.SurfaceConsoleRecord, cardState control.FeishuCatalogConfigView) control.FeishuCatalogView {
-	current := state.SurfaceVerbosityNormal
-	if surface != nil {
-		current = state.NormalizeSurfaceVerbosity(surface.Verbosity)
-	}
-	return control.FeishuCatalogView{
-		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{
-			CommandID:    control.FeishuCommandVerbose,
-			CurrentValue: string(current),
-		}, cardState),
+func (s *Service) resolveConfigFlowValue(
+	surface *state.SurfaceConsoleRecord,
+	summary control.PromptRouteSummary,
+	key control.FeishuConfigFlowValueKey,
+) string {
+	switch key {
+	case control.FeishuConfigFlowValueSurfaceProductMode:
+		return string(s.normalizeSurfaceProductMode(surface))
+	case control.FeishuConfigFlowValueSurfaceAutoWhip:
+		if surface != nil && surface.AutoWhip.Enabled {
+			return "on"
+		}
+		return "off"
+	case control.FeishuConfigFlowValueSurfaceAutoContinue:
+		if surface != nil && surface.AutoContinue.Enabled {
+			return "on"
+		}
+		return "off"
+	case control.FeishuConfigFlowValueSurfacePlanMode:
+		current := state.PlanModeSettingOff
+		if surface != nil {
+			current = state.NormalizePlanModeSetting(surface.PlanMode)
+		}
+		return string(current)
+	case control.FeishuConfigFlowValueSurfaceVerbosity:
+		current := state.SurfaceVerbosityNormal
+		if surface != nil {
+			current = state.NormalizeSurfaceVerbosity(surface.Verbosity)
+		}
+		return string(current)
+	case control.FeishuConfigFlowValuePromptEffectiveReasoning:
+		return strings.TrimSpace(summary.EffectiveReasoningEffort)
+	case control.FeishuConfigFlowValuePromptOverrideReasoning:
+		return strings.TrimSpace(summary.OverrideReasoningEffort)
+	case control.FeishuConfigFlowValuePromptEffectiveAccess:
+		return strings.TrimSpace(summary.EffectiveAccessMode)
+	case control.FeishuConfigFlowValuePromptOverrideAccess:
+		return strings.TrimSpace(summary.OverrideAccessMode)
+	case control.FeishuConfigFlowValuePromptObservedThreadPlan:
+		return strings.TrimSpace(summary.ObservedThreadPlanMode)
+	case control.FeishuConfigFlowValuePromptEffectiveModel:
+		return strings.TrimSpace(summary.EffectiveModel)
+	case control.FeishuConfigFlowValuePromptOverrideModel:
+		return strings.TrimSpace(summary.OverrideModel)
+	default:
+		return ""
 	}
 }
 
