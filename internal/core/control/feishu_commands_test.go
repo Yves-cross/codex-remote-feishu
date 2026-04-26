@@ -55,11 +55,11 @@ func TestParseFeishuTextActionRecognizesUpgradeCommand(t *testing.T) {
 	}
 }
 
-func TestParseFeishuTextActionRecognizesPatchRollbackCommand(t *testing.T) {
+func TestParseFeishuTextActionRecognizesBendToMyWillRollbackCommand(t *testing.T) {
 	tests := []string{
-		"/patch",
-		"/patch rollback",
-		"/patch rollback patch-thread-1-1",
+		"/bendtomywill",
+		"/bendtomywill rollback",
+		"/bendtomywill rollback patch-thread-1-1",
 	}
 	for _, input := range tests {
 		action, ok := ParseFeishuTextAction(input)

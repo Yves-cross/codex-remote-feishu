@@ -104,7 +104,7 @@ func (a *App) handleTurnPatchCommandLocked(action control.Action) []eventcontrac
 		if len(args) > 2 {
 			a.ensureSurfaceRouteForNotice(action)
 			return []eventcontract.Event{
-				turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid_args", "用法只支持 `/patch` 或 `/patch rollback [patch_id]`。"),
+				turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid_args", "用法只支持 `/bendtomywill` 或 `/bendtomywill rollback [patch_id]`。"),
 			}
 		}
 		patchID := ""
@@ -115,7 +115,7 @@ func (a *App) handleTurnPatchCommandLocked(action control.Action) []eventcontrac
 	default:
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid_args", "用法只支持 `/patch` 或 `/patch rollback [patch_id]`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid_args", "用法只支持 `/bendtomywill` 或 `/bendtomywill rollback [patch_id]`。"),
 		}
 	}
 }
@@ -200,13 +200,13 @@ func (a *App) handleTurnPatchRequestActionLocked(action control.Action, flow *tu
 		delete(a.turnPatchRuntime.ActiveFlows, flow.RequestID)
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已失效，请重新发送 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已失效，请重新发送 `/bendtomywill`。"),
 		}
 	}
 	if flow.SurfaceSessionID != "" && strings.TrimSpace(flow.SurfaceSessionID) != strings.TrimSpace(action.SurfaceSessionID) {
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已失效，请重新发送 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已失效，请重新发送 `/bendtomywill`。"),
 		}
 	}
 	actorUserID := strings.TrimSpace(firstNonEmpty(action.ActorUserID, a.service.SurfaceActorUserID(action.SurfaceSessionID)))
@@ -228,7 +228,7 @@ func (a *App) handleTurnPatchRequestActionLocked(action control.Action, flow *tu
 	if flow.Stage != turnpatchruntime.FlowStageEditing {
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已结束，请重新发送 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_expired", "这张 patch 卡已结束，请重新发送 `/bendtomywill`。"),
 		}
 	}
 	switch action.Kind {
@@ -246,7 +246,7 @@ func (a *App) respondTurnPatchRequestLocked(action control.Action, flow *turnpat
 	if currentIdx < 0 || currentIdx >= len(flow.Candidates) {
 		a.ensureSurfaceRouteForNotice(action)
 		return []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid", "当前 patch 卡缺少有效候选点，请重新发送 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_invalid", "当前 patch 卡缺少有效候选点，请重新发送 `/bendtomywill`。"),
 		}
 	}
 	answers := turnPatchAnswersForAction(action)
@@ -317,7 +317,7 @@ func (a *App) beginTurnPatchApplyLocked(action control.Action, flow *turnpatchru
 				turnPatchRequestEvent(action.SurfaceSessionID, action.MessageID, turnPatchRequestView(flow), true),
 			}
 		}
-		text := "当前 attached thread 已不再满足修补条件，请重新发送 `/patch`。"
+		text := "当前 attached thread 已不再满足修补条件，请重新发送 `/bendtomywill`。"
 		if len(blocked) != 0 && blocked[0].Notice != nil && strings.TrimSpace(blocked[0].Notice.Text) != "" {
 			text = blocked[0].Notice.Text
 		}
@@ -330,7 +330,7 @@ func (a *App) beginTurnPatchApplyLocked(action control.Action, flow *turnpatchru
 		flow.Stage = turnpatchruntime.FlowStageFailed
 		a.refreshTurnPatchFlowLocked(flow, turnpatchruntime.FlowStageFailed)
 		return []eventcontract.Event{
-			turnPatchPageEvent(action.SurfaceSessionID, turnPatchFailedPageView(flow, "当前会话修补失败", "当前 attached thread 已变化，请重新发送 `/patch`。"), true),
+			turnPatchPageEvent(action.SurfaceSessionID, turnPatchFailedPageView(flow, "当前会话修补失败", "当前 attached thread 已变化，请重新发送 `/bendtomywill`。"), true),
 		}
 	}
 	tx := a.newTurnPatchTransactionLocked(flow, turnpatchruntime.TransactionKindApply)
@@ -492,34 +492,34 @@ func (a *App) turnPatchResolveTargetLocked(action control.Action, requireIdle bo
 	if a.turnPatchRuntime.Storage == nil {
 		a.ensureSurfaceRouteForNotice(action)
 		return nil, []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_unavailable", "当前实例没有启用 thread patch 存储，暂时不能执行 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_unavailable", "当前实例没有启用 thread patch 存储，暂时不能执行 `/bendtomywill`。"),
 		}
 	}
 	surface := a.service.Surface(action.SurfaceSessionID)
 	if surface == nil || strings.TrimSpace(surface.AttachedInstanceID) == "" {
 		a.ensureSurfaceRouteForNotice(action)
 		return nil, []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_unattached", "当前飞书会话还没有 attached 实例，不能执行 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_unattached", "当前飞书会话还没有 attached 实例，不能执行 `/bendtomywill`。"),
 		}
 	}
 	if state.NormalizeProductMode(surface.ProductMode) == state.ProductModeVSCode {
 		a.ensureSurfaceRouteForNotice(action)
 		return nil, []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_vscode_unsupported", "VS Code surface 暂不支持 `/patch`，请切回 normal 模式后再试。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_vscode_unsupported", "VS Code surface 暂不支持 `/bendtomywill`，请切回 normal 模式后再试。"),
 		}
 	}
 	inst := a.service.Instance(surface.AttachedInstanceID)
 	if inst == nil || !inst.Online {
 		a.ensureSurfaceRouteForNotice(action)
 		return nil, []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_instance_offline", "当前 attached 实例不在线，不能执行 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_instance_offline", "当前 attached 实例不在线，不能执行 `/bendtomywill`。"),
 		}
 	}
 	threadID := strings.TrimSpace(surface.SelectedThreadID)
 	if threadID == "" {
 		a.ensureSurfaceRouteForNotice(action)
 		return nil, []eventcontract.Event{
-			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_thread_missing", "当前 surface 还没有选中的会话，不能执行 `/patch`。"),
+			turnPatchNoticeEvent(action.SurfaceSessionID, "turn_patch_thread_missing", "当前 surface 还没有选中的会话，不能执行 `/bendtomywill`。"),
 		}
 	}
 	if requireIdle && a.turnPatchInstanceBusyLocked(inst.InstanceID, action.SurfaceSessionID) {
@@ -709,7 +709,7 @@ func turnPatchApplyFailureLines(err error) []string {
 		strings.Contains(err.Error(), codexstate.ErrTurnPatchLatestTurnNotFound.Error()),
 		strings.Contains(err.Error(), codexstate.ErrTurnPatchReplacementNotFound.Error()),
 		strings.Contains(err.Error(), codexstate.ErrTurnPatchDuplicateDrift.Error()):
-		return []string{"当前会话内容已变化，请重新发送 `/patch` 后再试。"}
+		return []string{"当前会话内容已变化，请重新发送 `/bendtomywill` 后再试。"}
 	default:
 		return []string{"修补失败：" + err.Error()}
 	}

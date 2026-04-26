@@ -95,9 +95,9 @@ func canonicalSlashForActionKind(kind ActionKind) string {
 	case ActionUpgradeCommand:
 		return "/upgrade"
 	case ActionTurnPatchCommand:
-		return "/patch"
+		return "/bendtomywill"
 	case ActionTurnPatchRollback:
-		return "/patch rollback"
+		return "/bendtomywill rollback"
 	case ActionDebugCommand:
 		return "/debug"
 	case ActionVSCodeMigrateCommand:

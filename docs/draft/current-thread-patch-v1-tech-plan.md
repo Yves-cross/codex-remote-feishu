@@ -1,7 +1,7 @@
 # Current Thread Patch V1 Tech Plan
 
 > Type: `draft`
-> Updated: `2026-04-26`
+> Updated: `2026-04-27`
 > Summary: 基于 `#464` 当前产品边界，补齐 V1 的存储兼容、事务编排，并确认冻结输入加重启恢复是唯一运行态方案。
 
 ## 1. 文档定位
@@ -301,7 +301,7 @@ rollback 也是同级高风险事务：
 
 - `internal/app/daemon/*`
   - 新增 patch command ingress
-  - 新增 patch apply / rollback handler
+- 新增 bendtomywill apply / rollback handler
   - 串起 preflight、storage adapter、restart、notice
 
 ### 7.4 wrapper / codex translator

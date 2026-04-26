@@ -25,10 +25,10 @@ func TestTurnPatchOpenFlowBuildsRequestCard(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	if !handled {
-		t.Fatal("expected /patch to be intercepted")
+		t.Fatal("expected /bendtomywill to be intercepted")
 	}
 	if len(events) != 1 || events[0].RequestView == nil {
 		t.Fatalf("expected one request view event, got %#v", events)
@@ -59,7 +59,7 @@ func TestTurnPatchOpenRejectsVSCodeAndBusyInstance(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	if !handled || len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "turn_patch_vscode_unsupported" {
 		t.Fatalf("expected vscode reject notice, got %#v", events)
@@ -72,7 +72,7 @@ func TestTurnPatchOpenRejectsVSCodeAndBusyInstance(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	if !handled || len(events) != 1 || events[0].Notice == nil || events[0].Notice.Code != "turn_patch_busy" {
 		t.Fatalf("expected busy reject notice, got %#v", events)
@@ -86,7 +86,7 @@ func TestTurnPatchRequestFlowAdvancesAndRejectsOtherUser(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	flow := mustOnlyTurnPatchFlow(t, app)
 
@@ -151,7 +151,7 @@ func TestTurnPatchApplySuccessWritesRolloutAndRestartsChild(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	flow := mustOnlyTurnPatchFlow(t, app)
 	firstQuestionID := flow.Candidates[0].QuestionID
@@ -241,7 +241,7 @@ func TestTurnPatchApplyRestartRejectAutoRollsBack(t *testing.T) {
 		SurfaceSessionID: "surface-1",
 		ChatID:           "chat-1",
 		ActorUserID:      "user-1",
-		Text:             "/patch",
+		Text:             "/bendtomywill",
 	})
 	flow := mustOnlyTurnPatchFlow(t, app)
 	firstQuestionID := flow.Candidates[0].QuestionID

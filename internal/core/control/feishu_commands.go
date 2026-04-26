@@ -915,7 +915,7 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			ID:               FeishuCommandPatch,
 			GroupID:          FeishuCommandGroupMaintenance,
 			Title:            "修补当前会话",
-			CanonicalSlash:   "/patch",
+			CanonicalSlash:   "/bendtomywill",
 			CanonicalMenuKey: "patch",
 			ArgumentKind:     FeishuCommandArgumentNone,
 			Description:      "对当前 attached thread 的最新 assistant turn 打开受控修补卡；只支持 normal 模式，且当前实例必须空闲。",
@@ -923,10 +923,10 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			ShowInMenu:       true,
 		},
 		textPrefixes: []feishuCommandPrefixMatch{
-			{alias: "/patch", kind: ActionTurnPatchCommand},
+			{alias: "/bendtomywill", kind: ActionTurnPatchCommand},
 		},
 		menuExact: []feishuCommandMatch{
-			{alias: "patch", action: Action{Kind: ActionTurnPatchCommand, Text: "/patch"}},
+			{alias: "patch", action: Action{Kind: ActionTurnPatchCommand, Text: "/bendtomywill"}},
 		},
 	},
 	{

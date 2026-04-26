@@ -1,7 +1,7 @@
 # Current Thread Patch V1 PRD
 
 > Type: `draft`
-> Updated: `2026-04-26`
+> Updated: `2026-04-27`
 > Summary: 收敛“当前 thread patch”首版产品边界，并确认重启恢复是唯一运行态方案且默认对上层静默。
 
 ## 1. 文档定位
@@ -124,7 +124,7 @@ V1 的目标用户不是普通聊天用户，而是：
 
 因此 V1 首个入口建议是两条等价入口：
 
-- slash 命令
+- slash 命令（当前命令名为 `/bendtomywill`）
 - 菜单项
 
 这两条入口必须汇入同一条 patch 流程，而不是维护两套实现。
