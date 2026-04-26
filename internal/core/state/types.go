@@ -163,7 +163,9 @@ type InstanceRecord struct {
 	WorkspaceRoot           string
 	WorkspaceKey            string
 	ShortName               string
+	Backend                 agentproto.Backend
 	Source                  string
+	Capabilities            agentproto.Capabilities
 	Managed                 bool
 	PID                     int
 	Online                  bool

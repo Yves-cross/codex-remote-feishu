@@ -97,6 +97,52 @@ func TestOnHelloReleasesAppLockDuringStartupThreadsRefreshSend(t *testing.T) {
 	}
 }
 
+func TestOnHelloWithoutThreadsRefreshSkipsStartupRefreshAndSettlesRound(t *testing.T) {
+	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
+
+	var commands []agentproto.Command
+	app.sendAgentCommand = func(_ string, command agentproto.Command) error {
+		commands = append(commands, command)
+		return nil
+	}
+
+	app.onHello(context.Background(), agentproto.Hello{
+		Instance: agentproto.InstanceHello{
+			InstanceID:    "inst-claude",
+			DisplayName:   "workspace",
+			WorkspaceRoot: "/tmp/workspace",
+			WorkspaceKey:  "/tmp/workspace",
+			ShortName:     "workspace",
+			Backend:       agentproto.BackendClaude,
+			Source:        "headless",
+			Managed:       true,
+			PID:           1234,
+		},
+	})
+
+	if len(commands) != 0 {
+		t.Fatalf("unexpected relay commands: %#v", commands)
+	}
+	inst := app.service.Instance("inst-claude")
+	if inst == nil {
+		t.Fatal("expected instance after hello")
+	}
+	if inst.Backend != agentproto.BackendClaude {
+		t.Fatalf("instance backend = %q, want %q", inst.Backend, agentproto.BackendClaude)
+	}
+	if state.InstanceSupportsThreadsRefresh(inst) {
+		t.Fatalf("expected instance to skip threads.refresh capability, got %#v", inst.Capabilities)
+	}
+	app.mu.Lock()
+	seen := app.surfaceResumeRuntime.startupRefreshSeen
+	pending := len(app.surfaceResumeRuntime.startupRefreshPending)
+	complete := app.initialThreadsRefreshRoundCompleteLocked()
+	app.mu.Unlock()
+	if !seen || pending != 0 || !complete {
+		t.Fatalf("expected startup refresh round to settle without refresh command, seen=%t pending=%d complete=%t", seen, pending, complete)
+	}
+}
+
 func TestHandleCronHelloReleasesAppLockDuringPromptSend(t *testing.T) {
 	app := New(":0", ":0", &recordingGateway{}, agentproto.ServerIdentity{})
 	sender := &reentrantAppLockRelaySender{app: app}

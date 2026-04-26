@@ -1918,6 +1918,31 @@ func TestThreadFocusRequestsMetadataRefreshOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestThreadFocusSkipsMetadataRefreshWhenInstanceLacksCapability(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:    "inst-1",
+		DisplayName:   "claude",
+		WorkspaceRoot: "/data/dl/droid",
+		WorkspaceKey:  "/data/dl/droid",
+		ShortName:     "droid",
+		Backend:       agentproto.BackendClaude,
+		Online:        true,
+		Threads:       map[string]*state.ThreadRecord{},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	events := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventThreadFocused,
+		ThreadID: "thread-2",
+		CWD:      "/data/dl/droid",
+	})
+	if len(events) != 0 {
+		t.Fatalf("expected no refresh command when capability is absent, got %#v", events)
+	}
+}
+
 func TestDigitsTextAfterShowingThreadsIsSentAsNormalMessage(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)

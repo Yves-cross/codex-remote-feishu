@@ -162,6 +162,7 @@ func (a *App) markStartupThreadsRefreshRequestedLocked(instanceID string) {
 }
 
 func (a *App) markStartupThreadsRefreshSettledLocked(instanceID string) {
+	a.surfaceResumeRuntime.startupRefreshSeen = true
 	delete(a.surfaceResumeRuntime.startupRefreshPending, strings.TrimSpace(instanceID))
 }
 

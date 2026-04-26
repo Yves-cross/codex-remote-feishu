@@ -8,6 +8,7 @@ import (
 
 	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 )
 
 func (a *App) syncManagedHeadlessLocked(now time.Time) {
@@ -109,6 +110,9 @@ func (a *App) markManagedThreadsRefreshRequestedLocked(instanceID, commandID str
 }
 
 func (a *App) sendManagedThreadsRefreshLocked(instanceID string, now time.Time, reason string) error {
+	if !state.InstanceSupportsThreadsRefresh(a.service.Instance(instanceID)) {
+		return nil
+	}
 	command := agentproto.Command{
 		CommandID: a.nextCommandID(),
 		Kind:      agentproto.CommandThreadsRefresh,

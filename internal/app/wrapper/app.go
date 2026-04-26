@@ -52,6 +52,7 @@ type Config struct {
 	WorkspaceRoot        string
 	WorkspaceKey         string
 	ShortName            string
+	Backend              agentproto.Backend
 	Source               string
 	Managed              bool
 	Lifetime             string
@@ -139,6 +140,7 @@ func LoadConfig(args []string, version, branch string) (Config, error) {
 		WorkspaceRoot:        workspaceRoot,
 		WorkspaceKey:         state.ResolveWorkspaceKey(workspaceRoot),
 		ShortName:            shortName,
+		Backend:              agentproto.BackendCodex,
 		Source:               source,
 		Managed:              managed,
 		Lifetime:             string(lifetime),
@@ -158,6 +160,7 @@ func LoadConfig(args []string, version, branch string) (Config, error) {
 }
 
 func New(cfg Config) *App {
+	cfg.Backend = agentproto.NormalizeBackend(cfg.Backend)
 	translator := codex.NewTranslator(cfg.InstanceID)
 	if cfg.DebugRelayFlow {
 		translator.SetDebugLogger(func(format string, args ...any) {
@@ -233,6 +236,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			WorkspaceRoot:    a.config.WorkspaceRoot,
 			WorkspaceKey:     a.config.WorkspaceKey,
 			ShortName:        a.config.ShortName,
+			Backend:          agentproto.NormalizeBackend(a.config.Backend),
 			Source:           a.config.Source,
 			Managed:          a.config.Managed,
 			Version:          a.config.Version,
@@ -241,7 +245,7 @@ func (a *App) Run(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			BinaryPath:       a.config.BinaryPath,
 			PID:              os.Getpid(),
 		},
-		Capabilities: agentproto.Capabilities{ThreadsRefresh: true},
+		Capabilities: agentproto.DefaultCapabilitiesForBackend(a.config.Backend),
 	}, relayws.ClientCallbacks{
 		OnWelcome: func(_ context.Context, welcome agentproto.Welcome) error {
 			a.debugf("relay welcome: connectedOnce=%t server=%s", connectedOnce, relayWelcomeSummary(welcome))

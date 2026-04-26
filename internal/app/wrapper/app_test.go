@@ -81,7 +81,16 @@ func TestWrapperBridgesRelayAndCodexProcess(t *testing.T) {
 		done <- err
 	}()
 
-	waitForHello(t, helloCh, "inst-wrapper")
+	hello := waitForHello(t, helloCh, "inst-wrapper")
+	if hello.Instance.Backend != agentproto.BackendCodex {
+		t.Fatalf("wrapper hello backend = %q, want %q", hello.Instance.Backend, agentproto.BackendCodex)
+	}
+	if !hello.Capabilities.ThreadsRefresh || !hello.Capabilities.TurnSteer || !hello.Capabilities.RequestRespond || !hello.Capabilities.ResumeByThreadID || !hello.Capabilities.VSCodeMode {
+		t.Fatalf("wrapper hello capabilities missing codex defaults: %#v", hello.Capabilities)
+	}
+	if hello.Capabilities.SessionCatalog || hello.Capabilities.RequiresCWDForResume {
+		t.Fatalf("wrapper hello capabilities unexpectedly enabled non-codex defaults: %#v", hello.Capabilities)
+	}
 
 	if err := server.SendCommand("inst-wrapper", agentproto.Command{
 		CommandID: "cmd-refresh",
@@ -941,14 +950,14 @@ func mustJSONLine(t *testing.T, payload any) string {
 	return string(raw) + "\n"
 }
 
-func waitForHello(t *testing.T, helloCh <-chan agentproto.Hello, wantInstanceID string) {
+func waitForHello(t *testing.T, helloCh <-chan agentproto.Hello, wantInstanceID string) agentproto.Hello {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
 		select {
 		case hello := <-helloCh:
 			if hello.Instance.InstanceID == wantInstanceID {
-				return
+				return hello
 			}
 		case <-deadline:
 			t.Fatalf("timed out waiting for wrapper hello %q", wantInstanceID)

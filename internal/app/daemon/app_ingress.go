@@ -436,6 +436,8 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 		return
 	}
 	now := time.Now().UTC()
+	backend := agentproto.EffectiveHelloBackend(hello)
+	capabilities := agentproto.EffectiveHelloCapabilities(hello)
 
 	inst := a.service.Instance(hello.Instance.InstanceID)
 	if inst == nil {
@@ -451,17 +453,20 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 	if inst.ShortName == "" {
 		inst.ShortName = state.WorkspaceShortName(inst.WorkspaceKey)
 	}
+	inst.Backend = backend
 	inst.Source = firstNonEmpty(strings.TrimSpace(hello.Instance.Source), "vscode")
+	inst.Capabilities = capabilities
 	inst.Managed = hello.Instance.Managed
 	inst.PID = hello.Instance.PID
 	inst.Online = true
 	a.service.UpsertInstance(inst)
 	a.observeManagedHeadless(inst)
 	log.Printf(
-		"relay instance connected: id=%s workspace=%s display=%s source=%s managed=%t pid=%d",
+		"relay instance connected: id=%s workspace=%s display=%s backend=%s source=%s managed=%t pid=%d",
 		inst.InstanceID,
 		inst.WorkspaceKey,
 		inst.DisplayName,
+		inst.Backend,
 		inst.Source,
 		inst.Managed,
 		inst.PID,
@@ -473,36 +478,42 @@ func (a *App) onHello(ctx context.Context, hello agentproto.Hello) {
 		a.invalidateVSCodeCompatibilityCacheLocked()
 	}
 
-	command := agentproto.Command{
-		CommandID: a.nextCommandID(),
-		Kind:      agentproto.CommandThreadsRefresh,
-	}
-	refreshSent := false
-	a.mu.Unlock()
-	err := a.sendAgentCommand(hello.Instance.InstanceID, command)
-	a.mu.Lock()
-	if err != nil {
-		log.Printf("relay send command failed: instance=%s kind=%s err=%v", hello.Instance.InstanceID, command.Kind, err)
-		if managed := a.managedHeadlessRuntime.Processes[hello.Instance.InstanceID]; managed != nil {
-			managed.LastError = "服务无法向本地 wrapper 发送初始化 threads.refresh。"
+	if capabilities.ThreadsRefresh {
+		command := agentproto.Command{
+			CommandID: a.nextCommandID(),
+			Kind:      agentproto.CommandThreadsRefresh,
 		}
-		a.handleUIEventsLocked(ctx, a.service.HandleProblem(hello.Instance.InstanceID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
-			Code:      "relay_send_command_failed",
-			Layer:     "daemon",
-			Stage:     "send_threads_refresh",
-			Operation: string(command.Kind),
-			Message:   "服务无法向本地 wrapper 发送初始化命令。",
-			CommandID: command.CommandID,
-			Retryable: true,
-		})))
+		refreshDispatched := false
+		a.mu.Unlock()
+		err := a.sendAgentCommand(hello.Instance.InstanceID, command)
+		a.mu.Lock()
+		if err != nil {
+			log.Printf("relay send command failed: instance=%s kind=%s err=%v", hello.Instance.InstanceID, command.Kind, err)
+			if managed := a.managedHeadlessRuntime.Processes[hello.Instance.InstanceID]; managed != nil {
+				managed.LastError = "服务无法向本地 wrapper 发送初始化 threads.refresh。"
+			}
+			a.handleUIEventsLocked(ctx, a.service.HandleProblem(hello.Instance.InstanceID, agentproto.ErrorInfoFromError(err, agentproto.ErrorInfo{
+				Code:      "relay_send_command_failed",
+				Layer:     "daemon",
+				Stage:     "send_threads_refresh",
+				Operation: string(command.Kind),
+				Message:   "服务无法向本地 wrapper 发送初始化命令。",
+				CommandID: command.CommandID,
+				Retryable: true,
+			})))
+		} else {
+			refreshDispatched = true
+			if a.managedHeadlessRuntime.Processes[hello.Instance.InstanceID] != nil {
+				a.markManagedThreadsRefreshRequestedLocked(hello.Instance.InstanceID, command.CommandID, now)
+			}
+		}
+		if refreshDispatched {
+			a.markStartupThreadsRefreshRequestedLocked(hello.Instance.InstanceID)
+		} else {
+			a.markStartupThreadsRefreshSettledLocked(hello.Instance.InstanceID)
+		}
 	} else {
-		refreshSent = true
-		if a.managedHeadlessRuntime.Processes[hello.Instance.InstanceID] != nil {
-			a.markManagedThreadsRefreshRequestedLocked(hello.Instance.InstanceID, command.CommandID, now)
-		}
-	}
-	if refreshSent {
-		a.markStartupThreadsRefreshRequestedLocked(hello.Instance.InstanceID)
+		a.markStartupThreadsRefreshSettledLocked(hello.Instance.InstanceID)
 	}
 	vscodePromptEvents, vscodeBlocked := a.maybePromptVSCodeCompatibilityAtLocked("", now)
 	a.handleUIEventsLocked(ctx, vscodePromptEvents)

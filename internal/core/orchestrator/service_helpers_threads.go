@@ -298,6 +298,9 @@ func (s *Service) maybeRequestThreadRefresh(surface *state.SurfaceConsoleRecord,
 	if surface == nil || inst == nil || surface.AttachedInstanceID != inst.InstanceID {
 		return nil
 	}
+	if !state.InstanceSupportsThreadsRefresh(inst) {
+		return nil
+	}
 	if s.threadRefreshes[inst.InstanceID] || !threadNeedsRefresh(inst.Threads[threadID]) {
 		return nil
 	}
