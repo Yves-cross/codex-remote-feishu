@@ -230,8 +230,9 @@ func TestPresentAllThreadSelectionShowsAllSessionsByRecency(t *testing.T) {
 		ShortName:     "dl",
 		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
-			"thread-1": {ThreadID: "thread-1", Name: "较早会话", CWD: "/data/dl", LastUsedAt: now.Add(1 * time.Minute), ListOrder: 2},
-			"thread-2": {ThreadID: "thread-2", Name: "最新会话", CWD: "/data/dl", LastUsedAt: now.Add(2 * time.Minute), ListOrder: 1},
+			"thread-1":      {ThreadID: "thread-1", Name: "较早会话", CWD: "/data/dl", LastUsedAt: now.Add(1 * time.Minute), ListOrder: 2},
+			"thread-2":      {ThreadID: "thread-2", Name: "最新会话", CWD: "/data/dl", LastUsedAt: now.Add(2 * time.Minute), ListOrder: 1},
+			"thread-review": {ThreadID: "thread-review", Name: "审阅结果", CWD: "/data/dl", LastUsedAt: now.Add(3 * time.Minute), ListOrder: 0, Source: &agentproto.ThreadSourceRecord{Kind: agentproto.ThreadSourceKindReview, ParentThreadID: "thread-2"}},
 		},
 	})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
@@ -253,6 +254,11 @@ func TestPresentAllThreadSelectionShowsAllSessionsByRecency(t *testing.T) {
 	}
 	if len(view.WorkspaceOptions) != 1 || len(view.SessionOptions) != 2 {
 		t.Fatalf("expected current workspace threads, got %#v", view)
+	}
+	for _, option := range view.SessionOptions {
+		if option.Value == targetPickerThreadValue("thread-review") {
+			t.Fatalf("expected review thread to stay out of normal /useall target picker, got %#v", view.SessionOptions)
+		}
 	}
 }
 

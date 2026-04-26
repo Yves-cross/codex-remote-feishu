@@ -52,7 +52,7 @@ func (s *Service) mergedThreadViews(surface *state.SurfaceConsoleRecord) []*merg
 			continue
 		}
 		owner := s.instanceClaimSurface(inst.InstanceID)
-		for _, thread := range visibleThreads(inst) {
+		for _, thread := range ordinaryVisibleThreads(inst) {
 			if thread == nil {
 				continue
 			}
@@ -168,7 +168,7 @@ func (s *Service) mergePersistedRecentThreads(viewsByID map[string]*mergedThread
 	threads := s.catalog.recentPersistedThreads(persistedRecentThreadLimit)
 	for i := range threads {
 		thread := threads[i]
-		if strings.TrimSpace(thread.ThreadID) == "" || !threadVisible(&thread) {
+		if strings.TrimSpace(thread.ThreadID) == "" || !ordinaryThreadVisible(&thread) {
 			continue
 		}
 		view := viewsByID[thread.ThreadID]
@@ -189,7 +189,7 @@ func (s *Service) persistedThreadView(surface *state.SurfaceConsoleRecord, threa
 		return nil
 	}
 	thread, err := s.catalog.persistedThreads.ThreadByID(strings.TrimSpace(threadID))
-	if err != nil || !threadVisible(thread) {
+	if err != nil || !ordinaryThreadVisible(thread) {
 		return nil
 	}
 	view := &mergedThreadView{
@@ -747,7 +747,7 @@ func (s *Service) currentInstanceThreadViews(surface *state.SurfaceConsoleRecord
 	}
 	owner := s.instanceClaimSurface(inst.InstanceID)
 	views := make([]*mergedThreadView, 0, len(inst.Threads))
-	for _, thread := range visibleThreads(inst) {
+	for _, thread := range ordinaryVisibleThreads(inst) {
 		if thread == nil {
 			continue
 		}

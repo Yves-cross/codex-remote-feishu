@@ -152,7 +152,7 @@ func instanceLatestVisibleThreadUsedAt(inst *state.InstanceRecord) time.Time {
 		return time.Time{}
 	}
 	latest := time.Time{}
-	for _, thread := range visibleThreads(inst) {
+	for _, thread := range ordinaryVisibleThreads(inst) {
 		if thread == nil || !thread.LastUsedAt.After(latest) {
 			continue
 		}
@@ -370,7 +370,7 @@ func instanceWorkspaceSelectionKeys(inst *state.InstanceRecord) []string {
 	}
 	seen := map[string]struct{}{}
 	keys := []string{}
-	for _, thread := range visibleThreads(inst) {
+	for _, thread := range ordinaryVisibleThreads(inst) {
 		if thread == nil {
 			continue
 		}
@@ -415,7 +415,7 @@ func workspaceVisibleThreads(inst *state.InstanceRecord, workspaceKey string) []
 		return nil
 	}
 	threads := []*state.ThreadRecord{}
-	for _, thread := range visibleThreads(inst) {
+	for _, thread := range ordinaryVisibleThreads(inst) {
 		if thread == nil {
 			continue
 		}
@@ -553,7 +553,7 @@ func (s *Service) mergeWorkspaceSelectionRecencyFromOnlineThreads(latest map[str
 		if inst == nil || !inst.Online {
 			continue
 		}
-		for _, thread := range visibleThreads(inst) {
+		for _, thread := range ordinaryVisibleThreads(inst) {
 			mergeWorkspaceSelectionThreadRecency(latest, seen, visible, thread)
 		}
 	}
@@ -593,7 +593,7 @@ func mergeWorkspaceSelectionThreadRecency(latest map[string]time.Time, seen map[
 }
 
 func workspaceSelectionThreadKeyAndUsedAt(thread *state.ThreadRecord) (string, time.Time) {
-	if !threadVisible(thread) {
+	if !ordinaryThreadVisible(thread) {
 		return "", time.Time{}
 	}
 	workspaceKey := normalizeWorkspaceClaimKey(thread.CWD)

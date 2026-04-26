@@ -695,7 +695,8 @@ func TestShowThreadsDetachedShowsGlobalMergedRecentThreads(t *testing.T) {
 		ShortName:     "droid",
 		Online:        true,
 		Threads: map[string]*state.ThreadRecord{
-			"thread-1": {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", LastUsedAt: now.Add(1 * time.Minute)},
+			"thread-1":      {ThreadID: "thread-1", Name: "修复登录流程", CWD: "/data/dl/droid", LastUsedAt: now.Add(1 * time.Minute)},
+			"thread-review": {ThreadID: "thread-review", Name: "审阅结果", CWD: "/data/dl/droid", LastUsedAt: now.Add(3 * time.Minute), Source: &agentproto.ThreadSourceRecord{Kind: agentproto.ThreadSourceKindReview, ParentThreadID: "thread-1"}},
 		},
 	})
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -1168,8 +1169,9 @@ func TestShowAllThreadsAttachedVSCodeShowsCurrentInstanceAllSessions(t *testing.
 		Online:                  true,
 		ObservedFocusedThreadID: "thread-1",
 		Threads: map[string]*state.ThreadRecord{
-			"thread-1": {ThreadID: "thread-1", Name: "当前实例会话", CWD: "/data/dl/droid", LastUsedAt: now.Add(-3 * time.Minute)},
-			"thread-2": {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid", LastUsedAt: now.Add(-1 * time.Minute)},
+			"thread-1":      {ThreadID: "thread-1", Name: "当前实例会话", CWD: "/data/dl/droid", LastUsedAt: now.Add(-3 * time.Minute)},
+			"thread-2":      {ThreadID: "thread-2", Name: "整理日志", CWD: "/data/dl/droid", LastUsedAt: now.Add(-1 * time.Minute)},
+			"thread-review": {ThreadID: "thread-review", Name: "审阅结果", CWD: "/data/dl/droid", LastUsedAt: now.Add(-30 * time.Second), Source: &agentproto.ThreadSourceRecord{Kind: agentproto.ThreadSourceKindReview, ParentThreadID: "thread-2"}},
 		},
 	}
 	svc.UpsertInstance(instCurrent)
@@ -1211,6 +1213,11 @@ func TestShowAllThreadsAttachedVSCodeShowsCurrentInstanceAllSessions(t *testing.
 	}
 	if len(view.Thread.Entries) != 2 || view.Thread.Entries[0].ThreadID != "thread-2" || view.Thread.Entries[1].ThreadID != "thread-1" {
 		t.Fatalf("expected only current instance sessions in recency order, got %#v", view.Thread.Entries)
+	}
+	for _, entry := range view.Thread.Entries {
+		if entry.ThreadID == "thread-review" {
+			t.Fatalf("expected review thread to stay out of normal vscode /useall, got %#v", view.Thread.Entries)
+		}
 	}
 	if view.Thread.Entries[0].Summary != "droid · 整理日志" || !view.Thread.Entries[0].VSCodeFocused || view.Thread.Entries[0].AgeText != "1分前" {
 		t.Fatalf("expected focused non-current thread metadata, got %#v", view.Thread.Entries[0])

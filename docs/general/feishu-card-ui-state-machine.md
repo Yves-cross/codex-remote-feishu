@@ -102,7 +102,7 @@
 | --- | --- | --- |
 | `/menu` 首页 / 分组 / 返回 | `feishu-ui-owned (launcher)` | 当前由 Feishu UI controller 处理同一张命令菜单内的层级切换；首页仅保留分组导航入口，不再额外渲染“常用操作”区块；首页 breadcrumb 固定停在 `菜单首页`，不会再从 `/menu` 命令定义继承 `系统管理` 分组 breadcrumb 或回退按钮；首页分组按钮直接显示分组名，分组页才显示显式 `返回上一层`；菜单导航状态当前通过 owner-card runtime 的 `command_menu + role=launcher` 记录，不再依赖旧 `Surface.MenuFlow` |
 | `show_all_workspaces` / `show_recent_workspaces` | `feishu-ui-owned` | normal mode 下当前只负责重新打开 `/workspace list` 切换卡；`/list` 这类旧入口只是 alias，不再决定新的主展示结构 |
-| `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | normal mode 下当前也只负责重新打开 `/workspace list` 切换卡；vscode mode 下会刷新当前实例的结构化 thread dropdown，不再维持旧分页 prompt |
+| `show_threads` / `show_all_threads` / `show_scoped_threads` | `feishu-ui-owned` | normal mode 下当前也只负责重新打开 `/workspace list` 切换卡；vscode mode 下会刷新当前实例的结构化 thread dropdown，不再维持旧分页 prompt；两条路径当前都会默认排除 `source=review` 的 detached review thread，不把 review session 当普通候选展示 |
 | `thread_selection_page` | `feishu-ui-owned` | VS Code 结构化 thread dropdown 的 byte-budget 翻页动作；payload 携带 `view_mode + cursor(start-index)`。命中当前 surface 时 controller 会按当前 surface 状态重建 `FeishuThreadSelectionView`，projector 再按 transport budget 切出新页并 inline replace 当前卡，不引入 owner runtime |
 | `show_workspace_threads` / `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `feishu-ui-owned` | normal mode 下当前只负责用指定 workspace 重新打开 `/workspace list` 切换卡；legacy selection path 下才继续承担旧分页导航 |
 | `target_picker_select_mode` / `target_picker_select_source` / `target_picker_select_workspace` / `target_picker_select_session` | `feishu-ui-owned` | 当前 normal mode 主路径实际使用的是四张独立工作会话卡：`/workspace list` 直接落 `target` 页，`/workspace new dir` / `git` / `worktree` 直接落各自业务页，因此 `target_picker_select_workspace` 是 `/workspace list` 与 `/workspace new worktree` 都会使用的主路径回调，`target_picker_select_session` 则只服务 `/workspace list`；`target_picker_select_mode` / `target_picker_select_source` 只保留 transport/runtime 兼容。命中当前 active picker 时都只原地替换当前卡，不直接改 route；切真实 workspace、显式改选 session，或在 worktree 卡上切换基准工作区时，都会按当前卡状态重建 picker read model |
@@ -206,7 +206,7 @@
 | `attach_workspace` | `workspace_key` | 接管指定工作区 |
 | `use_thread` | `thread_id`、`field_name`、`allow_cross_workspace` | 选择 thread；VS Code 结构化 thread dropdown 走 `field_name` + `form_value/option` 取值，其余按钮路径仍可直接带 `thread_id` |
 | `thread_selection_page` | `view_mode`、`cursor` | VS Code 结构化 thread dropdown 的 byte-budget 翻页回调；`view_mode` 指明当前是 recent / all / scoped_all 哪条 direct selection flow，`cursor` 是候选项 start-index。服务端只重建当前 selection view，不持久化 owner runtime；projector 若发现当前 thread 不在新页，会清空 `initial_option` |
-| `show_threads` / `show_all_threads` / `show_scoped_threads` | `view_mode`、`page` | normal mode 下重新打开 `/workspace list` 切换卡；vscode / legacy selection path 下仍用于在当前 same-context thread 列表里切页 |
+| `show_threads` / `show_all_threads` / `show_scoped_threads` | `view_mode`、`page` | normal mode 下重新打开 `/workspace list` 切换卡；vscode / legacy selection path 下仍用于在当前 same-context thread 列表里切页。当前普通线程候选会显式过滤 `source=review` 的 detached review thread |
 | `show_all_workspaces` / `show_recent_workspaces` | `page` | normal mode 下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
 | `show_all_thread_workspaces` / `show_recent_thread_workspaces` | `page` | normal mode 下重新打开 `/workspace list` 切换卡；旧分页字段继续保留 transport 兼容 |
 | `show_workspace_threads` | `workspace_key`、`page`、`return_page` | normal mode 下以指定 workspace 重新打开 `/workspace list` 切换卡，并预填当前 workspace；legacy selection path 下仍可表示进入某个 workspace 的会话详情 |

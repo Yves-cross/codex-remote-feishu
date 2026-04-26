@@ -371,6 +371,10 @@ func threadVisible(thread *state.ThreadRecord) bool {
 	return thread != nil && !thread.Archived && thread.TrafficClass != agentproto.TrafficClassInternalHelper
 }
 
+func ordinaryThreadVisible(thread *state.ThreadRecord) bool {
+	return threadVisible(thread) && !threadIsReview(thread)
+}
+
 func visibleThreads(inst *state.InstanceRecord) []*state.ThreadRecord {
 	if inst == nil {
 		return nil
@@ -378,6 +382,20 @@ func visibleThreads(inst *state.InstanceRecord) []*state.ThreadRecord {
 	threads := make([]*state.ThreadRecord, 0, len(inst.Threads))
 	for _, thread := range inst.Threads {
 		if threadVisible(thread) {
+			threads = append(threads, thread)
+		}
+	}
+	sortVisibleThreads(threads)
+	return threads
+}
+
+func ordinaryVisibleThreads(inst *state.InstanceRecord) []*state.ThreadRecord {
+	if inst == nil {
+		return nil
+	}
+	threads := make([]*state.ThreadRecord, 0, len(inst.Threads))
+	for _, thread := range inst.Threads {
+		if ordinaryThreadVisible(thread) {
 			threads = append(threads, thread)
 		}
 	}
