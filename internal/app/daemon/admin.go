@@ -176,6 +176,8 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /preview/s/{scope}/{preview}/download", a.handlePreviewDownload)
 	mux.HandleFunc("GET /api/setup/bootstrap-state", a.requireSetup(a.handleBootstrapState))
 	mux.HandleFunc("POST /api/setup/complete", a.requireSetup(a.handleSetupComplete))
+	mux.HandleFunc("GET /api/setup/onboarding/workflow", a.requireSetup(a.handleOnboardingWorkflow))
+	mux.HandleFunc("POST /api/setup/onboarding/machine-decisions/{kind}", a.requireSetup(a.handleOnboardingMachineDecision))
 	mux.HandleFunc("GET /api/setup/feishu/manifest", a.requireSetup(a.handleFeishuManifest))
 	mux.HandleFunc("GET /api/setup/feishu/apps", a.requireSetup(a.handleFeishuAppsList))
 	mux.HandleFunc("POST /api/setup/feishu/apps", a.requireSetup(a.handleFeishuAppCreate))
@@ -184,6 +186,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/feishu/onboarding/sessions/{id}/complete", a.requireSetup(a.handleFeishuOnboardingSessionComplete))
 	mux.HandleFunc("PUT /api/setup/feishu/apps/{id}", a.requireSetup(a.handleFeishuAppUpdate))
 	mux.HandleFunc("DELETE /api/setup/feishu/apps/{id}", a.requireSetup(a.handleFeishuAppDelete))
+	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/onboarding-steps/{step}/complete", a.requireSetup(a.handleFeishuAppOnboardingStepComplete))
 	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/verify", a.requireSetup(a.handleFeishuAppVerify))
 	mux.HandleFunc("GET /api/setup/feishu/apps/{id}/permission-check", a.requireSetup(a.handleFeishuAppPermissionCheck))
 	mux.HandleFunc("POST /api/setup/feishu/apps/{id}/test-events", a.requireSetup(a.handleFeishuAppTestEvents))
@@ -200,6 +203,8 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup/vscode/reinstall-shim", a.requireSetup(a.handleVSCodeReinstallShim))
 
 	mux.HandleFunc("GET /api/admin/bootstrap-state", a.requireAdmin(a.handleBootstrapState))
+	mux.HandleFunc("GET /api/admin/onboarding/workflow", a.requireAdmin(a.handleOnboardingWorkflow))
+	mux.HandleFunc("POST /api/admin/onboarding/machine-decisions/{kind}", a.requireAdmin(a.handleOnboardingMachineDecision))
 	mux.HandleFunc("GET /api/admin/runtime-status", a.requireAdmin(a.handleRuntimeStatus))
 	mux.HandleFunc("GET /api/admin/config", a.requireAdmin(a.handleAdminConfig))
 	mux.HandleFunc("PUT /api/admin/config", a.requireAdmin(a.handleNotImplemented("PUT /api/admin/config")))
@@ -213,6 +218,7 @@ func (a *App) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/feishu/onboarding/sessions/{id}/complete", a.requireAdmin(a.handleFeishuOnboardingSessionComplete))
 	mux.HandleFunc("PUT /api/admin/feishu/apps/{id}", a.requireAdmin(a.handleFeishuAppUpdate))
 	mux.HandleFunc("DELETE /api/admin/feishu/apps/{id}", a.requireAdmin(a.handleFeishuAppDelete))
+	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/onboarding-steps/{step}/complete", a.requireAdmin(a.handleFeishuAppOnboardingStepComplete))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/verify", a.requireAdmin(a.handleFeishuAppVerify))
 	mux.HandleFunc("GET /api/admin/feishu/apps/{id}/permission-check", a.requireAdmin(a.handleFeishuAppPermissionCheck))
 	mux.HandleFunc("POST /api/admin/feishu/apps/{id}/test-events", a.requireAdmin(a.handleFeishuAppTestEvents))
@@ -381,9 +387,18 @@ func (a *App) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if state.SetupRequired {
+		workflow, workflowErr := a.buildOnboardingWorkflow("")
+		if workflowErr != nil {
+			writeAPIError(w, http.StatusConflict, apiError{
+				Code:    "setup_incomplete",
+				Message: "setup is not ready to complete yet",
+			})
+			return
+		}
 		writeAPIError(w, http.StatusConflict, apiError{
 			Code:    "setup_incomplete",
-			Message: "setup cannot be completed before at least one runtime feishu app is configured",
+			Message: "setup is not ready to complete yet",
+			Details: workflow.Completion.BlockingReason,
 		})
 		return
 	}
@@ -495,6 +510,10 @@ func (a *App) authAllowsAdmin(auth requestAuthState) bool {
 }
 
 func (a *App) bootstrapState(auth requestAuthState) (bootstrapStatePayload, error) {
+	workflow, err := a.buildOnboardingWorkflow("")
+	if err != nil {
+		return bootstrapStatePayload{}, err
+	}
 	loaded, err := a.loadAdminConfig()
 	if err != nil {
 		return bootstrapStatePayload{}, err
@@ -504,7 +523,7 @@ func (a *App) bootstrapState(auth requestAuthState) (bootstrapStatePayload, erro
 	admin := a.admin
 	a.mu.Unlock()
 
-	setupRequired := requiresSetup(loaded.Config, admin.services)
+	setupRequired := workflow.Completion.SetupRequired
 	setupEnabled, setupExpiresAt := a.adminAuth.SetupStatus()
 	gateways := gatewayStatuses(a.gateway)
 	enabledCount := 0

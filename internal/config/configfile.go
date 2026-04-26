@@ -54,6 +54,24 @@ type AdminSettings struct {
 	ListenHost      string `json:"listenHost,omitempty"`
 	ListenPort      int    `json:"listenPort,omitempty"`
 	AutoOpenBrowser *bool  `json:"autoOpenBrowser,omitempty"`
+	Onboarding      AdminOnboardingSettings `json:"onboarding,omitempty"`
+}
+
+type AdminOnboardingSettings struct {
+	Apps              map[string]FeishuAppOnboardingState `json:"apps,omitempty"`
+	AutostartDecision *OnboardingDecision                 `json:"autostartDecision,omitempty"`
+	VSCodeDecision    *OnboardingDecision                 `json:"vscodeDecision,omitempty"`
+}
+
+type OnboardingDecision struct {
+	Value     string     `json:"value,omitempty"`
+	DecidedAt *time.Time `json:"decidedAt,omitempty"`
+}
+
+type FeishuAppOnboardingState struct {
+	EventsConfirmedAt   *time.Time `json:"eventsConfirmedAt,omitempty"`
+	CallbackConfirmedAt *time.Time `json:"callbackConfirmedAt,omitempty"`
+	MenuConfirmedAt     *time.Time `json:"menuConfirmedAt,omitempty"`
 }
 
 type ToolSettings struct {

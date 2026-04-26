@@ -59,7 +59,10 @@ func (a *App) buildRuntimeRequirementsResponse() (runtimeRequirementsResponse, e
 	if err != nil {
 		return runtimeRequirementsResponse{}, err
 	}
+	return buildRuntimeRequirementsResponseForLoaded(loaded, currentBinary)
+}
 
+func buildRuntimeRequirementsResponseForLoaded(loaded config.LoadedAppConfig, currentBinary string) (runtimeRequirementsResponse, error) {
 	codexRealBinary, source := resolvedCodexRealBinarySetting(loaded)
 	lookupMode := codexBinaryLookupMode(codexRealBinary)
 	resolvedRealBinary, resolveErr := resolveExecutablePath(codexRealBinary)

@@ -234,6 +234,16 @@ func (a *App) handleFeishuAppUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.adminConfigMu.Unlock()
+	if appIDChanged || secretChanged {
+		if err := a.clearFeishuAppOnboardingState(gatewayID); err != nil {
+			writeAPIError(w, http.StatusInternalServerError, apiError{
+				Code:    "config_write_failed",
+				Message: "failed to reset onboarding state after feishu app credential change",
+				Details: err.Error(),
+			})
+			return
+		}
+	}
 	a.clearFeishuAppWebTestRecipient(gatewayID)
 
 	if err := a.applyRuntimeFeishuConfig(updated, gatewayID); err != nil {
@@ -329,6 +339,14 @@ func (a *App) handleFeishuAppDelete(w http.ResponseWriter, r *http.Request) {
 		deletedSummary.Persisted = false
 		deletedSummary.RuntimeOnly = false
 		a.writeFeishuRuntimeApplyError(w, gatewayID, deletedSummary, feishuRuntimeApplyActionRemove, "feishu config saved but runtime apply failed", err)
+		return
+	}
+	if err := a.clearFeishuAppOnboardingState(gatewayID); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "config_write_failed",
+			Message: "feishu app deleted but failed to clear onboarding state",
+			Details: err.Error(),
+		})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

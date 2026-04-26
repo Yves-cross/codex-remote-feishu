@@ -80,7 +80,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 	repairInstallStateOnStartup(paths, identity)
 
 	env := envMap(os.Environ())
-	startup := buildStartupAccessPlan(loadedConfig.Config, cfg, env)
+	startup := buildStartupAccessPlan(loadedConfig, cfg, identity.BinaryPath, env)
 	envOverrideActive := (strings.TrimSpace(os.Getenv("FEISHU_APP_ID")) != "" || strings.TrimSpace(os.Getenv("FEISHU_APP_SECRET")) != "") &&
 		strings.TrimSpace(cfg.FeishuGatewayID) != ""
 

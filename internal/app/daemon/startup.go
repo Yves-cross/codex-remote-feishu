@@ -33,9 +33,9 @@ type startupAccessPlan struct {
 	ConfiguredAppCount int
 }
 
-func buildStartupAccessPlan(appConfig config.AppConfig, services config.ServicesConfig, env map[string]string) startupAccessPlan {
+func buildStartupAccessPlan(loaded config.LoadedAppConfig, services config.ServicesConfig, currentBinary string, env map[string]string) startupAccessPlan {
 	sshSession := isSSHSession(env)
-	setupRequired := requiresSetup(appConfig, services)
+	setupRequired := requiresSetup(loaded.Config, services, currentBinary)
 
 	adminBindHost := strings.TrimSpace(services.RelayAPIHost)
 	if setupRequired && sshSession {
@@ -45,7 +45,7 @@ func buildStartupAccessPlan(appConfig config.AppConfig, services config.Services
 	adminURL := httpURL(adminHost, services.RelayAPIPort, "/admin/")
 	setupURL := httpURL(adminHost, services.RelayAPIPort, "/setup")
 
-	autoOpen := appConfig.Admin.AutoOpenBrowser == nil || *appConfig.Admin.AutoOpenBrowser
+	autoOpen := loaded.Config.Admin.AutoOpenBrowser == nil || *loaded.Config.Admin.AutoOpenBrowser
 	return startupAccessPlan{
 		SetupRequired:      setupRequired,
 		SSHSession:         sshSession,
@@ -56,12 +56,21 @@ func buildStartupAccessPlan(appConfig config.AppConfig, services config.Services
 		AdminPort:          strings.TrimSpace(services.RelayAPIPort),
 		AdminURL:           adminURL,
 		SetupURL:           setupURL,
-		ConfiguredAppCount: configuredRuntimeAppCount(appConfig, services),
+		ConfiguredAppCount: configuredRuntimeAppCount(loaded.Config, services),
 	}
 }
 
-func requiresSetup(appConfig config.AppConfig, services config.ServicesConfig) bool {
-	return configuredRuntimeAppCount(appConfig, services) == 0
+func requiresSetup(appConfig config.AppConfig, services config.ServicesConfig, currentBinary string) bool {
+	runtimeReqs, err := buildRuntimeRequirementsResponseForLoaded(config.LoadedAppConfig{
+		Config: appConfig,
+	}, currentBinary)
+	if err != nil || !runtimeReqs.Ready {
+		return true
+	}
+	if !hasSetupUsableApp(appConfig, services) {
+		return true
+	}
+	return !adminOnboardingMachineDecisionsComplete(appConfig.Admin.Onboarding)
 }
 
 func configuredRuntimeAppCount(appConfig config.AppConfig, services config.ServicesConfig) int {
@@ -111,6 +120,45 @@ func effectiveFeishuApps(appConfig config.AppConfig, services config.ServicesCon
 		AppID:     services.FeishuAppID,
 		AppSecret: services.FeishuAppSecret,
 	})
+}
+
+func hasSetupUsableApp(appConfig config.AppConfig, services config.ServicesConfig) bool {
+	persisted := make(map[string]config.FeishuAppConfig, len(appConfig.Feishu.Apps))
+	for _, app := range appConfig.Feishu.Apps {
+		persisted[canonicalGatewayID(app.ID)] = app
+	}
+	for _, app := range effectiveFeishuApps(appConfig, services) {
+		gatewayID := canonicalGatewayID(app.ID)
+		if gatewayID == "" || strings.TrimSpace(app.AppID) == "" || strings.TrimSpace(app.AppSecret) == "" {
+			continue
+		}
+		if persistedApp, ok := persisted[gatewayID]; ok {
+			if persistedApp.VerifiedAt != nil {
+				return true
+			}
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func adminOnboardingMachineDecisionsComplete(settings config.AdminOnboardingSettings) bool {
+	return onboardingDecisionPresent(settings.AutostartDecision, onboardingDecisionAutostartEnabled, onboardingDecisionDeferred) &&
+		onboardingDecisionPresent(settings.VSCodeDecision, onboardingDecisionVSCodeManaged, onboardingDecisionDeferred, onboardingDecisionVSCodeRemoteOnly)
+}
+
+func onboardingDecisionPresent(decision *config.OnboardingDecision, values ...string) bool {
+	if decision == nil {
+		return false
+	}
+	current := strings.TrimSpace(decision.Value)
+	for _, value := range values {
+		if current == strings.TrimSpace(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func isSSHSession(env map[string]string) bool {

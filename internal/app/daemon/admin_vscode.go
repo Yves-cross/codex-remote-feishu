@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/editor"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
@@ -64,6 +65,14 @@ func (a *App) handleVSCodeApply(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, apiError{
 			Code:    "vscode_apply_failed",
 			Message: "failed to apply vscode integration",
+			Details: err.Error(),
+		})
+		return
+	}
+	if err := a.writeOnboardingMachineDecision("vscode", onboardingDecisionVSCodeManaged, time.Now().UTC()); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, apiError{
+			Code:    "config_write_failed",
+			Message: "vscode integration applied but failed to persist onboarding decision",
 			Details: err.Error(),
 		})
 		return

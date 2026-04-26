@@ -46,8 +46,8 @@ func TestSetupSessionCanUseFeishuAndVSCodeSetupAPIsAfterCredentialsSaved(t *test
 	if err := json.NewDecoder(rec.Body).Decode(&bootstrap); err != nil {
 		t.Fatalf("decode bootstrap state: %v", err)
 	}
-	if bootstrap.SetupRequired {
-		t.Fatal("expected setupRequired to become false after saving credentials")
+	if !bootstrap.SetupRequired {
+		t.Fatal("expected setupRequired to remain true before machine decisions are recorded")
 	}
 	if bootstrap.Session.Scope != "setup" {
 		t.Fatalf("session scope = %q, want setup", bootstrap.Session.Scope)
@@ -98,6 +98,35 @@ func TestSetupCompleteRevokesRemoteSetupSession(t *testing.T) {
 		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/feishu/apps/main/verify", nil)
+	req.RemoteAddr = "198.51.100.20:23456"
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	app.apiServer.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/onboarding/machine-decisions/autostart", strings.NewReader(`{"decision":"deferred"}`))
+	req.RemoteAddr = "198.51.100.20:23456"
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	app.apiServer.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("autostart decision status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/onboarding/machine-decisions/vscode", strings.NewReader(`{"decision":"remote_only"}`))
+	req.RemoteAddr = "198.51.100.20:23456"
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	app.apiServer.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("vscode decision status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/complete", nil)
 	req.RemoteAddr = "198.51.100.20:23456"
 	req.AddCookie(cookie)
@@ -145,6 +174,70 @@ func TestSetupCompleteRevokesRemoteSetupSession(t *testing.T) {
 	}
 }
 
+func TestSetupOnboardingWorkflowTracksMachineDecisionsAndManualSteps(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	app, token := newRemoteSetupTestApp(t, home)
+	cookie := exchangeSetupSessionCookie(t, app, token)
+
+	req := performSetupRequestWithCookie(http.MethodPost, "/api/setup/feishu/apps", `{"id":"main","name":"Main Bot","appId":"cli_xxx","appSecret":"secret_xxx"}`, cookie)
+	rec := performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = performSetupRequestWithCookie(http.MethodPost, "/api/setup/feishu/apps/main/verify", "", cookie)
+	rec = performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = performSetupRequestWithCookie(http.MethodPost, "/api/setup/onboarding/machine-decisions/autostart", `{"decision":"deferred"}`, cookie)
+	rec = performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("autostart decision status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = performSetupRequestWithCookie(http.MethodPost, "/api/setup/onboarding/machine-decisions/vscode", `{"decision":"remote_only"}`, cookie)
+	rec = performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("vscode decision status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = performSetupRequestWithCookie(http.MethodPost, "/api/setup/feishu/apps/main/onboarding-steps/menu/complete", "", cookie)
+	rec = performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("menu step status = %d, want 204 body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = performSetupRequestWithCookie(http.MethodGet, "/api/setup/onboarding/workflow?app=main", "", cookie)
+	rec = performSetupRequestRecorder(app, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("workflow status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload onboardingWorkflowResponse
+	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode workflow: %v", err)
+	}
+	if payload.SelectedAppID != "main" {
+		t.Fatalf("selected app = %q, want main", payload.SelectedAppID)
+	}
+	if !payload.Completion.CanComplete || payload.Completion.SetupRequired {
+		t.Fatalf("unexpected completion gate: %#v", payload.Completion)
+	}
+	if payload.Autostart.Status != onboardingStageStatusDeferred {
+		t.Fatalf("autostart status = %q, want deferred", payload.Autostart.Status)
+	}
+	if payload.VSCode.Status != onboardingStageStatusDeferred {
+		t.Fatalf("vscode status = %q, want deferred", payload.VSCode.Status)
+	}
+	if payload.App == nil || payload.App.Menu.Status != onboardingStageStatusComplete {
+		t.Fatalf("menu step = %#v, want complete", payload.App)
+	}
+}
+
 func newRemoteSetupTestApp(t *testing.T, home string) (*App, string) {
 	t.Helper()
 
@@ -159,6 +252,20 @@ func newRemoteSetupTestApp(t *testing.T, home string) (*App, string) {
 	}
 	if err := os.WriteFile(binaryPath, []byte("wrapper-binary"), 0o755); err != nil {
 		t.Fatalf("WriteFile(binary): %v", err)
+	}
+	realBinaryPath := filepath.Join(home, "bin", "codex-real")
+	if err := os.WriteFile(realBinaryPath, []byte("real-binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile(real binary): %v", err)
+	}
+
+	loaded, err := config.LoadAppConfigAtPath(configPath)
+	if err != nil {
+		t.Fatalf("LoadAppConfigAtPath: %v", err)
+	}
+	cfg := loaded.Config
+	cfg.Wrapper.CodexRealBinary = realBinaryPath
+	if err := config.WriteAppConfig(configPath, cfg); err != nil {
+		t.Fatalf("WriteAppConfig(update real binary): %v", err)
 	}
 
 	app := New(":0", ":0", &fakeAdminGatewayController{}, agentproto.ServerIdentity{})

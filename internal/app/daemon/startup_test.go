@@ -2,20 +2,25 @@ package daemon
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
 
 func TestBuildStartupAccessPlanUsesSSHSetupExposure(t *testing.T) {
 	cfg := config.DefaultAppConfig()
+	currentBinary, realBinary := seedStartupPlanBinaries(t)
+	cfg.Wrapper.CodexRealBinary = realBinary
 	services := config.ServicesConfig{
 		RelayHost:    "127.0.0.1",
 		RelayPort:    "9500",
 		RelayAPIHost: "127.0.0.1",
 		RelayAPIPort: "9501",
 	}
-	plan := buildStartupAccessPlan(cfg, services, map[string]string{
+	plan := buildStartupAccessPlan(config.LoadedAppConfig{Config: cfg}, services, currentBinary, map[string]string{
 		"SSH_CONNECTION": "198.51.100.10 55000 10.0.0.8 22",
 	})
 
@@ -38,13 +43,15 @@ func TestBuildStartupAccessPlanUsesSSHSetupExposure(t *testing.T) {
 
 func TestBuildStartupAccessPlanUsesLocalhostForLocalSetup(t *testing.T) {
 	cfg := config.DefaultAppConfig()
+	currentBinary, realBinary := seedStartupPlanBinaries(t)
+	cfg.Wrapper.CodexRealBinary = realBinary
 	services := config.ServicesConfig{
 		RelayHost:    "127.0.0.1",
 		RelayPort:    "9500",
 		RelayAPIHost: "127.0.0.1",
 		RelayAPIPort: "9501",
 	}
-	plan := buildStartupAccessPlan(cfg, services, map[string]string{
+	plan := buildStartupAccessPlan(config.LoadedAppConfig{Config: cfg}, services, currentBinary, map[string]string{
 		"DISPLAY": ":0",
 	})
 
@@ -62,21 +69,27 @@ func TestBuildStartupAccessPlanUsesLocalhostForLocalSetup(t *testing.T) {
 	}
 }
 
-func TestBuildStartupAccessPlanTreatsSavedCredentialsAsConfigured(t *testing.T) {
+func TestBuildStartupAccessPlanTreatsVerifiedAppAndRecordedDecisionsAsConfigured(t *testing.T) {
 	cfg := config.DefaultAppConfig()
+	currentBinary, realBinary := seedStartupPlanBinaries(t)
+	cfg.Wrapper.CodexRealBinary = realBinary
+	now := time.Now().UTC()
 	cfg.Feishu.Apps = []config.FeishuAppConfig{{
 		ID:        "main",
 		Name:      "Main",
 		AppID:     "cli_xxx",
 		AppSecret: "secret_xxx",
+		VerifiedAt: &now,
 	}}
+	cfg.Admin.Onboarding.AutostartDecision = &config.OnboardingDecision{Value: onboardingDecisionDeferred, DecidedAt: &now}
+	cfg.Admin.Onboarding.VSCodeDecision = &config.OnboardingDecision{Value: onboardingDecisionVSCodeRemoteOnly, DecidedAt: &now}
 	services := config.ServicesConfig{
 		RelayHost:    "127.0.0.1",
 		RelayPort:    "9500",
 		RelayAPIHost: "127.0.0.1",
 		RelayAPIPort: "9501",
 	}
-	plan := buildStartupAccessPlan(cfg, services, map[string]string{})
+	plan := buildStartupAccessPlan(config.LoadedAppConfig{Config: cfg}, services, currentBinary, map[string]string{})
 
 	if plan.SetupRequired {
 		t.Fatal("did not expect setup required")
@@ -87,6 +100,21 @@ func TestBuildStartupAccessPlanTreatsSavedCredentialsAsConfigured(t *testing.T) 
 	if plan.AdminBindHost != "127.0.0.1" {
 		t.Fatalf("admin bind host = %q, want 127.0.0.1", plan.AdminBindHost)
 	}
+}
+
+func seedStartupPlanBinaries(t *testing.T) (string, string) {
+	t.Helper()
+
+	dir := t.TempDir()
+	currentBinary := filepath.Join(dir, "codex-remote")
+	if err := os.WriteFile(currentBinary, []byte("wrapper"), 0o755); err != nil {
+		t.Fatalf("write current binary: %v", err)
+	}
+	realBinary := filepath.Join(dir, "codex-real")
+	if err := os.WriteFile(realBinary, []byte("real"), 0o755); err != nil {
+		t.Fatalf("write real binary: %v", err)
+	}
+	return currentBinary, realBinary
 }
 
 func TestMaybeOpenSetupBrowserHonorsModeAndFlag(t *testing.T) {

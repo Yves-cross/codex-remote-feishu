@@ -84,12 +84,24 @@ func TestSetupTokenExchangeEnablesSetupBootstrapAPI(t *testing.T) {
 
 func TestAdminEndpointsAllowLoopbackAndRedactSecret(t *testing.T) {
 	cfg := config.DefaultAppConfig()
+	now := time.Now().UTC()
+	currentBinary, realBinary := seedStartupPlanBinaries(t)
 	cfg.Feishu.Apps = []config.FeishuAppConfig{{
 		ID:        "main",
 		Name:      "Main",
 		AppID:     "cli_xxx",
 		AppSecret: "secret_xxx",
+		VerifiedAt: &now,
 	}}
+	cfg.Wrapper.CodexRealBinary = realBinary
+	cfg.Admin.Onboarding.AutostartDecision = &config.OnboardingDecision{
+		Value:     onboardingDecisionDeferred,
+		DecidedAt: &now,
+	}
+	cfg.Admin.Onboarding.VSCodeDecision = &config.OnboardingDecision{
+		Value:     onboardingDecisionVSCodeRemoteOnly,
+		DecidedAt: &now,
+	}
 	services := config.ServicesConfig{
 		RelayHost:    "127.0.0.1",
 		RelayPort:    "9500",
@@ -107,6 +119,7 @@ func TestAdminEndpointsAllowLoopbackAndRedactSecret(t *testing.T) {
 		AdminURL:        "http://localhost:9501/admin/",
 		SetupURL:        "http://localhost:9501/setup",
 	})
+	app.headlessRuntime.BinaryPath = currentBinary
 
 	req := httptest.NewRequest(http.MethodGet, "/api/admin/bootstrap-state", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
