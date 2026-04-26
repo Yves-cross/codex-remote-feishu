@@ -145,6 +145,41 @@
 3. `/compact` 在 Claude 下也不是简单 reject，而是显式 passthrough 策略。
 4. 因此本仓库后续需要解决的不是“要不要有 backend-aware catalog”，而是“如何把 display / parse / execute 三层统一到同一 resolver 上，避免继续局部漂移”。
 
+### 3.8 与 `#185` 的执行边界
+
+`#369` 不拥有 Claude backend 的底层 seam，它消费这些 seam。
+
+`#185` 拥有的内容：
+
+1. protocol / runtime seam
+   - `agentproto.Capabilities`
+   - wrapper/provider runtime 分层
+   - hello / `onHello()` capability gate
+2. backend-aware state partition
+   - `InstanceRecord.Backend`
+   - backend-aware `WorkspaceDefaults`
+   - surface resume backend persistence
+   - thread/session 持久键分区
+3. backend 切换的产品语义约束
+   - `/mode codex|claude|vscode` 的真实状态切换语义
+   - 切换时的状态清理、恢复、安全门控
+
+`#369` 拥有的内容：
+
+1. `CatalogContext` 及其 resolver 输入接线
+   - 从既有 state/runtime seam 读取 backend / mode / capability / attached kind / workspace
+   - 不反向定义这些 seam 的底层 schema
+2. family / variant / resolver 抽象
+3. help/menu 的 backend-aware display
+4. slash / menu parse 与 callback provenance
+5. variant-specific page / owner-flow 接线
+
+因此，`#369` 的第一个执行子单不应再叫“backend / context 基座”，而应收窄为：
+
+- `A. catalog context 接线`
+
+它只负责把 `#185` 已提供的 backend/provider/capability/state seam 接到 catalog resolver 输入，不单独拥有协议字段、状态 schema 或 `/mode` 后端切换语义。
+
 ## 4. 设计目标
 
 1. **把 backend 从当前 catalog 决策的一等输入里补出来。**
