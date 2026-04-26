@@ -317,6 +317,12 @@ export function makeOnboardingWorkflow(
           callback,
           menu,
         };
+  const {
+    autostart: autostartDetectOverrides,
+    vscode: _unusedAutostartVSCodeOverrides,
+    decision: autostartDecisionOverrides,
+    ...autostartStageOverrides
+  } = overrides.autostart || {};
   const autostart: OnboardingWorkflowMachineStep = {
     ...makeOnboardingStage({
       id: "autostart",
@@ -327,6 +333,7 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["apply", "defer"],
     }),
+    ...autostartStageOverrides,
     autostart: makeAutostartDetect({
       platform: "linux",
       supported: true,
@@ -334,17 +341,21 @@ export function makeOnboardingWorkflow(
       configured: false,
       enabled: false,
       canApply: true,
-      ...(overrides.autostart?.autostart || {}),
+      ...(autostartDetectOverrides || {}),
     }),
-    decision: overrides.autostart?.decision
+    decision: autostartDecisionOverrides
       ? {
-          value: overrides.autostart.decision.value,
-          decidedAt: overrides.autostart.decision.decidedAt,
+          value: autostartDecisionOverrides.value,
+          decidedAt: autostartDecisionOverrides.decidedAt,
         }
       : undefined,
-    error: overrides.autostart?.error,
-    ...overrides.autostart,
   };
+  const {
+    vscode: vscodeDetectOverrides,
+    autostart: _unusedVSCodeAutostartOverrides,
+    decision: vscodeDecisionOverrides,
+    ...vscodeStageOverrides
+  } = overrides.vscode || {};
   const vscode: OnboardingWorkflowMachineStep = {
     ...makeOnboardingStage({
       id: "vscode",
@@ -355,15 +366,14 @@ export function makeOnboardingWorkflow(
       blocking: false,
       allowedActions: ["apply", "defer", "remote_only"],
     }),
-    vscode: makeVSCodeDetect(overrides.vscode?.vscode || {}),
-    decision: overrides.vscode?.decision
+    ...vscodeStageOverrides,
+    vscode: makeVSCodeDetect(vscodeDetectOverrides || {}),
+    decision: vscodeDecisionOverrides
       ? {
-          value: overrides.vscode.decision.value,
-          decidedAt: overrides.vscode.decision.decidedAt,
+          value: vscodeDecisionOverrides.value,
+          decidedAt: vscodeDecisionOverrides.decidedAt,
         }
       : undefined,
-    error: overrides.vscode?.error,
-    ...overrides.vscode,
   };
 
   return {

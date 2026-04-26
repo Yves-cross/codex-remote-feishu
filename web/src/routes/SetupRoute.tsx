@@ -32,6 +32,14 @@ import {
   vscodeApplyModeForScenario,
   vscodeIsReady,
 } from "./shared/helpers";
+import {
+  buildOnboardingWorkflowPath,
+  isResolvedStageStatus,
+  onboardingStepTitle,
+  stageAllowsAction,
+  workflowStageByID,
+  workflowStageLabel,
+} from "./shared/onboardingWorkflow";
 
 type NoticeTone = "good" | "warn" | "danger";
 
@@ -238,7 +246,9 @@ export function SetupRoute() {
     const [bootstrapState, manifestState, workflowState] = await Promise.all([
       requestJSON<BootstrapState>("/api/setup/bootstrap-state"),
       requestJSON<FeishuManifestResponse>("/api/setup/feishu/manifest"),
-      requestJSON<OnboardingWorkflowResponse>(buildWorkflowPath(preferredAppID)),
+      requestJSON<OnboardingWorkflowResponse>(
+        buildOnboardingWorkflowPath("/api/setup", preferredAppID),
+      ),
     ]);
 
     setBootstrap(bootstrapState);
@@ -441,7 +451,7 @@ export function SetupRoute() {
     }
     setState({
       status: "sent",
-      message: response.data.message,
+      message: (response.data as FeishuAppTestStartResponse).message,
     });
   }
 
@@ -476,9 +486,12 @@ export function SetupRoute() {
         setCallbackTest({ status: "idle", message: "" });
       }
       await refreshWorkflowFocus();
-      setNotice({ tone: "good", message: `${stepTitle(step)}已记录完成。` });
+      setNotice({ tone: "good", message: `${onboardingStepTitle(step)}已记录完成。` });
     } catch {
-      setNotice({ tone: "danger", message: `当前还不能记录${stepTitle(step)}完成，请稍后重试。` });
+      setNotice({
+        tone: "danger",
+        message: `当前还不能记录${onboardingStepTitle(step)}完成，请稍后重试。`,
+      });
     } finally {
       setActionBusy("");
     }
@@ -1485,69 +1498,6 @@ export function SetupRoute() {
       </main>
     </div>
   );
-}
-
-function buildWorkflowPath(preferredAppID: string): string {
-  if (!preferredAppID.trim()) {
-    return "/api/setup/onboarding/workflow";
-  }
-  return `/api/setup/onboarding/workflow?app=${encodeURIComponent(preferredAppID)}`;
-}
-
-function stepTitle(step: "events" | "callback" | "menu"): string {
-  switch (step) {
-    case "events":
-      return "事件订阅";
-    case "callback":
-      return "回调配置";
-    case "menu":
-      return "菜单确认";
-    default:
-      return step;
-  }
-}
-
-function workflowStageByID(
-  workflow: OnboardingWorkflowResponse | null,
-  id: string,
-): OnboardingWorkflowStage | null {
-  if (!workflow) {
-    return null;
-  }
-  return workflow.stages.find((stage) => stage.id === id) || null;
-}
-
-function stageAllowsAction(
-  stage:
-    | OnboardingWorkflowStage
-    | OnboardingWorkflowPermission
-    | OnboardingWorkflowAppStep
-    | OnboardingWorkflowMachineStep
-    | null
-    | undefined,
-  action: string,
-): boolean {
-  if (!stage) {
-    return false;
-  }
-  return (stage.allowedActions || []).includes(action);
-}
-
-function isResolvedStageStatus(status: string): boolean {
-  return status === "complete" || status === "deferred" || status === "not_applicable";
-}
-
-function workflowStageLabel(stage: OnboardingWorkflowStage, currentStageID: string): string {
-  if (stage.id === currentStageID) {
-    return "当前推荐";
-  }
-  if (isResolvedStageStatus(stage.status)) {
-    return "已处理";
-  }
-  if (stage.status === "blocked") {
-    return "阻塞";
-  }
-  return "待处理";
 }
 
 function buildSetupPageTitle(bootstrap: BootstrapState | null): string {

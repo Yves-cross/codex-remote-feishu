@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   APIRequestError,
   type APIErrorShape,
   requestJSON,
   requestJSONAllowHTTPError,
+  requestVoid,
   sendJSON,
 } from "../lib/api";
 import type {
-  AutostartDetectResponse,
   BootstrapState,
-  FeishuAppPermissionCheckResponse,
   FeishuAppResponse,
   FeishuAppSummary,
   FeishuAppTestStartResponse,
   FeishuAppVerifyResponse,
   FeishuAppsResponse,
+  FeishuManifestResponse,
   FeishuOnboardingCompleteResponse,
   FeishuOnboardingSession,
   FeishuOnboardingSessionResponse,
@@ -22,16 +22,28 @@ import type {
   ImageStagingStatusResponse,
   LogsStorageCleanupResponse,
   LogsStorageStatusResponse,
+  OnboardingWorkflowAppStep,
+  OnboardingWorkflowMachineStep,
+  OnboardingWorkflowPermission,
+  OnboardingWorkflowResponse,
+  OnboardingWorkflowStage,
   PreviewDriveCleanupResponse,
   PreviewDriveStatusResponse,
-  VSCodeDetectResponse,
 } from "../lib/types";
 import {
-  loadAutostartState,
-  loadVSCodeState,
+  blankToUndefined,
+  buildAdminFeishuVerifySuccessMessage,
   vscodeApplyModeForScenario,
   vscodeIsReady,
 } from "./shared/helpers";
+import {
+  buildOnboardingWorkflowPath,
+  isResolvedStageStatus,
+  onboardingStepTitle,
+  stageAllowsAction,
+  workflowStageByID,
+  workflowStageLabel,
+} from "./shared/onboardingWorkflow";
 
 type NoticeTone = "good" | "warn" | "danger";
 
@@ -39,13 +51,6 @@ type DetailNotice = {
   tone: NoticeTone;
   message: string;
 };
-
-type PermissionSummaryState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; data: FeishuAppPermissionCheckResponse }
-  | { status: "missing"; data: FeishuAppPermissionCheckResponse }
-  | { status: "error"; message: string };
 
 type RuntimeApplyFailureDetails = {
   gatewayId?: string;
@@ -58,6 +63,11 @@ type NewRobotForm = {
   appSecret: string;
 };
 
+type RequirementTableRow = {
+  key: string;
+  cells: ReactNode[];
+};
+
 const newRobotID = "new";
 const defaultQRCodePollIntervalSeconds = 5;
 
@@ -65,11 +75,11 @@ export function AdminRoute() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
+  const [manifest, setManifest] = useState<FeishuManifestResponse["manifest"] | null>(
+    null,
+  );
   const [apps, setApps] = useState<FeishuAppSummary[]>([]);
   const [selectedRobotID, setSelectedRobotID] = useState(newRobotID);
-  const [permissionChecks, setPermissionChecks] = useState<
-    Record<string, PermissionSummaryState>
-  >({});
   const [detailNotice, setDetailNotice] = useState<DetailNotice | null>(null);
   const [newRobotForm, setNewRobotForm] = useState<NewRobotForm>({
     name: "",
@@ -80,12 +90,10 @@ export function AdminRoute() {
   const [onboardingSession, setOnboardingSession] =
     useState<FeishuOnboardingSession | null>(null);
   const [connectError, setConnectError] = useState("");
-  const [autostart, setAutostart] = useState<AutostartDetectResponse | null>(
-    null,
-  );
-  const [autostartError, setAutostartError] = useState("");
-  const [vscode, setVSCode] = useState<VSCodeDetectResponse | null>(null);
-  const [vscodeError, setVSCodeError] = useState("");
+  const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowError, setWorkflowError] = useState("");
+  const [workflow, setWorkflow] = useState<OnboardingWorkflowResponse | null>(null);
+  const [visibleStageID, setVisibleStageID] = useState("");
   const [imageStaging, setImageStaging] =
     useState<ImageStagingStatusResponse | null>(null);
   const [imageStagingError, setImageStagingError] = useState("");
@@ -104,9 +112,6 @@ export function AdminRoute() {
     () => apps.find((app) => app.id === selectedRobotID) ?? null,
     [apps, selectedRobotID],
   );
-  const selectedPermission: PermissionSummaryState = selectedApp
-    ? permissionChecks[selectedApp.id] || { status: "idle" }
-    : { status: "idle" };
   const versionTitle = buildAdminPageTitle(bootstrap);
   const previewSummary = useMemo(() => {
     return Object.values(previewMap).reduce(
@@ -118,6 +123,18 @@ export function AdminRoute() {
       { fileCount: 0, bytes: 0 },
     );
   }, [previewMap]);
+
+  const currentStageID =
+    workflow?.currentStage || workflow?.stages[0]?.id || "runtime_requirements";
+  const stageID = visibleStageID || currentStageID;
+  const currentStage = workflowStageByID(workflow, currentStageID);
+  const activeStage = workflowStageByID(workflow, stageID);
+  const connectionStage =
+    workflow?.app?.connection || workflowStageByID(workflow, "connect");
+  const permissionStage = workflow?.app?.permission || null;
+  const eventsStage = workflow?.app?.events || null;
+  const callbackStage = workflow?.app?.callback || null;
+  const menuStage = workflow?.app?.menu || null;
 
   useEffect(() => {
     document.title = versionTitle;
@@ -131,32 +148,25 @@ export function AdminRoute() {
   }, []);
 
   useEffect(() => {
-    setPermissionChecks((current) => {
-      const next: Record<string, PermissionSummaryState> = {};
-      for (const app of apps) {
-        next[app.id] = current[app.id] || { status: "idle" };
-      }
-      return next;
-    });
-  }, [apps]);
-
-  useEffect(() => {
-    for (const app of apps) {
-      const current = permissionChecks[app.id];
-      if (current && current.status !== "idle") {
-        continue;
-      }
-      void loadPermissionCheck(app.id);
-    }
-  }, [apps, permissionChecks]);
-
-  useEffect(() => {
     if (selectedRobotID === newRobotID) {
+      setWorkflow(null);
+      setWorkflowError("");
+      setWorkflowLoading(false);
+      setVisibleStageID("");
       return;
     }
-    setConnectError("");
-    setOnboardingSession(null);
+    void loadWorkflow(selectedRobotID, true);
   }, [selectedRobotID]);
+
+  useEffect(() => {
+    if (!workflow) {
+      return;
+    }
+    if (visibleStageID && workflow.stages.some((stage) => stage.id === visibleStageID)) {
+      return;
+    }
+    setVisibleStageID(workflow.currentStage || workflow.stages[0]?.id || "");
+  }, [visibleStageID, workflow]);
 
   useEffect(() => {
     if (selectedRobotID !== newRobotID || connectMode !== "qr") {
@@ -192,21 +202,14 @@ export function AdminRoute() {
     setLoading(true);
     setLoadError("");
 
-    const [
-      bootstrapState,
-      appList,
-      autostartState,
-      vscodeState,
-      imageResult,
-      logsResult,
-    ] = await Promise.all([
-      requestJSON<BootstrapState>("/api/admin/bootstrap-state"),
-      requestJSON<FeishuAppsResponse>("/api/admin/feishu/apps"),
-      loadAutostartState("/api/admin/autostart/detect"),
-      loadVSCodeState("/api/admin/vscode/detect"),
-      safeRequest<ImageStagingStatusResponse>("/api/admin/storage/image-staging"),
-      safeRequest<LogsStorageStatusResponse>("/api/admin/storage/logs"),
-    ]);
+    const [bootstrapState, manifestState, appList, imageResult, logsResult] =
+      await Promise.all([
+        requestJSON<BootstrapState>("/api/admin/bootstrap-state"),
+        requestJSON<FeishuManifestResponse>("/api/admin/feishu/manifest"),
+        requestJSON<FeishuAppsResponse>("/api/admin/feishu/apps"),
+        safeRequest<ImageStagingStatusResponse>("/api/admin/storage/image-staging"),
+        safeRequest<LogsStorageStatusResponse>("/api/admin/storage/logs"),
+      ]);
 
     const previewResults = await Promise.allSettled(
       appList.apps.map(async (app) => {
@@ -234,12 +237,9 @@ export function AdminRoute() {
       newRobotID;
 
     setBootstrap(bootstrapState);
+    setManifest(manifestState.manifest);
     setApps(appList.apps);
     setSelectedRobotID(nextSelectedRobotID);
-    setAutostart(autostartState.data);
-    setAutostartError(autostartState.error);
-    setVSCode(vscodeState.data);
-    setVSCodeError(vscodeState.error);
     setImageStaging(imageResult.data);
     setImageStagingError(imageResult.error);
     setLogsStorage(logsResult.data);
@@ -249,31 +249,22 @@ export function AdminRoute() {
     setLoading(false);
   }
 
-  async function loadPermissionCheck(appID: string) {
-    setPermissionChecks((current) => ({
-      ...current,
-      [appID]: { status: "loading" },
-    }));
-    const response = await requestJSONAllowHTTPError<
-      FeishuAppPermissionCheckResponse | APIErrorShape
-    >(`/api/admin/feishu/apps/${encodeURIComponent(appID)}/permission-check`);
-    if (!response.ok) {
-      setPermissionChecks((current) => ({
-        ...current,
-        [appID]: {
-          status: "error",
-          message: "暂时无法读取权限状态，请稍后重试。",
-        },
-      }));
-      return;
+  async function loadWorkflow(preferredRobotID: string, focusCurrentStage: boolean) {
+    setWorkflowLoading(true);
+    setWorkflowError("");
+    try {
+      const payload = await requestJSON<OnboardingWorkflowResponse>(
+        buildOnboardingWorkflowPath("/api/admin", preferredRobotID),
+      );
+      setWorkflow(payload);
+      if (focusCurrentStage) {
+        setVisibleStageID(payload.currentStage || payload.stages[0]?.id || "");
+      }
+    } catch {
+      setWorkflowError("当前 onboarding 状态暂时读取失败，请稍后重试。");
+    } finally {
+      setWorkflowLoading(false);
     }
-    const payload = response.data as FeishuAppPermissionCheckResponse;
-    setPermissionChecks((current) => ({
-      ...current,
-      [appID]: payload.ready
-        ? { status: "ready", data: payload }
-        : { status: "missing", data: payload },
-    }));
   }
 
   function changeConnectMode(nextMode: "qr" | "manual") {
@@ -326,10 +317,15 @@ export function AdminRoute() {
       }
       await loadAdminPage({ preferredRobotID: response.data.app.id });
       setSelectedRobotID(response.data.app.id);
-      setDetailNotice({ tone: "good", message: "已完成连接验证。" });
+      setDetailNotice({
+        tone: "good",
+        message: buildAdminFeishuVerifySuccessMessage(
+          response.data.app,
+          response.data.result.duration,
+        ),
+      });
       setConnectError("");
       setOnboardingSession(null);
-      void loadPermissionCheck(response.data.app.id);
     } catch {
       setConnectError("扫码已经完成，但当前还不能继续，请稍后重试。");
     } finally {
@@ -360,7 +356,6 @@ export function AdminRoute() {
       );
       await loadAdminPage({ preferredRobotID: saved.app.id });
       setSelectedRobotID(saved.app.id);
-      void loadPermissionCheck(saved.app.id);
       if (!verify.ok) {
         setDetailNotice({
           tone: "danger",
@@ -368,7 +363,13 @@ export function AdminRoute() {
         });
         return;
       }
-      setDetailNotice({ tone: "good", message: "已完成连接验证。" });
+      setDetailNotice({
+        tone: "good",
+        message: buildAdminFeishuVerifySuccessMessage(
+          verify.data.app,
+          verify.data.result.duration,
+        ),
+      });
       setNewRobotForm({ name: "", appId: "", appSecret: "" });
     } catch (error: unknown) {
       if (await maybeRecoverRuntimeApplyFailure(error)) {
@@ -399,16 +400,28 @@ export function AdminRoute() {
     return true;
   }
 
+  async function refreshWorkflowFocus() {
+    if (!selectedApp?.id) {
+      return;
+    }
+    await loadWorkflow(selectedApp.id, true);
+  }
+
+  async function retryEnvironmentCheck() {
+    await refreshWorkflowFocus();
+  }
+
   async function triggerRobotTest(kind: "events" | "callback") {
     if (!selectedApp?.id) {
       return;
     }
     setActionBusy(`test-${kind}`);
-    const response = await requestJSONAllowHTTPError<
-      FeishuAppTestStartResponse | APIErrorShape
-    >(`/api/admin/feishu/apps/${encodeURIComponent(selectedApp.id)}/${kind === "events" ? "test-events" : "test-callback"}`, {
-      method: "POST",
-    });
+    const response = await requestJSONAllowHTTPError<FeishuAppTestStartResponse | APIErrorShape>(
+      `/api/admin/feishu/apps/${encodeURIComponent(selectedApp.id)}/${kind === "events" ? "test-events" : "test-callback"}`,
+      {
+        method: "POST",
+      },
+    );
     if (!response.ok) {
       const payload = readAPIError(response);
       setDetailNotice({
@@ -426,12 +439,103 @@ export function AdminRoute() {
       setActionBusy("");
       return;
     }
-    const payload = response.data as FeishuAppTestStartResponse;
     setDetailNotice({
       tone: "good",
-      message: payload.message,
+      message: (response.data as FeishuAppTestStartResponse).message,
     });
     setActionBusy("");
+  }
+
+  async function confirmAppStep(step: "events" | "callback" | "menu") {
+    if (!selectedApp?.id) {
+      return;
+    }
+    setActionBusy(`confirm-${step}`);
+    try {
+      await requestVoid(
+        `/api/admin/feishu/apps/${encodeURIComponent(selectedApp.id)}/onboarding-steps/${encodeURIComponent(step)}/complete`,
+        {
+          method: "POST",
+        },
+      );
+      await refreshWorkflowFocus();
+      setDetailNotice({
+        tone: "good",
+        message: `${onboardingStepTitle(step)}已记录完成。`,
+      });
+    } catch {
+      setDetailNotice({
+        tone: "danger",
+        message: `当前还不能记录${onboardingStepTitle(step)}完成，请稍后重试。`,
+      });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function recordMachineDecision(
+    kind: "autostart" | "vscode",
+    decision: string,
+    message: string,
+  ) {
+    setActionBusy(`${kind}-${decision}`);
+    try {
+      await requestVoid(`/api/admin/onboarding/machine-decisions/${kind}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ decision }),
+      });
+      await refreshWorkflowFocus();
+      setDetailNotice({ tone: "good", message });
+    } catch {
+      setDetailNotice({ tone: "danger", message: "当前还不能保存你的选择，请稍后重试。" });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function applyAutostart() {
+    setActionBusy("autostart-apply");
+    try {
+      await sendJSON("/api/admin/autostart/apply", "POST");
+      await refreshWorkflowFocus();
+      setDetailNotice({ tone: "good", message: "已启用自动启动。" });
+    } catch {
+      setDetailNotice({ tone: "danger", message: "当前还不能启用自动启动，请稍后重试。" });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function applyVSCode() {
+    const vscode = workflow?.vscode.vscode || null;
+    if (!vscode) {
+      setDetailNotice({ tone: "danger", message: "暂时还不能完成 VS Code 集成，请稍后重试。" });
+      return;
+    }
+    setActionBusy("vscode-apply");
+    try {
+      const mode = vscodeApplyModeForScenario(vscode, "current_machine");
+      await sendJSON(
+        "/api/admin/vscode/apply",
+        "POST",
+        {
+          mode: mode || "managed_shim",
+          bundleEntrypoint: vscode.latestBundleEntrypoint,
+        },
+      );
+      await refreshWorkflowFocus();
+      setDetailNotice({ tone: "good", message: "VS Code 集成已完成。" });
+    } catch {
+      setDetailNotice({
+        tone: "danger",
+        message: "当前还不能确认 VS Code 集成结果，请稍后重试。",
+      });
+    } finally {
+      setActionBusy("");
+    }
   }
 
   async function deleteRobot() {
@@ -464,57 +568,6 @@ export function AdminRoute() {
     } finally {
       setActionBusy("");
       setDeleteTargetID(null);
-    }
-  }
-
-  async function enableAutostart() {
-    setActionBusy("autostart");
-    try {
-      const response = await sendJSON<AutostartDetectResponse>(
-        "/api/admin/autostart/apply",
-        "POST",
-      );
-      setAutostart(response);
-      setAutostartError("");
-    } catch {
-      setAutostartError("自动运行设置暂时没有更新成功。");
-    } finally {
-      setActionBusy("");
-    }
-  }
-
-  async function repairVSCode() {
-    setActionBusy("vscode");
-    try {
-      if (!vscode) {
-        await loadAdminPage({ preferredRobotID: selectedRobotID });
-        return;
-      }
-      if (vscode.needsShimReinstall && vscode.latestBundleEntrypoint) {
-        const response = await sendJSON<VSCodeDetectResponse>(
-          "/api/admin/vscode/reinstall-shim",
-          "POST",
-          { bundleEntrypoint: vscode.latestBundleEntrypoint },
-        );
-        setVSCode(response);
-        setVSCodeError("");
-        return;
-      }
-      const mode = vscodeApplyModeForScenario(vscode, "current_machine");
-      const response = await sendJSON<VSCodeDetectResponse>(
-        "/api/admin/vscode/apply",
-        "POST",
-        {
-          mode: mode || "managed_shim",
-          bundleEntrypoint: vscode.latestBundleEntrypoint,
-        },
-      );
-      setVSCode(response);
-      setVSCodeError("");
-    } catch {
-      setVSCodeError("VS Code 集成暂时没有更新成功。");
-    } finally {
-      setActionBusy("");
     }
   }
 
@@ -603,275 +656,755 @@ export function AdminRoute() {
     }
   }
 
-  function renderRobotDetail() {
-    if (!selectedApp) {
-      return (
-        <section className="panel">
-          <div className="step-stage-head">
-            <h2>新增机器人</h2>
-            <p>选择扫码创建或手动输入，连接验证通过后会自动加入机器人列表。</p>
-          </div>
-          <div className="choice-toggle">
-            <button
-              className={connectMode === "qr" ? "primary-button" : "ghost-button"}
-              type="button"
-              onClick={() => changeConnectMode("qr")}
-            >
-              扫码创建
-            </button>
-            <button
-              className={
-                connectMode === "manual" ? "primary-button" : "ghost-button"
-              }
-              type="button"
-              onClick={() => changeConnectMode("manual")}
-            >
-              手动输入
-            </button>
-          </div>
-          {connectMode === "qr" ? (
-            <div className="panel">
-              <div className="scan-preview">
-                <div>
-                  <h4 style={{ margin: 0 }}>扫码创建</h4>
-                  <p className="support-copy">
-                    请使用飞书扫码完成创建，页面会自动轮询并继续下一步。
-                  </p>
-                  <div className="scan-frame">
-                    {onboardingSession?.qrCodeDataUrl ? (
-                      <img alt="飞书扫码创建二维码" src={onboardingSession.qrCodeDataUrl} />
-                    ) : (
-                      <span>二维码准备中</span>
-                    )}
-                  </div>
-                </div>
-                <div className="detail-stack">
-                  {onboardingSession?.status === "pending" ? (
-                    <div className="notice-banner warn">正在等待扫码结果...</div>
-                  ) : null}
-                  {onboardingSession?.status === "ready" && !connectError ? (
-                    <div className="notice-banner good">
-                      扫码成功，连接验证已通过，正在加入机器人列表...
-                    </div>
-                  ) : null}
-                  {onboardingSession?.status === "failed" ||
-                  onboardingSession?.status === "expired" ||
-                  connectError ? (
-                    <div className="notice-banner danger">
-                      {connectError || "当前扫码没有继续成功，请重新开始。"}
-                    </div>
-                  ) : null}
-                  <div className="button-row">
-                    {(connectError ||
-                      onboardingSession?.status === "failed" ||
-                      onboardingSession?.status === "expired") && (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={actionBusy === "qr-start"}
-                        onClick={() => {
-                          setOnboardingSession(null);
-                          setConnectError("");
-                        }}
-                      >
-                        重新扫码
-                      </button>
-                    )}
-                    {onboardingSession?.status === "ready" && connectError ? (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={actionBusy === "qr-complete"}
-                        onClick={() => {
-                          if (onboardingSession?.id) {
-                            setConnectError("");
-                            void completeQRCodeSession(onboardingSession.id);
-                          }
-                        }}
-                      >
-                        重新验证
-                      </button>
-                    ) : null}
-                    <button
-                      className="ghost-button"
-                      type="button"
-                      onClick={() => changeConnectMode("manual")}
-                    >
-                      改用手动输入
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="panel">
-              <div className="form-grid">
-                <label className="field">
-                  <span>
-                    App ID <em className="field-required">*</em>
-                  </span>
-                  <input
-                    aria-label="App ID"
-                    placeholder="请输入 App ID"
-                    value={newRobotForm.appId}
-                    onChange={(event) =>
-                      setNewRobotForm((current) => ({
-                        ...current,
-                        appId: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>
-                    App Secret <em className="field-required">*</em>
-                  </span>
-                  <input
-                    aria-label="App Secret"
-                    placeholder="请输入 App Secret"
-                    value={newRobotForm.appSecret}
-                    onChange={(event) =>
-                      setNewRobotForm((current) => ({
-                        ...current,
-                        appSecret: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="field form-grid-span-2">
-                  <span>机器人名称（可选）</span>
-                  <input
-                    aria-label="机器人名称（可选）"
-                    placeholder="例如：运营机器人"
-                    value={newRobotForm.name}
-                    onChange={(event) =>
-                      setNewRobotForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="button-row">
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={actionBusy === "create-robot"}
-                  onClick={() => void createRobot()}
-                >
-                  验证并保存
-                </button>
-              </div>
-            </div>
-          )}
-          {detailNotice ? (
-            <div className={`notice-banner ${detailNotice.tone}`}>
-              {detailNotice.message}
-            </div>
-          ) : null}
-        </section>
-      );
-    }
-
+  function renderNewRobotDetail() {
     return (
       <section className="panel">
         <div className="step-stage-head">
-          <h2>{selectedApp.name || "未命名机器人"}</h2>
-          <p>机器人状态与测试入口。</p>
+          <h2>新增机器人</h2>
+          <p>选择扫码创建或手动输入，连接验证通过后会直接切到 workflow-driven 详情区。</p>
         </div>
-        <dl className="definition-list">
-          <div>
-            <dt>App ID</dt>
-            <dd>{selectedApp.appId || "未填写"}</dd>
-          </div>
-          <div>
-            <dt>连接状态</dt>
-            <dd>{describeConnectionState(selectedApp)}</dd>
-          </div>
-          <div>
-            <dt>启用状态</dt>
-            <dd>{selectedApp.enabled ? "已启用" : "未启用"}</dd>
-          </div>
-          <div>
-            <dt>最近验证</dt>
-            <dd>{selectedApp.verifiedAt ? formatTimestamp(selectedApp.verifiedAt) : "暂未验证"}</dd>
-          </div>
-        </dl>
-        {selectedApp.runtimeApply?.pending ? (
-          <div className="notice-banner warn">
-            当前机器人还在同步设置，请稍后刷新状态后再继续操作。
-          </div>
-        ) : null}
-        {selectedPermission.status === "missing" ? (
-          <>
-            <div className="notice-banner danger">当前还需要补齐权限。</div>
-            <div className="scope-list">
-              {(selectedPermission.data.missingScopes || []).map((scope: { scope: string; scopeType?: string }) => (
-                <span
-                  key={`${scope.scopeType || "tenant"}-${scope.scope}`}
-                  className="scope-pill"
-                >
-                  <code>{scope.scope}</code>
-                </span>
-              ))}
+        <div className="choice-toggle">
+          <button
+            className={connectMode === "qr" ? "primary-button" : "ghost-button"}
+            type="button"
+            onClick={() => changeConnectMode("qr")}
+          >
+            扫码创建
+          </button>
+          <button
+            className={connectMode === "manual" ? "primary-button" : "ghost-button"}
+            type="button"
+            onClick={() => changeConnectMode("manual")}
+          >
+            手动输入
+          </button>
+        </div>
+        {connectMode === "qr" ? (
+          <div className="panel">
+            <div className="scan-preview">
+              <div>
+                <h4 style={{ margin: 0 }}>扫码创建</h4>
+                <p className="support-copy">
+                  请使用飞书扫码完成创建，页面会自动轮询并切换到新的机器人详情。
+                </p>
+                <div className="scan-frame">
+                  {onboardingSession?.qrCodeDataUrl ? (
+                    <img alt="飞书扫码创建二维码" src={onboardingSession.qrCodeDataUrl} />
+                  ) : (
+                    <span>二维码准备中</span>
+                  )}
+                </div>
+              </div>
+              <div className="detail-stack">
+                {onboardingSession?.status === "pending" ? (
+                  <div className="notice-banner warn">正在等待扫码结果...</div>
+                ) : null}
+                {onboardingSession?.status === "ready" && !connectError ? (
+                  <div className="notice-banner good">
+                    扫码成功，连接验证已通过，正在切换到机器人详情...
+                  </div>
+                ) : null}
+                {onboardingSession?.status === "failed" ||
+                onboardingSession?.status === "expired" ||
+                connectError ? (
+                  <div className="notice-banner danger">
+                    {connectError || "当前扫码没有继续成功，请重新开始。"}
+                  </div>
+                ) : null}
+                <div className="button-row">
+                  {(connectError ||
+                    onboardingSession?.status === "failed" ||
+                    onboardingSession?.status === "expired") && (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={actionBusy === "qr-start"}
+                      onClick={() => {
+                        setOnboardingSession(null);
+                        setConnectError("");
+                      }}
+                    >
+                      重新扫码
+                    </button>
+                  )}
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    onClick={() => changeConnectMode("manual")}
+                  >
+                    改用手动输入
+                  </button>
+                </div>
+              </div>
             </div>
-            <p className="support-copy">
-              前往{" "}
-              <a
-                className="inline-link"
-                href={
-                  selectedPermission.data.app.consoleLinks?.auth ||
-                  selectedApp.consoleLinks?.auth ||
-                  "#"
-                }
-                rel="noreferrer"
-                target="_blank"
+          </div>
+        ) : (
+          <div className="panel">
+            <div className="form-grid">
+              <label className="field">
+                <span>
+                  App ID <em className="field-required">*</em>
+                </span>
+                <input
+                  aria-label="App ID"
+                  placeholder="请输入 App ID"
+                  value={newRobotForm.appId}
+                  onChange={(event) =>
+                    setNewRobotForm((current) => ({
+                      ...current,
+                      appId: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                <span>
+                  App Secret <em className="field-required">*</em>
+                </span>
+                <input
+                  aria-label="App Secret"
+                  placeholder="请输入 App Secret"
+                  value={newRobotForm.appSecret}
+                  onChange={(event) =>
+                    setNewRobotForm((current) => ({
+                      ...current,
+                      appSecret: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="field form-grid-span-2">
+                <span>机器人名称（可选）</span>
+                <input
+                  aria-label="机器人名称（可选）"
+                  placeholder="例如：运营机器人"
+                  value={newRobotForm.name}
+                  onChange={(event) =>
+                    setNewRobotForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="button-row">
+              <button
+                className="primary-button"
+                type="button"
+                disabled={actionBusy === "create-robot"}
+                onClick={() => void createRobot()}
               >
-                打开飞书后台处理权限
-              </a>
-              。
-            </p>
-          </>
+                验证并保存
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  function renderWorkflowOverview() {
+    if (!workflow) {
+      return null;
+    }
+    const remainingActions = workflow.guide?.remainingManualActions || [];
+    return (
+      <div className="detail-stack">
+        <div className="notice-banner warn">{workflow.completion.summary}</div>
+        {workflow.guide?.autoConfiguredSummary ? (
+          <p className="support-copy">{workflow.guide.autoConfiguredSummary}</p>
         ) : null}
-        {selectedPermission.status === "error" ? (
-          <div className="notice-banner warn">{selectedPermission.message}</div>
+        {currentStage?.title ? (
+          <p className="support-copy">当前推荐处理：{currentStage.title}</p>
         ) : null}
-        {detailNotice ? (
-          <div className={`notice-banner ${detailNotice.tone}`}>
-            {detailNotice.message}
+        {workflow.completion.blockingReason ? (
+          <div className="notice-banner warn">{workflow.completion.blockingReason}</div>
+        ) : null}
+        {remainingActions.length > 0 ? (
+          <div className="panel">
+            <div className="section-heading">
+              <div>
+                <h4>剩余建议项</h4>
+                <p>这些项目会继续按 workflow 语义展示，不再由 AdminRoute 本地拼装。</p>
+              </div>
+            </div>
+            <ul className="ordered-checklist">
+              {remainingActions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderWorkflowDetail() {
+    if (workflowLoading) {
+      return (
+        <section className="panel">
+          <div className="empty-state">
+            <div className="loading-dot" />
+            <span>正在读取 onboarding 状态</span>
+          </div>
+        </section>
+      );
+    }
+    if (workflowError) {
+      return (
+        <section className="panel">
+          <div className="empty-state error">
+            <strong>当前详情暂时无法打开</strong>
+            <p>{workflowError}</p>
+            <div className="button-row">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => selectedApp?.id && void loadWorkflow(selectedApp.id, true)}
+              >
+                重新加载
+              </button>
+            </div>
+          </div>
+        </section>
+      );
+    }
+    if (!workflow || !selectedApp) {
+      return null;
+    }
+    return (
+      <div className="setup-grid">
+        <aside className="panel step-rail">
+          <div className="step-stage-head">
+            <h2>{selectedApp.name || "未命名机器人"}</h2>
+            <p>当前详情直接消费统一 onboarding workflow。</p>
+          </div>
+          <div className="step-list">
+            {workflow.stages.map((stage) => (
+              <button
+                key={stage.id}
+                className={`step-item${stage.id === stageID ? " active" : ""}${
+                  isResolvedStageStatus(stage.status) ? " done" : ""
+                }`}
+                type="button"
+                onClick={() => setVisibleStageID(stage.id)}
+              >
+                <strong>{stage.title}</strong>
+                <span>{workflowStageLabel(stage, currentStageID)}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+        <section className="panel step-stage">
+          {renderWorkflowOverview()}
+          {!selectedApp.readOnly ? (
+            <div className="button-row" style={{ marginBottom: "1rem" }}>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => setDeleteTargetID(selectedApp.id)}
+              >
+                删除机器人
+              </button>
+            </div>
+          ) : null}
+          {renderCurrentStage()}
+        </section>
+      </div>
+    );
+  }
+
+  function renderCurrentStage() {
+    switch (stageID) {
+      case "runtime_requirements":
+        return renderEnvironmentStage();
+      case "connect":
+        return renderConnectStage();
+      case "permission":
+        return renderPermissionStage();
+      case "events":
+        return renderEventsStage();
+      case "callback":
+        return renderCallbackStage();
+      case "menu":
+        return renderMenuStage();
+      case "autostart":
+        return renderAutostartStage();
+      case "vscode":
+        return renderVSCodeStage();
+      default:
+        return renderEnvironmentStage();
+    }
+  }
+
+  function renderEnvironmentStage() {
+    const runtimeRequirements = workflow?.runtimeRequirements;
+    const failingChecks =
+      runtimeRequirements?.checks.filter((check) => check.status !== "pass") || [];
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>环境检查</h2>
+          <p>当前详情直接使用后端 workflow 返回的环境检查结果。</p>
+        </div>
+        <div className={`notice-banner ${runtimeRequirements?.ready ? "good" : "warn"}`}>
+          {runtimeRequirements?.summary || "当前服务还在检查中，请稍候。"}
+        </div>
+        {failingChecks.length > 0 ? (
+          <div className="panel">
+            <div className="section-heading">
+              <div>
+                <h4>当前需要处理</h4>
+                <p>请先修复下面的问题，再重新检查。</p>
+              </div>
+            </div>
+            <ul className="ordered-checklist">
+              {failingChecks.map((check) => (
+                <li key={check.id}>
+                  <strong>{check.title}</strong>
+                  <span>{check.summary}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
         <div className="button-row">
           <button
-            className="primary-button"
+            className="secondary-button"
             type="button"
-            disabled={actionBusy === "test-events" || Boolean(selectedApp.runtimeApply?.pending)}
-            onClick={() => void triggerRobotTest("events")}
+            onClick={() => void retryEnvironmentCheck()}
           >
-            测试事件订阅
+            重新检查
           </button>
+        </div>
+      </section>
+    );
+  }
+
+  function renderConnectStage() {
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>飞书连接</h2>
+          <p>{connectionStage?.summary || "接入并验证一个可用的飞书应用。"}</p>
+        </div>
+        <div className="notice-banner good">
+          当前应用：{selectedApp?.name || selectedApp?.id}
+          {selectedApp?.readOnly ? "（运行时接管，只能验证，不可在网页修改）" : ""}
+        </div>
+        <div className="button-row">
           <button
             className="secondary-button"
             type="button"
-            disabled={actionBusy === "test-callback" || Boolean(selectedApp.runtimeApply?.pending)}
-            onClick={() => void triggerRobotTest("callback")}
+            disabled={!stageAllowsAction(connectionStage, "verify") || !selectedApp?.id}
+            onClick={() => selectedApp?.id && void verifyExistingRobot(selectedApp.id)}
           >
-            测试回调
-          </button>
-          <button
-            className="danger-button"
-            type="button"
-            disabled={Boolean(selectedApp.readOnly)}
-            onClick={() => setDeleteTargetID(selectedApp.id)}
-          >
-            删除机器人
+            重新验证
           </button>
         </div>
-        {selectedApp.readOnly ? (
-          <p className="support-copy">当前机器人由运行环境提供，不能在这里删除。</p>
+      </section>
+    );
+  }
+
+  function renderPermissionStage() {
+    if (!permissionStage) {
+      return renderUnavailableStage("权限检查", "当前还没有可用的飞书应用，暂时无法检查权限。");
+    }
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>权限检查</h2>
+          <p>{permissionStage.summary}</p>
+        </div>
+        <div className={`notice-banner ${permissionStage.status === "complete" ? "good" : "warn"}`}>
+          {permissionStage.status === "complete"
+            ? "当前基础权限已经齐全。"
+            : "这一步现在是建议补齐项，不会单独决定 workflow 下一步由谁 owner。"}
+        </div>
+        {(permissionStage.missingScopes || []).length > 0 ? (
+          <div className="scope-list">
+            {(permissionStage.missingScopes || []).map((scope) => (
+              <span
+                key={`${scope.scopeType || "tenant"}-${scope.scope}`}
+                className="scope-pill"
+              >
+                <code>{scope.scope}</code>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {permissionStage.grantJSON ? (
+          <div className="panel">
+            <div className="section-heading">
+              <div>
+                <h4>可复制的一次性权限配置</h4>
+                <p>补齐后刷新 workflow 即可看到最新状态。</p>
+              </div>
+            </div>
+            <textarea
+              readOnly
+              className="code-textarea"
+              value={permissionStage.grantJSON || ""}
+            />
+            <div className="button-row">
+              {stageAllowsAction(permissionStage, "open_auth") ? (
+                <a
+                  className="ghost-button"
+                  href={selectedApp?.consoleLinks?.auth || "#"}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  打开飞书后台权限配置
+                </a>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!stageAllowsAction(permissionStage, "recheck")}
+            onClick={() => void refreshWorkflowFocus()}
+          >
+            重新检查
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  function renderEventsStage() {
+    return renderAppTestStage(
+      "events",
+      "事件订阅",
+      eventsStage,
+      selectedApp?.consoleLinks?.events || "#",
+      "飞书后台",
+      ["事件", "用途"],
+      (manifest?.events || []).map((item) => ({
+        key: item.event,
+        cells: [renderCodeCell(item.event), item.purpose || ""],
+      })),
+    );
+  }
+
+  function renderCallbackStage() {
+    return renderAppTestStage(
+      "callback",
+      "回调配置",
+      callbackStage,
+      selectedApp?.consoleLinks?.callback || "#",
+      "飞书后台",
+      ["回调", "用途"],
+      (manifest?.callbacks || []).map((item) => ({
+        key: item.callback,
+        cells: [renderCodeCell(item.callback), item.purpose || ""],
+      })),
+    );
+  }
+
+  function renderAppTestStage(
+    kind: "events" | "callback",
+    titleText: string,
+    stage: OnboardingWorkflowAppStep | null,
+    consoleURL: string,
+    consoleLabel: string,
+    headers: string[],
+    rows: RequirementTableRow[],
+  ) {
+    if (!stage) {
+      return renderUnavailableStage(titleText, "当前还没有可用的飞书应用。");
+    }
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>{titleText}</h2>
+          <p>{stage.summary}</p>
+        </div>
+        <p className="support-copy">
+          前往{" "}
+          <a
+            className="inline-link"
+            href={consoleURL}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {consoleLabel}
+          </a>{" "}
+          完成当前联调。
+        </p>
+        {renderRequirementTable(headers, rows)}
+        <div className="button-row">
+          {stageAllowsAction(stage, "start_test") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === `test-${kind}` || !selectedApp?.id}
+              onClick={() => void triggerRobotTest(kind)}
+            >
+              发送测试提示
+            </button>
+          ) : null}
+          {stageAllowsAction(stage, "confirm") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === `confirm-${kind}`}
+              onClick={() => void confirmAppStep(kind)}
+            >
+              我已完成，继续
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderMenuStage() {
+    if (!menuStage) {
+      return renderUnavailableStage("菜单确认", "当前还没有可用的飞书应用。");
+    }
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>菜单确认</h2>
+          <p>{menuStage.summary}</p>
+        </div>
+        <p className="support-copy">
+          前往{" "}
+          <a
+            className="inline-link"
+            href={selectedApp?.consoleLinks?.bot || "#"}
+            rel="noreferrer"
+            target="_blank"
+          >
+            飞书后台
+          </a>{" "}
+          完成菜单配置。
+        </p>
+        <div className="button-row">
+          {stageAllowsAction(menuStage, "confirm") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "confirm-menu"}
+              onClick={() => void confirmAppStep("menu")}
+            >
+              我已完成，继续
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderAutostartStage() {
+    const autostartStage = workflow?.autostart;
+    const autostart = autostartStage?.autostart || null;
+    if (!autostartStage) {
+      return renderUnavailableStage("自动启动", "暂时没有拿到自动启动状态。");
+    }
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>自动启动</h2>
+          <p>{autostartStage.summary}</p>
+        </div>
+        <div
+          className={`notice-banner ${
+            autostartStage.status === "complete" ? "good" : "warn"
+          }`}
+        >
+          {autostartStage.summary}
+        </div>
+        {autostartStage.error ? (
+          <div className="notice-banner warn">{autostartStage.error}</div>
+        ) : null}
+        <div className="button-row">
+          {stageAllowsAction(autostartStage, "apply") && autostart?.canApply ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "autostart-apply"}
+              onClick={() => void applyAutostart()}
+            >
+              启用自动启动
+            </button>
+          ) : null}
+          {stageAllowsAction(autostartStage, "record_enabled") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "autostart-enabled"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "autostart",
+                  "enabled",
+                  "已记录自动启动决策。",
+                )
+              }
+            >
+              已启用，记录完成
+            </button>
+          ) : null}
+          {stageAllowsAction(autostartStage, "defer") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "autostart-deferred"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "autostart",
+                  "deferred",
+                  "自动启动已留待稍后处理。",
+                )
+              }
+            >
+              稍后处理
+            </button>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  function renderVSCodeStage() {
+    const vscodeStage = workflow?.vscode;
+    const vscode = vscodeStage?.vscode || null;
+    if (!vscodeStage) {
+      return renderUnavailableStage("VS Code 集成", "暂时没有拿到 VS Code 集成状态。");
+    }
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>VS Code 集成</h2>
+          <p>{vscodeStage.summary}</p>
+        </div>
+        <div
+          className={`notice-banner ${
+            vscodeStage.status === "complete" ? "good" : "warn"
+          }`}
+        >
+          {vscodeStage.summary}
+        </div>
+        {vscodeStage.error ? (
+          <div className="notice-banner warn">{vscodeStage.error}</div>
+        ) : null}
+        <div className="button-row">
+          {stageAllowsAction(vscodeStage, "apply") ? (
+            <button
+              className="primary-button"
+              type="button"
+              disabled={actionBusy === "vscode-apply"}
+              onClick={() => void applyVSCode()}
+            >
+              确认集成
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "record_managed_shim") ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={actionBusy === "vscode-managed_shim"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "managed_shim",
+                  "已记录 VS Code 集成决策。",
+                )
+              }
+            >
+              已处理，记录完成
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "remote_only") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "vscode-remote_only"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "remote_only",
+                  "VS Code 集成已留到目标 SSH 机器上处理。",
+                )
+              }
+            >
+              去目标 SSH 机器处理
+            </button>
+          ) : null}
+          {stageAllowsAction(vscodeStage, "defer") ? (
+            <button
+              className="ghost-button"
+              type="button"
+              disabled={actionBusy === "vscode-deferred"}
+              onClick={() =>
+                void recordMachineDecision(
+                  "vscode",
+                  "deferred",
+                  "VS Code 集成已留待稍后处理。",
+                )
+              }
+            >
+              稍后处理
+            </button>
+          ) : null}
+        </div>
+        {vscode ? (
+          <p className="support-copy">
+            当前检测结果：{vscodeIsReady(vscode) ? "已接入" : "尚未接入"}。
+          </p>
         ) : null}
       </section>
+    );
+  }
+
+  function renderUnavailableStage(titleText: string, message: string) {
+    return (
+      <section className="step-section">
+        <div className="step-stage-head">
+          <h2>{titleText}</h2>
+          <p>{message}</p>
+        </div>
+        <div className="notice-banner warn">{message}</div>
+      </section>
+    );
+  }
+
+  async function verifyExistingRobot(appID: string) {
+    setActionBusy("verify");
+    try {
+      const response = await requestJSONAllowHTTPError<FeishuAppVerifyResponse>(
+        `/api/admin/feishu/apps/${encodeURIComponent(appID)}/verify`,
+        { method: "POST" },
+      );
+      await loadAdminPage({ preferredRobotID: appID });
+      if (!response.ok) {
+        setDetailNotice({
+          tone: "danger",
+          message: "连接验证没有通过，请检查当前配置后重试。",
+        });
+        return;
+      }
+      setDetailNotice({
+        tone: "good",
+        message: buildAdminFeishuVerifySuccessMessage(
+          response.data.app,
+          response.data.result.duration,
+        ),
+      });
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  function renderCodeCell(value: string) {
+    return (
+      <div className="requirement-copy-cell">
+        <code>{value}</code>
+      </div>
     );
   }
 
@@ -880,7 +1413,7 @@ export function AdminRoute() {
       <div className="product-page">
         <header className="product-topbar">
           <h1>{versionTitle}</h1>
-          <p>管理机器人、系统集成与本地存储。</p>
+          <p>管理机器人、预览文件与本地存储。</p>
         </header>
         <section className="panel">
           <div className="empty-state">
@@ -897,7 +1430,7 @@ export function AdminRoute() {
       <div className="product-page">
         <header className="product-topbar">
           <h1>{versionTitle}</h1>
-          <p>管理机器人、系统集成与本地存储。</p>
+          <p>管理机器人、预览文件与本地存储。</p>
         </header>
         <section className="panel">
           <div className="empty-state error">
@@ -922,38 +1455,38 @@ export function AdminRoute() {
     <div className="product-page">
       <header className="product-topbar">
         <h1>{versionTitle}</h1>
-        <p>管理机器人、系统集成与本地存储。</p>
+        <p>管理机器人、统一 onboarding 流和本地存储。</p>
       </header>
 
       <section className="panel">
         <div className="step-stage-head">
           <h2>机器人管理</h2>
-          <p>查看所有机器人并处理需要关注的状态。</p>
+          <p>左侧选择机器人，右侧直接显示同一套 workflow-driven 接入与补齐流程。</p>
         </div>
+        {detailNotice ? (
+          <div className={`notice-banner ${detailNotice.tone}`}>{detailNotice.message}</div>
+        ) : null}
         <div className="robot-layout" style={{ marginTop: "1rem" }}>
           <div className="robot-list">
-            {apps.map((app) => {
-              const permission = permissionChecks[app.id];
-              const showWarn =
-                permission?.status === "missing" || Boolean(app.runtimeApply?.pending);
-              return (
-                <button
-                  key={app.id}
-                  className={`robot-list-button${selectedRobotID === app.id ? " active" : ""}`}
-                  type="button"
-                  onClick={() => {
-                    setDetailNotice(null);
-                    setSelectedRobotID(app.id);
-                  }}
-                >
-                  <div className="robot-list-head">
-                    <strong>{app.name || "未命名机器人"}</strong>
-                    {showWarn ? <span className="robot-tag warn">有异常</span> : null}
-                  </div>
-                  <p>{app.appId || "未填写 App ID"}</p>
-                </button>
-              );
-            })}
+            {apps.map((app) => (
+              <button
+                key={app.id}
+                className={`robot-list-button${selectedRobotID === app.id ? " active" : ""}`}
+                type="button"
+                onClick={() => {
+                  setDetailNotice(null);
+                  setSelectedRobotID(app.id);
+                }}
+              >
+                <div className="robot-list-head">
+                  <strong>{app.name || "未命名机器人"}</strong>
+                  {app.runtimeApply?.pending ? (
+                    <span className="robot-tag warn">同步中</span>
+                  ) : null}
+                </div>
+                <p>{app.appId || "未填写 App ID"}</p>
+              </button>
+            ))}
             <button
               className={`robot-list-button${selectedRobotID === newRobotID ? " active" : ""}`}
               type="button"
@@ -969,52 +1502,7 @@ export function AdminRoute() {
               <p>点击开始接入</p>
             </button>
           </div>
-          {renderRobotDetail()}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="step-stage-head">
-          <h2>系统集成</h2>
-          <p>统一管理自动运行设置与 VS Code 集成。</p>
-        </div>
-        <div className="soft-grid two-column" style={{ marginTop: "1rem" }}>
-          <article className="soft-card-v2">
-            <h4>自动运行设置</h4>
-            <p>{describeAutostart(autostart, autostartError)}</p>
-            {autostartError ? (
-              <div className="notice-banner warn">{autostartError}</div>
-            ) : null}
-            {!autostartError && autostart?.supported && !autostart.enabled ? (
-              <div className="button-row">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={actionBusy === "autostart" || !autostart.canApply}
-                  onClick={() => void enableAutostart()}
-                >
-                  启用自动运行
-                </button>
-              </div>
-            ) : null}
-          </article>
-          <article className="soft-card-v2">
-            <h4>VS Code 集成</h4>
-            <p>{describeVSCode(vscode, vscodeError)}</p>
-            {vscodeError ? (
-              <div className="notice-banner warn">{vscodeError}</div>
-            ) : null}
-            <div className="button-row">
-              <button
-                className="ghost-button"
-                type="button"
-                disabled={actionBusy === "vscode"}
-                onClick={() => void repairVSCode()}
-              >
-                重新检查并修复
-              </button>
-            </div>
-          </article>
+          {selectedRobotID === newRobotID ? renderNewRobotDetail() : renderWorkflowDetail()}
         </div>
       </section>
 
@@ -1026,9 +1514,7 @@ export function AdminRoute() {
         <div className="soft-grid" style={{ marginTop: "1rem" }}>
           <article className="soft-card-v2">
             <h4>预览文件</h4>
-            <p>
-              {formatFileSummary(previewSummary.fileCount, previewSummary.bytes)}
-            </p>
+            <p>{formatFileSummary(previewSummary.fileCount, previewSummary.bytes)}</p>
             {previewError ? <div className="notice-banner warn">{previewError}</div> : null}
             <div className="button-row">
               <button
@@ -1044,10 +1530,7 @@ export function AdminRoute() {
           <article className="soft-card-v2">
             <h4>图片暂存</h4>
             <p>
-              {formatFileSummary(
-                imageStaging?.fileCount || 0,
-                imageStaging?.totalBytes || 0,
-              )}
+              {formatFileSummary(imageStaging?.fileCount || 0, imageStaging?.totalBytes || 0)}
             </p>
             {imageStagingError ? (
               <div className="notice-banner warn">{imageStagingError}</div>
@@ -1066,10 +1549,7 @@ export function AdminRoute() {
           <article className="soft-card-v2">
             <h4>日志文件</h4>
             <p>
-              {formatFileSummary(
-                logsStorage?.fileCount || 0,
-                logsStorage?.totalBytes || 0,
-              )}
+              {formatFileSummary(logsStorage?.fileCount || 0, logsStorage?.totalBytes || 0)}
             </p>
             {logsStorageError ? (
               <div className="notice-banner warn">{logsStorageError}</div>
@@ -1140,11 +1620,6 @@ async function safeRequest<T>(path: string) {
   }
 }
 
-function blankToUndefined(value: string): string | undefined {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : undefined;
-}
-
 function readAPIError(response: { ok: boolean; data: unknown }) {
   if (response.ok) {
     return null;
@@ -1159,48 +1634,31 @@ function buildAdminPageTitle(bootstrap: BootstrapState | null): string {
   return version ? `${name} ${version} 管理` : `${name} 管理`;
 }
 
-function describeConnectionState(app: FeishuAppSummary): string {
-  switch (app.status?.state) {
-    case "connected":
-      return "连接正常";
-    case "disabled":
-      return "已停用";
-    case "error":
-      return "需要处理";
-    default:
-      return "待确认";
-  }
-}
-
-function describeAutostart(
-  autostart: AutostartDetectResponse | null,
-  error: string,
-): string {
-  if (error) {
-    return "暂时没有读取成功。";
-  }
-  if (!autostart) {
-    return "暂时没有读取成功。";
-  }
-  if (!autostart.supported) {
-    return "当前系统不支持。";
-  }
-  return autostart.enabled ? "当前已启用。" : "当前未启用。";
-}
-
-function describeVSCode(
-  vscode: VSCodeDetectResponse | null,
-  error: string,
-): string {
-  if (error) {
-    return "暂时没有读取成功。";
-  }
-  if (!vscode) {
-    return "暂时没有读取成功。";
-  }
-  return vscodeIsReady(vscode)
-    ? "当前已接入。"
-    : "检测到 VS Code 集成未完成，请先修复。";
+function renderRequirementTable(headers: string[], rows: RequirementTableRow[]) {
+  return (
+    <div className="detail-table-wrap">
+      <table className="detail-table">
+        <thead>
+          <tr>
+            {headers.map((header) => (
+              <th key={header} scope="col">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={row.key || `${rowIndex}-row`}>
+              {row.cells.map((value, cellIndex) => (
+                <td key={`${rowIndex}-${cellIndex}`}>{value}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function formatBytes(value: number): string {
@@ -1219,15 +1677,4 @@ function formatBytes(value: number): string {
 
 function formatFileSummary(fileCount: number, bytes: number): string {
   return `${fileCount} 个文件，约 ${formatBytes(bytes)}`;
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "暂不可用";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
 }
