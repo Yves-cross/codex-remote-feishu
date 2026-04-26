@@ -183,6 +183,68 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			g.recordSurfaceMessage(operation.MessageID, operation.SurfaceSessionID)
 		}
 		return nil
+	case OperationSendStreamCard:
+		cardID, err := g.createStreamCardFn(ctx, *operation)
+		if err != nil {
+			return err
+		}
+		operation.StreamCardID = cardID
+		receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
+		if receiveID == "" || receiveIDType == "" {
+			receiveID, receiveIDType = gatewaypkg.ResolveReceiveTarget(operation.ChatID, "")
+		}
+		if receiveID == "" || receiveIDType == "" {
+			return fmt.Errorf("send stream card failed: missing receive target")
+		}
+		cardContent, err := json.Marshal(map[string]any{
+			"type": "card",
+			"data": map[string]string{"card_id": cardID},
+		})
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(operation.ReplyToMessageID) != "" {
+			resp, err := g.replyMessageFn(ctx, operation.ReplyToMessageID, "interactive", string(cardContent))
+			if err == nil && resp != nil && resp.Success() {
+				if resp.Data != nil {
+					operation.MessageID = stringPtr(resp.Data.MessageId)
+					g.recordSurfaceMessage(operation.MessageID, operation.SurfaceSessionID)
+				}
+				return nil
+			}
+			log.Printf(
+				"feishu stream card reply fallback: surface=%s reply_to=%s err=%v code=%d msg=%s",
+				operation.SurfaceSessionID,
+				operation.ReplyToMessageID,
+				err,
+				replyRespCode(resp),
+				replyRespMsg(resp),
+			)
+		}
+		resp, err := g.createMessageFn(ctx, receiveIDType, receiveID, "interactive", string(cardContent))
+		if err != nil {
+			return err
+		}
+		if !resp.Success() {
+			return newAPIError("im.v1.message.create", resp.ApiResp, resp.CodeError)
+		}
+		if resp.Data != nil {
+			operation.MessageID = stringPtr(resp.Data.MessageId)
+			g.recordSurfaceMessage(operation.MessageID, operation.SurfaceSessionID)
+		}
+		return nil
+	case OperationUpdateStreamCard:
+		cardID := strings.TrimSpace(operation.StreamCardID)
+		if cardID == "" {
+			return fmt.Errorf("update stream card failed: missing card id")
+		}
+		return g.updateStreamCardFn(ctx, cardID, operation.CardBody)
+	case OperationCloseStreamCard:
+		cardID := strings.TrimSpace(operation.StreamCardID)
+		if cardID == "" {
+			return fmt.Errorf("close stream card failed: missing card id")
+		}
+		return g.closeStreamCardFn(ctx, cardID, operation.CardBody)
 	case OperationSendCard:
 		card, err := json.Marshal(trimCardPayloadForMessageTransport(renderOperationCard(*operation, operation.effectiveCardEnvelope())))
 		if err != nil {
@@ -246,6 +308,28 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 			return fmt.Errorf("update card failed: %s: %w", updateContext, err)
 		}
 		if !resp.Success() {
+			if feishuPatchTargetIsNotCard(resp) {
+				log.Printf("feishu card patch target is not a card; sending replacement card: %s", updateContext)
+				receiveID, receiveIDType := operation.ReceiveID, operation.ReceiveIDType
+				if receiveID == "" || receiveIDType == "" {
+					receiveID, receiveIDType = gatewaypkg.ResolveReceiveTarget(operation.ChatID, "")
+				}
+				if receiveID == "" || receiveIDType == "" {
+					return fmt.Errorf("update card fallback failed: %s: missing receive target", updateContext)
+				}
+				createResp, createErr := g.createMessageFn(ctx, receiveIDType, receiveID, "interactive", string(card))
+				if createErr != nil {
+					return fmt.Errorf("update card fallback failed: %s: %w", updateContext, createErr)
+				}
+				if !createResp.Success() {
+					return fmt.Errorf("update card fallback failed: %s: %w", updateContext, newAPIError("im.v1.message.create", createResp.ApiResp, createResp.CodeError))
+				}
+				if createResp.Data != nil {
+					operation.MessageID = stringPtr(createResp.Data.MessageId)
+					g.recordSurfaceMessage(operation.MessageID, operation.SurfaceSessionID)
+				}
+				return nil
+			}
 			return fmt.Errorf("update card failed: %s: %w", updateContext, newAPIError("im.v1.message.patch", resp.ApiResp, resp.CodeError))
 		}
 		return nil
@@ -380,6 +464,16 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 	}
 }
 
+func feishuPatchTargetIsNotCard(resp *larkim.PatchMessageResp) bool {
+	if resp == nil {
+		return false
+	}
+	needle := "not a card"
+	return strings.Contains(strings.ToLower(resp.Msg), needle) ||
+		strings.Contains(strings.ToLower(resp.CodeError.Msg), needle) ||
+		strings.Contains(strings.ToLower(fmt.Sprint(resp.CodeError.Err)), needle)
+}
+
 func sendTextPayload(operation Operation) (string, string, error) {
 	text := strings.TrimSpace(operation.Text)
 	attentionUserID := strings.TrimSpace(operation.AttentionUserID)
@@ -403,6 +497,43 @@ func sendTextPayload(operation Operation) (string, string, error) {
 		nodes = append(nodes, feishuPostNode{
 			Tag:  "text",
 			Text: "\n" + text,
+		})
+	}
+	post := feishuLocalizedPostContent{
+		ZhCN: feishuPostContent{
+			Content: [][]feishuPostNode{nodes},
+		},
+	}
+	body, err := json.Marshal(post)
+	if err != nil {
+		return "", "", err
+	}
+	return "post", string(body), nil
+}
+
+func sendPostTextPayload(operation Operation) (string, string, error) {
+	text := strings.TrimSpace(operation.Text)
+	attentionUserID := strings.TrimSpace(operation.AttentionUserID)
+	nodes := make([]feishuPostNode, 0, 2)
+	if attentionUserID != "" {
+		nodes = append(nodes, feishuPostNode{
+			Tag:    "at",
+			UserID: attentionUserID,
+		})
+		if text != "" {
+			text = "\n" + text
+		}
+	}
+	if text != "" {
+		nodes = append(nodes, feishuPostNode{
+			Tag:  "text",
+			Text: text,
+		})
+	}
+	if len(nodes) == 0 {
+		nodes = append(nodes, feishuPostNode{
+			Tag:  "text",
+			Text: "",
 		})
 	}
 	post := feishuLocalizedPostContent{

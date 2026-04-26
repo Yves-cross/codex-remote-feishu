@@ -103,6 +103,25 @@ func TestCanonicalSemanticsForBlockCommitted(t *testing.T) {
 	}
 }
 
+func TestCanonicalSemanticsForAssistantStream(t *testing.T) {
+	event := Event{
+		Payload: AssistantStreamPayload{
+			View: control.AssistantStreamView{Text: "正在输出"},
+		},
+	}
+
+	got := event.CanonicalSemantics()
+	want := DeliverySemantics{
+		VisibilityClass:        VisibilityClassAlwaysVisible,
+		HandoffClass:           HandoffClassTerminalContent,
+		FirstResultDisposition: FirstResultDispositionKeep,
+		OwnerCardDisposition:   OwnerCardDispositionKeep,
+	}
+	if got != want {
+		t.Fatalf("CanonicalSemantics() = %#v, want %#v", got, want)
+	}
+}
+
 func TestCanonicalSemanticsUsesExplicitOverride(t *testing.T) {
 	event := Event{
 		Payload: RequestPayload{

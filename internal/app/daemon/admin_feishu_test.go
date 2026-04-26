@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
@@ -336,6 +337,41 @@ func TestAdminFeishuTestStartFailsWithoutBoundRecipient(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "feishu_app_web_test_recipient_unavailable") {
 		t.Fatalf("expected recipient unavailable error, got %s", rec.Body.String())
+	}
+}
+
+func TestAdminFeishuTestStartRecoversRecipientFromSurfaceResume(t *testing.T) {
+	cfg := config.DefaultAppConfig()
+	cfg.Feishu.Apps = []config.FeishuAppConfig{{
+		ID:        "main",
+		Name:      "Main",
+		AppID:     "cli_xxx",
+		AppSecret: "secret_xxx",
+	}}
+	gateway := &fakeAdminGatewayController{}
+	app, _ := newFeishuAdminTestApp(t, cfg, defaultFeishuServices(), gateway, false, "")
+	app.mu.Lock()
+	if err := app.surfaceResumeRuntime.store.Put(surfaceresume.Entry{
+		SurfaceSessionID: "feishu:main:user:user-1",
+		GatewayID:        "main",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		UpdatedAt:        time.Now().UTC(),
+	}); err != nil {
+		app.mu.Unlock()
+		t.Fatalf("put surface resume entry: %v", err)
+	}
+	app.mu.Unlock()
+
+	rec := performAdminRequest(t, app, http.MethodPost, "/api/admin/feishu/apps/main/test-events", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("test-events status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if len(gateway.applied) != 1 {
+		t.Fatalf("expected one outgoing test prompt, got %#v", gateway.applied)
+	}
+	if gateway.applied[0].ReceiveID != "user-1" || gateway.applied[0].ReceiveIDType != "user_id" {
+		t.Fatalf("expected recovered recipient to target actor user, got %#v", gateway.applied[0])
 	}
 }
 

@@ -194,6 +194,12 @@ func extractItemMetadata(itemKind string, item map[string]any) map[string]any {
 	if text := extractItemText(item); text != "" {
 		metadata["text"] = text
 	}
+	if phase := firstNonEmptyString(
+		lookupStringFromAny(item["phase"]),
+		lookupString(item, "result", "phase"),
+	); phase != "" {
+		metadata["phase"] = phase
+	}
 	switch itemKind {
 	case "entered_review_mode", "exited_review_mode":
 		if review := firstNonEmptyString(

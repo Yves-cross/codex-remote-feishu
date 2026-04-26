@@ -53,6 +53,7 @@ type itemBuffer struct {
 	TurnID     string
 	ItemID     string
 	ItemKind   string
+	Phase      string
 	textChunks []string
 	textValue  string
 }

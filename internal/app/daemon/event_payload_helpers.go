@@ -37,6 +37,11 @@ func blockPayloadFromEvent(event eventcontract.Event) (eventcontract.BlockCommit
 	return payload, ok
 }
 
+func assistantStreamPayloadFromEvent(event eventcontract.Event) (eventcontract.AssistantStreamPayload, bool) {
+	payload, ok := event.CanonicalPayload().(eventcontract.AssistantStreamPayload)
+	return payload, ok
+}
+
 func execCommandProgressPayloadFromEvent(event eventcontract.Event) (eventcontract.ExecCommandProgressPayload, bool) {
 	payload, ok := event.CanonicalPayload().(eventcontract.ExecCommandProgressPayload)
 	return payload, ok

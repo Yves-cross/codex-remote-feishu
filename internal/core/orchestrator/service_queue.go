@@ -579,6 +579,13 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 		block.ThemeKey = themeKey
 		block.Final = final
 		block.DetourLabel = detourLabel
+		if final {
+			if stream := activeAssistantStream(surface, instanceKey, threadID, turnID, ""); stream != nil {
+				block.MessageID = strings.TrimSpace(stream.MessageID)
+				block.StreamCardID = strings.TrimSpace(stream.StreamCardID)
+				block.Text = joinAssistantStreamText(stream.CompletedText, block.Text)
+			}
+		}
 		event := eventcontract.Event{
 			Kind:                 eventcontract.KindBlockCommitted,
 			SurfaceSessionID:     surface.SurfaceSessionID,
@@ -603,6 +610,11 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 			thread.LastAssistantMessage = snippet
 			thread.Preview = snippet
 			s.touchThread(thread)
+		}
+	}
+	if final {
+		if stream := activeAssistantStream(surface, instanceKey, threadID, turnID, ""); stream != nil {
+			surface.ActiveAssistantStream = nil
 		}
 	}
 	return events
@@ -632,6 +644,7 @@ func (s *Service) trackItemStart(instanceID string, event agentproto.Event) {
 	if buf.ItemKind == "" {
 		buf.ItemKind = event.ItemKind
 	}
+	buf.updatePhase(metadataString(event.Metadata, "phase"))
 	if text, _ := event.Metadata["text"].(string); text != "" {
 		buf.replaceText(text)
 	}
@@ -645,6 +658,7 @@ func (s *Service) trackItemDelta(instanceID string, event agentproto.Event) {
 	if buf.ItemKind == "" {
 		buf.ItemKind = event.ItemKind
 	}
+	buf.updatePhase(metadataString(event.Metadata, "phase"))
 	buf.appendText(event.Delta)
 }
 
@@ -677,6 +691,7 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []even
 	if buf.ItemKind == "" {
 		buf.ItemKind = event.ItemKind
 	}
+	buf.updatePhase(metadataString(event.Metadata, "phase"))
 	bufferText := buf.text()
 	if text, _ := event.Metadata["text"].(string); text != "" {
 		if bufferText == "" || strings.TrimSpace(bufferText) != strings.TrimSpace(text) {
@@ -695,6 +710,13 @@ func (s *Service) completeItem(instanceID string, event agentproto.Event) []even
 		return nil
 	}
 	if buf.ItemKind == "agent_message" {
+		if surface := s.turnSurface(instanceID, event.ThreadID, event.TurnID); surface != nil && assistantStreamPhaseCompletesOnItemDone(buf.Phase) {
+			if stream := activeAssistantStream(surface, instanceID, event.ThreadID, event.TurnID, event.ItemID); stream != nil {
+				stream.CompletedText = joinAssistantStreamText(stream.CompletedText, bufferText)
+				stream.Text = stream.CompletedText
+				return nil
+			}
+		}
 		return s.storePendingTurnText(instanceID, event.ThreadID, event.TurnID, event.ItemID, buf.ItemKind, bufferText)
 	}
 	return s.renderTextItem(instanceID, event.ThreadID, event.TurnID, event.ItemID, bufferText, false)

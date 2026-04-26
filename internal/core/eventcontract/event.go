@@ -61,6 +61,7 @@ type Event struct {
 	PlanUpdate               *control.PlanUpdate
 	ThreadSelection          *control.ThreadSelectionChanged
 	Block                    *render.Block
+	AssistantStream          *control.AssistantStreamView
 	TimelineText             *control.TimelineText
 	ImageOutput              *control.ImageOutput
 	ExecCommandProgress      *control.ExecCommandProgress
@@ -209,6 +210,11 @@ func (event Event) Normalized() Event {
 		}
 		if event.FinalTurnSummary == nil {
 			event.FinalTurnSummary = cloneFinalTurnSummary(payload.FinalTurnSummary)
+		}
+	case AssistantStreamPayload:
+		if event.AssistantStream == nil {
+			view := payload.View
+			event.AssistantStream = &view
 		}
 	case TimelineTextPayload:
 		if event.TimelineText == nil {

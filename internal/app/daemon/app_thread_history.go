@@ -21,8 +21,9 @@ func (a *App) handleThreadHistoryDaemonCommandLocked(command control.DaemonComma
 	surfaceID := strings.TrimSpace(command.SurfaceSessionID)
 	instanceID := strings.TrimSpace(command.InstanceID)
 	threadID := strings.TrimSpace(command.ThreadID)
+	pickerID := strings.TrimSpace(command.PickerID)
 	if surfaceID == "" || instanceID == "" || threadID == "" {
-		if events := a.service.HandleSurfaceThreadHistoryFailure(surfaceID, "history_query_invalid", "history 查询参数不完整。"); len(events) != 0 {
+		if events := a.handleThreadHistoryFailureForPending(pendingThreadHistoryRead{SurfaceSessionID: surfaceID, ThreadID: threadID, PickerID: pickerID}, "history_query_invalid", "history 查询参数不完整。"); len(events) != 0 {
 			return events
 		}
 		return []eventcontract.Event{{
@@ -52,7 +53,7 @@ func (a *App) handleThreadHistoryDaemonCommandLocked(command control.DaemonComma
 	err := a.sendAgentCommand(instanceID, agentCommand)
 	a.mu.Lock()
 	if err != nil {
-		if events := a.service.HandleSurfaceThreadHistoryFailure(surfaceID, "history_query_dispatch_failed", "history 查询未成功发送到本地 Codex。"); len(events) != 0 {
+		if events := a.handleThreadHistoryFailureForPending(pendingThreadHistoryRead{SurfaceSessionID: surfaceID, ThreadID: threadID, PickerID: pickerID}, "history_query_dispatch_failed", "history 查询未成功发送到本地 Codex。"); len(events) != 0 {
 			return events
 		}
 		return []eventcontract.Event{{
@@ -68,6 +69,7 @@ func (a *App) handleThreadHistoryDaemonCommandLocked(command control.DaemonComma
 		SurfaceSessionID: surfaceID,
 		InstanceID:       instanceID,
 		ThreadID:         threadID,
+		PickerID:         pickerID,
 	}
 	return nil
 }
@@ -82,7 +84,7 @@ func (a *App) handleThreadHistoryCommandAckLocked(instanceID string, ack agentpr
 		return nil, true
 	}
 	delete(a.pendingThreadHistoryReads, commandID)
-	if events := a.service.HandleSurfaceThreadHistoryFailure(pending.SurfaceSessionID, "history_query_rejected", "本地 Codex 拒绝了这次 history 查询。"); len(events) != 0 {
+	if events := a.handleThreadHistoryFailureForPending(pending, "history_query_rejected", "本地 Codex 拒绝了这次 history 查询。"); len(events) != 0 {
 		return events, true
 	}
 	return []eventcontract.Event{{
@@ -108,7 +110,7 @@ func (a *App) handleThreadHistoryEventLocked(instanceID string, event agentproto
 		return nil, true
 	}
 	if pending.ThreadID != "" && pending.ThreadID != strings.TrimSpace(event.ThreadID) && pending.ThreadID != strings.TrimSpace(event.ThreadHistory.Thread.ThreadID) {
-		if events := a.service.HandleSurfaceThreadHistoryFailure(pending.SurfaceSessionID, "history_query_stale", "history 查询结果已过期。"); len(events) != 0 {
+		if events := a.handleThreadHistoryFailureForPending(pending, "history_query_stale", "history 查询结果已过期。"); len(events) != 0 {
 			return events, true
 		}
 		return []eventcontract.Event{{
@@ -121,5 +123,18 @@ func (a *App) handleThreadHistoryEventLocked(instanceID string, event agentproto
 		}}, true
 	}
 	a.service.RecordSurfaceThreadHistory(pending.SurfaceSessionID, *event.ThreadHistory)
-	return a.service.HandleSurfaceThreadHistoryLoaded(pending.SurfaceSessionID), true
+	events := a.service.HandleSurfaceThreadHistoryLoaded(pending.SurfaceSessionID)
+	if strings.TrimSpace(pending.PickerID) != "" {
+		events = append(events, a.service.HandleSurfaceTargetPickerHistoryLoaded(pending.SurfaceSessionID, pending.ThreadID)...)
+	}
+	return events, true
+}
+
+func (a *App) handleThreadHistoryFailureForPending(pending pendingThreadHistoryRead, code, text string) []eventcontract.Event {
+	if strings.TrimSpace(pending.PickerID) != "" {
+		if events := a.service.HandleSurfaceTargetPickerHistoryFailure(pending.SurfaceSessionID, pending.ThreadID, code, text); len(events) != 0 {
+			return events
+		}
+	}
+	return a.service.HandleSurfaceThreadHistoryFailure(pending.SurfaceSessionID, code, text)
 }

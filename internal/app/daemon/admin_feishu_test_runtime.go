@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
+	"github.com/kxn/codex-remote-feishu/internal/app/daemon/surfaceresume"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	frontstagecontract "github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 	"github.com/kxn/codex-remote-feishu/internal/feishuapp"
@@ -101,6 +102,9 @@ func (a *App) startFeishuAppTest(ctx context.Context, gatewayID string, kind fei
 	}
 
 	recipient, ok := a.resolveFeishuAppWebTestRecipient(gatewayID)
+	if !ok {
+		recipient, ok = a.recoverFeishuAppWebTestRecipient(gatewayID)
+	}
 	if !ok {
 		return feishuAppTestStartResponse{}, errFeishuAppWebTestRecipientUnavailable(gatewayID)
 	}
@@ -309,6 +313,73 @@ func (a *App) resolveFeishuAppWebTestRecipient(gatewayID string) (feishuAppWebTe
 		return feishuAppWebTestRecipient{}, false
 	}
 	return recipient, true
+}
+
+func (a *App) recoverFeishuAppWebTestRecipient(gatewayID string) (feishuAppWebTestRecipient, bool) {
+	gatewayID = canonicalGatewayID(gatewayID)
+	if gatewayID == "" {
+		return feishuAppWebTestRecipient{}, false
+	}
+	var best *surfaceresume.Entry
+	a.mu.Lock()
+	if a.surfaceResumeRuntime.store != nil {
+		for _, entry := range a.surfaceResumeRuntime.store.Entries() {
+			entry := entry
+			if canonicalGatewayID(entry.GatewayID) != gatewayID ||
+				strings.TrimSpace(entry.ActorUserID) == "" {
+				continue
+			}
+			if best == nil || entry.UpdatedAt.After(best.UpdatedAt) {
+				best = &entry
+			}
+		}
+	}
+	if best == nil {
+		for _, surface := range a.service.Surfaces() {
+			if surface == nil ||
+				canonicalGatewayID(surface.GatewayID) != gatewayID ||
+				strings.TrimSpace(surface.ActorUserID) == "" {
+				continue
+			}
+			entry := surfaceresume.Entry{
+				GatewayID:   surface.GatewayID,
+				ChatID:      surface.ChatID,
+				ActorUserID: surface.ActorUserID,
+				UpdatedAt:   surface.LastInboundAt,
+			}
+			if best == nil || entry.UpdatedAt.After(best.UpdatedAt) {
+				best = &entry
+			}
+		}
+	}
+	a.mu.Unlock()
+	if best == nil {
+		return feishuAppWebTestRecipient{}, false
+	}
+	recipient := feishuAppWebTestRecipientFromSurface(gatewayID, best.ActorUserID, best.ChatID)
+	if recipient.ReceiveID == "" || recipient.ReceiveIDType == "" {
+		return feishuAppWebTestRecipient{}, false
+	}
+	a.feishuRuntime.mu.Lock()
+	if a.feishuRuntime.webTestRecipients == nil {
+		a.feishuRuntime.webTestRecipients = map[string]feishuAppWebTestRecipient{}
+	}
+	a.feishuRuntime.webTestRecipients[gatewayID] = recipient
+	a.feishuRuntime.mu.Unlock()
+	log.Printf("feishu app test recipient recovered: gateway=%s actor_present=%t", gatewayID, recipient.ActorUserID != "")
+	return recipient, true
+}
+
+func feishuAppWebTestRecipientFromSurface(gatewayID, actorUserID, chatID string) feishuAppWebTestRecipient {
+	actorUserID = strings.TrimSpace(actorUserID)
+	receiveID, receiveIDType := feishu.ResolveReceiveTarget("", actorUserID)
+	return feishuAppWebTestRecipient{
+		GatewayID:     canonicalGatewayID(gatewayID),
+		ActorUserID:   actorUserID,
+		ReceiveID:     receiveID,
+		ReceiveIDType: receiveIDType,
+		BoundAt:       time.Now().UTC(),
+	}
 }
 
 func feishuAppTestKey(gatewayID string, kind feishuAppTestKind) string {

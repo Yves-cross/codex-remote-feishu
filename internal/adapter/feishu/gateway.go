@@ -3,6 +3,7 @@ package feishu
 import (
 	"context"
 	"sync"
+	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -55,11 +56,19 @@ type LiveGateway struct {
 	createReactionFn   func(context.Context, string, string) (*larkim.CreateMessageReactionResp, error)
 	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
+	createStreamCardFn func(context.Context, Operation) (string, error)
+	updateStreamCardFn func(context.Context, string, string) error
+	closeStreamCardFn  func(context.Context, string, string) error
 
 	mu        sync.Mutex
 	stateHook func(GatewayState, error)
 	reactions map[string]string
 	messages  map[string]string
+	streamSeq map[string]int
+
+	tokenMu              sync.Mutex
+	tenantAccessToken    string
+	tenantTokenExpiresAt time.Time
 }
 
 type gatewayMessage struct {
@@ -106,6 +115,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 		broker:    NewFeishuCallBroker(config.GatewayID, client),
 		reactions: map[string]string{},
 		messages:  map[string]string{},
+		streamSeq: map[string]int{},
 	}
 	gateway.downloadImageFn = gateway.downloadImage
 	gateway.downloadFileFn = gateway.downloadFile
@@ -121,6 +131,9 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway.createReactionFn = gateway.createReaction
 	gateway.deleteReactionFn = gateway.deleteReaction
 	gateway.botTimeSensitiveFn = gateway.botTimeSensitive
+	gateway.createStreamCardFn = gateway.createStreamCard
+	gateway.updateStreamCardFn = gateway.updateStreamCard
+	gateway.closeStreamCardFn = gateway.closeStreamCard
 	return gateway
 }
 

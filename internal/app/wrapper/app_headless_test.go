@@ -52,9 +52,8 @@ func TestBootstrapHeadlessCodexCompletesInitializeHandshake(t *testing.T) {
 			if experimental, _ := capabilities["experimentalApi"].(bool); !experimental {
 				t.Fatalf("expected experimentalApi=true, got %#v", capabilities["experimentalApi"])
 			}
-			methods, _ := capabilities["optOutNotificationMethods"].([]any)
-			if len(methods) != 1 || methods[0] != "item/agentMessage/delta" {
-				t.Fatalf("unexpected optOutNotificationMethods: %#v", capabilities["optOutNotificationMethods"])
+			if methods, ok := capabilities["optOutNotificationMethods"]; ok {
+				t.Fatalf("expected agent message deltas to stay enabled, got optOutNotificationMethods=%#v", methods)
 			}
 			if got := lookupStringFromMap(frames[1], "method"); got != "initialized" {
 				t.Fatalf("expected second frame to be initialized, got %q", got)

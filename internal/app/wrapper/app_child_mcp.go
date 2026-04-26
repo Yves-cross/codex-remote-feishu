@@ -50,7 +50,8 @@ func (a *App) buildCodexChildLaunch(baseArgs []string) ([]string, []string) {
 }
 
 func (a *App) feishuMCPPublicationEligible() bool {
-	return !strings.EqualFold(strings.TrimSpace(a.config.Source), "vscode")
+	return !strings.EqualFold(strings.TrimSpace(a.config.Source), "vscode") &&
+		parseBoolEnv("CODEX_REMOTE_FEISHU_ENABLE_MCP")
 }
 
 func codexMCPOverride(field, value string) string {

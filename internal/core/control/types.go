@@ -491,6 +491,17 @@ type FinalTurnSummary struct {
 	ModelContextWindow   *int
 }
 
+type AssistantStreamView struct {
+	ThreadID             string
+	TurnID               string
+	ItemID               string
+	MessageID            string
+	StreamCardID         string
+	SourceMessagePreview string
+	Text                 string
+	Done                 bool
+}
+
 type TimelineTextType string
 
 const (

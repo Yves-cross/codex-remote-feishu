@@ -16,6 +16,9 @@ type OperationKind string
 
 const (
 	OperationSendText         OperationKind = "send_text"
+	OperationSendStreamCard   OperationKind = "send_stream_card"
+	OperationUpdateStreamCard OperationKind = "update_stream_card"
+	OperationCloseStreamCard  OperationKind = "close_stream_card"
 	OperationSendCard         OperationKind = "send_card"
 	OperationUpdateCard       OperationKind = "update_card"
 	OperationSendImage        OperationKind = "send_image"
@@ -33,6 +36,7 @@ type Operation struct {
 	ReceiveIDType        string
 	ChatID               string
 	MessageID            string
+	StreamCardID         string
 	ReplyToMessageID     string
 	EmojiType            string
 	TimeSensitive        bool
@@ -57,10 +61,9 @@ func (operation Operation) FinalSourceBody() string {
 }
 
 const (
-	emojiQueuePending = "OneSecond"
-	emojiThinking     = "THINKING"
-	emojiSteered      = "THUMBSUP"
-	emojiDiscarded    = "ThumbsDown"
+	emojiThinking  = "THINKING"
+	emojiSteered   = "THUMBSUP"
+	emojiDiscarded = "ThumbsDown"
 )
 
 const (
@@ -304,26 +307,6 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 		return p.projectThreadHistory(chatID, event, payload.View)
 	case eventcontract.PendingInputPayload:
 		var ops []Operation
-		if payload.State.QueueOn {
-			ops = append(ops, Operation{
-				Kind:             OperationAddReaction,
-				GatewayID:        event.GatewayID,
-				SurfaceSessionID: event.SurfaceSessionID,
-				ChatID:           chatID,
-				MessageID:        payload.State.SourceMessageID,
-				EmojiType:        emojiQueuePending,
-			})
-		}
-		if payload.State.QueueOff {
-			ops = append(ops, Operation{
-				Kind:             OperationRemoveReaction,
-				GatewayID:        event.GatewayID,
-				SurfaceSessionID: event.SurfaceSessionID,
-				ChatID:           chatID,
-				MessageID:        payload.State.SourceMessageID,
-				EmojiType:        emojiQueuePending,
-			})
-		}
 		if payload.State.TypingOn {
 			ops = append(ops, Operation{
 				Kind:             OperationAddReaction,
@@ -377,6 +360,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 			payload.TurnDiffPreview,
 			payload.FinalTurnSummary,
 		)
+	case eventcontract.AssistantStreamPayload:
+		return p.projectAssistantStream(chatID, event, payload.View)
 	case eventcontract.ImageOutputPayload:
 		if strings.TrimSpace(payload.ImageOutput.SavedPath) == "" && strings.TrimSpace(payload.ImageOutput.ImageBase64) == "" {
 			return nil
@@ -397,6 +382,48 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 	}
 }
 
+func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
+	text := strings.TrimSpace(view.Text)
+	if text == "" {
+		return nil
+	}
+	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
+		return []Operation{{
+			Kind:             OperationCloseStreamCard,
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			MessageID:        strings.TrimSpace(view.MessageID),
+			StreamCardID:     strings.TrimSpace(view.StreamCardID),
+			CardBody:         text,
+			CardThemeKey:     cardThemeProgress,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             rawCardDocument("", text, cardThemeProgress, nil),
+		}}
+	}
+	op := Operation{
+		Kind:             OperationSendStreamCard,
+		GatewayID:        event.GatewayID,
+		SurfaceSessionID: event.SurfaceSessionID,
+		ChatID:           chatID,
+		ReplyToMessageID: firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
+		CardBody:         text,
+		CardThemeKey:     cardThemeProgress,
+		cardEnvelope:     cardEnvelopeV2,
+		card:             rawCardDocument("", text, cardThemeProgress, nil),
+	}
+	if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
+		op.Kind = OperationUpdateStreamCard
+		op.MessageID = messageID
+		op.StreamCardID = strings.TrimSpace(view.StreamCardID)
+		op.ReplyToMessageID = ""
+	}
+	if op.Kind == OperationSendStreamCard {
+		op = applyReplyLaneToNewOperation(event, op)
+	}
+	return []Operation{op}
+}
+
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []Operation {
 	if !block.Final {
 		return []Operation{{
@@ -414,7 +441,7 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	}
 	elements := p.finalBlockExtraElements(block.DetourLabel, summary, turnDiffPreview, finalSummary)
 	title := finalCardTitle(sourceMessagePreview)
-	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
+	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, strings.TrimSpace(block.MessageID), strings.TrimSpace(block.StreamCardID), title, body, elements)
 }
 
 func finalCardTitle(sourceMessagePreview string) string {
@@ -437,10 +464,25 @@ func truncateFinalTitlePreview(text string) string {
 	return truncateFinalTitleCharacters(text, 10)
 }
 
-func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, rawBody string, primaryElements []map[string]any) []Operation {
+func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, updateMessageID, streamCardID, title, rawBody string, primaryElements []map[string]any) []Operation {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		title = "✅ 最后答复"
+	}
+	if streamCardID != "" {
+		return []Operation{{
+			Kind:             OperationCloseStreamCard,
+			GatewayID:        gatewayID,
+			SurfaceSessionID: surfaceSessionID,
+			ChatID:           chatID,
+			MessageID:        updateMessageID,
+			StreamCardID:     streamCardID,
+			CardTitle:        title,
+			CardBody:         strings.TrimSpace(rawBody),
+			CardThemeKey:     cardThemeFinal,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             finalReplyCardDocument(title, strings.TrimSpace(rawBody), cardThemeFinal, nil),
+		}}
 	}
 	chunks := splitFinalReplyBodies(rawBody, title, primaryElements)
 	if len(chunks) == 0 {
@@ -463,6 +505,11 @@ func projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID
 		}
 		if i == 0 {
 			op.finalSourceBody = chunk.sourceBody
+			if messageID := strings.TrimSpace(updateMessageID); messageID != "" {
+				op.Kind = OperationUpdateCard
+				op.MessageID = messageID
+				op.ReplyToMessageID = ""
+			}
 		}
 		ops = append(ops, op)
 	}
@@ -494,7 +541,7 @@ func applyAttentionToOperations(operations []Operation, attention eventcontract.
 	}
 	for i := range operations {
 		switch operations[i].Kind {
-		case OperationSendCard, OperationUpdateCard, OperationSendText:
+		case OperationSendCard, OperationUpdateCard, OperationSendText, OperationSendStreamCard, OperationUpdateStreamCard, OperationCloseStreamCard:
 			operations[i].AttentionText = attention.Text
 			operations[i].AttentionUserID = attention.MentionUserID
 			return operations

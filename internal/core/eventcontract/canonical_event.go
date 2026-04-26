@@ -27,6 +27,8 @@ func canonicalRootKind(event Event) Kind {
 		return KindDaemonCommand
 	case event.Block != nil:
 		return KindBlockCommitted
+	case event.AssistantStream != nil:
+		return KindAssistantStream
 	case event.ExecCommandProgress != nil:
 		return KindExecCommandProgress
 	case event.ImageOutput != nil:
@@ -145,6 +147,11 @@ func (event Event) CanonicalPayload() Payload {
 			payload.Block = *event.Block
 		}
 		return payload
+	case KindAssistantStream:
+		if event.AssistantStream != nil {
+			return AssistantStreamPayload{View: *event.AssistantStream}
+		}
+		return AssistantStreamPayload{}
 	case KindTimelineText:
 		if event.TimelineText != nil {
 			return TimelineTextPayload{TimelineText: *event.TimelineText}
@@ -207,7 +214,7 @@ func (event Event) CanonicalMessageDelivery() MessageDelivery {
 			FirstSendLane: MessageLaneReplyThread,
 			Mutation:      MessageMutationAppendOnly,
 		}
-	case KindPage, KindPathPicker, KindTargetPicker, KindThreadHistory, KindExecCommandProgress:
+	case KindPage, KindPathPicker, KindTargetPicker, KindThreadHistory, KindExecCommandProgress, KindAssistantStream:
 		return MessageDelivery{
 			FirstSendLane: MessageLaneTopLevel,
 			Mutation:      MessageMutationPatchSameMessage,
@@ -252,6 +259,8 @@ func canonicalVisibilityClass(kind Kind, payload Payload) VisibilityClass {
 		return VisibilityClassPlan
 	case KindExecCommandProgress:
 		return VisibilityClassProgressText
+	case KindAssistantStream:
+		return VisibilityClassAlwaysVisible
 	case KindBlockCommitted:
 		if committed, ok := payload.(BlockCommittedPayload); ok && committed.Block.Final {
 			return VisibilityClassAlwaysVisible
@@ -294,6 +303,8 @@ func canonicalHandoffClass(kind Kind, payload Payload) HandoffClass {
 		return HandoffClassNavigation
 	case KindExecCommandProgress, KindPlanUpdate:
 		return HandoffClassProcessDetail
+	case KindAssistantStream:
+		return HandoffClassTerminalContent
 	case KindBlockCommitted:
 		if committed, ok := payload.(BlockCommittedPayload); ok && committed.Block.Final {
 			return HandoffClassTerminalContent

@@ -17,6 +17,8 @@ type Block struct {
 	ThreadTitle      string    `json:"threadTitle,omitempty"`
 	TurnID           string    `json:"turnId,omitempty"`
 	ItemID           string    `json:"itemId,omitempty"`
+	MessageID        string    `json:"messageId,omitempty"`
+	StreamCardID     string    `json:"streamCardId,omitempty"`
 	Kind             BlockKind `json:"kind"`
 	Text             string    `json:"text"`
 	Language         string    `json:"language,omitempty"`

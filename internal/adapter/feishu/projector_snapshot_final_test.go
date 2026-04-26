@@ -182,6 +182,120 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 	}
 }
 
+func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
+	projector := NewProjector()
+	first := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:                 eventcontract.KindAssistantStream,
+		SourceMessageID:      "msg-1",
+		SourceMessagePreview: "继续",
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				Text: "第一段",
+			},
+		},
+	})
+	if len(first) != 1 || first[0].Kind != OperationSendStreamCard {
+		t.Fatalf("unexpected first ops: %#v", first)
+	}
+	if first[0].ReplyToMessageID != "msg-1" {
+		t.Fatalf("expected first stream card to reply to source message, got %#v", first[0])
+	}
+	if first[0].CardThemeKey != cardThemeProgress || first[0].CardBody != "第一段" {
+		t.Fatalf("unexpected stream card: %#v", first[0])
+	}
+	if first[0].CardTitle != "" {
+		t.Fatalf("expected stream card to omit title, got %#v", first[0].CardTitle)
+	}
+
+	patch := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindAssistantStream,
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				Text:         "第一段\n第二段",
+			},
+		},
+	})
+	if len(patch) != 1 || patch[0].Kind != OperationUpdateStreamCard {
+		t.Fatalf("unexpected patch ops: %#v", patch)
+	}
+	if patch[0].MessageID != "om-stream-1" || patch[0].StreamCardID != "card-stream-1" || patch[0].ReplyToMessageID != "" {
+		t.Fatalf("expected stream patch to target existing card only, got %#v", patch[0])
+	}
+
+	closeOps := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindAssistantStream,
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				Text:         "第一段\n第二段",
+				Done:         true,
+			},
+		},
+	})
+	if len(closeOps) != 1 || closeOps[0].Kind != OperationCloseStreamCard {
+		t.Fatalf("unexpected close ops: %#v", closeOps)
+	}
+	if closeOps[0].MessageID != "om-stream-1" || closeOps[0].StreamCardID != "card-stream-1" || closeOps[0].CardBody != "第一段\n第二段" {
+		t.Fatalf("expected stream close to target existing card, got %#v", closeOps[0])
+	}
+	if closeOps[0].CardTitle != "" {
+		t.Fatalf("expected stream close to keep title empty, got %#v", closeOps[0].CardTitle)
+	}
+}
+
+func TestProjectFinalAssistantBlockClosesStreamingCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindBlockCommitted,
+		Block: &render.Block{
+			Kind:         render.BlockAssistantMarkdown,
+			Text:         "最终答复",
+			MessageID:    "om-stream-1",
+			StreamCardID: "card-stream-1",
+			Final:        true,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationCloseStreamCard {
+		t.Fatalf("unexpected ops: %#v", ops)
+	}
+	if ops[0].MessageID != "om-stream-1" || ops[0].StreamCardID != "card-stream-1" || ops[0].CardBody != "最终答复" {
+		t.Fatalf("unexpected final card patch: %#v", ops[0])
+	}
+}
+
+func TestProjectFinalAssistantBlockWithSummaryClosesStreamingCardOnly(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.KindBlockCommitted,
+		SourceMessageID: "msg-1",
+		Block: &render.Block{
+			Kind:         render.BlockAssistantMarkdown,
+			Text:         "最终答复",
+			MessageID:    "om-stream-1",
+			StreamCardID: "card-stream-1",
+			ThreadID:     "thread-1",
+			TurnID:       "turn-1",
+			ItemID:       "item-1",
+			Final:        true,
+		},
+		FinalTurnSummary: &control.FinalTurnSummary{
+			Elapsed: 3 * time.Second,
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationCloseStreamCard {
+		t.Fatalf("expected summary final reply to close stream card only, got %#v", ops)
+	}
+	if ops[0].MessageID != "om-stream-1" || ops[0].StreamCardID != "card-stream-1" || ops[0].ReplyToMessageID != "" {
+		t.Fatalf("expected final card to reuse stream card message id, got %#v", ops[0])
+	}
+	if strings.Contains(renderedV2CardText(t, ops[0]), "本轮用时") {
+		t.Fatalf("streaming final should not append execution summary, got %#v", ops[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockPreservesInlineMarkdown(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{

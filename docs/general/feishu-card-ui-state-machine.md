@@ -525,8 +525,9 @@ MCP request 卡片当前新增的可视语义：
 - turn-owned 的投递策略当前已经改成“高价值文本 reply、过程卡仍顶层 append”：
   - `当前计划`、request prompt、共享过程卡、图片输出、preview supplement、turn-owned notice 当前都固定顶层 append，不再继承 `SourceMessageID`
   - 文本触发 `/history` 的首张 patchable history card 仍保持顶层 append；它属于 owner-card / history 混合路径，也不跟随 turn reply anchor
+  - assistant-facing 的 `agent_message` delta 会在 upstream 标记 `phase=final_answer` 或 `phase=commentary` 时投影成 `assistant_stream` CardKit streaming card：同一 turn 的首个可见 delta 创建 `streaming_mode=true` 的 CardKit 卡片实体并回复到 turn anchor，后续 commentary / final delta 复用同一张卡并节流更新 `content` 元素；卡片配置 `print_frequency_ms=50`、`print_step=1`，且创建 payload 不带 `header`，让飞书客户端按无标题正文卡逐字打印。`phase=commentary` 的中途说明在 item completed 时只累积为当前 turn 流式前缀，不关闭卡、不进入 pending 普通文本重发；`phase=final_answer` 等 turn completed 后由最终 block 关闭同一张流式卡。工具调用、reasoning、执行过程和其它非白名单 assistant 文本不进入这条流式消息；普通 `im.v1.message.patch` 不再用于更新流式文本消息，避免命中普通消息不可 patch 成卡片的限制
   - final reply（含 overflow continuation）继续 reply 到 turn anchor；later replay 若命中已记录的 reply anchor，也会优先回到原回复链
-  - 非 final 的 assistant 普通文本（当前只限 `render.BlockAssistantMarkdown` / `render.BlockAssistantCode`）现在也会沿用当前 turn reply anchor；是否真正可见仍由 surface verbosity 过滤决定，quiet 下不会因为 reply thread 改动而强行变可见
+  - 未进入 `assistant_stream` 的非 final assistant 普通文本（当前只限 `render.BlockAssistantMarkdown` / `render.BlockAssistantCode`）现在也会沿用当前 turn reply anchor；是否真正可见仍由 surface verbosity 过滤决定，quiet 下不会因为 reply thread 改动而强行变可见
   - detour 临时会话当前不再额外派生“进入临时会话”确认卡；而是直接把临时语义挂回原卡/原消息：
     - request prompt、提案计划卡、`turn_failed` notice 与主 final reply card，会在卡片正文顶部补一行 plain-text badge：`临时会话 · 分支` 或 `临时会话 · 空白`
     - 非 final assistant 普通文本不会为了 detour 再硬插前缀，继续保持原正文
@@ -549,7 +550,7 @@ MCP request 卡片当前新增的可视语义：
   - 同一动作返回的 `thread.history.read` daemon command 仍会继续异步执行，不会因为同步 replace 而被吞掉
   - 成功/失败结果会优先 patch 回同一张 history owner card；文本触发 `/history` 时会先直接 append 一张 patchable history card，再在结果回来后 `message.patch`
   - inline `/history` loading replace 仍然通过清空 loading view 的 `MessageID` 来强制走 `ReplaceCurrentCard`，同时把来源消息 id 记回 owner-card flow，供异步结果继续 patch 同一张卡
-- final reply 当前继续保持 append-only，不会去 replace 现有卡；但一旦 final reply card 发送成功，daemon 会把这张卡的 `message_id` 连同 `instance/thread/turn/item` 与 `daemon_lifecycle_id` 一起记录成 recent final-card anchor：
+- final reply 当前在普通非流式路径继续保持 append-only，不会去 replace 现有卡；若本轮已经存在 matching `assistant_stream` streaming card，orchestrator 会把最终 `Block.MessageID` / `Block.StreamCardID` 设为这条流式卡的 `message_id` / `card_id`。projector 会用 `OperationCloseStreamCard` 先把最终正文写回 CardKit `content` 元素，再关闭 `streaming_mode` 并设置卡片 summary，避免再发第二张主答复卡；即使 final reply 还带文件摘要 / turn diff / final summary 等额外元素，流式终态也不再额外 append `执行摘要` 卡，保持回复区只收口到一张主答复卡。final reply card 发送或 patch 成功后，daemon 会把这张卡的 `message_id` 连同 `instance/thread/turn/item` 与 `daemon_lifecycle_id` 一起记录成 recent final-card anchor；CardKit 流式正文终态不会登记成 recent final-card anchor，避免后续 second-chance final card patch 误打到 CardKit entity 消息：
   - projector 当前会先尝试把完整 final body 投影成单张主卡；若单张卡超限，则会在应用层按正文结构拆成“主 final card + overflow reply cards”，避免把超限处理继续主要交给 gateway `trimCardPayloadToFit(...)`
   - 主 final card 继续沿用原标题（如 `✅ 最后答复` 或带源消息预览的标题），并保留文件摘要 / turn footer / recent final-card anchor
   - overflow cards 当前统一标题为 `✅ 最后答复（续）`，只承载正文 continuation，不再追加文件摘要或 footer
@@ -761,7 +762,7 @@ MCP request 卡片当前新增的可视语义：
 - [internal/core/orchestrator/service_final_card_test.go](../../internal/core/orchestrator/service_final_card_test.go)
   - 锁定 final reply recent anchor 的 turn-scope 回查、同 turn 覆盖、lifecycle 匹配与 detach 清理
 - [internal/adapter/feishu/projector_snapshot_final_test.go](../../internal/adapter/feishu/projector_snapshot_final_test.go)
-  - 锁定 final reply 在普通场景仍保持单主卡；超长 Markdown / code final 会在 projector 层 split 成主卡 + `✅ 最后答复（续）`，且每张卡单独都能落在 Feishu payload 限制内；同时锁定非 final assistant 文本与 `timeline text` 会正确挂 reply anchor，而挂在 final reply 上的 attention annotation 只会落在主卡，不会在 overflow cards 重复 `@`
+  - 锁定 final reply 在普通场景仍保持单主卡；超长 Markdown / code final 会在 projector 层 split 成主卡 + `✅ 最后答复（续）`，且每张卡单独都能落在 Feishu payload 限制内；同时锁定非 final assistant 文本与 `timeline text` 会正确挂 reply anchor，`assistant_stream` 会先创建 CardKit streaming card，再跨 commentary / final item 复用同一张卡更新 `content` 元素，纯文本 final 会关闭这张 streaming card，而挂在 final reply 上的 attention annotation 只会落在主卡，不会在 overflow cards 重复 `@`
 - [internal/app/daemon/app_final_card_test.go](../../internal/app/daemon/app_final_card_test.go)
   - 锁定同步 preview 超时后的 second-chance final patch：同卡 `message.patch`、无改进静默跳过、detach 后 anchor 失效即放弃，以及 split final reply 只回补主卡、不重发 overflow cards
 - [internal/adapter/feishu/gateway_target_picker_test.go](../../internal/adapter/feishu/gateway_target_picker_test.go)

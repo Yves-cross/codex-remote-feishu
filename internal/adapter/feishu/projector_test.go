@@ -1314,7 +1314,7 @@ func TestProjectKickThreadPromptUsesCustomButtonLabels(t *testing.T) {
 	}
 }
 
-func TestProjectQueueTypingAndThumbsDownReactions(t *testing.T) {
+func TestProjectTypingAndThumbsDownReactions(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
 		Kind: eventcontract.KindPendingInput,
@@ -1327,11 +1327,17 @@ func TestProjectQueueTypingAndThumbsDownReactions(t *testing.T) {
 			ThumbsDown:      true,
 		},
 	})
-	if len(ops) != 5 {
-		t.Fatalf("expected 5 operations, got %#v", ops)
+	if len(ops) != 3 {
+		t.Fatalf("expected 3 operations, got %#v", ops)
 	}
-	if ops[0].EmojiType != emojiQueuePending || ops[1].EmojiType != emojiQueuePending || ops[4].EmojiType != emojiDiscarded {
-		t.Fatalf("unexpected queue/discard reaction projection: %#v", ops)
+	if ops[0].Kind != OperationAddReaction || ops[0].EmojiType != emojiThinking {
+		t.Fatalf("expected first op to add thinking reaction, got %#v", ops)
+	}
+	if ops[1].Kind != OperationRemoveReaction || ops[1].EmojiType != emojiThinking {
+		t.Fatalf("expected second op to remove thinking reaction, got %#v", ops)
+	}
+	if ops[2].Kind != OperationAddReaction || ops[2].EmojiType != emojiDiscarded {
+		t.Fatalf("unexpected discard reaction projection: %#v", ops)
 	}
 }
 
@@ -1345,14 +1351,11 @@ func TestProjectThumbsUpReaction(t *testing.T) {
 			ThumbsUp:        true,
 		},
 	})
-	if len(ops) != 2 {
-		t.Fatalf("expected queue removal plus thumbs-up, got %#v", ops)
+	if len(ops) != 1 {
+		t.Fatalf("expected thumbs-up only, got %#v", ops)
 	}
-	if ops[0].Kind != OperationRemoveReaction || ops[0].EmojiType != emojiQueuePending {
-		t.Fatalf("expected first op to remove queue reaction, got %#v", ops)
-	}
-	if ops[1].Kind != OperationAddReaction || ops[1].EmojiType != emojiSteered {
-		t.Fatalf("expected second op to add thumbs-up reaction, got %#v", ops)
+	if ops[0].Kind != OperationAddReaction || ops[0].EmojiType != emojiSteered {
+		t.Fatalf("expected op to add thumbs-up reaction, got %#v", ops)
 	}
 }
 
