@@ -177,38 +177,83 @@ func (s *Service) handleText(surface *state.SurfaceConsoleRecord, action control
 	if inst == nil {
 		return notice(surface, "not_attached", s.notAttachedText(surface))
 	}
-	if autoSteer := s.maybeAutoSteerReply(surface, action); autoSteer != nil {
-		return append(s.maybeSealPlanProposalForInput(surface), autoSteer...)
+	detour, detourProblem := s.resolveDetourDirective(surface, inst, text)
+	if detourProblem != "" {
+		return notice(surface, "detour_invalid", detourProblem)
 	}
-	if blocked := s.maybePrepareImplicitNewThreadFromUnboundText(surface, inst, text); blocked != nil {
-		return blocked
+	text = detour.CleanText
+	sanitizedAction := action
+	sanitizedAction.Text = text
+	if detour.Triggered {
+		sanitizedAction.Inputs = stripDetourInputs(action.Inputs)
 	}
-	if blocked := s.unboundInputBlocked(surface); blocked != nil {
-		return blocked
-	}
-	if surface.RouteMode == state.RouteModeNewThreadReady && s.preparedNewThreadHasPendingCreate(surface) {
-		return notice(surface, "new_thread_first_input_pending", "当前新会话的首条消息已经在排队或发送中；请等待它落地后再继续发送。")
+	if !detour.Triggered {
+		if autoSteer := s.maybeAutoSteerReply(surface, sanitizedAction); autoSteer != nil {
+			return append(s.maybeSealPlanProposalForInput(surface), autoSteer...)
+		}
+		if blocked := s.maybePrepareImplicitNewThreadFromUnboundText(surface, inst, text); blocked != nil {
+			return blocked
+		}
+		if blocked := s.unboundInputBlocked(surface); blocked != nil {
+			return blocked
+		}
+		if surface.RouteMode == state.RouteModeNewThreadReady && s.preparedNewThreadHasPendingCreate(surface) {
+			return notice(surface, "new_thread_first_input_pending", "当前新会话的首条消息已经在排队或发送中；请等待它落地后再继续发送。")
+		}
 	}
 
 	threadID, cwd, routeMode, createThread := freezeRoute(inst, surface)
+	if detour.Triggered {
+		threadID = ""
+		cwd, routeMode = freezeDetourRoute(inst, surface)
+		createThread = false
+	}
 	inputs, stagedMessageIDs, filePrompt := s.consumeStagedInputs(surface)
 	if filePrompt != "" {
 		inputs = append(inputs, agentproto.Input{Type: agentproto.InputText, Text: filePrompt})
 	}
-	messageInputs := append([]agentproto.Input{}, action.Inputs...)
+	messageInputs := append([]agentproto.Input{}, sanitizedAction.Inputs...)
 	if len(messageInputs) == 0 {
-		messageInputs = []agentproto.Input{{Type: agentproto.InputText, Text: text}}
+		if text != "" {
+			messageInputs = []agentproto.Input{{Type: agentproto.InputText, Text: text}}
+		} else if detour.Triggered && len(inputs) == 0 {
+			s.restoreStagedInputs(surface, stagedMessageIDs)
+			return notice(surface, "detour_empty_prompt", detourEmptyPromptText)
+		}
 	}
 	inputs = append(inputs, messageInputs...)
-	if !createThread && threadID == "" {
+	if !detour.Triggered && !createThread && threadID == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
 		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use 重新选择会话；normal 模式可直接发送文本开启新会话（也可 /new 先进入待命），如需跟随 VS Code 请先 /mode vscode 再 /follow。")
 	}
-	if createThread && strings.TrimSpace(cwd) == "" {
+	if strings.TrimSpace(cwd) == "" {
 		s.restoreStagedInputs(surface, stagedMessageIDs)
-		return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
+		if detour.Triggered {
+			return notice(surface, "detour_cwd_missing", "当前无法获取临时会话的工作目录，请先重新选择工作区或会话。")
+		}
+		if createThread {
+			return notice(surface, "new_thread_cwd_missing", "当前无法获取新会话的工作目录，请先重新 /use 一个有工作目录的会话。")
+		}
+		return notice(surface, "thread_not_ready", "当前还没有可发送的目标会话。请先 /use 重新选择会话；normal 模式可直接发送文本开启新会话（也可 /new 先进入待命），如需跟随 VS Code 请先 /mode vscode 再 /follow。")
 	}
 	events := s.maybeSealPlanProposalForInput(surface)
+	if detour.Triggered {
+		return append(events, s.enqueueQueueItemWithTarget(
+			surface,
+			action.MessageID,
+			text,
+			stagedMessageIDs,
+			inputs,
+			threadID,
+			cwd,
+			routeMode,
+			surface.PromptOverride,
+			detour.ExecutionMode,
+			detour.SourceThreadID,
+			detour.SurfaceBindingPolicy,
+			false,
+		)...)
+	}
 	return append(events, s.enqueueQueueItem(surface, action.MessageID, action.Text, stagedMessageIDs, inputs, threadID, cwd, routeMode, surface.PromptOverride, false)...)
 }
 

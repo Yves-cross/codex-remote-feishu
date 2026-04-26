@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-26`
-> Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三张独立业务卡，`/list` `/use` `/useall` 只保留 alias；normal mode 的被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）现在会统一回到“锁定当前工作区”的 target picker，不再回退旧 scoped selection prompt；VS Code `/list` / `/use` / `/useall` 则继续走结构化实例/线程卡，其中线程选择统一成当前实例内的 dropdown，并隐藏不可切换会话、改用 plain-text 提示说明。另一个新变化是把上游可重试失败自动继续从 `autowhip` 中拆成独立 `autocontinue` overlay：它拥有自己的 queue lane、reply anchor、tail-only 状态卡与 backoff，不再和“正常结束后继续催活”混用；同时 remote runtime 现在显式区分 source/main thread、execution thread 与 `keep_surface_selection` 策略，为后续 detached-branch 产品入口保留基座，而且不会再让 detour turn 污染当前 surface 默认 thread；细节见正文。
+> Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git` 分别承接切换/目录/Git 三张独立业务卡，`/list` `/use` `/useall` 只保留 alias；normal mode 的被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）现在会统一回到“锁定当前工作区”的 target picker，不再回退旧 scoped selection prompt；VS Code `/list` / `/use` / `/useall` 则继续走结构化实例/线程卡，其中线程选择统一成当前实例内的 dropdown，并隐藏不可切换会话、改用 plain-text 提示说明。另一个新变化是把上游可重试失败自动继续从 `autowhip` 中拆成独立 `autocontinue` overlay：它拥有自己的 queue lane、reply anchor、tail-only 状态卡与 backoff，不再和“正常结束后继续催活”混用；同时 detached-branch 产品入口已经正式接上：普通文本里的 `⁉️` / `🤷` 会分别触发 `fork_ephemeral` / `start_ephemeral`，统一复用 `keep_surface_selection`，且不会再让 detour turn 污染当前 surface 默认 thread；细节见正文。
 
 ## 1. 文档定位
 
@@ -1040,6 +1040,12 @@ E3 Running
    3. `/use` / `/follow`
    4. thread 丢失 / 被强踢
    都会清掉当前 episode，只保留 enable 开关
+22. detached-branch 文本入口当前已经直接挂在普通 text ingress：
+   1. 文本里出现 `⁉️` 时，当前会走 `fork_ephemeral + keep_surface_selection`；它要求 surface 当前已经选中一个可见 thread，服务端会把这个 thread 作为 `source/main thread`
+   2. 文本里出现 `🤷` 时，当前会走 `start_ephemeral + keep_surface_selection`；它不要求 surface 已有选中 thread
+   3. detour 触发 emoji 只作为入口信号：服务端会先把它从实际 prompt 文本里剥掉，再把消息派发给上游
+   4. detour 文本当前会显式绕过 reply auto-steer、implicit `/new` 准备态推进，以及 normal/vscode 的 unbound 输入门禁；运行时只把“当前选中 thread 的 cwd / prepared cwd / workspace root”当作临时会话的 base cwd，不会因此改写 surface 自己的 `SelectedThreadID` 或 `RouteMode`
+   5. detour turn 收尾后，surface 仍保持原先的 route / selected thread；当前只会在同一 reply lane（或原本的顶层 append lane）追加一条 `detour_returned` notice，提示“临时会话已结束，已切回原会话。”
 
 ### 5.3 本地 VS Code 仲裁
 

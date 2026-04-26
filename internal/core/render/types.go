@@ -21,5 +21,6 @@ type Block struct {
 	Text             string    `json:"text"`
 	Language         string    `json:"language,omitempty"`
 	ThemeKey         string    `json:"themeKey,omitempty"`
+	DetourLabel      string    `json:"detourLabel,omitempty"`
 	Final            bool      `json:"final,omitempty"`
 }

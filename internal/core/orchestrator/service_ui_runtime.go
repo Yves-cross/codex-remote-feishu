@@ -103,14 +103,15 @@ type activeThreadHistoryRecord struct {
 }
 
 type activePlanProposalRecord struct {
-	ProposalID string
-	InstanceID string
-	ThreadID   string
-	TurnID     string
-	ThreadCWD  string
-	PlanText   string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
+	ProposalID  string
+	InstanceID  string
+	ThreadID    string
+	TurnID      string
+	ThreadCWD   string
+	PlanText    string
+	DetourLabel string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 type activeWorkspacePageRecord struct {

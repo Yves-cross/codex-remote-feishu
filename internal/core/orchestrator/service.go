@@ -71,6 +71,7 @@ type remoteTurnBinding struct {
 	QueueItemID           string
 	AutoContinueEpisodeID string
 	AttemptTriggerKind    string
+	ExecutionMode         agentproto.PromptExecutionMode
 	SourceMessageID       string
 	SourceMessagePreview  string
 	ReplyToMessageID      string
@@ -811,10 +812,17 @@ func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []e
 		outcome := s.deriveRemoteTurnOutcome(instanceID, event, finalText, summary)
 		events = append(events, s.completeRemoteTurn(outcome)...)
 		var planBinding *remoteTurnBinding
+		var remoteSurface *state.SurfaceConsoleRecord
 		if outcome != nil {
 			planBinding = outcome.Binding
+			remoteSurface = outcome.Surface
 		}
 		events = append(events, s.maybePresentCompletedPlanProposal(instanceID, event.ThreadID, event.TurnID, planBinding)...)
+		events = append(events, s.detourReturnNoticeEvent(outcome)...)
+		if remoteSurface != nil {
+			events = append(events, s.finishSurfaceAfterWork(remoteSurface)...)
+			events = append(events, s.dispatchNext(remoteSurface)...)
+		}
 		events = append(events, compactEvents...)
 		return s.filterEventsForSurfaceVisibility(events)
 	case agentproto.EventItemStarted:

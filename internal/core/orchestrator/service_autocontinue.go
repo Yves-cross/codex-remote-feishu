@@ -289,6 +289,7 @@ func (s *Service) dispatchAutoContinueEpisode(surface *state.SurfaceConsoleRecor
 		QueueItemID:           item.ID,
 		AutoContinueEpisodeID: episode.EpisodeID,
 		AttemptTriggerKind:    string(episode.TriggerKind),
+		ExecutionMode:         item.FrozenExecutionMode,
 		ReplyToMessageID:      episode.RootReplyToMessageID,
 		ReplyToMessagePreview: episode.RootReplyToMessagePreview,
 		ThreadID:              strings.TrimSpace(item.FrozenThreadID),

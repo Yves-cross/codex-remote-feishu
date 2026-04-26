@@ -59,6 +59,24 @@ func (s *Service) replyAnchorForTurn(instanceID, threadID, turnID string) (strin
 }
 
 func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, front bool) []eventcontract.Event {
+	return s.enqueueQueueItemWithTarget(
+		surface,
+		sourceMessageID,
+		sourceMessagePreview,
+		relatedMessageIDs,
+		inputs,
+		threadID,
+		cwd,
+		routeMode,
+		overrides,
+		"",
+		"",
+		"",
+		front,
+	)
+}
+
+func (s *Service) enqueueQueueItemWithTarget(surface *state.SurfaceConsoleRecord, sourceMessageID, sourceMessagePreview string, relatedMessageIDs []string, inputs []agentproto.Input, threadID, cwd string, routeMode state.RouteMode, overrides state.ModelConfigRecord, executionMode agentproto.PromptExecutionMode, sourceThreadID string, bindingPolicy agentproto.SurfaceBindingPolicy, front bool) []eventcontract.Event {
 	inst := s.root.Instances[surface.AttachedInstanceID]
 	item := &state.QueueItemRecord{
 		SurfaceSessionID:           surface.SurfaceSessionID,
@@ -78,6 +96,15 @@ func (s *Service) enqueueQueueItem(surface *state.SurfaceConsoleRecord, sourceMe
 		FrozenPlanMode:             state.NormalizePlanModeSetting(surface.PlanMode),
 		RouteModeAtEnqueue:         routeMode,
 		Status:                     state.QueueItemQueued,
+	}
+	if mode := agentproto.NormalizePromptExecutionMode(executionMode); mode != "" {
+		item.FrozenExecutionMode = mode
+	}
+	if sourceThreadID = strings.TrimSpace(sourceThreadID); sourceThreadID != "" {
+		item.FrozenSourceThreadID = sourceThreadID
+	}
+	if policy := agentproto.NormalizeSurfaceBindingPolicy(bindingPolicy); policy != "" {
+		item.FrozenSurfaceBindingPolicy = policy
 	}
 	if inst != nil && strings.TrimSpace(threadID) != "" {
 		s.recordThreadUserMessage(inst, threadID, sourceMessagePreview)
@@ -255,6 +282,7 @@ func (s *Service) dispatchNext(surface *state.SurfaceConsoleRecord) []eventcontr
 		SourceMessagePreview:  item.SourceMessagePreview,
 		ReplyToMessageID:      firstNonEmpty(item.ReplyToMessageID, item.SourceMessageID),
 		ReplyToMessagePreview: firstNonEmpty(item.ReplyToMessagePreview, item.SourceMessagePreview),
+		ExecutionMode:         item.FrozenExecutionMode,
 		ThreadID:              strings.TrimSpace(item.FrozenThreadID),
 		SourceThreadID:        queuedItemSourceThreadID(item),
 		SurfaceBindingPolicy:  queuedItemSurfaceBindingPolicy(item),
@@ -403,8 +431,6 @@ func (s *Service) completeRemoteTurn(outcome *remoteTurnOutcome) []eventcontract
 	}
 	events = append(events, s.maybeScheduleAutoWhipAfterRemoteTurn(surface, item, outcome.TurnID, outcome.Cause, outcome.FinalText, outcome.Summary)...)
 	s.clearRemoteTurn(outcome.InstanceID, outcome.TurnID)
-	events = append(events, s.finishSurfaceAfterWork(surface)...)
-	events = append(events, s.dispatchNext(surface)...)
 	return events
 }
 
@@ -513,6 +539,7 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 	}
 	events := []eventcontract.Event{}
 	events = append(events, s.maybeBindSurfaceForRemoteTurn(surface, inst, instanceKey, threadID, turnID)...)
+	detourLabel := remoteBindingDetourLabel(s.lookupRemoteTurn(instanceKey, threadID, turnID))
 	blocks := s.renderer.PlanAssistantBlocks(surface.SurfaceSessionID, instanceKey, threadID, turnID, itemID, text)
 	thread := (*state.ThreadRecord)(nil)
 	if inst != nil {
@@ -548,6 +575,7 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 		block.ThreadTitle = title
 		block.ThemeKey = themeKey
 		block.Final = final
+		block.DetourLabel = detourLabel
 		event := eventcontract.Event{
 			Kind:                 eventcontract.KindBlockCommitted,
 			SurfaceSessionID:     surface.SurfaceSessionID,

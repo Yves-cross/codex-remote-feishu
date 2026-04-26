@@ -583,7 +583,7 @@ func (s *Service) requestPromptView(record *state.RequestPromptRecord, threadTit
 		Title:                record.Title,
 		ThreadID:             record.ThreadID,
 		ThreadTitle:          threadTitle,
-		Sections:             requestPromptSectionsToControl(record.Sections),
+		Sections:             prependDetourCardSections(requestPromptSectionsToControl(record.Sections), s.requestDetourLabel(record)),
 		Options:              requestPromptOptionsToControl(record.Options),
 		Questions:            requestPromptQuestionsToControl(record.Questions, record.DraftAnswers, record.SkippedQuestionIDs),
 		CurrentQuestionIndex: normalizedRequestPromptCurrentQuestionIndex(record),

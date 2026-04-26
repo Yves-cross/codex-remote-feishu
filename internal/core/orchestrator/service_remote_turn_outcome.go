@@ -160,6 +160,7 @@ func (s *Service) remoteTurnFailureEvent(outcome *remoteTurnOutcome) eventcontra
 		problemNotice.Code = "turn_failed"
 		notice = &problemNotice
 	}
+	prependDetourNoticeSections(notice, remoteBindingDetourLabel(outcome.Binding))
 	event := eventcontract.Event{
 		Kind:             eventcontract.KindNotice,
 		SurfaceSessionID: outcome.Surface.SurfaceSessionID,

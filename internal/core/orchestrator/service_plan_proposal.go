@@ -18,17 +18,18 @@ const (
 	planProposalActionCancel     = "cancel"
 )
 
-func newPlanProposalRecord(proposalID, instanceID, threadID, turnID, threadCWD, planText string, createdAt time.Time, ttl time.Duration) *activePlanProposalRecord {
+func newPlanProposalRecord(proposalID, instanceID, threadID, turnID, threadCWD, planText, detourLabel string, createdAt time.Time, ttl time.Duration) *activePlanProposalRecord {
 	createdAt = createdAt.UTC()
 	return &activePlanProposalRecord{
-		ProposalID: strings.TrimSpace(proposalID),
-		InstanceID: strings.TrimSpace(instanceID),
-		ThreadID:   strings.TrimSpace(threadID),
-		TurnID:     strings.TrimSpace(turnID),
-		ThreadCWD:  strings.TrimSpace(threadCWD),
-		PlanText:   strings.TrimSpace(planText),
-		CreatedAt:  createdAt,
-		ExpiresAt:  createdAt.Add(ttl),
+		ProposalID:  strings.TrimSpace(proposalID),
+		InstanceID:  strings.TrimSpace(instanceID),
+		ThreadID:    strings.TrimSpace(threadID),
+		TurnID:      strings.TrimSpace(turnID),
+		ThreadCWD:   strings.TrimSpace(threadCWD),
+		PlanText:    strings.TrimSpace(planText),
+		DetourLabel: strings.TrimSpace(detourLabel),
+		CreatedAt:   createdAt,
+		ExpiresAt:   createdAt.Add(ttl),
 	}
 }
 
@@ -92,6 +93,7 @@ func buildPlanProposalPageView(flow *activeOwnerCardFlowRecord, proposal *active
 	interactive := len(buttons) != 0 && !sealed
 	bodySections := []control.FeishuCardTextSection(nil)
 	if proposal != nil {
+		bodySections = prependDetourCardSections(bodySections, proposal.DetourLabel)
 		bodySections = append(bodySections, control.FeishuCardTextSection{
 			Label: "提案内容",
 			Lines: splitPlanProposalLines(proposal.PlanText),
@@ -289,7 +291,7 @@ func (s *Service) maybePresentCompletedPlanProposal(instanceID, threadID, turnID
 	now := s.now()
 	events := s.maybeSealPlanProposalForRouteChange(surface, "新的提案计划已生成，上一张提案计划卡片已失效。")
 	flow := newOwnerCardFlowRecord(ownerCardFlowKindPlanProposal, s.pickers.nextPlanProposalToken(), firstNonEmpty(surface.ActorUserID), now, defaultPlanProposalTTL, ownerCardFlowPhaseResolved)
-	record := newPlanProposalRecord(flow.FlowID, instanceID, threadID, turnID, threadCWD, pending.Text, now, defaultPlanProposalTTL)
+	record := newPlanProposalRecord(flow.FlowID, instanceID, threadID, turnID, threadCWD, pending.Text, remoteBindingDetourLabel(binding), now, defaultPlanProposalTTL)
 	s.setActiveOwnerCardFlow(surface, flow)
 	s.setActivePlanProposal(surface, record)
 	buttons := []control.CommandCatalogButton{

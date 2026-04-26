@@ -412,7 +412,7 @@ func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMess
 	if block.Kind == render.BlockAssistantCode {
 		body = fenced(block.Language, block.Text)
 	}
-	elements := p.finalBlockExtraElements(summary, turnDiffPreview, finalSummary)
+	elements := p.finalBlockExtraElements(block.DetourLabel, summary, turnDiffPreview, finalSummary)
 	title := finalCardTitle(sourceMessagePreview)
 	return projectFinalReplyCards(gatewayID, surfaceSessionID, chatID, sourceMessageID, title, body, elements)
 }
@@ -571,8 +571,11 @@ func fenced(language, text string) string {
 	return "```" + language + "\n" + text + "\n```"
 }
 
-func (p *Projector) finalBlockExtraElements(summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []map[string]any {
+func (p *Projector) finalBlockExtraElements(detourLabel string, summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []map[string]any {
 	var elements []map[string]any
+	if label := strings.TrimSpace(detourLabel); label != "" {
+		elements = append(elements, cardPlainTextBlockElement(label))
+	}
 	if summary != nil && summary.FileCount > 0 && len(summary.Files) > 0 {
 		summaryLine := fmt.Sprintf(
 			"**本次修改** %d 个文件  %s",
