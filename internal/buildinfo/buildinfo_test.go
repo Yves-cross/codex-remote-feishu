@@ -16,6 +16,9 @@ func TestCapabilityPolicyForShipping(t *testing.T) {
 	if policy.Flavor != FlavorShipping {
 		t.Fatalf("Flavor = %q, want %q", policy.Flavor, FlavorShipping)
 	}
+	if policy.AllowDevUpgrade {
+		t.Fatal("shipping policy should not allow dev upgrade")
+	}
 	if policy.AllowLocalUpgrade {
 		t.Fatal("shipping policy should not allow local upgrade")
 	}
@@ -34,6 +37,9 @@ func TestCapabilityPolicyForDev(t *testing.T) {
 	policy := CapabilityPolicyForFlavor(FlavorDev)
 	if policy.Flavor != FlavorDev {
 		t.Fatalf("Flavor = %q, want %q", policy.Flavor, FlavorDev)
+	}
+	if !policy.AllowDevUpgrade {
+		t.Fatal("dev policy should allow dev upgrade")
 	}
 	if !policy.AllowLocalUpgrade {
 		t.Fatal("dev policy should allow local upgrade")

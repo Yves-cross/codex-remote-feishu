@@ -26,14 +26,17 @@ func TestUpgradeDefinitionRespectsShippingPolicy(t *testing.T) {
 	if strings.Contains(strings.Join(def.Examples, " "), "/upgrade local") {
 		t.Fatalf("shipping upgrade examples should hide local upgrade: %#v", def.Examples)
 	}
+	if strings.Contains(strings.Join(def.Examples, " "), "/upgrade dev") {
+		t.Fatalf("shipping upgrade examples should hide dev upgrade: %#v", def.Examples)
+	}
 	if strings.Contains(strings.Join(def.Examples, " "), "/upgrade track alpha") {
 		t.Fatalf("shipping upgrade examples should hide alpha track: %#v", def.Examples)
 	}
-	if strings.Contains(def.ArgumentFormNote, "local") {
+	if strings.Contains(def.ArgumentFormNote, "local") || strings.Contains(def.ArgumentFormNote, "dev") {
 		t.Fatalf("shipping upgrade form note should hide local upgrade: %q", def.ArgumentFormNote)
 	}
 	for _, option := range def.Options {
-		if option.CommandText == "/upgrade local" || option.CommandText == "/upgrade track alpha" {
+		if option.CommandText == "/upgrade local" || option.CommandText == "/upgrade dev" || option.CommandText == "/upgrade track alpha" {
 			t.Fatalf("shipping upgrade options should hide restricted commands: %#v", def.Options)
 		}
 	}
@@ -50,6 +53,9 @@ func TestHelpCatalogReflectsShippingUpgradePolicy(t *testing.T) {
 			}
 			if strings.Contains(strings.Join(entry.Examples, " "), "/upgrade local") {
 				t.Fatalf("shipping help catalog should hide local upgrade example: %#v", entry)
+			}
+			if strings.Contains(strings.Join(entry.Examples, " "), "/upgrade dev") {
+				t.Fatalf("shipping help catalog should hide dev upgrade example: %#v", entry)
 			}
 			if strings.Contains(strings.Join(entry.Examples, " "), "/upgrade track alpha") {
 				t.Fatalf("shipping help catalog should hide alpha track example: %#v", entry)

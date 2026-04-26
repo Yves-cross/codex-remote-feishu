@@ -91,6 +91,17 @@ func workspaceSurfaceContextPath(workspaceRoot string) string {
 }
 
 func writeWorkspaceSurfaceContext(workspaceRoot string, payload workspaceSurfaceContextPayload) error {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	info, err := os.Stat(workspaceRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
 	return writeJSONFileAtomic(workspaceSurfaceContextPath(workspaceRoot), payload, 0o600)
 }
 

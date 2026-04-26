@@ -136,7 +136,11 @@ func buildTrackSummary(stateValue install.InstallState) string {
 	if latest := strings.TrimSpace(stateValue.LastKnownLatestVersion); latest != "" {
 		lines = append(lines, fmt.Sprintf("最近看到的最新版本：%s", latest))
 	}
-	lines = append(lines, "切换 track 不会自动触发升级；需要立即检查时请发送 /upgrade latest。滚动开发构建请使用 /upgrade dev。")
+	line := "切换 track 不会自动触发升级；需要立即检查时请发送 /upgrade latest。"
+	if install.CurrentBuildAllowsDevUpgrade() {
+		line += " 滚动开发构建请使用 /upgrade dev。"
+	}
+	lines = append(lines, line)
 	return strings.Join(lines, "\n")
 }
 
@@ -306,25 +310,15 @@ func currentBuildTrackNames() []string {
 	return names
 }
 
-func buildTrackCommandButtons(currentTrack string) []control.CommandCatalogButton {
-	allowed := install.CurrentBuildAllowedReleaseTracks()
-	buttons := make([]control.CommandCatalogButton, 0, len(allowed))
-	for i, track := range allowed {
-		style := ""
-		if i == 0 {
-			style = "primary"
-		}
-		buttons = append(buttons, runCommandButton(string(track), "/upgrade track "+string(track), style, currentTrack == string(track)))
-	}
-	return buttons
-}
-
 func unsupportedTrackMessage(track install.ReleaseTrack) string {
 	return fmt.Sprintf("当前构建不支持 %s track。可用 track：%s。", track, strings.Join(currentBuildTrackNames(), "、"))
 }
 
 func upgradeSubcommandUsageSummary() string {
-	parts := []string{"`track`", "`latest`", "`dev`"}
+	parts := []string{"`track`", "`latest`"}
+	if install.CurrentBuildAllowsDevUpgrade() {
+		parts = append(parts, "`dev`")
+	}
 	if install.CurrentBuildAllowsLocalUpgrade() {
 		parts = append(parts, "`local`")
 	}
@@ -338,7 +332,9 @@ func upgradeCommandUsageSyntax() string {
 		segments = append(segments, fmt.Sprintf("`/upgrade track [%s]`", strings.Join(allowed, "|")))
 	}
 	segments = append(segments, "`/upgrade latest`")
-	segments = append(segments, "`/upgrade dev`")
+	if install.CurrentBuildAllowsDevUpgrade() {
+		segments = append(segments, "`/upgrade dev`")
+	}
 	if install.CurrentBuildAllowsLocalUpgrade() {
 		segments = append(segments, "`/upgrade local`")
 	}

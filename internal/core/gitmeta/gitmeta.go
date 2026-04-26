@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -33,7 +34,7 @@ func ResolveGitDirPath(baseDir, gitDirPath string) string {
 	if !filepath.IsAbs(gitDirPath) && baseDir != "" {
 		gitDirPath = filepath.Join(baseDir, gitDirPath)
 	}
-	return filepath.Clean(gitDirPath)
+	return canonicalFilesystemPath(gitDirPath)
 }
 
 // FileHasExactTrimmedLine checks whether a file contains the exact line after
@@ -55,4 +56,18 @@ func FileHasExactTrimmedLine(path, expected string) bool {
 		}
 	}
 	return false
+}
+
+func canonicalFilesystemPath(path string) string {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = filepath.Clean(resolved)
+	}
+	if runtime.GOOS == "windows" {
+		path = strings.ToLower(path)
+	}
+	return path
 }

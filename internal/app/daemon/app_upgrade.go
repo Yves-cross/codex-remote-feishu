@@ -140,6 +140,9 @@ func (a *App) handleUpgradeDaemonCommand(command control.DaemonCommand) []eventc
 	case upgradeCommandCodex:
 		return a.openCodexUpgradeOwnerFlowLocked(command)
 	case upgradeCommandDev:
+		if !install.CurrentBuildAllowsDevUpgrade() {
+			return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_dev_unsupported", "当前构建不支持 `/upgrade dev`。如需 dev 构建升级，请使用 dev flavor 的源码构建。")}
+		}
 		return a.handleUpgradeDevCommand(command, stateValue)
 	case upgradeCommandLocal:
 		return a.handleUpgradeLocalCommand(command, stateValue)
@@ -167,6 +170,13 @@ func (a *App) handleUpgradeLatestCommand(command control.DaemonCommand, stateVal
 		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_busy", fmt.Sprintf("当前升级事务处于 %s，暂时不能发起新检查。", stateValue.PendingUpgrade.Phase))}
 	}
 	if pendingUpgradeCandidateFromSource(stateValue.PendingUpgrade, install.UpgradeSourceDev) {
+		if !install.CurrentBuildAllowsDevUpgrade() {
+			stateValue.PendingUpgrade = nil
+			if err := a.writeUpgradeStateLocked(stateValue); err != nil {
+				return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_prepare_failed", fmt.Sprintf("清理不受支持的 dev 升级候选失败：%v", err))}
+			}
+			return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_dev_unsupported", "当前构建不支持 dev 构建升级，已忽略旧的 dev 升级候选。")}
+		}
 		return []eventcontract.Event{upgradeNoticeEvent(command.SurfaceSessionID, "upgrade_pending_other_source", "当前已有 dev 构建升级候选，请改用 `/upgrade dev` 继续，或重新检查当前来源。")}
 	}
 	return a.startUpgradeLatestOwnerCheckLocked(command, stateValue)

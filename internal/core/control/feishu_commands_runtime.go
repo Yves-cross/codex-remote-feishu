@@ -23,8 +23,8 @@ func runtimeUpgradeCommandDefinition(def FeishuCommandDefinition) FeishuCommandD
 	formHints := []string{"track", "latest"}
 	examples := []string{"/upgrade latest"}
 	options := []FeishuCommandOption{
-		commandOption("/upgrade", "upgrade", "track", "track", "查看当前 track。"),
-		commandOption("/upgrade", "upgrade", "latest", "latest", "检查或继续升级到当前 track 的最新 release。"),
+		commandOption("/upgrade", "upgrade", "track", "查看 Track", "查看当前 track。"),
+		commandOption("/upgrade", "upgrade", "latest", "检查/继续升级", "检查或继续升级到当前 track 的最新 release。"),
 	}
 	if trackExample := preferredUpgradeTrackExample(policy.AllowedReleaseTracks); trackExample != "" {
 		examples = append(examples, "/upgrade track "+trackExample)
@@ -34,13 +34,19 @@ func runtimeUpgradeCommandDefinition(def FeishuCommandDefinition) FeishuCommandD
 		if track == "" {
 			continue
 		}
-		options = append(options, commandOption("/upgrade track", "upgrade_track", track, "track "+track, "切换到 "+track+" track。"))
+		options = append(options, commandOption("/upgrade track", "upgrade_track", track, track, "切换到 "+track+" track。"))
 	}
 	description := "查看升级状态、查看或切换当前 release track；`/upgrade latest` 检查或继续 release 升级。"
+	if policy.AllowDevUpgrade {
+		formHints = append(formHints, "dev")
+		examples = append(examples, "/upgrade dev")
+		options = append(options, commandOption("/upgrade", "upgrade", "dev", "开发构建", "检查或继续升级到最新的 dev 构建。"))
+		description += " `/upgrade dev` 检查或继续 dev 构建升级。"
+	}
 	if policy.AllowLocalUpgrade {
 		formHints = append(formHints, "local")
 		examples = append(examples, "/upgrade local")
-		options = append(options, commandOption("/upgrade", "upgrade", "local", "local", "使用固定本地 artifact 发起升级。"))
+		options = append(options, commandOption("/upgrade", "upgrade", "local", "本地升级", "使用固定本地 artifact 发起升级。"))
 		description += " `/upgrade local` 使用固定本地 artifact 发起升级。"
 	}
 	def.ArgumentFormHint = "track"
@@ -55,6 +61,9 @@ func runtimeDebugCommandDefinition(def FeishuCommandDefinition) FeishuCommandDef
 	def.ArgumentFormNote = "例如 admin。"
 	def.Description = "查看调试状态，或生成临时管理页外链。"
 	def.Examples = []string{"/debug", "/debug admin"}
+	def.Options = []FeishuCommandOption{
+		commandOption("/debug", "debug", "admin", "管理页外链", "生成临时管理页外链。"),
+	}
 	return def
 }
 

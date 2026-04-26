@@ -9,6 +9,7 @@ import (
 )
 
 func buildDebugRootPageView(stateValue install.InstallState, checkInFlight bool, formDefault, statusKind, statusText string) control.FeishuPageView {
+	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandDebug)
 	return control.FeishuPageView{
 		CommandID:    control.FeishuCommandDebug,
 		StatusKind:   strings.TrimSpace(statusKind),
@@ -19,9 +20,7 @@ func buildDebugRootPageView(stateValue install.InstallState, checkInFlight bool,
 			{
 				Title: "调试",
 				Entries: []control.CommandCatalogEntry{{
-					Buttons: []control.CommandCatalogButton{
-						runCommandButton("管理页外链", "/debug admin", "primary", false),
-					},
+					Buttons: directSubcommandButtons(def, def.CanonicalSlash, "/debug admin", ""),
 				}},
 			},
 		},
@@ -29,16 +28,10 @@ func buildDebugRootPageView(stateValue install.InstallState, checkInFlight bool,
 }
 
 func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade bool, formDefault, statusKind, statusText string) control.FeishuPageView {
-	quickButtons := []control.CommandCatalogButton{
-		runCommandButton("查看 Track", "/upgrade track", "", false),
-		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
-		runCommandButton("开发构建", "/upgrade dev", "", false),
-	}
+	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandUpgrade)
+	quickButtons := directSubcommandButtons(def, def.CanonicalSlash, "/upgrade latest", "")
 	if showCodexUpgrade {
 		quickButtons = append(quickButtons, runCommandButton("Codex 升级", "/upgrade codex", "", false))
-	}
-	if install.CurrentBuildAllowsLocalUpgrade() {
-		quickButtons = append(quickButtons, runCommandButton("本地升级", "/upgrade local", "", false))
 	}
 	return control.FeishuPageView{
 		CommandID:    control.FeishuCommandUpgrade,
@@ -59,6 +52,7 @@ func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade 
 
 func buildUpgradeTrackPageView(stateValue install.InstallState) control.FeishuPageView {
 	currentTrack := strings.TrimSpace(string(stateValue.CurrentTrack))
+	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandUpgrade)
 	return control.FeishuPageView{
 		CommandID:       control.FeishuCommandUpgrade,
 		Title:           "Upgrade Track",
@@ -70,7 +64,7 @@ func buildUpgradeTrackPageView(stateValue install.InstallState) control.FeishuPa
 			{
 				Title: "切换 Track",
 				Entries: []control.CommandCatalogEntry{{
-					Buttons: buildTrackCommandButtons(currentTrack),
+					Buttons: directSubcommandButtons(def, "/upgrade track", "/upgrade track "+currentTrack, "/upgrade track "+currentTrack),
 				}},
 			},
 		},
@@ -82,4 +76,39 @@ func buildTrackSummaryLines(stateValue install.InstallState) []string {
 	return []string{
 		fmt.Sprintf("当前 Track：%s", firstNonEmpty(string(stateValue.CurrentTrack), "unknown")),
 	}
+}
+
+func directSubcommandButtons(def control.FeishuCommandDefinition, prefix, primaryCommand, disabledCommand string) []control.CommandCatalogButton {
+	prefixFields := strings.Fields(strings.ToLower(strings.TrimSpace(prefix)))
+	if len(prefixFields) == 0 {
+		return nil
+	}
+	buttons := make([]control.CommandCatalogButton, 0, len(def.Options))
+	for _, option := range def.Options {
+		commandText := strings.TrimSpace(option.CommandText)
+		fields := strings.Fields(strings.ToLower(commandText))
+		if len(fields) != len(prefixFields)+1 {
+			continue
+		}
+		match := true
+		for i, field := range prefixFields {
+			if fields[i] != field {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		label := strings.TrimSpace(option.Label)
+		if label == "" {
+			label = commandText
+		}
+		style := ""
+		if commandText == strings.TrimSpace(primaryCommand) {
+			style = "primary"
+		}
+		buttons = append(buttons, runCommandButton(label, commandText, style, commandText == strings.TrimSpace(disabledCommand)))
+	}
+	return buttons
 }

@@ -28,6 +28,10 @@ func CurrentBuildAllowsLocalUpgrade() bool {
 	return buildinfo.CurrentCapabilityPolicy().AllowLocalUpgrade
 }
 
+func CurrentBuildAllowsDevUpgrade() bool {
+	return buildinfo.CurrentCapabilityPolicy().AllowDevUpgrade
+}
+
 func DefaultTrackForInstallSource(source InstallSource) ReleaseTrack {
 	source = normalizeInstallSource(source)
 	if source != InstallSourceRelease && CurrentBuildAllowsReleaseTrack(ReleaseTrackAlpha) {

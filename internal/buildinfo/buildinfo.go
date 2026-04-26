@@ -15,6 +15,7 @@ var FlavorValue = string(FlavorDev)
 type CapabilityPolicy struct {
 	Flavor               Flavor
 	AllowedReleaseTracks []string
+	AllowDevUpgrade      bool
 	AllowLocalUpgrade    bool
 	DefaultPprofEnabled  bool
 	DefaultRelayFlow     bool
@@ -46,12 +47,14 @@ func CapabilityPolicyForFlavor(flavor Flavor) CapabilityPolicy {
 		return CapabilityPolicy{
 			Flavor:               FlavorShipping,
 			AllowedReleaseTracks: []string{"beta", "production"},
+			AllowDevUpgrade:      false,
 			AllowLocalUpgrade:    false,
 		}
 	default:
 		return CapabilityPolicy{
 			Flavor:               FlavorDev,
 			AllowedReleaseTracks: []string{"alpha", "beta", "production"},
+			AllowDevUpgrade:      true,
 			AllowLocalUpgrade:    true,
 			DefaultPprofEnabled:  true,
 		}

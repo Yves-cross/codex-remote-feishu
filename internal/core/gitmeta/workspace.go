@@ -44,13 +44,13 @@ func (info WorkspaceInfo) RepoFamilyKey() string {
 	if gitDir == "" {
 		return ""
 	}
-	gitDir = filepath.Clean(gitDir)
+	gitDir = canonicalFilesystemPath(gitDir)
 	if !info.LinkedWorktree {
 		return gitDir
 	}
 	worktreesDir := filepath.Dir(gitDir)
 	if strings.EqualFold(filepath.Base(worktreesDir), "worktrees") {
-		return filepath.Clean(filepath.Dir(worktreesDir))
+		return canonicalFilesystemPath(filepath.Dir(worktreesDir))
 	}
 	return gitDir
 }

@@ -29,15 +29,18 @@ func TestBuildUpgradeStatusCatalogHidesShippingOnlyOptions(t *testing.T) {
 	}, false, "", "", "")
 	assertCatalogUsesPlainTextContracts(t, &catalog)
 	summary := catalogSummaryText(&catalog)
-	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 3 {
-		t.Fatalf("shipping quick buttons = %d, want 3", got)
+	if got := len(catalog.Sections[0].Entries[0].Buttons); got != 2 {
+		t.Fatalf("shipping quick buttons = %d, want 2", got)
 	}
 	for _, button := range catalog.Sections[0].Entries[0].Buttons {
+		if button.CommandText == "/upgrade dev" {
+			t.Fatalf("shipping root catalog should hide dev upgrade, got %#v", catalog.Sections[0].Entries[0].Buttons)
+		}
 		if strings.HasPrefix(button.CommandText, "/upgrade track ") {
 			t.Fatalf("shipping root catalog should keep track switching inside the track submenu, got %#v", catalog.Sections[0].Entries[0].Buttons)
 		}
 	}
-	if strings.Contains(summary, "本地升级产物：") || strings.Contains(summary, "/upgrade local") {
+	if strings.Contains(summary, "/upgrade dev") || strings.Contains(summary, "本地升级产物：") || strings.Contains(summary, "/upgrade local") {
 		t.Fatalf("shipping upgrade root page should hide local upgrade details, got %#v", summary)
 	}
 }
@@ -73,6 +76,22 @@ func TestUpgradeLocalRejectedInShippingFlavor(t *testing.T) {
 	})
 
 	waitForUpgradeNoticeBody(t, gateway, "当前构建不支持 `/upgrade local`")
+}
+
+func TestUpgradeDevRejectedInShippingFlavor(t *testing.T) {
+	withBuildFlavorForDaemonTest(t, buildinfo.FlavorShipping)
+
+	gateway := newLifecycleGateway()
+	app, _ := newUpgradeTestApp(t, gateway)
+	app.HandleAction(context.Background(), control.Action{
+		Kind:             control.ActionUpgradeCommand,
+		SurfaceSessionID: "feishu:main:chat:1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/upgrade dev",
+	})
+
+	waitForUpgradeNoticeBody(t, gateway, "当前构建不支持 `/upgrade dev`")
 }
 
 func waitForUpgradeNoticeBody(t *testing.T, gateway *lifecycleGateway, needle string) {
