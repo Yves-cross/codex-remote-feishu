@@ -1,8 +1,8 @@
 # Backend-Aware 命令 Catalog 设计
 
 > Type: `draft`
-> Updated: `2026-04-22`
-> Summary: 将当前单一 `feishuCommandSpecs` 演进为 family/variant/context resolver，支持 Codex / Claude / VS Code 并存下的同名异实现、同名异 UI 和 backend 独有命令。
+> Updated: `2026-04-26`
+> Summary: 将当前单一 `feishuCommandSpecs` 演进为 family/variant/context resolver；本次补充 2026-04-26 代码复核与最新 feidex 证据，收口当前 catalog 漂移与 backend-aware 命令基座方向。
 
 ## 1. 文档定位
 
@@ -120,6 +120,30 @@
 
 - variant UI 现在没有被 catalog 正式建模
 - 它只是零散存在于具体业务实现里
+
+### 3.6 2026-04-26 代码复核新增事实
+
+本轮按当前 master 代码复核，catalog 漂移已经不是未来风险，而是当前事实：
+
+1. help/menu 静态页仍直接遍历全局 `feishuCommandSpecs`。
+   - `BuildFeishuCommandStaticPageView(...)` 还没有 backend/context 输入。
+2. 文本命令与菜单回调 parser 仍是无上下文的全局 parser。
+   - `ParseFeishuTextAction(...)` 与 `ParseFeishuMenuAction(...)` 只扫描同一套全局 spec。
+3. `/mode` 的实际 parser 与用法文案仍只支持 `normal | vscode`。
+   - `internal/core/orchestrator/service_surface_command_settings.go`
+4. 但 Feishu projector 侧已经存在固定 copy 测试，写死“当前只支持 `/mode codex` 和 `/mode claude`”。
+   - `internal/adapter/feishu/projector_text_lane_matrix_test.go`
+5. 这说明 display copy、parse 入口、execute 语义已经开始漂移。
+   - 如果继续沿用“全局命令表 + 少量局部 copy 特例”，后面只会更难收口。
+
+### 3.7 最新 `feidex` 证明这不是理论优化
+
+上游最新 `feidex` 已经证明 backend-aware catalog 不是“为了以后可能支持 Claude 先做抽象”，而是现实产品需求：
+
+1. `/help` 与菜单已经按 backend 过滤，不再静态暴露全部命令。
+2. Claude 侧已经有本地 `/history`、`/model`、`/effort`、`/session permissions`、`/session fork`。
+3. `/compact` 在 Claude 下也不是简单 reject，而是显式 passthrough 策略。
+4. 因此本仓库后续需要解决的不是“要不要有 backend-aware catalog”，而是“如何把 display / parse / execute 三层统一到同一 resolver 上，避免继续局部漂移”。
 
 ## 4. 设计目标
 
@@ -576,6 +600,8 @@ display 阶段就应该能决定：
 5. `use`
 6. `new`
 7. `follow`
+
+其中 `mode` 优先级最高，因为当前代码已经出现 parser/copy 漂移，不适合继续扩散。
 
 ### 阶段 5：新增 Claude variants
 
