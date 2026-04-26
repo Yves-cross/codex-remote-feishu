@@ -209,6 +209,44 @@ LIMIT 1
 	return thread, nil
 }
 
+func (c *SQLiteThreadCatalog) ThreadRolloutPath(threadID string) (string, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return "", nil
+	}
+	var rolloutPath string
+	err := c.readWithRetry("query thread rollout path", func(db *sql.DB) error {
+		row := db.QueryRow(`
+SELECT rollout_path
+FROM threads
+WHERE id = ?
+  AND archived = 0
+  AND source IN ('cli', 'vscode')
+  AND COALESCE(agent_role, '') = ''
+  AND cwd NOT LIKE '%/_tmp-codex-thread-latency-%'
+  AND cwd NOT LIKE '%/_tmp-codex-appserver-%'
+  AND cwd NOT LIKE ?
+LIMIT 1
+`, threadID, cronRepoRunPathPattern)
+		var raw string
+		switch err := row.Scan(&raw); {
+		case errors.Is(err, sql.ErrNoRows):
+			rolloutPath = ""
+			return nil
+		case err != nil:
+			return err
+		default:
+			rolloutPath = strings.TrimSpace(raw)
+			return nil
+		}
+	})
+	if err != nil {
+		c.logError("query thread rollout path", err)
+		return "", err
+	}
+	return rolloutPath, nil
+}
+
 func (c *SQLiteThreadCatalog) openReadOnly() (*sql.DB, error) {
 	if c == nil || strings.TrimSpace(c.path) == "" {
 		return nil, fmt.Errorf("missing codex sqlite path")

@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-26`
-> Summary: 更新文档索引并纳入第三批 app-server backlog 的产品方向草案。
+> Summary: 更新文档索引并纳入第三批 app-server backlog 产品方向草案，以及 `codex-session-patcher` 调研、当前 thread patch V1 PRD 与技术计划。
 
 ## 1. 适用范围
 
@@ -162,6 +162,9 @@
 - [acp-claude-integration-design.md](./draft/acp-claude-integration-design.md)
 - [backend-aware-command-catalog-design.md](./draft/backend-aware-command-catalog-design.md)
 - [app-server-third-batch-product-directions.md](./draft/app-server-third-batch-product-directions.md)
+- [codex-session-patcher-research-2026-04.md](./draft/codex-session-patcher-research-2026-04.md)
+- [current-thread-patch-v1-prd.md](./draft/current-thread-patch-v1-prd.md)
+- [current-thread-patch-v1-tech-plan.md](./draft/current-thread-patch-v1-tech-plan.md)
 - [daemon-package-refactor-plan.md](./draft/daemon-package-refactor-plan.md)
 - [feishu-call-broker-design.md](./draft/feishu-call-broker-design.md)
 - [feishu-menu-frontstage-architecture-redesign.md](./draft/feishu-menu-frontstage-architecture-redesign.md)

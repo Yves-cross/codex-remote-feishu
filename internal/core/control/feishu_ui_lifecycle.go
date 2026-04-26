@@ -189,6 +189,8 @@ func AllowsCommandCardResultReplacement(action Action) bool {
 		ActionUseThread,
 		ActionShowCommandHelp,
 		ActionStatus,
+		ActionTurnPatchCommand,
+		ActionTurnPatchRollback,
 		ActionStop,
 		ActionNewThread,
 		ActionFollowLocal,

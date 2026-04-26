@@ -18,8 +18,10 @@ import (
 	"github.com/kxn/codex-remote-feishu/internal/app/cronrepo"
 	codexupgraderuntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/codexupgraderuntime"
 	headlessruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/headlessruntime"
+	turnpatchruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/turnpatchruntime"
 	toolruntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/toolruntime"
 	upgraderuntime "github.com/kxn/codex-remote-feishu/internal/app/daemon/upgraderuntime"
+	"github.com/kxn/codex-remote-feishu/internal/codexstate"
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
@@ -139,6 +141,7 @@ type App struct {
 	surfaceResumeRuntime       surfaceResumeRuntimeState
 	codexUpgradeRuntime        codexupgraderuntime.State
 	upgradeRuntime             upgraderuntime.State
+	turnPatchRuntime           turnpatchruntime.State
 
 	relayListener          net.Listener
 	apiListener            net.Listener
@@ -182,6 +185,7 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		surfaceResumeRuntime:        newSurfaceResumeRuntimeState(),
 		codexUpgradeRuntime:         codexupgraderuntime.NewState(),
 		upgradeRuntime:              upgraderuntime.NewState(),
+		turnPatchRuntime:            turnpatchruntime.NewState(),
 		cronRuntime:                 newCronRuntimeState(),
 		feishuRuntime:               newFeishuRuntimeState(),
 		pendingThreadHistoryReads:   map[string]pendingThreadHistoryRead{},
@@ -257,6 +261,12 @@ func New(relayAddr, apiAddr string, gateway feishu.Gateway, serverIdentity agent
 		}),
 	}
 	return app
+}
+
+func (a *App) SetTurnPatchStorage(storage *codexstate.TurnPatchStorage) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.turnPatchRuntime.Storage = storage
 }
 
 func gitExecutableAvailable() bool {

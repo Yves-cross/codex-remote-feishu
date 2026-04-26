@@ -38,6 +38,7 @@ const (
 	FeishuCommandDebug                = "debug"
 	FeishuCommandCron                 = "cron"
 	FeishuCommandUpgrade              = "upgrade"
+	FeishuCommandPatch                = "patch"
 	FeishuCommandVSCodeMigrate        = "vscode_migrate"
 )
 
@@ -907,6 +908,25 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		menuDynamic: []feishuCommandDynamicMenuMatch{
 			{prefix: "upgrade_", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
 			{prefix: "upgrade-", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
+		},
+	},
+	{
+		definition: FeishuCommandDefinition{
+			ID:               FeishuCommandPatch,
+			GroupID:          FeishuCommandGroupMaintenance,
+			Title:            "修补当前会话",
+			CanonicalSlash:   "/patch",
+			CanonicalMenuKey: "patch",
+			ArgumentKind:     FeishuCommandArgumentNone,
+			Description:      "对当前 attached thread 的最新 assistant turn 打开受控修补卡；只支持 normal 模式，且当前实例必须空闲。",
+			ShowInHelp:       true,
+			ShowInMenu:       true,
+		},
+		textPrefixes: []feishuCommandPrefixMatch{
+			{alias: "/patch", kind: ActionTurnPatchCommand},
+		},
+		menuExact: []feishuCommandMatch{
+			{alias: "patch", action: Action{Kind: ActionTurnPatchCommand, Text: "/patch"}},
 		},
 	},
 	{

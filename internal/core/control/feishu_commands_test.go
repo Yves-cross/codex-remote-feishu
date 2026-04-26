@@ -55,6 +55,26 @@ func TestParseFeishuTextActionRecognizesUpgradeCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuTextActionRecognizesPatchRollbackCommand(t *testing.T) {
+	tests := []string{
+		"/patch",
+		"/patch rollback",
+		"/patch rollback patch-thread-1-1",
+	}
+	for _, input := range tests {
+		action, ok := ParseFeishuTextAction(input)
+		if !ok {
+			t.Fatalf("expected %q to be parsed", input)
+		}
+		if action.Kind != ActionTurnPatchCommand {
+			t.Fatalf("input %q => kind %q, want %q", input, action.Kind, ActionTurnPatchCommand)
+		}
+		if action.Text != input {
+			t.Fatalf("input %q => text %q, want raw command", input, action.Text)
+		}
+	}
+}
+
 func TestParseFeishuTextActionRecognizesAutoWhipCommand(t *testing.T) {
 	tests := []string{
 		"/autowhip",

@@ -28,6 +28,8 @@ const (
 	ActionDebugCommand                ActionKind = "surface.command.debug"
 	ActionCronCommand                 ActionKind = "surface.command.cron"
 	ActionUpgradeCommand              ActionKind = "surface.command.upgrade"
+	ActionTurnPatchCommand            ActionKind = "surface.command.turn_patch"
+	ActionTurnPatchRollback           ActionKind = "surface.command.turn_patch.rollback"
 	ActionVSCodeMigrateCommand        ActionKind = "surface.command.vscode_migrate"
 	ActionUpgradeOwnerFlow            ActionKind = "surface.command.upgrade_owner_flow"
 	ActionModelCommand                ActionKind = "surface.command.model"

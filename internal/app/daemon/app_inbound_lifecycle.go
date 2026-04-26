@@ -178,6 +178,10 @@ func rejectedInboundActionLabel(action control.Action) (label, command string) {
 		return "查看调试升级状态", "/debug"
 	case control.ActionUpgradeCommand:
 		return "发起升级", "/upgrade"
+	case control.ActionTurnPatchCommand:
+		return "修补当前会话", "/patch"
+	case control.ActionTurnPatchRollback:
+		return "回滚最近一次修补", "/patch rollback"
 	case control.ActionUpgradeOwnerFlow:
 		return "升级卡片动作", ""
 	case control.ActionModelCommand:

@@ -25,7 +25,7 @@ func FeishuCommandVisibleInMenuStage(commandID, stage string) bool {
 	switch strings.TrimSpace(commandID) {
 	case FeishuCommandFollow:
 		return NormalizeFeishuCommandMenuStage(stage) == FeishuCommandMenuStageVSCodeWorking
-	case FeishuCommandNew:
+	case FeishuCommandNew, FeishuCommandPatch:
 		return NormalizeFeishuCommandMenuStage(stage) == FeishuCommandMenuStageNormalWorking
 	default:
 		return true

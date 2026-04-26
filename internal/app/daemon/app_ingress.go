@@ -244,6 +244,17 @@ func (a *App) handleAction(ctx context.Context, action control.Action) *feishu.A
 	if a.maybeHandleFeishuAppTestActionLocked(ctx, action) {
 		return nil
 	}
+	if events, handled := a.interceptTurnPatchActionLocked(action); handled {
+		contract := control.ResolveFeishuFrontstageActionContract(action)
+		inlineResult, appendEvents := a.synchronousCurrentCardActionResultLocked(action, contract, events)
+		inlineNavigationReplace := inlineResult != nil && contract.CurrentCardMode == control.FeishuFrontstageCurrentCardInlineView
+		if !inlineNavigationReplace || len(appendEvents) != 0 {
+			a.handleUIEventsLocked(ctx, appendEvents)
+		}
+		a.syncSurfaceResumeStateLocked(nil)
+		a.syncWorkspaceSurfaceContextFilesLocked()
+		return inlineResult
+	}
 	events := a.applyIngressActionLocked(action)
 	contract := control.ResolveFeishuFrontstageActionContract(action)
 	inlineResult, appendEvents := a.synchronousCurrentCardActionResultLocked(action, contract, events)
@@ -683,6 +694,10 @@ func (a *App) onCommandAck(ctx context.Context, instanceID string, ack agentprot
 		a.handleUIEventsLocked(ctx, historyEvents)
 		return
 	}
+	if patchEvents, handled := a.handleTurnPatchCommandAckLocked(ctx, instanceID, ack); handled {
+		a.handleUIEventsLocked(ctx, patchEvents)
+		return
+	}
 	if ack.Accepted {
 		a.handleUIEventsLocked(ctx, a.service.HandleCommandAccepted(instanceID, ack))
 		return
@@ -746,6 +761,7 @@ func (a *App) onTick(ctx context.Context, now time.Time) {
 	}
 	uiEvents := a.service.Tick(now)
 	uiEvents = append(uiEvents, a.maybeFlushUpgradeResultLocked(now)...)
+	uiEvents = append(uiEvents, a.maybeHandleTurnPatchRestartTimeoutLocked(now)...)
 	a.recordHeadlessRestoreOutcomeEventsLocked(uiEvents, now)
 	a.handleUIEventsLocked(ctx, uiEvents)
 	a.syncManagedHeadlessLocked(now)

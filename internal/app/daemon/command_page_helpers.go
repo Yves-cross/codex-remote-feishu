@@ -16,6 +16,22 @@ func commandPageEvents(surfaceID string, view control.FeishuPageView) []eventcon
 	return []eventcontract.Event{commandPageEvent(surfaceID, view)}
 }
 
+func surfaceRequestPayloadEvent(surfaceID string, payload eventcontract.RequestPayload, inlineReplace bool) eventcontract.Event {
+	inlineReplaceMode := eventcontract.InlineReplaceNone
+	if inlineReplace {
+		inlineReplaceMode = eventcontract.InlineReplaceCurrentCard
+	}
+	return eventcontract.NewEventFromPayload(
+		payload,
+		eventcontract.EventMeta{
+			Target: eventcontract.TargetRef{
+				SurfaceSessionID: strings.TrimSpace(surfaceID),
+			},
+			InlineReplaceMode: inlineReplaceMode,
+		},
+	)
+}
+
 func commandArgumentText(text string) string {
 	text = strings.TrimSpace(text)
 	if text == "" {

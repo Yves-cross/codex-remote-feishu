@@ -44,6 +44,8 @@ func ActionKindForFeishuCommandID(commandID string) (ActionKind, bool) {
 		return ActionCronCommand, true
 	case FeishuCommandUpgrade:
 		return ActionUpgradeCommand, true
+	case FeishuCommandPatch:
+		return ActionTurnPatchCommand, true
 	case FeishuCommandDebug:
 		return ActionDebugCommand, true
 	case FeishuCommandVSCodeMigrate:
@@ -92,6 +94,10 @@ func canonicalSlashForActionKind(kind ActionKind) string {
 		return "/cron"
 	case ActionUpgradeCommand:
 		return "/upgrade"
+	case ActionTurnPatchCommand:
+		return "/patch"
+	case ActionTurnPatchRollback:
+		return "/patch rollback"
 	case ActionDebugCommand:
 		return "/debug"
 	case ActionVSCodeMigrateCommand:

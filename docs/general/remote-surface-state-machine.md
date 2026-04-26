@@ -3,6 +3,7 @@
 > Type: `general`
 > Updated: `2026-04-26`
 > Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git`、`/workspace new worktree` 分别承接切换/目录/Git/Worktree 四张独立业务卡，`/list` `/use` `/useall` 只保留 alias；normal mode 的被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）现在会统一回到“锁定当前工作区”的 target picker，不再回退旧 scoped selection prompt；VS Code `/list` / `/use` / `/useall` 则继续走结构化实例/线程卡，其中线程选择统一成当前实例内的 dropdown，并隐藏不可切换会话、改用 plain-text 提示说明。另一个新变化是把上游可重试失败自动继续从 `autowhip` 中拆成独立 `autocontinue` overlay：它拥有自己的 queue lane、reply anchor、tail-only 状态卡与 backoff，不再和“正常结束后继续催活”混用；request gate 现在还补上了 `item/tool/call` 的最小 fail-closed 分支：relay / Feishu / headless 会展示只读 `tool_callback` 提示，并立即自动回写 unsupported 结构化结果，避免 tool 在中途 silent hang；同时 detached-branch 产品入口已经正式接上：普通文本里的 `⁉️` / `🤷` 会分别触发 `fork_ephemeral` / `start_ephemeral`，统一复用 `keep_surface_selection`，且不会再让 detour turn 污染当前 surface 默认 thread；细节见正文。
+> Summary: 当前实现同步了 workspace-aware normal mode 与 vscode mode，并把 normal mode 的工作会话主展示改成 `workspace` 命令族：bare `/workspace` / `/workspace new` 负责父页导航，`/workspace list`、`/workspace new dir`、`/workspace new git`、`/workspace new worktree` 分别承接切换/目录/Git/Worktree 四张独立业务卡，`/list` `/use` `/useall` 只保留 alias；normal mode 的被动恢复入口（attach unbound、`selected_thread_lost`、`thread_claim_lost`）现在会统一回到“锁定当前工作区”的 target picker，不再回退旧 scoped selection prompt；VS Code `/list` / `/use` / `/useall` 则继续走结构化实例/线程卡，其中线程选择统一成当前实例内的 dropdown，并隐藏不可切换会话、改用 plain-text 提示说明。另一个新变化是把上游可重试失败自动继续从 `autowhip` 中拆成独立 `autocontinue` overlay：它拥有自己的 queue lane、reply anchor、tail-only 状态卡与 backoff，不再和“正常结束后继续催活”混用；request gate 现在还补上了 `item/tool/call` 的最小 fail-closed 分支：relay / Feishu / headless 会展示只读 `tool_callback` 提示，并立即自动回写 unsupported 结构化结果，避免 tool 在中途 silent hang；同时 detached-branch 产品入口已经正式接上：普通文本里的 `⁉️` / `🤷` 会分别触发 `fork_ephemeral` / `start_ephemeral`，统一复用 `keep_surface_selection`，且不会再让 detour turn 污染当前 surface 默认 thread；本轮还新增 `current thread patch` 事务：`/patch` 只对 normal-mode 当前 attached thread 的最新 completed assistant turn 打开前台修补卡，确认后会冻结同实例输入、重写 rollout、重启 child，并在成功后保留最近一次回滚入口；细节见正文。
 
 ## 1. 文档定位
 
@@ -48,6 +49,12 @@
 30. [internal/core/orchestrator/service_target_picker_git_import.go](../../internal/core/orchestrator/service_target_picker_git_import.go)
 31. [internal/app/daemon/app_git_workspace_import.go](../../internal/app/daemon/app_git_workspace_import.go)
 32. [internal/app/gitworkspace/import.go](../../internal/app/gitworkspace/import.go)
+33. [internal/app/daemon/app_turn_patch.go](../../internal/app/daemon/app_turn_patch.go)
+34. [internal/app/daemon/app_turn_patch_tx.go](../../internal/app/daemon/app_turn_patch_tx.go)
+35. [internal/app/daemon/app_turn_patch_view.go](../../internal/app/daemon/app_turn_patch_view.go)
+36. [internal/app/daemon/turnpatchruntime/model.go](../../internal/app/daemon/turnpatchruntime/model.go)
+37. [internal/codexstate/turn_patch_storage.go](../../internal/codexstate/turn_patch_storage.go)
+38. [internal/codexstate/turn_patch_ledger.go](../../internal/codexstate/turn_patch_ledger.go)
 
 ## 2. 审计前提
 
@@ -254,7 +261,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 | `E1 Queued` | `QueuedQueueItemIDs` 非空，`ActiveQueueItemID == ""` | 有待派发远端输入 |
 | `E2 Dispatching` | `ActiveQueueItemID` 指向 `dispatching` | prompt 已发给 wrapper，turn 尚未建立 |
 | `E3 Running` | `ActiveQueueItemID` 指向 `running` | turn 已进入执行 |
-| `E4 PausedForLocal` | `DispatchMode=paused_for_local` | 当前 surface 的远端派发被暂停；现有来源包括本地 VS Code 活动，以及 daemon 显式发起的 standalone Codex 升级暂停。后者只作用于真正依赖 standalone Codex 的 surface |
+| `E4 PausedForLocal` | `DispatchMode=paused_for_local` | 当前 surface 的远端派发被暂停；现有来源包括本地 VS Code 活动，以及 daemon 显式发起的 standalone Codex 升级或 current-thread patch 事务暂停 |
 | `E5 HandoffWait` | `DispatchMode=handoff_wait` | 本地刚结束，等待短窗口后恢复远端队列 |
 | `E6 Abandoning` | `Abandoning=true` | surface 已放弃接管，等待已有 turn 收尾后最终 detach |
 
@@ -269,9 +276,10 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 3. steering ack 成功后，item 进入 `steered`；失败时恢复回普通语义：
    1. 文本 / 图文 reply 恢复为普通 queued item
    2. 独立图片 reply 恢复为 `ImageStaged`
-4. `E4 PausedForLocal` 当前有两条来源分支：
+4. `E4 PausedForLocal` 当前有三条来源分支：
    1. local-activity 分支由 `pauseForLocal(...)` 写入 `pausedUntil`，因此仍有 watchdog，并且后续可能进入 `E5 HandoffWait`。
    2. standalone Codex 升级分支由 daemon 通过 `PauseSurfaceDispatch(...)` 显式写入；这条路径会主动清掉 `pausedUntil/handoffUntil`，因此不会被 `Tick()` watchdog 自动恢复，只会在升级事务显式 `ResumeSurfaceDispatch(...)` 时继续派发。
+   3. current-thread patch 事务同样由 daemon 通过 `PauseSurfaceDispatch(...)` 显式写入；它会暂停同一 instance 上所有 attached surface 的 dispatch，直到 patch apply / rollback 成功或失败收口后再显式 `ResumeSurfaceDispatch(...)`。
 
 ### 3.4 输入门禁状态
 
@@ -285,7 +293,10 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 | `G5 TargetPickerProcessing` | 当前 surface 的 active target picker 处于 Git import 或 Worktree create processing | 当前存在一个仍有效的 Git/Worktree owner-card 业务流；普通文本/图片/文件、`/list`、`/use`、`/useall`、`/new`、`/follow`、`/detach`、bare config 与其它 competing card flow 都会被挡住并提示等待完成、取消，或使用 `/status`；只保留 `/status`、reaction/recall 与 `target_picker_cancel` |
 | `G6 AbandoningGate` | `Abandoning=true` | 只有 `/status`、`/autowhip` 与 `/autocontinue` 继续正常，其余动作被挡 |
 | `G7 VSCodeCompatibilityBlocked` | `ProductMode=vscode`，surface detached，且本机检测到“不能安全自动收口”的 VS Code 兼容性问题 | daemon 不再自动恢复 exact instance，也不再发普通“请先打开 VS Code”提示，而是改发必要的修复/失败反馈；legacy `editor_settings` 若已存在可接管入口，会先静默自动迁到 `managed_shim`，只有缺 target、自动迁移失败或 stale managed shim 时才真正停在这个 gate。若这张提示由 stamped `/mode vscode` 当前卡同步触发，则优先承接到当前卡，否则保持独立 runtime 提示 |
+| `G8 TurnPatchEditing` | daemon 侧存在当前 surface 的 active turn-patch flow，且 `stage=editing` | 当前 frontstage 被 patch 卡占用；只有同一张 patch 卡的 `request_respond` / `request_control` 与 reaction/recall 可以继续，其它动作会被挡住并提示先提交或取消 |
+| `G9 UpgradeOwnerFlowRunning` | daemon 侧 active upgrade owner-flow 处于 `running` / `cancelling` / `restarting` | 这是 daemon 顶层的独立升级 gate；只允许 `/status`、`/upgrade`、`/debug`、reaction/recall 与同一张升级卡自身动作继续，其它 competing 输入会被拒绝 |
 | `G10 StandaloneCodexUpgradeRunning` | daemon 侧 active standalone Codex upgrade transaction 非空 | 这是 daemon 顶层的独立 upgrade gate，不复用现有 `codex-remote` owner-flow。发起 surface 的普通输入会被直接挡住；其它真正依赖 standalone Codex 的 attached surface 会继续走“写入队列 + notice + `paused_for_local`”语义；VS Code surface / instance 当前完全排除在这条 gate 之外；非 queueable 命令/卡片动作当前仍直接拒绝 |
+| `G11 TurnPatchTransactionRunning` | daemon 侧存在当前 instance 的 active turn-patch transaction | 发起 surface 与同 instance 上其它 attached surface 的状态改写类输入都会被挡住；当前只保留 `/status`、`/list`、`/help`、`/menu`、`/history`、`/debug`、reaction/recall 等查看类动作，直到 patch apply / rollback 收口 |
 
 补充说明：
 
@@ -760,7 +771,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
    4. `normal mode` 下 `/list`、`/use`、`/useall`、`/detach` 不再作为主展示菜单项，但 alias / parser 兼容仍保留，并分别汇合到 `/workspace list` 与 `/workspace detach`。
    5. `vscode mode` 的 `工作会话` 仍分别显示 `/list`、`/use`、`/useall`。
    6. `normal mode` 不展示 `/follow`；`vscode mode` 才展示 `/follow`。
-   7. `/new` 只在 `normal` working 可见；`/status` 当前在 `基本命令`，`/history` 在 `常用工具`，两者在 normal / vscode 都可见。
+   7. `/new` 与 `/patch` 只在 `normal` working 可见；`/status` 当前在 `基本命令`，`/history` 在 `常用工具`，`/patch` 在 `系统管理`，其中 `/status` 与 `/history` 在 normal / vscode 都可见。
 3. `/help` 当前也复用同一套 display projection：
    1. `normal mode` 下帮助文本里的主展示入口已经切到 `workspace` 命令族：`/workspace`、`/workspace list`、`/workspace new`、`/workspace new dir`、`/workspace new git`、`/workspace new worktree`、`/workspace detach`。
    2. `normal mode` 下旧 `/list`、`/use`、`/useall`、`/detach` 不再单列展示，只在新命令说明里保留 alias 解释。
@@ -769,7 +780,7 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
   1. `参数设置`：`/reasoning`、`/model`、`/access`、`/plan`、`/verbose`、`/autocontinue`
   2. `常用工具 / 系统管理`：`/autowhip`、`/mode`
    3. 表单提交通过 card callback `page_submit` 直接回填结构化 `action_kind/field_name/action_arg_prefix`，再生成 canonical `Action.Text`。
-5. `常用工具` 分组里的 `/cron`，以及 `系统管理` 分组里的 `/debug`、`/upgrade` 当前仍然是直接触发 daemon 动作的命令入口，不属于参数卡表单。
+5. `常用工具` 分组里的 `/cron`，以及 `系统管理` 分组里的 `/debug`、`/upgrade`、`/patch` 当前仍然是直接触发 daemon 动作的命令入口，不属于参数卡表单。
 7. 二级分组当前通过卡片按钮 + breadcrumb 返回首页实现，不依赖飞书后台把整棵导航树都铺成静态菜单。
 8. 同上下文菜单导航当前已经支持“替换当前卡片”而不是追加新卡，但只限窄范围：
    1. `/menu` 首页 <-> 二级分组页
@@ -814,7 +825,40 @@ thread 自身现在还有一层**authoritative runtime status overlay**，来源
 2. autoContinue item：
    1. 不会把 autoContinue 状态卡自身的 `message_id` 反写成后续业务输出的 reply anchor
    2. 真正的 final / request / plan / image / progress 输出仍 reply 到原用户消息
-   3. dispatch 优先级高于普通 queued user item，但不会清空原队列
+3. dispatch 优先级高于普通 queued user item，但不会清空原队列
+
+### 4.18 `/patch` 是 normal-mode 当前 thread 的前台事务卡，不回改已展示旧消息
+
+当前 `/patch` 的实现边界已经固定为：
+
+1. 入口与适用面：
+   1. bare `/patch` 与菜单里的 `修补当前会话` 是同一条 daemon-side 流程。
+   2. 只允许在 `normal mode + attached instance + selected thread` 下打开。
+   3. VS Code surface、未 attached surface、未选 thread、实例离线，或未启用 patch storage 时都会直接拒绝。
+2. 打开 patch 卡前的预检：
+   1. 当前 instance 必须空闲。
+   2. 除了自身正在编辑的 patch 卡外，不能存在 active turn-patch tx、upgrade tx、upgrade owner-flow、active remote、pending remote、compact、steer、pending request、request capture、queued item、非 `normal` dispatch mode、`PendingHeadless` 或 `Abandoning`。
+   3. 这使 `/patch` 成为强互斥的高风险事务入口，不走排队。
+3. 编辑阶段：
+   1. daemon 会从 rollout truth 读取当前 thread 的最新 completed assistant turn 预览，而不是改已展示消息。
+   2. 当前只对显式 refusal / placeholder 模式做候选点检测；若没有命中，会直接返回 notice，不打开卡。
+   3. 命中后会打开一张复用 `request_user_input` 载体的多题 patch 卡：每题只展示命中片段摘录与预填模板，不展示全文。
+   4. 同一张卡会按 `request_revision` 逐题 inline 刷新；只有发起者本人可以继续回答或取消。
+   5. 编辑期间当前 surface 进入 `G8 TurnPatchEditing`：除同一张卡的 `request_respond` / `request_control` 与 reaction/recall 外，其它动作都会被挡住。
+4. apply 事务：
+   1. 全部题目确认后，daemon 会再次确认当前 attached instance / thread 没有漂移。
+   2. 事务开始时会对同一 instance 上全部 attached surface 调 `PauseSurfaceDispatch(...)`，因此这些 surface 都会表现成 `E4 PausedForLocal`；但中间 child stop/start 噪音不会对上层额外翻译成 offline/online 提示。
+   3. 存储层只写 rollout JSONL：会先做 digest/turn 校验、写备份、记录 latest-only rollback ledger，再替换 latest assistant turn 命中的 message，并同步清掉该 turn 的 reasoning line。
+   4. 写盘完成后 daemon 会发送 `process.child.restart`；只有拿到 restart ack 后，才会把 patch 成功页投影回前台。
+   5. 若 restart 失败或超时，daemon 会先自动把 rollout 回滚到备份，再发第二次 child restart 尝试恢复运行态；失败页会明确区分“修补未生效，磁盘已恢复”与“运行态恢复也失败”。
+5. rollback 事务：
+   1. rollback 入口支持 `/patch rollback [patch_id]`，以及 patch 成功页上的回滚按钮。
+   2. 只允许回滚同一 thread 最近一次 patch；若 latest pointer 已变化，或 patch 后 rollout digest 已漂移，就会拒绝回滚。
+   3. rollback 同样要求原发起者、当前 attached thread 与 instance 仍然匹配，并复用与 apply 同级别的 dispatch freeze + child restart。
+6. 用户可见语义：
+   1. patch 与 rollback 成功后，后续输入会继续落在同一 thread。
+   2. 已经发出去的旧消息不会被回改；patch 只影响后续上下文。
+   3. 成功页会保留最近一次 rollback 按钮；失败页不会留下半活跃事务。
 
 ## 5. 主要状态迁移
 
@@ -1331,6 +1375,7 @@ transport degraded retained attachment
 | `G5 TargetPickerProcessing` | 只允许当前 Git/Worktree owner-card 自己的 `target_picker_cancel`、`/status`、reaction/recall；普通文本/图片/文件、`/workspace` 命令族、`/list`、`/use`、`/useall`、`/new`、`/follow`、`/detach`、bare config 与其它 competing Feishu card flow 当前都会被挡住，并按当前 pending kind 提示“正在导入 Git 工作区”或“正在创建 Worktree 工作区”；unauthorized 只回拒绝 notice，不清当前 gate；Git clone / worktree create / prepare 完成、失败、取消或 flow 失效后会清 gate |
 | `G9 UpgradeOwnerFlowRunning` | daemon 侧 active upgrade owner-flow 处于 `running` / `cancelling` / `restarting` 时，只允许 `/status`、`/upgrade`、`/debug`、reaction/recall 与同一张升级卡的 `upgrade_owner_flow(confirm/cancel)`；普通文本/图片/文件、`/list`、`/use`、`/useall`、`/new`、`/follow`、`/detach`、bare config 与其它 competing card flow 当前都会在 `handleAction(...)` 顶层被挡住，并提示“当前正在准备升级”；helper 启动前若用户取消，会先切到 cancelling，再封成 terminal `升级已取消`；helper 即将切换前会把 owner card 封成 `正在重启`，随后等待 daemon 生命周期切换自然结束 |
 | `G10 StandaloneCodexUpgradeRunning` | daemon 侧 active standalone Codex upgrade transaction 运行中时，会先于现有 self-upgrade owner-flow gate 处理输入。发起 surface 只允许 `/status`、`/debug`、`/upgrade`、reaction/recall 与后续 standalone-codex-upgrade owner-flow 动作；其它普通输入直接返回 `codex_upgrade_running`。其它真正依赖 standalone Codex 的 attached surface 的文本/图片/文件会先通过既有 ingress 路径入队，但 dispatch 维持暂停，并追加“升级完成后执行”的同 code notice；VS Code surface / instance 当前完全跳过这条 gate，不进入 pause / queue-after-upgrade 语义；非 queueable 命令/卡片动作当前直接拒绝，不进入缓存 |
+| `G11 TurnPatchTransactionRunning` | daemon 侧 active turn-patch transaction 运行中时，会先于普通 reducer 处理输入。当前 instance 的 attached surface 会统一被 `PauseSurfaceDispatch(...)`；发起 surface 与同 instance 其它 surface 的普通文本/图片/文件、`/patch`、`/patch rollback`、`/new`、`/compact`、`/detach`、bare config 与其它 competing card flow 都会被拒绝，并提示“当前正在修补/回滚当前会话”；只保留 `/status`、`/list`、`/help`、`/menu`、`/history`、`/debug`、reaction/recall 这类查看动作，直到 transaction 成功或失败收口 |
 | `G6 AbandoningGate / E6 Abandoning` | `Abandoning` 已在执行 overlay 中持有真实状态；对外门禁与 `G6` 一致：只允许 `/status`、`/autowhip`、`/autocontinue`；再次 `/detach` 只回 `detach_pending`；`/mode` 与其余动作统一拒绝 |
 | `G7 VSCodeCompatibilityBlocked` | 只影响 daemon 的 detached-vscode 恢复路径：exact-instance auto-resume 与普通 open-vscode prompt 会被抑制，改发必要的修复/失败反馈；legacy `editor_settings` 若能安全静默迁到 `managed_shim`，则不会长时间停在这条 gate。surface 侧 `/list`、`/mode`、`/status` 等动作仍按 route matrix 正常处理。若提示由 stamped `/mode vscode` 当前卡同步触发，则优先承接到当前卡；后台恢复路径仍走独立 runtime 提示 |
 
@@ -1403,6 +1448,14 @@ retained-offline overlay 额外规则：
 3. `/plan off`
 
 三者都映射到 `ActionPlanCommand`，由服务端在当前 surface 上解释并决定新的 surface-level `PlanMode`；真正的提案 handoff 卡按钮则单独走 `ActionPlanProposalDecision`。
+
+同时，文本命令里新增：
+
+1. `/patch`
+2. `/patch rollback`
+3. `/patch rollback <patch_id>`
+
+三者当前都会先映射到 `ActionTurnPatchCommand`，再由 daemon 按参数二次解析成“打开 patch 卡”或“回滚最近一次修补”；成功页上的回滚按钮则单独走 `ActionTurnPatchRollback`。
 
 补充说明：
 

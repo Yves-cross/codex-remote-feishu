@@ -105,3 +105,31 @@ func (s *Service) ActiveRemoteTurns() []RemoteTurnStatus {
 	})
 	return values
 }
+
+func (s *Service) SurfaceHasPendingSteer(surfaceID string) bool {
+	surface := s.root.Surfaces[surfaceID]
+	if surface == nil {
+		return false
+	}
+	return s.surfaceHasPendingSteer(surface)
+}
+
+func (s *Service) InstanceHasPendingCompact(instanceID string) bool {
+	return s.progress.instanceHasCompact(instanceID)
+}
+
+func (s *Service) InstanceHasPendingSteer(instanceID string) bool {
+	for _, binding := range s.turns.pendingSteers {
+		if binding == nil || binding.InstanceID != instanceID {
+			continue
+		}
+		surface := s.root.Surfaces[binding.SurfaceSessionID]
+		if surface == nil {
+			continue
+		}
+		if s.surfaceHasPendingSteer(surface) {
+			return true
+		}
+	}
+	return false
+}

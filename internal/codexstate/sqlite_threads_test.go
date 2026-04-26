@@ -66,6 +66,19 @@ func TestSQLiteThreadCatalogThreadByIDSkipsFilteredRows(t *testing.T) {
 	}
 }
 
+func TestSQLiteThreadCatalogThreadRolloutPathReturnsStoredPath(t *testing.T) {
+	dbPath := createThreadCatalogTestDB(t)
+	catalog := NewSQLiteThreadCatalog(dbPath, SQLiteThreadCatalogOptions{Logf: func(string, ...any) {}})
+
+	rolloutPath, err := catalog.ThreadRolloutPath("thread-1")
+	if err != nil {
+		t.Fatalf("thread rollout path: %v", err)
+	}
+	if rolloutPath != filepath.Join(testutil.WorkspacePath("data", "dl", "droid"), "thread-1.jsonl") {
+		t.Fatalf("unexpected rollout path: %q", rolloutPath)
+	}
+}
+
 func TestSQLiteThreadCatalogRecentWorkspacesReturnsAggregatedRows(t *testing.T) {
 	dbPath := createThreadCatalogTestDB(t)
 	catalog := NewSQLiteThreadCatalog(dbPath, SQLiteThreadCatalogOptions{Logf: func(string, ...any) {}})
@@ -156,7 +169,7 @@ CREATE TABLE threads (
 INSERT INTO threads (
 	id, rollout_path, created_at, updated_at, source, model_provider, cwd, title, sandbox_policy, approval_mode,
 	tokens_used, has_user_event, archived, cli_version, first_user_message, memory_mode, model, reasoning_effort, agent_role
-) VALUES (?, '', 0, ?, ?, 'openai', ?, ?, 'workspace-write', 'never', 0, 0, ?, '', ?, 'enabled', ?, ?, ?)
+) VALUES (?, ?, 0, ?, ?, 'openai', ?, ?, 'workspace-write', 'never', 0, 0, ?, '', ?, 'enabled', ?, ?, ?)
 `
 	rows := []struct {
 		id        string
@@ -180,7 +193,8 @@ INSERT INTO threads (
 		{id: "thread-cron", updatedAt: 1775710500, source: "cli", cwd: testutil.WorkspacePath("tmp", "daemon-state", "cron-repos", "runs", "inst-cron-1", "worktree"), title: "Cron 会话", archived: 0, preview: "不该出现", model: "gpt-5.4", reasoning: "medium"},
 	}
 	for _, row := range rows {
-		if _, err := db.Exec(insert, row.id, row.updatedAt, row.source, row.cwd, row.title, row.archived, row.preview, row.model, row.reasoning, row.agentRole); err != nil {
+		rolloutPath := filepath.Join(row.cwd, row.id+".jsonl")
+		if _, err := db.Exec(insert, row.id, rolloutPath, row.updatedAt, row.source, row.cwd, row.title, row.archived, row.preview, row.model, row.reasoning, row.agentRole); err != nil {
 			t.Fatalf("insert thread %s: %v", row.id, err)
 		}
 	}
