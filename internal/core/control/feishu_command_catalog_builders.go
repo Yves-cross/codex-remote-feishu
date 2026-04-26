@@ -7,6 +7,11 @@ func BuildFeishuCommandMenuHomePageView() FeishuPageView {
 }
 
 func BuildFeishuCommandMenuHomePageViewForProductMode(productMode string) FeishuPageView {
+	return BuildFeishuCommandMenuHomePageViewForContext(CatalogContext{ProductMode: productMode})
+}
+
+func BuildFeishuCommandMenuHomePageViewForContext(ctx CatalogContext) FeishuPageView {
+	ctx = NormalizeCatalogContext(ctx)
 	return FeishuPageView{
 		CommandID:    FeishuCommandMenu,
 		Title:        "命令菜单",
@@ -15,33 +20,50 @@ func BuildFeishuCommandMenuHomePageViewForProductMode(productMode string) Feishu
 		Breadcrumbs:  FeishuCommandBreadcrumbs("", ""),
 		Sections: []CommandCatalogSection{{
 			Title:   "",
-			Entries: buildFeishuCommandMenuGroupEntries(productMode),
+			Entries: buildFeishuCommandMenuGroupEntries(ctx.ProductMode),
 		}},
 	}
 }
 
 func BuildFeishuCommandMenuPageView(view FeishuCatalogMenuView, productMode, menuStage string) FeishuPageView {
+	return BuildFeishuCommandMenuPageViewForContext(view, CatalogContext{
+		ProductMode: productMode,
+		MenuStage:   menuStage,
+	})
+}
+
+func BuildFeishuCommandMenuPageViewForContext(view FeishuCatalogMenuView, ctx CatalogContext) FeishuPageView {
+	ctx = NormalizeCatalogContext(ctx)
 	groupID := strings.TrimSpace(view.GroupID)
 	if groupID == "" {
-		return BuildFeishuCommandMenuHomePageViewForProductMode(productMode)
+		return BuildFeishuCommandMenuHomePageViewForContext(ctx)
 	}
 	stage := strings.TrimSpace(view.Stage)
 	if stage == "" {
-		stage = strings.TrimSpace(menuStage)
+		stage = strings.TrimSpace(ctx.MenuStage)
 	}
-	if normalizeFeishuCommandProductMode(productMode) == "normal" && groupID == FeishuCommandGroupSwitchTarget {
+	if ctx.ProductMode == "normal" && groupID == FeishuCommandGroupSwitchTarget {
 		return BuildFeishuWorkspaceRootPageView(true)
 	}
-	return BuildFeishuCommandMenuGroupPageView(groupID, productMode, stage)
+	ctx.MenuStage = stage
+	return BuildFeishuCommandMenuGroupPageViewForContext(groupID, ctx)
 }
 
 func BuildFeishuCommandMenuGroupPageView(groupID, productMode, menuStage string) FeishuPageView {
+	return BuildFeishuCommandMenuGroupPageViewForContext(groupID, CatalogContext{
+		ProductMode: productMode,
+		MenuStage:   menuStage,
+	})
+}
+
+func BuildFeishuCommandMenuGroupPageViewForContext(groupID string, ctx CatalogContext) FeishuPageView {
+	ctx = NormalizeCatalogContext(ctx)
 	if _, ok := FeishuCommandGroupByID(groupID); !ok {
-		return BuildFeishuCommandMenuHomePageViewForProductMode(productMode)
+		return BuildFeishuCommandMenuHomePageViewForContext(ctx)
 	}
 	entries := make([]CommandCatalogEntry, 0, 6)
 	for _, def := range FeishuCommandDefinitionsForGroup(groupID) {
-		def, ok := FeishuCommandDefinitionForDisplay(def, productMode, true, menuStage)
+		def, ok := FeishuCommandDefinitionForDisplayContext(def, true, ctx)
 		if !ok {
 			continue
 		}

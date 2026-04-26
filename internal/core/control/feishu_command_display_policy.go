@@ -14,8 +14,16 @@ func normalizeFeishuCommandProductMode(productMode string) string {
 // FeishuCommandDefinitionForDisplay projects a canonical command definition into
 // the user-facing help/menu shape for the current surface mode.
 func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode string, interactive bool, menuStage string) (FeishuCommandDefinition, bool) {
+	return FeishuCommandDefinitionForDisplayContext(def, interactive, CatalogContext{
+		ProductMode: productMode,
+		MenuStage:   menuStage,
+	})
+}
+
+func FeishuCommandDefinitionForDisplayContext(def FeishuCommandDefinition, interactive bool, ctx CatalogContext) (FeishuCommandDefinition, bool) {
+	ctx = NormalizeCatalogContext(ctx)
 	if interactive {
-		if !def.ShowInMenu || !FeishuCommandVisibleInMenuStage(def.ID, menuStage) {
+		if !def.ShowInMenu || !FeishuCommandVisibleInMenuStage(def.ID, ctx.MenuStage) {
 			return FeishuCommandDefinition{}, false
 		}
 	} else if !def.ShowInHelp {
@@ -23,7 +31,7 @@ func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode 
 	}
 
 	projected := cloneFeishuCommandDefinition(def)
-	if normalizeFeishuCommandProductMode(productMode) != "normal" {
+	if ctx.ProductMode != "normal" {
 		switch strings.TrimSpace(projected.ID) {
 		case FeishuCommandWorkspace,
 			FeishuCommandWorkspaceList,
@@ -46,11 +54,18 @@ func FeishuCommandDefinitionForDisplay(def FeishuCommandDefinition, productMode 
 }
 
 func BuildFeishuCommandDisplayPageView(title, summary string, interactive bool, productMode, menuStage string) FeishuPageView {
+	return BuildFeishuCommandDisplayPageViewForContext(title, summary, interactive, CatalogContext{
+		ProductMode: productMode,
+		MenuStage:   menuStage,
+	})
+}
+
+func BuildFeishuCommandDisplayPageViewForContext(title, summary string, interactive bool, ctx CatalogContext) FeishuPageView {
 	sections := make([]CommandCatalogSection, 0, len(feishuCommandGroups))
 	for _, group := range feishuCommandGroups {
 		entries := make([]CommandCatalogEntry, 0, len(feishuCommandSpecs))
 		for _, spec := range feishuCommandSpecs {
-			def, ok := FeishuCommandDefinitionForDisplay(runtimeFeishuCommandDefinition(spec), productMode, interactive, menuStage)
+			def, ok := FeishuCommandDefinitionForDisplayContext(runtimeFeishuCommandDefinition(spec), interactive, ctx)
 			if !ok || def.GroupID != group.ID {
 				continue
 			}

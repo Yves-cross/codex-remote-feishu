@@ -3,9 +3,16 @@ package control
 import "strings"
 
 func FeishuPageViewFromView(view FeishuCatalogView, productMode, menuStage string) (FeishuPageView, bool) {
+	return FeishuPageViewFromViewContext(view, CatalogContext{
+		ProductMode: productMode,
+		MenuStage:   menuStage,
+	})
+}
+
+func FeishuPageViewFromViewContext(view FeishuCatalogView, ctx CatalogContext) (FeishuPageView, bool) {
 	switch {
 	case view.Menu != nil:
-		return BuildFeishuCommandMenuPageView(*view.Menu, productMode, menuStage), true
+		return BuildFeishuCommandMenuPageViewForContext(*view.Menu, ctx), true
 	case view.Config != nil:
 		return BuildFeishuCommandConfigPageView(*view.Config), true
 	case view.Page != nil:

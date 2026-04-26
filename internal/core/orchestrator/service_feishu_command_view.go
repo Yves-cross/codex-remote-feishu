@@ -8,9 +8,10 @@ import (
 )
 
 func (s *Service) buildCommandMenuView(surface *state.SurfaceConsoleRecord, raw string) control.FeishuCatalogView {
+	ctx := s.buildCatalogContext(surface)
 	return control.FeishuCatalogView{
 		Menu: &control.FeishuCatalogMenuView{
-			Stage:   string(s.commandMenuStage(surface)),
+			Stage:   ctx.MenuStage,
 			GroupID: parseCommandMenuView(raw),
 		},
 	}
@@ -34,12 +35,9 @@ func (s *Service) buildConfigCommandViewState(
 		Config: s.applyCommandConfigCardState(&control.FeishuCatalogConfigView{CommandID: flow.CommandID}, cardState),
 	}
 
-	attachedInstanceID := ""
-	if surface != nil {
-		attachedInstanceID = strings.TrimSpace(surface.AttachedInstanceID)
-	}
-	inst := s.root.Instances[attachedInstanceID]
-	if flow.RequiresAttachment && inst == nil {
+	ctx := s.buildCatalogContext(surface)
+	inst := s.root.Instances[ctx.InstanceID]
+	if flow.RequiresAttachment && ctx.AttachedKind == string(control.CatalogAttachedKindDetached) {
 		view.Config.RequiresAttachment = true
 		return view
 	}
@@ -49,21 +47,22 @@ func (s *Service) buildConfigCommandViewState(
 		summary = s.resolveNextPromptSummary(inst, surface, "", "", state.ModelConfigRecord{})
 	}
 
-	view.Config.CurrentValue = s.resolveConfigFlowValue(surface, summary, flow.CurrentValueKey)
-	view.Config.EffectiveValue = s.resolveConfigFlowValue(surface, summary, flow.EffectiveValueKey)
-	view.Config.OverrideValue = s.resolveConfigFlowValue(surface, summary, flow.OverrideValueKey)
-	view.Config.OverrideExtraValue = s.resolveConfigFlowValue(surface, summary, flow.OverrideExtraValueKey)
+	view.Config.CurrentValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.CurrentValueKey)
+	view.Config.EffectiveValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.EffectiveValueKey)
+	view.Config.OverrideValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.OverrideValueKey)
+	view.Config.OverrideExtraValue = s.resolveConfigFlowValue(ctx, surface, summary, flow.OverrideExtraValueKey)
 	return view
 }
 
 func (s *Service) resolveConfigFlowValue(
+	ctx control.CatalogContext,
 	surface *state.SurfaceConsoleRecord,
 	summary control.PromptRouteSummary,
 	key control.FeishuConfigFlowValueKey,
 ) string {
 	switch key {
 	case control.FeishuConfigFlowValueSurfaceProductMode:
-		return string(s.normalizeSurfaceProductMode(surface))
+		return control.NormalizeCatalogContext(ctx).ProductMode
 	case control.FeishuConfigFlowValueSurfaceAutoWhip:
 		if surface != nil && surface.AutoWhip.Enabled {
 			return "on"
@@ -125,13 +124,7 @@ func (s *Service) applyCommandConfigCardState(base *control.FeishuCatalogConfigV
 }
 
 func (s *Service) commandPageFromView(surface *state.SurfaceConsoleRecord, view control.FeishuCatalogView) control.FeishuPageView {
-	productMode := ""
-	stage := ""
-	if surface != nil {
-		productMode = string(s.normalizeSurfaceProductMode(surface))
-		stage = string(s.commandMenuStage(surface))
-	}
-	page, ok := control.FeishuPageViewFromView(view, productMode, stage)
+	page, ok := control.FeishuPageViewFromViewContext(view, s.buildCatalogContext(surface))
 	if !ok {
 		return control.FeishuPageView{}
 	}

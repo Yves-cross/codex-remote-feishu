@@ -34,12 +34,11 @@ func (s *Service) commandMenuStage(surface *state.SurfaceConsoleRecord) commandM
 }
 
 func (s *Service) buildCommandHelpView(surface *state.SurfaceConsoleRecord) control.FeishuCatalogView {
-	page := control.BuildFeishuCommandDisplayPageView(
+	page := control.BuildFeishuCommandDisplayPageViewForContext(
 		"命令帮助",
 		"以下是当前主展示的 canonical slash command。历史 alias 仍可兼容，但不再作为新的主展示入口。",
 		false,
-		string(s.normalizeSurfaceProductMode(surface)),
-		"",
+		s.buildCatalogContext(surface),
 	)
 	page.CommandID = control.FeishuCommandHelp
 	return control.FeishuCatalogView{Page: &page}
