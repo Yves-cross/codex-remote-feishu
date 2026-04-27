@@ -92,12 +92,11 @@ func TestStreamingCardDocumentUsesGIFLoadingElementWhenImageKeyPresent(t *testin
 	if len(elements) != 2 {
 		t.Fatalf("unexpected element count: %#v", elements)
 	}
-	if elements[1]["tag"] != "note" || elements[1]["element_id"] != "loading" {
+	if elements[1]["tag"] != "img" || elements[1]["element_id"] != "loading" {
 		t.Fatalf("expected gif loading image element, got %#v", elements[1])
 	}
-	noteElements, _ := elements[1]["elements"].([]map[string]any)
-	if len(noteElements) != 1 || noteElements[0]["tag"] != "img" || noteElements[0]["img_key"] != "img-loading-1" {
-		t.Fatalf("expected note-scoped loading image, got %#v", elements[1])
+	if elements[1]["img_key"] != "img-loading-1" || elements[1]["custom_width"] != 16 || elements[1]["compact_width"] != true {
+		t.Fatalf("expected compact loading image sizing, got %#v", elements[1])
 	}
 }
 
