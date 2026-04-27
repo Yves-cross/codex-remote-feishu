@@ -127,13 +127,19 @@ func TestStreamLoadingDotsGIFIsSquareTinyThreeDotAnimation(t *testing.T) {
 	if len(decoded.Image) != 3 {
 		t.Fatalf("expected three animation frames, got %d", len(decoded.Image))
 	}
+	expectedDelays := []int{17, 16, 17}
+	for i, delay := range expectedDelays {
+		if decoded.Delay[i] != delay {
+			t.Fatalf("frame %d expected original loading gif delay %d, got %d", i, delay, decoded.Delay[i])
+		}
+	}
 	centers := []struct {
 		x int
 		y int
 	}{
-		{x: 4, y: 8},
+		{x: 3, y: 8},
 		{x: 8, y: 8},
-		{x: 12, y: 8},
+		{x: 13, y: 8},
 	}
 	for frameIndex, frame := range decoded.Image {
 		for _, center := range centers {
