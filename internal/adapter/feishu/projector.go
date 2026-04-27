@@ -384,7 +384,7 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 
 func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
 	text := strings.TrimSpace(view.Text)
-	if text == "" {
+	if text == "" && !view.Loading {
 		return nil
 	}
 	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {

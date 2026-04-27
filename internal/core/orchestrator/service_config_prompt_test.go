@@ -1770,7 +1770,7 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "final_answer"},
 	})
-	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "..." {
+	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "" || !started[0].AssistantStream.Loading {
 		t.Fatalf("expected item start to emit assistant stream loading, got %#v", started)
 	}
 	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
@@ -1783,7 +1783,7 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "您好",
 	})
-	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "您好\n\n..." {
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "您好" || !first[0].AssistantStream.Loading {
 		t.Fatalf("expected first final delta to emit assistant stream card, got %#v", first)
 	}
 
@@ -1821,7 +1821,7 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "继续补充一段用于触发最长等待刷新。",
 	})
-	if len(fourth) != 1 || fourth[0].AssistantStream == nil || fourth[0].AssistantStream.MessageID != "om-stream-1" || fourth[0].AssistantStream.StreamCardID != "card-stream-1" || fourth[0].AssistantStream.Text != "您好，世界。继续补充一段用于触发最长等待刷新。\n\n..." {
+	if len(fourth) != 1 || fourth[0].AssistantStream == nil || fourth[0].AssistantStream.MessageID != "om-stream-1" || fourth[0].AssistantStream.StreamCardID != "card-stream-1" || fourth[0].AssistantStream.Text != "您好，世界。继续补充一段用于触发最长等待刷新。" || !fourth[0].AssistantStream.Loading {
 		t.Fatalf("expected coalesced stream update to patch existing card, got %#v", fourth)
 	}
 
