@@ -19,6 +19,8 @@ type daemonStatus struct {
 	LogPath       string
 }
 
+var ensureDaemonReadyFunc = ensureDaemonReady
+
 func ensureDaemonReady(ctx context.Context, state InstallState, version string) (daemonStatus, error) {
 	paths := RuntimePathsForState(state)
 	loaded, err := config.LoadAppConfigAtPath(state.ConfigPath)

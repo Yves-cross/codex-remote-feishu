@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/execlaunch"
@@ -16,6 +19,7 @@ import (
 
 var executablePath = os.Executable
 var sourceBinaryValidator = validateSourceBinary
+var installStartRecoveryTimeout = 20 * time.Second
 
 func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version string) error {
 	defaults, err := DetectPlatformDefaults()
@@ -158,7 +162,7 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		return nil
 	}
 
-	status, err := ensureDaemonReady(context.Background(), state, version)
+	status, err := ensureDaemonReadyForInstallStart(state, version, stderr)
 	if err != nil {
 		if stderr != nil {
 			_, _ = fmt.Fprintf(stderr, "service startup log: %s\n", status.LogPath)
@@ -177,6 +181,52 @@ func RunMain(args []string, stdin io.Reader, stdout, stderr io.Writer, version s
 		_, err = fmt.Fprintf(stdout, "logs: %s\n", status.LogPath)
 	}
 	return err
+}
+
+func ensureDaemonReadyForInstallStart(state InstallState, version string, stderr io.Writer) (daemonStatus, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	done := make(chan struct{})
+	var interrupted atomic.Bool
+	go func() {
+		select {
+		case <-signals:
+			interrupted.Store(true)
+			if stderr != nil {
+				_, _ = fmt.Fprintln(stderr, "service startup interrupted; ensuring daemon is running before exit...")
+			}
+			cancel()
+		case <-done:
+		}
+	}()
+
+	status, err := ensureDaemonReadyFunc(ctx, state, version)
+	close(done)
+	return recoverInterruptedDaemonStartup(interrupted.Load(), status, err, state, version, stderr)
+}
+
+func recoverInterruptedDaemonStartup(interrupted bool, status daemonStatus, err error, state InstallState, version string, stderr io.Writer) (daemonStatus, error) {
+	if err == nil || !interrupted {
+		return status, err
+	}
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), installStartRecoveryTimeout)
+	defer cancel()
+	recoveredStatus, recoveryErr := ensureDaemonReadyFunc(recoveryCtx, state, version)
+	if recoveryErr != nil {
+		if recoveredStatus.LogPath == "" {
+			recoveredStatus.LogPath = status.LogPath
+		}
+		return recoveredStatus, fmt.Errorf("service startup interrupted and recovery failed: %w", recoveryErr)
+	}
+	if stderr != nil {
+		_, _ = fmt.Fprintln(stderr, "service startup interrupted; daemon recovered and is running")
+	}
+	return recoveredStatus, nil
 }
 
 func preserveInstallOptionsFromExistingState(flagSet *flag.FlagSet, statePath string, opts *Options) {

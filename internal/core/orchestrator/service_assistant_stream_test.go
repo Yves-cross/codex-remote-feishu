@@ -27,7 +27,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	})
 	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
 
-	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+	started := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemStarted,
 		ThreadID: "thread-2",
 		TurnID:   "turn-1",
@@ -35,6 +35,17 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "commentary"},
 	})
+	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "…" {
+		t.Fatalf("expected commentary start to emit loading stream, got %#v", started)
+	}
+	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
+
+	now = now.Add(assistantStreamLoadingInterval)
+	tick := svc.Tick(now)
+	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.MessageID != "om-stream-1" || tick[0].AssistantStream.StreamCardID != "card-stream-1" || tick[0].AssistantStream.Text != "……" {
+		t.Fatalf("expected tick to animate assistant stream loading, got %#v", tick)
+	}
+
 	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
 		ThreadID: "thread-2",
@@ -43,10 +54,9 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "继续执行刚才被中断的验证和安装。",
 	})
-	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || first[0].AssistantStream.Done {
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || first[0].AssistantStream.Done {
 		t.Fatalf("expected commentary delta to start assistant stream, got %#v", first)
 	}
-	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
 	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemCompleted,

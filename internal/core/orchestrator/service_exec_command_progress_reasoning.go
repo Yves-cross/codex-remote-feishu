@@ -13,7 +13,9 @@ import (
 const execCommandProgressTransientAnimationInterval = 1500 * time.Millisecond
 
 func (s *Service) handleAssistantMessageProgressStart(instanceID string, event agentproto.Event) []eventcontract.Event {
-	return s.clearExecCommandProgressReasoning(instanceID, event.ThreadID, event.TurnID)
+	events := s.clearExecCommandProgressReasoning(instanceID, event.ThreadID, event.TurnID)
+	events = append(events, s.handleAssistantStreamStart(instanceID, event)...)
+	return events
 }
 
 func (s *Service) handleReasoningSummaryProgressDelta(instanceID string, event agentproto.Event) []eventcontract.Event {

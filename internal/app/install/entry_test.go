@@ -2,11 +2,14 @@ package install
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 )
@@ -26,6 +29,76 @@ func TestRunMainRejectsInteractiveBootstrapOnly(t *testing.T) {
 	err := RunMain([]string{"-interactive", "-bootstrap-only"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}, "vtest")
 	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
 		t.Fatalf("RunMain interactive bootstrap-only error = %v", err)
+	}
+}
+
+func TestRecoverInterruptedDaemonStartupEnsuresDaemonReady(t *testing.T) {
+	originalEnsure := ensureDaemonReadyFunc
+	originalTimeout := installStartRecoveryTimeout
+	installStartRecoveryTimeout = time.Second
+	defer func() {
+		ensureDaemonReadyFunc = originalEnsure
+		installStartRecoveryTimeout = originalTimeout
+	}()
+
+	calls := 0
+	ensureDaemonReadyFunc = func(ctx context.Context, state InstallState, version string) (daemonStatus, error) {
+		calls++
+		if version != "vtest" {
+			t.Fatalf("version = %q, want vtest", version)
+		}
+		return daemonStatus{AdminURL: "http://localhost:9501/admin/", LogPath: "recovered.log"}, nil
+	}
+
+	var stderr bytes.Buffer
+	status, err := recoverInterruptedDaemonStartup(
+		true,
+		daemonStatus{LogPath: "initial.log"},
+		context.Canceled,
+		InstallState{},
+		"vtest",
+		&stderr,
+	)
+	if err != nil {
+		t.Fatalf("recoverInterruptedDaemonStartup: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("ensureDaemonReadyFunc calls = %d, want 1", calls)
+	}
+	if status.AdminURL != "http://localhost:9501/admin/" || status.LogPath != "recovered.log" {
+		t.Fatalf("status = %+v, want recovered status", status)
+	}
+	if !strings.Contains(stderr.String(), "daemon recovered") {
+		t.Fatalf("stderr = %q, want recovery message", stderr.String())
+	}
+}
+
+func TestRecoverInterruptedDaemonStartupPreservesLogOnRecoveryFailure(t *testing.T) {
+	originalEnsure := ensureDaemonReadyFunc
+	originalTimeout := installStartRecoveryTimeout
+	installStartRecoveryTimeout = time.Second
+	defer func() {
+		ensureDaemonReadyFunc = originalEnsure
+		installStartRecoveryTimeout = originalTimeout
+	}()
+
+	ensureDaemonReadyFunc = func(ctx context.Context, state InstallState, version string) (daemonStatus, error) {
+		return daemonStatus{}, errors.New("still down")
+	}
+
+	status, err := recoverInterruptedDaemonStartup(
+		true,
+		daemonStatus{LogPath: "initial.log"},
+		context.Canceled,
+		InstallState{},
+		"vtest",
+		&bytes.Buffer{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "recovery failed") {
+		t.Fatalf("recoverInterruptedDaemonStartup error = %v, want recovery failure", err)
+	}
+	if status.LogPath != "initial.log" {
+		t.Fatalf("LogPath = %q, want initial.log", status.LogPath)
 	}
 }
 
