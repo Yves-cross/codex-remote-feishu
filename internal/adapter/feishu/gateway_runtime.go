@@ -238,7 +238,7 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		if cardID == "" {
 			return fmt.Errorf("update stream card failed: missing card id")
 		}
-		return g.updateStreamCardFn(ctx, cardID, operation.CardBody)
+		return g.updateStreamCardFn(ctx, cardID, operation.CardBody, operation.StreamLoading, operation.StreamLoadingStep)
 	case OperationCloseStreamCard:
 		cardID := strings.TrimSpace(operation.StreamCardID)
 		if cardID == "" {

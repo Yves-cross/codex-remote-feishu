@@ -88,7 +88,7 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 	if err != nil {
 		return "", err
 	}
-	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey))
+	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, operation.StreamLoading, operation.StreamLoadingStep))
 	if err != nil {
 		return "", err
 	}
@@ -113,14 +113,14 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 	return cardID, nil
 }
 
-func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string) error {
+func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string, loading bool, loadingStep int) error {
 	token, err := g.tenantToken(ctx)
 	if err != nil {
 		return err
 	}
 	sequence := g.nextStreamCardSequence(cardID)
 	payload, err := json.Marshal(map[string]any{
-		"content":  streamCardContent(text),
+		"content":  streamCardContent(text, loading, loadingStep),
 		"sequence": sequence,
 		"uuid":     fmt.Sprintf("content_%s_%d", strings.TrimSpace(cardID), sequence),
 	})
@@ -139,7 +139,7 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string)
 }
 
 func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) error {
-	if err := g.updateStreamCard(ctx, cardID, text); err != nil {
+	if err := g.updateStreamCard(ctx, cardID, text, false, 0); err != nil {
 		return err
 	}
 	token, err := g.tenantToken(ctx)
@@ -227,9 +227,9 @@ func (g *LiveGateway) doStreamCardJSON(ctx context.Context, api, method, url, to
 	return err
 }
 
-func streamingCardDocument(title, body, theme string) map[string]any {
+func streamingCardDocument(title, body, theme string, loading bool, loadingStep int) map[string]any {
 	title = strings.TrimSpace(title)
-	body = streamCardContent(body)
+	body = streamCardContent(body, loading, loadingStep)
 	doc := map[string]any{
 		"schema": "2.0",
 		"config": map[string]any{
@@ -262,12 +262,35 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 	return doc
 }
 
-func streamCardContent(text string) string {
+func streamCardContent(text string, loading bool, loadingStep int) string {
 	text = strings.TrimSpace(text)
+	if loading {
+		dots := streamLoadingDots(loadingStep)
+		if text == "" {
+			return dots
+		}
+		return text + " " + dots
+	}
 	if text == "" {
 		return " "
 	}
 	return text
+}
+
+func streamLoadingDots(step int) string {
+	active := step % 3
+	if active < 0 {
+		active = 0
+	}
+	parts := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		color := "grey"
+		if i == active {
+			color = "blue"
+		}
+		parts = append(parts, fmt.Sprintf("<font color='%s'>•</font>", color))
+	}
+	return strings.Join(parts, "")
 }
 
 func feishuCardTemplate(theme string) string {

@@ -15,6 +15,7 @@ type AssistantStreamRecord struct {
 	CompletedText        string
 	Text                 string
 	Loading              bool
+	LoadingStep          int
 	LastEmittedText      string
 	LastEmittedAt        time.Time
 }

@@ -135,6 +135,7 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
 		return nil
 	}
+	stream.LoadingStep++
 	stream.LastEmittedAt = now
 	stream.LastEmittedText = stream.Text
 	return []eventcontract.Event{s.assistantStreamEvent(surface, stream)}
@@ -188,6 +189,7 @@ func (s *Service) assistantStreamEventWithDone(surface *state.SurfaceConsoleReco
 		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
 		Text:                 strings.TrimSpace(stream.Text),
 		Loading:              stream.Loading && !done,
+		LoadingStep:          stream.LoadingStep,
 		Done:                 done,
 	}
 	return eventcontract.Event{
