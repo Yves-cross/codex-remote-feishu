@@ -334,9 +334,8 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 			"elements": []map[string]any{{
 				"tag":           "img",
 				"img_key":       strings.TrimSpace(imageKey),
-				"custom_width":  12,
+				"custom_width":  10,
 				"compact_width": true,
-				"mode":          "fit_horizontal",
 				"preview":       false,
 				"alt": map[string]any{
 					"tag":     "plain_text",

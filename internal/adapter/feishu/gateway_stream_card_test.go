@@ -103,8 +103,11 @@ func TestStreamingCardDocumentUsesGIFLoadingElementWhenImageKeyPresent(t *testin
 	if len(columnElements) != 1 || columnElements[0]["tag"] != "img" || columnElements[0]["img_key"] != "img-loading-1" {
 		t.Fatalf("expected column-scoped loading image, got %#v", elements[1])
 	}
-	if columnElements[0]["custom_width"] != 12 || columnElements[0]["compact_width"] != true {
-		t.Fatalf("expected tighter loading image sizing, got %#v", columnElements[0])
+	if columnElements[0]["custom_width"] != 10 || columnElements[0]["compact_width"] != true {
+		t.Fatalf("expected font-sized loading image sizing, got %#v", columnElements[0])
+	}
+	if _, ok := columnElements[0]["mode"]; ok {
+		t.Fatalf("expected loading image to avoid fit mode expansion, got %#v", columnElements[0])
 	}
 }
 
