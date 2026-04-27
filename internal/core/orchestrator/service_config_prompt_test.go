@@ -1783,7 +1783,7 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "您好",
 	})
-	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "您好" || !first[0].AssistantStream.Loading {
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "您" || !first[0].AssistantStream.Loading {
 		t.Fatalf("expected first final delta to emit assistant stream card, got %#v", first)
 	}
 
@@ -1799,7 +1799,7 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		t.Fatalf("expected stream delta inside throttle window to be suppressed, got %#v", second)
 	}
 
-	now = now.Add(assistantStreamMinInterval)
+	now = now.Add(assistantStreamEmitInterval)
 	third := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
 		ThreadID: "thread-2",
@@ -1808,11 +1808,11 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "。",
 	})
-	if len(third) != 0 {
-		t.Fatalf("expected short stream delta to wait for a readable chunk, got %#v", third)
+	if len(third) != 1 || third[0].AssistantStream == nil || third[0].AssistantStream.Text != "您好" || !third[0].AssistantStream.Loading {
+		t.Fatalf("expected next visible prefix after throttle window, got %#v", third)
 	}
 
-	now = now.Add(assistantStreamMaxInterval - assistantStreamMinInterval)
+	now = now.Add(assistantStreamEmitInterval)
 	fourth := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
 		ThreadID: "thread-2",
@@ -1821,8 +1821,8 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "继续补充一段用于触发最长等待刷新。",
 	})
-	if len(fourth) != 1 || fourth[0].AssistantStream == nil || fourth[0].AssistantStream.MessageID != "om-stream-1" || fourth[0].AssistantStream.StreamCardID != "card-stream-1" || fourth[0].AssistantStream.Text != "您好，世界。继续补充一段用于触发最长等待刷新。" || !fourth[0].AssistantStream.Loading {
-		t.Fatalf("expected coalesced stream update to patch existing card, got %#v", fourth)
+	if len(fourth) != 1 || fourth[0].AssistantStream == nil || fourth[0].AssistantStream.MessageID != "om-stream-1" || fourth[0].AssistantStream.StreamCardID != "card-stream-1" || fourth[0].AssistantStream.Text != "您好，世" || !fourth[0].AssistantStream.Loading {
+		t.Fatalf("expected coalesced stream update to keep advancing visible prefix, got %#v", fourth)
 	}
 
 	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{

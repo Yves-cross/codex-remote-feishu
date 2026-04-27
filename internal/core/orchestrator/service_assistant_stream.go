@@ -11,11 +11,10 @@ import (
 )
 
 const (
-	assistantStreamMinInterval      = 200 * time.Millisecond
-	assistantStreamMaxInterval      = 900 * time.Millisecond
-	assistantStreamMinPatchGrowth   = 24
-	assistantStreamShortPatchGrowth = 8
-	assistantStreamLoadingInterval  = 800 * time.Millisecond
+	assistantStreamEmitInterval   = 100 * time.Millisecond
+	assistantStreamInitialStep    = 1
+	assistantStreamCatchupDivisor = 12
+	assistantStreamMaxStep        = 12
 )
 
 func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto.Event) []eventcontract.Event {
@@ -38,7 +37,7 @@ func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto
 	stream.Loading = true
 	now := s.now()
 	stream.LastEmittedAt = now
-	stream.LastEmittedText = stream.Text
+	stream.LastEmittedText = stream.VisibleText
 	return []eventcontract.Event{s.assistantStreamEvent(surface, stream)}
 }
 
@@ -62,11 +61,14 @@ func (s *Service) handleAssistantStreamDelta(instanceID string, event agentproto
 		return nil
 	}
 	now := s.now()
-	if !shouldEmitAssistantStreamPatch(stream, now) && !assistantStreamWasOnlyLoading(stream) {
+	if !assistantStreamWasOnlyLoading(stream) && !assistantStreamReadyToEmit(stream, now) {
+		return nil
+	}
+	if !advanceAssistantStreamVisibleText(stream) {
 		return nil
 	}
 	stream.LastEmittedAt = now
-	stream.LastEmittedText = stream.Text
+	stream.LastEmittedText = stream.VisibleText
 	return []eventcontract.Event{s.assistantStreamEvent(surface, stream)}
 }
 
@@ -87,7 +89,7 @@ func assistantStreamWasOnlyLoading(stream *state.AssistantStreamRecord) bool {
 	if stream == nil {
 		return false
 	}
-	return strings.TrimSpace(stream.LastEmittedText) == ""
+	return strings.TrimSpace(stream.VisibleText) == "" && strings.TrimSpace(stream.LastEmittedText) == ""
 }
 
 func joinAssistantStreamText(parts ...string) string {
@@ -100,28 +102,14 @@ func joinAssistantStreamText(parts ...string) string {
 	return strings.Join(out, "\n\n")
 }
 
-func shouldEmitAssistantStreamPatch(stream *state.AssistantStreamRecord, now time.Time) bool {
+func assistantStreamReadyToEmit(stream *state.AssistantStreamRecord, now time.Time) bool {
 	if stream == nil {
 		return false
 	}
-	if stream.LastEmittedAt.IsZero() || strings.TrimSpace(stream.LastEmittedText) == "" {
+	if stream.LastEmittedAt.IsZero() {
 		return true
 	}
-	elapsed := now.Sub(stream.LastEmittedAt)
-	if elapsed < assistantStreamMinInterval {
-		return false
-	}
-	growth := len([]rune(stream.Text)) - len([]rune(stream.LastEmittedText))
-	if growth >= assistantStreamMinPatchGrowth {
-		return true
-	}
-	if elapsed >= assistantStreamMaxInterval && growth > 0 {
-		return true
-	}
-	if growth >= assistantStreamShortPatchGrowth && assistantStreamEndsAtReadableBoundary(stream.Text) {
-		return true
-	}
-	return false
+	return now.Sub(stream.LastEmittedAt) >= assistantStreamEmitInterval
 }
 
 func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord, now time.Time) []eventcontract.Event {
@@ -135,29 +123,61 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 	if strings.TrimSpace(stream.Text) == "" {
 		return nil
 	}
-	if strings.TrimSpace(stream.LastEmittedText) == strings.TrimSpace(stream.Text) {
+	if strings.TrimSpace(stream.VisibleText) == strings.TrimSpace(stream.Text) {
 		return nil
 	}
-	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
+	if !assistantStreamReadyToEmit(stream, now) {
+		return nil
+	}
+	if !advanceAssistantStreamVisibleText(stream) {
 		return nil
 	}
 	stream.LastEmittedAt = now
-	stream.LastEmittedText = stream.Text
+	stream.LastEmittedText = stream.VisibleText
 	return []eventcontract.Event{s.assistantStreamEvent(surface, stream)}
 }
 
-func assistantStreamEndsAtReadableBoundary(text string) bool {
-	text = strings.TrimSpace(text)
-	if text == "" {
+func advanceAssistantStreamVisibleText(stream *state.AssistantStreamRecord) bool {
+	if stream == nil {
 		return false
 	}
-	last := []rune(text)[len([]rune(text))-1]
-	switch last {
-	case '\n', '.', '!', '?', ':', ';', ',', '。', '！', '？', '：', '；', '，':
-		return true
-	default:
+	target := strings.TrimSpace(stream.Text)
+	if target == "" {
 		return false
 	}
+	targetRunes := []rune(target)
+	visibleRunes := []rune(strings.TrimSpace(stream.VisibleText))
+	if len(visibleRunes) >= len(targetRunes) {
+		return false
+	}
+	step := assistantStreamVisibleStep(len(visibleRunes), len(targetRunes))
+	nextLen := len(visibleRunes) + step
+	if nextLen > len(targetRunes) {
+		nextLen = len(targetRunes)
+	}
+	stream.VisibleText = string(targetRunes[:nextLen])
+	return true
+}
+
+func assistantStreamVisibleStep(visibleLen, targetLen int) int {
+	remaining := targetLen - visibleLen
+	if remaining <= 0 {
+		return 0
+	}
+	if visibleLen == 0 {
+		if remaining < assistantStreamInitialStep {
+			return remaining
+		}
+		return assistantStreamInitialStep
+	}
+	step := (remaining + assistantStreamCatchupDivisor - 1) / assistantStreamCatchupDivisor
+	if step < 1 {
+		step = 1
+	}
+	if step > assistantStreamMaxStep {
+		step = assistantStreamMaxStep
+	}
+	return step
 }
 
 func (s *Service) ensureAssistantStream(surface *state.SurfaceConsoleRecord, instanceID, threadID, turnID, itemID string) *state.AssistantStreamRecord {
@@ -185,6 +205,13 @@ func (s *Service) assistantStreamEvent(surface *state.SurfaceConsoleRecord, stre
 }
 
 func (s *Service) assistantStreamEventWithDone(surface *state.SurfaceConsoleRecord, stream *state.AssistantStreamRecord, done bool) eventcontract.Event {
+	text := strings.TrimSpace(stream.VisibleText)
+	if done {
+		stream.Loading = false
+		text = strings.TrimSpace(firstNonEmpty(stream.Text, stream.VisibleText))
+		stream.VisibleText = text
+		stream.LastEmittedText = text
+	}
 	view := control.AssistantStreamView{
 		ThreadID:             stream.ThreadID,
 		TurnID:               stream.TurnID,
@@ -192,7 +219,7 @@ func (s *Service) assistantStreamEventWithDone(surface *state.SurfaceConsoleReco
 		MessageID:            strings.TrimSpace(stream.MessageID),
 		StreamCardID:         strings.TrimSpace(stream.StreamCardID),
 		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
-		Text:                 strings.TrimSpace(stream.Text),
+		Text:                 text,
 		Loading:              stream.Loading && !done,
 		Done:                 done,
 	}

@@ -14,6 +14,7 @@ type AssistantStreamRecord struct {
 	StreamCardID         string
 	CompletedText        string
 	Text                 string
+	VisibleText          string
 	Loading              bool
 	LastEmittedText      string
 	LastEmittedAt        time.Time
