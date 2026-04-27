@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/adapter/feishu"
@@ -30,6 +32,11 @@ type runnableDaemon interface {
 	Run(context.Context) error
 	PprofURL() string
 }
+
+var (
+	daemonBindRetryWindow   = 5 * time.Second
+	daemonBindRetryInterval = 100 * time.Millisecond
+)
 
 func RunMain(ctx context.Context, version, branch string) error {
 	loadedConfig, err := config.LoadAppConfig()
@@ -163,7 +170,7 @@ func RunMain(ctx context.Context, version, branch string) error {
 }
 
 func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startupAccessPlan, services config.ServicesConfig, env map[string]string) error {
-	if err := app.Bind(); err != nil {
+	if err := bindConfiguredDaemon(ctx, app); err != nil {
 		return fmt.Errorf("bind service listeners: %w", err)
 	}
 	logStartupState(startup, services, app.PprofURL())
@@ -179,6 +186,46 @@ func runConfiguredDaemon(ctx context.Context, app runnableDaemon, startup startu
 		return fmt.Errorf("run service: %w", err)
 	}
 	return nil
+}
+
+func bindConfiguredDaemon(ctx context.Context, app runnableDaemon) error {
+	deadline := time.Now().Add(daemonBindRetryWindow)
+	attempt := 0
+	for {
+		err := app.Bind()
+		if err == nil {
+			return nil
+		}
+		if !retryableBindError(err) || !time.Now().Before(deadline) {
+			return err
+		}
+		attempt++
+		log.Printf("daemon bind retry: attempt=%d err=%v", attempt, err)
+		wait := daemonBindRetryInterval
+		if remaining := time.Until(deadline); remaining < wait {
+			wait = remaining
+		}
+		if wait <= 0 {
+			return err
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return context.Cause(ctx)
+		case <-timer.C:
+		}
+	}
+}
+
+func retryableBindError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "address already in use")
 }
 
 func repairInstallStateOnStartup(paths relayruntime.Paths, identity agentproto.ServerIdentity) {

@@ -3,23 +3,32 @@ package daemon
 import (
 	"context"
 	"errors"
+	"net"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/config"
 	relayruntime "github.com/kxn/codex-remote-feishu/internal/runtime"
 )
 
 type stubRunnableDaemon struct {
-	bindErr    error
-	bindCalled bool
-	runCalled  bool
-	pprofURL   string
+	bindErrs  []error
+	bindErr   error
+	bindCalls int
+	runCalled bool
+	pprofURL  string
 }
 
 func (s *stubRunnableDaemon) Bind() error {
-	s.bindCalled = true
+	s.bindCalls++
+	if len(s.bindErrs) > 0 {
+		err := s.bindErrs[0]
+		s.bindErrs = s.bindErrs[1:]
+		return err
+	}
 	return s.bindErr
 }
 
@@ -91,15 +100,23 @@ func TestRuntimeGatewayAppsAppliesRuntimeOverrideCredentials(t *testing.T) {
 
 func TestRunConfiguredDaemonSkipsBrowserWhenBindFails(t *testing.T) {
 	original := browserOpener
+	originalWindow := daemonBindRetryWindow
+	originalInterval := daemonBindRetryInterval
 	defer func() { browserOpener = original }()
+	defer func() {
+		daemonBindRetryWindow = originalWindow
+		daemonBindRetryInterval = originalInterval
+	}()
 
 	called := 0
 	browserOpener = func(string, map[string]string) error {
 		called++
 		return nil
 	}
+	daemonBindRetryWindow = time.Millisecond
+	daemonBindRetryInterval = time.Millisecond
 
-	runner := &stubRunnableDaemon{bindErr: errors.New("listen tcp 127.0.0.1:9501: bind: address already in use")}
+	runner := &stubRunnableDaemon{bindErr: errors.New("bind failed")}
 	err := runConfiguredDaemon(context.Background(), runner, startupAccessPlan{
 		SetupRequired:   true,
 		AutoOpenBrowser: true,
@@ -120,5 +137,34 @@ func TestRunConfiguredDaemonSkipsBrowserWhenBindFails(t *testing.T) {
 	}
 	if runner.runCalled {
 		t.Fatal("did not expect run to be called after bind failure")
+	}
+}
+
+func TestRunConfiguredDaemonRetriesTransientBindInUse(t *testing.T) {
+	originalWindow := daemonBindRetryWindow
+	originalInterval := daemonBindRetryInterval
+	defer func() {
+		daemonBindRetryWindow = originalWindow
+		daemonBindRetryInterval = originalInterval
+	}()
+
+	daemonBindRetryWindow = 50 * time.Millisecond
+	daemonBindRetryInterval = time.Millisecond
+
+	runner := &stubRunnableDaemon{
+		bindErrs: []error{
+			&net.OpError{Op: "listen", Net: "tcp", Err: syscall.EADDRINUSE},
+			nil,
+		},
+	}
+	err := runConfiguredDaemon(context.Background(), runner, startupAccessPlan{}, config.ServicesConfig{}, map[string]string{})
+	if err != nil {
+		t.Fatalf("expected transient bind conflict to recover, got %v", err)
+	}
+	if runner.bindCalls < 2 {
+		t.Fatalf("expected bind retry, got %d calls", runner.bindCalls)
+	}
+	if !runner.runCalled {
+		t.Fatal("expected run to be called after bind retry succeeds")
 	}
 }
