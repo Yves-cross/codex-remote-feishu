@@ -271,7 +271,7 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 			"streaming_config": map[string]any{
 				"print_frequency_ms": map[string]int{"default": 50},
 				"print_step":         map[string]int{"default": 1},
-				"print_strategy":     "delay",
+				"print_strategy":     "fast",
 			},
 		},
 		"body": map[string]any{

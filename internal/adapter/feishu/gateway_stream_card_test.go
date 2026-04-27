@@ -74,8 +74,8 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	}
 	config, _ := doc["config"].(map[string]any)
 	streamingConfig, _ := config["streaming_config"].(map[string]any)
-	if streamingConfig["print_strategy"] != "delay" {
-		t.Fatalf("expected native streaming delay strategy, got %#v", streamingConfig)
+	if streamingConfig["print_strategy"] != "fast" {
+		t.Fatalf("expected native streaming fast strategy, got %#v", streamingConfig)
 	}
 }
 
