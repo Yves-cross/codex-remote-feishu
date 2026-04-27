@@ -9,12 +9,13 @@ BASE_DIR=""
 INSTANCE=""
 UPGRADE_SLOT=""
 ALLOW_DIRTY=0
+SKIP_PULL=0
 BASE_DIR_SET=0
 REPO_TARGET_SCRIPT="${ROOT_DIR}/scripts/install/repo-install-target.sh"
 
 usage() {
   cat <<'EOF'
-usage: ./upgrade-local.sh [--instance <id>] [--base-dir <dir>] [--slot <slot>] [--allow-dirty]
+usage: ./upgrade-local.sh [--instance <id>] [--base-dir <dir>] [--slot <slot>] [--allow-dirty] [--skip-pull]
 
 Pull the current branch to the latest upstream commit, rebuild ./bin/codex-remote,
 stage it into the fixed local-upgrade artifact path, and trigger the built-in
@@ -25,6 +26,7 @@ options:
   --base-dir <dir>  override the install base dir resolved for that instance
   --slot <slot>     optional explicit upgrade slot label
   --allow-dirty     skip the clean-worktree guard before git pull
+  --skip-pull       build the current checkout without running git pull first
   -h, --help        show this help text
 EOF
 }
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
       ALLOW_DIRTY=1
       shift
       ;;
+    --skip-pull|--no-pull)
+      SKIP_PULL=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -85,8 +91,12 @@ if [[ "${ALLOW_DIRTY}" != "1" ]]; then
   fi
 fi
 
-printf '[1/5] git pull --ff-only\n'
-git pull --ff-only
+if [[ "${SKIP_PULL}" == "1" ]]; then
+  printf '[1/5] skip git pull (--skip-pull)\n'
+else
+  printf '[1/5] git pull --ff-only\n'
+  git pull --ff-only
+fi
 
 printf '[2/5] resolve repo install target\n'
 resolver_args=()
