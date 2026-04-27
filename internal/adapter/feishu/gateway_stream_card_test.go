@@ -85,18 +85,21 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	}
 }
 
-func TestStreamingCardDocumentUsesTextLoadingElementWhenImageKeyPresent(t *testing.T) {
+func TestStreamingCardDocumentUsesTinyGIFLoadingElementWhenImageKeyPresent(t *testing.T) {
 	doc := streamingCardDocument("", "正文", cardThemeProgress, "img-loading-1", true)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
 	if len(elements) != 2 {
 		t.Fatalf("unexpected element count: %#v", elements)
 	}
-	if elements[1]["tag"] != "markdown" || elements[1]["element_id"] != "loading" {
-		t.Fatalf("expected text loading element, got %#v", elements[1])
+	if elements[1]["tag"] != "img" || elements[1]["element_id"] != "loading" {
+		t.Fatalf("expected gif loading image element, got %#v", elements[1])
 	}
-	if elements[1]["content"] != "<text_tag color='neutral'>...</text_tag>" {
-		t.Fatalf("expected loading marker to avoid image sizing, got %#v", elements[1])
+	if elements[1]["img_key"] != "img-loading-1" || elements[1]["scale_type"] != "crop_center" || elements[1]["size"] != "tiny" {
+		t.Fatalf("expected tiny cropped loading image, got %#v", elements[1])
+	}
+	if _, ok := elements[1]["custom_width"]; ok {
+		t.Fatalf("expected loading image to avoid custom width fallback, got %#v", elements[1])
 	}
 }
 
