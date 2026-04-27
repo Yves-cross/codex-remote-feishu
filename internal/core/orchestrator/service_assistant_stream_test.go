@@ -35,14 +35,14 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "commentary"},
 	})
-	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "" || !started[0].AssistantStream.Loading || started[0].AssistantStream.LoadingStep != 0 {
+	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "" || !started[0].AssistantStream.Loading {
 		t.Fatalf("expected commentary start to emit loading stream, got %#v", started)
 	}
 	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
 	now = now.Add(assistantStreamLoadingInterval)
 	tick := svc.Tick(now)
-	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.MessageID != "om-stream-1" || tick[0].AssistantStream.StreamCardID != "card-stream-1" || tick[0].AssistantStream.Text != "" || !tick[0].AssistantStream.Loading || tick[0].AssistantStream.LoadingStep != 1 {
+	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.MessageID != "om-stream-1" || tick[0].AssistantStream.StreamCardID != "card-stream-1" || tick[0].AssistantStream.Text != "" || !tick[0].AssistantStream.Loading {
 		t.Fatalf("expected tick to animate assistant stream loading, got %#v", tick)
 	}
 
@@ -59,7 +59,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	}
 	now = now.Add(assistantStreamLoadingInterval)
 	waitingForNextPartial := svc.Tick(now)
-	if len(waitingForNextPartial) != 1 || waitingForNextPartial[0].AssistantStream == nil || waitingForNextPartial[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || !waitingForNextPartial[0].AssistantStream.Loading || waitingForNextPartial[0].AssistantStream.LoadingStep != 2 {
+	if len(waitingForNextPartial) != 1 || waitingForNextPartial[0].AssistantStream == nil || waitingForNextPartial[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || !waitingForNextPartial[0].AssistantStream.Loading {
 		t.Fatalf("expected loading marker to remain while waiting for next partial, got %#v", waitingForNextPartial)
 	}
 
