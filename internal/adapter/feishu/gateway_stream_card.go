@@ -91,8 +91,7 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 	if err != nil {
 		return "", err
 	}
-	loadingImageKey := g.streamLoadingImageKeyOrEmpty(ctx)
-	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, loadingImageKey, operation.StreamLoading))
+	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, "", operation.StreamLoading))
 	if err != nil {
 		return "", err
 	}
@@ -278,7 +277,8 @@ func streamingCardDocument(title, body, theme, loadingImageKey string, showLoadi
 		"content":    strings.TrimSpace(body),
 		"element_id": "content",
 	}}
-	elements = append(elements, streamCardLoadingElement(loadingImageKey, showLoading))
+	_ = loadingImageKey
+	elements = append(elements, streamCardLoadingElement("", showLoading))
 	doc := map[string]any{
 		"schema": "2.0",
 		"config": map[string]any{
@@ -316,34 +316,26 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 			"element_id": "loading",
 		}
 	}
-	if strings.TrimSpace(imageKey) == "" {
-		return map[string]any{
-			"tag":        "markdown",
-			"content":    "<text_tag color='neutral'>...</text_tag>",
-			"element_id": "loading",
-		}
-	}
 	return map[string]any{
-		"tag":                "column_set",
-		"element_id":         "loading",
-		"horizontal_spacing": "none",
-		"columns": []map[string]any{{
-			"tag":            "column",
-			"width":          "auto",
-			"vertical_align": "top",
-			"elements": []map[string]any{{
-				"tag":        "img",
-				"img_key":    strings.TrimSpace(imageKey),
-				"size":       "12px 4px",
-				"scale_type": "fit_horizontal",
-				"preview":    false,
-				"alt": map[string]any{
-					"tag":     "plain_text",
-					"content": "loading",
-				},
-			}},
-		}},
+		"tag":        "markdown",
+		"content":    streamCardLoadingText(imageKey),
+		"element_id": "loading",
 	}
+}
+
+func streamCardLoadingText(marker string) string {
+	marker = strings.TrimSpace(marker)
+	if marker == "" {
+		marker = "..."
+	}
+	return "<text_tag color='neutral'>" + escapeFeishuTextTagContent(marker) + "</text_tag>"
+}
+
+func escapeFeishuTextTagContent(text string) string {
+	text = strings.ReplaceAll(text, "&", "&amp;")
+	text = strings.ReplaceAll(text, "<", "&lt;")
+	text = strings.ReplaceAll(text, ">", "&gt;")
+	return text
 }
 
 func (g *LiveGateway) syncStreamCardLoadingElement(ctx context.Context, cardID string, loading bool) error {
@@ -351,17 +343,30 @@ func (g *LiveGateway) syncStreamCardLoadingElement(ctx context.Context, cardID s
 	g.mu.Lock()
 	current, ok := g.streamLoadingShown[cardID]
 	g.mu.Unlock()
-	if ok && current == loading {
+	if ok && current == loading && !loading {
 		return nil
 	}
-	imageKey := g.streamLoadingImageKeyOrEmpty(ctx)
-	if err := g.updateStreamCardElement(ctx, cardID, "loading", streamCardLoadingElement(imageKey, loading), "loading"); err != nil {
+	if err := g.updateStreamCardElement(ctx, cardID, "loading", streamCardLoadingElement(g.streamLoadingMarker(cardID), loading), "loading"); err != nil {
 		return err
 	}
 	g.mu.Lock()
 	g.streamLoadingShown[cardID] = loading
 	g.mu.Unlock()
 	return nil
+}
+
+func (g *LiveGateway) streamLoadingMarker(cardID string) string {
+	g.mu.Lock()
+	seq := g.streamSeq[strings.TrimSpace(cardID)]
+	g.mu.Unlock()
+	switch seq % 3 {
+	case 0:
+		return "."
+	case 1:
+		return ".."
+	default:
+		return "..."
+	}
 }
 
 func (g *LiveGateway) updateStreamCardElement(ctx context.Context, cardID, elementID string, element map[string]any, prefix string) error {

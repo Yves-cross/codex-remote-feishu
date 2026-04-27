@@ -85,32 +85,18 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	}
 }
 
-func TestStreamingCardDocumentUsesGIFLoadingElementWhenImageKeyPresent(t *testing.T) {
+func TestStreamingCardDocumentUsesTextLoadingElementWhenImageKeyPresent(t *testing.T) {
 	doc := streamingCardDocument("", "正文", cardThemeProgress, "img-loading-1", true)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
 	if len(elements) != 2 {
 		t.Fatalf("unexpected element count: %#v", elements)
 	}
-	if elements[1]["tag"] != "column_set" || elements[1]["element_id"] != "loading" {
-		t.Fatalf("expected gif loading image element, got %#v", elements[1])
+	if elements[1]["tag"] != "markdown" || elements[1]["element_id"] != "loading" {
+		t.Fatalf("expected text loading element, got %#v", elements[1])
 	}
-	columns, _ := elements[1]["columns"].([]map[string]any)
-	if len(columns) != 1 {
-		t.Fatalf("expected one auto-width column, got %#v", elements[1])
-	}
-	columnElements, _ := columns[0]["elements"].([]map[string]any)
-	if len(columnElements) != 1 || columnElements[0]["tag"] != "img" || columnElements[0]["img_key"] != "img-loading-1" {
-		t.Fatalf("expected column-scoped loading image, got %#v", elements[1])
-	}
-	if elements[1]["horizontal_spacing"] != "none" {
-		t.Fatalf("expected loading column set to avoid extra spacing, got %#v", elements[1])
-	}
-	if columnElements[0]["size"] != "12px 4px" || columnElements[0]["scale_type"] != "fit_horizontal" {
-		t.Fatalf("expected explicit loading image size, got %#v", columnElements[0])
-	}
-	if _, ok := columnElements[0]["custom_width"]; ok {
-		t.Fatalf("expected loading image to avoid custom width fallback, got %#v", columnElements[0])
+	if elements[1]["content"] != "<text_tag color='neutral'>...</text_tag>" {
+		t.Fatalf("expected loading marker to avoid image sizing, got %#v", elements[1])
 	}
 }
 
