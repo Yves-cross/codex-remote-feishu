@@ -121,8 +121,8 @@ func TestStreamLoadingDotsGIFIsSquareTinyThreeDotAnimation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode loading gif: %v", err)
 	}
-	if decoded.Config.Width != 16 || decoded.Config.Height != 16 {
-		t.Fatalf("expected 16x16 tiny icon gif, got %dx%d", decoded.Config.Width, decoded.Config.Height)
+	if decoded.Config.Width != 48 || decoded.Config.Height != 48 {
+		t.Fatalf("expected 48x48 high-density tiny icon gif, got %dx%d", decoded.Config.Width, decoded.Config.Height)
 	}
 	if len(decoded.Image) != 3 {
 		t.Fatalf("expected three animation frames, got %d", len(decoded.Image))
@@ -137,9 +137,9 @@ func TestStreamLoadingDotsGIFIsSquareTinyThreeDotAnimation(t *testing.T) {
 		x int
 		y int
 	}{
-		{x: 3, y: 8},
-		{x: 8, y: 8},
-		{x: 13, y: 8},
+		{x: 10, y: 24},
+		{x: 24, y: 24},
+		{x: 38, y: 24},
 	}
 	for frameIndex, frame := range decoded.Image {
 		for _, center := range centers {
