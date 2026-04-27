@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	larkcallback "github.com/larksuite/oapi-sdk-go/v3/event/dispatcher/callback"
@@ -238,13 +239,17 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 		if cardID == "" {
 			return fmt.Errorf("update stream card failed: missing card id")
 		}
-		return g.updateStreamCardFn(ctx, cardID, operation.CardBody)
+		return g.withStreamCardOperationLock(cardID, func() error {
+			return g.updateStreamCardFn(ctx, cardID, operation.CardBody)
+		})
 	case OperationCloseStreamCard:
 		cardID := strings.TrimSpace(operation.StreamCardID)
 		if cardID == "" {
 			return fmt.Errorf("close stream card failed: missing card id")
 		}
-		return g.closeStreamCardFn(ctx, cardID, operation.CardBody)
+		return g.withStreamCardOperationLock(cardID, func() error {
+			return g.closeStreamCardFn(ctx, cardID, operation.CardBody)
+		})
 	case OperationSendCard:
 		card, err := json.Marshal(trimCardPayloadForMessageTransport(renderOperationCard(*operation, operation.effectiveCardEnvelope())))
 		if err != nil {
@@ -462,6 +467,26 @@ func (g *LiveGateway) applyOne(ctx context.Context, operation *Operation) error 
 	default:
 		return nil
 	}
+}
+
+func (g *LiveGateway) withStreamCardOperationLock(cardID string, fn func() error) error {
+	cardID = strings.TrimSpace(cardID)
+	if cardID == "" {
+		return fn()
+	}
+	g.mu.Lock()
+	if g.streamOps == nil {
+		g.streamOps = map[string]*sync.Mutex{}
+	}
+	lock := g.streamOps[cardID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		g.streamOps[cardID] = lock
+	}
+	g.mu.Unlock()
+	lock.Lock()
+	defer lock.Unlock()
+	return fn()
 }
 
 func feishuPatchTargetIsNotCard(resp *larkim.PatchMessageResp) bool {

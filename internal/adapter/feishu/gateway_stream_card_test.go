@@ -2,7 +2,9 @@ package feishu
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -122,5 +124,94 @@ func TestApplyCloseStreamCardUsesCardKitClose(t *testing.T) {
 	}
 	if closedCardID != "card-stream-1" || closedText != "最终答复" {
 		t.Fatalf("unexpected close call: card=%q text=%q", closedCardID, closedText)
+	}
+}
+
+func TestApplyUpdateStreamCardSerializesSameCard(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var active int32
+	var maxActive int32
+	var calls int32
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondStarted := make(chan struct{})
+	gateway.updateStreamCardFn = func(ctx context.Context, cardID, text string) error {
+		nowActive := atomic.AddInt32(&active, 1)
+		defer atomic.AddInt32(&active, -1)
+		for {
+			currentMax := atomic.LoadInt32(&maxActive)
+			if nowActive <= currentMax || atomic.CompareAndSwapInt32(&maxActive, currentMax, nowActive) {
+				break
+			}
+		}
+		switch atomic.AddInt32(&calls, 1) {
+		case 1:
+			close(firstStarted)
+			<-releaseFirst
+		case 2:
+			close(secondStarted)
+		default:
+			t.Fatalf("unexpected extra stream update call")
+		}
+		return nil
+	}
+
+	runApply := func(body string) <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			done <- gateway.Apply(context.Background(), []Operation{{
+				Kind:         OperationUpdateStreamCard,
+				GatewayID:    "app-1",
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				CardBody:     body,
+			}})
+		}()
+		return done
+	}
+
+	firstDone := runApply("第一段")
+	secondDone := runApply("第二段")
+
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for first stream update")
+	}
+
+	select {
+	case <-secondStarted:
+		t.Fatalf("expected second stream update to wait for same-card lock")
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first Apply returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for first Apply to finish")
+	}
+
+	select {
+	case <-secondStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for second stream update to start")
+	}
+
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second Apply returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for second Apply to finish")
+	}
+
+	if got := atomic.LoadInt32(&maxActive); got != 1 {
+		t.Fatalf("expected same-card updates to run serially, max active=%d", got)
 	}
 }

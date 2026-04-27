@@ -65,6 +65,7 @@ type LiveGateway struct {
 	reactions map[string]string
 	messages  map[string]string
 	streamSeq map[string]int
+	streamOps map[string]*sync.Mutex
 
 	tokenMu              sync.Mutex
 	tenantAccessToken    string
@@ -116,6 +117,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 		reactions: map[string]string{},
 		messages:  map[string]string{},
 		streamSeq: map[string]int{},
+		streamOps: map[string]*sync.Mutex{},
 	}
 	gateway.downloadImageFn = gateway.downloadImage
 	gateway.downloadFileFn = gateway.downloadFile
