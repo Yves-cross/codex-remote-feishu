@@ -75,6 +75,15 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	}
 }
 
+func TestShouldReopenStreamCard(t *testing.T) {
+	if !shouldReopenStreamCard(200850) || !shouldReopenStreamCard(300309) {
+		t.Fatalf("expected timeout/closed stream card codes to trigger reopen")
+	}
+	if shouldReopenStreamCard(12345) {
+		t.Fatalf("unexpected reopen for unrelated error code")
+	}
+}
+
 func TestApplyUpdateStreamCardRequiresCardID(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	err := gateway.Apply(t.Context(), []Operation{{
