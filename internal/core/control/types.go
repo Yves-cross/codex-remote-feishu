@@ -499,6 +499,7 @@ type AssistantStreamView struct {
 	StreamCardID         string
 	SourceMessagePreview string
 	Text                 string
+	Loading              bool
 	Done                 bool
 }
 

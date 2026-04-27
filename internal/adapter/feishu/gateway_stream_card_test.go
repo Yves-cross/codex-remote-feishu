@@ -61,6 +61,15 @@ func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
 	}
 }
 
+func TestStreamingCardDocumentUsesBlankContentForNativeLoading(t *testing.T) {
+	doc := streamingCardDocument("", "", cardThemeProgress)
+	body, _ := doc["body"].(map[string]any)
+	elements, _ := body["elements"].([]map[string]any)
+	if len(elements) != 1 || elements[0]["content"] != " " {
+		t.Fatalf("expected blank content placeholder for native streaming loading, got %#v", doc)
+	}
+}
+
 func TestApplyUpdateStreamCardRequiresCardID(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	err := gateway.Apply(t.Context(), []Operation{{

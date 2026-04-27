@@ -184,6 +184,19 @@ func TestProjectFinalAssistantBlockAsThreadCard(t *testing.T) {
 
 func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	projector := NewProjector()
+	loading := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind:            eventcontract.KindAssistantStream,
+		SourceMessageID: "msg-1",
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				Loading: true,
+			},
+		},
+	})
+	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].ReplyToMessageID != "msg-1" {
+		t.Fatalf("expected empty loading stream card send, got %#v", loading)
+	}
+
 	first := projector.ProjectEvent("chat-1", eventcontract.Event{
 		Kind:                 eventcontract.KindAssistantStream,
 		SourceMessageID:      "msg-1",

@@ -120,7 +120,7 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string)
 	}
 	sequence := g.nextStreamCardSequence(cardID)
 	payload, err := json.Marshal(map[string]any{
-		"content":  strings.TrimSpace(text),
+		"content":  streamCardContent(text),
 		"sequence": sequence,
 		"uuid":     fmt.Sprintf("content_%s_%d", strings.TrimSpace(cardID), sequence),
 	})
@@ -229,10 +229,7 @@ func (g *LiveGateway) doStreamCardJSON(ctx context.Context, api, method, url, to
 
 func streamingCardDocument(title, body, theme string) map[string]any {
 	title = strings.TrimSpace(title)
-	body = strings.TrimSpace(body)
-	if body == "" {
-		body = " "
-	}
+	body = streamCardContent(body)
 	doc := map[string]any{
 		"schema": "2.0",
 		"config": map[string]any{
@@ -263,6 +260,14 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 		}
 	}
 	return doc
+}
+
+func streamCardContent(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return " "
+	}
+	return text
 }
 
 func feishuCardTemplate(theme string) string {
