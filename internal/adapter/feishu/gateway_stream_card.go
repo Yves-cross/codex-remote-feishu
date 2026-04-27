@@ -3,12 +3,16 @@ package feishu
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -34,6 +38,12 @@ type feishuCardCreateResponse struct {
 type feishuGenericResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
+}
+
+type streamLoadingImageCache struct {
+	Hash      string `json:"hash"`
+	ImageKey  string `json:"image_key"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (g *LiveGateway) feishuOpenAPIBase() string {
@@ -424,6 +434,14 @@ func (g *LiveGateway) streamLoadingImageKeyOrEmpty(ctx context.Context) string {
 		g.tokenMu.Unlock()
 		return ""
 	}
+	hash := streamLoadingImageHash(data)
+	if imageKey := g.readCachedStreamLoadingImageKey(hash); imageKey != "" {
+		g.tokenMu.Lock()
+		g.streamLoadingImageKey = imageKey
+		g.streamLoadingUploadFailed = false
+		g.tokenMu.Unlock()
+		return imageKey
+	}
 	imageKey, err := g.uploadImageBytesFn(ctx, data)
 	if err != nil {
 		log.Printf("feishu stream loading gif upload failed: %v", err)
@@ -437,7 +455,69 @@ func (g *LiveGateway) streamLoadingImageKeyOrEmpty(ctx context.Context) string {
 	g.streamLoadingImageKey = imageKey
 	g.streamLoadingUploadFailed = false
 	g.tokenMu.Unlock()
+	g.writeCachedStreamLoadingImageKey(hash, imageKey)
 	return imageKey
+}
+
+func streamLoadingImageHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func (g *LiveGateway) streamLoadingImageCachePath() string {
+	dir := strings.TrimSpace(g.config.TempDir)
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "stream-loading-image-key.json")
+}
+
+func (g *LiveGateway) readCachedStreamLoadingImageKey(hash string) string {
+	path := g.streamLoadingImageCachePath()
+	if path == "" || strings.TrimSpace(hash) == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var cached streamLoadingImageCache
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return ""
+	}
+	if cached.Hash != hash {
+		return ""
+	}
+	return strings.TrimSpace(cached.ImageKey)
+}
+
+func (g *LiveGateway) writeCachedStreamLoadingImageKey(hash, imageKey string) {
+	path := g.streamLoadingImageCachePath()
+	if path == "" || strings.TrimSpace(hash) == "" || strings.TrimSpace(imageKey) == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		log.Printf("feishu stream loading gif cache mkdir failed: %v", err)
+		return
+	}
+	payload, err := json.Marshal(streamLoadingImageCache{
+		Hash:      hash,
+		ImageKey:  strings.TrimSpace(imageKey),
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		log.Printf("feishu stream loading gif cache marshal failed: %v", err)
+		return
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, payload, 0o600); err != nil {
+		log.Printf("feishu stream loading gif cache write failed: %v", err)
+		return
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		log.Printf("feishu stream loading gif cache replace failed: %v", err)
+		_ = os.Remove(tmpPath)
+	}
 }
 
 func streamCardContent(text string) string {

@@ -8,6 +8,8 @@ import (
 	"image/gif"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -152,6 +154,35 @@ func TestStreamLoadingDotsGIFIsSquareTinyThreeDotAnimation(t *testing.T) {
 		if alpha == 0 || uint8(red>>8) > 80 || uint8(blue>>8) < 200 {
 			t.Fatalf("frame %d expected active blue dot at %#v", frameIndex, centers[frameIndex])
 		}
+	}
+}
+
+func TestStreamLoadingImageKeyPersistsAcrossGatewayRestarts(t *testing.T) {
+	tempDir := t.TempDir()
+	first := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", TempDir: tempDir})
+	var uploadCalls int
+	first.uploadImageBytesFn = func(context.Context, []byte) (string, error) {
+		uploadCalls++
+		return "img-loading-cached", nil
+	}
+	if key := first.streamLoadingImageKeyOrEmpty(t.Context()); key != "img-loading-cached" {
+		t.Fatalf("expected uploaded image key, got %q", key)
+	}
+	if uploadCalls != 1 {
+		t.Fatalf("expected one upload, got %d", uploadCalls)
+	}
+	cachePath := filepath.Join(tempDir, "stream-loading-image-key.json")
+	if _, err := os.Stat(cachePath); err != nil {
+		t.Fatalf("expected image key cache at %s: %v", cachePath, err)
+	}
+
+	second := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", TempDir: tempDir})
+	second.uploadImageBytesFn = func(context.Context, []byte) (string, error) {
+		t.Fatal("expected cached stream loading image key to avoid upload")
+		return "", nil
+	}
+	if key := second.streamLoadingImageKeyOrEmpty(t.Context()); key != "img-loading-cached" {
+		t.Fatalf("expected cached image key, got %q", key)
 	}
 }
 
