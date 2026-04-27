@@ -63,6 +63,7 @@
     - `first_result_card`：命中同一同步条件后，从事件流里挑首张可投影卡直接作为 `ReplaceCurrentCard`；`inline_view` 严格命中失败时也允许回退到这条首结果替换
     - active picker 阻断保护：若事件流是 `path_picker_active` / `target_picker_processing` 这类阻断 notice，daemon 会保持当前卡不替换，避免把活跃 owner 子步骤误封成终态
   - 命令菜单 launcher 的 handoff 当前也统一读取 `ResolveFeishuFrontstageActionContract(action).LauncherDisposition`：`keep` 保留菜单导航/配置页，`enter_terminal` 当前用于 stamped `/help`、`/status`，其余 stamped launcher 动作默认 `enter_owner`
+  - `ResolveFeishuFrontstageActionContract(action)` 里的 `ContinuationDaemonCommand` 与 `FollowupPolicy` 现在也优先从 `FeishuCommandBinding` 读取：`/debug`、`/cron`、`/upgrade`、`/vscode-migrate` 的首结果卡续接 daemon command，以及 `/help`、`/status`、`/stop`、`/new`、`/follow`、`/detach` 这组命令的 followup drop 策略，不再分别散落在 lifecycle switch 里
   - 旧 bare continuation / command submission anchor 当前已退出 live 路径，不再承接 stamped current-card 回调
 - `orchestrator / Feishu UI controller`
   - 负责 `show_*`、`/menu`、bare config-card 这类 pure navigation 的 controller 分流与事件构建
@@ -71,6 +72,7 @@
   - 对 VS Code instance/thread selection、kick-thread confirm，以及仍保留 selection 卡形态的少量兼容路径，当前统一先产出 `FeishuSelectionView` read model，再连同 `FeishuSelectionContext` 穿过 `UIEvent` 边界
   - 对 `/menu` 与 bare `/mode` `/autowhip` `/autocontinue` `/reasoning` `/access` `/plan` `/model` `/verbose`，当前统一产出 `FeishuPageView` read model，并连同 `FeishuPageContext` 走 `UIEventFeishuPageView` 边界（配置页内部仍复用 catalog-to-page builder 生成 page 内容）
   - 这组 bare config-card 的 open intent、launcher keep contract、controller 分发与 config page builder 当前已通过 `FeishuConfigFlowDefinition` registry 收口，不再分别在 intent / lifecycle / controller / config catalog 多层平行枚举
+  - 命令入口类型当前还额外通过 `FeishuCommandBinding` 统一建模为 `config_flow / workspace_session / inline_page / terminal_page / daemon_command / owner_entry` 六类；`FeishuUIIntentFromAction(...)`、launcher handoff 与 direct daemon dispatch 都优先读取这份 binding，而不再各自维护平行的 command/action 分类
   - 对 approval / `request_user_input` / `tool_callback` / MCP request cards，当前先产出 `FeishuRequestView`，再连同 `FeishuRequestContext` 穿过 `UIEvent` 边界
   - 对飞书文件/目录选择器，当前先产出 `FeishuPathPickerView` read model，再连同 `FeishuPathPickerContext` 穿过 `UIEvent` 边界；进入目录、返回上一级、文件选择属于 controller 内 pure navigation，confirm/cancel 则转到 picker consumer handoff
 - `projector`

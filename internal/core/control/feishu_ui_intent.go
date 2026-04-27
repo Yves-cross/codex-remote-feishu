@@ -73,54 +73,12 @@ type FeishuUIIntent struct {
 }
 
 func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
-	if intent, ok := FeishuConfigFlowIntentFromAction(action); ok {
-		return intent, true
-	}
-	if flow, ok := ResolveFeishuWorkspaceSessionFlowFromAction(action); ok && flow.IntentKind != "" {
-		switch flow.IntentKind {
-		case FeishuUIIntentShowList:
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowList, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		case FeishuUIIntentShowThreads:
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowThreads, ViewMode: action.ViewMode, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		case FeishuUIIntentShowAllThreads:
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowAllThreads, ViewMode: action.ViewMode, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
+	if binding, ok := ResolveFeishuCommandBindingFromAction(action); ok {
+		if intent, ok := binding.IntentFromAction(action); ok {
+			return intent, true
 		}
 	}
 	switch action.Kind {
-	case ActionWorkspaceRoot:
-		if isBareInlineCommand(action.Text, "/workspace") || strings.TrimSpace(action.Text) == "" {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceRoot, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		}
-	case ActionWorkspaceList:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceList, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionWorkspaceNew:
-		if isBareInlineCommand(action.Text, "/workspace new") || strings.TrimSpace(action.Text) == "" {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceNew, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		}
-	case ActionWorkspaceNewDir:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceNewDir, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionWorkspaceNewGit:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceNewGit, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionWorkspaceNewWorktree:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowWorkspaceNewWorktree, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowCommandMenu:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowCommandMenu, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowHistory:
-		if isBareInlineCommand(action.Text, "/history") {
-			return &FeishuUIIntent{Kind: FeishuUIIntentShowHistory, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-		}
-	case ActionListInstances:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowList, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionSendFile:
-		return &FeishuUIIntent{Kind: FeishuUIIntentOpenSendFilePicker, RawText: action.Text, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowRecentWorkspaces:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentWorkspaces, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowAllWorkspaces:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowAllWorkspaces, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowThreads:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowThreads, ViewMode: action.ViewMode, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
-	case ActionShowAllThreads:
-		return &FeishuUIIntent{Kind: FeishuUIIntentShowAllThreads, ViewMode: action.ViewMode, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
 	case ActionShowScopedThreads:
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowScopedThreads, ViewMode: action.ViewMode, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
 	case ActionShowWorkspaceThreads:
@@ -131,6 +89,13 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentThreadWorkspaces, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
 	case ActionThreadSelectionPage:
 		return &FeishuUIIntent{Kind: FeishuUIIntentThreadSelectionPage, ViewMode: action.ViewMode, Cursor: action.Cursor, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
+	case ActionShowRecentWorkspaces:
+		return &FeishuUIIntent{Kind: FeishuUIIntentShowRecentWorkspaces, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
+	case ActionShowAllWorkspaces:
+		return &FeishuUIIntent{Kind: FeishuUIIntentShowAllWorkspaces, Page: action.Page, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
+	}
+
+	switch action.Kind {
 	case ActionPathPickerEnter:
 		return &FeishuUIIntent{Kind: FeishuUIIntentPathPickerEnter, PickerID: action.PickerID, PickerEntry: action.PickerEntry, ActorUserID: action.ActorUserID}, true
 	case ActionPathPickerUp:
@@ -163,6 +128,14 @@ func FeishuUIIntentFromAction(action Action) (*FeishuUIIntent, bool) {
 		return &FeishuUIIntent{Kind: FeishuUIIntentHistoryPage, PickerID: action.PickerID, Page: action.Page, ActorUserID: action.ActorUserID, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
 	case ActionHistoryDetail:
 		return &FeishuUIIntent{Kind: FeishuUIIntentHistoryDetail, PickerID: action.PickerID, TurnID: action.TurnID, ActorUserID: action.ActorUserID, SourceMessageID: action.MessageID, Inline: action.Inbound != nil && strings.TrimSpace(action.Inbound.CardDaemonLifecycleID) != ""}, true
+	case ActionPlanProposalDecision,
+		ActionRespondRequest,
+		ActionControlRequest:
+		if isSingleTokenSlashCommand(action.Text) {
+			return nil, false
+		}
+	}
+	switch action.Kind {
 	}
 	return nil, false
 }

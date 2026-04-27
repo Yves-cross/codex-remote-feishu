@@ -66,6 +66,7 @@ type FeishuUIInlineReplacePolicy struct {
 }
 
 func ResolveFeishuFrontstageActionContract(action Action) FeishuFrontstageActionContract {
+	binding, hasBinding := ResolveFeishuCommandBindingFromAction(action)
 	contract := FeishuFrontstageActionContract{
 		LauncherDisposition:     ResolveFeishuLauncherDisposition(action),
 		RequiresDaemonFreshness: true,
@@ -82,38 +83,17 @@ func ResolveFeishuFrontstageActionContract(action Action) FeishuFrontstageAction
 		contract.CurrentCardMode = FeishuFrontstageCurrentCardFirstResultCard
 	}
 
-	switch action.Kind {
-	case ActionUpgradeCommand:
-		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
-			contract.ContinuationDaemonCommand = DaemonCommandUpgrade
-		}
-	case ActionDebugCommand:
-		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
-			contract.ContinuationDaemonCommand = DaemonCommandDebug
-		}
-	case ActionCronCommand:
-		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
-			contract.ContinuationDaemonCommand = DaemonCommandCron
-		}
-	case ActionVSCodeMigrateCommand:
-		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
-			contract.ContinuationDaemonCommand = DaemonCommandVSCodeMigrateCommand
-		}
-	case ActionVSCodeMigrate:
-		if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
-			contract.ContinuationDaemonCommand = DaemonCommandVSCodeMigrate
-		}
+	if contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard && hasBinding && binding.ContinuationDaemonCommand != "" {
+		contract.ContinuationDaemonCommand = binding.ContinuationDaemonCommand
+	}
+	if action.Kind == ActionVSCodeMigrate && contract.CurrentCardMode == FeishuFrontstageCurrentCardFirstResultCard {
+		contract.ContinuationDaemonCommand = DaemonCommandVSCodeMigrate
 	}
 
-	switch action.Kind {
-	case ActionShowCommandHelp, ActionStatus, ActionStop, ActionNewThread, ActionFollowLocal, ActionDetach:
-		contract.FollowupPolicy = FeishuFollowupPolicy{
-			DropClasses: []FeishuFollowupHandoffClass{
-				FeishuFollowupHandoffClassNotice,
-				FeishuFollowupHandoffClassThreadSelection,
-			},
-		}
-	case ActionAttachInstance:
+	if hasBinding && !binding.FollowupPolicy.Empty() {
+		contract.FollowupPolicy = binding.FollowupPolicy
+	}
+	if action.Kind == ActionAttachInstance {
 		contract.FollowupPolicy = FeishuFollowupPolicy{
 			DropClasses: []FeishuFollowupHandoffClass{
 				FeishuFollowupHandoffClassThreadSelection,
@@ -126,17 +106,10 @@ func ResolveFeishuFrontstageActionContract(action Action) FeishuFrontstageAction
 }
 
 func ResolveFeishuLauncherDisposition(action Action) FeishuFrontstageLauncherDisposition {
-	if _, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind); ok {
-		return FeishuFrontstageLauncherKeep
+	if binding, ok := ResolveFeishuCommandBindingFromAction(action); ok && binding.LauncherDisposition != "" {
+		return binding.LauncherDisposition
 	}
-	switch action.Kind {
-	case ActionShowCommandMenu:
-		return FeishuFrontstageLauncherKeep
-	case ActionShowCommandHelp, ActionStatus:
-		return FeishuFrontstageLauncherEnterTerminal
-	default:
-		return FeishuFrontstageLauncherEnterOwner
-	}
+	return FeishuFrontstageLauncherEnterOwner
 }
 
 func ActionTargetsCurrentFeishuCard(action Action) bool {
@@ -210,8 +183,8 @@ func AllowsBareCommandContinuation(Action) bool { return false }
 func AllowsCommandSubmissionAnchorReplacement(Action) bool { return false }
 
 func inlineReplaceableFeishuUIIntentAction(action Action) bool {
-	if _, ok := FeishuConfigFlowDefinitionByActionKind(action.Kind); ok {
-		if !isSingleTokenSlashCommand(action.Text) {
+	if binding, ok := ResolveFeishuCommandBindingFromAction(action); ok {
+		if binding.Kind == FeishuCommandBindingConfigFlow && !isSingleTokenSlashCommand(action.Text) {
 			return true
 		}
 	}
@@ -228,24 +201,17 @@ func inlineReplaceableFeishuUIIntentAction(action Action) bool {
 	if !ok || intent == nil {
 		return false
 	}
-	if _, ok := FeishuConfigFlowDefinitionByIntentKind(intent.Kind); ok {
-		return true
+	if binding, ok := ResolveFeishuCommandBindingFromAction(action); ok {
+		switch binding.Kind {
+		case FeishuCommandBindingConfigFlow,
+			FeishuCommandBindingWorkspaceSession,
+			FeishuCommandBindingInlinePage:
+			return true
+		}
 	}
 	switch intent.Kind {
-	case FeishuUIIntentShowCommandMenu,
-		FeishuUIIntentShowWorkspaceRoot,
-		FeishuUIIntentShowWorkspaceList,
-		FeishuUIIntentShowWorkspaceNew,
-		FeishuUIIntentShowWorkspaceNewDir,
-		FeishuUIIntentShowWorkspaceNewGit,
-		FeishuUIIntentShowWorkspaceNewWorktree,
-		FeishuUIIntentShowHistory,
-		FeishuUIIntentShowList,
-		FeishuUIIntentOpenSendFilePicker,
-		FeishuUIIntentShowRecentWorkspaces,
+	case FeishuUIIntentShowRecentWorkspaces,
 		FeishuUIIntentShowAllWorkspaces,
-		FeishuUIIntentShowThreads,
-		FeishuUIIntentShowAllThreads,
 		FeishuUIIntentShowScopedThreads,
 		FeishuUIIntentShowWorkspaceThreads,
 		FeishuUIIntentShowAllThreadWorkspaces,

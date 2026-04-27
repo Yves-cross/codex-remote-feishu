@@ -391,6 +391,9 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		return s.filterEventsForSurfaceVisibility(s.applyFeishuUIIntent(surface, action, *intent))
 	}
 	s.applyCommandLauncherDisposition(surface, action)
+	if events, ok := s.boundDaemonCommandEvents(surface, action); ok {
+		return s.filterEventsForSurfaceVisibility(events)
+	}
 	var events []eventcontract.Event
 	switch action.Kind {
 	case control.ActionListInstances:
@@ -426,64 +429,6 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		events = []eventcontract.Event{s.helpTerminalPageEvent(surface)}
 	case control.ActionShowHistory:
 		events = s.openThreadHistory(surface, action.MessageID, action.IsCardAction())
-	case control.ActionDebugCommand:
-		events = []eventcontract.Event{{
-			Kind:             eventcontract.KindDaemonCommand,
-			GatewayID:        surface.GatewayID,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			SourceMessageID:  action.MessageID,
-			DaemonCommand: &control.DaemonCommand{
-				Kind:             control.DaemonCommandDebug,
-				GatewayID:        surface.GatewayID,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				SourceMessageID:  action.MessageID,
-				Text:             action.Text,
-			},
-		}}
-	case control.ActionCronCommand:
-		events = []eventcontract.Event{{
-			Kind:             eventcontract.KindDaemonCommand,
-			GatewayID:        surface.GatewayID,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			SourceMessageID:  action.MessageID,
-			DaemonCommand: &control.DaemonCommand{
-				Kind:             control.DaemonCommandCron,
-				GatewayID:        surface.GatewayID,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				SourceMessageID:  action.MessageID,
-				Text:             action.Text,
-			},
-		}}
-	case control.ActionUpgradeCommand:
-		events = []eventcontract.Event{{
-			Kind:             eventcontract.KindDaemonCommand,
-			GatewayID:        surface.GatewayID,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			SourceMessageID:  action.MessageID,
-			DaemonCommand: &control.DaemonCommand{
-				Kind:             control.DaemonCommandUpgrade,
-				GatewayID:        surface.GatewayID,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.IsCardAction(),
-				Text:             action.Text,
-			},
-		}}
-	case control.ActionVSCodeMigrateCommand:
-		events = []eventcontract.Event{{
-			Kind:             eventcontract.KindDaemonCommand,
-			GatewayID:        surface.GatewayID,
-			SurfaceSessionID: surface.SurfaceSessionID,
-			SourceMessageID:  action.MessageID,
-			DaemonCommand: &control.DaemonCommand{
-				Kind:             control.DaemonCommandVSCodeMigrateCommand,
-				GatewayID:        surface.GatewayID,
-				SurfaceSessionID: surface.SurfaceSessionID,
-				SourceMessageID:  action.MessageID,
-				FromCardAction:   action.IsCardAction(),
-				Text:             action.Text,
-			},
-		}}
 	case control.ActionUpgradeOwnerFlow:
 		ownerFlow := action.OwnerFlow
 		if ownerFlow == nil {
@@ -575,6 +520,30 @@ func (s *Service) ApplySurfaceAction(action control.Action) []eventcontract.Even
 		return nil
 	}
 	return s.filterEventsForSurfaceVisibility(events)
+}
+
+func (s *Service) boundDaemonCommandEvents(surface *state.SurfaceConsoleRecord, action control.Action) ([]eventcontract.Event, bool) {
+	binding, ok := control.ResolveFeishuCommandBindingFromAction(action)
+	if !ok || binding.DirectDaemonCommand == "" {
+		return nil, false
+	}
+	command := &control.DaemonCommand{
+		Kind:             binding.DirectDaemonCommand,
+		GatewayID:        surface.GatewayID,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		SourceMessageID:  action.MessageID,
+		Text:             action.Text,
+	}
+	if binding.PropagateCardActionToDaemon {
+		command.FromCardAction = action.IsCardAction()
+	}
+	return []eventcontract.Event{{
+		Kind:             eventcontract.KindDaemonCommand,
+		GatewayID:        surface.GatewayID,
+		SurfaceSessionID: surface.SurfaceSessionID,
+		SourceMessageID:  action.MessageID,
+		DaemonCommand:    command,
+	}}, true
 }
 
 func (s *Service) ApplyAgentEvent(instanceID string, event agentproto.Event) []eventcontract.Event {
