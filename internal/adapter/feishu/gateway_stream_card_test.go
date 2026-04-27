@@ -62,7 +62,7 @@ func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
 	}
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 2 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" || elements[1]["content"] != "." || elements[1]["element_id"] != "loading" {
+	if len(elements) != 2 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" || elements[1]["content"] != "<text_tag color='neutral'>.</text_tag>" || elements[1]["element_id"] != "loading" {
 		t.Fatalf("unexpected streaming card body: %#v", doc)
 	}
 }
@@ -71,7 +71,7 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	doc := streamingCardDocument("", "", ".", cardThemeProgress)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 2 || elements[0]["content"] != "" || elements[1]["content"] != "." {
+	if len(elements) != 2 || elements[0]["content"] != "" || elements[1]["content"] != "<text_tag color='neutral'>.</text_tag>" {
 		t.Fatalf("expected empty initial content for native streaming prefix matching, got %#v", doc)
 	}
 	config, _ := doc["config"].(map[string]any)
@@ -219,5 +219,14 @@ func TestApplyUpdateStreamCardSerializesSameCard(t *testing.T) {
 
 	if got := atomic.LoadInt32(&maxActive); got != 1 {
 		t.Fatalf("expected same-card updates to run serially, max active=%d", got)
+	}
+}
+
+func TestStreamCardLoadingContentWrapsWaitingDotsAsNeutralTag(t *testing.T) {
+	if got := streamCardLoadingContent("..."); got != "<text_tag color='neutral'>...</text_tag>" {
+		t.Fatalf("unexpected loading content: %q", got)
+	}
+	if got := streamCardLoadingContent(""); got != " " {
+		t.Fatalf("expected blank loading content to collapse to single space, got %q", got)
 	}
 }

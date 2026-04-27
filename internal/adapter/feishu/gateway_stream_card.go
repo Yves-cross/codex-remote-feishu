@@ -130,7 +130,7 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text, loadin
 		g.setStreamCardText(cardID, text)
 	}
 	if loadingText != lastLoadingText {
-		if err := g.putStreamCardElementContentWithReopen(ctx, token, cardID, "loading", loadingText); err != nil {
+		if err := g.putStreamCardElementContentWithReopen(ctx, token, cardID, "loading", streamCardLoadingContent(loadingText)); err != nil {
 			return err
 		}
 		g.setStreamCardLoadingText(cardID, loadingText)
@@ -288,7 +288,7 @@ func streamingCardDocument(title, body, loadingText, theme string) map[string]an
 				},
 				{
 					"tag":        "markdown",
-					"content":    strings.TrimSpace(loadingText),
+					"content":    streamCardLoadingContent(loadingText),
 					"element_id": "loading",
 				},
 			},
@@ -360,6 +360,14 @@ func streamCardContent(text string) string {
 		return " "
 	}
 	return text
+}
+
+func streamCardLoadingContent(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return " "
+	}
+	return "<text_tag color='neutral'>" + text + "</text_tag>"
 }
 
 func feishuCardTemplate(theme string) string {
