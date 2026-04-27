@@ -234,6 +234,86 @@ func TestTurnPatchApplySuccessWritesRolloutAndRestartsChild(t *testing.T) {
 	}
 }
 
+func TestTurnPatchApplyAcceptsImmediateRestartAck(t *testing.T) {
+	app, rolloutPath, _ := newTurnPatchTestApp(t)
+	_, _ = interceptTurnPatchTestAction(t, app, control.Action{
+		Kind:             control.ActionTurnPatchCommand,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		Text:             "/bendtomywill",
+	})
+	flow := mustOnlyTurnPatchFlow(t, app)
+	firstQuestionID := flow.Candidates[0].QuestionID
+	secondQuestionID := flow.Candidates[1].QuestionID
+
+	app.sendAgentCommand = func(instanceID string, command agentproto.Command) error {
+		if instanceID != "inst-1" {
+			t.Fatalf("unexpected instance id: %s", instanceID)
+		}
+		app.onCommandAck(context.Background(), "inst-1", agentproto.CommandAck{
+			CommandID: command.CommandID,
+			Accepted:  true,
+		})
+		return nil
+	}
+
+	_, _ = interceptTurnPatchTestAction(t, app, control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-patch-1",
+		Request: &control.ActionRequestResponse{
+			RequestID:       flow.RequestID,
+			RequestType:     "request_user_input",
+			RequestRevision: flow.Revision,
+			Answers: map[string][]string{
+				firstQuestionID: {"patched refusal"},
+			},
+		},
+		RequestAnswers: map[string][]string{
+			firstQuestionID: {"patched refusal"},
+		},
+	})
+	events, _ := interceptTurnPatchTestAction(t, app, control.Action{
+		Kind:             control.ActionRespondRequest,
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-patch-1",
+		Request: &control.ActionRequestResponse{
+			RequestID:       flow.RequestID,
+			RequestType:     "request_user_input",
+			RequestRevision: flow.Revision,
+			Answers: map[string][]string{
+				secondQuestionID: {"patched placeholder"},
+			},
+		},
+		RequestAnswers: map[string][]string{
+			secondQuestionID: {"patched placeholder"},
+		},
+	})
+	if len(events) != 1 || events[0].PageView == nil || events[0].PageView.Title != "正在修补当前会话" {
+		t.Fatalf("expected final answer to enter applying state, got %#v", events)
+	}
+
+	waitForTurnPatchCondition(t, func() bool {
+		return app.turnPatchRuntime.ActiveTx["inst-1"] == nil
+	})
+	if flow.Stage != turnpatchruntime.FlowStageApplied || strings.TrimSpace(flow.PatchID) == "" || strings.TrimSpace(flow.BackupPath) == "" {
+		t.Fatalf("unexpected flow state after immediate ack: %#v", flow)
+	}
+	updatedRaw, err := os.ReadFile(rolloutPath)
+	if err != nil {
+		t.Fatalf("read rollout after immediate ack: %v", err)
+	}
+	updated := string(updatedRaw)
+	if !strings.Contains(updated, "patched refusal") || !strings.Contains(updated, "patched placeholder") {
+		t.Fatalf("expected rollout to contain patched texts, got %s", updated)
+	}
+}
+
 func TestTurnPatchApplyRestartRejectAutoRollsBack(t *testing.T) {
 	app, rolloutPath, originalRaw := newTurnPatchTestApp(t)
 	_, _ = interceptTurnPatchTestAction(t, app, control.Action{

@@ -31,3 +31,18 @@ func TestRestartRelayChildCodexSendsRestartCommand(t *testing.T) {
 		t.Fatal("expected generated command id")
 	}
 }
+
+func TestNewRelayChildCodexRestartCommandGeneratesCommand(t *testing.T) {
+	app := &App{sendAgentCommand: func(string, agentproto.Command) error { return nil }}
+
+	command, err := app.newRelayChildCodexRestartCommand("inst-1")
+	if err != nil {
+		t.Fatalf("newRelayChildCodexRestartCommand: %v", err)
+	}
+	if command.Kind != agentproto.CommandProcessChildRestart {
+		t.Fatalf("expected process.child.restart command, got %#v", command)
+	}
+	if command.CommandID == "" {
+		t.Fatal("expected generated command id")
+	}
+}

@@ -125,7 +125,7 @@ func (a *App) runTurnPatchApplyTransaction(txID string) {
 	tx.UpdatedAt = time.Now().UTC()
 	a.mu.Unlock()
 
-	commandID, err := a.restartRelayChildCodexWithCommandID(tx.InstanceID)
+	command, err := a.newRelayChildCodexRestartCommand(tx.InstanceID)
 	if err != nil {
 		a.mu.Lock()
 		tx = a.activeTurnPatchTransactionByIDLocked(txID)
@@ -139,11 +139,23 @@ func (a *App) runTurnPatchApplyTransaction(txID string) {
 	a.mu.Lock()
 	tx = a.activeTurnPatchTransactionByIDLocked(txID)
 	if tx != nil {
-		tx.RestartCommandID = commandID
+		tx.RestartCommandID = command.CommandID
 		tx.RestartDeadline = time.Now().UTC().Add(turnPatchRestartTimeout)
 		tx.UpdatedAt = time.Now().UTC()
 	}
 	a.mu.Unlock()
+
+	if err := a.sendRelayChildRestartCommand(tx.InstanceID, command); err != nil {
+		a.mu.Lock()
+		tx = a.activeTurnPatchTransactionByIDLocked(txID)
+		if tx != nil && strings.TrimSpace(tx.RestartCommandID) == strings.TrimSpace(command.CommandID) {
+			tx.RestartCommandID = ""
+			tx.RestartDeadline = time.Time{}
+			tx.UpdatedAt = time.Now().UTC()
+			a.startTurnPatchApplyRecoveryLocked(tx, "无法发送 child restart："+err.Error())
+		}
+		a.mu.Unlock()
+	}
 }
 
 func (a *App) runTurnPatchRollbackTransaction(txID string) {
@@ -165,7 +177,7 @@ func (a *App) runTurnPatchRollbackTransaction(txID string) {
 		return
 	}
 
-	commandID, err := a.restartRelayChildCodexWithCommandID(tx.InstanceID)
+	command, err := a.newRelayChildCodexRestartCommand(tx.InstanceID)
 	if err != nil {
 		a.mu.Lock()
 		events := a.finishTurnPatchFailureLocked(
@@ -182,11 +194,28 @@ func (a *App) runTurnPatchRollbackTransaction(txID string) {
 	tx = a.activeTurnPatchTransactionByIDLocked(txID)
 	if tx != nil {
 		tx.Stage = turnpatchruntime.TransactionStageRollbackRestart
-		tx.RestartCommandID = commandID
+		tx.RestartCommandID = command.CommandID
 		tx.RestartDeadline = time.Now().UTC().Add(turnPatchRestartTimeout)
 		tx.UpdatedAt = time.Now().UTC()
 	}
 	a.mu.Unlock()
+
+	if err := a.sendRelayChildRestartCommand(tx.InstanceID, command); err != nil {
+		a.mu.Lock()
+		tx = a.activeTurnPatchTransactionByIDLocked(txID)
+		if tx != nil && strings.TrimSpace(tx.RestartCommandID) == strings.TrimSpace(command.CommandID) {
+			tx.RestartCommandID = ""
+			tx.RestartDeadline = time.Time{}
+			tx.UpdatedAt = time.Now().UTC()
+			events := a.finishTurnPatchFailureLocked(
+				tx,
+				"当前会话回滚失败",
+				append(turnPatchRollbackFailureLines(nil), "原始内容已写回磁盘，但 child restart 失败："+err.Error())...,
+			)
+			a.handleUIEventsLocked(context.Background(), events)
+		}
+		a.mu.Unlock()
+	}
 }
 
 func (a *App) runTurnPatchApplyRecoveryTransaction(txID, reason string) {
@@ -212,7 +241,7 @@ func (a *App) runTurnPatchApplyRecoveryTransaction(txID, reason string) {
 		return
 	}
 
-	commandID, err := a.restartRelayChildCodexWithCommandID(tx.InstanceID)
+	command, err := a.newRelayChildCodexRestartCommand(tx.InstanceID)
 	if err != nil {
 		a.mu.Lock()
 		events := a.finishTurnPatchFailureLocked(
@@ -230,11 +259,29 @@ func (a *App) runTurnPatchApplyRecoveryTransaction(txID, reason string) {
 	tx = a.activeTurnPatchTransactionByIDLocked(txID)
 	if tx != nil {
 		tx.Stage = turnpatchruntime.TransactionStageApplyRecoveryRestart
-		tx.RestartCommandID = commandID
+		tx.RestartCommandID = command.CommandID
 		tx.RestartDeadline = time.Now().UTC().Add(turnPatchRestartTimeout)
 		tx.UpdatedAt = time.Now().UTC()
 	}
 	a.mu.Unlock()
+
+	if err := a.sendRelayChildRestartCommand(tx.InstanceID, command); err != nil {
+		a.mu.Lock()
+		tx = a.activeTurnPatchTransactionByIDLocked(txID)
+		if tx != nil && strings.TrimSpace(tx.RestartCommandID) == strings.TrimSpace(command.CommandID) {
+			tx.RestartCommandID = ""
+			tx.RestartDeadline = time.Time{}
+			tx.UpdatedAt = time.Now().UTC()
+			events := a.finishTurnPatchFailureLocked(
+				tx,
+				"当前会话修补失败",
+				"修补没有生效，磁盘内容已恢复到修补前状态。",
+				"但恢复运行态时再次发送 child restart 失败："+err.Error(),
+			)
+			a.handleUIEventsLocked(context.Background(), events)
+		}
+		a.mu.Unlock()
+	}
 }
 
 func (a *App) startTurnPatchApplyRecoveryLocked(tx *turnpatchruntime.Transaction, reason string) {

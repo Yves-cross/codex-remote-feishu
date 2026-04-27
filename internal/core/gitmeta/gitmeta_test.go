@@ -27,14 +27,14 @@ func TestParseGitDirFile(t *testing.T) {
 }
 
 func TestResolveGitDirPath(t *testing.T) {
-	base := filepath.Join(string(filepath.Separator), "repo", "worktree")
+	base := filepath.Join(t.TempDir(), "repo", "worktree")
 	wantRelative := filepath.Clean(filepath.Join(base, "..", ".git", "modules", "demo"))
-	if got := ResolveGitDirPath(base, "../.git/modules/demo"); got != wantRelative {
-		t.Fatalf("ResolveGitDirPath(relative) = %q", got)
+	if got := ResolveGitDirPath(base, "../.git/modules/demo"); !testutil.SamePath(got, wantRelative) {
+		t.Fatalf("ResolveGitDirPath(relative) = %q, want %q", got, wantRelative)
 	}
-	abs := filepath.Join(string(filepath.Separator), "var", "tmp", "repo.git")
-	if got := ResolveGitDirPath(base, abs); got != abs {
-		t.Fatalf("ResolveGitDirPath(abs) = %q", got)
+	abs := filepath.Join(t.TempDir(), "var", "tmp", "repo.git")
+	if got := ResolveGitDirPath(base, abs); !testutil.SamePath(got, abs) {
+		t.Fatalf("ResolveGitDirPath(abs) = %q, want %q", got, abs)
 	}
 }
 
