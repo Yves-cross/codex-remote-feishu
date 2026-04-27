@@ -40,10 +40,10 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	}
 	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
-	now = now.Add(assistantStreamEmitInterval)
+	now = now.Add(assistantStreamLoadingInterval)
 	tick := svc.Tick(now)
-	if len(tick) != 0 {
-		t.Fatalf("expected empty loading tick to stay idle before text exists, got %#v", tick)
+	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.Text != "" || tick[0].AssistantStream.LoadingStep != 1 || !tick[0].AssistantStream.Loading {
+		t.Fatalf("expected loading tick to emit first waiting-dot frame, got %#v", tick)
 	}
 
 	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -54,13 +54,16 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "继续执行刚才被中断的验证和安装。",
 	})
-	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "继" || !first[0].AssistantStream.Loading || first[0].AssistantStream.Done {
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || !first[0].AssistantStream.Loading || first[0].AssistantStream.Done {
 		t.Fatalf("expected commentary delta to start assistant stream, got %#v", first)
 	}
-	now = now.Add(assistantStreamEmitInterval)
+	if first[0].AssistantStream.LoadingStep != 0 {
+		t.Fatalf("expected real commentary delta to clear waiting dots, got %#v", first[0].AssistantStream)
+	}
+	now = now.Add(assistantStreamLoadingInterval)
 	waitingForNextPartial := svc.Tick(now)
-	if len(waitingForNextPartial) != 1 || waitingForNextPartial[0].AssistantStream == nil || waitingForNextPartial[0].AssistantStream.Text != "继续执" {
-		t.Fatalf("expected tick to advance visible prefix, got %#v", waitingForNextPartial)
+	if len(waitingForNextPartial) != 1 || waitingForNextPartial[0].AssistantStream == nil || waitingForNextPartial[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || waitingForNextPartial[0].AssistantStream.LoadingStep != 1 || !waitingForNextPartial[0].AssistantStream.Loading {
+		t.Fatalf("expected waiting tick to append dot animation without changing text payload, got %#v", waitingForNextPartial)
 	}
 
 	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -74,7 +77,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		t.Fatalf("expected commentary completion to keep stream open silently, got %#v", completed)
 	}
 	if active := svc.root.Surfaces["surface-1"].ActiveAssistantStream; active != nil {
-		if active.MessageID != "om-stream-1" || active.StreamCardID != "card-stream-1" || active.CompletedText != "继续执行刚才被中断的验证和安装。" || active.VisibleText != "继续执" {
+		if active.MessageID != "om-stream-1" || active.StreamCardID != "card-stream-1" || active.CompletedText != "继续执行刚才被中断的验证和安装。" || active.LoadingStep != 1 {
 			t.Fatalf("expected active stream to keep completed commentary, got %#v", active)
 		}
 	} else {
@@ -103,7 +106,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "final_answer"},
 	})
-	now = now.Add(assistantStreamEmitInterval)
+	now = now.Add(assistantStreamMaxInterval)
 	finalDelta := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
 		ThreadID: "thread-2",
@@ -116,7 +119,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	if len(finalDelta) != 1 || finalDelta[0].AssistantStream == nil {
 		t.Fatalf("expected final delta to update existing stream, got %#v", finalDelta)
 	}
-	if stream := finalDelta[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != "继续执行刚" || !stream.Loading || stream.Done {
+	if stream := finalDelta[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != wantText || !stream.Loading || stream.Done {
 		t.Fatalf("expected final delta to reuse stream card, got %#v", stream)
 	}
 	svc.ApplyAgentEvent("inst-1", agentproto.Event{

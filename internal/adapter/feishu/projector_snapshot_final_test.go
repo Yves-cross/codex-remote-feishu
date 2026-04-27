@@ -259,6 +259,28 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 }
 
+func TestProjectAssistantStreamWaitingDotsStayAtTextTail(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindAssistantStream,
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				Text:         "第一段",
+				Loading:      true,
+				LoadingStep:  3,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationUpdateStreamCard {
+		t.Fatalf("unexpected loading-dot ops: %#v", ops)
+	}
+	if ops[0].CardBody != "第一段..." {
+		t.Fatalf("expected loading dots to stay at text tail, got %#v", ops[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockClosesStreamingCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{

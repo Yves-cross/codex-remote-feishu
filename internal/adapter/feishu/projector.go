@@ -384,7 +384,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 
 func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
 	text := strings.TrimSpace(view.Text)
-	if text == "" && !view.Loading {
+	displayText := assistantStreamDisplayText(view)
+	if displayText == "" && !view.Loading {
 		return nil
 	}
 	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
@@ -407,10 +408,10 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 		SurfaceSessionID: event.SurfaceSessionID,
 		ChatID:           chatID,
 		ReplyToMessageID: firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
-		CardBody:         text,
+		CardBody:         displayText,
 		CardThemeKey:     cardThemeProgress,
 		cardEnvelope:     cardEnvelopeV2,
-		card:             rawCardDocument("", text, cardThemeProgress, nil),
+		card:             rawCardDocument("", displayText, cardThemeProgress, nil),
 	}
 	if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
 		op.Kind = OperationUpdateStreamCard
@@ -422,6 +423,18 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 		op = applyReplyLaneToNewOperation(event, op)
 	}
 	return []Operation{op}
+}
+
+func assistantStreamDisplayText(view control.AssistantStreamView) string {
+	text := strings.TrimSpace(view.Text)
+	if !view.Loading || view.LoadingStep <= 0 {
+		return text
+	}
+	suffix := strings.Repeat(".", ((view.LoadingStep-1)%3)+1)
+	if text == "" {
+		return suffix
+	}
+	return text + suffix
 }
 
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []Operation {
