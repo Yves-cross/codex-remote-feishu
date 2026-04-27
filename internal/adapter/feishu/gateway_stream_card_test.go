@@ -95,8 +95,8 @@ func TestStreamingCardDocumentUsesTinyGIFLoadingElementWhenImageKeyPresent(t *te
 	if elements[1]["tag"] != "img" || elements[1]["element_id"] != "loading" {
 		t.Fatalf("expected gif loading image element, got %#v", elements[1])
 	}
-	if elements[1]["img_key"] != "img-loading-1" || elements[1]["scale_type"] != "crop_center" || elements[1]["size"] != "tiny" {
-		t.Fatalf("expected tiny cropped loading image, got %#v", elements[1])
+	if elements[1]["img_key"] != "img-loading-1" || elements[1]["scale_type"] != "crop_center" || elements[1]["size"] != "small" {
+		t.Fatalf("expected small cropped loading image, got %#v", elements[1])
 	}
 	if _, ok := elements[1]["custom_width"]; ok {
 		t.Fatalf("expected loading image to avoid custom width fallback, got %#v", elements[1])

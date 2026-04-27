@@ -322,7 +322,7 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 			"img_key":    strings.TrimSpace(imageKey),
 			"element_id": "loading",
 			"scale_type": "crop_center",
-			"size":       "tiny",
+			"size":       "small",
 			"preview":    false,
 			"alt": map[string]any{
 				"tag":     "plain_text",
