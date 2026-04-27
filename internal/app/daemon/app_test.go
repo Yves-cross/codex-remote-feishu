@@ -1172,6 +1172,44 @@ func TestDaemonRunGracefulShutdownDeliversFinalNoticeBeforeGatewayStops(t *testi
 	}
 }
 
+func TestDaemonShutdownClosesActiveAssistantStreamBeforeFinalNotice(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+	surface := app.service.Surface("surface-1")
+	surface.ActiveAssistantStream = &state.AssistantStreamRecord{
+		ThreadID:             "thread-1",
+		TurnID:               "turn-1",
+		ItemID:               "item-1",
+		SourceMessageID:      "msg-source",
+		SourceMessagePreview: "test",
+		MessageID:            "om-stream-1",
+		StreamCardID:         "card-stream-1",
+		Text:                 "部分回复",
+		Loading:              true,
+	}
+
+	if err := app.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	if len(gateway.operations) != 2 {
+		t.Fatalf("expected stream close and final notice, got %#v", gateway.operations)
+	}
+	if gateway.operations[0].Kind != feishu.OperationCloseStreamCard ||
+		gateway.operations[0].MessageID != "om-stream-1" ||
+		gateway.operations[0].StreamCardID != "card-stream-1" ||
+		gateway.operations[0].CardBody != "部分回复" {
+		t.Fatalf("expected active assistant stream to close first, got %#v", gateway.operations[0])
+	}
+	if gateway.operations[1].Kind != feishu.OperationSendCard || gateway.operations[1].CardBody != daemonShutdownNoticeText {
+		t.Fatalf("expected final shutdown notice second, got %#v", gateway.operations[1])
+	}
+	if surface.ActiveAssistantStream != nil {
+		t.Fatalf("expected active assistant stream to be cleared")
+	}
+}
+
 func TestDaemonShutdownContinuesFinalNoticeFanoutAfterTimeout(t *testing.T) {
 	gateway := &timeoutThenRecordGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{})

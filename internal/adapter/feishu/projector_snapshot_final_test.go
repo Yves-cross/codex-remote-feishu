@@ -265,6 +265,26 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 }
 
+func TestProjectAssistantStreamDoneClosesEmptyLoadingCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindAssistantStream,
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				Done:         true,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationCloseStreamCard {
+		t.Fatalf("expected empty loading stream close, got %#v", ops)
+	}
+	if ops[0].MessageID != "om-stream-1" || ops[0].StreamCardID != "card-stream-1" || ops[0].CardBody != "" {
+		t.Fatalf("unexpected empty loading stream close op: %#v", ops[0])
+	}
+}
+
 func TestProjectFinalAssistantBlockClosesStreamingCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{

@@ -385,9 +385,6 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 
 func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
 	text := strings.TrimSpace(view.Text)
-	if text == "" && !view.Loading {
-		return nil
-	}
 	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
 		return []Operation{{
 			Kind:             OperationCloseStreamCard,
@@ -401,6 +398,9 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 			cardEnvelope:     cardEnvelopeV2,
 			card:             rawCardDocument("", text, cardThemeProgress, nil),
 		}}
+	}
+	if text == "" && !view.Loading {
+		return nil
 	}
 	op := Operation{
 		Kind:             OperationSendStreamCard,

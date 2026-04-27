@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/agentproto"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 	"github.com/kxn/codex-remote-feishu/internal/core/eventcontract"
 	"github.com/kxn/codex-remote-feishu/internal/core/orchestrator"
+	"github.com/kxn/codex-remote-feishu/internal/core/state"
 	"github.com/kxn/codex-remote-feishu/internal/shutdownctx"
 )
 
@@ -116,6 +118,9 @@ func (a *App) beginShutdownNotices() []eventcontract.Event {
 			continue
 		}
 		seen[surfaceID] = struct{}{}
+		if event, ok := a.shutdownAssistantStreamCloseEvent(surface); ok {
+			events = append(events, event)
+		}
 		notice := orchestrator.GlobalRuntimeShutdownNotice(daemonShutdownNoticeText)
 		events = append(events, eventcontract.Event{
 			Kind:             eventcontract.KindNotice,
@@ -124,6 +129,38 @@ func (a *App) beginShutdownNotices() []eventcontract.Event {
 		})
 	}
 	return events
+}
+
+func (a *App) shutdownAssistantStreamCloseEvent(surface *state.SurfaceConsoleRecord) (eventcontract.Event, bool) {
+	if surface == nil || surface.ActiveAssistantStream == nil {
+		return eventcontract.Event{}, false
+	}
+	stream := surface.ActiveAssistantStream
+	if stream.Closed || strings.TrimSpace(stream.MessageID) == "" || strings.TrimSpace(stream.StreamCardID) == "" {
+		surface.ActiveAssistantStream = nil
+		return eventcontract.Event{}, false
+	}
+	stream.Loading = false
+	stream.Closed = true
+	surface.ActiveAssistantStream = nil
+	view := control.AssistantStreamView{
+		ThreadID:             strings.TrimSpace(stream.ThreadID),
+		TurnID:               strings.TrimSpace(stream.TurnID),
+		ItemID:               strings.TrimSpace(stream.ItemID),
+		MessageID:            strings.TrimSpace(stream.MessageID),
+		StreamCardID:         strings.TrimSpace(stream.StreamCardID),
+		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
+		Text:                 strings.TrimSpace(stream.Text),
+		Loading:              false,
+		Done:                 true,
+	}
+	return eventcontract.Event{
+		Kind:                 eventcontract.KindAssistantStream,
+		SurfaceSessionID:     strings.TrimSpace(surface.SurfaceSessionID),
+		SourceMessageID:      strings.TrimSpace(stream.SourceMessageID),
+		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
+		AssistantStream:      &view,
+	}, true
 }
 
 func (a *App) deliverShutdownNotices(events []eventcontract.Event) {
