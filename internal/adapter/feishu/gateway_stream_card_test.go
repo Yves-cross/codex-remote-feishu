@@ -1,8 +1,11 @@
 package feishu
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"image/gif"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -106,6 +109,43 @@ func TestStreamingCardDocumentUsesTinyGIFLoadingElementWhenImageKeyPresent(t *te
 	}
 	if _, ok := elements[1]["size"]; ok {
 		t.Fatalf("expected loading image to avoid crop-only size field, got %#v", elements[1])
+	}
+}
+
+func TestStreamLoadingDotsGIFIsSquareTinyThreeDotAnimation(t *testing.T) {
+	data, err := base64.StdEncoding.DecodeString(streamLoadingDotsGIFBase64)
+	if err != nil {
+		t.Fatalf("decode loading gif base64: %v", err)
+	}
+	decoded, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode loading gif: %v", err)
+	}
+	if decoded.Config.Width != 16 || decoded.Config.Height != 16 {
+		t.Fatalf("expected 16x16 tiny icon gif, got %dx%d", decoded.Config.Width, decoded.Config.Height)
+	}
+	if len(decoded.Image) != 3 {
+		t.Fatalf("expected three animation frames, got %d", len(decoded.Image))
+	}
+	centers := []struct {
+		x int
+		y int
+	}{
+		{x: 4, y: 8},
+		{x: 8, y: 8},
+		{x: 12, y: 8},
+	}
+	for frameIndex, frame := range decoded.Image {
+		for _, center := range centers {
+			_, _, _, alpha := frame.At(center.x, center.y).RGBA()
+			if alpha == 0 {
+				t.Fatalf("frame %d expected visible dot at %d,%d", frameIndex, center.x, center.y)
+			}
+		}
+		red, _, blue, alpha := frame.At(centers[frameIndex].x, centers[frameIndex].y).RGBA()
+		if alpha == 0 || uint8(red>>8) > 80 || uint8(blue>>8) < 200 {
+			t.Fatalf("frame %d expected active blue dot at %#v", frameIndex, centers[frameIndex])
+		}
 	}
 }
 
