@@ -59,8 +59,8 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	}
 	now = now.Add(assistantStreamLoadingInterval)
 	waitingForNextPartial := svc.Tick(now)
-	if len(waitingForNextPartial) != 1 || waitingForNextPartial[0].AssistantStream == nil || waitingForNextPartial[0].AssistantStream.Text != "继续执行刚才被中断的验证和安装。" || !waitingForNextPartial[0].AssistantStream.Loading {
-		t.Fatalf("expected loading marker to remain while waiting for next partial, got %#v", waitingForNextPartial)
+	if len(waitingForNextPartial) != 0 {
+		t.Fatalf("expected no-op loading tick to avoid interrupting native typing, got %#v", waitingForNextPartial)
 	}
 
 	completed := svc.ApplyAgentEvent("inst-1", agentproto.Event{

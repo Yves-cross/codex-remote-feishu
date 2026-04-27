@@ -286,9 +286,9 @@ func streamCardSettings(streaming bool, summary string) map[string]any {
 	}
 	if streaming {
 		config["streaming_config"] = map[string]any{
-			"print_frequency_ms": map[string]int{"default": 50},
+			"print_frequency_ms": map[string]int{"default": 70},
 			"print_step":         map[string]int{"default": 1},
-			"print_strategy":     "delay",
+			"print_strategy":     "fast",
 		}
 	}
 	return config

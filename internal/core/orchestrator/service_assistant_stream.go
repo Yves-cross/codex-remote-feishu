@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	assistantStreamMinInterval      = 900 * time.Millisecond
-	assistantStreamMaxInterval      = 2500 * time.Millisecond
-	assistantStreamMinPatchGrowth   = 80
-	assistantStreamShortPatchGrowth = 24
+	assistantStreamMinInterval      = 200 * time.Millisecond
+	assistantStreamMaxInterval      = 900 * time.Millisecond
+	assistantStreamMinPatchGrowth   = 24
+	assistantStreamShortPatchGrowth = 8
 	assistantStreamLoadingInterval  = 800 * time.Millisecond
 )
 
@@ -133,6 +133,9 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 		return nil
 	}
 	if strings.TrimSpace(stream.Text) == "" {
+		return nil
+	}
+	if strings.TrimSpace(stream.LastEmittedText) == strings.TrimSpace(stream.Text) {
 		return nil
 	}
 	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
