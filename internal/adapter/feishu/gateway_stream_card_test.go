@@ -65,8 +65,8 @@ func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
 	doc := streamingCardDocument("", "", cardThemeProgress)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["content"] != " " {
-		t.Fatalf("expected blank content placeholder for native streaming, got %#v", doc)
+	if len(elements) != 1 || elements[0]["content"] != "" {
+		t.Fatalf("expected empty initial content for native streaming prefix matching, got %#v", doc)
 	}
 	config, _ := doc["config"].(map[string]any)
 	streamingConfig, _ := config["streaming_config"].(map[string]any)

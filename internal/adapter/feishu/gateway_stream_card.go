@@ -229,7 +229,6 @@ func (g *LiveGateway) doStreamCardJSON(ctx context.Context, api, method, url, to
 
 func streamingCardDocument(title, body, theme string) map[string]any {
 	title = strings.TrimSpace(title)
-	body = streamCardContent(body)
 	doc := map[string]any{
 		"schema": "2.0",
 		"config": map[string]any{
@@ -246,7 +245,7 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 		"body": map[string]any{
 			"elements": []map[string]any{{
 				"tag":        "markdown",
-				"content":    body,
+				"content":    strings.TrimSpace(body),
 				"element_id": "content",
 			}},
 		},

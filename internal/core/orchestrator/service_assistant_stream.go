@@ -132,6 +132,9 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 	if !stream.Loading || strings.TrimSpace(stream.MessageID) == "" || strings.TrimSpace(stream.StreamCardID) == "" {
 		return nil
 	}
+	if strings.TrimSpace(stream.Text) == "" {
+		return nil
+	}
 	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
 		return nil
 	}
