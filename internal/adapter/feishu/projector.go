@@ -51,6 +51,7 @@ type Operation struct {
 	CardElements         []map[string]any
 	CardUpdateMulti      bool
 	ProgressCardStartSeq int
+	StreamLoadingText    string
 	cardEnvelope         cardEnvelopeVersion
 	card                 *cardDocument
 	finalSourceBody      string
@@ -384,8 +385,8 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 
 func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
 	text := strings.TrimSpace(view.Text)
-	displayText := assistantStreamDisplayText(view)
-	if displayText == "" && !view.Loading {
+	loadingText := assistantStreamLoadingText(view)
+	if text == "" && loadingText == "" && !view.Loading {
 		return nil
 	}
 	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
@@ -403,15 +404,16 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 		}}
 	}
 	op := Operation{
-		Kind:             OperationSendStreamCard,
-		GatewayID:        event.GatewayID,
-		SurfaceSessionID: event.SurfaceSessionID,
-		ChatID:           chatID,
-		ReplyToMessageID: firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
-		CardBody:         displayText,
-		CardThemeKey:     cardThemeProgress,
-		cardEnvelope:     cardEnvelopeV2,
-		card:             rawCardDocument("", displayText, cardThemeProgress, nil),
+		Kind:              OperationSendStreamCard,
+		GatewayID:         event.GatewayID,
+		SurfaceSessionID:  event.SurfaceSessionID,
+		ChatID:            chatID,
+		ReplyToMessageID:  firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
+		CardBody:          text,
+		StreamLoadingText: loadingText,
+		CardThemeKey:      cardThemeProgress,
+		cardEnvelope:      cardEnvelopeV2,
+		card:              rawCardDocument("", text, cardThemeProgress, nil),
 	}
 	if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
 		op.Kind = OperationUpdateStreamCard
@@ -425,16 +427,11 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 	return []Operation{op}
 }
 
-func assistantStreamDisplayText(view control.AssistantStreamView) string {
-	text := strings.TrimSpace(view.Text)
+func assistantStreamLoadingText(view control.AssistantStreamView) string {
 	if !view.Loading || view.LoadingStep <= 0 {
-		return text
+		return ""
 	}
-	suffix := strings.Repeat(".", ((view.LoadingStep-1)%3)+1)
-	if text == "" {
-		return suffix
-	}
-	return text + suffix
+	return strings.Repeat(".", ((view.LoadingStep-1)%3)+1)
 }
 
 func (p *Projector) projectBlock(gatewayID, surfaceSessionID, chatID, sourceMessageID, sourceMessagePreview string, block render.Block, summary *control.FileChangeSummary, turnDiffPreview *control.TurnDiffPreview, finalSummary *control.FinalTurnSummary) []Operation {

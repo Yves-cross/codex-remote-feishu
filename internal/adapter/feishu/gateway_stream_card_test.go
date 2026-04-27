@@ -16,6 +16,9 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 		if operation.CardBody != "第一段" {
 			t.Fatalf("unexpected stream body: %#v", operation)
 		}
+		if operation.StreamLoadingText != "." {
+			t.Fatalf("unexpected stream loading text: %#v", operation)
+		}
 		return "card-stream-1", nil
 	}
 	var sentContent string
@@ -35,10 +38,11 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 	}
 
 	ops := []Operation{{
-		Kind:      OperationSendStreamCard,
-		GatewayID: "app-1",
-		ChatID:    "oc-chat-1",
-		CardBody:  "第一段",
+		Kind:              OperationSendStreamCard,
+		GatewayID:         "app-1",
+		ChatID:            "oc-chat-1",
+		CardBody:          "第一段",
+		StreamLoadingText: ".",
 	}}
 	if err := gateway.Apply(t.Context(), ops); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
@@ -52,22 +56,22 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 }
 
 func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
-	doc := streamingCardDocument("", "正文", cardThemeProgress)
+	doc := streamingCardDocument("", "正文", ".", cardThemeProgress)
 	if _, ok := doc["header"]; ok {
 		t.Fatalf("expected titleless streaming card to omit header, got %#v", doc["header"])
 	}
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" {
+	if len(elements) != 2 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" || elements[1]["content"] != "." || elements[1]["element_id"] != "loading" {
 		t.Fatalf("unexpected streaming card body: %#v", doc)
 	}
 }
 
 func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
-	doc := streamingCardDocument("", "", cardThemeProgress)
+	doc := streamingCardDocument("", "", ".", cardThemeProgress)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["content"] != "" {
+	if len(elements) != 2 || elements[0]["content"] != "" || elements[1]["content"] != "." {
 		t.Fatalf("expected empty initial content for native streaming prefix matching, got %#v", doc)
 	}
 	config, _ := doc["config"].(map[string]any)
@@ -93,10 +97,11 @@ func TestShouldReopenStreamCard(t *testing.T) {
 func TestApplyUpdateStreamCardRequiresCardID(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	err := gateway.Apply(t.Context(), []Operation{{
-		Kind:      OperationUpdateStreamCard,
-		GatewayID: "app-1",
-		MessageID: "om-stream-1",
-		CardBody:  "正文",
+		Kind:              OperationUpdateStreamCard,
+		GatewayID:         "app-1",
+		MessageID:         "om-stream-1",
+		CardBody:          "正文",
+		StreamLoadingText: ".",
 	}})
 	if err == nil {
 		t.Fatalf("expected missing card id error")
@@ -135,7 +140,7 @@ func TestApplyUpdateStreamCardSerializesSameCard(t *testing.T) {
 	firstStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
 	secondStarted := make(chan struct{})
-	gateway.updateStreamCardFn = func(ctx context.Context, cardID, text string) error {
+	gateway.updateStreamCardFn = func(ctx context.Context, cardID, text, loadingText string) error {
 		nowActive := atomic.AddInt32(&active, 1)
 		defer atomic.AddInt32(&active, -1)
 		for {
@@ -160,11 +165,12 @@ func TestApplyUpdateStreamCardSerializesSameCard(t *testing.T) {
 		done := make(chan error, 1)
 		go func() {
 			done <- gateway.Apply(context.Background(), []Operation{{
-				Kind:         OperationUpdateStreamCard,
-				GatewayID:    "app-1",
-				MessageID:    "om-stream-1",
-				StreamCardID: "card-stream-1",
-				CardBody:     body,
+				Kind:              OperationUpdateStreamCard,
+				GatewayID:         "app-1",
+				MessageID:         "om-stream-1",
+				StreamCardID:      "card-stream-1",
+				CardBody:          body,
+				StreamLoadingText: ".",
 			}})
 		}()
 		return done

@@ -57,15 +57,17 @@ type LiveGateway struct {
 	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
 	createStreamCardFn func(context.Context, Operation) (string, error)
-	updateStreamCardFn func(context.Context, string, string) error
+	updateStreamCardFn func(context.Context, string, string, string) error
 	closeStreamCardFn  func(context.Context, string, string) error
 
-	mu        sync.Mutex
-	stateHook func(GatewayState, error)
-	reactions map[string]string
-	messages  map[string]string
-	streamSeq map[string]int
-	streamOps map[string]*sync.Mutex
+	mu                sync.Mutex
+	stateHook         func(GatewayState, error)
+	reactions         map[string]string
+	messages          map[string]string
+	streamSeq         map[string]int
+	streamOps         map[string]*sync.Mutex
+	streamText        map[string]string
+	streamLoadingText map[string]string
 
 	tokenMu              sync.Mutex
 	tenantAccessToken    string
@@ -111,13 +113,15 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	config.GatewayID = normalizeGatewayID(config.GatewayID)
 	client := NewLarkClient(config.AppID, config.AppSecret)
 	gateway := &LiveGateway{
-		config:    config,
-		client:    client,
-		broker:    NewFeishuCallBroker(config.GatewayID, client),
-		reactions: map[string]string{},
-		messages:  map[string]string{},
-		streamSeq: map[string]int{},
-		streamOps: map[string]*sync.Mutex{},
+		config:            config,
+		client:            client,
+		broker:            NewFeishuCallBroker(config.GatewayID, client),
+		reactions:         map[string]string{},
+		messages:          map[string]string{},
+		streamSeq:         map[string]int{},
+		streamOps:         map[string]*sync.Mutex{},
+		streamText:        map[string]string{},
+		streamLoadingText: map[string]string{},
 	}
 	gateway.downloadImageFn = gateway.downloadImage
 	gateway.downloadFileFn = gateway.downloadFile

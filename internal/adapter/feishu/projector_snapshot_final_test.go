@@ -194,8 +194,8 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 			},
 		},
 	})
-	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "." || loading[0].ReplyToMessageID != "msg-1" {
-		t.Fatalf("expected first waiting-dot frame on initial loading send, got %#v", loading)
+	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].StreamLoadingText != "." || loading[0].ReplyToMessageID != "msg-1" {
+		t.Fatalf("expected first waiting-dot frame to use separate loading element, got %#v", loading)
 	}
 
 	first := projector.ProjectEvent("chat-1", eventcontract.Event{
@@ -216,6 +216,9 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 	if first[0].CardThemeKey != cardThemeProgress || first[0].CardBody != "第一段" {
 		t.Fatalf("unexpected stream card: %#v", first[0])
+	}
+	if first[0].StreamLoadingText != "" {
+		t.Fatalf("expected real stream text to clear loading element, got %#v", first[0])
 	}
 	if first[0].CardTitle != "" {
 		t.Fatalf("expected stream card to omit title, got %#v", first[0].CardTitle)
@@ -277,8 +280,8 @@ func TestProjectAssistantStreamWaitingDotsStayAtTextTail(t *testing.T) {
 	if len(ops) != 1 || ops[0].Kind != OperationUpdateStreamCard {
 		t.Fatalf("unexpected loading-dot ops: %#v", ops)
 	}
-	if ops[0].CardBody != "第一段..." {
-		t.Fatalf("expected loading dots to stay at text tail, got %#v", ops[0])
+	if ops[0].CardBody != "第一段" || ops[0].StreamLoadingText != "..." {
+		t.Fatalf("expected loading dots to move into dedicated loading element, got %#v", ops[0])
 	}
 }
 
