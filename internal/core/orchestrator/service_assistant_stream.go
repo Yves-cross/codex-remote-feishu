@@ -15,7 +15,7 @@ const (
 	assistantStreamMaxInterval      = 2500 * time.Millisecond
 	assistantStreamMinPatchGrowth   = 80
 	assistantStreamShortPatchGrowth = 24
-	assistantStreamLoadingInterval  = 800 * time.Millisecond
+	assistantStreamLoadingInterval  = 400 * time.Millisecond
 )
 
 func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto.Event) []eventcontract.Event {

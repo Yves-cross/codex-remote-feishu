@@ -83,6 +83,26 @@ func TestStreamCardContentAnimatesLoadingDotsInline(t *testing.T) {
 	}
 }
 
+func TestStreamLoadingDotsMovesBlueDotLeftMiddleRight(t *testing.T) {
+	left := streamLoadingDots(0)
+	middle := streamLoadingDots(1)
+	right := streamLoadingDots(2)
+	wrapped := streamLoadingDots(3)
+	if blueDotIndex(left) != 0 || blueDotIndex(middle) != 1 || blueDotIndex(right) != 2 || blueDotIndex(wrapped) != 0 {
+		t.Fatalf("expected blue dot to move left-middle-right: left=%q middle=%q right=%q wrapped=%q", left, middle, right, wrapped)
+	}
+}
+
+func blueDotIndex(content string) int {
+	markers := strings.Split(content, "•</font>")
+	for i, marker := range markers {
+		if strings.Contains(marker, "color='blue'") {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestApplyUpdateStreamCardRequiresCardID(t *testing.T) {
 	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
 	err := gateway.Apply(t.Context(), []Operation{{
