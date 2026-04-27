@@ -22,6 +22,12 @@ That script does all of the following:
 3. copy the new binary to the fixed local artifact path
 4. run `./bin/codex-remote local-upgrade`
 
+For upgrading the daemon instance that is currently hosting the active Codex conversation, prefer:
+
+```bash
+./upgrade-self.sh
+```
+
 ## Natural-Language Boundary
 
 - Natural-language `本地升级` requests are repository tasks, not daemon slash-command requests.
@@ -29,6 +35,9 @@ That script does all of the following:
   - use `./upgrade-local.sh`
   - when the user names a target instance, keep that target explicit with `--instance <id>`
   - do **not** send `/upgrade ...` back into whichever daemon is currently hosting the Codex conversation
+- For self-recovery requests where the current daemon is too old or too broken to rely on its own `/upgrade dev` or `upgrade local` entrypoints:
+  - use `./upgrade-self.sh`
+  - this path builds a fresh repo binary first, then uses that fresh binary to drive `local-upgrade` against the current daemon self target
 - Natural-language debug/status/log/bug requests such as `debug 一下`, `看下当前实例状态`, `查日志`, or `报个 bug` default to the current daemon **self target**, not the repo-bound target.
 - Only use `bash scripts/install/repo-install-target.sh --format shell` or `bash scripts/install/repo-target-request.sh ...` when the user explicitly asks for:
   - the repo-bound target
@@ -47,6 +56,12 @@ That script does all of the following:
 
 ```bash
 ./upgrade-local.sh --instance beta
+```
+
+- Upgrade the daemon that is currently hosting this Codex session:
+
+```bash
+./upgrade-self.sh
 ```
 
 - Explicit slot label:
@@ -77,6 +92,12 @@ bash scripts/install/repo-target-request.sh admin /api/admin/bootstrap-state | j
 
 ```bash
 bash scripts/install/repo-target-request.sh --instance beta admin /v1/status | jq .
+```
+
+- For explicit current self-target debug/status HTTP calls, prefer:
+
+```bash
+bash scripts/install/self-target-request.sh admin /v1/status | jq .
 ```
 
 - For explanation-only requests, `./upgrade-local.sh --help` is usually enough.

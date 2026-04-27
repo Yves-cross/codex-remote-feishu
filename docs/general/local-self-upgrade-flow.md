@@ -11,6 +11,7 @@
 重点覆盖：
 
 - `./upgrade-local.sh` 做了什么
+- `./upgrade-self.sh` 做了什么
 - `codex-remote local-upgrade` 做了什么
 - 真正负责切换 live binary 的 helper 是谁
 - helper 从哪里来，释放到哪里，怎么启动
@@ -32,6 +33,14 @@
 
 但要注意，当前本地升级、`/upgrade latest` 的 release 升级、以及 `/upgrade dev` 的滚动开发构建升级，在底层都会复用同一个 upgrade-helper 事务模型，只是目标 binary 的来源不同。
 
+对于“当前正在服务我的 daemon 自己太旧，连 `/upgrade dev` 或历史版本的 `upgrade local` 都不可靠”的恢复场景，仓库里现在还有一条外部 controller 路径：
+
+- `scripts/install/self-install-target.sh`
+- `scripts/install/self-target-request.sh`
+- `./upgrade-self.sh`
+
+这条路径的关键点是：升级请求由当前 repo freshly built 的新 binary 发起，而不是依赖当前已安装旧版本先具备同等升级能力。
+
 ## 3. 参与者与角色
 
 ### 3.1 `./upgrade-local.sh`
@@ -45,6 +54,18 @@
 - 用刚构建出的 binary 调 `local-upgrade`
 
 它本身不直接停服务，也不直接覆盖 live binary。
+
+### 3.1.1 `./upgrade-self.sh`
+
+这是“升级当前 daemon 自身”的 repo helper。它负责：
+
+- 解析当前 daemon self target
+- 用当前 repo checkout 重新构建 `./bin/codex-remote`
+- 把构建产物复制到当前 daemon 的 fixed local-upgrade artifact 路径
+- 用刚构建出的 binary 直接执行 `local-upgrade -state-path <selfStatePath>`
+- 可选地等待 admin health 恢复
+
+它的设计目标就是规避“当前已安装版本太旧，无法可靠执行 `/upgrade dev` 或 `upgrade local`”这一类恢复问题。
 
 ### 3.2 fixed local-upgrade artifact
 

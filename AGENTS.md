@@ -156,7 +156,9 @@ Natural-language repo requests split by target semantics:
 - `本地升级` and other repo-build upgrade requests are **repo tasks**:
   - use `./upgrade-local.sh`
   - when the user names a target instance, pass `--instance` and keep that target explicit
+- `升级当前 daemon 自身`, `把我现在这个实例升上去`, `恢复当前实例到支持 dev 的版本` use `./upgrade-self.sh`
 - `debug 一下`, `看下当前实例状态`, `查日志`, `报个 bug` default to the **current daemon self target**, not the repo-bound target
+- for explicit current self-target HTTP inspection, prefer `bash scripts/install/self-target-request.sh ...`
 - only use `bash scripts/install/repo-target-request.sh ...` or `bash scripts/install/repo-install-target.sh --format shell` when the user explicitly asks for:
   - the repo-bound target
   - or a named install target such as `stable` / `beta` / `master`
