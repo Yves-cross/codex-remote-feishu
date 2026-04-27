@@ -54,6 +54,8 @@ type Operation struct {
 	cardEnvelope         cardEnvelopeVersion
 	card                 *cardDocument
 	finalSourceBody      string
+	StreamLoading        bool
+	StreamLoadingStep    int
 }
 
 func (operation Operation) FinalSourceBody() string {
@@ -402,15 +404,17 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 		}}
 	}
 	op := Operation{
-		Kind:             OperationSendStreamCard,
-		GatewayID:        event.GatewayID,
-		SurfaceSessionID: event.SurfaceSessionID,
-		ChatID:           chatID,
-		ReplyToMessageID: firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
-		CardBody:         text,
-		CardThemeKey:     cardThemeProgress,
-		cardEnvelope:     cardEnvelopeV2,
-		card:             rawCardDocument("", text, cardThemeProgress, nil),
+		Kind:              OperationSendStreamCard,
+		GatewayID:         event.GatewayID,
+		SurfaceSessionID:  event.SurfaceSessionID,
+		ChatID:            chatID,
+		ReplyToMessageID:  firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
+		CardBody:          text,
+		CardThemeKey:      cardThemeProgress,
+		StreamLoading:     view.Loading,
+		StreamLoadingStep: view.LoadingStep,
+		cardEnvelope:      cardEnvelopeV2,
+		card:              rawCardDocument("", text, cardThemeProgress, nil),
 	}
 	if messageID := strings.TrimSpace(view.MessageID); messageID != "" {
 		op.Kind = OperationUpdateStreamCard

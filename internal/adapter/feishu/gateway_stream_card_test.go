@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -50,7 +51,7 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 }
 
 func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
-	doc := streamingCardDocument("", "正文", cardThemeProgress)
+	doc := streamingCardDocument("", "正文", cardThemeProgress, false, 0)
 	if _, ok := doc["header"]; ok {
 		t.Fatalf("expected titleless streaming card to omit header, got %#v", doc["header"])
 	}
@@ -61,12 +62,24 @@ func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
 	}
 }
 
-func TestStreamingCardDocumentUsesBlankContentForNativeLoading(t *testing.T) {
-	doc := streamingCardDocument("", "", cardThemeProgress)
+func TestStreamingCardDocumentUsesInlineLoadingDots(t *testing.T) {
+	doc := streamingCardDocument("", "", cardThemeProgress, true, 0)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 1 || elements[0]["content"] != " " {
-		t.Fatalf("expected blank content placeholder for native streaming loading, got %#v", doc)
+	content, _ := elements[0]["content"].(string)
+	if len(elements) != 1 || strings.Count(content, "•") != 3 || !strings.Contains(content, "blue") {
+		t.Fatalf("expected inline loading dots, got %#v", doc)
+	}
+}
+
+func TestStreamCardContentAnimatesLoadingDotsInline(t *testing.T) {
+	first := streamCardContent("正文", true, 0)
+	second := streamCardContent("正文", true, 1)
+	if !strings.HasPrefix(first, "正文 ") || !strings.HasPrefix(second, "正文 ") {
+		t.Fatalf("expected loading dots to stay inline after text: first=%q second=%q", first, second)
+	}
+	if strings.Count(first, "•") != 3 || strings.Count(second, "•") != 3 || first == second {
+		t.Fatalf("expected three animated loading dots: first=%q second=%q", first, second)
 	}
 }
 

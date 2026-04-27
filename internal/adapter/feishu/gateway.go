@@ -57,7 +57,7 @@ type LiveGateway struct {
 	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
 	createStreamCardFn func(context.Context, Operation) (string, error)
-	updateStreamCardFn func(context.Context, string, string) error
+	updateStreamCardFn func(context.Context, string, string, bool, int) error
 	closeStreamCardFn  func(context.Context, string, string) error
 
 	mu        sync.Mutex
