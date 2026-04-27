@@ -69,15 +69,12 @@ func resolvedCommandFromCommandID(ctx CatalogContext, commandID string, action A
 	if commandID == "" {
 		return ResolvedCommand{}, false
 	}
-	if _, ok := FeishuCommandDefinitionByID(commandID); !ok {
+	spec, ok := feishuCommandSpecByID(commandID)
+	if !ok {
 		return ResolvedCommand{}, false
 	}
-	return NormalizeResolvedCommand(ResolvedCommand{
-		FamilyID:  commandID,
-		VariantID: defaultFeishuCommandDisplayVariantID(commandID),
-		Backend:   ctx.Backend,
-		Action:    ApplyCatalogProvenanceToAction(action, commandID, defaultFeishuCommandDisplayVariantID(commandID), ctx.Backend),
-	}), true
+	action = ApplyCatalogProvenanceToAction(action, commandID, defaultFeishuCommandDisplayVariantID(commandID), ctx.Backend)
+	return resolvedFeishuCommandFromSpec(ctx, spec, action), true
 }
 
 func mergeResolvedAction(base Action, resolved ResolvedCommand) Action {
@@ -95,61 +92,8 @@ func mergeResolvedAction(base Action, resolved ResolvedCommand) Action {
 }
 
 func FeishuCommandIDForActionKind(kind ActionKind) (string, bool) {
-	if flow, ok := FeishuConfigFlowDefinitionByActionKind(kind); ok {
-		return flow.CommandID, true
-	}
-	switch kind {
-	case ActionShowCommandMenu:
-		return FeishuCommandMenu, true
-	case ActionShowCommandHelp:
-		return FeishuCommandHelp, true
-	case ActionShowHistory:
-		return FeishuCommandHistory, true
-	case ActionCronCommand:
-		return FeishuCommandCron, true
-	case ActionUpgradeCommand:
-		return FeishuCommandUpgrade, true
-	case ActionDebugCommand:
-		return FeishuCommandDebug, true
-	case ActionVSCodeMigrateCommand:
-		return FeishuCommandVSCodeMigrate, true
-	case ActionWorkspaceRoot:
-		return FeishuCommandWorkspace, true
-	case ActionWorkspaceList:
-		return FeishuCommandWorkspaceList, true
-	case ActionWorkspaceNew:
-		return FeishuCommandWorkspaceNew, true
-	case ActionWorkspaceNewDir:
-		return FeishuCommandWorkspaceNewDir, true
-	case ActionWorkspaceNewGit:
-		return FeishuCommandWorkspaceNewGit, true
-	case ActionWorkspaceDetach:
-		return FeishuCommandWorkspaceDetach, true
-	case ActionListInstances:
-		return FeishuCommandList, true
-	case ActionShowThreads:
-		return FeishuCommandUse, true
-	case ActionShowAllThreads:
-		return FeishuCommandUseAll, true
-	case ActionSendFile:
-		return FeishuCommandSendFile, true
-	case ActionStatus:
-		return FeishuCommandStatus, true
-	case ActionStop:
-		return FeishuCommandStop, true
-	case ActionCompact:
-		return FeishuCommandCompact, true
-	case ActionSteerAll:
-		return FeishuCommandSteerAll, true
-	case ActionNewThread:
-		return FeishuCommandNew, true
-	case ActionDetach:
-		return FeishuCommandDetach, true
-	case ActionFollowLocal:
-		return FeishuCommandFollow, true
-	default:
-		return "", false
-	}
+	commandID, _, ok := feishuCommandActionRouteByKind(kind)
+	return commandID, ok
 }
 
 func firstNonZeroBackend(values ...agentproto.Backend) agentproto.Backend {

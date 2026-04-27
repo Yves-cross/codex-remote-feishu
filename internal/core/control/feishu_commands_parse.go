@@ -22,11 +22,10 @@ func ResolveFeishuTextCommand(ctx CatalogContext, text string) (ResolvedCommand,
 		for _, spec := range feishuCommandSpecs {
 			for _, prefix := range spec.textPrefixes {
 				if first == prefix.alias {
-					return NormalizeResolvedCommand(ResolvedCommand{
-						FamilyID:  spec.definition.ID,
-						VariantID: defaultFeishuCommandDisplayVariantID(spec.definition.ID),
-						Backend:   ctx.Backend,
-						Action:    Action{Kind: prefix.kind, Text: trimmed, CommandID: spec.definition.ID},
+					return resolvedFeishuCommandFromSpec(ctx, spec, Action{
+						Kind:      prefix.kind,
+						Text:      trimmed,
+						CommandID: spec.definition.ID,
 					}), true
 				}
 			}
@@ -40,12 +39,7 @@ func ResolveFeishuTextCommand(ctx CatalogContext, text string) (ResolvedCommand,
 					action.Text = trimmed
 				}
 				action.CommandID = spec.definition.ID
-				return NormalizeResolvedCommand(ResolvedCommand{
-					FamilyID:  spec.definition.ID,
-					VariantID: defaultFeishuCommandDisplayVariantID(spec.definition.ID),
-					Backend:   ctx.Backend,
-					Action:    action,
-				}), true
+				return resolvedFeishuCommandFromSpec(ctx, spec, action), true
 			}
 		}
 	}
@@ -70,15 +64,18 @@ func ResolveFeishuMenuCommand(ctx CatalogContext, eventKey string) (ResolvedComm
 	for _, spec := range feishuCommandSpecs {
 		for _, dynamic := range spec.menuDynamic {
 			if strings.HasPrefix(lower, dynamic.prefix) {
-				text, ok := dynamic.build(trimmed[len(dynamic.prefix):])
+				argument, ok := dynamic.parseArgument(trimmed[len(dynamic.prefix):])
 				if !ok {
 					return ResolvedCommand{}, false
 				}
-				return NormalizeResolvedCommand(ResolvedCommand{
-					FamilyID:  spec.definition.ID,
-					VariantID: defaultFeishuCommandDisplayVariantID(spec.definition.ID),
-					Backend:   ctx.Backend,
-					Action:    Action{Kind: dynamic.kind, Text: text, CommandID: spec.definition.ID},
+				text := BuildFeishuActionText(dynamic.kind, argument)
+				if strings.TrimSpace(text) == "" {
+					return ResolvedCommand{}, false
+				}
+				return resolvedFeishuCommandFromSpec(ctx, spec, Action{
+					Kind:      dynamic.kind,
+					Text:      text,
+					CommandID: spec.definition.ID,
 				}), true
 			}
 		}
@@ -89,12 +86,7 @@ func ResolveFeishuMenuCommand(ctx CatalogContext, eventKey string) (ResolvedComm
 			if normalized == NormalizeFeishuMenuEventKey(match.alias) {
 				action := match.action
 				action.CommandID = spec.definition.ID
-				return NormalizeResolvedCommand(ResolvedCommand{
-					FamilyID:  spec.definition.ID,
-					VariantID: defaultFeishuCommandDisplayVariantID(spec.definition.ID),
-					Backend:   ctx.Backend,
-					Action:    action,
-				}), true
+				return resolvedFeishuCommandFromSpec(ctx, spec, action), true
 			}
 		}
 	}

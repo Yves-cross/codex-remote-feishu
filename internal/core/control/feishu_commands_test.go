@@ -173,6 +173,39 @@ func TestParseFeishuMenuActionRecognizesSteerAllCommand(t *testing.T) {
 	}
 }
 
+func TestParseFeishuMenuActionBuildsCanonicalTextFromDynamicRoutes(t *testing.T) {
+	tests := []struct {
+		eventKey   string
+		wantKind   ActionKind
+		wantText   string
+		wantFamily string
+	}{
+		{eventKey: "reasoning_high", wantKind: ActionReasoningCommand, wantText: "/reasoning high", wantFamily: FeishuCommandReasoning},
+		{eventKey: "model_gpt-5.4", wantKind: ActionModelCommand, wantText: "/model gpt-5.4", wantFamily: FeishuCommandModel},
+		{eventKey: "access_confirm", wantKind: ActionAccessCommand, wantText: "/access confirm", wantFamily: FeishuCommandAccess},
+		{eventKey: "plan-on", wantKind: ActionPlanCommand, wantText: "/plan on", wantFamily: FeishuCommandPlan},
+		{eventKey: "upgrade_track_beta", wantKind: ActionUpgradeCommand, wantText: "/upgrade track beta", wantFamily: FeishuCommandUpgrade},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventKey, func(t *testing.T) {
+			action, ok := ParseFeishuMenuAction(tt.eventKey)
+			if !ok {
+				t.Fatalf("expected %q to be parsed", tt.eventKey)
+			}
+			if action.Kind != tt.wantKind {
+				t.Fatalf("kind = %q, want %q", action.Kind, tt.wantKind)
+			}
+			if action.Text != tt.wantText {
+				t.Fatalf("text = %q, want %q", action.Text, tt.wantText)
+			}
+			if action.CommandID != tt.wantFamily {
+				t.Fatalf("command id = %q, want %q", action.CommandID, tt.wantFamily)
+			}
+		})
+	}
+}
+
 func TestParseFeishuTextActionRecognizesVerboseCommand(t *testing.T) {
 	tests := []string{
 		"/verbose",
@@ -290,6 +323,53 @@ func TestFeishuMenuVisibleCommandsHaveCanonicalSlashAndMenuParity(t *testing.T) 
 		}
 		if textAction.Kind != menuAction.Kind {
 			t.Fatalf("menu-visible command %q slash/menu kind mismatch: %q vs %q", def.ID, textAction.Kind, menuAction.Kind)
+		}
+	}
+}
+
+func TestFeishuCommandRegistryActionRoundTrip(t *testing.T) {
+	tests := []struct {
+		commandID string
+		wantKind  ActionKind
+		wantSlash string
+	}{
+		{commandID: FeishuCommandStop, wantKind: ActionStop, wantSlash: "/stop"},
+		{commandID: FeishuCommandCompact, wantKind: ActionCompact, wantSlash: "/compact"},
+		{commandID: FeishuCommandSteerAll, wantKind: ActionSteerAll, wantSlash: "/steerall"},
+		{commandID: FeishuCommandNew, wantKind: ActionNewThread, wantSlash: "/new"},
+		{commandID: FeishuCommandDetach, wantKind: ActionDetach, wantSlash: "/detach"},
+		{commandID: FeishuCommandFollow, wantKind: ActionFollowLocal, wantSlash: "/follow"},
+		{commandID: FeishuCommandPatch, wantKind: ActionTurnPatchCommand, wantSlash: "/bendtomywill"},
+		{commandID: FeishuCommandWorkspaceNewWorktree, wantKind: ActionWorkspaceNewWorktree, wantSlash: "/workspace new worktree"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.commandID, func(t *testing.T) {
+			kind, ok := ActionKindForFeishuCommandID(tt.commandID)
+			if !ok || kind != tt.wantKind {
+				t.Fatalf("ActionKindForFeishuCommandID(%q) = (%q, %v), want (%q, true)", tt.commandID, kind, ok, tt.wantKind)
+			}
+
+			commandID, ok := FeishuCommandIDForActionKind(tt.wantKind)
+			if !ok || commandID != tt.commandID {
+				t.Fatalf("FeishuCommandIDForActionKind(%q) = (%q, %v), want (%q, true)", tt.wantKind, commandID, ok, tt.commandID)
+			}
+
+			if got := BuildFeishuActionText(tt.wantKind, ""); got != tt.wantSlash {
+				t.Fatalf("BuildFeishuActionText(%q) = %q, want %q", tt.wantKind, got, tt.wantSlash)
+			}
+		})
+	}
+}
+
+func TestEveryFeishuCommandHasSinglePrimaryActionKind(t *testing.T) {
+	for _, spec := range feishuCommandSpecs {
+		kind, ok := feishuCommandPrimaryActionKind(spec)
+		if !ok {
+			t.Fatalf("command %q does not have a single primary action kind", spec.definition.ID)
+		}
+		if strings.TrimSpace(string(kind)) == "" {
+			t.Fatalf("command %q has empty primary action kind", spec.definition.ID)
 		}
 	}
 }

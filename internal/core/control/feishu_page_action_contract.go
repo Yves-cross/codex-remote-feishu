@@ -30,115 +30,17 @@ func FeishuActionArgumentText(text string) string {
 }
 
 func ActionKindForFeishuCommandID(commandID string) (ActionKind, bool) {
-	if flow, ok := FeishuConfigFlowDefinitionByCommandID(strings.TrimSpace(commandID)); ok {
-		return flow.ActionKind, true
-	}
-	switch strings.TrimSpace(commandID) {
-	case FeishuCommandMenu:
-		return ActionShowCommandMenu, true
-	case FeishuCommandHelp:
-		return ActionShowCommandHelp, true
-	case FeishuCommandHistory:
-		return ActionShowHistory, true
-	case FeishuCommandCron:
-		return ActionCronCommand, true
-	case FeishuCommandUpgrade:
-		return ActionUpgradeCommand, true
-	case FeishuCommandPatch:
-		return ActionTurnPatchCommand, true
-	case FeishuCommandDebug:
-		return ActionDebugCommand, true
-	case FeishuCommandVSCodeMigrate:
-		return ActionVSCodeMigrateCommand, true
-	case FeishuCommandWorkspace:
-		return ActionWorkspaceRoot, true
-	case FeishuCommandWorkspaceList:
-		return ActionWorkspaceList, true
-	case FeishuCommandWorkspaceNew:
-		return ActionWorkspaceNew, true
-	case FeishuCommandWorkspaceNewDir:
-		return ActionWorkspaceNewDir, true
-	case FeishuCommandWorkspaceNewGit:
-		return ActionWorkspaceNewGit, true
-	case FeishuCommandWorkspaceNewWorktree:
-		return ActionWorkspaceNewWorktree, true
-	case FeishuCommandWorkspaceDetach:
-		return ActionWorkspaceDetach, true
-	case FeishuCommandList:
-		return ActionListInstances, true
-	case FeishuCommandUse:
-		return ActionShowThreads, true
-	case FeishuCommandUseAll:
-		return ActionShowAllThreads, true
-	case FeishuCommandSendFile:
-		return ActionSendFile, true
-	case FeishuCommandStatus:
-		return ActionStatus, true
-	default:
+	spec, ok := feishuCommandSpecByID(strings.TrimSpace(commandID))
+	if !ok {
 		return "", false
 	}
+	return feishuCommandPrimaryActionKind(spec)
 }
 
 func canonicalSlashForActionKind(kind ActionKind) string {
-	if flow, ok := FeishuConfigFlowDefinitionByActionKind(kind); ok {
-		return flow.BareCommand
-	}
-	switch kind {
-	case ActionShowCommandMenu:
-		return "/menu"
-	case ActionShowCommandHelp:
-		return "/help"
-	case ActionShowHistory:
-		return "/history"
-	case ActionCronCommand:
-		return "/cron"
-	case ActionUpgradeCommand:
-		return "/upgrade"
-	case ActionTurnPatchCommand:
-		return "/bendtomywill"
-	case ActionTurnPatchRollback:
-		return "/bendtomywill rollback"
-	case ActionDebugCommand:
-		return "/debug"
-	case ActionVSCodeMigrateCommand:
-		return "/vscode-migrate"
-	case ActionWorkspaceRoot:
-		return "/workspace"
-	case ActionWorkspaceList:
-		return "/workspace list"
-	case ActionWorkspaceNew:
-		return "/workspace new"
-	case ActionWorkspaceNewDir:
-		return "/workspace new dir"
-	case ActionWorkspaceNewGit:
-		return "/workspace new git"
-	case ActionWorkspaceNewWorktree:
-		return "/workspace new worktree"
-	case ActionWorkspaceDetach:
-		return "/workspace detach"
-	case ActionListInstances:
-		return "/list"
-	case ActionShowThreads:
-		return "/use"
-	case ActionShowAllThreads:
-		return "/useall"
-	case ActionSendFile:
-		return "/sendfile"
-	case ActionStatus:
-		return "/status"
-	case ActionStop:
-		return "/stop"
-	case ActionCompact:
-		return "/compact"
-	case ActionSteerAll:
-		return "/steerall"
-	case ActionNewThread:
-		return "/new"
-	case ActionDetach:
-		return "/detach"
-	case ActionFollowLocal:
-		return "/follow"
-	default:
+	_, route, ok := feishuCommandActionRouteByKind(kind)
+	if !ok {
 		return ""
 	}
+	return route.canonicalSlash
 }

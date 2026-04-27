@@ -12,21 +12,21 @@ func commandOption(commandText, menuKey, value, label, description string) Feish
 	}
 }
 
-func buildMenuVerboseText(suffix string) (string, bool) {
+func normalizeVerboseMenuArgument(suffix string) (string, bool) {
 	value := strings.ToLower(strings.TrimSpace(suffix))
 	switch value {
 	case "quiet", "normal", "verbose":
-		return "/verbose " + value, true
+		return value, true
 	default:
 		return "", false
 	}
 }
 
-func buildMenuPlanText(suffix string) (string, bool) {
+func normalizePlanMenuArgument(suffix string) (string, bool) {
 	value := strings.ToLower(strings.TrimSpace(suffix))
 	switch value {
 	case "on", "off":
-		return "/plan " + value, true
+		return value, true
 	default:
 		return "", false
 	}

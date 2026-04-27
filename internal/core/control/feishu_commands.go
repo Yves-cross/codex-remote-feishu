@@ -94,17 +94,18 @@ type feishuCommandPrefixMatch struct {
 }
 
 type feishuCommandDynamicMenuMatch struct {
-	prefix string
-	kind   ActionKind
-	build  func(string) (string, bool)
+	prefix        string
+	kind          ActionKind
+	parseArgument func(string) (string, bool)
 }
 
 type feishuCommandSpec struct {
-	definition   FeishuCommandDefinition
-	textExact    []feishuCommandMatch
-	textPrefixes []feishuCommandPrefixMatch
-	menuExact    []feishuCommandMatch
-	menuDynamic  []feishuCommandDynamicMenuMatch
+	definition        FeishuCommandDefinition
+	textExact         []feishuCommandMatch
+	textPrefixes      []feishuCommandPrefixMatch
+	menuExact         []feishuCommandMatch
+	menuDynamic       []feishuCommandDynamicMenuMatch
+	extraActionRoutes []feishuCommandActionRoute
 }
 
 type FeishuRecommendedMenu struct {
@@ -301,10 +302,10 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "reasonxhigh", action: Action{Kind: ActionReasoningCommand, Text: "/reasoning xhigh"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "reasoning_", kind: ActionReasoningCommand, build: buildMenuReasoningText},
-			{prefix: "reasoning-", kind: ActionReasoningCommand, build: buildMenuReasoningText},
-			{prefix: "reason_", kind: ActionReasoningCommand, build: buildMenuReasoningText},
-			{prefix: "reason-", kind: ActionReasoningCommand, build: buildMenuReasoningText},
+			{prefix: "reasoning_", kind: ActionReasoningCommand, parseArgument: normalizeReasoningMenuArgument},
+			{prefix: "reasoning-", kind: ActionReasoningCommand, parseArgument: normalizeReasoningMenuArgument},
+			{prefix: "reason_", kind: ActionReasoningCommand, parseArgument: normalizeReasoningMenuArgument},
+			{prefix: "reason-", kind: ActionReasoningCommand, parseArgument: normalizeReasoningMenuArgument},
 		},
 	},
 	{
@@ -335,8 +336,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "model", action: Action{Kind: ActionModelCommand, Text: "/model"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "model_", kind: ActionModelCommand, build: buildMenuModelText},
-			{prefix: "model-", kind: ActionModelCommand, build: buildMenuModelText},
+			{prefix: "model_", kind: ActionModelCommand, parseArgument: normalizeModelMenuArgument},
+			{prefix: "model-", kind: ActionModelCommand, parseArgument: normalizeModelMenuArgument},
 		},
 	},
 	{
@@ -378,10 +379,10 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "approvalconfirm", action: Action{Kind: ActionAccessCommand, Text: "/access confirm"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "access_", kind: ActionAccessCommand, build: buildMenuAccessText},
-			{prefix: "access-", kind: ActionAccessCommand, build: buildMenuAccessText},
-			{prefix: "approval_", kind: ActionAccessCommand, build: buildMenuAccessText},
-			{prefix: "approval-", kind: ActionAccessCommand, build: buildMenuAccessText},
+			{prefix: "access_", kind: ActionAccessCommand, parseArgument: normalizeAccessMenuArgument},
+			{prefix: "access-", kind: ActionAccessCommand, parseArgument: normalizeAccessMenuArgument},
+			{prefix: "approval_", kind: ActionAccessCommand, parseArgument: normalizeAccessMenuArgument},
+			{prefix: "approval-", kind: ActionAccessCommand, parseArgument: normalizeAccessMenuArgument},
 		},
 	},
 	{
@@ -416,8 +417,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "plan", action: Action{Kind: ActionPlanCommand, Text: "/plan"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "plan_", kind: ActionPlanCommand, build: buildMenuPlanText},
-			{prefix: "plan-", kind: ActionPlanCommand, build: buildMenuPlanText},
+			{prefix: "plan_", kind: ActionPlanCommand, parseArgument: normalizePlanMenuArgument},
+			{prefix: "plan-", kind: ActionPlanCommand, parseArgument: normalizePlanMenuArgument},
 		},
 	},
 	{
@@ -448,8 +449,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "verbose", action: Action{Kind: ActionVerboseCommand, Text: "/verbose"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "verbose_", kind: ActionVerboseCommand, build: buildMenuVerboseText},
-			{prefix: "verbose-", kind: ActionVerboseCommand, build: buildMenuVerboseText},
+			{prefix: "verbose_", kind: ActionVerboseCommand, parseArgument: normalizeVerboseMenuArgument},
+			{prefix: "verbose-", kind: ActionVerboseCommand, parseArgument: normalizeVerboseMenuArgument},
 		},
 	},
 	{
@@ -745,8 +746,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "mode", action: Action{Kind: ActionModeCommand, Text: "/mode"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "mode_", kind: ActionModeCommand, build: buildMenuModeText},
-			{prefix: "mode-", kind: ActionModeCommand, build: buildMenuModeText},
+			{prefix: "mode_", kind: ActionModeCommand, parseArgument: normalizeModeMenuArgument},
+			{prefix: "mode-", kind: ActionModeCommand, parseArgument: normalizeModeMenuArgument},
 		},
 	},
 	{
@@ -776,8 +777,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "autowhip", action: Action{Kind: ActionAutoWhipCommand, Text: "/autowhip"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "autowhip_", kind: ActionAutoWhipCommand, build: buildMenuAutoWhipText},
-			{prefix: "autowhip-", kind: ActionAutoWhipCommand, build: buildMenuAutoWhipText},
+			{prefix: "autowhip_", kind: ActionAutoWhipCommand, parseArgument: normalizeAutoWhipMenuArgument},
+			{prefix: "autowhip-", kind: ActionAutoWhipCommand, parseArgument: normalizeAutoWhipMenuArgument},
 		},
 	},
 	{
@@ -807,8 +808,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "autocontinue", action: Action{Kind: ActionAutoContinueCommand, Text: "/autocontinue"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "autocontinue_", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
-			{prefix: "autocontinue-", kind: ActionAutoContinueCommand, build: buildMenuAutoContinueText},
+			{prefix: "autocontinue_", kind: ActionAutoContinueCommand, parseArgument: normalizeAutoContinueMenuArgument},
+			{prefix: "autocontinue-", kind: ActionAutoContinueCommand, parseArgument: normalizeAutoContinueMenuArgument},
 		},
 	},
 	{
@@ -908,8 +909,8 @@ var feishuCommandSpecs = []feishuCommandSpec{
 			{alias: "upgrade", action: Action{Kind: ActionUpgradeCommand, Text: "/upgrade"}},
 		},
 		menuDynamic: []feishuCommandDynamicMenuMatch{
-			{prefix: "upgrade_", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
-			{prefix: "upgrade-", kind: ActionUpgradeCommand, build: buildMenuUpgradeText},
+			{prefix: "upgrade_", kind: ActionUpgradeCommand, parseArgument: normalizeUpgradeMenuArgument},
+			{prefix: "upgrade-", kind: ActionUpgradeCommand, parseArgument: normalizeUpgradeMenuArgument},
 		},
 	},
 	{
@@ -929,6 +930,9 @@ var feishuCommandSpecs = []feishuCommandSpec{
 		},
 		menuExact: []feishuCommandMatch{
 			{alias: "patch", action: Action{Kind: ActionTurnPatchCommand, Text: "/bendtomywill"}},
+		},
+		extraActionRoutes: []feishuCommandActionRoute{
+			{kind: ActionTurnPatchRollback, canonicalSlash: "/bendtomywill rollback"},
 		},
 	},
 	{

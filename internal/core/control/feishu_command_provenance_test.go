@@ -39,3 +39,21 @@ func TestResolveFeishuActionCatalogFallsBackToActionKind(t *testing.T) {
 		t.Fatalf("backend = %q, want %q", resolved.Action.CatalogBackend, agentproto.BackendClaude)
 	}
 }
+
+func TestResolveFeishuActionCatalogFallsBackToPatchRollbackRoute(t *testing.T) {
+	resolved, ok := ResolveFeishuActionCatalog(CatalogContext{Backend: agentproto.BackendClaude}, Action{
+		Kind: ActionTurnPatchRollback,
+	})
+	if !ok {
+		t.Fatal("expected patch rollback action kind fallback to resolve")
+	}
+	if resolved.FamilyID != FeishuCommandPatch {
+		t.Fatalf("family id = %q, want %q", resolved.FamilyID, FeishuCommandPatch)
+	}
+	if resolved.Action.CatalogBackend != agentproto.BackendClaude {
+		t.Fatalf("backend = %q, want %q", resolved.Action.CatalogBackend, agentproto.BackendClaude)
+	}
+	if got := BuildFeishuActionText(ActionTurnPatchRollback, "patch-thread-1-1"); got != "/bendtomywill rollback patch-thread-1-1" {
+		t.Fatalf("BuildFeishuActionText(rollback) = %q", got)
+	}
+}
