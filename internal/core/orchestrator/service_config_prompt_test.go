@@ -1770,9 +1770,10 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "final_answer"},
 	})
-	if len(started) != 0 {
-		t.Fatalf("expected no UI events on item start, got %#v", started)
+	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "…" {
+		t.Fatalf("expected item start to emit assistant stream loading, got %#v", started)
 	}
+	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
 	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
@@ -1782,10 +1783,9 @@ func TestFinalAssistantDeltaStreamsToPatchableCard(t *testing.T) {
 		ItemKind: "agent_message",
 		Delta:    "您好",
 	})
-	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.Text != "您好" {
+	if len(first) != 1 || first[0].AssistantStream == nil || first[0].AssistantStream.MessageID != "om-stream-1" || first[0].AssistantStream.StreamCardID != "card-stream-1" || first[0].AssistantStream.Text != "您好" {
 		t.Fatalf("expected first final delta to emit assistant stream card, got %#v", first)
 	}
-	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
 	second := svc.ApplyAgentEvent("inst-1", agentproto.Event{
 		Kind:     agentproto.EventItemDelta,
