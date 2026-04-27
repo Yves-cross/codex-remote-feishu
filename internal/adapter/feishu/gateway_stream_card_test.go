@@ -56,22 +56,23 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 }
 
 func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
-	doc := streamingCardDocument("", "正文", ".", cardThemeProgress)
+	doc := streamingCardDocument("", "正文", ".", "img-loading", cardThemeProgress)
 	if _, ok := doc["header"]; ok {
 		t.Fatalf("expected titleless streaming card to omit header, got %#v", doc["header"])
 	}
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 2 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" || elements[1]["content"] != "<text_tag color='neutral'>.</text_tag>" || elements[1]["element_id"] != "loading" {
+	loading, _ := elements[1]["icon"].(map[string]any)
+	if len(elements) != 2 || elements[0]["content"] != "正文" || elements[0]["element_id"] != "content" || elements[1]["element_id"] != "loading" || loading["img_key"] != "img-loading" {
 		t.Fatalf("unexpected streaming card body: %#v", doc)
 	}
 }
 
 func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
-	doc := streamingCardDocument("", "", ".", cardThemeProgress)
+	doc := streamingCardDocument("", "", ".", "img-loading", cardThemeProgress)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	if len(elements) != 2 || elements[0]["content"] != "" || elements[1]["content"] != "<text_tag color='neutral'>.</text_tag>" {
+	if len(elements) != 2 || elements[0]["content"] != "" {
 		t.Fatalf("expected empty initial content for native streaming prefix matching, got %#v", doc)
 	}
 	config, _ := doc["config"].(map[string]any)
@@ -228,5 +229,24 @@ func TestStreamCardLoadingContentWrapsWaitingDotsAsNeutralTag(t *testing.T) {
 	}
 	if got := streamCardLoadingContent(""); got != " " {
 		t.Fatalf("expected blank loading content to collapse to single space, got %q", got)
+	}
+}
+
+func TestStreamCardLoadingElementUsesCustomIconWhenImageKeyPresent(t *testing.T) {
+	element := streamCardLoadingElement("...", "img-loading")
+	if element["tag"] != "div" || element["element_id"] != "loading" {
+		t.Fatalf("unexpected loading element shell: %#v", element)
+	}
+	icon, _ := element["icon"].(map[string]any)
+	if icon["tag"] != "custom_icon" || icon["img_key"] != "img-loading" {
+		t.Fatalf("expected custom loading icon, got %#v", element)
+	}
+}
+
+func TestStreamCardLoadingElementFallsBackToTextWhenImageKeyMissing(t *testing.T) {
+	element := streamCardLoadingElement("...", "")
+	text, _ := element["text"].(map[string]any)
+	if text["tag"] != "lark_md" || text["content"] != "<text_tag color='neutral'>...</text_tag>" {
+		t.Fatalf("expected markdown text fallback, got %#v", element)
 	}
 }

@@ -60,14 +60,16 @@ type LiveGateway struct {
 	updateStreamCardFn func(context.Context, string, string, string) error
 	closeStreamCardFn  func(context.Context, string, string) error
 
-	mu                sync.Mutex
-	stateHook         func(GatewayState, error)
-	reactions         map[string]string
-	messages          map[string]string
-	streamSeq         map[string]int
-	streamOps         map[string]*sync.Mutex
-	streamText        map[string]string
-	streamLoadingText map[string]string
+	mu                          sync.Mutex
+	stateHook                   func(GatewayState, error)
+	reactions                   map[string]string
+	messages                    map[string]string
+	streamSeq                   map[string]int
+	streamOps                   map[string]*sync.Mutex
+	streamText                  map[string]string
+	streamLoadingText           map[string]string
+	streamLoadingImageKey       string
+	streamLoadingImageKeyFailed bool
 
 	tokenMu              sync.Mutex
 	tenantAccessToken    string
