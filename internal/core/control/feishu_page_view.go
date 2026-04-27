@@ -67,7 +67,6 @@ func NormalizeFeishuPageView(view FeishuPageView) FeishuPageView {
 	sealed := frontstagecontract.SealedForPhase(frame.Phase)
 	if sealed {
 		interactive = false
-		relatedButtons = nil
 	} else if allowCommandGroupFallback && len(relatedButtons) == 0 && strings.TrimSpace(def.GroupID) != "" && !view.SuppressDefaultRelatedButtons {
 		relatedButtons = FeishuCommandBackButtons(def.GroupID)
 	}

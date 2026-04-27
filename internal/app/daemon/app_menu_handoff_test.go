@@ -133,6 +133,71 @@ func TestHandleGatewayActionWorkspaceMenuFlowKeepsParentBackNavigation(t *testin
 	}
 }
 
+func TestHandleGatewayActionMenuConfigFlowKeepsReturnToGroupAfterApply(t *testing.T) {
+	gateway := &recordingGateway{}
+	app := New(":0", ":0", gateway, agentproto.ServerIdentity{
+		PID:       42,
+		StartedAt: time.Date(2026, 4, 27, 10, 5, 0, 0, time.UTC),
+	})
+	app.service.MaterializeSurface("surface-1", "app-1", "chat-1", "user-1")
+
+	menuResult := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionShowCommandMenu,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-settings-1",
+		Text:             "/menu send_settings",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+	if menuResult == nil || menuResult.ReplaceCurrentCard == nil {
+		t.Fatalf("expected menu settings replacement result, got %#v", menuResult)
+	}
+
+	configResult := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionAutoWhipCommand,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-settings-1",
+		Text:             "/autowhip",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+	if configResult == nil || configResult.ReplaceCurrentCard == nil {
+		t.Fatalf("expected autowhip config replacement result, got %#v", configResult)
+	}
+	if !operationHasActionValue(*configResult.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionShowCommandMenu)) ||
+		!operationHasActionValue(*configResult.ReplaceCurrentCard, "page_action", "action_arg", "send_settings") {
+		t.Fatalf("expected config page to keep return-to-group action, got %#v", configResult.ReplaceCurrentCard.CardElements)
+	}
+
+	applyResult := app.HandleGatewayAction(context.Background(), control.Action{
+		Kind:             control.ActionAutoWhipCommand,
+		GatewayID:        "app-1",
+		SurfaceSessionID: "surface-1",
+		ChatID:           "chat-1",
+		ActorUserID:      "user-1",
+		MessageID:        "om-menu-settings-1",
+		Text:             "/autowhip on",
+		Inbound: &control.ActionInboundMeta{
+			CardDaemonLifecycleID: app.daemonLifecycleID,
+		},
+	})
+	if applyResult == nil || applyResult.ReplaceCurrentCard == nil {
+		t.Fatalf("expected autowhip apply replacement result, got %#v", applyResult)
+	}
+	if !operationHasActionValue(*applyResult.ReplaceCurrentCard, "page_action", "action_kind", string(control.ActionShowCommandMenu)) ||
+		!operationHasActionValue(*applyResult.ReplaceCurrentCard, "page_action", "action_arg", "send_settings") {
+		t.Fatalf("expected applied config card to keep return-to-group action, got %#v", applyResult.ReplaceCurrentCard.CardElements)
+	}
+}
+
 func TestHandleGatewayActionReplacesMenuCardForListHandoffInVSCodeMode(t *testing.T) {
 	gateway := &recordingGateway{}
 	app := New(":0", ":0", gateway, agentproto.ServerIdentity{

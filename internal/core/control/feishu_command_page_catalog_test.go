@@ -30,8 +30,8 @@ func TestNormalizeFeishuPageViewPromotesNoticeAndSealedContract(t *testing.T) {
 	if catalog.Interactive {
 		t.Fatalf("expected sealed page catalog to drop interactive footer, got %#v", catalog)
 	}
-	if len(catalog.RelatedButtons) != 0 {
-		t.Fatalf("expected sealed page catalog to clear related buttons, got %#v", catalog.RelatedButtons)
+	if len(catalog.RelatedButtons) != 1 || catalog.RelatedButtons[0].CommandText != "/menu" {
+		t.Fatalf("expected sealed page catalog to preserve explicit related buttons, got %#v", catalog.RelatedButtons)
 	}
 	if len(catalog.BodySections) != 1 || catalog.BodySections[0].Label != "当前会话" {
 		t.Fatalf("expected body sections to preserve business state, got %#v", catalog.BodySections)
@@ -51,6 +51,9 @@ func TestNormalizeFeishuPageViewPromotesNoticeAndSealedContract(t *testing.T) {
 	}
 	if len(roundTrip.NoticeSections) != 2 {
 		t.Fatalf("expected round-trip notice sections, got %#v", roundTrip.NoticeSections)
+	}
+	if len(roundTrip.RelatedButtons) != 1 || roundTrip.RelatedButtons[0].CommandText != "/menu" {
+		t.Fatalf("expected round-trip view to preserve explicit related buttons, got %#v", roundTrip.RelatedButtons)
 	}
 }
 
