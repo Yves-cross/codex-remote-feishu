@@ -97,6 +97,7 @@ func TestAdminRuntimeRequirementsAcceptManagedShimBundleFallback(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", filepath.Join(home, "missing-bin"))
+	t.Setenv("VSCODE_SERVER_EXTENSIONS_DIR", filepath.Join(home, testRuntimeBundleExtensionRoot(), "extensions"))
 
 	binaryPath := filepath.Join(home, executableName("codex-remote"))
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
