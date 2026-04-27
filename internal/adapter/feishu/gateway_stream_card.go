@@ -326,7 +326,7 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 	return map[string]any{
 		"tag":                "column_set",
 		"element_id":         "loading",
-		"horizontal_spacing": "small",
+		"horizontal_spacing": "none",
 		"columns": []map[string]any{{
 			"tag":            "column",
 			"width":          "auto",
@@ -334,7 +334,7 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 			"elements": []map[string]any{{
 				"tag":           "img",
 				"img_key":       strings.TrimSpace(imageKey),
-				"custom_width":  10,
+				"custom_width":  8,
 				"compact_width": true,
 				"preview":       false,
 				"alt": map[string]any{
