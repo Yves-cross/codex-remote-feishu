@@ -42,8 +42,8 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 
 	now = now.Add(assistantStreamLoadingInterval)
 	tick := svc.Tick(now)
-	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.MessageID != "om-stream-1" || tick[0].AssistantStream.StreamCardID != "card-stream-1" || tick[0].AssistantStream.Text != "" || !tick[0].AssistantStream.Loading {
-		t.Fatalf("expected tick to animate assistant stream loading, got %#v", tick)
+	if len(tick) != 0 {
+		t.Fatalf("expected empty loading tick not to patch native stream content, got %#v", tick)
 	}
 
 	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
