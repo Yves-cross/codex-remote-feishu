@@ -292,7 +292,7 @@ func firstResultCardReplaceableAction(action Action) bool {
 	case ActionCronCommand:
 		return !cronCommandRunsImmediately(action.Text)
 	case ActionUpgradeCommand:
-		return !upgradeCommandRunsImmediately(action.Text)
+		return !FeishuUpgradeCommandRunsImmediately(action.Text)
 	case ActionDebugCommand:
 		return !debugCommandRunsImmediately(action.Text)
 	case ActionVSCodeMigrateCommand:
@@ -311,21 +311,6 @@ func cronCommandRunsImmediately(text string) bool {
 	case len(fields) == 2 && (fields[1] == "reload" || fields[1] == "repair"):
 		return true
 	case len(fields) == 3 && fields[1] == "run" && strings.TrimSpace(fields[2]) != "":
-		return true
-	default:
-		return false
-	}
-}
-
-func upgradeCommandRunsImmediately(text string) bool {
-	fields := normalizedCommandFields(text)
-	if len(fields) == 0 || fields[0] != "/upgrade" {
-		return false
-	}
-	switch {
-	case len(fields) == 2 && (fields[1] == "latest" || fields[1] == "codex" || fields[1] == "dev" || fields[1] == "local"):
-		return true
-	case len(fields) == 3 && fields[1] == "track" && isReleaseTrackToken(fields[2]):
 		return true
 	default:
 		return false

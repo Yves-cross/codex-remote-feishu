@@ -34,44 +34,17 @@ func parseDebugCommandText(text string) (parsedDebugCommand, error) {
 }
 
 func parseUpgradeCommandText(text string) (parsedUpgradeCommand, error) {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return parsedUpgradeCommand{}, fmt.Errorf("缺少 /upgrade 子命令。")
+	parsed, err := control.ParseFeishuUpgradeCommandText(text)
+	if err == nil {
+		return parsed, nil
 	}
-	fields := strings.Fields(strings.ToLower(trimmed))
-	if len(fields) == 0 || fields[0] != "/upgrade" {
-		return parsedUpgradeCommand{}, fmt.Errorf("不支持的 /upgrade 子命令。")
+	if strings.Contains(err.Error(), "track 只支持") {
+		return parsedUpgradeCommand{}, err
 	}
-	switch len(fields) {
-	case 1:
-		return parsedUpgradeCommand{Mode: upgradeCommandShowStatus}, nil
-	case 2:
-		switch fields[1] {
-		case "track":
-			return parsedUpgradeCommand{Mode: upgradeCommandShowTrack}, nil
-		case "latest":
-			return parsedUpgradeCommand{Mode: upgradeCommandLatest}, nil
-		case "codex":
-			return parsedUpgradeCommand{Mode: upgradeCommandCodex}, nil
-		case "dev":
-			return parsedUpgradeCommand{Mode: upgradeCommandDev}, nil
-		case "local":
-			return parsedUpgradeCommand{Mode: upgradeCommandLocal}, nil
-		default:
-			return parsedUpgradeCommand{}, fmt.Errorf("%s", upgradeSubcommandUsageSummary())
-		}
-	case 3:
-		if fields[1] != "track" {
-			return parsedUpgradeCommand{}, fmt.Errorf("%s", upgradeCommandUsageSyntax())
-		}
-		track := install.ParseReleaseTrack(fields[2])
-		if track == "" {
-			return parsedUpgradeCommand{}, fmt.Errorf("track 只支持 alpha、beta、production。")
-		}
-		return parsedUpgradeCommand{Mode: upgradeCommandSetTrack, Track: track}, nil
-	default:
+	if argument := strings.TrimSpace(control.FeishuActionArgumentText(text)); argument != "" {
 		return parsedUpgradeCommand{}, fmt.Errorf("%s", upgradeCommandUsageSyntax())
 	}
+	return parsedUpgradeCommand{}, fmt.Errorf("%s", upgradeSubcommandUsageSummary())
 }
 
 func buildUpgradePromptPageView(stateValue install.InstallState) control.FeishuPageView {

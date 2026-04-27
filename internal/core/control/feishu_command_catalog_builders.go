@@ -25,7 +25,7 @@ func BuildFeishuCommandMenuHomePageViewForContext(ctx CatalogContext) FeishuPage
 		Breadcrumbs:    FeishuCommandBreadcrumbs("", ""),
 		Sections: []CommandCatalogSection{{
 			Title:   "",
-			Entries: buildFeishuCommandMenuGroupEntries(ctx.ProductMode),
+			Entries: buildFeishuCommandMenuGroupEntries(ctx),
 		}},
 	}
 }
@@ -47,8 +47,10 @@ func BuildFeishuCommandMenuPageViewForContext(view FeishuCatalogMenuView, ctx Ca
 	if stage == "" {
 		stage = strings.TrimSpace(ctx.MenuStage)
 	}
-	if ctx.ProductMode == "normal" && groupID == FeishuCommandGroupSwitchTarget {
-		return BuildFeishuWorkspaceRootPageView(true)
+	if commandID, ok := ResolveFeishuCommandMenuGroupRootCommandID(ctx, groupID); ok {
+		if root, ok := buildFeishuCommandMenuGroupRootPageView(commandID); ok {
+			return root
+		}
 	}
 	ctx.MenuStage = stage
 	return BuildFeishuCommandMenuGroupPageViewForContext(groupID, ctx)
@@ -140,12 +142,31 @@ func FeishuCommandMenuCommandText(view string) string {
 	return "/menu " + strings.TrimSpace(view)
 }
 
-func buildFeishuCommandMenuGroupEntries(productMode string) []CommandCatalogEntry {
+func ResolveFeishuCommandMenuGroupRootCommandID(ctx CatalogContext, groupID string) (string, bool) {
+	ctx = NormalizeCatalogContext(ctx)
+	group, ok := FeishuCommandGroupByID(groupID)
+	if !ok {
+		return "", false
+	}
+	commandID := strings.TrimSpace(group.RootCommandID)
+	if commandID == "" {
+		return "", false
+	}
+	if _, ok := ResolveFeishuCommandDisplayFamily(commandID, true, ctx); !ok {
+		return "", false
+	}
+	return commandID, true
+}
+
+func buildFeishuCommandMenuGroupEntries(ctx CatalogContext) []CommandCatalogEntry {
+	ctx = NormalizeCatalogContext(ctx)
 	entries := make([]CommandCatalogEntry, 0, len(FeishuCommandGroups()))
 	for _, group := range FeishuCommandGroups() {
 		commandText := FeishuCommandMenuCommandText(group.ID)
-		if normalizeFeishuCommandProductMode(productMode) == "normal" && group.ID == FeishuCommandGroupSwitchTarget {
-			commandText = "/workspace"
+		if commandID, ok := ResolveFeishuCommandMenuGroupRootCommandID(ctx, group.ID); ok {
+			if def, ok := FeishuCommandDefinitionByID(commandID); ok {
+				commandText = strings.TrimSpace(def.CanonicalSlash)
+			}
 		}
 		entries = append(entries, CommandCatalogEntry{
 			Title:       strings.TrimSpace(group.Title),
@@ -158,6 +179,15 @@ func buildFeishuCommandMenuGroupEntries(productMode string) []CommandCatalogEntr
 		})
 	}
 	return entries
+}
+
+func buildFeishuCommandMenuGroupRootPageView(commandID string) (FeishuPageView, bool) {
+	switch strings.TrimSpace(commandID) {
+	case FeishuCommandWorkspace:
+		return BuildFeishuWorkspaceRootPageView(true), true
+	default:
+		return FeishuPageView{}, false
+	}
 }
 
 func buildFeishuRecoveryEntries() []CommandCatalogEntry {

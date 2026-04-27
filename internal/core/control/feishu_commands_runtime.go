@@ -21,7 +21,7 @@ func runtimeFeishuCommandDefinition(spec feishuCommandSpec) FeishuCommandDefinit
 func runtimeUpgradeCommandDefinition(def FeishuCommandDefinition) FeishuCommandDefinition {
 	policy := buildinfo.CurrentCapabilityPolicy()
 	formHints := []string{"track", "latest"}
-	examples := []string{"/upgrade latest"}
+	examples := []string{"/upgrade", "/upgrade latest"}
 	options := []FeishuCommandOption{
 		commandOption("/upgrade", "upgrade", "track", "查看 Track", "查看当前 track。"),
 		commandOption("/upgrade", "upgrade", "latest", "检查/继续升级", "检查或继续升级到当前 track 的最新 release。"),

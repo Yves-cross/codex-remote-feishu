@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/app/install"
+	"github.com/kxn/codex-remote-feishu/internal/buildinfo"
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
@@ -28,11 +29,6 @@ func buildDebugRootPageView(stateValue install.InstallState, checkInFlight bool,
 }
 
 func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade bool, formDefault, statusKind, statusText string) control.FeishuPageView {
-	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandUpgrade)
-	quickButtons := directSubcommandButtons(def, def.CanonicalSlash, "/upgrade latest", "")
-	if showCodexUpgrade {
-		quickButtons = append(quickButtons, runCommandButton("Codex 升级", "/upgrade codex", "", false))
-	}
 	return control.FeishuPageView{
 		CommandID:    control.FeishuCommandUpgrade,
 		StatusKind:   strings.TrimSpace(statusKind),
@@ -43,7 +39,7 @@ func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade 
 			{
 				Title: "升级系统",
 				Entries: []control.CommandCatalogEntry{{
-					Buttons: quickButtons,
+					Buttons: buildUpgradeRootButtons(showCodexUpgrade),
 				}},
 			},
 		},
@@ -52,7 +48,6 @@ func buildUpgradeRootPageView(stateValue install.InstallState, showCodexUpgrade 
 
 func buildUpgradeTrackPageView(stateValue install.InstallState) control.FeishuPageView {
 	currentTrack := strings.TrimSpace(string(stateValue.CurrentTrack))
-	def, _ := control.FeishuCommandDefinitionByID(control.FeishuCommandUpgrade)
 	return control.FeishuPageView{
 		CommandID:       control.FeishuCommandUpgrade,
 		Title:           "Upgrade Track",
@@ -64,7 +59,7 @@ func buildUpgradeTrackPageView(stateValue install.InstallState) control.FeishuPa
 			{
 				Title: "切换 Track",
 				Entries: []control.CommandCatalogEntry{{
-					Buttons: directSubcommandButtons(def, "/upgrade track", "/upgrade track "+currentTrack, "/upgrade track "+currentTrack),
+					Buttons: buildUpgradeTrackButtons(currentTrack),
 				}},
 			},
 		},
@@ -76,6 +71,39 @@ func buildTrackSummaryLines(stateValue install.InstallState) []string {
 	return []string{
 		fmt.Sprintf("当前 Track：%s", firstNonEmpty(string(stateValue.CurrentTrack), "unknown")),
 	}
+}
+
+func buildUpgradeRootButtons(showCodexUpgrade bool) []control.CommandCatalogButton {
+	policy := buildinfo.CurrentCapabilityPolicy()
+	buttons := []control.CommandCatalogButton{
+		runCommandButton("查看 Track", "/upgrade track", "", false),
+		runCommandButton("检查/继续升级", "/upgrade latest", "primary", false),
+	}
+	if policy.AllowDevUpgrade {
+		buttons = append(buttons, runCommandButton("开发构建", "/upgrade dev", "", false))
+	}
+	if policy.AllowLocalUpgrade {
+		buttons = append(buttons, runCommandButton("本地升级", "/upgrade local", "", false))
+	}
+	if showCodexUpgrade {
+		buttons = append(buttons, runCommandButton("Codex 升级", "/upgrade codex", "", false))
+	}
+	return buttons
+}
+
+func buildUpgradeTrackButtons(currentTrack string) []control.CommandCatalogButton {
+	policy := buildinfo.CurrentCapabilityPolicy()
+	buttons := make([]control.CommandCatalogButton, 0, len(policy.AllowedReleaseTracks))
+	disabledCommand := "/upgrade track " + strings.ToLower(strings.TrimSpace(currentTrack))
+	for _, track := range policy.AllowedReleaseTracks {
+		track = strings.ToLower(strings.TrimSpace(track))
+		if track == "" {
+			continue
+		}
+		commandText := "/upgrade track " + track
+		buttons = append(buttons, runCommandButton(track, commandText, "", commandText == disabledCommand))
+	}
+	return buttons
 }
 
 func directSubcommandButtons(def control.FeishuCommandDefinition, prefix, primaryCommand, disabledCommand string) []control.CommandCatalogButton {

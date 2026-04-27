@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/kxn/codex-remote-feishu/internal/core/control"
+	"github.com/kxn/codex-remote-feishu/internal/core/frontstagecontract"
 )
 
 func firstNonEmpty(values ...string) string {
@@ -55,6 +56,17 @@ func runCommandButton(label, commandText, style string, disabled bool) control.C
 		CommandText: strings.TrimSpace(commandText),
 		Style:       strings.TrimSpace(style),
 		Disabled:    disabled,
+	}
+}
+
+func callbackActionButton(label, commandID string, actionKind control.ActionKind, actionArg, style string, disabled bool) control.CommandCatalogButton {
+	return control.CommandCatalogButton{
+		Label:         strings.TrimSpace(label),
+		Kind:          control.CommandCatalogButtonCallbackAction,
+		CommandID:     strings.TrimSpace(commandID),
+		CallbackValue: frontstagecontract.ActionPayloadPageAction(string(actionKind), actionArg),
+		Style:         strings.TrimSpace(style),
+		Disabled:      disabled,
 	}
 }
 

@@ -211,14 +211,20 @@ func TestCronStatusListAndEditCommandsReturnSpecificCatalogs(t *testing.T) {
 	if firstEntry.Title != "Git Sync" || !strings.Contains(firstEntry.Description, "下次 04-17 17:30") || !strings.Contains(firstEntry.Description, "来源：repo: github.com/kxn/codex-remote-feishu @ master") {
 		t.Fatalf("unexpected first /cron list entry: %#v", firstEntry)
 	}
-	if len(firstEntry.Buttons) != 1 || firstEntry.Buttons[0].CommandText != "/cron run rec-2" {
+	if len(firstEntry.Buttons) != 1 || firstEntry.Buttons[0].Kind != control.CommandCatalogButtonCallbackAction {
 		t.Fatalf("unexpected first /cron list buttons: %#v", firstEntry.Buttons)
+	}
+	if value := firstEntry.Buttons[0].CallbackValue; value["kind"] != "page_action" || value["action_kind"] != string(control.ActionCronCommand) || value["action_arg"] != "run rec-2" {
+		t.Fatalf("unexpected first /cron list callback: %#v", value)
 	}
 	if secondEntry.Title != "Nightly" || !strings.Contains(secondEntry.Description, "下次 04-18 11:00") || !strings.Contains(secondEntry.Description, "来源：/tmp/project") {
 		t.Fatalf("unexpected second /cron list entry: %#v", secondEntry)
 	}
-	if len(secondEntry.Buttons) != 1 || secondEntry.Buttons[0].CommandText != "/cron run rec-1" {
+	if len(secondEntry.Buttons) != 1 || secondEntry.Buttons[0].Kind != control.CommandCatalogButtonCallbackAction {
 		t.Fatalf("unexpected second /cron list buttons: %#v", secondEntry.Buttons)
+	}
+	if value := secondEntry.Buttons[0].CallbackValue; value["kind"] != "page_action" || value["action_kind"] != string(control.ActionCronCommand) || value["action_arg"] != "run rec-1" {
+		t.Fatalf("unexpected second /cron list callback: %#v", value)
 	}
 }
 
@@ -321,13 +327,35 @@ func TestCronBitableTableURLOverridesPreviousTableContext(t *testing.T) {
 	}
 }
 
-func TestParseCronCommandTextSupportsRunSubcommand(t *testing.T) {
-	parsed, err := cronrt.ParseCommandText("/cron run rec-task-1")
+func TestParseCronCommandTextRejectsRunSubcommandForDirectInput(t *testing.T) {
+	if _, err := cronrt.ParseCommandText("/cron run rec-task-1"); err == nil {
+		t.Fatal("expected /cron run to be rejected for direct input")
+	}
+}
+
+func TestParseCronCardActionTextAllowsRunSubcommand(t *testing.T) {
+	parsed, err := cronrt.ParseCardActionText("/cron run rec-task-1")
 	if err != nil {
-		t.Fatalf("parseCronCommandText() error = %v, want nil", err)
+		t.Fatalf("parseCronCardActionText() error = %v, want nil", err)
 	}
 	if parsed.Mode != cronrt.CommandModeRun || parsed.JobRecordID != "rec-task-1" {
 		t.Fatalf("parsed = %#v, want run/rec-task-1", parsed)
+	}
+}
+
+func TestCronRunCommandRejectedForDirectInput(t *testing.T) {
+	app := New(":0", ":0", nil, agentproto.ServerIdentity{StartedAt: time.Now().UTC()})
+	events := app.handleCronDaemonCommand(control.DaemonCommand{
+		Text:             "/cron run rec-task-1",
+		SurfaceSessionID: "surface-1",
+	})
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one usage page", events)
+	}
+	catalog := catalogFromUIEvent(t, events[0])
+	summary := catalogSummaryText(catalog)
+	if !strings.Contains(summary, "单任务立即触发只支持在 /cron list 卡片里点击“立即触发”。") {
+		t.Fatalf("summary = %q, want direct-input rejection", summary)
 	}
 }
 

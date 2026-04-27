@@ -52,6 +52,14 @@ type ParsedCommand struct {
 }
 
 func ParseCommandText(text string) (ParsedCommand, error) {
+	return parseCommandText(text, false)
+}
+
+func ParseCardActionText(text string) (ParsedCommand, error) {
+	return parseCommandText(text, true)
+}
+
+func parseCommandText(text string, allowInternalRun bool) (ParsedCommand, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return ParsedCommand{}, fmt.Errorf("缺少 /cron 子命令。")
@@ -76,19 +84,38 @@ func ParseCommandText(text string) (ParsedCommand, error) {
 		case "reload":
 			return ParsedCommand{Mode: CommandModeReload}, nil
 		}
-		return ParsedCommand{}, fmt.Errorf("`/cron` 只支持 `/cron status`、`/cron list`、`/cron edit`、`/cron reload`、`/cron repair`，以及按钮触发的 `/cron run <任务记录ID>`。")
+		return ParsedCommand{}, fmt.Errorf("%s", cronCommandUsageSummary(false))
 	case 3:
-		if strings.ToLower(fields[1]) == "run" {
+		if allowInternalRun && strings.ToLower(fields[1]) == "run" {
 			jobRecordID := strings.TrimSpace(fields[2])
 			if jobRecordID == "" {
 				return ParsedCommand{}, fmt.Errorf("`/cron run` 需要任务记录 ID。")
 			}
 			return ParsedCommand{Mode: CommandModeRun, JobRecordID: jobRecordID}, nil
 		}
-		return ParsedCommand{}, fmt.Errorf("`/cron` 只支持 `/cron status`、`/cron list`、`/cron edit`、`/cron reload`、`/cron repair`，以及按钮触发的 `/cron run <任务记录ID>`。")
+		if strings.ToLower(fields[1]) == "run" {
+			return ParsedCommand{}, fmt.Errorf("单任务立即触发只支持在 `/cron list` 卡片里点击“立即触发”。")
+		}
+		return ParsedCommand{}, fmt.Errorf("%s", cronCommandUsageSummary(allowInternalRun))
 	default:
-		return ParsedCommand{}, fmt.Errorf("`/cron status` / `/cron list` / `/cron edit` / `/cron reload` / `/cron repair` 不接受额外参数；单任务触发请使用 `/cron run <任务记录ID>`。")
+		return ParsedCommand{}, fmt.Errorf("%s", cronCommandUsageSyntax(allowInternalRun))
 	}
+}
+
+func cronCommandUsageSummary(allowInternalRun bool) string {
+	parts := []string{"`/cron status`", "`/cron list`", "`/cron edit`", "`/cron reload`", "`/cron repair`"}
+	if allowInternalRun {
+		parts = append(parts, "卡片内触发的 `/cron run <任务记录ID>`")
+	}
+	return fmt.Sprintf("`/cron` 只支持 %s。", strings.Join(parts, "、"))
+}
+
+func cronCommandUsageSyntax(allowInternalRun bool) string {
+	syntax := "`/cron status` / `/cron list` / `/cron edit` / `/cron reload` / `/cron repair` 不接受额外参数。"
+	if allowInternalRun {
+		return syntax + " 单任务触发只支持卡片内的 `/cron run <任务记录ID>`。"
+	}
+	return syntax + " 单任务触发请先打开 `/cron list` 并点击卡片按钮。"
 }
 
 func DailyTimeFromFields(fields map[string]any) (int, int, bool) {
@@ -390,9 +417,9 @@ func LoadedJobEntries(jobs []JobState, timeZone string) []control.CommandCatalog
 			Title:       firstNonEmpty(strings.TrimSpace(job.Name), strings.TrimSpace(job.RecordID), "unnamed"),
 			Description: strings.Join(segments, "｜"),
 		}
-		if commandText := RunCommandText(job.RecordID); commandText != "" {
+		if button, ok := RunActionButton(job.RecordID); ok {
 			entry.Buttons = []control.CommandCatalogButton{
-				runCommandButton("立即触发", commandText, "", false),
+				button,
 			}
 		}
 		entries = append(entries, entry)
@@ -400,12 +427,12 @@ func LoadedJobEntries(jobs []JobState, timeZone string) []control.CommandCatalog
 	return entries
 }
 
-func RunCommandText(jobRecordID string) string {
+func RunActionButton(jobRecordID string) (control.CommandCatalogButton, bool) {
 	jobRecordID = strings.TrimSpace(jobRecordID)
 	if jobRecordID == "" {
-		return ""
+		return control.CommandCatalogButton{}, false
 	}
-	return "/cron run " + jobRecordID
+	return callbackActionButton("立即触发", control.FeishuCommandCron, control.ActionCronCommand, "run "+jobRecordID, "", false), true
 }
 
 func NoticeEvent(surfaceID, code, text string) eventcontract.Event {

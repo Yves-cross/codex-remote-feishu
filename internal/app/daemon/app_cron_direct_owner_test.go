@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cronrt "github.com/kxn/codex-remote-feishu/internal/app/cronruntime"
+	"github.com/kxn/codex-remote-feishu/internal/core/control"
 )
 
 func TestCronRuntimeDirectOwnerSurfaceContracts(t *testing.T) {
@@ -41,8 +42,10 @@ func TestCronRuntimeDirectOwnerSurfaceContracts(t *testing.T) {
 	if got := cronrt.PrimaryMenuCommand(state, ownerView); got != "/cron edit" {
 		t.Fatalf("PrimaryMenuCommand() = %q, want /cron edit", got)
 	}
-	if got := cronrt.RunCommandText("rec-1"); got != "/cron run rec-1" {
-		t.Fatalf("RunCommandText() = %q, want /cron run rec-1", got)
+	if button, ok := cronrt.RunActionButton("rec-1"); !ok {
+		t.Fatal("RunActionButton() = false, want callback button")
+	} else if button.Kind != control.CommandCatalogButtonCallbackAction || button.CommandID != control.FeishuCommandCron {
+		t.Fatalf("RunActionButton() = %#v, want cron callback button", button)
 	}
 
 	catalog := cronrt.BuildListPageView(state, ownerView, "")
@@ -61,8 +64,12 @@ func TestCronRuntimeDirectOwnerSurfaceContracts(t *testing.T) {
 	if entry.Title != "Nightly" {
 		t.Fatalf("BuildListPageView() entry title = %q, want %q", entry.Title, "Nightly")
 	}
-	if len(entry.Buttons) != 1 || entry.Buttons[0].CommandText != "/cron run rec-1" {
-		t.Fatalf("BuildListPageView() buttons = %#v, want /cron run rec-1", entry.Buttons)
+	if len(entry.Buttons) != 1 || entry.Buttons[0].Kind != control.CommandCatalogButtonCallbackAction {
+		t.Fatalf("BuildListPageView() buttons = %#v, want callback action button", entry.Buttons)
+	}
+	value := entry.Buttons[0].CallbackValue
+	if value["kind"] != "page_action" || value["action_kind"] != string(control.ActionCronCommand) || value["action_arg"] != "run rec-1" {
+		t.Fatalf("BuildListPageView() callback = %#v, want cron run page_action", value)
 	}
 }
 

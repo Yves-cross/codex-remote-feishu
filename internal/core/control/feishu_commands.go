@@ -51,9 +51,10 @@ const (
 )
 
 type FeishuCommandGroup struct {
-	ID          string
-	Title       string
-	Description string
+	ID            string
+	Title         string
+	Description   string
+	RootCommandID string
 }
 
 type FeishuCommandOption struct {
@@ -124,9 +125,10 @@ var feishuCommandGroups = []FeishuCommandGroup{
 		Description: "",
 	},
 	{
-		ID:          FeishuCommandGroupSwitchTarget,
-		Title:       "工作会话",
-		Description: "",
+		ID:            FeishuCommandGroupSwitchTarget,
+		Title:         "工作会话",
+		Description:   "",
+		RootCommandID: FeishuCommandWorkspace,
 	},
 	{
 		ID:          FeishuCommandGroupCommonTools,

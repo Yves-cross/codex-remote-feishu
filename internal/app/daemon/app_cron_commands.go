@@ -13,7 +13,7 @@ import (
 )
 
 func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []eventcontract.Event {
-	parsed, err := cronrt.ParseCommandText(command.Text)
+	parsed, err := parseCronCommand(command)
 	if err != nil {
 		return cronrt.UsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
@@ -46,7 +46,7 @@ func (a *App) handleCronDaemonCommand(command control.DaemonCommand) []eventcont
 }
 
 func (a *App) handleCronDaemonCommandLocked(command control.DaemonCommand) []eventcontract.Event {
-	parsed, err := cronrt.ParseCommandText(command.Text)
+	parsed, err := parseCronCommand(command)
 	if err != nil {
 		return cronrt.UsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), err.Error())
 	}
@@ -94,6 +94,13 @@ func (a *App) handleCronMutatingDaemonCommandLocked(command control.DaemonComman
 	default:
 		return cronrt.UsageEvents(command.SurfaceSessionID, commandArgumentText(command.Text), "不支持的 /cron 子命令。")
 	}
+}
+
+func parseCronCommand(command control.DaemonCommand) (cronrt.ParsedCommand, error) {
+	if command.FromCardAction {
+		return cronrt.ParseCardActionText(command.Text)
+	}
+	return cronrt.ParseCommandText(command.Text)
 }
 
 func (a *App) runCronReloadCommand(command control.DaemonCommand) {

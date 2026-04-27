@@ -28,22 +28,18 @@ type parsedDebugCommand struct {
 	Track install.ReleaseTrack
 }
 
-type upgradeCommandMode string
+type upgradeCommandMode = control.UpgradeCommandMode
+type parsedUpgradeCommand = control.ParsedUpgradeCommand
 
 const (
-	upgradeCommandShowStatus upgradeCommandMode = "status"
-	upgradeCommandShowTrack  upgradeCommandMode = "track_show"
-	upgradeCommandSetTrack   upgradeCommandMode = "track_set"
-	upgradeCommandLatest     upgradeCommandMode = "latest"
-	upgradeCommandCodex      upgradeCommandMode = "codex"
-	upgradeCommandDev        upgradeCommandMode = "dev"
-	upgradeCommandLocal      upgradeCommandMode = "local"
+	upgradeCommandShowStatus = control.UpgradeCommandShowStatus
+	upgradeCommandShowTrack  = control.UpgradeCommandShowTrack
+	upgradeCommandSetTrack   = control.UpgradeCommandSetTrack
+	upgradeCommandLatest     = control.UpgradeCommandLatest
+	upgradeCommandCodex      = control.UpgradeCommandCodex
+	upgradeCommandDev        = control.UpgradeCommandDev
+	upgradeCommandLocal      = control.UpgradeCommandLocal
 )
-
-type parsedUpgradeCommand struct {
-	Mode  upgradeCommandMode
-	Track install.ReleaseTrack
-}
 
 type upgradeCheckRequest struct {
 	Track            install.ReleaseTrack
