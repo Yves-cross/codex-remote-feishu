@@ -106,11 +106,11 @@ func TestStreamingCardDocumentUsesGIFLoadingElementWhenImageKeyPresent(t *testin
 	if elements[1]["horizontal_spacing"] != "none" {
 		t.Fatalf("expected loading column set to avoid extra spacing, got %#v", elements[1])
 	}
-	if columnElements[0]["custom_width"] != 8 || columnElements[0]["compact_width"] != true {
-		t.Fatalf("expected app-tight loading image sizing, got %#v", columnElements[0])
+	if columnElements[0]["size"] != "12px 4px" || columnElements[0]["scale_type"] != "fit_horizontal" {
+		t.Fatalf("expected explicit loading image size, got %#v", columnElements[0])
 	}
-	if _, ok := columnElements[0]["mode"]; ok {
-		t.Fatalf("expected loading image to avoid fit mode expansion, got %#v", columnElements[0])
+	if _, ok := columnElements[0]["custom_width"]; ok {
+		t.Fatalf("expected loading image to avoid custom width fallback, got %#v", columnElements[0])
 	}
 }
 
