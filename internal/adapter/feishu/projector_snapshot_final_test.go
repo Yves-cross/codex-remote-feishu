@@ -189,12 +189,13 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 		SourceMessageID: "msg-1",
 		Payload: eventcontract.AssistantStreamPayload{
 			View: control.AssistantStreamView{
-				Loading: true,
+				Loading:     true,
+				LoadingStep: 1,
 			},
 		},
 	})
-	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].ReplyToMessageID != "msg-1" {
-		t.Fatalf("expected empty loading stream card send, got %#v", loading)
+	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "." || loading[0].ReplyToMessageID != "msg-1" {
+		t.Fatalf("expected first waiting-dot frame on initial loading send, got %#v", loading)
 	}
 
 	first := projector.ProjectEvent("chat-1", eventcontract.Event{

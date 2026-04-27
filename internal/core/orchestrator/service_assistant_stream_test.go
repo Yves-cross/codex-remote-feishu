@@ -38,12 +38,15 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	if len(started) != 1 || started[0].AssistantStream == nil || started[0].AssistantStream.Text != "" || !started[0].AssistantStream.Loading {
 		t.Fatalf("expected commentary start to emit loading stream, got %#v", started)
 	}
+	if started[0].AssistantStream.LoadingStep != 1 {
+		t.Fatalf("expected commentary start to emit first waiting-dot frame immediately, got %#v", started[0].AssistantStream)
+	}
 	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
 
 	now = now.Add(assistantStreamLoadingInterval)
 	tick := svc.Tick(now)
-	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.Text != "" || tick[0].AssistantStream.LoadingStep != 1 || !tick[0].AssistantStream.Loading {
-		t.Fatalf("expected loading tick to emit first waiting-dot frame, got %#v", tick)
+	if len(tick) != 1 || tick[0].AssistantStream == nil || tick[0].AssistantStream.Text != "" || tick[0].AssistantStream.LoadingStep != 2 || !tick[0].AssistantStream.Loading {
+		t.Fatalf("expected loading tick to advance waiting-dot frame, got %#v", tick)
 	}
 
 	first := svc.ApplyAgentEvent("inst-1", agentproto.Event{
