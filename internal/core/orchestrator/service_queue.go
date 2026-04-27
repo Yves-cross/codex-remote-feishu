@@ -614,6 +614,8 @@ func (s *Service) renderTextToSurfaceWithSource(surface *state.SurfaceConsoleRec
 	}
 	if final {
 		if stream := activeAssistantStream(surface, instanceKey, threadID, turnID, ""); stream != nil {
+			stream.Loading = false
+			stream.Closed = true
 			surface.ActiveAssistantStream = nil
 		}
 	}

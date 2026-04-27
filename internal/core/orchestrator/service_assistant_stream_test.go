@@ -139,4 +139,10 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	if finished[0].Block.MessageID != "om-stream-1" || finished[0].Block.StreamCardID != "card-stream-1" || finished[0].Block.Text != wantText {
 		t.Fatalf("expected final block to close same stream card with merged text, got %#v", finished[0].Block)
 	}
+	if active := svc.root.Surfaces["surface-1"].ActiveAssistantStream; active != nil {
+		t.Fatalf("expected final render to clear active assistant stream, got %#v", active)
+	}
+	if tickAfterClose := svc.Tick(now.Add(assistantStreamLoadingInterval)); len(tickAfterClose) != 0 {
+		t.Fatalf("expected no loading tick after final stream close, got %#v", tickAfterClose)
+	}
 }

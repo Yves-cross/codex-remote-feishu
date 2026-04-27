@@ -114,9 +114,24 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 }
 
 func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string) error {
-	token, err := g.tenantToken(ctx)
+	parsed, err := g.updateStreamCardResponse(ctx, cardID, text)
 	if err != nil {
 		return err
+	}
+	if parsed.Code != 0 {
+		if isFeishuStreamAlreadyClosed(parsed) {
+			g.forgetStreamCard(cardID)
+			return nil
+		}
+		return fmt.Errorf("feishu stream card update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
+	}
+	return nil
+}
+
+func (g *LiveGateway) updateStreamCardResponse(ctx context.Context, cardID, text string) (feishuGenericResponse, error) {
+	token, err := g.tenantToken(ctx)
+	if err != nil {
+		return feishuGenericResponse{}, err
 	}
 	sequence := g.nextStreamCardSequence(cardID)
 	payload, err := json.Marshal(map[string]any{
@@ -125,22 +140,27 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string)
 		"uuid":     fmt.Sprintf("content_%s_%d", strings.TrimSpace(cardID), sequence),
 	})
 	if err != nil {
-		return err
+		return feishuGenericResponse{}, err
 	}
 	var parsed feishuGenericResponse
 	url := fmt.Sprintf("%s/cardkit/v1/cards/%s/elements/content/content", g.feishuOpenAPIBase(), strings.TrimSpace(cardID))
 	if err := g.doStreamCardJSON(ctx, "cardkit.v1.card.elements.content.update", http.MethodPut, url, token, payload, &parsed); err != nil {
-		return err
+		return feishuGenericResponse{}, err
 	}
-	if parsed.Code != 0 {
-		return fmt.Errorf("feishu stream card update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
-	}
-	return nil
+	return parsed, nil
 }
 
 func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) error {
-	if err := g.updateStreamCard(ctx, cardID, text); err != nil {
+	parsed, err := g.updateStreamCardResponse(ctx, cardID, text)
+	if err != nil {
 		return err
+	}
+	if parsed.Code != 0 {
+		if isFeishuStreamAlreadyClosed(parsed) {
+			g.forgetStreamCard(cardID)
+			return nil
+		}
+		return fmt.Errorf("feishu stream card update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
 	}
 	token, err := g.tenantToken(ctx)
 	if err != nil {
@@ -160,18 +180,30 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 	if err != nil {
 		return err
 	}
-	var parsed feishuGenericResponse
+	var closeResp feishuGenericResponse
 	url := fmt.Sprintf("%s/cardkit/v1/cards/%s/settings", g.feishuOpenAPIBase(), strings.TrimSpace(cardID))
-	if err := g.doStreamCardJSON(ctx, "cardkit.v1.card.settings.patch", http.MethodPatch, url, token, payload, &parsed); err != nil {
+	if err := g.doStreamCardJSON(ctx, "cardkit.v1.card.settings.patch", http.MethodPatch, url, token, payload, &closeResp); err != nil {
 		return err
 	}
-	if parsed.Code != 0 {
-		return fmt.Errorf("feishu stream card close failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
+	if closeResp.Code != 0 {
+		if isFeishuStreamAlreadyClosed(closeResp) {
+			g.forgetStreamCard(cardID)
+			return nil
+		}
+		return fmt.Errorf("feishu stream card close failed: code=%d msg=%s", closeResp.Code, strings.TrimSpace(closeResp.Msg))
 	}
+	g.forgetStreamCard(cardID)
+	return nil
+}
+
+func isFeishuStreamAlreadyClosed(resp feishuGenericResponse) bool {
+	return resp.Code == 300309 && strings.Contains(strings.ToLower(resp.Msg), "streaming mode is closed")
+}
+
+func (g *LiveGateway) forgetStreamCard(cardID string) {
 	g.mu.Lock()
 	delete(g.streamSeq, strings.TrimSpace(cardID))
 	g.mu.Unlock()
-	return nil
 }
 
 func (g *LiveGateway) nextStreamCardSequence(cardID string) int {

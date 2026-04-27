@@ -31,6 +31,9 @@ func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto
 		return nil
 	}
 	stream := s.ensureAssistantStream(surface, instanceID, event.ThreadID, event.TurnID, event.ItemID)
+	if stream.Closed {
+		return nil
+	}
 	stream.Phase = strings.TrimSpace(buf.Phase)
 	if strings.TrimSpace(stream.Text) != "" || strings.TrimSpace(stream.CompletedText) != "" {
 		return nil
@@ -55,6 +58,9 @@ func (s *Service) handleAssistantStreamDelta(instanceID string, event agentproto
 		return nil
 	}
 	stream := s.ensureAssistantStream(surface, instanceID, event.ThreadID, event.TurnID, event.ItemID)
+	if stream.Closed {
+		return nil
+	}
 	stream.Phase = strings.TrimSpace(buf.Phase)
 	stream.Text = joinAssistantStreamText(stream.CompletedText, buf.text())
 	stream.Loading = true
@@ -129,7 +135,7 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 		return nil
 	}
 	stream := surface.ActiveAssistantStream
-	if !stream.Loading || strings.TrimSpace(stream.MessageID) == "" || strings.TrimSpace(stream.StreamCardID) == "" {
+	if stream.Closed || !stream.Loading || strings.TrimSpace(stream.MessageID) == "" || strings.TrimSpace(stream.StreamCardID) == "" {
 		return nil
 	}
 	if strings.TrimSpace(stream.Text) == "" {
@@ -182,6 +188,10 @@ func (s *Service) assistantStreamEvent(surface *state.SurfaceConsoleRecord, stre
 }
 
 func (s *Service) assistantStreamEventWithDone(surface *state.SurfaceConsoleRecord, stream *state.AssistantStreamRecord, done bool) eventcontract.Event {
+	if done {
+		stream.Loading = false
+		stream.Closed = true
+	}
 	view := control.AssistantStreamView{
 		ThreadID:             stream.ThreadID,
 		TurnID:               stream.TurnID,
