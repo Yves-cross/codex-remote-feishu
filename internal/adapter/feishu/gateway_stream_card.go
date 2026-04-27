@@ -3,15 +3,18 @@ package feishu
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 )
 
 const streamCardTokenRefreshSkew = time.Minute
+const streamLoadingDotsGIFBase64 = "R0lGODlhGAAIAPcfMQAAACQAAEgAAGwAAJAAALQAANgAAPwAAAAkACQkAEgkAGwkAJAkALQkANgkAPwkAABIACRIAEhIAGxIAJBIALRIANhIAPxIAABsACRsAEhsAGxsAJBsALRsANhsAPxsAACQACSQAEiQAGyQAJCQALSQANiQAPyQAAC0ACS0AEi0AGy0AJC0ALS0ANi0APy0AADYACTYAEjYAGzYAJDYALTYANjYAPzYAAD8ACT8AEj8AGz8AJD8ALT8ANj8APz8AAAAVSQAVUgAVWwAVZAAVbQAVdgAVfwAVQAkVSQkVUgkVWwkVZAkVbQkVdgkVfwkVQBIVSRIVUhIVWxIVZBIVbRIVdhIVfxIVQBsVSRsVUhsVWxsVZBsVbRsVdhsVfxsVQCQVSSQVUiQVWyQVZCQVbSQVdiQVfyQVQC0VSS0VUi0VWy0VZC0VbS0Vdi0Vfy0VQDYVSTYVUjYVWzYVZDYVbTYVdjYVfzYVQD8VST8VUj8VWz8VZD8VbT8Vdj8Vfz8VQAAqiQAqkgAqmwAqpAAqrQAqtgAqvwAqgAkqiQkqkgkqmwkqpAkqrQkqtgkqvwkqgBIqiRIqkhIqmxIqpBIqrRIqthIqvxIqgBsqiRsqkhsqmxsqpBsqrRsqthsqvxsqgCQqiSQqkiQqmyQqpCQqrSQqtiQqvyQqgC0qiS0qki0qmy0qpC0qrS0qti0qvy0qgDYqiTYqkjYqmzYqpDYqrTYqtjYqvzYqgD8qiT8qkj8qmz8qpD8qrT8qtj8qvz8qgAA/yQA/0gA/2wA/5AA/7QA/9gA//wA/wAk/yQk/0gk/2wk/5Ak/7Qk/9gk//wk/wBI/yRI/0hI/2xI/5BI/7RI/9hI//xI/wBs/yRs/0hs/2xs/5Bs/7Rs/9hs//xs/wCQ/ySQ/0iQ/2yQ/5CQ/7SQ/9iQ//yQ/wC0/yS0/0i0/2y0/5C0/7S0/9i0//y0/wDY/yTY/0jY/2zY/5DY/7TY/9jY//zY/wD8/yT8/0j8/2z8/5D8/7T8/9j8//z8/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQEEQAfACwAAAAAGAAIAAAIRQB//RtI8J/AggMPIlzIsCHCTNm0ZSvYql1FihbbFYwYsSCrWuxaeQQpkqBEiBhbsUu5kiBHbQVDsio5UCZNhzhz6kQYEAAh+QQFEAAAACwCAAIADAAEAAAIJQBbtRMIoCCATNm0ZWNVi10rgwASJhTYih1EhQgdsnpoUKK2gAAAIfkEBREAAAAsCgACAAwABAAACCUAW7UTCKAggEzZtGVjVYtdK4MAEiYU2IodRIUIHbJ6aFCitoAAADs="
 
 type feishuTokenResponse struct {
 	Code              int    `json:"code"`
@@ -88,7 +91,8 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 	if err != nil {
 		return "", err
 	}
-	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey))
+	loadingImageKey := g.streamLoadingImageKeyOrEmpty(ctx)
+	cardJSON, err := json.Marshal(streamingCardDocument(operation.CardTitle, operation.CardBody, operation.CardThemeKey, loadingImageKey, operation.StreamLoading))
 	if err != nil {
 		return "", err
 	}
@@ -109,11 +113,12 @@ func (g *LiveGateway) createStreamCard(ctx context.Context, operation Operation)
 	cardID := strings.TrimSpace(parsed.Data.CardID)
 	g.mu.Lock()
 	g.streamSeq[cardID] = 1
+	g.streamLoadingShown[cardID] = operation.StreamLoading
 	g.mu.Unlock()
 	return cardID, nil
 }
 
-func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string) error {
+func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string, loading bool) error {
 	parsed, err := g.updateStreamCardResponse(ctx, cardID, text)
 	if err != nil {
 		return err
@@ -124,6 +129,9 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string)
 			return nil
 		}
 		return fmt.Errorf("feishu stream card update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
+	}
+	if err := g.syncStreamCardLoadingElement(ctx, cardID, loading); err != nil {
+		return err
 	}
 	return nil
 }
@@ -161,6 +169,9 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 			return nil
 		}
 		return fmt.Errorf("feishu stream card update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
+	}
+	if err := g.syncStreamCardLoadingElement(ctx, cardID, false); err != nil {
+		return err
 	}
 	token, err := g.tenantToken(ctx)
 	if err != nil {
@@ -203,6 +214,7 @@ func isFeishuStreamAlreadyClosed(resp feishuGenericResponse) bool {
 func (g *LiveGateway) forgetStreamCard(cardID string) {
 	g.mu.Lock()
 	delete(g.streamSeq, strings.TrimSpace(cardID))
+	delete(g.streamLoadingShown, strings.TrimSpace(cardID))
 	g.mu.Unlock()
 }
 
@@ -259,8 +271,14 @@ func (g *LiveGateway) doStreamCardJSON(ctx context.Context, api, method, url, to
 	return err
 }
 
-func streamingCardDocument(title, body, theme string) map[string]any {
+func streamingCardDocument(title, body, theme, loadingImageKey string, showLoading bool) map[string]any {
 	title = strings.TrimSpace(title)
+	elements := []map[string]any{{
+		"tag":        "markdown",
+		"content":    strings.TrimSpace(body),
+		"element_id": "content",
+	}}
+	elements = append(elements, streamCardLoadingElement(loadingImageKey, showLoading))
 	doc := map[string]any{
 		"schema": "2.0",
 		"config": map[string]any{
@@ -275,11 +293,7 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 			},
 		},
 		"body": map[string]any{
-			"elements": []map[string]any{{
-				"tag":        "markdown",
-				"content":    strings.TrimSpace(body),
-				"element_id": "content",
-			}},
+			"elements": elements,
 		},
 	}
 	if title != "" {
@@ -292,6 +306,122 @@ func streamingCardDocument(title, body, theme string) map[string]any {
 		}
 	}
 	return doc
+}
+
+func streamCardLoadingElement(imageKey string, show bool) map[string]any {
+	if !show {
+		return map[string]any{
+			"tag":        "markdown",
+			"content":    "",
+			"element_id": "loading",
+		}
+	}
+	if strings.TrimSpace(imageKey) == "" {
+		return map[string]any{
+			"tag":        "markdown",
+			"content":    "<text_tag color='neutral'>...</text_tag>",
+			"element_id": "loading",
+		}
+	}
+	return map[string]any{
+		"tag":          "img",
+		"img_key":      strings.TrimSpace(imageKey),
+		"element_id":   "loading",
+		"custom_width": 24,
+		"preview":      false,
+		"alt": map[string]any{
+			"tag":     "plain_text",
+			"content": "loading",
+		},
+	}
+}
+
+func (g *LiveGateway) syncStreamCardLoadingElement(ctx context.Context, cardID string, loading bool) error {
+	cardID = strings.TrimSpace(cardID)
+	g.mu.Lock()
+	current, ok := g.streamLoadingShown[cardID]
+	g.mu.Unlock()
+	if ok && current == loading {
+		return nil
+	}
+	imageKey := g.streamLoadingImageKeyOrEmpty(ctx)
+	if err := g.updateStreamCardElement(ctx, cardID, "loading", streamCardLoadingElement(imageKey, loading), "loading"); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	g.streamLoadingShown[cardID] = loading
+	g.mu.Unlock()
+	return nil
+}
+
+func (g *LiveGateway) updateStreamCardElement(ctx context.Context, cardID, elementID string, element map[string]any, prefix string) error {
+	token, err := g.tenantToken(ctx)
+	if err != nil {
+		return err
+	}
+	sequence := g.nextStreamCardSequence(cardID)
+	elementBody, err := json.Marshal(element)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"element":  string(elementBody),
+		"sequence": sequence,
+		"uuid":     fmt.Sprintf("%s_%s_%d", prefix, strings.TrimSpace(cardID), sequence),
+	})
+	if err != nil {
+		return err
+	}
+	var parsed feishuGenericResponse
+	url := fmt.Sprintf("%s/cardkit/v1/cards/%s/elements/%s", g.feishuOpenAPIBase(), strings.TrimSpace(cardID), strings.TrimSpace(elementID))
+	if err := g.doStreamCardJSON(ctx, "cardkit.v1.card.elements.update", http.MethodPut, url, token, payload, &parsed); err != nil {
+		return err
+	}
+	if parsed.Code != 0 {
+		if isFeishuStreamAlreadyClosed(parsed) {
+			g.forgetStreamCard(cardID)
+			return nil
+		}
+		return fmt.Errorf("feishu stream card element update failed: code=%d msg=%s", parsed.Code, strings.TrimSpace(parsed.Msg))
+	}
+	return nil
+}
+
+func (g *LiveGateway) streamLoadingImageKeyOrEmpty(ctx context.Context) string {
+	g.tokenMu.Lock()
+	if strings.TrimSpace(g.streamLoadingImageKey) != "" {
+		key := g.streamLoadingImageKey
+		g.tokenMu.Unlock()
+		return key
+	}
+	if g.streamLoadingUploadFailed {
+		g.tokenMu.Unlock()
+		return ""
+	}
+	g.tokenMu.Unlock()
+
+	data, err := base64.StdEncoding.DecodeString(streamLoadingDotsGIFBase64)
+	if err != nil {
+		log.Printf("feishu stream loading gif decode failed: %v", err)
+		g.tokenMu.Lock()
+		g.streamLoadingUploadFailed = true
+		g.tokenMu.Unlock()
+		return ""
+	}
+	imageKey, err := g.uploadImageBytesFn(ctx, data)
+	if err != nil {
+		log.Printf("feishu stream loading gif upload failed: %v", err)
+		g.tokenMu.Lock()
+		g.streamLoadingUploadFailed = true
+		g.tokenMu.Unlock()
+		return ""
+	}
+	imageKey = strings.TrimSpace(imageKey)
+	g.tokenMu.Lock()
+	g.streamLoadingImageKey = imageKey
+	g.streamLoadingUploadFailed = false
+	g.tokenMu.Unlock()
+	return imageKey
 }
 
 func streamCardContent(text string) string {

@@ -48,6 +48,7 @@ type Operation struct {
 	CardTitle            string
 	CardBody             string
 	CardThemeKey         string
+	StreamLoading        bool
 	CardElements         []map[string]any
 	CardUpdateMulti      bool
 	ProgressCardStartSeq int
@@ -409,6 +410,7 @@ func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Ev
 		ReplyToMessageID: firstNonEmpty(event.SourceMessageID, event.Meta.SourceMessageID),
 		CardBody:         text,
 		CardThemeKey:     cardThemeProgress,
+		StreamLoading:    view.Loading,
 		cardEnvelope:     cardEnvelopeV2,
 		card:             rawCardDocument("", text, cardThemeProgress, nil),
 	}

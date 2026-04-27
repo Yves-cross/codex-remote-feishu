@@ -196,6 +196,9 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].ReplyToMessageID != "msg-1" {
 		t.Fatalf("expected empty loading stream card send, got %#v", loading)
 	}
+	if !loading[0].StreamLoading {
+		t.Fatalf("expected loading stream card send to enable loading marker, got %#v", loading[0])
+	}
 
 	first := projector.ProjectEvent("chat-1", eventcontract.Event{
 		Kind:                 eventcontract.KindAssistantStream,
@@ -218,6 +221,9 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 	if first[0].CardTitle != "" {
 		t.Fatalf("expected stream card to omit title, got %#v", first[0].CardTitle)
+	}
+	if first[0].StreamLoading {
+		t.Fatalf("expected first text-only send not to force loading marker when view does not request it, got %#v", first[0])
 	}
 
 	patch := projector.ProjectEvent("chat-1", eventcontract.Event{

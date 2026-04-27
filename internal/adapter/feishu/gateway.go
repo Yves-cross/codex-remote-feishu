@@ -57,18 +57,21 @@ type LiveGateway struct {
 	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
 	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
 	createStreamCardFn func(context.Context, Operation) (string, error)
-	updateStreamCardFn func(context.Context, string, string) error
+	updateStreamCardFn func(context.Context, string, string, bool) error
 	closeStreamCardFn  func(context.Context, string, string) error
 
-	mu        sync.Mutex
-	stateHook func(GatewayState, error)
-	reactions map[string]string
-	messages  map[string]string
-	streamSeq map[string]int
+	mu                 sync.Mutex
+	stateHook          func(GatewayState, error)
+	reactions          map[string]string
+	messages           map[string]string
+	streamSeq          map[string]int
+	streamLoadingShown map[string]bool
 
-	tokenMu              sync.Mutex
-	tenantAccessToken    string
-	tenantTokenExpiresAt time.Time
+	tokenMu                   sync.Mutex
+	tenantAccessToken         string
+	tenantTokenExpiresAt      time.Time
+	streamLoadingImageKey     string
+	streamLoadingUploadFailed bool
 }
 
 type gatewayMessage struct {
@@ -110,12 +113,13 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	config.GatewayID = normalizeGatewayID(config.GatewayID)
 	client := NewLarkClient(config.AppID, config.AppSecret)
 	gateway := &LiveGateway{
-		config:    config,
-		client:    client,
-		broker:    NewFeishuCallBroker(config.GatewayID, client),
-		reactions: map[string]string{},
-		messages:  map[string]string{},
-		streamSeq: map[string]int{},
+		config:             config,
+		client:             client,
+		broker:             NewFeishuCallBroker(config.GatewayID, client),
+		reactions:          map[string]string{},
+		messages:           map[string]string{},
+		streamSeq:          map[string]int{},
+		streamLoadingShown: map[string]bool{},
 	}
 	gateway.downloadImageFn = gateway.downloadImage
 	gateway.downloadFileFn = gateway.downloadFile
