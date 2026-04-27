@@ -92,11 +92,19 @@ func TestStreamingCardDocumentUsesGIFLoadingElementWhenImageKeyPresent(t *testin
 	if len(elements) != 2 {
 		t.Fatalf("unexpected element count: %#v", elements)
 	}
-	if elements[1]["tag"] != "img" || elements[1]["element_id"] != "loading" {
+	if elements[1]["tag"] != "column_set" || elements[1]["element_id"] != "loading" {
 		t.Fatalf("expected gif loading image element, got %#v", elements[1])
 	}
-	if elements[1]["img_key"] != "img-loading-1" || elements[1]["custom_width"] != 16 || elements[1]["compact_width"] != true {
-		t.Fatalf("expected compact loading image sizing, got %#v", elements[1])
+	columns, _ := elements[1]["columns"].([]map[string]any)
+	if len(columns) != 1 {
+		t.Fatalf("expected one auto-width column, got %#v", elements[1])
+	}
+	columnElements, _ := columns[0]["elements"].([]map[string]any)
+	if len(columnElements) != 1 || columnElements[0]["tag"] != "img" || columnElements[0]["img_key"] != "img-loading-1" {
+		t.Fatalf("expected column-scoped loading image, got %#v", elements[1])
+	}
+	if columnElements[0]["custom_width"] != 12 || columnElements[0]["compact_width"] != true {
+		t.Fatalf("expected tighter loading image sizing, got %#v", columnElements[0])
 	}
 }
 

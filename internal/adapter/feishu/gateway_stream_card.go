@@ -324,17 +324,26 @@ func streamCardLoadingElement(imageKey string, show bool) map[string]any {
 		}
 	}
 	return map[string]any{
-		"tag":           "img",
-		"img_key":       strings.TrimSpace(imageKey),
-		"element_id":    "loading",
-		"custom_width":  16,
-		"compact_width": true,
-		"mode":          "fit_horizontal",
-		"preview":       false,
-		"alt": map[string]any{
-			"tag":     "plain_text",
-			"content": "loading",
-		},
+		"tag":                "column_set",
+		"element_id":         "loading",
+		"horizontal_spacing": "small",
+		"columns": []map[string]any{{
+			"tag":            "column",
+			"width":          "auto",
+			"vertical_align": "top",
+			"elements": []map[string]any{{
+				"tag":           "img",
+				"img_key":       strings.TrimSpace(imageKey),
+				"custom_width":  12,
+				"compact_width": true,
+				"mode":          "fit_horizontal",
+				"preview":       false,
+				"alt": map[string]any{
+					"tag":     "plain_text",
+					"content": "loading",
+				},
+			}},
+		}},
 	}
 }
 
