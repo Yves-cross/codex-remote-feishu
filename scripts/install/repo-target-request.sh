@@ -6,19 +6,50 @@ TARGET_SCRIPT="${ROOT_DIR}/scripts/install/repo-install-target.sh"
 
 usage() {
   cat <<'EOF'
-usage: scripts/install/repo-target-request.sh <admin|tool> <path> [curl args...]
+usage: scripts/install/repo-target-request.sh [--instance <id>] [--base-dir <dir>] <admin|tool> <path> [curl args...]
 
-Resolve the current repository's bound install target, then issue a localhost
-HTTP request to that bound instance instead of whichever daemon currently
-happens to be serving this Codex conversation.
+Resolve an explicit install target or the current repository's bound install
+target, then issue a localhost HTTP request to that instance.
 
 examples:
   scripts/install/repo-target-request.sh admin /v1/status
   scripts/install/repo-target-request.sh admin /api/admin/bootstrap-state
+  scripts/install/repo-target-request.sh --instance beta admin /v1/status
   scripts/install/repo-target-request.sh tool /healthz
   scripts/install/repo-target-request.sh admin /v1/status | jq .
+
+options:
+  --instance <id>   override the repo install target instance
+  --base-dir <dir>  override the install base dir resolved for that instance
 EOF
 }
+
+INSTANCE=""
+BASE_DIR=""
+BASE_DIR_SET=0
+
+while [[ $# -gt 0 ]]; do
+  case "${1:-}" in
+    --instance)
+      [[ $# -ge 2 ]] || { echo "missing value for --instance" >&2; exit 1; }
+      INSTANCE="$2"
+      shift 2
+      ;;
+    --base-dir)
+      [[ $# -ge 2 ]] || { echo "missing value for --base-dir" >&2; exit 1; }
+      BASE_DIR="$2"
+      BASE_DIR_SET=1
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 if [[ $# -lt 2 ]]; then
   usage >&2
@@ -51,7 +82,15 @@ if [[ "${path}" != /* ]]; then
   path="/${path}"
 fi
 
-eval "$("${TARGET_SCRIPT}" --format shell)"
+resolver_args=()
+if [[ -n "${INSTANCE}" ]]; then
+  resolver_args+=("--instance" "${INSTANCE}")
+fi
+if [[ "${BASE_DIR_SET}" == "1" ]]; then
+  resolver_args+=("--base-dir" "${BASE_DIR}")
+fi
+
+eval "$("${TARGET_SCRIPT}" --format shell "${resolver_args[@]}")"
 
 case "${target_kind}" in
   admin)
@@ -63,7 +102,7 @@ case "${target_kind}" in
 esac
 
 if [[ -z "${base_url}" ]]; then
-  echo "bound repo target has no ${target_kind} URL; resolve with scripts/install/repo-install-target.sh first" >&2
+  echo "resolved install target has no ${target_kind} URL; resolve with scripts/install/repo-install-target.sh first" >&2
   exit 1
 fi
 

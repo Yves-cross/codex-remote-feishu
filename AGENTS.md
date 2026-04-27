@@ -151,11 +151,17 @@ Use `.codex/skills/local-upgrade/` for repository-local daemon upgrade/debug rou
 - local-upgrade transaction from repo build
 - without explicit user approval in the current turn, do not auto-run repository-local upgrade flows
 
-Natural-language repo requests (for example `本地升级`, `debug 一下`, `看下 repo 绑定实例状态`) are **repo tasks**:
+Natural-language repo requests split by target semantics:
 
-- upgrade via `./upgrade-local.sh`
-- status/debug via `bash scripts/install/repo-target-request.sh ...` or `bash scripts/install/repo-install-target.sh --format shell`
-- do not satisfy those natural-language requests by sending daemon slash commands
+- `本地升级` and other repo-build upgrade requests are **repo tasks**:
+  - use `./upgrade-local.sh`
+  - when the user names a target instance, pass `--instance` and keep that target explicit
+- `debug 一下`, `看下当前实例状态`, `查日志`, `报个 bug` default to the **current daemon self target**, not the repo-bound target
+- only use `bash scripts/install/repo-target-request.sh ...` or `bash scripts/install/repo-install-target.sh --format shell` when the user explicitly asks for:
+  - the repo-bound target
+  - or a named install target such as `stable` / `beta` / `master`
+- do not silently reinterpret a current-instance debug request as a repo-bound debug request
+- do not satisfy those natural-language requests by sending daemon slash commands unless the user explicitly asked for the slash-command path
 
 Explicit slash commands (`/upgrade`, `/upgrade local`, `/upgrade latest`, `/debug`) stay as daemon-direct actions.
 

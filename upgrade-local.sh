@@ -21,7 +21,7 @@ stage it into the fixed local-upgrade artifact path, and trigger the built-in
 local upgrade transaction against the installed daemon state.
 
 options:
-  --instance <id>   override the workspace-bound install instance
+  --instance <id>   override the repo install target instance
   --base-dir <dir>  override the install base dir resolved for that instance
   --slot <slot>     optional explicit upgrade slot label
   --allow-dirty     skip the clean-worktree guard before git pull

@@ -334,7 +334,7 @@ func TestRunLocalUpgradeRequiresExplicitTargetWithoutWorkspaceBinding(t *testing
 	if err == nil {
 		t.Fatal("RunLocalUpgrade() error = nil, want missing target error")
 	}
-	if !strings.Contains(err.Error(), "requires a bound repo target or explicit -instance/-base-dir/-state-path") {
+	if !strings.Contains(err.Error(), "requires a repo install target or explicit -instance/-base-dir/-state-path") {
 		t.Fatalf("RunLocalUpgrade() error = %v", err)
 	}
 }

@@ -2,7 +2,7 @@
 
 > Type: `general`
 > Updated: `2026-04-27`
-> Summary: 补充全局 stable/beta/master 实例与 workspace 绑定模型，并同步 build flavor（shipping/alpha/dev）能力边界、`/upgrade track` 与 `/upgrade dev` 的语义边界、Windows 在线安装脚本、`managed_shim` tiny shim + sidecar 绑定模型与按当前平台筛选 VS Code 入口的规则。
+> Summary: 补充全局 stable/beta/master 实例与 repo install target 绑定模型，并同步 build flavor（shipping/alpha/dev）能力边界、`/upgrade track` 与 `/upgrade dev` 的语义边界、Windows 在线安装脚本、`managed_shim` tiny shim + sidecar 绑定模型与按当前平台筛选 VS Code 入口的规则。
 
 ## 1. 范围
 
@@ -201,7 +201,7 @@ named instance <instanceId>:
 
 默认 `baseDir` 是用户 home 目录。
 
-### 4.2 Workspace 绑定与全局实例
+### 4.2 Repo 绑定与全局实例
 
 源码仓库联调不再默认在“stable 已存在”时自动派生 `repo-xxxx` 实例。
 
@@ -209,8 +209,17 @@ named instance <instanceId>:
 
 - 机器级长期实例由显式命名的全局实例承担，例如 `stable` / `beta` / `master`
 - 每个 workspace 只记录“我绑定哪套全局实例”和对应 `baseDir`
-- 仓库内的 `install` / `service` / `local-upgrade` / `upgrade-local.sh` 默认先读 workspace 绑定
+- 仓库内的 `install` / `service` / `local-upgrade` / `upgrade-local.sh` 默认先读 repo binding
 - 若当前 workspace 没有绑定，则默认退回 `stable`；退回前会优先向上查找 repo 祖先目录里已经存在的 stable install/config，再回退到用户 home
+
+这里的 workspace / repo 绑定只定义 repo helper 的 install target。
+
+它不应该被理解成：
+
+- 当前 daemon 的 self 身份
+- 通用 debug / log / bug 排查的默认目标
+
+当前 daemon 的报 bug、查日志、看状态默认都应该查 self target；只有在用户显式点名 repo 绑定目标或某个实例时，才跨到对应 install target。
 
 当前 repo-local 绑定文件为：
 
@@ -323,7 +332,7 @@ loginctl enable-linger "$USER"
 
 Windows 下文件名为 `codex-remote.exe`。
 
-源码仓库 helper `./upgrade-local.sh` 现在也遵循同一套 workspace 绑定解析：
+源码仓库 helper `./upgrade-local.sh` 现在也遵循同一套 repo install target 解析：
 
 - 优先读取 `.codex-remote/install-target.json`
 - 没有 binding 时，优先向上查找现有全局实例的 `install-state.json` / `config.json`

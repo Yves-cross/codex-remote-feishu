@@ -1,8 +1,8 @@
 # 本地自升级流程
 
 > Type: `general`
-> Updated: `2026-04-15`
-> Summary: 说明 repo 构建产物触发本地自升级时的完整时序、内嵌 upgrade shim 的释放与启动方式、与 `/upgrade dev` 的边界，以及自动回滚规则。
+> Updated: `2026-04-27`
+> Summary: 说明 repo 构建产物触发本地自升级时的完整时序、内嵌 upgrade shim 的释放与启动方式、与 `/upgrade dev` 的边界、自动回滚规则，以及 repo install target 与当前 daemon self target 的语义边界。
 
 ## 1. 这份文档回答什么问题
 
@@ -15,7 +15,7 @@
 - 真正负责切换 live binary 的 helper 是谁
 - helper 从哪里来，释放到哪里，怎么启动
 - 自动回滚在什么条件下触发
-- 多实例 / workspace 绑定下，升级到底打到哪个实例
+- 多实例 / repo install target 绑定下，升级到底打到哪个实例
 
 如果以后只是想解释“当前本地自升级怎么工作”，优先看这份文档，不必重新从代码追起。
 
@@ -111,21 +111,30 @@ sidecar 至少绑定当前事务对应的 `install-state.json`。这样即使当
 
 ## 4. 升级目标实例是怎么选出来的
 
-`./upgrade-local.sh` 和 `codex-remote local-upgrade` 都遵循当前的 workspace 绑定解析规则。
+`./upgrade-local.sh` 和 `codex-remote local-upgrade` 都遵循当前的 repo install target 解析规则。
+
+这里要先区分两个概念：
+
+- `repo install target`
+  - 只决定 repo helper 本地升级会打到哪个已安装实例
+- `current daemon self target`
+  - 只决定当前 daemon 自己的 debug / log / status 默认查谁
+
+这两者不要混用。当前 daemon 自己的报 bug、查日志、看状态，默认都应落在 self target；只有当用户显式指定 `stable` / `beta` / `master` 或明确要求查 repo 绑定目标时，才跨到其他 install target。
 
 优先级是：
 
 1. 显式传入的 `--instance` / `--base-dir` / `-state-path`
 2. 当前 repo 下的 `.codex-remote/install-target.json`
-3. 没有 workspace binding 时，再按 repo 祖先 / 平台默认目录去找可用实例
+3. 没有 repo binding 时，再按 repo 祖先 / 平台默认目录去找可用实例
 
-所以“本地升级哪个实例”并不是拍脑袋决定的，而是明确绑定到当前 repo 解析出的 install target。
+所以“本地升级哪个实例”并不是拍脑袋决定的，而是明确绑定到当前 repo 解析出的 install target；但这套解析规则不应被拿来重定义“当前实例是谁”。
 
 repo 里常用的辅助解析入口是：
 
 - `scripts/install/repo-install-target.sh`
 
-如果以后要查某个 workspace 当前会打到哪个实例，也优先从这个绑定模型看，而不是猜 stable 或猜某个端口。
+如果以后要查某个 workspace 的 repo helper 当前会打到哪个实例，也优先从这个绑定模型看，而不是猜 stable 或猜某个端口。
 
 ## 5. 从 `./upgrade-local.sh` 发起时的完整时序
 
@@ -144,7 +153,7 @@ repo 里常用的辅助解析入口是：
 - 作为本次升级的 source build
 - 携带当前 host 平台的内嵌 upgrade shim 资产，供后续 `local-upgrade` 释放
 
-### 5.2 第二步：解析 repo 绑定实例
+### 5.2 第二步：解析 repo install target
 
 脚本会调用 `scripts/install/repo-install-target.sh --format shell`，拿到：
 

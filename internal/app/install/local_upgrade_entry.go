@@ -17,8 +17,8 @@ func RunLocalUpgrade(args []string, _ io.Reader, stdout, _ io.Writer, _ string) 
 	flagSet := flag.NewFlagSet("local-upgrade", flag.ContinueOnError)
 	flagSet.SetOutput(stdout)
 
-	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty uses the workspace binding when available")
-	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to workspace binding or platform default")
+	instanceIDFlag := flagSet.String("instance", "", "install instance id; empty resolves the current repo install target when available")
+	baseDir := flagSet.String("base-dir", "", "base directory for config and install state; empty auto-resolves to the repo install target or platform default")
 	statePathFlag := flagSet.String("state-path", "", "path to install-state.json; empty derives from -base-dir")
 	slot := flagSet.String("slot", "", "slot label for the local upgrade; empty derives local-<fingerprint>")
 	if err := flagSet.Parse(args); err != nil {
@@ -39,7 +39,7 @@ func RunLocalUpgrade(args []string, _ io.Reader, stdout, _ io.Writer, _ string) 
 				RequireBinding:  true,
 			})
 			if err != nil {
-				return fmt.Errorf("local-upgrade requires a bound repo target or explicit -instance/-base-dir/-state-path; prefer ./upgrade-local.sh: %w", err)
+				return fmt.Errorf("local-upgrade requires a repo install target or explicit -instance/-base-dir/-state-path; prefer ./upgrade-local.sh: %w", err)
 			}
 			statePath = info.StatePath
 		} else {
