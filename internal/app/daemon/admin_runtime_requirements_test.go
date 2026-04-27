@@ -100,7 +100,7 @@ func TestAdminRuntimeRequirementsAcceptManagedShimBundleFallback(t *testing.T) {
 
 	binaryPath := filepath.Join(home, executableName("codex-remote"))
 	writeExecutableFile(t, binaryPath, "wrapper-binary")
-	bundleCodex := testVSCodeBundleEntrypoint(home, ".vscode-server", "26.422.30944-linux-x64")
+	bundleCodex := testVSCodeBundleEntrypoint(home, testRuntimeBundleExtensionRoot(), "26.422.30944")
 	writeExecutableFile(t, bundleCodex, "bundle-codex")
 
 	app, _, _ := newVSCodeAdminTestApp(t, home, binaryPath, false)
@@ -196,4 +196,11 @@ func executableName(base string) string {
 		return base + ".exe"
 	}
 	return base
+}
+
+func testRuntimeBundleExtensionRoot() string {
+	if runtime.GOOS == "linux" {
+		return ".vscode-server"
+	}
+	return ".vscode"
 }
