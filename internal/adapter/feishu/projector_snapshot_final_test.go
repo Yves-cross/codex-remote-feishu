@@ -193,7 +193,7 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 			},
 		},
 	})
-	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].ReplyToMessageID != "msg-1" || !loading[0].StreamLoading {
+	if len(loading) != 1 || loading[0].Kind != OperationSendStreamCard || loading[0].CardBody != "" || loading[0].ReplyToMessageID != "msg-1" {
 		t.Fatalf("expected empty loading stream card send, got %#v", loading)
 	}
 
@@ -227,8 +227,6 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 				MessageID:    "om-stream-1",
 				StreamCardID: "card-stream-1",
 				Text:         "第一段\n第二段",
-				Loading:      true,
-				LoadingStep:  2,
 			},
 		},
 	})
@@ -237,9 +235,6 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 	if patch[0].MessageID != "om-stream-1" || patch[0].StreamCardID != "card-stream-1" || patch[0].ReplyToMessageID != "" {
 		t.Fatalf("expected stream patch to target existing card only, got %#v", patch[0])
-	}
-	if !patch[0].StreamLoading || patch[0].StreamLoadingStep != 2 {
-		t.Fatalf("expected stream patch to keep loading animation state, got %#v", patch[0])
 	}
 
 	closeOps := projector.ProjectEvent("chat-1", eventcontract.Event{

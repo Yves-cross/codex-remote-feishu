@@ -2,7 +2,6 @@ package feishu
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -51,7 +50,7 @@ func TestApplySendStreamCardCreatesCardEntityAndSendsCardReference(t *testing.T)
 }
 
 func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
-	doc := streamingCardDocument("", "正文", cardThemeProgress, false, 0)
+	doc := streamingCardDocument("", "正文", cardThemeProgress)
 	if _, ok := doc["header"]; ok {
 		t.Fatalf("expected titleless streaming card to omit header, got %#v", doc["header"])
 	}
@@ -62,45 +61,18 @@ func TestStreamingCardDocumentOmitsHeaderWhenTitleEmpty(t *testing.T) {
 	}
 }
 
-func TestStreamingCardDocumentUsesInlineLoadingDots(t *testing.T) {
-	doc := streamingCardDocument("", "", cardThemeProgress, true, 0)
+func TestStreamingCardDocumentUsesBlankContentForNativeStreaming(t *testing.T) {
+	doc := streamingCardDocument("", "", cardThemeProgress)
 	body, _ := doc["body"].(map[string]any)
 	elements, _ := body["elements"].([]map[string]any)
-	content, _ := elements[0]["content"].(string)
-	if len(elements) != 1 || strings.Count(content, "•") != 3 || !strings.Contains(content, "blue") {
-		t.Fatalf("expected inline loading dots, got %#v", doc)
+	if len(elements) != 1 || elements[0]["content"] != " " {
+		t.Fatalf("expected blank content placeholder for native streaming, got %#v", doc)
 	}
-}
-
-func TestStreamCardContentAnimatesLoadingDotsInline(t *testing.T) {
-	first := streamCardContent("正文", true, 0)
-	second := streamCardContent("正文", true, 1)
-	if !strings.HasPrefix(first, "正文 ") || !strings.HasPrefix(second, "正文 ") {
-		t.Fatalf("expected loading dots to stay inline after text: first=%q second=%q", first, second)
+	config, _ := doc["config"].(map[string]any)
+	streamingConfig, _ := config["streaming_config"].(map[string]any)
+	if streamingConfig["print_strategy"] != "delay" {
+		t.Fatalf("expected native streaming delay strategy, got %#v", streamingConfig)
 	}
-	if strings.Count(first, "•") != 3 || strings.Count(second, "•") != 3 || first == second {
-		t.Fatalf("expected three animated loading dots: first=%q second=%q", first, second)
-	}
-}
-
-func TestStreamLoadingDotsMovesBlueDotLeftMiddleRight(t *testing.T) {
-	left := streamLoadingDots(0)
-	middle := streamLoadingDots(1)
-	right := streamLoadingDots(2)
-	wrapped := streamLoadingDots(3)
-	if blueDotIndex(left) != 0 || blueDotIndex(middle) != 1 || blueDotIndex(right) != 2 || blueDotIndex(wrapped) != 0 {
-		t.Fatalf("expected blue dot to move left-middle-right: left=%q middle=%q right=%q wrapped=%q", left, middle, right, wrapped)
-	}
-}
-
-func blueDotIndex(content string) int {
-	markers := strings.Split(content, "•</font>")
-	for i, marker := range markers {
-		if strings.Contains(marker, "color='blue'") {
-			return i
-		}
-	}
-	return -1
 }
 
 func TestApplyUpdateStreamCardRequiresCardID(t *testing.T) {
