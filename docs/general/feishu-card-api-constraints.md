@@ -237,6 +237,12 @@ CardKit 卡片实体本身也有生命周期限制：
 2. 同一张消息或同一卡片的最大更新频率是多少。
 3. plan、正文、状态提示是否共享同一更新预算。
 
+当前 `assistant_stream` 的额外基线：
+
+- 不只按 QPS 节流，还要按单张 CardKit streaming card 的打开时长做预算。
+- 实测飞书可能对长时间保持 streaming mode 的卡返回 `200850 card streaming timeout`；该错误不是普通限流，而是平台侧认为这张流式实体已经超时或终止。
+- 因此长 turn 不能强行维持“一整轮永远一张 streaming card”。当前默认降级是：已完成 commentary 文本如果只是等待后续 item，单卡打开接近保守时长上限时主动关闭；后续 final answer 再开新流式卡，避免旧卡继续被 patch 到平台 timeout。
+
 ### 5.4 交互阶段与流式阶段要显式切换
 
 如果一张卡既承担持续输出，又承担审批/授权/表单输入，必须先设计清楚：

@@ -146,3 +146,70 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 		t.Fatalf("expected no loading tick after final stream close, got %#v", tickAfterClose)
 	}
 }
+
+func TestCompletedCommentaryStreamClosesBeforePlatformTimeout(t *testing.T) {
+	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
+	svc := newServiceForTest(&now)
+	svc.UpsertInstance(&state.InstanceRecord{
+		InstanceID:              "inst-1",
+		DisplayName:             "droid",
+		WorkspaceRoot:           "/data/dl/droid",
+		WorkspaceKey:            "/data/dl/droid",
+		ShortName:               "droid",
+		Online:                  true,
+		ObservedFocusedThreadID: "thread-2",
+		Threads: map[string]*state.ThreadRecord{
+			"thread-2": {ThreadID: "thread-2", Name: "修复登录流程", CWD: "/data/dl/droid"},
+		},
+	})
+	svc.ApplySurfaceAction(control.Action{Kind: control.ActionAttachInstance, SurfaceSessionID: "surface-1", ChatID: "chat-1", ActorUserID: "user-1", InstanceID: "inst-1"})
+
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"phase": "commentary"},
+	})
+	svc.RecordAssistantStreamMessage("surface-1", "thread-2", "turn-1", "item-1", "om-stream-1", "card-stream-1")
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+		Delta:    "先同步当前调查进展。",
+	})
+	svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemCompleted,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-1",
+		ItemKind: "agent_message",
+	})
+
+	now = now.Add(assistantStreamMaxOpenDuration)
+	expired := svc.Tick(now)
+	if len(expired) != 1 || expired[0].AssistantStream == nil || !expired[0].AssistantStream.Done {
+		t.Fatalf("expected completed commentary stream to close before platform timeout, got %#v", expired)
+	}
+	if stream := expired[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != "先同步当前调查进展。" || stream.Loading {
+		t.Fatalf("expected timeout guard to close original stream card, got %#v", stream)
+	}
+	if active := svc.root.Surfaces["surface-1"].ActiveAssistantStream; active != nil {
+		t.Fatalf("expected timeout guard to clear active stream, got %#v", active)
+	}
+
+	next := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemStarted,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-2",
+		ItemKind: "agent_message",
+		Metadata: map[string]any{"phase": "final_answer"},
+	})
+	if len(next) != 1 || next[0].AssistantStream == nil || strings.TrimSpace(next[0].AssistantStream.MessageID) != "" || strings.TrimSpace(next[0].AssistantStream.StreamCardID) != "" {
+		t.Fatalf("expected later final answer to start a fresh stream card, got %#v", next)
+	}
+}

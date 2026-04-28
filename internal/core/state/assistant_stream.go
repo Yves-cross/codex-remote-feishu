@@ -16,6 +16,7 @@ type AssistantStreamRecord struct {
 	Text                 string
 	Loading              bool
 	Closed               bool
+	OpenedAt             time.Time
 	LastEmittedText      string
 	LastEmittedAt        time.Time
 }

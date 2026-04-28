@@ -16,6 +16,7 @@ const (
 	assistantStreamMinPatchGrowth   = 80
 	assistantStreamShortPatchGrowth = 24
 	assistantStreamLoadingInterval  = 800 * time.Millisecond
+	assistantStreamMaxOpenDuration  = 25 * time.Second
 )
 
 func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto.Event) []eventcontract.Event {
@@ -141,6 +142,11 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 	if strings.TrimSpace(stream.Text) == "" {
 		return nil
 	}
+	if shouldCloseAssistantStreamBeforePlatformTimeout(stream, now) {
+		event := s.assistantStreamEventWithDone(surface, stream, true)
+		surface.ActiveAssistantStream = nil
+		return []eventcontract.Event{event}
+	}
 	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
 		return nil
 	}
@@ -179,8 +185,23 @@ func (s *Service) ensureAssistantStream(surface *state.SurfaceConsoleRecord, ins
 		ItemID:               itemID,
 		SourceMessageID:      sourceMessageID,
 		SourceMessagePreview: sourceMessagePreview,
+		OpenedAt:             s.now(),
 	}
 	return surface.ActiveAssistantStream
+}
+
+func shouldCloseAssistantStreamBeforePlatformTimeout(stream *state.AssistantStreamRecord, now time.Time) bool {
+	if stream == nil || stream.OpenedAt.IsZero() || now.Sub(stream.OpenedAt) < assistantStreamMaxOpenDuration {
+		return false
+	}
+	if strings.TrimSpace(stream.MessageID) == "" || strings.TrimSpace(stream.StreamCardID) == "" {
+		return false
+	}
+	text := strings.TrimSpace(stream.Text)
+	if text == "" || text != strings.TrimSpace(stream.CompletedText) {
+		return false
+	}
+	return true
 }
 
 func (s *Service) assistantStreamEvent(surface *state.SurfaceConsoleRecord, stream *state.AssistantStreamRecord) eventcontract.Event {
