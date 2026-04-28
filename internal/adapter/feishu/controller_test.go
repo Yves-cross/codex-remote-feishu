@@ -2,6 +2,7 @@ package feishu
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"sync"
@@ -122,6 +123,61 @@ func TestMultiGatewayControllerPropagatesMutatedOperationsBackToCaller(t *testin
 	}
 	if operations[0].MessageID != "om-progress-1" {
 		t.Fatalf("expected mutated operation to propagate back to caller, got %#v", operations)
+	}
+}
+
+func TestMultiGatewayControllerClearsApplyErrorAfterLaterSuccess(t *testing.T) {
+	controller := NewMultiGatewayController()
+	runtime := newFakeGatewayRuntime("app-1")
+	controller.newGateway = func(cfg GatewayAppConfig) gatewayRuntime {
+		return runtime
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := controller.UpsertApp(ctx, GatewayAppConfig{
+		GatewayID: "app-1",
+		AppID:     "cli_app-1",
+		AppSecret: "secret_app-1",
+		Enabled:   true,
+	}); err != nil {
+		t.Fatalf("UpsertApp: %v", err)
+	}
+
+	go func() {
+		_ = controller.Start(ctx, func(context.Context, control.Action) *ActionResult { return nil })
+	}()
+	waitFakeGatewayStarted(t, runtime)
+
+	errApply := errors.New("temporary apply failure")
+	runtime.applyFn = func(context.Context, []Operation) error {
+		return errApply
+	}
+	err := controller.Apply(context.Background(), []Operation{{
+		GatewayID: "app-1",
+		Kind:      OperationSendText,
+		Text:      "one",
+	}})
+	if err == nil {
+		t.Fatal("expected apply error")
+	}
+	statuses := controller.Status()
+	if len(statuses) != 1 || statuses[0].State != GatewayStateDegraded || statuses[0].LastError == "" {
+		t.Fatalf("expected degraded status with error, got %#v", statuses)
+	}
+
+	runtime.applyFn = nil
+	if err := controller.Apply(context.Background(), []Operation{{
+		GatewayID: "app-1",
+		Kind:      OperationSendText,
+		Text:      "two",
+	}}); err != nil {
+		t.Fatalf("second Apply: %v", err)
+	}
+	statuses = controller.Status()
+	if len(statuses) != 1 || statuses[0].State != GatewayStateConnected || statuses[0].LastError != "" {
+		t.Fatalf("expected connected status after successful apply, got %#v", statuses)
 	}
 }
 

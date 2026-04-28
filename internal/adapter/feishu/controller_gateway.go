@@ -66,6 +66,7 @@ func (c *MultiGatewayController) Apply(ctx context.Context, operations []Operati
 			c.updateWorkerError(gatewayID, err)
 			return err
 		}
+		c.updateWorkerSuccess(gatewayID)
 		for i, index := range indexes {
 			operations[index] = group[i]
 		}
@@ -96,6 +97,7 @@ func (c *MultiGatewayController) SendIMFile(ctx context.Context, req IMFileSendR
 		c.updateWorkerError(resolution.GatewayID, err)
 		return result, err
 	}
+	c.updateWorkerSuccess(resolution.GatewayID)
 	if result.GatewayID == "" {
 		result.GatewayID = resolution.GatewayID
 	}
@@ -125,6 +127,7 @@ func (c *MultiGatewayController) SendIMImage(ctx context.Context, req IMImageSen
 		c.updateWorkerError(resolution.GatewayID, err)
 		return result, err
 	}
+	c.updateWorkerSuccess(resolution.GatewayID)
 	if result.GatewayID == "" {
 		result.GatewayID = resolution.GatewayID
 	}
@@ -154,6 +157,7 @@ func (c *MultiGatewayController) SendIMVideo(ctx context.Context, req IMVideoSen
 		c.updateWorkerError(resolution.GatewayID, err)
 		return result, err
 	}
+	c.updateWorkerSuccess(resolution.GatewayID)
 	if result.GatewayID == "" {
 		result.GatewayID = resolution.GatewayID
 	}
@@ -183,6 +187,7 @@ func (c *MultiGatewayController) ReadDriveFileComments(ctx context.Context, req 
 		c.updateWorkerError(resolution.GatewayID, err)
 		return result, err
 	}
+	c.updateWorkerSuccess(resolution.GatewayID)
 	if result.GatewayID == "" {
 		result.GatewayID = resolution.GatewayID
 	}
@@ -277,6 +282,20 @@ func (c *MultiGatewayController) updateWorkerError(gatewayID string, err error) 
 	worker.status.LastError = err.Error()
 	if worker.status.State == GatewayStateConnected {
 		worker.status.State = GatewayStateDegraded
+	}
+}
+
+func (c *MultiGatewayController) updateWorkerSuccess(gatewayID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	worker := c.workers[gatewayID]
+	if worker == nil {
+		return
+	}
+	worker.status.LastError = ""
+	if worker.status.State == GatewayStateDegraded {
+		worker.status.State = GatewayStateConnected
+		worker.status.LastConnectedAt = time.Now().UTC()
 	}
 }
 
