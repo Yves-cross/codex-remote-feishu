@@ -223,13 +223,22 @@ func TestApplyCloseStreamCardUsesCardKitClose(t *testing.T) {
 	}
 }
 
-func TestUpdateStreamCardTreatsAlreadyClosedAsIdempotent(t *testing.T) {
+func TestUpdateStreamCardReopensAlreadyClosedStreamAndRetries(t *testing.T) {
 	var updateCalls int
+	var settingsCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
 			updateCalls++
-			writeJSON(t, w, map[string]any{"code": 300309, "msg": "ErrMsg: streaming mode is closed;"})
+			if updateCalls == 1 {
+				writeJSON(t, w, map[string]any{"code": 300309, "msg": "ErrMsg: streaming mode is closed;"})
+				return
+			}
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			settingsCalls++
+			assertStreamCardSettingsMode(t, r, true)
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -240,25 +249,38 @@ func TestUpdateStreamCardTreatsAlreadyClosedAsIdempotent(t *testing.T) {
 	gateway.tenantAccessToken = "tenant-token"
 	gateway.tenantTokenExpiresAt = timeNowPlusHour()
 	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
 
 	if err := gateway.updateStreamCard(t.Context(), "card-stream-1", "stale update", true); err != nil {
-		t.Fatalf("expected already-closed update to be ignored, got %v", err)
+		t.Fatalf("expected already-closed update to reopen and retry, got %v", err)
 	}
-	if updateCalls != 1 {
-		t.Fatalf("expected one update request, got %d", updateCalls)
+	if updateCalls != 2 {
+		t.Fatalf("expected original update and retry, got %d", updateCalls)
 	}
-	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
-		t.Fatalf("expected closed stream card sequence to be forgotten")
+	if settingsCalls != 1 {
+		t.Fatalf("expected one reopen settings request, got %d", settingsCalls)
+	}
+	if seq := gateway.streamSeq["card-stream-1"]; seq != 10 {
+		t.Fatalf("expected sequence to advance through update/reopen/retry, got %d", seq)
 	}
 }
 
-func TestUpdateStreamCardTreatsStreamingTimeoutAsTerminal(t *testing.T) {
+func TestUpdateStreamCardReopensStreamingTimeoutAndRetries(t *testing.T) {
 	var updateCalls int
+	var settingsCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
 			updateCalls++
-			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+			if updateCalls == 1 {
+				writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+				return
+			}
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			settingsCalls++
+			assertStreamCardSettingsMode(t, r, true)
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -272,16 +294,16 @@ func TestUpdateStreamCardTreatsStreamingTimeoutAsTerminal(t *testing.T) {
 	gateway.streamLoadingShown["card-stream-1"] = true
 
 	if err := gateway.updateStreamCard(t.Context(), "card-stream-1", "late update", true); err != nil {
-		t.Fatalf("expected timed-out update to be ignored, got %v", err)
+		t.Fatalf("expected timed-out update to reopen and retry, got %v", err)
 	}
-	if updateCalls != 1 {
-		t.Fatalf("expected one update request, got %d", updateCalls)
+	if updateCalls != 2 {
+		t.Fatalf("expected original update and retry, got %d", updateCalls)
 	}
-	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
-		t.Fatalf("expected timed-out stream card sequence to be forgotten")
+	if settingsCalls != 1 {
+		t.Fatalf("expected one reopen settings request, got %d", settingsCalls)
 	}
-	if _, ok := gateway.streamLoadingShown["card-stream-1"]; ok {
-		t.Fatalf("expected timed-out stream card loading state to be forgotten")
+	if seq := gateway.streamSeq["card-stream-1"]; seq != 10 {
+		t.Fatalf("expected sequence to advance through update/reopen/retry, got %d", seq)
 	}
 }
 
@@ -316,45 +338,25 @@ func TestCloseStreamCardHidesLoadingElementBeforeClosing(t *testing.T) {
 	}
 }
 
-func TestCloseStreamCardTreatsPreCloseAlreadyClosedAsIdempotent(t *testing.T) {
+func TestCloseStreamCardReopensPreCloseAlreadyClosedAndRetries(t *testing.T) {
+	var contentCalls int
 	var settingsCalls int
+	var loadingCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
-			writeJSON(t, w, map[string]any{"code": 300309, "msg": "ErrMsg: streaming mode is closed;"})
-		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
-			settingsCalls++
+			contentCalls++
+			if contentCalls == 1 {
+				writeJSON(t, w, map[string]any{"code": 300309, "msg": "ErrMsg: streaming mode is closed;"})
+				return
+			}
 			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
-	gateway.tenantAccessToken = "tenant-token"
-	gateway.tenantTokenExpiresAt = timeNowPlusHour()
-	gateway.streamSeq["card-stream-1"] = 7
-
-	if err := gateway.closeStreamCard(t.Context(), "card-stream-1", "最终答复"); err != nil {
-		t.Fatalf("expected already-closed pre-close update to be ignored, got %v", err)
-	}
-	if settingsCalls != 0 {
-		t.Fatalf("expected already-closed pre-close update to skip settings patch, got %d settings calls", settingsCalls)
-	}
-	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
-		t.Fatalf("expected closed stream card sequence to be forgotten")
-	}
-}
-
-func TestCloseStreamCardTreatsPreCloseStreamingTimeoutAsTerminal(t *testing.T) {
-	var settingsCalls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
-			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/loading":
+			loadingCalls++
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
 		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
 			settingsCalls++
+			assertStreamCardSettingsMode(t, r, settingsCalls == 1)
 			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -369,10 +371,65 @@ func TestCloseStreamCardTreatsPreCloseStreamingTimeoutAsTerminal(t *testing.T) {
 	gateway.streamLoadingShown["card-stream-1"] = true
 
 	if err := gateway.closeStreamCard(t.Context(), "card-stream-1", "最终答复"); err != nil {
-		t.Fatalf("expected timed-out pre-close update to be ignored, got %v", err)
+		t.Fatalf("expected already-closed pre-close update to reopen and retry, got %v", err)
 	}
-	if settingsCalls != 0 {
-		t.Fatalf("expected timed-out pre-close update to skip settings patch, got %d settings calls", settingsCalls)
+	if contentCalls != 2 {
+		t.Fatalf("expected original content update and retry, got %d", contentCalls)
+	}
+	if loadingCalls != 1 {
+		t.Fatalf("expected loading element hide after retry, got %d", loadingCalls)
+	}
+	if settingsCalls != 2 {
+		t.Fatalf("expected reopen and close settings patches, got %d", settingsCalls)
+	}
+	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
+		t.Fatalf("expected stream card sequence to be forgotten after close")
+	}
+}
+
+func TestCloseStreamCardReopensPreCloseStreamingTimeoutAndRetries(t *testing.T) {
+	var contentCalls int
+	var settingsCalls int
+	var loadingCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
+			contentCalls++
+			if contentCalls == 1 {
+				writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+				return
+			}
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/loading":
+			loadingCalls++
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			settingsCalls++
+			assertStreamCardSettingsMode(t, r, settingsCalls == 1)
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
+	gateway.tenantAccessToken = "tenant-token"
+	gateway.tenantTokenExpiresAt = timeNowPlusHour()
+	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
+
+	if err := gateway.closeStreamCard(t.Context(), "card-stream-1", "最终答复"); err != nil {
+		t.Fatalf("expected timed-out pre-close update to reopen and retry, got %v", err)
+	}
+	if contentCalls != 2 {
+		t.Fatalf("expected original content update and retry, got %d", contentCalls)
+	}
+	if loadingCalls != 1 {
+		t.Fatalf("expected loading element hide after retry, got %d", loadingCalls)
+	}
+	if settingsCalls != 2 {
+		t.Fatalf("expected reopen and close settings patches, got %d", settingsCalls)
 	}
 	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
 		t.Fatalf("expected timed-out stream card sequence to be forgotten")
@@ -382,13 +439,22 @@ func TestCloseStreamCardTreatsPreCloseStreamingTimeoutAsTerminal(t *testing.T) {
 	}
 }
 
-func TestUpdateStreamCardElementTreatsStreamingTimeoutAsTerminal(t *testing.T) {
+func TestUpdateStreamCardElementReopensStreamingTimeoutAndRetries(t *testing.T) {
 	var elementCalls int
+	var settingsCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/loading":
 			elementCalls++
-			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+			if elementCalls == 1 {
+				writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+				return
+			}
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			settingsCalls++
+			assertStreamCardSettingsMode(t, r, true)
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -409,16 +475,52 @@ func TestUpdateStreamCardElementTreatsStreamingTimeoutAsTerminal(t *testing.T) {
 		"loading",
 	)
 	if err != nil {
-		t.Fatalf("expected timed-out element update to be ignored, got %v", err)
+		t.Fatalf("expected timed-out element update to reopen and retry, got %v", err)
 	}
-	if elementCalls != 1 {
-		t.Fatalf("expected one loading element request, got %d", elementCalls)
+	if elementCalls != 2 {
+		t.Fatalf("expected original loading element request and retry, got %d", elementCalls)
+	}
+	if settingsCalls != 1 {
+		t.Fatalf("expected one reopen settings request, got %d", settingsCalls)
+	}
+	if seq := gateway.streamSeq["card-stream-1"]; seq != 10 {
+		t.Fatalf("expected sequence to advance through element/reopen/retry, got %d", seq)
+	}
+}
+
+func TestUpdateStreamCardForgetsStreamWhenReopenRetryStillTimesOut(t *testing.T) {
+	var updateCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
+			updateCalls++
+			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			assertStreamCardSettingsMode(t, r, true)
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
+	gateway.tenantAccessToken = "tenant-token"
+	gateway.tenantTokenExpiresAt = timeNowPlusHour()
+	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
+
+	if err := gateway.updateStreamCard(t.Context(), "card-stream-1", "late update", true); err != nil {
+		t.Fatalf("expected repeated terminal update to be ignored after one retry, got %v", err)
+	}
+	if updateCalls != 2 {
+		t.Fatalf("expected exactly one retry after reopen, got %d update calls", updateCalls)
 	}
 	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
-		t.Fatalf("expected timed-out stream card sequence to be forgotten")
+		t.Fatalf("expected repeatedly timed-out stream card sequence to be forgotten")
 	}
 	if _, ok := gateway.streamLoadingShown["card-stream-1"]; ok {
-		t.Fatalf("expected timed-out stream card loading state to be forgotten")
+		t.Fatalf("expected repeatedly timed-out stream card loading state to be forgotten")
 	}
 }
 
@@ -427,6 +529,27 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(value); err != nil {
 		t.Fatalf("write json: %v", err)
+	}
+}
+
+func assertStreamCardSettingsMode(t *testing.T, r *http.Request, want bool) {
+	t.Helper()
+	var payload struct {
+		Settings string `json:"settings"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode settings payload: %v", err)
+	}
+	var settings struct {
+		Config struct {
+			StreamingMode bool `json:"streaming_mode"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal([]byte(payload.Settings), &settings); err != nil {
+		t.Fatalf("decode settings string: %v", err)
+	}
+	if settings.Config.StreamingMode != want {
+		t.Fatalf("expected streaming_mode=%v, got %v in %s", want, settings.Config.StreamingMode, payload.Settings)
 	}
 }
 
