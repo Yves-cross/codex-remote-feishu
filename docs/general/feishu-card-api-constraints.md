@@ -240,8 +240,8 @@ CardKit 卡片实体本身也有生命周期限制：
 当前 `assistant_stream` 的额外基线：
 
 - 不只按 QPS 节流，还要按单张 CardKit streaming card 的打开时长做预算。
-- 实测飞书可能对长时间保持 streaming mode 的卡返回 `200850 card streaming timeout`；该错误不是普通限流，而是平台侧认为这张流式实体已经超时或终止。
-- 因此长 turn 不能强行维持“一整轮永远一张 streaming card”。当前默认降级是：已完成 commentary 文本如果只是等待后续 item，单卡打开接近保守时长上限时主动关闭；后续 final answer 再开新流式卡，避免旧卡继续被 patch 到平台 timeout。
+- 官方文档写明：流式更新模式会在距上次开启 `10 分钟` 后自动关闭，并建议开发者自行手动关闭；`200850 Card streaming timeout` 表示卡片流式更新模式已因超时自动关闭，可通过更新卡片配置把 `streaming_mode=true` 重新开启。
+- 因此长 turn 不能强行维持“一整轮永远一张 streaming card”。当前默认降级是：已完成 commentary 文本如果只是等待后续 item，单卡打开接近官方 `10 分钟` 自动关闭窗口前主动关闭；后续 final answer 再开新流式卡，避免旧卡继续被 patch 到平台 timeout。
 
 ### 5.4 交互阶段与流式阶段要显式切换
 

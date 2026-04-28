@@ -16,7 +16,9 @@ const (
 	assistantStreamMinPatchGrowth   = 80
 	assistantStreamShortPatchGrowth = 24
 	assistantStreamLoadingInterval  = 800 * time.Millisecond
-	assistantStreamMaxOpenDuration  = 25 * time.Second
+	assistantStreamAutoCloseWindow  = 10 * time.Minute
+	assistantStreamManualCloseSkew  = 30 * time.Second
+	assistantStreamMaxOpenDuration  = assistantStreamAutoCloseWindow - assistantStreamManualCloseSkew
 )
 
 func (s *Service) handleAssistantStreamStart(instanceID string, event agentproto.Event) []eventcontract.Event {
