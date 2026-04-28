@@ -134,7 +134,7 @@ func (g *LiveGateway) updateStreamCard(ctx context.Context, cardID, text string,
 		return err
 	}
 	if parsed.Code != 0 {
-		if isFeishuStreamAlreadyClosed(parsed) {
+		if isFeishuStreamTerminal(parsed) {
 			g.forgetStreamCard(cardID)
 			return nil
 		}
@@ -174,7 +174,7 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 		return err
 	}
 	if parsed.Code != 0 {
-		if isFeishuStreamAlreadyClosed(parsed) {
+		if isFeishuStreamTerminal(parsed) {
 			g.forgetStreamCard(cardID)
 			return nil
 		}
@@ -207,7 +207,7 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 		return err
 	}
 	if closeResp.Code != 0 {
-		if isFeishuStreamAlreadyClosed(closeResp) {
+		if isFeishuStreamTerminal(closeResp) {
 			g.forgetStreamCard(cardID)
 			return nil
 		}
@@ -217,8 +217,16 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 	return nil
 }
 
-func isFeishuStreamAlreadyClosed(resp feishuGenericResponse) bool {
-	return resp.Code == 300309 && strings.Contains(strings.ToLower(resp.Msg), "streaming mode is closed")
+func isFeishuStreamTerminal(resp feishuGenericResponse) bool {
+	msg := strings.ToLower(strings.TrimSpace(resp.Msg))
+	switch resp.Code {
+	case 300309:
+		return strings.Contains(msg, "streaming mode is closed")
+	case 200850:
+		return strings.Contains(msg, "card streaming timeout")
+	default:
+		return false
+	}
 }
 
 func (g *LiveGateway) forgetStreamCard(cardID string) {
@@ -404,7 +412,7 @@ func (g *LiveGateway) updateStreamCardElement(ctx context.Context, cardID, eleme
 		return err
 	}
 	if parsed.Code != 0 {
-		if isFeishuStreamAlreadyClosed(parsed) {
+		if isFeishuStreamTerminal(parsed) {
 			g.forgetStreamCard(cardID)
 			return nil
 		}

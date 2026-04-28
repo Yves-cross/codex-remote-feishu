@@ -252,6 +252,39 @@ func TestUpdateStreamCardTreatsAlreadyClosedAsIdempotent(t *testing.T) {
 	}
 }
 
+func TestUpdateStreamCardTreatsStreamingTimeoutAsTerminal(t *testing.T) {
+	var updateCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
+			updateCalls++
+			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
+	gateway.tenantAccessToken = "tenant-token"
+	gateway.tenantTokenExpiresAt = timeNowPlusHour()
+	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
+
+	if err := gateway.updateStreamCard(t.Context(), "card-stream-1", "late update", true); err != nil {
+		t.Fatalf("expected timed-out update to be ignored, got %v", err)
+	}
+	if updateCalls != 1 {
+		t.Fatalf("expected one update request, got %d", updateCalls)
+	}
+	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card sequence to be forgotten")
+	}
+	if _, ok := gateway.streamLoadingShown["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card loading state to be forgotten")
+	}
+}
+
 func TestCloseStreamCardHidesLoadingElementBeforeClosing(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -311,6 +344,81 @@ func TestCloseStreamCardTreatsPreCloseAlreadyClosedAsIdempotent(t *testing.T) {
 	}
 	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
 		t.Fatalf("expected closed stream card sequence to be forgotten")
+	}
+}
+
+func TestCloseStreamCardTreatsPreCloseStreamingTimeoutAsTerminal(t *testing.T) {
+	var settingsCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/content/content":
+			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/settings":
+			settingsCalls++
+			writeJSON(t, w, map[string]any{"code": 0, "msg": "ok"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
+	gateway.tenantAccessToken = "tenant-token"
+	gateway.tenantTokenExpiresAt = timeNowPlusHour()
+	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
+
+	if err := gateway.closeStreamCard(t.Context(), "card-stream-1", "最终答复"); err != nil {
+		t.Fatalf("expected timed-out pre-close update to be ignored, got %v", err)
+	}
+	if settingsCalls != 0 {
+		t.Fatalf("expected timed-out pre-close update to skip settings patch, got %d settings calls", settingsCalls)
+	}
+	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card sequence to be forgotten")
+	}
+	if _, ok := gateway.streamLoadingShown["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card loading state to be forgotten")
+	}
+}
+
+func TestUpdateStreamCardElementTreatsStreamingTimeoutAsTerminal(t *testing.T) {
+	var elementCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/open-apis/cardkit/v1/cards/card-stream-1/elements/loading":
+			elementCalls++
+			writeJSON(t, w, map[string]any{"code": 200850, "msg": "ErrMsg: card streaming timeout;"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1", Domain: server.URL})
+	gateway.tenantAccessToken = "tenant-token"
+	gateway.tenantTokenExpiresAt = timeNowPlusHour()
+	gateway.streamSeq["card-stream-1"] = 7
+	gateway.streamLoadingShown["card-stream-1"] = true
+
+	err := gateway.updateStreamCardElement(
+		t.Context(),
+		"card-stream-1",
+		"loading",
+		streamCardLoadingElement("", false),
+		"loading",
+	)
+	if err != nil {
+		t.Fatalf("expected timed-out element update to be ignored, got %v", err)
+	}
+	if elementCalls != 1 {
+		t.Fatalf("expected one loading element request, got %d", elementCalls)
+	}
+	if _, ok := gateway.streamSeq["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card sequence to be forgotten")
+	}
+	if _, ok := gateway.streamLoadingShown["card-stream-1"]; ok {
+		t.Fatalf("expected timed-out stream card loading state to be forgotten")
 	}
 }
 
