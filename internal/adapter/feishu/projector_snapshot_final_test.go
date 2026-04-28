@@ -265,6 +265,28 @@ func TestProjectAssistantStreamSendsThenUpdatesStreamingCard(t *testing.T) {
 	}
 }
 
+func TestProjectAssistantStreamRefreshKeepsExistingStreamingCard(t *testing.T) {
+	projector := NewProjector()
+	ops := projector.ProjectEvent("chat-1", eventcontract.Event{
+		Kind: eventcontract.KindAssistantStream,
+		Payload: eventcontract.AssistantStreamPayload{
+			View: control.AssistantStreamView{
+				MessageID:    "om-stream-1",
+				StreamCardID: "card-stream-1",
+				Text:         "第一段",
+				Loading:      true,
+				Refresh:      true,
+			},
+		},
+	})
+	if len(ops) != 1 || ops[0].Kind != OperationRefreshStreamCard {
+		t.Fatalf("unexpected refresh ops: %#v", ops)
+	}
+	if ops[0].MessageID != "om-stream-1" || ops[0].StreamCardID != "card-stream-1" || ops[0].CardBody != "第一段" || !ops[0].StreamLoading {
+		t.Fatalf("expected stream refresh to target existing card only, got %#v", ops[0])
+	}
+}
+
 func TestProjectAssistantStreamDoneClosesEmptyLoadingCard(t *testing.T) {
 	projector := NewProjector()
 	ops := projector.ProjectEvent("chat-1", eventcontract.Event{

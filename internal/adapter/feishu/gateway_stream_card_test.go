@@ -223,6 +223,30 @@ func TestApplyCloseStreamCardUsesCardKitClose(t *testing.T) {
 	}
 }
 
+func TestApplyRefreshStreamCardUsesCardKitSettings(t *testing.T) {
+	gateway := NewLiveGateway(LiveGatewayConfig{GatewayID: "app-1"})
+	var refreshedCardID string
+	var refreshedLoading bool
+	gateway.refreshStreamCardFn = func(ctx context.Context, cardID string, loading bool) error {
+		refreshedCardID = cardID
+		refreshedLoading = loading
+		return nil
+	}
+	err := gateway.Apply(t.Context(), []Operation{{
+		Kind:          OperationRefreshStreamCard,
+		GatewayID:     "app-1",
+		MessageID:     "om-stream-1",
+		StreamCardID:  "card-stream-1",
+		StreamLoading: true,
+	}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if refreshedCardID != "card-stream-1" || !refreshedLoading {
+		t.Fatalf("unexpected refresh call: card=%q loading=%v", refreshedCardID, refreshedLoading)
+	}
+}
+
 func TestUpdateStreamCardReopensAlreadyClosedStreamAndRetries(t *testing.T) {
 	var updateCalls int
 	var settingsCalls int

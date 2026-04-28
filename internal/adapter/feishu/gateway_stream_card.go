@@ -257,6 +257,21 @@ func (g *LiveGateway) closeStreamCard(ctx context.Context, cardID, text string) 
 	return nil
 }
 
+func (g *LiveGateway) refreshStreamCard(ctx context.Context, cardID string, loading bool) error {
+	reopened, err := g.reopenStreamCard(ctx, cardID)
+	if err != nil {
+		return err
+	}
+	if !reopened {
+		g.forgetStreamCard(cardID)
+		return nil
+	}
+	if err := g.syncStreamCardLoadingElement(ctx, cardID, loading); err != nil {
+		return err
+	}
+	return nil
+}
+
 func isFeishuStreamTerminal(resp feishuGenericResponse) bool {
 	msg := strings.ToLower(strings.TrimSpace(resp.Msg))
 	switch resp.Code {

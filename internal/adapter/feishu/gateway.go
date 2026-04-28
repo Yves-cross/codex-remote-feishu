@@ -42,23 +42,24 @@ type LiveGateway struct {
 	client *lark.Client
 	broker *FeishuCallBroker
 
-	downloadImageFn    func(context.Context, string, string) (string, string, error)
-	downloadFileFn     func(context.Context, string, string, string) (string, error)
-	uploadImagePathFn  func(context.Context, string) (string, error)
-	uploadImageBytesFn func(context.Context, []byte) (string, error)
-	uploadFilePathFn   func(context.Context, string) (string, string, error)
-	uploadVideoPathFn  func(context.Context, string) (string, string, error)
-	fetchMessageFn     func(context.Context, string) (*gatewayMessage, error)
-	createMessageFn    func(context.Context, string, string, string, string) (*larkim.CreateMessageResp, error)
-	replyMessageFn     func(context.Context, string, string, string) (*larkim.ReplyMessageResp, error)
-	patchMessageFn     func(context.Context, string, string) (*larkim.PatchMessageResp, error)
-	deleteMessageFn    func(context.Context, string) (*larkim.DeleteMessageResp, error)
-	createReactionFn   func(context.Context, string, string) (*larkim.CreateMessageReactionResp, error)
-	deleteReactionFn   func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
-	botTimeSensitiveFn func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
-	createStreamCardFn func(context.Context, Operation) (string, error)
-	updateStreamCardFn func(context.Context, string, string, bool) error
-	closeStreamCardFn  func(context.Context, string, string) error
+	downloadImageFn     func(context.Context, string, string) (string, string, error)
+	downloadFileFn      func(context.Context, string, string, string) (string, error)
+	uploadImagePathFn   func(context.Context, string) (string, error)
+	uploadImageBytesFn  func(context.Context, []byte) (string, error)
+	uploadFilePathFn    func(context.Context, string) (string, string, error)
+	uploadVideoPathFn   func(context.Context, string) (string, string, error)
+	fetchMessageFn      func(context.Context, string) (*gatewayMessage, error)
+	createMessageFn     func(context.Context, string, string, string, string) (*larkim.CreateMessageResp, error)
+	replyMessageFn      func(context.Context, string, string, string) (*larkim.ReplyMessageResp, error)
+	patchMessageFn      func(context.Context, string, string) (*larkim.PatchMessageResp, error)
+	deleteMessageFn     func(context.Context, string) (*larkim.DeleteMessageResp, error)
+	createReactionFn    func(context.Context, string, string) (*larkim.CreateMessageReactionResp, error)
+	deleteReactionFn    func(context.Context, string, string) (*larkim.DeleteMessageReactionResp, error)
+	botTimeSensitiveFn  func(context.Context, string, bool, []string) (*larkimv2.BotTimeSentiveFeedCardResp, error)
+	createStreamCardFn  func(context.Context, Operation) (string, error)
+	updateStreamCardFn  func(context.Context, string, string, bool) error
+	refreshStreamCardFn func(context.Context, string, bool) error
+	closeStreamCardFn   func(context.Context, string, string) error
 
 	mu                 sync.Mutex
 	stateHook          func(GatewayState, error)
@@ -137,6 +138,7 @@ func NewLiveGateway(config LiveGatewayConfig) *LiveGateway {
 	gateway.botTimeSensitiveFn = gateway.botTimeSensitive
 	gateway.createStreamCardFn = gateway.createStreamCard
 	gateway.updateStreamCardFn = gateway.updateStreamCard
+	gateway.refreshStreamCardFn = gateway.refreshStreamCard
 	gateway.closeStreamCardFn = gateway.closeStreamCard
 	return gateway
 }

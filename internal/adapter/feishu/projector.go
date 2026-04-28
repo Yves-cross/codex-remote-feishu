@@ -15,17 +15,18 @@ import (
 type OperationKind string
 
 const (
-	OperationSendText         OperationKind = "send_text"
-	OperationSendStreamCard   OperationKind = "send_stream_card"
-	OperationUpdateStreamCard OperationKind = "update_stream_card"
-	OperationCloseStreamCard  OperationKind = "close_stream_card"
-	OperationSendCard         OperationKind = "send_card"
-	OperationUpdateCard       OperationKind = "update_card"
-	OperationSendImage        OperationKind = "send_image"
-	OperationDeleteMessage    OperationKind = "delete_message"
-	OperationAddReaction      OperationKind = "add_reaction"
-	OperationRemoveReaction   OperationKind = "remove_reaction"
-	OperationSetTimeSensitive OperationKind = "set_time_sensitive"
+	OperationSendText          OperationKind = "send_text"
+	OperationSendStreamCard    OperationKind = "send_stream_card"
+	OperationUpdateStreamCard  OperationKind = "update_stream_card"
+	OperationRefreshStreamCard OperationKind = "refresh_stream_card"
+	OperationCloseStreamCard   OperationKind = "close_stream_card"
+	OperationSendCard          OperationKind = "send_card"
+	OperationUpdateCard        OperationKind = "update_card"
+	OperationSendImage         OperationKind = "send_image"
+	OperationDeleteMessage     OperationKind = "delete_message"
+	OperationAddReaction       OperationKind = "add_reaction"
+	OperationRemoveReaction    OperationKind = "remove_reaction"
+	OperationSetTimeSensitive  OperationKind = "set_time_sensitive"
 )
 
 type Operation struct {
@@ -385,6 +386,21 @@ func (p *Projector) projectEventBase(chatID string, event eventcontract.Event) [
 
 func (p *Projector) projectAssistantStream(chatID string, event eventcontract.Event, view control.AssistantStreamView) []Operation {
 	text := strings.TrimSpace(view.Text)
+	if view.Refresh && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
+		return []Operation{{
+			Kind:             OperationRefreshStreamCard,
+			GatewayID:        event.GatewayID,
+			SurfaceSessionID: event.SurfaceSessionID,
+			ChatID:           chatID,
+			MessageID:        strings.TrimSpace(view.MessageID),
+			StreamCardID:     strings.TrimSpace(view.StreamCardID),
+			CardBody:         text,
+			CardThemeKey:     cardThemeProgress,
+			StreamLoading:    view.Loading,
+			cardEnvelope:     cardEnvelopeV2,
+			card:             rawCardDocument("", text, cardThemeProgress, nil),
+		}}
+	}
 	if view.Done && strings.TrimSpace(view.MessageID) != "" && strings.TrimSpace(view.StreamCardID) != "" {
 		return []Operation{{
 			Kind:             OperationCloseStreamCard,
@@ -543,7 +559,7 @@ func applyAttentionToOperations(operations []Operation, attention eventcontract.
 	}
 	for i := range operations {
 		switch operations[i].Kind {
-		case OperationSendCard, OperationUpdateCard, OperationSendText, OperationSendStreamCard, OperationUpdateStreamCard, OperationCloseStreamCard:
+		case OperationSendCard, OperationUpdateCard, OperationSendText, OperationSendStreamCard, OperationUpdateStreamCard, OperationRefreshStreamCard, OperationCloseStreamCard:
 			operations[i].AttentionText = attention.Text
 			operations[i].AttentionUserID = attention.MentionUserID
 			return operations

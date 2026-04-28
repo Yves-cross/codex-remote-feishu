@@ -144,9 +144,11 @@ func (s *Service) tickAssistantStreamLoading(surface *state.SurfaceConsoleRecord
 	if strings.TrimSpace(stream.Text) == "" {
 		return nil
 	}
-	if shouldCloseAssistantStreamBeforePlatformTimeout(stream, now) {
-		event := s.assistantStreamEventWithDone(surface, stream, true)
-		surface.ActiveAssistantStream = nil
+	if shouldRefreshAssistantStreamBeforePlatformTimeout(stream, now) {
+		stream.OpenedAt = now
+		stream.LastEmittedAt = now
+		stream.LastEmittedText = stream.Text
+		event := s.assistantStreamEventWithRefresh(surface, stream)
 		return []eventcontract.Event{event}
 	}
 	if !stream.LastEmittedAt.IsZero() && now.Sub(stream.LastEmittedAt) < assistantStreamLoadingInterval {
@@ -192,7 +194,7 @@ func (s *Service) ensureAssistantStream(surface *state.SurfaceConsoleRecord, ins
 	return surface.ActiveAssistantStream
 }
 
-func shouldCloseAssistantStreamBeforePlatformTimeout(stream *state.AssistantStreamRecord, now time.Time) bool {
+func shouldRefreshAssistantStreamBeforePlatformTimeout(stream *state.AssistantStreamRecord, now time.Time) bool {
 	if stream == nil || stream.OpenedAt.IsZero() || now.Sub(stream.OpenedAt) < assistantStreamMaxOpenDuration {
 		return false
 	}
@@ -200,7 +202,7 @@ func shouldCloseAssistantStreamBeforePlatformTimeout(stream *state.AssistantStre
 		return false
 	}
 	text := strings.TrimSpace(stream.Text)
-	if text == "" || text != strings.TrimSpace(stream.CompletedText) {
+	if text == "" {
 		return false
 	}
 	return true
@@ -225,6 +227,27 @@ func (s *Service) assistantStreamEventWithDone(surface *state.SurfaceConsoleReco
 		Text:                 strings.TrimSpace(stream.Text),
 		Loading:              stream.Loading && !done,
 		Done:                 done,
+	}
+	return eventcontract.Event{
+		Kind:                 eventcontract.KindAssistantStream,
+		SurfaceSessionID:     surface.SurfaceSessionID,
+		SourceMessageID:      strings.TrimSpace(stream.SourceMessageID),
+		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
+		AssistantStream:      &view,
+	}
+}
+
+func (s *Service) assistantStreamEventWithRefresh(surface *state.SurfaceConsoleRecord, stream *state.AssistantStreamRecord) eventcontract.Event {
+	view := control.AssistantStreamView{
+		ThreadID:             stream.ThreadID,
+		TurnID:               stream.TurnID,
+		ItemID:               stream.ItemID,
+		MessageID:            strings.TrimSpace(stream.MessageID),
+		StreamCardID:         strings.TrimSpace(stream.StreamCardID),
+		SourceMessagePreview: strings.TrimSpace(stream.SourceMessagePreview),
+		Text:                 strings.TrimSpace(stream.Text),
+		Loading:              stream.Loading,
+		Refresh:              true,
 	}
 	return eventcontract.Event{
 		Kind:                 eventcontract.KindAssistantStream,

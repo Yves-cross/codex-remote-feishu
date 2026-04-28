@@ -503,6 +503,7 @@ type AssistantStreamView struct {
 	SourceMessagePreview string
 	Text                 string
 	Loading              bool
+	Refresh              bool
 	Done                 bool
 }
 

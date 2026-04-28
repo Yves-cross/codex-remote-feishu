@@ -147,7 +147,7 @@ func TestCommentaryAssistantDeltaReusesSingleStreamUntilFinal(t *testing.T) {
 	}
 }
 
-func TestCompletedCommentaryStreamClosesBeforePlatformTimeout(t *testing.T) {
+func TestAssistantStreamRefreshesBeforePlatformTimeout(t *testing.T) {
 	now := time.Date(2026, 4, 3, 12, 0, 0, 0, time.UTC)
 	svc := newServiceForTest(&now)
 	svc.UpsertInstance(&state.InstanceRecord{
@@ -190,15 +190,19 @@ func TestCompletedCommentaryStreamClosesBeforePlatformTimeout(t *testing.T) {
 	})
 
 	now = now.Add(assistantStreamMaxOpenDuration)
-	expired := svc.Tick(now)
-	if len(expired) != 1 || expired[0].AssistantStream == nil || !expired[0].AssistantStream.Done {
-		t.Fatalf("expected completed commentary stream to close before platform timeout, got %#v", expired)
+	refreshed := svc.Tick(now)
+	if len(refreshed) != 1 || refreshed[0].AssistantStream == nil || !refreshed[0].AssistantStream.Refresh {
+		t.Fatalf("expected completed commentary stream to refresh before platform timeout, got %#v", refreshed)
 	}
-	if stream := expired[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != "先同步当前调查进展。" || stream.Loading {
-		t.Fatalf("expected timeout guard to close original stream card, got %#v", stream)
+	if stream := refreshed[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != "先同步当前调查进展。" || !stream.Loading || stream.Done {
+		t.Fatalf("expected timeout guard to refresh original stream card, got %#v", stream)
 	}
 	if active := svc.root.Surfaces["surface-1"].ActiveAssistantStream; active != nil {
-		t.Fatalf("expected timeout guard to clear active stream, got %#v", active)
+		if active.MessageID != "om-stream-1" || active.StreamCardID != "card-stream-1" || active.CompletedText != "先同步当前调查进展。" {
+			t.Fatalf("expected timeout guard to keep active stream, got %#v", active)
+		}
+	} else {
+		t.Fatalf("expected timeout guard to keep active stream")
 	}
 
 	next := svc.ApplyAgentEvent("inst-1", agentproto.Event{
@@ -209,7 +213,23 @@ func TestCompletedCommentaryStreamClosesBeforePlatformTimeout(t *testing.T) {
 		ItemKind: "agent_message",
 		Metadata: map[string]any{"phase": "final_answer"},
 	})
-	if len(next) != 1 || next[0].AssistantStream == nil || strings.TrimSpace(next[0].AssistantStream.MessageID) != "" || strings.TrimSpace(next[0].AssistantStream.StreamCardID) != "" {
-		t.Fatalf("expected later final answer to start a fresh stream card, got %#v", next)
+	if len(next) != 0 {
+		t.Fatalf("expected later final answer start to reuse existing stream silently, got %#v", next)
+	}
+	now = now.Add(assistantStreamMaxInterval)
+	finalDelta := svc.ApplyAgentEvent("inst-1", agentproto.Event{
+		Kind:     agentproto.EventItemDelta,
+		ThreadID: "thread-2",
+		TurnID:   "turn-1",
+		ItemID:   "item-2",
+		ItemKind: "agent_message",
+		Delta:    "最终答复。",
+	})
+	wantText := "先同步当前调查进展。\n\n最终答复。"
+	if len(finalDelta) != 1 || finalDelta[0].AssistantStream == nil {
+		t.Fatalf("expected later final answer to update original stream card, got %#v", finalDelta)
+	}
+	if stream := finalDelta[0].AssistantStream; stream.MessageID != "om-stream-1" || stream.StreamCardID != "card-stream-1" || stream.Text != wantText || !stream.Loading || stream.Done || stream.Refresh {
+		t.Fatalf("expected later final answer to reuse original stream card, got %#v", stream)
 	}
 }
